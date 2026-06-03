@@ -26,16 +26,20 @@ import {
 import { SHOW_FOCUSED_DIFF } from '../../featureFlags';
 import type { HunkCategory } from './classification-types';
 import { HUNK_CATEGORIES, CATEGORY_LABELS } from './classification-types';
-import type { UseClassificationReturn, ChatProvider } from '../git/diff/useClassification';
-import { useAgentProviders } from '../../hooks/useAgentProviders';
-import { useModels } from '../../hooks/useModels';
+import type { UseClassificationReturn } from '../git/diff/useClassification';
+import { useClassification } from '../git/diff/useClassification';
+import type { ClassificationKey } from '../git/diff/diffSource';
+import { useModalJobAiSelection } from '../../shared/ModalJobAiControls';
+import { ClassifyDiffAiControls } from '../git/diff/ClassifyDiffAiControls';
 
 export interface PrFilesPanelProps {
     files: FileChange[];
     /** When true (small viewports), the file list stacks vertically. */
     isMobile?: boolean;
-    /** Classification hook return — enables focused-diff filter bar. */
-    classification?: UseClassificationReturn;
+    /** Workspace ID — enables classification and scoped AI provider preference. */
+    workspaceId?: string;
+    /** Classification key — enables focused-diff filter bar when provided. */
+    classificationKey?: ClassificationKey;
     /** Called when user clicks a file — opens pop-out for diff review. */
     onFileClick?: (filePath: string) => void;
 }
@@ -159,60 +163,29 @@ function ClassificationInfoPopover({ onClose }: { onClose: () => void }) {
 
 // ── Classification filter bar ───────────────────────────────────────
 
-function ClassificationFilterBar({ classification }: { classification: UseClassificationReturn }) {
-    const { state, classify, toggleFilter, setFilters, provider, model, setProvider, setModel } = classification;
+interface ClassificationFilterBarProps {
+    classification: UseClassificationReturn;
+    aiSelection: ReturnType<typeof useModalJobAiSelection>;
+}
+
+function ClassificationFilterBar({ classification, aiSelection }: ClassificationFilterBarProps) {
+    const { state, classify, toggleFilter, setFilters } = classification;
     const { status, activeFilters, error } = state;
     const isLoading = status === 'loading';
     const isReady = status === 'ready';
     const [showInfo, setShowInfo] = useState(false);
-
-    const { providers } = useAgentProviders();
-    const { models } = useModels(provider);
-    const selectableProviders = providers.filter(p => p.enabled && p.available);
-    const enabledModels = models.filter(m => m.enabled);
-
-    const selectClass = cn(
-        'h-[22px] rounded border px-1 text-[10px] bg-white dark:bg-gray-800',
-        isLoading
-            ? 'cursor-not-allowed border-gray-200 text-gray-400 dark:border-gray-700 dark:text-gray-500'
-            : 'border-gray-300 text-gray-700 hover:border-gray-400 dark:border-gray-600 dark:text-gray-200',
-    );
 
     return (
         <div
             className="relative flex shrink-0 flex-wrap items-center gap-1.5 border-b border-gray-200 bg-gray-50/70 px-2 py-1 dark:border-gray-700 dark:bg-gray-800/40"
             data-testid="classification-filter-bar"
         >
-            {/* Provider selector */}
-            {selectableProviders.length > 1 && (
-                <select
-                    value={provider}
-                    onChange={e => setProvider(e.target.value as ChatProvider)}
-                    disabled={isLoading}
-                    className={selectClass}
-                    aria-label="AI provider"
-                    data-testid="classify-provider-select"
-                >
-                    {selectableProviders.map(p => (
-                        <option key={p.id} value={p.id}>{p.label}</option>
-                    ))}
-                </select>
-            )}
-
-            {/* Model selector */}
-            <select
-                value={model ?? ''}
-                onChange={e => setModel(e.target.value || undefined)}
+            {/* AI provider / effort-tier / model controls */}
+            <ClassifyDiffAiControls
+                selection={aiSelection}
                 disabled={isLoading}
-                className={selectClass}
-                aria-label="AI model"
-                data-testid="classify-model-select"
-            >
-                <option value="">Default</option>
-                {enabledModels.map(m => (
-                    <option key={m.id} value={m.id}>{m.name ?? m.id}</option>
-                ))}
-            </select>
+                testIdPrefix="classify"
+            />
 
             {/* Classify button */}
             <button
@@ -295,9 +268,13 @@ function ClassificationFilterBar({ classification }: { classification: UseClassi
 
 // ── Main component ──────────────────────────────────────────────────
 
-export function PrFilesPanel({ files, isMobile = false, classification, onFileClick }: PrFilesPanelProps) {
+export function PrFilesPanel({ files, isMobile = false, workspaceId, classificationKey, onFileClick }: PrFilesPanelProps) {
     const [search, setSearch] = useState('');
     const [viewMode, setViewMode] = useState<ViewMode>('tree');
+
+    const aiSelection = useModalJobAiSelection({ workspaceId, mode: 'ask' });
+    const classificationHook = useClassification(classificationKey, aiSelection.resolved, { workspaceId });
+    const classification: UseClassificationReturn | undefined = SHOW_FOCUSED_DIFF && classificationKey ? classificationHook : undefined;
     const [activePath, setActivePath] = useState<string>(files[0]?.path ?? '');
 
     useEffect(() => {
@@ -396,7 +373,7 @@ export function PrFilesPanel({ files, isMobile = false, classification, onFileCl
                     </div>
                 </header>
                 {SHOW_FOCUSED_DIFF && classification && (
-                    <ClassificationFilterBar classification={classification} />
+                    <ClassificationFilterBar classification={classification} aiSelection={aiSelection} />
                 )}
                 <div className="shrink-0 px-2 pt-2">
                     <input

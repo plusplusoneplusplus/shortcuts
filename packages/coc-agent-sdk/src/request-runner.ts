@@ -368,14 +368,14 @@ export class RequestRunner {
             if (!response) {
                 if (turnCount > 0) {
                     sessionLog.debug({ durationMs, turnCount }, 'Empty text response — treating as success (tool-based execution)');
-                    result = { success: true, response: '', sessionId: session.sessionId, tokenUsage, toolCalls: capturedToolCalls };
+                    result = { success: true, response: '', sessionId: session.sessionId, effectiveModel: options.model, tokenUsage, toolCalls: capturedToolCalls };
                     return result;
                 }
-                result = { success: false, error: 'No response received from Copilot SDK', sessionId: session.sessionId, tokenUsage, toolCalls: capturedToolCalls };
+                result = { success: false, error: 'No response received from Copilot SDK', sessionId: session.sessionId, effectiveModel: options.model, tokenUsage, toolCalls: capturedToolCalls };
                 return result;
             }
 
-            result = { success: true, response, sessionId: session.sessionId, tokenUsage, toolCalls: capturedToolCalls };
+            result = { success: true, response, sessionId: session.sessionId, effectiveModel: options.model, tokenUsage, toolCalls: capturedToolCalls };
             return result;
 
         } catch (error) {
@@ -394,7 +394,7 @@ export class RequestRunner {
                 client = null;
             }
 
-            result = { success: false, error: `Copilot SDK error: ${errorMessage}`, sessionId: session?.sessionId };
+            result = { success: false, error: `Copilot SDK error: ${errorMessage}`, sessionId: session?.sessionId, effectiveModel: options.model };
             return result;
 
         } finally {

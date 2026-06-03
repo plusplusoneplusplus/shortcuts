@@ -13,6 +13,26 @@ let store: FileWorkItemStore;
 let server: http.Server;
 let baseUrl: string;
 
+const SYNC_LINK = {
+    provider: 'github',
+    remote: {
+        owner: 'plusplusoneplusplus',
+        repo: 'shortcuts',
+        issueId: 'I_kwDOExample',
+        issueNumber: 42,
+        issueUrl: 'https://github.com/plusplusoneplusplus/shortcuts/issues/42',
+    },
+    remoteRevision: 'etag-1',
+    remoteUpdatedAt: '2026-01-02T00:00:00.000Z',
+    lastSyncedAt: '2026-01-02T01:00:00.000Z',
+    lastSyncedFingerprint: 'fingerprint-1',
+    parent: {
+        workItemId: 'parent-1',
+        issueNumber: 7,
+        issueUrl: 'https://github.com/plusplusoneplusplus/shortcuts/issues/7',
+    },
+};
+
 function makeServer(): http.Server {
     const routes: Route[] = [];
     registerWorkItemRoutes({ routes, workItemStore: store, processStore: { getWorkspaces: async () => [] } as any });
@@ -166,6 +186,20 @@ describe('Work Item Routes', () => {
             expect(res.status).toBe(201);
             expect(res.body.type).toBe('goal');
             expect(res.body.successCriteria).toBe('New users complete setup in under 5 minutes');
+        });
+
+        it('rejects legacy syncLinks metadata on create', async () => {
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Synced task',
+                syncLinks: [SYNC_LINK],
+            });
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('syncLinks are no longer accepted');
+
+            const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
+            expect(list.status).toBe(200);
+            expect(list.body.items).toEqual([]);
         });
 
         it('omits blank successCriteria on create', async () => {
@@ -553,6 +587,18 @@ describe('Work Item Routes', () => {
             expect(res.status).toBe(200);
             expect(res.body.successCriteria).toBe('Ship the feature behind a flag');
             expect(res.body.grillSessionId).toBe('queue_proc-abc');
+        });
+
+        it('rejects legacy syncLinks metadata on update without changing the item', async () => {
+            const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${itemId}`, {
+                syncLinks: [SYNC_LINK],
+            });
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('syncLinks are no longer accepted');
+
+            const detail = await request('GET', `/api/workspaces/${REPO_ID}/work-items/${itemId}`);
+            expect(detail.body.syncLinks).toBeUndefined();
         });
 
         it('allows the created → drafting transition (goal spec phase)', async () => {

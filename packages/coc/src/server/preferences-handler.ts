@@ -25,32 +25,29 @@ import type { SyncEngine } from './sync/sync-engine';
 // ============================================================================
 
 /** Skill interaction mode — determines which last-used skill preference to read/write. */
-export type SkillMode = 'task' | 'ask' | 'plan';
+export type SkillMode = 'task' | 'ask';
 
 /** Per-mode last-used skill names (array supports multi-skill combinations). */
 export interface LastSkillsByMode {
     task?: string[];
     ask?: string[];
-    plan?: string[];
 }
 
 /** Per-mode last-used AI model names. */
 export interface LastModelsByMode {
     task?: string;
     ask?: string;
-    plan?: string;
     /** Default model for note-chat sessions. Falls back to claude-sonnet-4.6 when absent. */
     note?: string;
 }
 
 /** Mode keys for the per-repo default model overrides. */
-export type DefaultModelMode = 'task' | 'ask' | 'plan' | 'note' | 'schedule' | 'followUp' | 'memory';
+export type DefaultModelMode = 'task' | 'ask' | 'note' | 'schedule' | 'followUp' | 'memory';
 
 /** Per-mode default model overrides. Take precedence over the repo-wide defaultModel. */
 export interface DefaultModelsByMode {
     task?: string;
     ask?: string;
-    plan?: string;
     note?: string;
     schedule?: string;
     followUp?: string;
@@ -125,7 +122,6 @@ const lastSkillsMode = z.union([
 const LastSkillsByModeSchema = z.object({
     task: lastSkillsMode.optional(),
     ask: lastSkillsMode.optional(),
-    plan: lastSkillsMode.optional(),
 }).strip().transform(dropIfEmpty);
 
 const optionalModelString = z.string().optional().catch(undefined);
@@ -133,7 +129,6 @@ const optionalModelString = z.string().optional().catch(undefined);
 const LastModelsByModeSchema = z.object({
     task: optionalModelString,
     ask: optionalModelString,
-    plan: optionalModelString,
     note: optionalModelString,
 }).strip().transform(dropIfEmpty);
 
@@ -142,7 +137,6 @@ const optionalModelStringMax100 = z.string().max(100).optional().catch(undefined
 const DefaultModelsByModeSchema = z.object({
     task: optionalModelStringMax100,
     ask: optionalModelStringMax100,
-    plan: optionalModelStringMax100,
     note: optionalModelStringMax100,
     schedule: optionalModelStringMax100,
     followUp: optionalModelStringMax100,
@@ -188,6 +182,21 @@ const NotesGitSchema = z.object({
 const ActivityFiltersSchema = z.object({
     statusFilter: z.string().optional().catch(undefined),
     typeFilter: z.string().optional().catch(undefined),
+}).strip().transform(dropIfEmpty);
+
+const WorkItemsSyncGithubSchema = z.object({
+    owner: z.string().trim().min(1).max(100).optional().catch(undefined),
+    repo: z.string().trim().min(1).max(100).optional().catch(undefined),
+    pollingEnabled: z.boolean().optional().catch(undefined),
+    pollIntervalMinutes: z.number().int().min(1).max(1440).optional().catch(undefined),
+}).strip().transform(dropIfEmpty);
+
+const WorkItemsSyncSchema = z.object({
+    github: WorkItemsSyncGithubSchema.optional().catch(undefined),
+}).strip().transform(dropIfEmpty);
+
+const WorkItemsPreferencesSchema = z.object({
+    sync: WorkItemsSyncSchema.optional().catch(undefined),
 }).strip().transform(dropIfEmpty);
 
 const SyncSchema = z.object({
@@ -275,6 +284,7 @@ export const PerRepoPreferencesSchema = z.object({
         })
         .optional(),
     sync: SyncSchema.optional(),
+    workItems: WorkItemsPreferencesSchema.optional(),
     enabledMcpTools: EnabledMcpToolsSchema.optional(),
 }).strip();
 
@@ -633,12 +643,22 @@ export function writeRepoPreferences(dataDir: string, workspaceId: string, data:
  * @param getSyncEngine - Optional getter for per-workspace sync engines; when
  *   provided, saving sync preferences immediately reconfigures the live engine
  *   without requiring a server restart.
+ * @param onRepoPreferencesChanged - Optional callback for infrastructure backed
+ *   by per-repo preferences, such as work-item GitHub polling.
  */
 export function registerPreferencesRoutes(
     routes: Route[],
     dataDir: string,
     getSyncEngine?: (workspaceId: string) => SyncEngine | undefined,
+    onRepoPreferencesChanged?: (workspaceId: string, preferences: PerRepoPreferences) => void | Promise<void>,
 ): void {
+    function notifyRepoPreferencesChanged(workspaceId: string, preferences: PerRepoPreferences): void {
+        if (!onRepoPreferencesChanged) return;
+        Promise.resolve(onRepoPreferencesChanged(workspaceId, preferences)).catch(error => {
+            const message = error instanceof Error ? error.message : String(error);
+            process.stderr.write(`[preferences] Failed to apply live repo preferences for '${workspaceId}': ${message}\n`);
+        });
+    }
 
     // ------------------------------------------------------------------
     // GET /api/preferences — Read global preferences
@@ -727,6 +747,7 @@ export function registerPreferencesRoutes(
             const repoId = decodeURIComponent(match![1]);
             const repoPrefs = validatePerRepoPreferences(body);
             writeRepoPreferences(dataDir, repoId, repoPrefs);
+            notifyRepoPreferencesChanged(repoId, repoPrefs);
             sendJSON(res, 200, repoPrefs);
         },
     });
@@ -747,7 +768,7 @@ export function registerPreferencesRoutes(
             const merged: PerRepoPreferences = { ...existingRepo, ...patch };
 
             // Deep-merge lastSkills so that patching { lastSkills: { ask: 'x' } }
-            // preserves existing task/plan values.
+            // preserves existing active mode values.
             if (patch.lastSkills && existingRepo.lastSkills) {
                 merged.lastSkills = { ...existingRepo.lastSkills, ...patch.lastSkills };
             }
@@ -755,7 +776,7 @@ export function registerPreferencesRoutes(
             // Remove modes explicitly cleared by the client (empty array = "user cleared").
             // This works whether the deep-merge above ran or the shallow spread applied.
             if (merged.lastSkills) {
-                for (const mode of ['task', 'ask', 'plan'] as const) {
+                for (const mode of ['task', 'ask'] as const) {
                     if (Array.isArray(merged.lastSkills[mode]) && merged.lastSkills[mode]!.length === 0) {
                         delete merged.lastSkills[mode];
                     }
@@ -766,7 +787,7 @@ export function registerPreferencesRoutes(
             }
 
             // Deep-merge lastModels so that patching { lastModels: { ask: 'x' } }
-            // preserves existing task/plan values.
+            // preserves existing active mode values.
             if (patch.lastModels && existingRepo.lastModels) {
                 merged.lastModels = { ...existingRepo.lastModels, ...patch.lastModels };
             }
@@ -778,7 +799,7 @@ export function registerPreferencesRoutes(
             }
             // Remove per-mode entries explicitly cleared by the client (empty string = clear).
             if (merged.defaultModels) {
-                for (const mode of ['task', 'ask', 'plan', 'note', 'schedule', 'followUp', 'memory'] as const) {
+                for (const mode of ['task', 'ask', 'note', 'schedule', 'followUp', 'memory'] as const) {
                     if (merged.defaultModels[mode] === '') {
                         delete merged.defaultModels[mode];
                     }
@@ -798,6 +819,27 @@ export function registerPreferencesRoutes(
                 merged.activityFilters = { ...existingRepo.activityFilters, ...patch.activityFilters };
             }
 
+            // Deep-merge work-item preferences so updating polling cadence does
+            // not clear the workspace GitHub owner/repo override.
+            if (patch.workItems && existingRepo.workItems) {
+                merged.workItems = {
+                    ...existingRepo.workItems,
+                    ...patch.workItems,
+                    sync: patch.workItems.sync || existingRepo.workItems.sync
+                        ? {
+                            ...(existingRepo.workItems.sync ?? {}),
+                            ...(patch.workItems.sync ?? {}),
+                            github: patch.workItems.sync?.github || existingRepo.workItems.sync?.github
+                                ? {
+                                    ...(existingRepo.workItems.sync?.github ?? {}),
+                                    ...(patch.workItems.sync?.github ?? {}),
+                                }
+                                : undefined,
+                        }
+                        : undefined,
+                };
+            }
+
             // Explicitly set linkedRepoIds to empty array when client sends [] to clear
             if (Array.isArray((body as any).linkedRepoIds) && (body as any).linkedRepoIds.length === 0) {
                 delete merged.linkedRepoIds;
@@ -814,6 +856,9 @@ export function registerPreferencesRoutes(
                     const intervalMinutes = merged.sync?.intervalMinutes ?? 5;
                     engine.start(gitRemote, intervalMinutes).catch(() => {});
                 }
+            }
+            if (patch.workItems !== undefined && onRepoPreferencesChanged) {
+                notifyRepoPreferencesChanged(repoId, merged);
             }
 
             sendJSON(res, 200, merged);

@@ -12,7 +12,7 @@ import path from 'path';
 import fs from 'fs';
 import pino from 'pino';
 import { createPinoAdapter } from '@plusplusoneplusplus/forge';
-import type { Logger } from '@plusplusoneplusplus/forge';
+import type { Logger } from '@plusplusoneplusplus/coc-workflow';
 import { isColorEnabled } from './logger';
 import type { ResolvedLoggingConfig } from './config';
 

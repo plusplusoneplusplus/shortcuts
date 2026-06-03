@@ -12,7 +12,7 @@ import { RichTextInput } from '../../shared/RichTextInput';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { AttachmentPreviews } from '../../ui/AttachmentPreviews';
 import { cn } from '../../ui/cn';
-import { MODE_BORDER_COLORS, cycleMode } from '../../repos/modeConfig';
+import { MODE_BORDER_COLORS, cycleMode, normalizeChatMode } from '../../repos/modeConfig';
 import type { ChatMode } from '../../repos/modeConfig';
 import { useQueue } from '../../contexts/QueueContext';
 import { useApp } from '../../contexts/AppContext';
@@ -109,7 +109,16 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         return pickableModels.some(model => model.id === override) ? override : null;
     }, [modelCommand.modelOverride, pickableModels]);
 
-    const VALID_MODES: ChatMode[] = ['ask', 'plan', 'autopilot', 'ralph'];
+    const modePillOptions = useMemo(
+        () => isRalphEnabled()
+            ? [...DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION]
+            : DEFAULT_MODE_PILL_OPTIONS,
+        [],
+    );
+    const visibleModes = useMemo(
+        () => modePillOptions.map(opt => opt.value),
+        [modePillOptions],
+    );
 
     // Restore draft from localStorage on mount / workspace switch.
     // effortOverride is intentionally NOT restored from the draft — it is
@@ -122,8 +131,9 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             setInput(draft.text);
             setCursorPos(draft.text.length);
             richTextRef.current?.setValue(draft.text, draft.text.length);
-            if (VALID_MODES.includes(draft.mode as ChatMode)) {
-                setSelectedMode(draft.mode as ChatMode);
+            const draftMode = normalizeChatMode(draft.mode);
+            if (draftMode) {
+                setSelectedMode(visibleModes.includes(draftMode) ? draftMode : 'ask');
             }
             if (draft.modelOverride) {
                 modelCommand.setModelOverride(draft.modelOverride);
@@ -134,7 +144,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             setCursorPos(0);
             setSelectedMode('ask');
         }
-    }, [draftKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [draftKey, visibleModes]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Restore last-picked effort tier from localStorage on mount / workspace switch.
     useEffect(() => {
@@ -499,7 +509,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         onKeyDown={(e) => {
                             if (e.key === 'Tab' && e.shiftKey) {
                                 e.preventDefault();
-                                setSelectedMode(cycleMode(selectedMode));
+                                setSelectedMode(cycleMode(selectedMode, visibleModes));
                                 return;
                             }
                             // Priority 1: model command menu
@@ -577,9 +587,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         <span aria-hidden="true" data-testid="chat-toolbar-divider-provider" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                         <div data-testid="mode-selector" className="shrink-0 mr-0.5">
                             <ModePillSelector
-                                options={isRalphEnabled()
-                                    ? [...DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION]
-                                    : DEFAULT_MODE_PILL_OPTIONS}
+                                options={modePillOptions}
                                 value={selectedMode}
                                 onChange={setSelectedMode}
                             />

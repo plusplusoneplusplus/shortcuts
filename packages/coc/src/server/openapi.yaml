@@ -300,9 +300,9 @@ paths:
       description: >-
         Shallow-merges supplied fields into existing per-repo preferences.
         Special deep-merge behavior for nested objects:
-        - `lastSkills`: merges per-mode (task/ask/plan) individually; an empty
+        - `lastSkills`: merges per-mode (task/ask) individually; an empty
           array for a mode clears that mode.
-        - `lastModels`: merges per-mode (task/ask/plan) individually.
+        - `lastModels`: merges per-mode (task/ask) individually.
         - `defaultModels`: merges per-mode individually; empty string clears a mode.
         - `linkedRepoIds`: sending an empty array `[]` deletes the key entirely.
         Omitted keys are preserved. Unknown keys are silently dropped.
@@ -1214,9 +1214,6 @@ components:
         ask:
           type: array
           items: { type: string }
-        plan:
-          type: array
-          items: { type: string }
 
     LastModelsByMode:
       type: object
@@ -1224,7 +1221,6 @@ components:
       properties:
         task: { type: string }
         ask: { type: string }
-        plan: { type: string }
 
     DefaultModelsByMode:
       type: object
@@ -1232,7 +1228,6 @@ components:
       properties:
         task: { type: string }
         ask: { type: string }
-        plan: { type: string }
         note: { type: string }
         schedule: { type: string }
         followUp: { type: string }

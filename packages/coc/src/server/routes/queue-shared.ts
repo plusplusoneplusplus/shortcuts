@@ -14,9 +14,11 @@ import type {
     ProcessStore,
     ConversationTurn,
     PauseMarker,
+    StoredEffortTiersMap,
 } from '@plusplusoneplusplus/forge';
+import { getLogger, LogCategory, resolveModelForProvider } from '@plusplusoneplusplus/forge';
 import { truncateDisplayName } from '../shared/queue-utils';
-import { TaskDefs, VALID_ENQUEUE_TYPES, VISIBLE_TASK_TYPE_LABELS, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
+import { TaskDefs, VALID_ENQUEUE_TYPES, VISIBLE_TASK_TYPE_LABELS, VALID_CHAT_PROVIDERS, normalizeChatMode } from '../tasks/task-types';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import * as path from 'path';
 import type { ParsedUrlQuery } from 'querystring';
@@ -77,6 +79,7 @@ export interface QueueRouteContext {
     globalWorkspaceRootPath: string | undefined;
     state: QueueGlobalState;
     getDefaultProvider?: () => 'copilot' | 'codex' | 'claude';
+    getEffortTiersForProvider?: (provider: 'copilot' | 'codex' | 'claude') => StoredEffortTiersMap | undefined;
 }
 
 export function getRepoIdentifierFromQuery(query: ParsedUrlQuery): string | undefined {
@@ -294,6 +297,8 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         // unset on a follow-up is treated as a bug and surfaced as a warning
         // in FollowUpExecutor.
         if (!payload.mode && !payload.processId) payload.mode = 'autopilot';
+        const normalizedMode = normalizeChatMode(payload.mode);
+        if (normalizedMode) payload.mode = normalizedMode;
         // Validate provider field if present.
         if (payload.provider !== undefined && !VALID_CHAT_PROVIDERS.has(payload.provider)) {
             return {
@@ -337,6 +342,7 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
     // Follow-up executions also read it from `task.config.reasoningEffort`
     // (see follow-up-executor.ts).
     const VALID_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
+    const VALID_EFFORT_TIERS = new Set(['low', 'medium', 'high']);
     const payloadEffort = typeof payload.reasoningEffort === 'string' && VALID_EFFORTS.has(payload.reasoningEffort)
         ? (payload.reasoningEffort as 'low' | 'medium' | 'high' | 'xhigh')
         : undefined;
@@ -344,18 +350,38 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         ? (taskSpec.config.reasoningEffort as 'low' | 'medium' | 'high' | 'xhigh')
         : undefined;
     const resolvedEffort = configEffort ?? payloadEffort;
+    const effortTier = taskSpec.config?.effortTier;
+    if (effortTier !== undefined && (typeof effortTier !== 'string' || !VALID_EFFORT_TIERS.has(effortTier))) {
+        return {
+            valid: false,
+            error: `Invalid effortTier: '${effortTier}'. Valid tiers: low, medium, high`,
+        };
+    }
+
+    const taskProvider = taskSpec.type === 'chat' && typeof payload.provider === 'string' && VALID_CHAT_PROVIDERS.has(payload.provider)
+        ? payload.provider
+        : 'copilot';
+    const rawModel = taskSpec.config?.model ?? (typeof payload.model === 'string' ? payload.model : undefined);
+    const resolvedModel = resolveModelForProvider(taskProvider, rawModel);
+    if (resolvedModel.coerced) {
+        getLogger().warn(
+            LogCategory.AI,
+            `[Queue] Dropping model '${resolvedModel.requestedModel}' because provider '${taskProvider}' does not support it; using provider default.`,
+        );
+    }
 
     const input: CreateTaskInput = {
         type: taskSpec.type,
         priority,
         payload,
         config: {
-            model: taskSpec.config?.model ?? (typeof payload.model === 'string' ? payload.model : undefined),
+            model: resolvedModel.model,
             timeoutMs: taskSpec.config?.timeoutMs,
             retryOnFailure: taskSpec.config?.retryOnFailure ?? false,
             retryAttempts: taskSpec.config?.retryAttempts,
             retryDelayMs: taskSpec.config?.retryDelayMs,
             ...(resolvedEffort ? { reasoningEffort: resolvedEffort } : {}),
+            ...(effortTier ? { effortTier } : {}),
         },
         displayName,
     };

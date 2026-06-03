@@ -2,14 +2,47 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
+import { getRepoDataPath } from '@plusplusoneplusplus/forge';
 import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
-import type { WorkItem, WorkItemPlanVersion, WorkItemExecution } from '../../../src/server/work-items/types';
+import type { WorkItem, WorkItemIndexEntry, WorkItemPlanVersion, WorkItemExecution } from '../../../src/server/work-items/types';
 
 let tmpDir: string;
 let store: FileWorkItemStore;
 
-function makeWorkItem(overrides: Partial<WorkItem> = {}): WorkItem {
-    return {
+interface LegacyWorkItemSyncLink {
+    provider: 'github' | 'azure-boards';
+    remote: {
+        owner?: string;
+        repo?: string;
+        projectId?: string;
+        issueId?: string;
+        issueNumber?: number;
+        issueUrl?: string;
+    };
+    remoteRevision?: string;
+    remoteUpdatedAt?: string;
+    lastSyncedAt?: string;
+    lastSyncedFingerprint?: string;
+    parent?: {
+        workItemId?: string;
+        issueId?: string;
+        issueNumber?: number;
+        issueUrl?: string;
+        owner?: string;
+        repo?: string;
+    };
+}
+
+type WorkItemOverrides = Partial<WorkItem> & { syncLinks?: LegacyWorkItemSyncLink[] };
+type MaybeLegacySyncLinks = { syncLinks?: LegacyWorkItemSyncLink[] };
+
+function legacySyncLinksOf(item: WorkItem | WorkItemIndexEntry | undefined): LegacyWorkItemSyncLink[] | undefined {
+    return (item as (MaybeLegacySyncLinks | undefined))?.syncLinks;
+}
+
+function makeWorkItem(overrides: WorkItemOverrides = {}): WorkItem {
+    const { syncLinks, ...fields } = overrides;
+    const item: WorkItem = {
         id: `wi-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         repoId: 'test-repo',
         title: 'Test work item',
@@ -18,8 +51,55 @@ function makeWorkItem(overrides: Partial<WorkItem> = {}): WorkItem {
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z',
         source: 'manual',
-        ...overrides,
+        ...fields,
     };
+    if (syncLinks) {
+        (item as WorkItem & MaybeLegacySyncLinks).syncLinks = syncLinks;
+    }
+    return item;
+}
+
+function legacyIndexEntry(item: WorkItem & MaybeLegacySyncLinks): WorkItemIndexEntry & MaybeLegacySyncLinks {
+    return {
+        id: item.id,
+        workItemNumber: item.workItemNumber,
+        repoId: item.repoId,
+        title: item.title,
+        description: item.description || undefined,
+        status: item.status,
+        type: item.type,
+        parentId: item.parentId,
+        tracker: item.tracker,
+        githubMirror: item.githubMirror,
+        syncLinks: item.syncLinks,
+        source: item.source,
+        priority: item.priority,
+        planVersion: item.plan?.version,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+        completedAt: item.completedAt,
+        pinnedAt: item.pinnedAt,
+        archivedAt: item.archivedAt,
+        tags: item.tags,
+    };
+}
+
+async function writeLegacyWorkItem(item: WorkItem & MaybeLegacySyncLinks): Promise<void> {
+    const dir = getRepoDataPath(tmpDir, item.repoId, 'work-items');
+    await fs.mkdir(dir, { recursive: true });
+    const indexPath = path.join(dir, 'index.json');
+    let index: Array<WorkItemIndexEntry & MaybeLegacySyncLinks> = [];
+    try {
+        index = JSON.parse(await fs.readFile(indexPath, 'utf-8')) as Array<WorkItemIndexEntry & MaybeLegacySyncLinks>;
+    } catch {
+        index = [];
+    }
+    const nextIndex = [
+        ...index.filter(entry => entry.id !== item.id),
+        legacyIndexEntry(item),
+    ];
+    await fs.writeFile(path.join(dir, `${item.id}.json`), JSON.stringify(item, null, 2), 'utf-8');
+    await fs.writeFile(indexPath, JSON.stringify(nextIndex, null, 2), 'utf-8');
 }
 
 beforeEach(async () => {
@@ -288,6 +368,198 @@ describe('FileWorkItemStore', () => {
             const entry = entries.items.find(e => e.id === 'wi-bug-idx');
             expect(entry).toBeDefined();
             expect(entry!.type).toBe('bug');
+        });
+
+        it('stores tracker metadata on index entries', async () => {
+            await store.addWorkItem(makeWorkItem({
+                id: 'epic-github',
+                type: 'epic',
+                tracker: {
+                    kind: 'github-backed',
+                    provider: 'github',
+                    github: {
+                        issueNumber: 42,
+                        issueUrl: 'https://github.com/org/repo/issues/42',
+                        lastPulledAt: '2026-01-02T00:00:00.000Z',
+                    },
+                },
+            }));
+
+            const entries = await store.listWorkItems({ repoId: 'test-repo' });
+            const entry = entries.items.find(e => e.id === 'epic-github');
+            expect(entry?.tracker).toEqual({
+                kind: 'github-backed',
+                provider: 'github',
+                github: {
+                    issueNumber: 42,
+                    issueUrl: 'https://github.com/org/repo/issues/42',
+                    lastPulledAt: '2026-01-02T00:00:00.000Z',
+                },
+            });
+        });
+
+        it('stores GitHub mirror metadata on index entries', async () => {
+            await store.addWorkItem(makeWorkItem({
+                id: 'github-mirror-item',
+                type: 'feature',
+                githubMirror: {
+                    issueId: 'I_42',
+                    issueNumber: 42,
+                    issueUrl: 'https://github.com/org/repo/issues/42',
+                    state: 'closed',
+                    updatedAt: '2026-01-02T00:00:00.000Z',
+                    lastPulledAt: '2026-01-03T00:00:00.000Z',
+                },
+            }));
+
+            const entries = await store.listWorkItems({ repoId: 'test-repo' });
+            const entry = entries.items.find(e => e.id === 'github-mirror-item');
+            expect(entry?.githubMirror).toEqual({
+                issueId: 'I_42',
+                issueNumber: 42,
+                issueUrl: 'https://github.com/org/repo/issues/42',
+                state: 'closed',
+                updatedAt: '2026-01-02T00:00:00.000Z',
+                lastPulledAt: '2026-01-03T00:00:00.000Z',
+            });
+        });
+
+        it('filters by inherited epic-rooted tracker kind', async () => {
+            await store.addWorkItem(makeWorkItem({
+                id: 'local-epic',
+                type: 'epic',
+                title: 'Local Epic',
+            }));
+            await store.addWorkItem(makeWorkItem({
+                id: 'local-feature',
+                type: 'feature',
+                parentId: 'local-epic',
+                title: 'Local Feature',
+            }));
+            await store.addWorkItem(makeWorkItem({
+                id: 'github-epic',
+                type: 'epic',
+                title: 'GitHub Epic',
+                tracker: {
+                    kind: 'github-backed',
+                    provider: 'github',
+                    github: { issueNumber: 101 },
+                },
+            }));
+            await store.addWorkItem(makeWorkItem({
+                id: 'github-feature',
+                type: 'feature',
+                parentId: 'github-epic',
+                title: 'GitHub Feature',
+            }));
+            await store.addWorkItem(makeWorkItem({
+                id: 'orphan-task',
+                type: 'work-item',
+                title: 'Local Orphan',
+            }));
+
+            const githubBacked = await store.listWorkItems({ repoId: 'test-repo', tracker: 'github-backed' });
+            expect(githubBacked.items.map(item => item.id).sort()).toEqual(['github-epic', 'github-feature']);
+
+            const localOnly = await store.listWorkItems({ repoId: 'test-repo', tracker: 'local-only' });
+            expect(localOnly.items.map(item => item.id).sort()).toEqual(['local-epic', 'local-feature', 'orphan-task']);
+        });
+
+        it('migrates legacy GitHub syncLinks into Epic-rooted tracker and mirror metadata', async () => {
+            const rootSyncLink = {
+                provider: 'github' as const,
+                remote: {
+                    owner: 'octo-org',
+                    repo: 'octo-repo',
+                    issueId: 'I_root',
+                    issueNumber: 100,
+                    issueUrl: 'https://github.com/octo-org/octo-repo/issues/100',
+                },
+                remoteUpdatedAt: '2026-01-02T00:00:00.000Z',
+                lastSyncedAt: '2026-01-02T01:00:00.000Z',
+            };
+            const childSyncLink = {
+                provider: 'github' as const,
+                remote: {
+                    owner: 'octo-org',
+                    repo: 'octo-repo',
+                    issueId: 'I_child',
+                    issueNumber: 101,
+                    issueUrl: 'https://github.com/octo-org/octo-repo/issues/101',
+                },
+                remoteUpdatedAt: '2026-01-03T00:00:00.000Z',
+                lastSyncedAt: '2026-01-03T01:00:00.000Z',
+            };
+            await writeLegacyWorkItem(makeWorkItem({
+                id: 'legacy-epic',
+                type: 'epic',
+                syncLinks: [rootSyncLink],
+            }));
+            await writeLegacyWorkItem(makeWorkItem({
+                id: 'legacy-feature',
+                type: 'feature',
+                parentId: 'legacy-epic',
+                syncLinks: [childSyncLink],
+            }));
+
+            const feature = await store.getWorkItem('legacy-feature', 'test-repo');
+            expect(legacySyncLinksOf(feature)).toBeUndefined();
+            expect(feature?.githubMirror).toEqual({
+                issueId: 'I_child',
+                issueNumber: 101,
+                issueUrl: 'https://github.com/octo-org/octo-repo/issues/101',
+                updatedAt: '2026-01-03T00:00:00.000Z',
+                lastPulledAt: '2026-01-03T01:00:00.000Z',
+            });
+
+            const epic = await store.getWorkItem('legacy-epic', 'test-repo');
+            expect(legacySyncLinksOf(epic)).toBeUndefined();
+            expect(epic?.tracker).toEqual({
+                kind: 'github-backed',
+                provider: 'github',
+                github: {
+                    issueId: 'I_root',
+                    issueNumber: 100,
+                    issueUrl: 'https://github.com/octo-org/octo-repo/issues/100',
+                    lastPulledAt: '2026-01-02T01:00:00.000Z',
+                },
+            });
+            expect(epic?.githubMirror).toEqual({
+                issueId: 'I_root',
+                issueNumber: 100,
+                issueUrl: 'https://github.com/octo-org/octo-repo/issues/100',
+                updatedAt: '2026-01-02T00:00:00.000Z',
+                lastPulledAt: '2026-01-02T01:00:00.000Z',
+            });
+
+            const githubBacked = await store.listWorkItems({ repoId: 'test-repo', tracker: 'github-backed' });
+            expect(githubBacked.items.map(item => item.id).sort()).toEqual(['legacy-epic', 'legacy-feature']);
+            expect(githubBacked.items.every(item => legacySyncLinksOf(item) === undefined)).toBe(true);
+        });
+
+        it('drops legacy syncLinks that cannot be rooted at a GitHub-backed Epic', async () => {
+            await writeLegacyWorkItem(makeWorkItem({
+                id: 'legacy-orphan',
+                type: 'work-item',
+                syncLinks: [{
+                    provider: 'github',
+                    remote: {
+                        owner: 'octo-org',
+                        repo: 'octo-repo',
+                        issueNumber: 200,
+                        issueUrl: 'https://github.com/octo-org/octo-repo/issues/200',
+                    },
+                    lastSyncedAt: '2026-01-04T00:00:00.000Z',
+                }],
+            }));
+
+            const item = await store.getWorkItem('legacy-orphan', 'test-repo');
+            expect(legacySyncLinksOf(item)).toBeUndefined();
+            expect(item?.githubMirror).toBeUndefined();
+            expect(item?.tracker).toBeUndefined();
+
+            const list = await store.listWorkItems({ repoId: 'test-repo' });
+            expect(legacySyncLinksOf(list.items.find(entry => entry.id === 'legacy-orphan'))).toBeUndefined();
         });
     });
 

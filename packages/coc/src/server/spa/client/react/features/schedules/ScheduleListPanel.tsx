@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { Button } from '../../ui';
 import { formatRelativeTime } from '../../utils/format';
+import { normalizePromptScheduleMode } from './scheduleTypes';
 import type { Schedule } from './scheduleTypes';
 
 interface NotesAutoCommitProps {
@@ -71,6 +72,7 @@ function ScheduleItem({
 }) {
     const isNotesAutoCommit = schedule.name === NOTES_AUTOCOMMIT_NAME;
     const nextLabel = nextRunLabel(schedule);
+    const promptMode = normalizePromptScheduleMode(schedule.mode, 'autopilot');
     return (
         <li
             className={
@@ -137,12 +139,12 @@ function ScheduleItem({
                         Prompt
                     </span>
                 )}
-                {!isNotesAutoCommit && schedule.source !== 'repo' && (!schedule.targetType || schedule.targetType === 'prompt') && schedule.mode && schedule.mode !== 'autopilot' && (
+                {!isNotesAutoCommit && schedule.source !== 'repo' && (!schedule.targetType || schedule.targetType === 'prompt') && schedule.mode && promptMode !== 'autopilot' && (
                     <span
                         className="flex-shrink-0 inline-flex items-center px-[7px] py-px rounded-full text-[10px] font-medium leading-4 bg-[#fbf0ff] dark:bg-purple-900/40 text-[#8250df] dark:text-purple-300 border border-[#e5cffd] dark:border-purple-700/60 capitalize"
                         data-testid="list-mode-badge"
                     >
-                        {schedule.mode}
+                        {promptMode}
                     </span>
                 )}
             </span>

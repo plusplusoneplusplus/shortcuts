@@ -9,7 +9,8 @@
 import * as crypto from 'crypto';
 import type { WorkItemStore, WorkItem, WorkItemExecution, WorkItemChange, WorkItemPlanVersion } from './types';
 import { isValidTransition } from './types';
-import type { ChatProvider, ReasoningEffort } from '../tasks/task-types';
+import type { ChatMode, ChatProvider, ReasoningEffort } from '../tasks/task-types';
+import { normalizeChatModeOrDefault } from '../tasks/task-types';
 
 import type { SessionCategory } from '@plusplusoneplusplus/forge';
 
@@ -21,7 +22,7 @@ export interface ExecuteWorkItemOptions {
     /** Per-turn reasoning-effort override for the chat task. */
     reasoningEffort?: ReasoningEffort;
     /** Chat mode for execution (default: 'autopilot'). */
-    mode?: 'ask' | 'plan' | 'autopilot';
+    mode?: Exclude<ChatMode, 'ralph'> | string;
     /** Git HEAD SHA captured immediately before execution enqueued. */
     headBefore?: string;
     /** Whether this execution was triggered automatically after comment resolution. */
@@ -96,7 +97,7 @@ export async function executeWorkItem(
     }
 
     const prompt = buildExecutionPrompt(item);
-    const mode = options?.mode ?? 'autopilot';
+    const mode = normalizeChatModeOrDefault(options?.mode, 'autopilot');
     const runNumber = (item.executionHistory?.length ?? 0) + 1;
 
     const contextFiles = options?.taskFilePath ? [options.taskFilePath] : [];
@@ -188,7 +189,7 @@ export interface ResolveWorkItemCommentsOptions {
     /** Context payload for the resolve executor (resolveComments or resolveDiffCommentsMulti). */
     resolveContext: Record<string, unknown>;
     /** Chat mode override (default: 'ask' for plan, 'autopilot' for commit). */
-    mode?: 'ask' | 'plan' | 'autopilot';
+    mode?: Exclude<ChatMode, 'ralph'> | string;
 }
 
 /**
@@ -216,7 +217,7 @@ export async function resolveWorkItemComments(
         ? 'Comment Resolve'
         : `Code Comment Resolve${options.commitSha ? ` (${options.commitSha.slice(0, 7)})` : ''}`;
     const displayName = `Run #${runNumber}: ${title}`;
-    const mode = options.mode ?? (isPlan ? 'ask' : 'autopilot');
+    const mode = normalizeChatModeOrDefault(options.mode, isPlan ? 'ask' : 'autopilot');
 
     const taskId = await enqueue({
         type: 'run-workflow',

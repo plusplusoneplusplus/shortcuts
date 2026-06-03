@@ -446,12 +446,12 @@ test.describe('Preferences (007)', () => {
         }
     });
 
-    test('7P.12 per-mode model preferences for ask and plan modes', async ({ page, serverUrl }) => {
+    test('7P.12 per-mode model preferences strip legacy plan mode', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
         try {
             await setupRepoForPrefs(page, serverUrl, tmpDir);
 
-            // Set per-mode models via API
+            // Set per-mode models via API; legacy Plan is accepted but not re-exposed.
             await page.request.patch(`${serverUrl}/api/workspaces/ws-prefs/preferences`, {
                 data: { lastModels: { ask: 'gpt-4', plan: 'claude-3-5-sonnet' } },
             });
@@ -460,10 +460,9 @@ test.describe('Preferences (007)', () => {
             const res = await page.request.get(`${serverUrl}/api/workspaces/ws-prefs/preferences`);
             const prefs = await res.json();
             expect(prefs.lastModels?.ask).toBe('gpt-4');
-            expect(prefs.lastModels?.plan).toBe('claude-3-5-sonnet');
+            expect(prefs.lastModels?.plan).toBeUndefined();
 
-            // Verify task mode is unaffected (should be empty or previous value)
-            // We only set ask and plan, so task should remain as-is
+            // Verify task mode is unaffected (should be empty or previous value).
         } finally {
             safeRmSync(tmpDir);
         }

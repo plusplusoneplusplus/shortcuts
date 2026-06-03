@@ -1,10 +1,12 @@
 # Workflow Engine
 
-DAG-based workflow execution engine in `packages/forge/src/workflow/`.
+DAG-based workflow execution engine in `packages/coc-workflow/src/workflow/`.
 
 ## Overview
 
 Converts YAML pipeline/workflow definitions into executable DAGs and runs them with concurrency control, cancellation support, and structured progress events.
+
+The published package is `@plusplusoneplusplus/coc-workflow`. It contains the pure workflow compiler/executor surface without taking a runtime dependency on Forge; AI execution is injected through `WorkflowExecutionOptions.aiInvoker`. Forge depends on `@plusplusoneplusplus/coc-workflow` and keeps backward-compatible workflow exports from both `@plusplusoneplusplus/forge` and `@plusplusoneplusplus/forge/workflow`.
 
 ## Key Exports
 
@@ -13,6 +15,7 @@ Converts YAML pipeline/workflow definitions into executable DAGs and runs them w
 | `compileToWorkflow(yamlContent)` | Converts legacy pipeline YAML or native workflow YAML to `WorkflowConfig` |
 | `executeWorkflow(config, options)` | Runs the DAG with full lifecycle management |
 | `flattenWorkflowResult(result)` | Flattens workflow result for flat display output |
+| `isCSVSource(value)`, `isGenerateConfig(value)` | Runtime guards for legacy pipeline YAML compatibility inputs |
 
 ## Architecture
 
@@ -43,18 +46,19 @@ YAML → compileToWorkflow() → WorkflowConfig → executeWorkflow() → Workfl
 
 ```typescript
 interface WorkflowConfig {
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
+  name: string;
+  description?: string;
   settings?: WorkflowSettings;
+  nodes: Record<string, NodeConfig>;
   parameters?: Record<string, string>;
 }
 
 interface WorkflowSettings {
   model?: string;
   concurrency?: number;
-  timeout?: number;
+  timeoutMs?: number;
+  onError?: 'abort' | 'warn';
   workingDirectory?: string;
-  toolCallCache?: boolean;
 }
 ```
 
@@ -67,9 +71,9 @@ interface WorkflowSettings {
 - **Progress events:** Structured `WorkflowProgressEvent` and per-item `WorkflowItemProcessEvent`
 - **Validation:** Graph validator checks for cycles, missing dependencies, type compatibility
 
-## Map-Reduce (`packages/forge/src/map-reduce/`)
+## Map-Reduce Compatibility
 
-Higher-level abstraction for parallel processing:
+Legacy pipeline YAML compatibility types live with the workflow compiler. Forge's map-reduce package remains a separate higher-level abstraction for parallel processing:
 
 | Component | Purpose |
 |-----------|---------|
@@ -82,10 +86,12 @@ Higher-level abstraction for parallel processing:
 
 `workflow/pipeline-compat.ts` contains legacy pipeline YAML config types used by the compiler. The old `pipeline/` directory has been deleted — all execution goes through the workflow engine.
 
+Forge's workflow compatibility barrels are thin re-exports over `@plusplusoneplusplus/coc-workflow/workflow`; do not add new workflow implementation code under `packages/forge/src/workflow/`. New workflow consumers should import from `@plusplusoneplusplus/coc-workflow` directly where practical.
+
 ## Template Engine
 
-`utils/pipeline-template.ts` provides Mustache-style template substitution for workflow parameters, supporting `{{param}}` syntax in node configurations.
+`utils/template-engine.ts` provides Mustache-style template substitution for workflow parameters, supporting `{{param}}` syntax in node configurations.
 
 ## Filter Executor
 
-`utils/filter-executor.ts` evaluates filter expressions against items, supporting comparison operators, regex matching, and logical combinators.
+`workflow/nodes/filter.ts` evaluates filter expressions against items, supporting comparison operators, regex matching, AI predicates, and logical combinators.

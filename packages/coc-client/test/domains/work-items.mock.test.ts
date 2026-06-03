@@ -50,6 +50,7 @@ describe('WorkItemsClient mock coverage', () => {
       status: ['created', 'planning'],
       priority: 'high',
       tags: ['frontend', 'triage'],
+      tracker: 'github-backed',
       q: 'login bug',
       limit: 25,
       offset: 50,
@@ -59,8 +60,14 @@ describe('WorkItemsClient mock coverage', () => {
       priority: 'low',
       tags: ['backend', 'urgent'],
       type: 'bug',
+      tracker: 'local-only',
       q: 'crash',
       limit: 5,
+    });
+    await client.tree('repo/a', {
+      q: 'epic',
+      tracker: 'github-backed',
+      includeDone: true,
     });
 
     expect(adapter.calls[0]).toEqual({
@@ -70,6 +77,7 @@ describe('WorkItemsClient mock coverage', () => {
           status: 'created,planning',
           priority: 'high',
           tags: 'frontend,triage',
+          tracker: 'github-backed',
           q: 'login bug',
           limit: 25,
           offset: 50,
@@ -84,8 +92,19 @@ describe('WorkItemsClient mock coverage', () => {
           priority: 'low',
           tags: 'backend,urgent',
           type: 'bug',
+          tracker: 'local-only',
           q: 'crash',
           limit: 5,
+        },
+      },
+    });
+    expect(adapter.calls[2]).toEqual({
+      path: '/workspaces/repo%2Fa/work-items/tree',
+      options: {
+        query: {
+          q: 'epic',
+          tracker: 'github-backed',
+          includeDone: true,
         },
       },
     });
@@ -134,6 +153,40 @@ describe('WorkItemsClient mock coverage', () => {
       {
         path: '/workspaces/repo%2Fa/work-items/wi%2F1',
         options: { method: 'DELETE' },
+      },
+    ]);
+  });
+
+  it('passes epic-rooted tracker metadata through create and update requests', async () => {
+    const adapter = createMockAdapter(workItem);
+    const client = new WorkItemsClient(adapter);
+    const tracker: WorkItem['tracker'] = {
+      kind: 'github-backed',
+      provider: 'github',
+      github: {
+        issueNumber: 42,
+        issueUrl: 'https://github.com/org/repo/issues/42',
+        lastPulledAt: '2026-01-02T00:00:00.000Z',
+      },
+    };
+
+    await client.create('repo/a', { title: 'Epic', type: 'epic', tracker });
+    await client.update('repo/a', 'wi/1', { tracker: { kind: 'local-only' } });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/workspaces/repo%2Fa/work-items',
+        options: {
+          method: 'POST',
+          body: { title: 'Epic', type: 'epic', tracker },
+        },
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/wi%2F1',
+        options: {
+          method: 'PATCH',
+          body: { tracker: { kind: 'local-only' } },
+        },
       },
     ]);
   });
@@ -362,5 +415,50 @@ describe('WorkItemsClient mock coverage', () => {
         },
       },
     });
+  });
+
+  it('sends sync status and Epic-scoped GitHub tracker requests to workspace-scoped endpoints', async () => {
+    const adapter = createMockAdapter({ provider: 'github' });
+    const client = new WorkItemsClient(adapter);
+
+    await client.syncStatus('repo/a', 'azure-boards');
+    await client.importFromGitHub('repo/a', { issueUrl: 'https://github.com/org/repo/issues/42' });
+    await client.importFromGitHub('repo/a', { issueNumber: 42 });
+    await client.syncGitHubEpic('repo/a', 'epic/1');
+    await client.convertLocalEpicToGitHub('repo/a', 'epic/1');
+    await client.convertGitHubEpicToLocal('repo/a', 'epic/1');
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/workspaces/repo%2Fa/work-items/sync/status',
+        options: { query: { provider: 'azure-boards' } },
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/import-from-github',
+        options: {
+          method: 'POST',
+          body: { issueUrl: 'https://github.com/org/repo/issues/42' },
+        },
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/import-from-github',
+        options: {
+          method: 'POST',
+          body: { issueNumber: 42 },
+        },
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/epic%2F1/sync-from-github',
+        options: { method: 'POST' },
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/epic%2F1/convert-to-github',
+        options: { method: 'POST' },
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/epic%2F1/convert-to-local',
+        options: { method: 'POST' },
+      },
+    ]);
   });
 });

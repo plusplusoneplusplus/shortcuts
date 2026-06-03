@@ -5,14 +5,13 @@
 import { useState } from 'react';
 import { Button } from '../../ui';
 
-export type InstructionMode = 'base' | 'ask' | 'plan' | 'autopilot';
+export type InstructionMode = 'base' | 'ask' | 'autopilot';
 
-export const INSTRUCTION_MODES: InstructionMode[] = ['base', 'ask', 'plan', 'autopilot'];
+export const INSTRUCTION_MODES: InstructionMode[] = ['base', 'ask', 'autopilot'];
 
 export const INSTRUCTION_MODE_LABELS: Record<InstructionMode, string> = {
     base: 'Base (all modes)',
     ask: 'Ask',
-    plan: 'Plan',
     autopilot: 'Autopilot',
 };
 

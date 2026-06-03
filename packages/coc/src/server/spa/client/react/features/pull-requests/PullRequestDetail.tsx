@@ -37,7 +37,6 @@ import { PrChecksTable, PrMergeReadiness } from './PrChecksAndReadiness';
 import { PrFilesPanel } from './PrFilesPanel';
 import { PrAiAssistantDrawer } from './PrAiAssistantDrawer';
 import { SHOW_FOCUSED_DIFF } from '../../featureFlags';
-import { useClassification } from '../git/diff/useClassification';
 import type { ClassificationKey } from '../git/diff/diffSource';
 import { buildGitPrPopOutUrl } from '../../layout/Router';
 import { useGitReviewPopOut, gitReviewPrPopOutKey } from '../../contexts/GitReviewPopOutContext';
@@ -115,8 +114,6 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
         SHOW_FOCUSED_DIFF && repoId && prId && headSha
             ? { type: 'pr', repoId: String(repoId), identifier: `${prId}:${headSha}` }
             : undefined;
-    const classificationHook = useClassification(classificationKey, { workspaceId });
-    const classification = SHOW_FOCUSED_DIFF ? classificationHook : undefined;
 
     const handleFileClick = useCallback((filePath: string) => {
         const url = buildGitPrPopOutUrl(workspaceId, String(repoId), String(prId));
@@ -557,7 +554,8 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                             <PrFilesPanel
                                 files={diff}
                                 isMobile={isMobile}
-                                classification={classification}
+                                workspaceId={workspaceId}
+                                classificationKey={classificationKey}
                                 onFileClick={handleFileClick}
                             />
                         </div>

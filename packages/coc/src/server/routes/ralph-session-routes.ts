@@ -3,7 +3,7 @@
  *
  * GET /api/workspaces/:workspaceId/ralph-sessions/:sessionId
  *   Returns the per-session record (`session.json`) plus the parsed
- *   `progress.md` sections for SPA rendering.
+ *   `progress.md` sections and raw session-folder files for SPA rendering.
  *
  * 404 when the session directory does not yet exist.
  */
@@ -39,8 +39,9 @@ export function registerRalphSessionRoutes(routes: Route[], ctx: RalphSessionRou
 
             const progressMd = await store.readProgress(workspaceId, sessionId);
             const sections = progressMd ? RalphSessionStore.parseProgressSections(progressMd) : [];
+            const files = await store.readSessionFiles(workspaceId, sessionId);
 
-            sendJSON(res, 200, { record, sections });
+            sendJSON(res, 200, { record, sections, files });
         },
     });
 }

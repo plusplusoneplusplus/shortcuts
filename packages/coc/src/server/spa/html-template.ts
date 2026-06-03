@@ -101,6 +101,9 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
         excalidrawEnabled,
         mcpOauthEnabled,
         focusedDiffEnabled,
+        workItemsHierarchyEnabled,
+        workItemsSyncEnabled,
+        workItemsAiAuthoringEnabled,
         reviewFilePath,
         projectDir,
         bindAddress,
@@ -153,7 +156,10 @@ ${getBundleCss()}
             excalidrawEnabled: ${!!excalidrawEnabled},
             mcpOauthEnabled: ${!!mcpOauthEnabled},
             focusedDiffEnabled: ${!!focusedDiffEnabled}${bindAddress ? `,
-            bindAddress: '${escapeHtml(bindAddress)}'` : ''}
+            bindAddress: '${escapeHtml(bindAddress)}'` : ''},
+            workItemsHierarchyEnabled: ${!!workItemsHierarchyEnabled},
+            workItemsSyncEnabled: ${!!workItemsSyncEnabled},
+            workItemsAiAuthoringEnabled: ${!!workItemsAiAuthoringEnabled}
         };
     </script>${reviewFilePath ? `
     <script>

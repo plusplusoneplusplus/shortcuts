@@ -14,6 +14,7 @@ CoC uses three communication channels between server and browser, plus a WebSock
 
 - Browser opens `EventSource("GET /api/processes/{processId}/stream")`
 - Server responds with `Content-Type: text/event-stream`, keeps connection open
+- Connection starts with a `conversation-snapshot` event for persisted turns. When present on the process record, the snapshot includes `sessionTokenLimit`, `sessionCurrentTokens`, `sessionSystemTokens`, `sessionToolTokens`, and `sessionConversationTokens` so the dashboard can render the context-window indicator immediately after reconnect.
 - Streams tokens, tool calls, status for ONE specific process
 - Closes when process completes or browser navigates away
 - Under HTTP/1.1 (localhost): each SSE = separate TCP connection

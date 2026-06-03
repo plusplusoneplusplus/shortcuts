@@ -16,8 +16,8 @@ import {
     isCSVSource,
     isGenerateConfig,
     compileToWorkflow,
-} from '@plusplusoneplusplus/forge';
-import type { PipelineConfig, FilterConfig } from '@plusplusoneplusplus/forge';
+} from '@plusplusoneplusplus/coc-workflow';
+import type { PipelineConfig, FilterConfig } from '@plusplusoneplusplus/coc-workflow';
 import {
     printSuccess,
     printError,

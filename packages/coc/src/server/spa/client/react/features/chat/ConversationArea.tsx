@@ -11,7 +11,7 @@ import { McpOAuthPrompt } from './McpOAuthPrompt';
 import type { ClientConversationTurn } from '../../types/dashboard';
 import type { QueuedMessage } from '../../utils/chatUtils';
 import type { BackgroundTasksState, AskUserBatch, McpOAuthPromptData } from './hooks/useChatSSE';
-import { MODE_ICONS, MODE_TEXT_COLORS } from '../../repos/modeConfig';
+import { MODE_ICONS, MODE_TEXT_COLORS, normalizeChatMode } from '../../repos/modeConfig';
 import type { ChatMode } from '../../repos/modeConfig';
 import type { ChatProvider } from './ProviderBadge';
 
@@ -303,8 +303,10 @@ export function ConversationArea({
                                         hasPriorTurns = true;
                                         if (sortedTurns[j].mode) { prevMode = sortedTurns[j].mode; break; }
                                     }
-                                    if (hasPriorTurns && prevMode !== turn.mode) {
-                                        const modeKey = turn.mode as ChatMode;
+                                    const mode = normalizeChatMode(turn.mode);
+                                    const prev = normalizeChatMode(prevMode);
+                                    if (mode && hasPriorTurns && prev !== mode) {
+                                        const modeKey = mode as ChatMode;
                                         const icon = MODE_ICONS[modeKey] ?? '';
                                         const accent = MODE_TEXT_COLORS[modeKey] ?? 'text-[#1f2328] dark:text-[#cccccc]';
                                         modeDivider = (
@@ -315,7 +317,7 @@ export function ConversationArea({
                                                 <span className="mode-divider-label font-mono text-[10.5px] uppercase tracking-[0.1em] text-[#6b7280] dark:text-[#9aa0a6] whitespace-nowrap">
                                                     switched to{' '}
                                                     <strong className={cn('font-semibold', accent)}>
-                                                        {icon ? `${icon} ` : ''}{turn.mode}
+                                                        {icon ? `${icon} ` : ''}{mode}
                                                     </strong>
                                                 </span>
                                                 <div className="mode-divider-rule flex-1 h-px bg-[#e5e7eb] dark:bg-[#3c3c3c]" />

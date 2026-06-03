@@ -15,6 +15,7 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { getRepoDataPath } from '../paths';
 import type { ScheduleEntry } from './schedule-manager';
+import { normalizeChatMode } from '../tasks/task-types';
 
 /** Shape of the legacy JSON persistence file used by the old SchedulePersistence class. */
 interface PersistedScheduleState {
@@ -113,7 +114,10 @@ export class ScheduleYamlPersistence {
                     continue;
                 }
 
-                result.push(entry);
+                result.push({
+                    ...entry,
+                    mode: normalizeChatMode(entry.mode) ?? entry.mode,
+                });
             } catch (err) {
                 process.stderr.write(
                     `[ScheduleYamlPersistence] Failed to read ${filePath}: ${err}\n`

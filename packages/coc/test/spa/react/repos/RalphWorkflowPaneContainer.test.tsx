@@ -76,6 +76,9 @@ describe('RalphWorkflowPaneContainer', () => {
                 { iteration: 1, signal: 'RALPH_NEXT', timestamp: new Date().toISOString(), body: 'one' },
                 { iteration: 2, signal: 'RALPH_COMPLETE', timestamp: new Date().toISOString(), body: 'two' },
             ],
+            files: [
+                { name: 'progress.md', content: '# Progress' },
+            ],
         });
 
         render(<RalphWorkflowPaneContainer workspaceId="ws-1" sessionId="sess-1" />);
@@ -86,6 +89,7 @@ describe('RalphWorkflowPaneContainer', () => {
         });
         expect(screen.getByTestId('ralph-workflow-iteration-count').textContent).toContain('Iteration 2');
         expect(screen.getByTestId('ralph-workflow-terminal-reason').textContent).toMatch(/Completed/);
+        expect(screen.getByTestId('ralph-session-file-list').textContent).toContain('progress.md');
     });
 
     it('shows the empty / not-found state when the fetch fails', async () => {

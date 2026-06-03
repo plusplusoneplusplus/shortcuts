@@ -10,6 +10,7 @@ describe('Copilot token cost pricing', () => {
         expect(normalizeCopilotModelId('GPT-5.3-Codex')).toBe('gpt-5.3-codex');
         expect(getCopilotModelPricing('GPT-5.5')?.modelId).toBe('gpt-5.5');
         expect(getCopilotModelPricing('Claude Sonnet 4.6')?.modelId).toBe('claude-sonnet-4.6');
+        expect(getCopilotModelPricing('CLAUDE-OPUS-4.8')?.modelId).toBe('claude-opus-4.8');
     });
 
     it('calculates cost with cached input', () => {
@@ -39,6 +40,21 @@ describe('Copilot token cost pricing', () => {
         expect(cost!.inputUsd).toBeCloseTo(2.4);
         expect(cost!.cacheWriteUsd).toBeCloseTo(0.75);
         expect(cost!.totalUsd).toBeCloseTo(3.15);
+    });
+
+    it('prices Claude Opus 4.8 cached input instead of treating it as unknown', () => {
+        const cost = estimateCopilotTokenCost('CLAUDE-OPUS-4.8', {
+            inputTokens: 21_487_300,
+            outputTokens: 97_100,
+            cacheReadTokens: 21_000_000,
+            cacheWriteTokens: 0,
+        });
+
+        expect(cost).toBeDefined();
+        expect(cost!.inputUsd).toBeCloseTo(2.4365);
+        expect(cost!.cachedInputUsd).toBeCloseTo(10.5);
+        expect(cost!.outputUsd).toBeCloseTo(2.4275);
+        expect(cost!.totalUsd).toBeCloseTo(15.364);
     });
 
     it('treats cache writes as normal input when no cache-write rate exists', () => {

@@ -83,6 +83,9 @@ interface ProcessRow {
     last_message_preview: string | null;
     token_limit: number | null;
     current_tokens: number | null;
+    system_tokens: number | null;
+    tool_definitions_tokens: number | null;
+    conversation_tokens: number | null;
     cumulative_token_usage: string | null;
     stale: number;
     data_file_path: string | null;
@@ -336,6 +339,9 @@ function processToRow(process: AIProcess): Record<string, unknown> {
         last_message_preview: process.lastMessagePreview ?? null,
         token_limit: process.tokenLimit ?? null,
         current_tokens: process.currentTokens ?? null,
+        system_tokens: process.systemTokens ?? null,
+        tool_definitions_tokens: process.toolDefinitionsTokens ?? null,
+        conversation_tokens: process.conversationTokens ?? null,
         cumulative_token_usage: jsonStringify(process.cumulativeTokenUsage),
         stale: boolToInt(process.stale),
         data_file_path: process.dataFilePath ?? null,
@@ -392,6 +398,9 @@ function rowToProcess(row: ProcessRow, turns?: ConversationTurn[]): AIProcess {
         lastMessagePreview: row.last_message_preview ?? undefined,
         tokenLimit: row.token_limit ?? undefined,
         currentTokens: row.current_tokens ?? undefined,
+        systemTokens: row.system_tokens ?? undefined,
+        toolDefinitionsTokens: row.tool_definitions_tokens ?? undefined,
+        conversationTokens: row.conversation_tokens ?? undefined,
         cumulativeTokenUsage: jsonParse<TokenUsage>(row.cumulative_token_usage),
         stale: intToBool(row.stale),
         dataFilePath: row.data_file_path ?? undefined,
@@ -592,14 +601,16 @@ export class SqliteProcessStore implements ProcessStore {
                 start_time, end_time, error, result, result_file_path,
                 raw_stdout_file_path, metadata, group_metadata, structured_result,
                 parent_process_id, sdk_session_id, backend, working_directory,
-                title, custom_title, last_message_preview, token_limit, current_tokens, cumulative_token_usage,
+                title, custom_title, last_message_preview, token_limit, current_tokens,
+                system_tokens, tool_definitions_tokens, conversation_tokens, cumulative_token_usage,
                 stale, data_file_path, archived, pinned_at, last_event_at
             ) VALUES (
                 @id, @workspace_id, @type, @prompt_preview, @full_prompt, @status,
                 @start_time, @end_time, @error, @result, @result_file_path,
                 @raw_stdout_file_path, @metadata, @group_metadata, @structured_result,
                 @parent_process_id, @sdk_session_id, @backend, @working_directory,
-                @title, @custom_title, @last_message_preview, @token_limit, @current_tokens, @cumulative_token_usage,
+                @title, @custom_title, @last_message_preview, @token_limit, @current_tokens,
+                @system_tokens, @tool_definitions_tokens, @conversation_tokens, @cumulative_token_usage,
                 @stale, @data_file_path, @archived, @pinned_at, @last_event_at
             )
         `);
@@ -744,6 +755,9 @@ export class SqliteProcessStore implements ProcessStore {
                 last_message_preview: sourceRow.last_message_preview,
                 token_limit: null,
                 current_tokens: null,
+                system_tokens: null,
+                tool_definitions_tokens: null,
+                conversation_tokens: null,
                 cumulative_token_usage: null,
                 stale: 0,
                 data_file_path: null,
@@ -947,6 +961,9 @@ export class SqliteProcessStore implements ProcessStore {
         mapField('last_message_preview', updates.lastMessagePreview, v => (v === '' ? null : v));
         mapField('token_limit', updates.tokenLimit);
         mapField('current_tokens', updates.currentTokens);
+        mapField('system_tokens', updates.systemTokens);
+        mapField('tool_definitions_tokens', updates.toolDefinitionsTokens);
+        mapField('conversation_tokens', updates.conversationTokens);
         mapField('cumulative_token_usage', updates.cumulativeTokenUsage, v => jsonStringify(v));
         mapField('group_metadata', updates.groupMetadata, v => jsonStringify(v));
         if (updates.stale !== undefined) {
@@ -2187,6 +2204,9 @@ export class SqliteProcessStore implements ProcessStore {
         mapField('last_message_preview', updates.lastMessagePreview, v => (v === '' ? null : v));
         mapField('token_limit', updates.tokenLimit);
         mapField('current_tokens', updates.currentTokens);
+        mapField('system_tokens', updates.systemTokens);
+        mapField('tool_definitions_tokens', updates.toolDefinitionsTokens);
+        mapField('conversation_tokens', updates.conversationTokens);
         mapField('cumulative_token_usage', updates.cumulativeTokenUsage, v => jsonStringify(v));
         mapField('group_metadata', updates.groupMetadata, v => jsonStringify(v));
         if (updates.stale !== undefined) {

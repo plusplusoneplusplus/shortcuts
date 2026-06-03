@@ -69,9 +69,8 @@ vi.mock('../../../../../src/server/spa/client/react/features/chat/ModePillSelect
         </div>
     ),
     DEFAULT_MODE_PILL_OPTIONS: [
-        { value: 'ask', label: 'Ask', dotClass: 'bg-blue-500' },
-        { value: 'plan', label: 'Plan', dotClass: 'bg-blue-500' },
-        { value: 'autopilot', label: 'Autopilot', dotClass: 'bg-orange-500' },
+        { value: 'ask', label: 'Ask', dotClass: 'bg-yellow-500' },
+        { value: 'autopilot', label: 'Autopilot', dotClass: 'bg-green-500' },
     ],
     RALPH_MODE_PILL_OPTION: { value: 'ralph', label: 'Ralph', dotClass: 'bg-purple-500' },
 }));
@@ -79,15 +78,13 @@ vi.mock('../../../../../src/server/spa/client/react/features/chat/ModePillSelect
 vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
     MODE_BORDER_COLORS: {
         ask: { border: '', ring: '' },
-        plan: { border: '', ring: '' },
         autopilot: { border: '', ring: '' },
         ralph: { border: '', ring: '' },
     },
-    MODE_ICONS: { ask: '?', plan: 'P', autopilot: 'A', ralph: 'R' },
-    MODE_LABELS: { ask: 'Ask', plan: 'Plan', autopilot: 'Autopilot', ralph: 'Ralph' },
+    MODE_ICONS: { ask: '?', autopilot: 'A', ralph: 'R' },
+    MODE_LABELS: { ask: 'Ask', autopilot: 'Autopilot', ralph: 'Ralph' },
     MODE_TOOLTIPS: {
         ask: 'Ask tooltip',
-        plan: 'Plan tooltip',
         autopilot: 'Autopilot tooltip',
         ralph: 'Ralph tooltip',
     },
@@ -148,7 +145,7 @@ describe('FollowUpInputArea — Ralph pill gating and visual cues', () => {
     });
 
     it('does NOT render the Ralph pill option when allowedModes omits ralph', () => {
-        render(<FollowUpInputArea {...defaultProps({ allowedModes: ['ask', 'plan'] as any })} />);
+        render(<FollowUpInputArea {...defaultProps({ allowedModes: ['ask', 'autopilot'] as any })} />);
         expect(screen.queryByTestId('mode-pill-option-ralph')).toBeNull();
     });
 

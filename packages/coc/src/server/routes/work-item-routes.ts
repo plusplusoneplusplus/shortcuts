@@ -18,9 +18,26 @@ import type { Route } from '../types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { execGit } from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody } from '../core/api-handler';
-import { handleAPIError, missingFields, notFound, badRequest, conflict } from '../errors';
-import type { WorkItemStore, WorkItemFilter, WorkItemStatus, WorkItemSource, WorkItemPriority, WorkItemType, WorkItem } from '../work-items/types';
-import { WORK_ITEM_STATUSES, WORK_ITEM_TYPES, isValidTransition, HIERARCHY_CONTAINER_TYPES, isValidParentChildTypes, getEffectiveType } from '../work-items/types';
+import { APIError, handleAPIError, missingFields, notFound, badRequest, conflict } from '../errors';
+import { readRepoPreferences } from '../preferences-handler';
+import type {
+    WorkItemStore,
+    WorkItemFilter,
+    WorkItemStatus,
+    WorkItemSource,
+    WorkItemPriority,
+    WorkItemType,
+    WorkItem,
+    WorkItemTrackerKind,
+    WorkItemTrackerMetadata,
+} from '../work-items/types';
+import { WORK_ITEM_STATUSES, WORK_ITEM_TYPES, WORK_ITEM_TRACKER_KINDS, isValidTransition, HIERARCHY_CONTAINER_TYPES, isValidParentChildTypes, getEffectiveType } from '../work-items/types';
+import { resolveGitHubWorkItemSyncRepo, type GitHubWorkItemSyncRepo } from '../work-items/work-item-sync-github-repo';
+import {
+    GhCliGitHubWorkItemIssueTransport,
+    createGitHubIssueForLocalChild,
+    type GitHubWorkItemIssueTransport,
+} from '../work-items/work-item-sync-github-provider';
 import { executeWorkItem, type EnqueueFunction } from '../work-items/work-item-executor';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 
@@ -28,6 +45,11 @@ const VALID_SOURCES: Set<string> = new Set(['manual', 'chat', 'schedule']);
 const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);
 /** Types allowed when hierarchy is disabled (legacy behavior). */
 const LEAF_VALID_TYPES: Set<string> = new Set(['work-item', 'bug']);
+const VALID_TRACKER_KINDS: Set<string> = new Set(WORK_ITEM_TRACKER_KINDS);
+const TRACKER_KEYS: ReadonlySet<string> = new Set(['kind', 'provider', 'github']);
+const GITHUB_TRACKER_KEYS: ReadonlySet<string> = new Set(['issueId', 'issueNumber', 'issueUrl', 'lastPulledAt']);
+const CREDENTIAL_KEY_PATTERN = /(token|secret|password|credential|authorization|auth)/i;
+const LEGACY_SYNC_LINKS_ERROR = 'syncLinks are no longer accepted on work item create/update payloads. Use Epic-rooted GitHub import, conversion, or child creation instead.';
 
 export interface WorkItemRouteContext {
     routes: Route[];
@@ -37,6 +59,118 @@ export interface WorkItemRouteContext {
     getWsServer?: () => ProcessWebSocketServer;
     /** Returns true when the workItems.hierarchy feature flag is enabled. */
     getHierarchyEnabled?: () => boolean;
+    /** Base CoC data directory, required to resolve workspace GitHub preferences for GitHub-backed child creation. */
+    dataDir?: string;
+    /** Override GitHub transport for testing. Defaults to GhCliGitHubWorkItemIssueTransport. */
+    githubTransport?: GitHubWorkItemIssueTransport;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function assertAllowedKeys(
+    value: Record<string, unknown>,
+    allowed: ReadonlySet<string>,
+    path: string,
+    metadataLabel = 'sync metadata',
+): void {
+    for (const key of Object.keys(value)) {
+        if (CREDENTIAL_KEY_PATTERN.test(key)) {
+            throw new Error(`${path}.${key} must not contain credentials or secrets`);
+        }
+        if (!allowed.has(key)) {
+            throw new Error(`${path}.${key} is not a supported ${metadataLabel} field`);
+        }
+    }
+}
+
+function optionalString(value: unknown, path: string): string | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== 'string') {
+        throw new Error(`${path} must be a string`);
+    }
+    return value;
+}
+
+function optionalNumber(value: unknown, path: string): number | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        throw new Error(`${path} must be a finite number`);
+    }
+    return value;
+}
+
+function parseGitHubTrackerMetadata(value: unknown, path: string): WorkItemTrackerMetadata & { kind: 'github-backed' } {
+    if (value !== undefined && !isObject(value)) {
+        throw new Error(`${path}.github must be an object`);
+    }
+    const github = value === undefined ? {} : value;
+    assertAllowedKeys(github, GITHUB_TRACKER_KEYS, `${path}.github`, 'tracker metadata');
+    const issueNumber = optionalNumber(github.issueNumber, `${path}.github.issueNumber`);
+    if (issueNumber !== undefined && (!Number.isInteger(issueNumber) || issueNumber <= 0)) {
+        throw new Error(`${path}.github.issueNumber must be a positive integer`);
+    }
+    return {
+        kind: 'github-backed',
+        provider: 'github',
+        github: {
+            issueId: optionalString(github.issueId, `${path}.github.issueId`),
+            issueNumber,
+            issueUrl: optionalString(github.issueUrl, `${path}.github.issueUrl`),
+            lastPulledAt: optionalString(github.lastPulledAt, `${path}.github.lastPulledAt`),
+        },
+    };
+}
+
+function parseTracker(value: unknown): WorkItemTrackerMetadata | undefined {
+    if (value === undefined) return undefined;
+    if (!isObject(value)) {
+        throw new Error('tracker must be an object');
+    }
+    assertAllowedKeys(value, TRACKER_KEYS, 'tracker', 'tracker metadata');
+    const kind = optionalString(value.kind, 'tracker.kind');
+    if (!kind || !VALID_TRACKER_KINDS.has(kind)) {
+        throw new Error(`tracker.kind must be one of: ${WORK_ITEM_TRACKER_KINDS.join(', ')}`);
+    }
+    if (kind === 'local-only') {
+        if (value.provider !== undefined || value.github !== undefined) {
+            throw new Error('tracker.local-only must not include provider or github metadata');
+        }
+        return { kind: 'local-only' };
+    }
+    const provider = optionalString(value.provider, 'tracker.provider') ?? 'github';
+    if (provider !== 'github') {
+        throw new Error('tracker.provider must be github for github-backed trackers');
+    }
+    return parseGitHubTrackerMetadata(value.github, 'tracker');
+}
+
+function validateTrackerRootPlacement(
+    tracker: WorkItemTrackerMetadata | undefined,
+    type: WorkItemType,
+    parentId: string | undefined,
+): string | undefined {
+    if (!tracker) return undefined;
+    if (type !== 'epic' || parentId) {
+        return 'tracker metadata can only be set on root epic work items';
+    }
+    return undefined;
+}
+
+function githubRepoUnavailableError(repo: Exclude<GitHubWorkItemSyncRepo, { available: true }>): APIError {
+    const messageByReason: Record<typeof repo.reason, string> = {
+        'incomplete-preference': 'GitHub sync owner/repo preference must include both owner and repo.',
+        'missing-workspace': 'GitHub sync could not resolve the current workspace.',
+        'missing-origin': 'GitHub sync could not find a git origin remote for this workspace.',
+        'non-github-origin': 'GitHub sync requires a GitHub origin remote or workspace owner/repo override.',
+    };
+    return new APIError(
+        409,
+        messageByReason[repo.reason],
+        'WORK_ITEM_GITHUB_REPO_UNAVAILABLE',
+        { provider: repo },
+    );
 }
 
 export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
@@ -44,6 +178,79 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
     const isHierarchyEnabled = () => ctx.getHierarchyEnabled?.() ?? false;
     // All valid types when hierarchy is enabled
     const ALL_VALID_TYPES = new Set<string>(WORK_ITEM_TYPES);
+
+    async function findTreeRoot(item: WorkItem, repoId: string): Promise<WorkItem> {
+        let current = item;
+        const visited = new Set<string>();
+        while (current.parentId && !visited.has(current.id)) {
+            visited.add(current.id);
+            const parent = await workItemStore.getWorkItem(current.parentId, repoId);
+            if (!parent) break;
+            current = parent;
+        }
+        return current;
+    }
+
+    async function resolveAvailableGitHubRepo(repoId: string): Promise<Extract<GitHubWorkItemSyncRepo, { available: true }>> {
+        if (!ctx.dataDir) {
+            throw new APIError(
+                409,
+                'GitHub-backed child creation requires the server data directory.',
+                'WORK_ITEM_GITHUB_REPO_UNAVAILABLE',
+            );
+        }
+        const workspaces = await processStore.getWorkspaces();
+        const repo = resolveGitHubWorkItemSyncRepo({
+            workspace: workspaces.find(workspace => workspace.id === repoId),
+            preferences: readRepoPreferences(ctx.dataDir, repoId),
+        });
+        if (!repo.available) {
+            throw githubRepoUnavailableError(repo);
+        }
+        const transport = ctx.githubTransport ?? new GhCliGitHubWorkItemIssueTransport();
+        try {
+            await transport.getRepository(repo);
+        } catch {
+            throw new APIError(
+                409,
+                `GitHub sync could not reach ${repo.owner}/${repo.repo} using external authentication.`,
+                'WORK_ITEM_GITHUB_AUTH_UNAVAILABLE',
+            );
+        }
+        return repo;
+    }
+
+    async function pushNewGitHubBackedChildIfNeeded(
+        item: WorkItem,
+        parentItem: WorkItem | undefined,
+        repoId: string,
+        now: string,
+    ): Promise<WorkItem> {
+        if (!parentItem) return item;
+        const root = await findTreeRoot(parentItem, repoId);
+        if (root.tracker?.kind !== 'github-backed') return item;
+        if (!parentItem.githubMirror?.issueNumber) {
+            throw new APIError(
+                409,
+                `Parent work item '${parentItem.id}' is not mirrored to GitHub.`,
+                'WORK_ITEM_GITHUB_PARENT_NOT_MIRRORED',
+            );
+        }
+
+        const repo = await resolveAvailableGitHubRepo(repoId);
+        const transport = ctx.githubTransport ?? new GhCliGitHubWorkItemIssueTransport();
+        const result = await createGitHubIssueForLocalChild({
+            repo,
+            transport,
+            item,
+            parent: parentItem,
+            now: () => now,
+        });
+        return {
+            ...item,
+            githubMirror: result.githubMirror,
+        };
+    }
 
     // GET /api/workspaces/:id/work-items — List with optional filters
     routes.push({
@@ -74,6 +281,9 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             }
             if (typeof query.type === 'string' && ALL_VALID_TYPES.has(query.type)) {
                 filter.type = query.type as WorkItemType;
+            }
+            if (typeof query.tracker === 'string' && VALID_TRACKER_KINDS.has(query.tracker)) {
+                filter.tracker = query.tracker as WorkItemTrackerKind;
             }
             if (typeof query.q === 'string' && query.q.trim()) {
                 filter.search = query.q.trim();
@@ -114,6 +324,9 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             }
             if (typeof query.type === 'string' && ALL_VALID_TYPES.has(query.type)) {
                 filter.type = query.type as WorkItemType;
+            }
+            if (typeof query.tracker === 'string' && VALID_TRACKER_KINDS.has(query.tracker)) {
+                filter.tracker = query.tracker as WorkItemTrackerKind;
             }
             if (typeof query.q === 'string' && query.q.trim()) {
                 filter.search = query.q.trim();
@@ -158,6 +371,16 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
 
             const now = new Date().toISOString();
             const hierarchyEnabled = isHierarchyEnabled();
+            let tracker: WorkItemTrackerMetadata | undefined;
+            let parentItem: WorkItem | undefined;
+            if (body.syncLinks !== undefined) {
+                return handleAPIError(res, badRequest(LEGACY_SYNC_LINKS_ERROR));
+            }
+            try {
+                tracker = parseTracker(body.tracker);
+            } catch (err) {
+                return handleAPIError(res, badRequest(err instanceof Error ? err.message : 'Invalid work item metadata'));
+            }
 
             // Validate type: hierarchy-only types require the flag to be enabled
             let resolvedType: WorkItemType | undefined;
@@ -182,7 +405,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
 
             // Validate parent-child type relationship when parentId is provided
             if (body.parentId && hierarchyEnabled) {
-                const parentItem = await workItemStore.getWorkItem(body.parentId, repoId);
+                parentItem = await workItemStore.getWorkItem(body.parentId, repoId);
                 if (!parentItem) {
                     return handleAPIError(res, badRequest(`Parent work item not found: ${body.parentId}`));
                 }
@@ -198,7 +421,20 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 }
             }
 
-            const item: WorkItem = {
+            if (body.id && await workItemStore.getWorkItem(String(body.id), repoId)) {
+                return handleAPIError(res, conflict(`Work item already exists: ${body.id}`));
+            }
+
+            const trackerPlacementError = validateTrackerRootPlacement(
+                tracker,
+                resolvedType ?? 'work-item',
+                hierarchyEnabled && body.parentId ? String(body.parentId) : undefined,
+            );
+            if (trackerPlacementError) {
+                return handleAPIError(res, badRequest(trackerPlacementError));
+            }
+
+            let item: WorkItem = {
                 id: body.id || crypto.randomUUID(),
                 repoId,
                 title: body.title,
@@ -206,6 +442,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 status: 'created',
                 type: resolvedType,
                 parentId: hierarchyEnabled && body.parentId ? String(body.parentId) : undefined,
+                tracker,
                 createdAt: now,
                 updatedAt: now,
                 source: VALID_SOURCES.has(body.source) ? body.source : 'manual',
@@ -225,6 +462,12 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                     updatedAt: now,
                     resolvedBy: body.plan.resolvedBy || 'user',
                 };
+            }
+
+            try {
+                item = await pushNewGitHubBackedChildIfNeeded(item, parentItem, repoId, now);
+            } catch (err) {
+                return handleAPIError(res, err);
             }
 
             try {
@@ -299,6 +542,31 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             if (body.reviewComments !== undefined) updates.reviewComments = body.reviewComments;
             if (body.successCriteria !== undefined) updates.successCriteria = body.successCriteria;
             if (body.grillSessionId !== undefined) updates.grillSessionId = body.grillSessionId;
+            if (body.syncLinks !== undefined) {
+                return handleAPIError(res, badRequest(LEGACY_SYNC_LINKS_ERROR));
+            }
+            if (body.tracker !== undefined) {
+                try {
+                    updates.tracker = parseTracker(body.tracker);
+                } catch (err) {
+                    return handleAPIError(res, badRequest(err instanceof Error ? err.message : 'Invalid tracker metadata'));
+                }
+                const current = await workItemStore.getWorkItem(workItemId, repoId);
+                if (!current) {
+                    return handleAPIError(res, notFound('Work item'));
+                }
+                const resultingParentId = 'parentId' in body
+                    ? (body.parentId === null || body.parentId === '' ? undefined : String(body.parentId))
+                    : current.parentId;
+                const trackerPlacementError = validateTrackerRootPlacement(
+                    updates.tracker,
+                    getEffectiveType(current.type),
+                    resultingParentId,
+                );
+                if (trackerPlacementError) {
+                    return handleAPIError(res, badRequest(trackerPlacementError));
+                }
+            }
 
             // Handle parentId reparenting when hierarchy is enabled
             if ('parentId' in body) {

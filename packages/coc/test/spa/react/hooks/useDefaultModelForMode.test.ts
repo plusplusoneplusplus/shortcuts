@@ -83,7 +83,7 @@ describe('useDefaultModelForMode', () => {
             defaultModels: { ask: 'claude-opus-4.7' },
         });
         const { result } = renderHook(() =>
-            useDefaultModelForMode('ws-1', 'plan', MODELS),
+            useDefaultModelForMode('ws-1', 'autopilot', MODELS),
         );
         await waitFor(() => {
             expect(result.current.effectiveModel).toBe('gpt-5.5');
@@ -158,7 +158,7 @@ describe('useDefaultModelForMode', () => {
     it('updates effective model when chatMode changes', async () => {
         mockGetRepo.mockResolvedValue({
             defaultModel: 'claude-sonnet-4.6',
-            defaultModels: { plan: 'claude-opus-4.7' },
+            defaultModels: { task: 'claude-opus-4.7' },
         });
         const { result, rerender } = renderHook(
             ({ mode }) => useDefaultModelForMode('ws-1', mode as any, MODELS),
@@ -168,7 +168,7 @@ describe('useDefaultModelForMode', () => {
             expect(result.current.effectiveModel).toBe('claude-sonnet-4.6');
         });
 
-        rerender({ mode: 'plan' });
+        rerender({ mode: 'autopilot' });
         expect(result.current.effectiveModel).toBe('claude-opus-4.7');
         expect(result.current.effectiveModelName).toBe('Claude Opus 4.7');
     });
@@ -318,7 +318,7 @@ describe('useDefaultModelForMode', () => {
             },
         });
         const { result } = renderHook(() =>
-            useDefaultModelForMode('ws-1', 'plan', MODELS, 'codex'),
+            useDefaultModelForMode('ws-1', 'autopilot', MODELS, 'codex'),
         );
         await waitFor(() => {
             expect(result.current.effectiveModel).toBe('claude-opus-4.7');

@@ -12,10 +12,20 @@ import { WorkItemHierarchyNode } from './WorkItemHierarchyNode';
 import { WorkItemParentPicker } from './WorkItemParentPicker';
 import { ContextMenu } from '../../tasks/comments/ContextMenu';
 import type { ContextMenuItem } from '../../tasks/comments/ContextMenu';
-import { ALLOWED_CHILD_TYPES } from '@plusplusoneplusplus/coc-client';
-import type { WorkItemTreeNode, WorkItemTreeResponse } from '@plusplusoneplusplus/coc-client';
+import {
+    ALLOWED_CHILD_TYPES,
+    type WorkItemTrackerKind,
+    type WorkItemTreeNode,
+    type WorkItemTreeResponse,
+} from '@plusplusoneplusplus/coc-client';
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
 import { TYPE_LABELS } from './WorkItemHierarchyNode';
+import {
+    buildWorkItemTreeFilter,
+    getWorkItemTrackerViewCopy,
+    isGitHubTrackerView as isGitHubTrackerKind,
+    shouldShowLocalRootCreationActions,
+} from './workItemTrackerViews';
 
 const TYPE_CHILD_LABELS: Record<WorkItemTypeLabel, string> = {
     epic:        'Feature',
@@ -42,6 +52,8 @@ function saveCollapsed(workspaceId: string, ids: Set<string>): void {
 
 export interface WorkItemHierarchyTreeProps {
     workspaceId: string;
+    /** Filters the tree to one Epic-rooted tracker partition. */
+    trackerKind?: WorkItemTrackerKind;
     selectedWorkItemId: string | null;
     onSelectWorkItem: (id: string) => void;
     /** Called when a new work item is created from within the tree. */
@@ -50,17 +62,24 @@ export interface WorkItemHierarchyTreeProps {
     onCreateItem: (type: WorkItemTypeLabel, parentId?: string) => void;
     /** When provided, renders the "✨ Create with AI" entry point in the tree header and empty state. */
     onCreateWithAi?: () => void;
+    /** When provided, renders the standalone GitHub issue import entry point in the tree header. */
+    onImportFromGitHub?: () => void;
+    /** Newly imported item id to scroll to and highlight once the tree renders it. */
+    highlightedWorkItemId?: string | null;
     /** When true, renders the always-visible mobile add-child buttons. */
     isMobile?: boolean;
 }
 
 export function WorkItemHierarchyTree({
     workspaceId,
+    trackerKind,
     selectedWorkItemId,
     onSelectWorkItem,
     onCreated,
     onCreateItem,
     onCreateWithAi,
+    onImportFromGitHub,
+    highlightedWorkItemId,
     isMobile = false,
 }: WorkItemHierarchyTreeProps) {
     const [treeData, setTreeData] = useState<WorkItemTreeNode[]>([]);
@@ -71,6 +90,9 @@ export function WorkItemHierarchyTree({
     const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => loadCollapsed(workspaceId));
     const [showArchived, setShowArchived] = useState(false);
     const [showDone, setShowDone] = useState(false);
+    const trackerCopy = getWorkItemTrackerViewCopy(trackerKind);
+    const showLocalRootCreationActions = shouldShowLocalRootCreationActions(trackerKind);
+    const isGitHubTrackerView = isGitHubTrackerKind(trackerKind);
 
     const [contextMenu, setContextMenu] = useState<{
         node: WorkItemTreeNode;
@@ -104,9 +126,7 @@ export function WorkItemHierarchyTree({
         setError(null);
         try {
             const resp: WorkItemTreeResponse = await getSpaCocClient().workItems.tree(workspaceId, {
-                q: searchQuery || undefined,
-                includeArchived: showArchived,
-                includeDone: showDone,
+                ...buildWorkItemTreeFilter({ searchQuery, trackerKind, showArchived, showDone }),
             });
             if (resp.disabled) {
                 setError('Hierarchy feature is disabled.');
@@ -120,7 +140,7 @@ export function WorkItemHierarchyTree({
         } finally {
             setLoading(false);
         }
-    }, [workspaceId, searchQuery, showArchived, showDone]);
+    }, [workspaceId, trackerKind, searchQuery, showArchived, showDone]);
 
     // Initial load
     useEffect(() => { fetchTree(); }, [fetchTree]);
@@ -140,6 +160,13 @@ export function WorkItemHierarchyTree({
     useEffect(() => {
         saveCollapsed(workspaceId, collapsedIds);
     }, [workspaceId, collapsedIds]);
+
+    useEffect(() => {
+        if (!highlightedWorkItemId) return;
+        const element = Array.from(document.querySelectorAll<HTMLElement>('[data-work-item-id]'))
+            .find(candidate => candidate.dataset.workItemId === highlightedWorkItemId);
+        element?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, [highlightedWorkItemId, treeData]);
 
     const handleToggleCollapse = useCallback((id: string) => {
         setCollapsedIds(prev => {
@@ -223,6 +250,22 @@ export function WorkItemHierarchyTree({
         }
 
         // Pin/archive/delete
+        if (node.item.tracker?.kind === 'github-backed') {
+            items.push({
+                label: 'Sync from GitHub',
+                icon: '↻',
+                separator: childTypes.length > 0 || effectiveType !== 'epic',
+                onClick: async () => {
+                    try {
+                        await getSpaCocClient().workItems.syncGitHubEpic(workspaceId, node.item.id);
+                        fetchTree();
+                    } catch (err: any) {
+                        alert(err.message ?? 'Failed to sync from GitHub');
+                    }
+                },
+            });
+        }
+
         items.push({
             label: node.item.pinnedAt ? 'Unpin' : 'Pin',
             icon: '📌',
@@ -276,6 +319,7 @@ export function WorkItemHierarchyTree({
                 onContextMenu={handleContextMenu}
                 isMobile={isMobile}
                 onAddChild={handleAddChild}
+                highlighted={highlightedWorkItemId === id}
             >
                 {!collapsed && node.children.map(child => renderNode(child, depth + 1))}
             </WorkItemHierarchyNode>
@@ -283,43 +327,47 @@ export function WorkItemHierarchyTree({
     }, [collapsedIds, selectedWorkItemId, onSelectWorkItem, handleToggleCollapse, handleContextMenu, isMobile, handleAddChild]);
 
     // ── Render ────────────────────────────────────────────────────────────────
-
     return (
         <div className="flex flex-col h-full" data-testid="work-item-hierarchy-tree">
             {/* ── Pane header ── */}
-            <div className="min-h-[54px] border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] px-3 py-2.5 flex items-center justify-between gap-2 shrink-0">
-                <div className="min-w-0">
-                    <h1 className="text-[16px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc]">Work breakdown</h1>
-                    <p className="text-[12px] leading-[1.4] text-[#656d76] dark:text-[#999]">Select an item to inspect its children.</p>
+            <div className="border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] px-3 py-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 shrink-0">
+                <div className="min-w-[140px] flex-1">
+                    <h1 className="text-[16px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc] truncate">{trackerCopy.title}</h1>
+                    <p className="text-[12px] leading-[1.4] text-[#656d76] dark:text-[#999] truncate">{trackerCopy.subtitle}</p>
                 </div>
-                <div className="flex gap-1 shrink-0">
-                    <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => onCreateItem('epic')}
-                        data-testid="create-epic-btn"
-                        title="Create top-level Epic"
-                    >
-                        + Epic
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onCreateItem('work-item')}
-                        data-testid="create-wi-btn"
-                        title="Create unparented Work Item"
-                    >
-                        + WI
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onCreateItem('bug')}
-                        data-testid="create-bug-btn"
-                        title="Create unparented Bug"
-                    >
-                        🐛
-                    </Button>
+                <div className="flex flex-wrap items-center gap-1 shrink-0">
+                    {showLocalRootCreationActions && (
+                        <>
+                            <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() => onCreateItem('epic')}
+                                data-testid="create-epic-btn"
+                                title="Create top-level Epic"
+                            >
+                                + Epic
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => onCreateItem('work-item')}
+                                data-testid="create-wi-btn"
+                                title="Create unparented Work Item"
+                            >
+                                + WI
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => onCreateItem('bug')}
+                                data-testid="create-bug-btn"
+                                title="Create unparented Bug"
+                                aria-label="Create unparented Bug"
+                            >
+                                🐛
+                            </Button>
+                        </>
+                    )}
                     {onCreateWithAi && (
                         <Button
                             variant="ghost"
@@ -327,8 +375,21 @@ export function WorkItemHierarchyTree({
                             onClick={onCreateWithAi}
                             data-testid="hierarchy-create-with-ai-btn"
                             title="Create with AI"
+                            aria-label="Create with AI"
                         >
                             ✨
+                        </Button>
+                    )}
+                    {onImportFromGitHub && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={onImportFromGitHub}
+                            data-testid="import-from-github-btn"
+                            title="Import a GitHub issue as a work item"
+                            className="whitespace-nowrap"
+                        >
+                            Import from GitHub
                         </Button>
                     )}
                 </div>
@@ -406,9 +467,9 @@ export function WorkItemHierarchyTree({
                     <div className="flex flex-col items-center justify-center h-24 gap-3 px-4 text-center" data-testid="hierarchy-empty">
                         <div className="text-3xl">🗂️</div>
                         <p className="text-xs text-[#848484]">
-                            {searchQuery ? 'No results found.' : 'No work items yet. Create an Epic to start, or add an unparented Work Item.'}
+                            {searchQuery ? 'No results found.' : trackerCopy.empty}
                         </p>
-                        {!searchQuery && (
+                        {!searchQuery && showLocalRootCreationActions && (
                             <div className="flex gap-2">
                                 <Button variant="primary" size="sm" onClick={() => onCreateItem('epic')} data-testid="empty-create-epic-btn">
                                     + Create Epic
@@ -422,6 +483,11 @@ export function WorkItemHierarchyTree({
                                     </Button>
                                 )}
                             </div>
+                        )}
+                        {!searchQuery && isGitHubTrackerView && onImportFromGitHub && (
+                            <Button variant="primary" size="sm" onClick={onImportFromGitHub} data-testid="empty-import-from-github-btn">
+                                Import from GitHub
+                            </Button>
                         )}
                     </div>
                 ) : (
@@ -518,6 +584,7 @@ export function WorkItemHierarchyTree({
                     </div>
                 </div>
             )}
+
         </div>
     );
 }

@@ -157,13 +157,14 @@ describe('RepoPreferencesSection', () => {
             });
         });
 
-        it('renders Plan Model dropdown', async () => {
+        it('does not render a Plan Model dropdown', async () => {
             mockDefaultFetches();
             await act(async () => { renderSection(); });
 
             await waitFor(() => {
-                expect(screen.getByTestId('pref-model-plan')).toBeDefined();
+                expect(screen.getByTestId('pref-model-ask')).toBeDefined();
             });
+            expect(screen.queryByTestId('pref-model-plan')).toBeNull();
         });
 
         it('populates model selects from preferences', async () => {
@@ -326,15 +327,15 @@ describe('RepoPreferencesSection', () => {
     });
 
     describe('skills section', () => {
-        it('renders skill pickers for task, ask, and plan', async () => {
+        it('renders skill pickers for task and ask only', async () => {
             mockDefaultFetches();
             await act(async () => { renderSection(); });
 
             await waitFor(() => {
                 expect(screen.getByTestId('pref-skill-task')).toBeDefined();
                 expect(screen.getByTestId('pref-skill-ask')).toBeDefined();
-                expect(screen.getByTestId('pref-skill-plan')).toBeDefined();
             });
+            expect(screen.queryByTestId('pref-skill-plan')).toBeNull();
         });
     });
 

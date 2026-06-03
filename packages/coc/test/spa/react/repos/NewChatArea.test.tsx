@@ -264,8 +264,8 @@ describe('NewChatArea', () => {
         render(<NewChatArea workspaceId="ws-1" />);
         expect(screen.getByTestId('mode-selector')).toBeTruthy();
         expect(screen.getByTestId('mode-pill-ask')).toBeTruthy();
-        expect(screen.getByTestId('mode-pill-plan')).toBeTruthy();
         expect(screen.getByTestId('mode-pill-autopilot')).toBeTruthy();
+        expect(screen.queryByTestId('mode-pill-plan')).toBeNull();
         expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
     });
 
@@ -589,8 +589,8 @@ describe('NewChatArea', () => {
         it('clicking a pill switches the active mode', () => {
             render(<NewChatArea workspaceId="ws-1" />);
             expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
-            fireEvent.click(screen.getByTestId('mode-pill-plan'));
-            expect(screen.getByTestId('mode-pill-plan').getAttribute('aria-checked')).toBe('true');
+            fireEvent.click(screen.getByTestId('mode-pill-autopilot'));
+            expect(screen.getByTestId('mode-pill-autopilot').getAttribute('aria-checked')).toBe('true');
             expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('false');
         });
 
@@ -617,7 +617,7 @@ describe('NewChatArea', () => {
             expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
 
             fireEvent.keyDown(input, { key: 'Tab', shiftKey: true });
-            expect(screen.getByTestId('mode-pill-plan').getAttribute('aria-checked')).toBe('true');
+            expect(screen.getByTestId('mode-pill-autopilot').getAttribute('aria-checked')).toBe('true');
         });
     });
 
@@ -709,7 +709,7 @@ describe('NewChatArea', () => {
     });
 
     describe('draft persistence (localStorage)', () => {
-        it('restores text and mode from saved draft on mount', () => {
+        it('restores legacy plan draft mode as Ask on mount', () => {
             mockDraftStore.getDraft.mockReturnValue({
                 text: 'saved message',
                 mode: 'plan',
@@ -719,6 +719,8 @@ describe('NewChatArea', () => {
             render(<NewChatArea workspaceId="ws-1" />);
 
             expect(mockDraftStore.getDraft).toHaveBeenCalledWith('new-chat:ws-1');
+            expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
+            expect(screen.queryByTestId('mode-pill-plan')).toBeNull();
             // The RichTextInput mock sets internal value via setValue — the
             // component called setInput('saved message') so later interactions
             // will see it. We can verify the draft was read.

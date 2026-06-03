@@ -154,6 +154,9 @@ export const CLIConfigSchema = z.object({
         hierarchy: z.object({
             enabled: z.boolean().optional(),
         }).passthrough().optional(),
+        sync: z.object({
+            enabled: z.boolean().optional(),
+        }).passthrough().optional(),
         aiAuthoring: z.object({
             enabled: z.boolean().optional(),
         }).passthrough().optional(),

@@ -17,6 +17,7 @@ import * as path from 'path';
 import { getRepoDataPath } from '@plusplusoneplusplus/forge';
 import type {
     WorkItem,
+    WorkItemGitHubMirrorMetadata,
     WorkItemIndexEntry,
     WorkItemFilter,
     WorkItemListResult,
@@ -26,8 +27,12 @@ import type {
     WorkItemChange,
     WorkItemStore,
     WorkItemStatus,
+    WorkItemTrackerMetadata,
+    WorkItemSyncParentReference,
+    WorkItemSyncProvider,
+    WorkItemSyncRemoteIdentity,
 } from './types';
-import { toIndexEntry, WORK_ITEM_STATUSES } from './types';
+import { getOwnWorkItemTrackerKind, toIndexEntry, WORK_ITEM_STATUSES } from './types';
 
 // ============================================================================
 // Store Implementation
@@ -36,6 +41,57 @@ import { toIndexEntry, WORK_ITEM_STATUSES } from './types';
 export interface FileWorkItemStoreOptions {
     /** Base data directory (default: ~/.coc). */
     dataDir: string;
+}
+
+interface LegacyWorkItemSyncLink {
+    provider: WorkItemSyncProvider;
+    remote: WorkItemSyncRemoteIdentity;
+    remoteRevision?: string;
+    remoteUpdatedAt?: string;
+    lastSyncedAt?: string;
+    lastSyncedFingerprint?: string;
+    parent?: WorkItemSyncParentReference;
+}
+
+type LegacyStoredWorkItem = WorkItem & { syncLinks?: LegacyWorkItemSyncLink[] };
+type LegacyWorkItemIndexEntry = WorkItemIndexEntry & { syncLinks?: LegacyWorkItemSyncLink[] };
+
+function getLegacyGitHubSyncLink(item: Pick<LegacyStoredWorkItem, 'syncLinks'>): LegacyWorkItemSyncLink | undefined {
+    return item.syncLinks?.find(link => link.provider === 'github');
+}
+
+function positiveIssueNumber(link: LegacyWorkItemSyncLink): number | undefined {
+    const issueNumber = link.remote.issueNumber;
+    return typeof issueNumber === 'number' && Number.isInteger(issueNumber) && issueNumber > 0
+        ? issueNumber
+        : undefined;
+}
+
+function githubTrackerFromLegacySyncLink(link: LegacyWorkItemSyncLink): (WorkItemTrackerMetadata & { kind: 'github-backed' }) | undefined {
+    const issueNumber = positiveIssueNumber(link);
+    if (issueNumber === undefined) return undefined;
+    return {
+        kind: 'github-backed',
+        provider: 'github',
+        github: {
+            issueId: link.remote.issueId,
+            issueNumber,
+            issueUrl: link.remote.issueUrl,
+            lastPulledAt: link.lastSyncedAt,
+        },
+    };
+}
+
+function githubMirrorFromLegacySyncLink(link: LegacyWorkItemSyncLink): WorkItemGitHubMirrorMetadata | undefined {
+    const issueNumber = positiveIssueNumber(link);
+    if (issueNumber === undefined) return undefined;
+    return {
+        issueId: link.remote.issueId,
+        issueNumber,
+        issueUrl: link.remote.issueUrl,
+        updatedAt: link.remoteUpdatedAt,
+        lastPulledAt: link.lastSyncedAt,
+    };
 }
 
 export class FileWorkItemStore implements WorkItemStore {
@@ -104,13 +160,13 @@ export class FileWorkItemStore implements WorkItemStore {
     }
 
     private async readIndex(repoId: string): Promise<WorkItemIndexEntry[]> {
-        const raw = await this.readJSON(this.indexPath(repoId), []);
+        const raw = await this.readJSON<unknown>(this.indexPath(repoId), []);
         // Handle corrupted index: single object instead of array
-        let entries: WorkItemIndexEntry[];
+        let entries: LegacyWorkItemIndexEntry[];
         if (raw && !Array.isArray(raw)) {
-            entries = [raw as unknown as WorkItemIndexEntry];
+            entries = [raw as unknown as LegacyWorkItemIndexEntry];
         } else {
-            entries = raw as WorkItemIndexEntry[];
+            entries = raw as LegacyWorkItemIndexEntry[];
         }
 
         // Repair once per repo per process lifetime: scan for orphaned .json item files
@@ -151,20 +207,21 @@ export class FileWorkItemStore implements WorkItemStore {
             }
         }
 
-        return entries;
+        return this.migrateLegacySyncLinks(repoId, entries);
     }
 
     private async writeIndex(repoId: string, entries: WorkItemIndexEntry[]): Promise<void> {
         await this.atomicWrite(this.indexPath(repoId), JSON.stringify(entries, null, 2));
     }
 
-    private async readItem(repoId: string, id: string): Promise<WorkItem | undefined> {
-        const result = await this.readJSON<WorkItem | null>(this.itemPath(repoId, id), null);
+    private async readItem(repoId: string, id: string): Promise<LegacyStoredWorkItem | undefined> {
+        const result = await this.readJSON<LegacyStoredWorkItem | null>(this.itemPath(repoId, id), null);
         return result ?? undefined;
     }
 
     private async writeItem(repoId: string, item: WorkItem): Promise<void> {
-        await this.atomicWrite(this.itemPath(repoId, item.id), JSON.stringify(item, null, 2));
+        const { syncLinks: _legacySyncLinks, ...cleanItem } = item as LegacyStoredWorkItem;
+        await this.atomicWrite(this.itemPath(repoId, item.id), JSON.stringify(cleanItem, null, 2));
     }
 
     private async readCounter(repoId: string): Promise<number> {
@@ -261,11 +318,13 @@ export class FileWorkItemStore implements WorkItemStore {
 
     async getWorkItem(id: string, repoId?: string): Promise<WorkItem | undefined> {
         if (repoId) {
+            await this.readIndex(repoId);
             return this.readItem(repoId, id);
         }
         // Scan all repos (expensive but needed for cross-repo lookup)
         const repos = await this.listRepoIds();
         for (const repo of repos) {
+            await this.readIndex(repo);
             const item = await this.readItem(repo, id);
             if (item) return item;
         }
@@ -597,6 +656,9 @@ export class FileWorkItemStore implements WorkItemStore {
     private applyFilter(entries: WorkItemIndexEntry[], filter?: WorkItemFilter): WorkItemIndexEntry[] {
         if (!filter) return entries;
 
+        const entriesById = filter.tracker
+            ? new Map(entries.map(entry => [entry.id, entry]))
+            : undefined;
         return entries.filter(e => {
             if (filter.status) {
                 const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
@@ -605,11 +667,116 @@ export class FileWorkItemStore implements WorkItemStore {
             if (filter.source && e.source !== filter.source) return false;
             if (filter.priority && e.priority !== filter.priority) return false;
             if (filter.type && (e.type ?? 'work-item') !== filter.type) return false;
+            if (filter.tracker && entriesById && this.getInheritedTrackerKind(e, entriesById) !== filter.tracker) return false;
             if (filter.tags?.length) {
                 if (!e.tags?.some(t => filter.tags!.includes(t))) return false;
             }
             return true;
         });
+    }
+
+    private getInheritedTrackerKind(
+        entry: WorkItemIndexEntry,
+        entriesById: Map<string, WorkItemIndexEntry>,
+    ): ReturnType<typeof getOwnWorkItemTrackerKind> {
+        let current = entry;
+        const visited = new Set<string>();
+        while (current.parentId && !visited.has(current.id)) {
+            visited.add(current.id);
+            const parent = entriesById.get(current.parentId);
+            if (!parent) break;
+            current = parent;
+        }
+        return getOwnWorkItemTrackerKind(current);
+    }
+
+    private findRootEpicEntry(
+        entry: WorkItemIndexEntry,
+        entriesById: Map<string, WorkItemIndexEntry>,
+    ): WorkItemIndexEntry | undefined {
+        let current = entry;
+        const visited = new Set<string>();
+        while (current.parentId && !visited.has(current.id)) {
+            visited.add(current.id);
+            const parent = entriesById.get(current.parentId);
+            if (!parent) break;
+            current = parent;
+        }
+        return (current.type ?? 'work-item') === 'epic' && !current.parentId ? current : undefined;
+    }
+
+    private async migrateLegacySyncLinks(repoId: string, entries: LegacyWorkItemIndexEntry[]): Promise<WorkItemIndexEntry[]> {
+        if (!entries.some(entry => entry.syncLinks?.length)) return entries;
+
+        const entriesById = new Map(entries.map(entry => [entry.id, entry]));
+        const itemsById = new Map<string, LegacyStoredWorkItem>();
+        for (const entry of entries) {
+            const item = await this.readItem(repoId, entry.id);
+            if (item) itemsById.set(entry.id, item);
+        }
+
+        const githubRootTrackers = new Map<string, WorkItemTrackerMetadata & { kind: 'github-backed' }>();
+        for (const entry of entries) {
+            if ((entry.type ?? 'work-item') !== 'epic' || entry.parentId) continue;
+            const rootItem = itemsById.get(entry.id);
+            if (rootItem?.tracker?.kind === 'github-backed') {
+                githubRootTrackers.set(entry.id, rootItem.tracker);
+                continue;
+            }
+            const legacyLink = rootItem ? getLegacyGitHubSyncLink(rootItem) : undefined;
+            const tracker = legacyLink ? githubTrackerFromLegacySyncLink(legacyLink) : undefined;
+            if (tracker) githubRootTrackers.set(entry.id, tracker);
+        }
+
+        let changed = false;
+        const nextEntries: WorkItemIndexEntry[] = [];
+
+        for (const entry of entries) {
+            const item = itemsById.get(entry.id);
+            const hasLegacyEntryLinks = (entry.syncLinks?.length ?? 0) > 0;
+            if (!item) {
+                if (hasLegacyEntryLinks) {
+                    const { syncLinks: _legacySyncLinks, ...entryWithoutLegacyLinks } = entry;
+                    nextEntries.push(entryWithoutLegacyLinks);
+                    changed = true;
+                } else {
+                    nextEntries.push(entry);
+                }
+                continue;
+            }
+
+            const hasLegacyItemLinks = (item.syncLinks?.length ?? 0) > 0;
+            if (!hasLegacyItemLinks && !hasLegacyEntryLinks) {
+                nextEntries.push(entry);
+                continue;
+            }
+
+            const updated: LegacyStoredWorkItem = { ...item };
+            const rootEntry = this.findRootEpicEntry(entry, entriesById);
+            const rootTracker = rootEntry ? githubRootTrackers.get(rootEntry.id) : undefined;
+            const legacyLink = getLegacyGitHubSyncLink(item);
+
+            if (rootEntry?.id === entry.id && rootTracker) {
+                updated.tracker = rootTracker;
+            }
+
+            if (rootTracker && legacyLink) {
+                const mirror = githubMirrorFromLegacySyncLink(legacyLink);
+                if (mirror && !updated.githubMirror) {
+                    updated.githubMirror = mirror;
+                }
+            }
+
+            delete updated.syncLinks;
+            await this.writeItem(repoId, updated);
+            nextEntries.push(toIndexEntry(updated));
+            changed = true;
+        }
+
+        if (changed) {
+            await this.writeIndex(repoId, nextEntries);
+        }
+        return nextEntries;
     }
 
     private async findRepoForItem(id: string): Promise<string | undefined> {

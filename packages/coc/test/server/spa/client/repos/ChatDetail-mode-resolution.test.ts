@@ -12,11 +12,11 @@ const CHAT_DETAIL_SOURCE = resolve(
 );
 
 describe('ChatDetail mode resolution', () => {
-    it('uses payload mode for queued tasks', () => {
+    it('normalizes legacy payload plan mode to ask for queued tasks', () => {
         expect(resolveLoadedTaskMode({
             payload: { mode: 'plan' },
             metadata: { mode: 'autopilot' },
-        })).toBe('plan');
+        })).toBe('ask');
     });
 
     it('falls back to metadata mode for persisted conversations', () => {
@@ -40,7 +40,7 @@ describe('ChatDetail mode resolution', () => {
     });
 
     it('recognizes valid draft modes for draft priority', () => {
-        expect(isChatMode('plan')).toBe(true);
+        expect(isChatMode('plan')).toBe(false);
         expect(isChatMode('autopilot')).toBe(true);
         expect(isChatMode('ask')).toBe(true);
         expect(isChatMode('unknown')).toBe(false);
@@ -48,7 +48,7 @@ describe('ChatDetail mode resolution', () => {
 
     it('checks the saved draft mode before resolving the task mode', () => {
         const source = readFileSync(CHAT_DETAIL_SOURCE, 'utf-8');
-        const draftCheckIndex = source.indexOf('if (isChatMode(draft?.mode))');
+        const draftCheckIndex = source.indexOf('if (normalizeChatMode(draft?.mode))');
         const taskModeIndex = source.indexOf('const taskMode = resolveLoadedTaskMode(task);');
 
         expect(draftCheckIndex).toBeGreaterThan(-1);

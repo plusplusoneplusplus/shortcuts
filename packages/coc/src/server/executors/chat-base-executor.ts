@@ -1,12 +1,12 @@
 /**
  * Chat Mode Base Executor
  *
- * Abstract base class for the three AI chat-mode executors (chat/plan/autopilot).
+ * Abstract base class for the AI chat-mode executors.
  * Owns the shared AI SDK call lifecycle: image handling, availability check, skill
  * resolution, tool-call capture, streaming, session cleanup, and output persistence.
  *
  * Subclasses implement `buildModeOptions()` to supply mode-specific params:
- * - agentMode (interactive | plan | autopilot)
+ * - agentMode (interactive | autopilot)
  * - systemMessage (mode-specific prompt restrictions)
  * - tools (follow-up suggestions or other injected tools)
  * - effectivePrompt (prompt with any mode-specific suffix appended)
@@ -37,12 +37,14 @@ import {
     LogCategory,
     mergeConsecutiveContentItems,
     modelMetadataStore,
+    resolveModelForProvider,
     resolveReasoningSelection,
     rewriteLargePrompt,
     toForwardSlashes,
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
 import type { ChatPayload, ChatProvider, PrClassificationPayload } from '../tasks/task-types';
+import { normalizeChatModeOrDefault } from '../tasks/task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
 import type { BroadcastWorkItemFn } from '../llm-tools/create-work-item-tool';
 import { BaseExecutor } from './base-executor';
@@ -158,6 +160,8 @@ export interface ChatModeExecutionResult {
     pendingSuggestions?: string[];
     /** Token consumption data returned by the SDK, if available. */
     tokenUsage?: TokenUsage;
+    /** Model that the provider actually used. Omitted means provider default. */
+    effectiveModel?: string;
 }
 
 /** Mode-specific AI call parameters supplied by each concrete executor. */
@@ -336,20 +340,19 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     }
 
     // ========================================================================
-    // Shared helper — auto-folder context (used by ask and plan modes)
+    // Shared helper — auto-folder context (used by ask mode)
     // ========================================================================
 
     /**
      * Resolve the target root directory and list existing sub-folders.
      *
-     * When `isPlanMode` is true the target root is `notes/Plans/` (auto-created)
-     * so that plan files land in the Notes tab rather than the Tasks tree.
-     * All other modes continue to use the tasks root.
+     * Ask mode uses `notes/Plans/` (auto-created) so generated plans land in
+     * the Notes tab rather than the Tasks tree. All other modes use tasks root.
      */
     protected async buildAutoFolderContext(
         workingDirectory: string,
         workspaceId?: string,
-        mode: 'ask' | 'plan' = 'ask',
+        mode: 'ask' = 'ask',
     ): Promise<AutoFolderContext> {
         return resolveAutoFolderContext({
             dataDir: this.dataDir,
@@ -363,7 +366,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected async buildStandardModeOptions(
         task: QueuedTask,
         prompt: string,
-        mode: 'ask' | 'plan',
+        mode: 'ask',
         workingDirectory: string | undefined,
         broadcastWorkItem?: BroadcastWorkItemFn,
     ): Promise<ChatModeAIOptions> {
@@ -389,7 +392,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             scheduleWakeup: loopDeps.scheduleWakeup,
             loopTools: loopDeps.loopTools,
             askUser: {
-                enabled: (mode === 'plan' || mode === 'ask') && this.askUser.enabled,
+                enabled: mode === 'ask' && this.askUser.enabled,
                 deps: {
                     emitQuestions: async (questionPayloads) => {
                         await this.store.updateProcess(processId, { pendingAskUser: questionPayloads });
@@ -439,7 +442,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             : prompt;
 
         return {
-            agentMode: mode === 'plan' ? 'plan' as AgentMode : 'interactive' as AgentMode,
+            agentMode: 'interactive' as AgentMode,
             systemMessage,
             tools: ctx.tools,
             effectivePrompt,
@@ -535,6 +538,13 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             // the server-level default provider when the task does not override it.
             const taskProvider: ChatProvider = payload.provider ?? this.provider;
             const effectiveAiService: ISDKService = this.getAiServiceForProvider(taskProvider);
+            const providerModel = resolveModelForProvider(taskProvider, task.config.model);
+            if (providerModel.coerced) {
+                getLogger().warn(
+                    LogCategory.AI,
+                    `[ChatModeExecutor] Dropping model '${providerModel.requestedModel}' for provider '${taskProvider}'; using provider default.`,
+                );
+            }
 
             const availability = await effectiveAiService.isAvailable();
             if (!availability.available) {
@@ -563,13 +573,21 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             assertNoAskUserConflict({ tools: sendTools });
 
             // Resolve per-repo default model when no explicit model is set on the task.
-            let effectiveModel = task.config.model;
+            let effectiveModel = providerModel.model;
             if (!effectiveModel && this.dataDir && payload.workspaceId) {
-                const chatMode = payload.mode;
+                const chatMode = normalizeChatModeOrDefault(payload.mode);
                 const defaultModelMode = chatMode === 'autopilot' || chatMode === 'ralph'
                     ? 'task' as const
-                    : chatMode as 'ask' | 'plan';
-                effectiveModel = resolveDefaultModel(this.dataDir, payload.workspaceId, defaultModelMode);
+                    : 'ask' as const;
+                const defaultModel = resolveDefaultModel(this.dataDir, payload.workspaceId, defaultModelMode);
+                const resolvedDefaultModel = resolveModelForProvider(taskProvider, defaultModel);
+                if (resolvedDefaultModel.coerced) {
+                    getLogger().warn(
+                        LogCategory.AI,
+                        `[ChatModeExecutor] Dropping default model '${resolvedDefaultModel.requestedModel}' for provider '${taskProvider}'; using provider default.`,
+                    );
+                }
+                effectiveModel = resolvedDefaultModel.model;
             }
 
             // Resolve reasoning effort:
@@ -596,7 +614,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             const sendOptions = {
                 prompt: effectivePrompt,
                 mode: agentMode,
-                model: reasoningSelection.modelId,
+                ...(reasoningSelection.modelId ? { model: reasoningSelection.modelId } : {}),
                 ...(reasoningSelection.reasoningEffort ? { reasoningEffort: reasoningSelection.reasoningEffort } : {}),
                 infiniteSessions: { enabled: true } as const,
                 workingDirectory,
@@ -696,6 +714,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 timeline: finalTimeline,
                 pendingSuggestions,
                 tokenUsage: result.tokenUsage,
+                effectiveModel: result.effectiveModel ?? reasoningSelection.modelId,
             };
         } finally {
             if (imageTempDir) { cleanupTempDir(imageTempDir); }

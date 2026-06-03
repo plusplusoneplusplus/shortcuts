@@ -398,6 +398,36 @@ describe('registerGenericClassificationRoutes', () => {
             expect(enqueueCapture()?.config?.model).toBe('claude-opus-4.7');
         });
 
+        it('enqueues task with reasoningEffort in config when valid value is given', async () => {
+            const { localRoutes, enqueueCapture } = setupLocalRoutes();
+            mockedReadClassification.mockReturnValue(undefined);
+            mockedReadPending.mockReturnValue(undefined);
+
+            const { res } = makeCapturingRes();
+            await localRoutes[0].handler(
+                makePostReq({ type: 'pr', identifier: '10:abc123', workspaceId: 'ws1', reasoningEffort: 'high' }),
+                res,
+                ['/api/repos/repo1/classify-diff', 'repo1'],
+            );
+
+            expect(enqueueCapture()?.config?.reasoningEffort).toBe('high');
+        });
+
+        it('omits reasoningEffort from config when invalid value is given', async () => {
+            const { localRoutes, enqueueCapture } = setupLocalRoutes();
+            mockedReadClassification.mockReturnValue(undefined);
+            mockedReadPending.mockReturnValue(undefined);
+
+            const { res } = makeCapturingRes();
+            await localRoutes[0].handler(
+                makePostReq({ type: 'pr', identifier: '10:abc123', workspaceId: 'ws1', reasoningEffort: 'ultra-high' }),
+                res,
+                ['/api/repos/repo1/classify-diff', 'repo1'],
+            );
+
+            expect(enqueueCapture()?.config?.reasoningEffort).toBeUndefined();
+        });
+
         it('does not set provider on payload when invalid provider string given', async () => {
             const { localRoutes, enqueueCapture } = setupLocalRoutes();
             mockedReadClassification.mockReturnValue(undefined);

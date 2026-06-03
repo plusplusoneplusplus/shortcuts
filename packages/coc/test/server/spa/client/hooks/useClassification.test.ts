@@ -11,11 +11,10 @@
  * - Initial-fetch happy path: ready and running server states.
  * - No key (undefined): hook stays idle with no API calls.
  *
- * Covers AC-03:
- * - provider/model threaded into classify() POST body.
- * - setProvider/setModel update state and call patchWorkspacePreferences.
- * - Preferences loaded on mount when workspaceId is supplied.
- * - Default behavior (no workspaceId) unchanged — no preferences calls.
+ * Covers AI-selection threading:
+ * - aiSelection.provider/model/reasoningEffort threaded into classify() POST body.
+ * - Hook uses the latest aiSelection value on each classify() call (ref pattern).
+ * - No internal preferences persistence — that is handled by useModalJobAiSelection.
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
@@ -25,9 +24,6 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 
 const mocks = vi.hoisted(() => ({
     requestSpaApi: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-    getActiveProvider: vi.fn(() => 'copilot' as const),
-    getWorkspacePreferences: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-    patchWorkspacePreferences: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 }));
 
 vi.mock(
@@ -35,25 +31,17 @@ vi.mock(
     () => ({ requestSpaApi: mocks.requestSpaApi }),
 );
 
-vi.mock(
-    '../../../../../src/server/spa/client/react/utils/config',
-    () => ({ getActiveProvider: mocks.getActiveProvider }),
-);
-
-vi.mock(
-    '../../../../../src/server/spa/client/react/hooks/preferences/preferencesApi',
-    () => ({
-        getWorkspacePreferences: mocks.getWorkspacePreferences,
-        patchWorkspacePreferences: mocks.patchWorkspacePreferences,
-    }),
-);
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 import type { ClassificationKey } from '../../../../../src/server/spa/client/react/features/git/diff/diffSource';
+import type { ResolvedModalJobAiSelection } from '../../../../../src/server/spa/client/react/shared/ModalJobAiControls';
 
 function makeKey(prId: string, sha: string): ClassificationKey {
     return { type: 'pr', repoId: 'repo-1', identifier: `${prId}:${sha}` };
+}
+
+function makeAiSelection(overrides?: Partial<ResolvedModalJobAiSelection>): ResolvedModalJobAiSelection {
+    return { provider: 'copilot', ...overrides };
 }
 
 const RESULT_A = {
@@ -72,8 +60,6 @@ async function importHook() {
 
 afterEach(() => {
     mocks.requestSpaApi.mockReset();
-    mocks.getWorkspacePreferences.mockReset();
-    mocks.patchWorkspacePreferences.mockReset();
     vi.restoreAllMocks();
 });
 
@@ -86,7 +72,7 @@ describe('useClassification', () => {
     it('stays idle when classificationKey is undefined', async () => {
         const useClassification = await importHook();
 
-        const { result } = renderHook(() => useClassification(undefined));
+        const { result } = renderHook(() => useClassification(undefined, makeAiSelection()));
 
         expect(result.current.state.status).toBe('idle');
         expect(mocks.requestSpaApi).not.toHaveBeenCalled();
@@ -98,7 +84,7 @@ describe('useClassification', () => {
         const useClassification = await importHook();
         mocks.requestSpaApi.mockResolvedValueOnce({ status: 'ready', result: RESULT_A });
 
-        const { result } = renderHook(() => useClassification(makeKey('1', 'sha1')));
+        const { result } = renderHook(() => useClassification(makeKey('1', 'sha1'), makeAiSelection()));
 
         await waitFor(() => expect(result.current.state.status).toBe('ready'));
         expect(result.current.state.result).toEqual(RESULT_A);
@@ -112,7 +98,7 @@ describe('useClassification', () => {
         mocks.requestSpaApi.mockResolvedValueOnce({ status: 'running' });
         mocks.requestSpaApi.mockResolvedValue({ status: 'running' });
 
-        const { result } = renderHook(() => useClassification(makeKey('1', 'sha1')));
+        const { result } = renderHook(() => useClassification(makeKey('1', 'sha1'), makeAiSelection()));
 
         await waitFor(() => expect(result.current.state.status).toBe('loading'));
     });
@@ -128,9 +114,10 @@ describe('useClassification', () => {
 
         const keyA = makeKey('1', 'sha1');
         const keyB = makeKey('2', 'sha2');
+        const ai = makeAiSelection();
 
         const { result, rerender } = renderHook(
-            ({ ck }: { ck: ClassificationKey | undefined }) => useClassification(ck),
+            ({ ck }: { ck: ClassificationKey | undefined }) => useClassification(ck, ai),
             { initialProps: { ck: keyA } },
         );
 
@@ -160,9 +147,10 @@ describe('useClassification', () => {
 
         const keyA = makeKey('1', 'sha1');
         const keyB = makeKey('2', 'sha2');
+        const ai = makeAiSelection();
 
         const { result, rerender } = renderHook(
-            ({ ck }: { ck: ClassificationKey | undefined }) => useClassification(ck),
+            ({ ck }: { ck: ClassificationKey | undefined }) => useClassification(ck, ai),
             { initialProps: { ck: keyA } },
         );
 
@@ -199,9 +187,10 @@ describe('useClassification', () => {
 
         const keyA = makeKey('1', 'sha1');
         const keyB = makeKey('2', 'sha2');
+        const ai = makeAiSelection();
 
         const { result, rerender } = renderHook(
-            ({ ck }: { ck: ClassificationKey | undefined }) => useClassification(ck),
+            ({ ck }: { ck: ClassificationKey | undefined }) => useClassification(ck, ai),
             { initialProps: { ck: keyA } },
         );
 
@@ -241,9 +230,10 @@ describe('useClassification', () => {
 
             const keyA = makeKey('1', 'sha1');
             const keyB = makeKey('2', 'sha2');
+            const ai = makeAiSelection();
 
             const { result, rerender } = renderHook(
-                ({ ck }: { ck: ClassificationKey | undefined }) => useClassification(ck),
+                ({ ck }: { ck: ClassificationKey | undefined }) => useClassification(ck, ai),
                 { initialProps: { ck: keyA } },
             );
 
@@ -294,9 +284,10 @@ describe('useClassification', () => {
 
             const keyA = makeKey('1', 'sha1');
             const keyB = makeKey('2', 'sha2');
+            const ai = makeAiSelection();
 
             const { result, rerender } = renderHook(
-                ({ ck }: { ck: ClassificationKey | undefined }) => useClassification(ck),
+                ({ ck }: { ck: ClassificationKey | undefined }) => useClassification(ck, ai),
                 { initialProps: { ck: keyA } },
             );
 
@@ -339,9 +330,10 @@ describe('useClassification', () => {
 
         const keyA = makeKey('1', 'sha1');
         const keyB = makeKey('2', 'sha2');
+        const ai = makeAiSelection();
 
         const { result, rerender } = renderHook(
-            ({ ck }: { ck: ClassificationKey | undefined }) => useClassification(ck),
+            ({ ck }: { ck: ClassificationKey | undefined }) => useClassification(ck, ai),
             { initialProps: { ck: keyA } },
         );
 
@@ -357,9 +349,10 @@ describe('useClassification', () => {
     it('resets to idle when key transitions from defined to undefined', async () => {
         const useClassification = await importHook();
         mocks.requestSpaApi.mockResolvedValueOnce({ status: 'ready', result: RESULT_B });
+        const ai = makeAiSelection();
 
         const { result, rerender } = renderHook(
-            ({ ck }: { ck: ClassificationKey | undefined }) => useClassification(ck),
+            ({ ck }: { ck: ClassificationKey | undefined }) => useClassification(ck, ai),
             { initialProps: { ck: makeKey('2', 'sha2') } },
         );
 
@@ -371,14 +364,15 @@ describe('useClassification', () => {
         expect(result.current.state.result).toBeUndefined();
     });
 
-    // ── AC-03: provider/model threaded into POST ───────────────────────────
+    // ── aiSelection threaded into POST ────────────────────────────────────
 
-    it('classify() sends default provider (copilot) in POST body', async () => {
+    it('classify() sends provider from aiSelection in POST body', async () => {
         const useClassification = await importHook();
         mocks.requestSpaApi.mockResolvedValueOnce({ status: 'none' }); // initial GET
         mocks.requestSpaApi.mockResolvedValueOnce({ status: 'started' }); // POST
 
-        const { result } = renderHook(() => useClassification(makeKey('1', 'sha1')));
+        const ai = makeAiSelection({ provider: 'copilot' });
+        const { result } = renderHook(() => useClassification(makeKey('1', 'sha1'), ai));
 
         await waitFor(() => expect(result.current.state.status).toBe('idle'));
 
@@ -393,27 +387,19 @@ describe('useClassification', () => {
         const body = JSON.parse((postCall![1] as any).body);
         expect(body.provider).toBe('copilot');
         expect(body.model).toBeUndefined();
+        expect(body.reasoningEffort).toBeUndefined();
     });
 
-    it('classify() sends selected provider/model in POST body after setProvider/setModel', async () => {
+    it('classify() sends model from aiSelection in POST body', async () => {
         const useClassification = await importHook();
         mocks.requestSpaApi.mockResolvedValueOnce({ status: 'none' }); // initial GET
         mocks.requestSpaApi.mockResolvedValueOnce({ status: 'started' }); // POST
 
-        const { result } = renderHook(() => useClassification(makeKey('1', 'sha1')));
+        const ai = makeAiSelection({ provider: 'claude', model: 'claude-opus-4.7' });
+        const { result } = renderHook(() => useClassification(makeKey('1', 'sha1'), ai));
 
         await waitFor(() => expect(result.current.state.status).toBe('idle'));
-
-        act(() => {
-            result.current.setProvider('claude');
-            result.current.setModel('claude-opus-4.7');
-        });
-
-        expect(result.current.provider).toBe('claude');
-        expect(result.current.model).toBe('claude-opus-4.7');
-
         act(() => { result.current.classify(); });
-
         await waitFor(() => expect(result.current.state.status).toBe('loading'));
 
         const postCall = mocks.requestSpaApi.mock.calls.find(
@@ -425,22 +411,67 @@ describe('useClassification', () => {
         expect(body.model).toBe('claude-opus-4.7');
     });
 
-    it('setModel(undefined) removes model from POST body', async () => {
+    it('classify() sends reasoningEffort from aiSelection in POST body', async () => {
         const useClassification = await importHook();
         mocks.requestSpaApi.mockResolvedValueOnce({ status: 'none' }); // initial GET
         mocks.requestSpaApi.mockResolvedValueOnce({ status: 'started' }); // POST
 
-        const { result } = renderHook(() => useClassification(makeKey('1', 'sha1')));
+        const ai = makeAiSelection({ provider: 'copilot', model: 'o4-mini', reasoningEffort: 'high' });
+        const { result } = renderHook(() => useClassification(makeKey('1', 'sha1'), ai));
+
+        await waitFor(() => expect(result.current.state.status).toBe('idle'));
+        act(() => { result.current.classify(); });
+        await waitFor(() => expect(result.current.state.status).toBe('loading'));
+
+        const postCall = mocks.requestSpaApi.mock.calls.find(
+            c => typeof c[1] === 'object' && (c[1] as any)?.method === 'POST',
+        );
+        expect(postCall).toBeDefined();
+        const body = JSON.parse((postCall![1] as any).body);
+        expect(body.reasoningEffort).toBe('high');
+    });
+
+    it('classify() uses the latest aiSelection when it changes between renders', async () => {
+        const useClassification = await importHook();
+        mocks.requestSpaApi.mockResolvedValueOnce({ status: 'none' }); // initial GET
+        mocks.requestSpaApi.mockResolvedValueOnce({ status: 'started' }); // POST
+
+        const key = makeKey('1', 'sha1');
+        const aiA = makeAiSelection({ provider: 'copilot' });
+        const aiB = makeAiSelection({ provider: 'claude', model: 'claude-sonnet-4.6' });
+
+        const { result, rerender } = renderHook(
+            ({ ai }: { ai: ResolvedModalJobAiSelection }) => useClassification(key, ai),
+            { initialProps: { ai: aiA } },
+        );
 
         await waitFor(() => expect(result.current.state.status).toBe('idle'));
 
-        act(() => {
-            result.current.setModel('some-model');
-            result.current.setModel(undefined);
-        });
+        // Update to aiB before classifying
+        act(() => { rerender({ ai: aiB }); });
 
-        expect(result.current.model).toBeUndefined();
+        act(() => { result.current.classify(); });
+        await waitFor(() => expect(result.current.state.status).toBe('loading'));
 
+        const postCall = mocks.requestSpaApi.mock.calls.find(
+            c => typeof c[1] === 'object' && (c[1] as any)?.method === 'POST',
+        );
+        expect(postCall).toBeDefined();
+        const body = JSON.parse((postCall![1] as any).body);
+        // Should use aiB values, not aiA
+        expect(body.provider).toBe('claude');
+        expect(body.model).toBe('claude-sonnet-4.6');
+    });
+
+    it('classify() omits model from POST body when aiSelection has no model', async () => {
+        const useClassification = await importHook();
+        mocks.requestSpaApi.mockResolvedValueOnce({ status: 'none' }); // initial GET
+        mocks.requestSpaApi.mockResolvedValueOnce({ status: 'started' }); // POST
+
+        const ai = makeAiSelection({ provider: 'copilot' });
+        const { result } = renderHook(() => useClassification(makeKey('1', 'sha1'), ai));
+
+        await waitFor(() => expect(result.current.state.status).toBe('idle'));
         act(() => { result.current.classify(); });
         await waitFor(() => expect(result.current.state.status).toBe('loading'));
 
@@ -450,77 +481,5 @@ describe('useClassification', () => {
         const body = JSON.parse((postCall![1] as any).body);
         expect(body.model).toBeUndefined();
     });
-
-    it('persists provider/model to preferences when workspaceId is given', async () => {
-        const useClassification = await importHook();
-        mocks.requestSpaApi.mockResolvedValue({ status: 'none' });
-        mocks.getWorkspacePreferences.mockResolvedValue({});
-        mocks.patchWorkspacePreferences.mockResolvedValue(undefined);
-
-        const { result } = renderHook(
-            () => useClassification(makeKey('1', 'sha1'), { workspaceId: 'ws-test' }),
-        );
-
-        await waitFor(() => expect(mocks.getWorkspacePreferences).toHaveBeenCalledWith('ws-test'));
-
-        act(() => { result.current.setProvider('codex'); });
-
-        expect(mocks.patchWorkspacePreferences).toHaveBeenCalledWith('ws-test', {
-            lastClassificationPrefs: { provider: 'codex', model: undefined },
-        });
-
-        act(() => { result.current.setModel('gpt-5.4'); });
-
-        expect(mocks.patchWorkspacePreferences).toHaveBeenCalledWith('ws-test', {
-            lastClassificationPrefs: { provider: 'codex', model: 'gpt-5.4' },
-        });
-    });
-
-    it('loads saved provider/model from preferences on mount', async () => {
-        const useClassification = await importHook();
-        mocks.requestSpaApi.mockResolvedValue({ status: 'none' });
-        mocks.getWorkspacePreferences.mockResolvedValue({
-            lastClassificationPrefs: { provider: 'claude', model: 'claude-sonnet-4.6' },
-        });
-
-        const { result } = renderHook(
-            () => useClassification(makeKey('1', 'sha1'), { workspaceId: 'ws-test' }),
-        );
-
-        await waitFor(() => expect(result.current.provider).toBe('claude'));
-        expect(result.current.model).toBe('claude-sonnet-4.6');
-    });
-
-    it('ignores invalid provider from saved preferences', async () => {
-        const useClassification = await importHook();
-        mocks.requestSpaApi.mockResolvedValue({ status: 'none' });
-        mocks.getWorkspacePreferences.mockResolvedValue({
-            lastClassificationPrefs: { provider: 'invalid-provider', model: 'some-model' },
-        });
-
-        const { result } = renderHook(
-            () => useClassification(makeKey('1', 'sha1'), { workspaceId: 'ws-test' }),
-        );
-
-        // Give preferences time to load
-        await waitFor(() => expect(mocks.getWorkspacePreferences).toHaveBeenCalled());
-        await act(async () => { await Promise.resolve(); });
-
-        // Invalid provider should not override the default
-        expect(result.current.provider).toBe('copilot');
-        // Valid model still loaded
-        expect(result.current.model).toBe('some-model');
-    });
-
-    it('does not call preferences API when no workspaceId is given', async () => {
-        const useClassification = await importHook();
-        mocks.requestSpaApi.mockResolvedValue({ status: 'none' });
-
-        renderHook(() => useClassification(makeKey('1', 'sha1')));
-
-        await act(async () => { await Promise.resolve(); });
-
-        expect(mocks.getWorkspacePreferences).not.toHaveBeenCalled();
-        expect(mocks.patchWorkspacePreferences).not.toHaveBeenCalled();
-    });
 });
+

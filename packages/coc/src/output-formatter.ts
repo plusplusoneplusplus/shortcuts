@@ -7,7 +7,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { FlatWorkflowResult } from '@plusplusoneplusplus/forge';
+import type { FlatWorkflowResult } from '@plusplusoneplusplus/coc-workflow';
 import { bold, dim, green, red, yellow, gray } from './logger';
 
 // ============================================================================

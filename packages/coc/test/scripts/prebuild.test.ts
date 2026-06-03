@@ -26,10 +26,10 @@ describe('prebuild script', () => {
         expect(script.getNpmExecutable('darwin')).toBe('npm');
     });
 
-    it('builds the coc-memory workspace from the repository root', () => {
+    it('builds required workspace dependencies from the repository root', () => {
         const calls: Array<{ command: string; args: string[]; cwd: string; shell?: boolean }> = [];
 
-        script.buildCocMemory({
+        script.buildRequiredWorkspacePackages({
             rootDir: '/repo/root',
             npmExecutable: 'npm-test',
             run: (command: string, args: string[], options: { cwd: string; shell?: boolean }) => {
@@ -38,6 +38,12 @@ describe('prebuild script', () => {
         });
 
         expect(calls).toEqual([
+            {
+                command: 'npm-test',
+                args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-workflow'],
+                cwd: '/repo/root',
+                shell: undefined,
+            },
             {
                 command: 'npm-test',
                 args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-memory'],
@@ -50,7 +56,7 @@ describe('prebuild script', () => {
     it('passes shell:true when using npm.cmd (Windows)', () => {
         const calls: Array<{ command: string; args: string[]; cwd: string; shell?: boolean }> = [];
 
-        script.buildCocMemory({
+        script.buildRequiredWorkspacePackages({
             rootDir: '/repo/root',
             npmExecutable: 'npm.cmd',
             run: (command: string, args: string[], options: { cwd: string; shell?: boolean }) => {
@@ -59,6 +65,12 @@ describe('prebuild script', () => {
         });
 
         expect(calls).toEqual([
+            {
+                command: 'npm.cmd',
+                args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-workflow'],
+                cwd: '/repo/root',
+                shell: true,
+            },
             {
                 command: 'npm.cmd',
                 args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-memory'],

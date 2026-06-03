@@ -1,19 +1,20 @@
 /**
  * RalphWorkflowPane — right-pane visualization of a Ralph session journal.
  *
- * Skeleton (commit 5): renders a fully-passed-in `RalphSessionView` prop.
- * No data fetching, no live updates yet — purely a visual component plus
- * fixture-driven tests. Commit 7 will introduce a hook that fetches the
- * view via `getSpaCocClient().workspaces.ralphSession(...)`.
+ * Renders the iteration timeline alongside the raw session file browser. Data
+ * fetching and URL routing stay in the container/router layers.
  */
 
 import type React from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { cn } from '../../ui/cn';
 import { formatRelativeTime } from '../../utils/format';
+import { MarkdownView } from '../../shared/MarkdownView';
+import { renderMarkdownToHtml } from '../../../diff/markdown-renderer';
 import type {
     ParsedProgressSection,
     RalphLoopRecord,
+    RalphSessionFile,
     RalphSessionRecord,
     RalphTerminalReason,
 } from '@plusplusoneplusplus/coc-client';
@@ -25,6 +26,7 @@ import { RALPH_MULTI_LOOP } from '../../featureFlags';
 export interface RalphSessionView {
     record: RalphSessionRecord;
     sections: ParsedProgressSection[];
+    files?: RalphSessionFile[];
 }
 
 export interface RalphWorkflowPaneProps {
@@ -50,6 +52,10 @@ export interface RalphWorkflowPaneProps {
     onNewLoop?: (newGoal: string, additionalIterations: number) => Promise<void>;
     /** Override the resume handler (used by tests). When omitted, calls the API directly. */
     onResume?: () => Promise<void>;
+    /** Optional file name decoded from the Ralph session deep-link. */
+    selectedFileName?: string;
+    /** Called when the user selects a session file. Router wiring is owned by the deep-link slice. */
+    onSelectFile?: (fileName: string) => void;
 }
 
 const PHASE_BADGE: Record<RalphSessionRecord['phase'], { label: string; cls: string }> = {
@@ -70,6 +76,146 @@ function singleLine(s: string, max = 140): string {
     return flat.length > max ? flat.slice(0, max - 1) + '…' : flat;
 }
 
+function isMarkdownSessionFile(name: string): boolean {
+    const lower = name.toLowerCase();
+    return lower.endsWith('.md') || lower.endsWith('.markdown');
+}
+
+function isJsonSessionFile(name: string): boolean {
+    return name.toLowerCase().endsWith('.json');
+}
+
+interface SessionFileText {
+    content: string;
+    warning?: string;
+}
+
+function formatSessionFileText(file: RalphSessionFile): SessionFileText {
+    if (!isJsonSessionFile(file.name)) {
+        return { content: file.content };
+    }
+
+    try {
+        return { content: JSON.stringify(JSON.parse(file.content), null, 2) };
+    } catch (err) {
+        if (err instanceof SyntaxError) {
+            return {
+                content: file.content,
+                warning: 'Invalid JSON; showing raw text.',
+            };
+        }
+        throw err;
+    }
+}
+
+interface RalphSessionFileBrowserProps {
+    sessionId: string;
+    files: RalphSessionFile[];
+    selectedFileName?: string;
+    onSelectFile?: (fileName: string) => void;
+}
+
+function RalphSessionFileBrowser(props: RalphSessionFileBrowserProps): React.ReactElement {
+    const { sessionId, files, selectedFileName: selectedFileNameProp, onSelectFile } = props;
+    const [localSelectedFileName, setLocalSelectedFileName] = useState<string | null>(selectedFileNameProp ?? null);
+
+    useEffect(() => {
+        setLocalSelectedFileName(selectedFileNameProp ?? null);
+    }, [selectedFileNameProp, sessionId]);
+
+    const selectedFile = files.find((file) => file.name === localSelectedFileName) ?? files[0] ?? null;
+    const selectedText = selectedFile && !isMarkdownSessionFile(selectedFile.name)
+        ? formatSessionFileText(selectedFile)
+        : null;
+
+    const handleSelectFile = (fileName: string) => {
+        setLocalSelectedFileName(fileName);
+        onSelectFile?.(fileName);
+    };
+
+    return (
+        <section
+            className="flex min-h-[260px] w-full flex-col border-t border-zinc-200 bg-zinc-50/70 dark:border-zinc-800 dark:bg-zinc-950 xl:min-h-0 xl:w-[58%] xl:border-l xl:border-t-0"
+            data-testid="ralph-session-files"
+            aria-label="Ralph session files"
+        >
+            <div className="flex items-center justify-between border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">
+                    Session files
+                </h3>
+                <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                    {files.length} {files.length === 1 ? 'file' : 'files'}
+                </span>
+            </div>
+
+            {files.length === 0 ? (
+                <div
+                    className="flex flex-1 items-center justify-center px-4 py-6 text-xs italic text-zinc-500 dark:text-zinc-400"
+                    data-testid="ralph-session-files-empty"
+                >
+                    No session files available.
+                </div>
+            ) : (
+                <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+                    <nav
+                        className="max-h-40 shrink-0 overflow-y-auto border-b border-zinc-200 bg-white p-2 dark:border-zinc-800 dark:bg-zinc-950 md:max-h-none md:w-48 md:border-b-0 md:border-r"
+                        aria-label="Ralph session file list"
+                        data-testid="ralph-session-file-list"
+                    >
+                        <ul className="flex flex-col gap-1">
+                            {files.map((file) => {
+                                const active = file.name === selectedFile?.name;
+                                return (
+                                    <li key={file.name}>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSelectFile(file.name)}
+                                            className={cn(
+                                                'w-full truncate rounded px-2 py-1.5 text-left font-mono text-[11px] transition-colors',
+                                                active
+                                                    ? 'bg-violet-100 text-violet-800 ring-1 ring-violet-200 dark:bg-violet-900/40 dark:text-violet-100 dark:ring-violet-700'
+                                                    : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900',
+                                            )}
+                                            aria-current={active ? 'true' : undefined}
+                                            data-testid="ralph-session-file-item"
+                                        >
+                                            {file.name}
+                                        </button>
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    </nav>
+
+                    <div className="min-w-0 flex-1 overflow-auto bg-white p-3 dark:bg-zinc-950" data-testid="ralph-session-file-content">
+                        {selectedFile && isMarkdownSessionFile(selectedFile.name) ? (
+                            <MarkdownView html={renderMarkdownToHtml(selectedFile.content)} />
+                        ) : selectedFile && selectedText ? (
+                            <div className="flex min-h-full flex-col gap-2">
+                                {selectedText.warning && (
+                                    <p className="text-xs text-amber-700 dark:text-amber-300" data-testid="ralph-session-file-warning">
+                                        {selectedText.warning}
+                                    </p>
+                                )}
+                                <pre
+                                    className="m-0 flex-1 whitespace-pre-wrap break-words rounded border border-zinc-200 bg-zinc-50 p-3 font-mono text-xs text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100"
+                                    data-testid="ralph-session-file-text"
+                                >
+                                    {selectedText.content}
+                                </pre>
+                            </div>
+                        ) : (
+                            <p className="text-xs italic text-zinc-500 dark:text-zinc-400">
+                                Select a file to view its contents.
+                            </p>
+                        )}
+                    </div>
+                </div>
+            )}
+        </section>
+    );
+}
+
 export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactElement {
     const {
         workspaceId,
@@ -82,6 +228,8 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
         newLoopDefaultIterations,
         onNewLoop,
         onResume,
+        selectedFileName,
+        onSelectFile,
     } = props;
 
     const [continueState, setContinueState] = useState<'idle' | 'confirm' | 'submitting'>('idle');
@@ -300,169 +448,177 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
                 </div>
             </div>
 
-            {/* Timeline */}
-            <div className="flex-1 overflow-y-auto px-4 py-3" data-testid="ralph-workflow-timeline">
-                {isStuckExecuting && resumeState !== 'idle' && (
-                    <div
-                        className="mb-3 rounded border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-700 dark:bg-amber-950/40"
-                        data-testid="ralph-workflow-resume-confirm"
-                    >
-                        <p className="mb-2 font-semibold text-amber-900 dark:text-amber-100">
-                            Resume this Ralph session?
-                        </p>
-                        <p className="mb-2 text-amber-800 dark:text-amber-200">
-                            The session appears stuck (no task is running). Resuming will enqueue
-                            iteration {record.currentIteration + 1} to pick up where it left off.
-                        </p>
-                        {resumeError && (
-                            <p className="mb-2 text-red-700 dark:text-red-300" data-testid="ralph-workflow-resume-error">
-                                {resumeError}
+            <div className="flex min-h-0 flex-1 flex-col xl:flex-row" data-testid="ralph-workflow-body">
+                {/* Timeline */}
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3" data-testid="ralph-workflow-timeline">
+                    {isStuckExecuting && resumeState !== 'idle' && (
+                        <div
+                            className="mb-3 rounded border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-700 dark:bg-amber-950/40"
+                            data-testid="ralph-workflow-resume-confirm"
+                        >
+                            <p className="mb-2 font-semibold text-amber-900 dark:text-amber-100">
+                                Resume this Ralph session?
                             </p>
-                        )}
-                        <div className="flex justify-end gap-2">
-                            <button
-                                type="button"
-                                onClick={() => { setResumeState('idle'); setResumeError(null); }}
-                                disabled={resumeState === 'submitting'}
-                                className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                                data-testid="ralph-workflow-resume-cancel"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleResumeConfirmed}
-                                disabled={resumeState === 'submitting'}
-                                className="rounded border border-amber-500 bg-amber-600 px-2 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
-                                data-testid="ralph-workflow-resume-confirm-button"
-                            >
-                                {resumeState === 'submitting' ? 'Resuming…' : 'Resume'}
-                            </button>
+                            <p className="mb-2 text-amber-800 dark:text-amber-200">
+                                The session appears stuck (no task is running). Resuming will enqueue
+                                iteration {record.currentIteration + 1} to pick up where it left off.
+                            </p>
+                            {resumeError && (
+                                <p className="mb-2 text-red-700 dark:text-red-300" data-testid="ralph-workflow-resume-error">
+                                    {resumeError}
+                                </p>
+                            )}
+                            <div className="flex justify-end gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => { setResumeState('idle'); setResumeError(null); }}
+                                    disabled={resumeState === 'submitting'}
+                                    className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                                    data-testid="ralph-workflow-resume-cancel"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleResumeConfirmed}
+                                    disabled={resumeState === 'submitting'}
+                                    className="rounded border border-amber-500 bg-amber-600 px-2 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                                    data-testid="ralph-workflow-resume-confirm-button"
+                                >
+                                    {resumeState === 'submitting' ? 'Resuming…' : 'Resume'}
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                )}
-                {isContinuable && continueState !== 'idle' && (
-                    <div
-                        className="mb-3 rounded border border-blue-300 bg-blue-50 p-3 text-xs dark:border-blue-700 dark:bg-blue-950/40"
-                        data-testid="ralph-workflow-continue-confirm"
-                    >
-                        <p className="mb-2 font-semibold text-blue-900 dark:text-blue-100">
-                            Continue this Ralph loop for {continueDefaultIterations} more iterations?
-                        </p>
-                        <p className="mb-2 text-blue-800 dark:text-blue-200">
-                            New cap will be {record.maxIterations + continueDefaultIterations}. The journal
-                            continues in the same progress.md.
-                        </p>
-                        {continueError && (
-                            <p className="mb-2 text-red-700 dark:text-red-300" data-testid="ralph-workflow-continue-error">
-                                {continueError}
+                    )}
+                    {isContinuable && continueState !== 'idle' && (
+                        <div
+                            className="mb-3 rounded border border-blue-300 bg-blue-50 p-3 text-xs dark:border-blue-700 dark:bg-blue-950/40"
+                            data-testid="ralph-workflow-continue-confirm"
+                        >
+                            <p className="mb-2 font-semibold text-blue-900 dark:text-blue-100">
+                                Continue this Ralph loop for {continueDefaultIterations} more iterations?
                             </p>
-                        )}
-                        <div className="flex justify-end gap-2">
-                            <button
-                                type="button"
-                                onClick={() => { setContinueState('idle'); setContinueError(null); }}
-                                disabled={continueState === 'submitting'}
-                                className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                                data-testid="ralph-workflow-continue-cancel"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleContinueConfirmed}
-                                disabled={continueState === 'submitting'}
-                                className="rounded border border-blue-500 bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                                data-testid="ralph-workflow-continue-confirm-button"
-                            >
-                                {continueState === 'submitting' ? 'Continuing…' : 'Continue'}
-                            </button>
+                            <p className="mb-2 text-blue-800 dark:text-blue-200">
+                                New cap will be {record.maxIterations + continueDefaultIterations}. The journal
+                                continues in the same progress.md.
+                            </p>
+                            {continueError && (
+                                <p className="mb-2 text-red-700 dark:text-red-300" data-testid="ralph-workflow-continue-error">
+                                    {continueError}
+                                </p>
+                            )}
+                            <div className="flex justify-end gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => { setContinueState('idle'); setContinueError(null); }}
+                                    disabled={continueState === 'submitting'}
+                                    className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                                    data-testid="ralph-workflow-continue-cancel"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleContinueConfirmed}
+                                    disabled={continueState === 'submitting'}
+                                    className="rounded border border-blue-500 bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                                    data-testid="ralph-workflow-continue-confirm-button"
+                                >
+                                    {continueState === 'submitting' ? 'Continuing…' : 'Continue'}
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                )}
-                {RALPH_MULTI_LOOP && isRalphComplete && newLoopState !== 'idle' && (
-                    <div
-                        className="mb-3 rounded border border-violet-300 bg-violet-50 p-3 text-xs dark:border-violet-700 dark:bg-violet-950/40"
-                        data-testid="ralph-workflow-new-loop-confirm"
-                    >
-                        <p className="mb-2 font-semibold text-violet-900 dark:text-violet-100">
-                            Start a new loop with a different goal?
-                        </p>
-                        <p className="mb-2 text-violet-800 dark:text-violet-200">
-                            The session journal and all prior iterations are preserved. Budget: {resolvedNewLoopIterations} iterations.
-                        </p>
-                        <textarea
-                            rows={3}
-                            placeholder="Describe the new goal…"
-                            value={newLoopGoal}
-                            onChange={e => setNewLoopGoal(e.target.value)}
-                            disabled={newLoopState === 'submitting'}
-                            data-testid="ralph-workflow-new-loop-goal"
-                            className="mb-2 w-full resize-none rounded border border-violet-300 bg-white px-2 py-1 text-xs text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-violet-400 disabled:opacity-50 dark:border-violet-600 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
-                        />
-                        {newLoopError && (
-                            <p className="mb-2 text-red-700 dark:text-red-300" data-testid="ralph-workflow-new-loop-error">
-                                {newLoopError}
+                    )}
+                    {RALPH_MULTI_LOOP && isRalphComplete && newLoopState !== 'idle' && (
+                        <div
+                            className="mb-3 rounded border border-violet-300 bg-violet-50 p-3 text-xs dark:border-violet-700 dark:bg-violet-950/40"
+                            data-testid="ralph-workflow-new-loop-confirm"
+                        >
+                            <p className="mb-2 font-semibold text-violet-900 dark:text-violet-100">
+                                Start a new loop with a different goal?
                             </p>
-                        )}
-                        <div className="flex justify-end gap-2">
-                            <button
-                                type="button"
-                                onClick={() => { setNewLoopState('idle'); setNewLoopError(null); setNewLoopGoal(''); }}
+                            <p className="mb-2 text-violet-800 dark:text-violet-200">
+                                The session journal and all prior iterations are preserved. Budget: {resolvedNewLoopIterations} iterations.
+                            </p>
+                            <textarea
+                                rows={3}
+                                placeholder="Describe the new goal…"
+                                value={newLoopGoal}
+                                onChange={e => setNewLoopGoal(e.target.value)}
                                 disabled={newLoopState === 'submitting'}
-                                className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                                data-testid="ralph-workflow-new-loop-cancel"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleNewLoopConfirmed}
-                                disabled={newLoopState === 'submitting' || !newLoopGoal.trim()}
-                                className="rounded border border-violet-500 bg-violet-600 px-2 py-1 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-50"
-                                data-testid="ralph-workflow-new-loop-confirm-button"
-                            >
-                                {newLoopState === 'submitting' ? 'Starting…' : 'Start new loop'}
-                            </button>
+                                data-testid="ralph-workflow-new-loop-goal"
+                                className="mb-2 w-full resize-none rounded border border-violet-300 bg-white px-2 py-1 text-xs text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-violet-400 disabled:opacity-50 dark:border-violet-600 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+                            />
+                            {newLoopError && (
+                                <p className="mb-2 text-red-700 dark:text-red-300" data-testid="ralph-workflow-new-loop-error">
+                                    {newLoopError}
+                                </p>
+                            )}
+                            <div className="flex justify-end gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => { setNewLoopState('idle'); setNewLoopError(null); setNewLoopGoal(''); }}
+                                    disabled={newLoopState === 'submitting'}
+                                    className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                                    data-testid="ralph-workflow-new-loop-cancel"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleNewLoopConfirmed}
+                                    disabled={newLoopState === 'submitting' || !newLoopGoal.trim()}
+                                    className="rounded border border-violet-500 bg-violet-600 px-2 py-1 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+                                    data-testid="ralph-workflow-new-loop-confirm-button"
+                                >
+                                    {newLoopState === 'submitting' ? 'Starting…' : 'Start new loop'}
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                )}
-                {allIters.length === 0 ? (
-                    <div className="text-xs italic text-zinc-500 dark:text-zinc-400">
-                        Waiting for the first iteration to complete…
-                    </div>
-                ) : (
-                    <ol className="flex flex-col gap-2">
-                        {allIters.map(iter => {
-                            const loopDivider = loopStartMap.get(iter);
-                            return (
-                                <li key={iter}>
-                                    {loopDivider && (
-                                        <div
-                                            className="mb-2 mt-3 flex items-center gap-2"
-                                            data-testid={`ralph-loop-divider-${loopDivider.loopIndex}`}
-                                        >
-                                            <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-400">
-                                                Loop {loopDivider.loopIndex}
-                                            </span>
-                                            <span className="min-w-0 truncate text-[10px] text-zinc-500 dark:text-zinc-400">
-                                                {singleLine(loopDivider.goal, 100)}
-                                            </span>
-                                            <span className="h-px flex-1 bg-violet-200 dark:bg-violet-800" />
-                                        </div>
-                                    )}
-                                    <RalphWorkflowNode
-                                        iteration={iter}
-                                        record={recordByIter.get(iter)}
-                                        section={sectionByIter.get(iter)}
-                                        isCurrent={record.phase === 'executing' && iter === record.currentIteration}
-                                        onClick={onSelectIteration}
-                                    />
-                                </li>
-                            );
-                        })}
-                    </ol>
-                )}
+                    )}
+                    {allIters.length === 0 ? (
+                        <div className="text-xs italic text-zinc-500 dark:text-zinc-400">
+                            Waiting for the first iteration to complete…
+                        </div>
+                    ) : (
+                        <ol className="flex flex-col gap-2">
+                            {allIters.map(iter => {
+                                const loopDivider = loopStartMap.get(iter);
+                                return (
+                                    <li key={iter}>
+                                        {loopDivider && (
+                                            <div
+                                                className="mb-2 mt-3 flex items-center gap-2"
+                                                data-testid={`ralph-loop-divider-${loopDivider.loopIndex}`}
+                                            >
+                                                <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-400">
+                                                    Loop {loopDivider.loopIndex}
+                                                </span>
+                                                <span className="min-w-0 truncate text-[10px] text-zinc-500 dark:text-zinc-400">
+                                                    {singleLine(loopDivider.goal, 100)}
+                                                </span>
+                                                <span className="h-px flex-1 bg-violet-200 dark:bg-violet-800" />
+                                            </div>
+                                        )}
+                                        <RalphWorkflowNode
+                                            iteration={iter}
+                                            record={recordByIter.get(iter)}
+                                            section={sectionByIter.get(iter)}
+                                            isCurrent={record.phase === 'executing' && iter === record.currentIteration}
+                                            onClick={onSelectIteration}
+                                        />
+                                    </li>
+                                );
+                            })}
+                        </ol>
+                    )}
+                </div>
+                <RalphSessionFileBrowser
+                    sessionId={sessionId}
+                    files={view.files ?? []}
+                    selectedFileName={selectedFileName}
+                    onSelectFile={onSelectFile}
+                />
             </div>
         </div>
     );

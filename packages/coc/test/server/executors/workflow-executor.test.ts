@@ -32,8 +32,8 @@ const mockExecuteWorkflow = vi.fn();
 const mockCompileToWorkflow = vi.fn();
 const mockFlattenWorkflowResult = vi.fn();
 
-vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
+vi.mock('@plusplusoneplusplus/coc-workflow', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/coc-workflow')>();
     return {
         ...actual,
         executeWorkflow: (...args: any[]) => mockExecuteWorkflow(...args),

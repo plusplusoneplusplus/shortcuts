@@ -25,7 +25,6 @@ const dividerClass = 'border-t border-[#e0e0e0] dark:border-[#3c3c3c] my-3';
 const MODE_LABELS: Record<string, string> = {
     task: 'Task',
     ask: 'Ask',
-    plan: 'Plan',
     note: 'Note',
     schedule: 'Schedule',
     followUp: 'Follow-up',
@@ -211,7 +210,7 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
                 </button>
                 {showPerModeDefaults && (
                     <div className="flex flex-col gap-2 ml-4">
-                        {(['task', 'ask', 'plan', 'note', 'schedule', 'followUp', 'memory'] as const).map(mode => (
+                        {(['task', 'ask', 'note', 'schedule', 'followUp', 'memory'] as const).map(mode => (
                             <div key={mode} className="flex flex-col md:flex-row items-start md:items-center gap-1 md:gap-2">
                                 <label className={labelClass}>{MODE_LABELS[mode]}</label>
                                 <select
@@ -241,7 +240,6 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
             <div className="flex flex-col gap-2 mb-1">
                 <ModelRow label="Task Model" mode="task" value={prefs.models.task} models={enabledModels} onChange={handleModelChange} />
                 <ModelRow label="Ask Model" mode="ask" value={prefs.models.ask} models={enabledModels} onChange={handleModelChange} />
-                <ModelRow label="Plan Model" mode="plan" value={prefs.models.plan} models={enabledModels} onChange={handleModelChange} />
                 <ModelRow label="Note Model" mode="note" value={prefs.models.note} models={enabledModels} onChange={handleModelChange} helperText="Model used when creating or chatting in notes for this repo." />
             </div>
 
@@ -334,17 +332,6 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
                                 skills={availableSkills}
                                 selectedSkills={prefs.skills.ask}
                                 onSkillChange={(name) => handleSkillToggle('ask', name)}
-                            />
-                        </div>
-                    </div>
-                    <div className="flex flex-col md:flex-row items-start gap-1 md:gap-2">
-                        <label className={`${labelClass} mt-0.5`}>Plan Skill</label>
-                        <div className="flex-1 min-w-0" data-testid="pref-skill-plan">
-                            <SkillPicker
-                                label=""
-                                skills={availableSkills}
-                                selectedSkills={prefs.skills.plan}
-                                onSkillChange={(name) => handleSkillToggle('plan', name)}
                             />
                         </div>
                     </div>

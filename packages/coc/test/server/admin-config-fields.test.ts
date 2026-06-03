@@ -45,6 +45,8 @@ describe('ADMIN_EDITABLE_KEYS', () => {
             'mcpOauth.enabled',
             'codex.enabled',
             'defaultProvider',
+            'workItems.hierarchy.enabled',
+            'workItems.sync.enabled',
             'workItems.aiAuthoring.enabled',
             'effortLevels.enabled',
         ];
@@ -209,6 +211,8 @@ describe('validate()', () => {
         'servers.enabled', 'ralph.enabled', 'vimNavigation.enabled', 'loops.enabled',
         'excalidraw.enabled',
         'mcpOauth.enabled',
+        'workItems.hierarchy.enabled',
+        'workItems.sync.enabled',
         'workItems.aiAuthoring.enabled',
         'effortLevels.enabled',
     ];
@@ -347,6 +351,8 @@ describe('apply()', () => {
         ['loops.enabled', (c) => c.loops?.enabled],
         ['excalidraw.enabled', (c) => c.excalidraw?.enabled],
         ['mcpOauth.enabled', (c) => c.mcpOauth?.enabled],
+        ['workItems.hierarchy.enabled', (c) => c.workItems?.hierarchy?.enabled],
+        ['workItems.sync.enabled', (c) => c.workItems?.sync?.enabled],
         ['workItems.aiAuthoring.enabled', (c) => c.workItems?.aiAuthoring?.enabled],
         ['effortLevels.enabled', (c) => c.effortLevels?.enabled],
     ];
@@ -417,6 +423,7 @@ describe('runtime classification', () => {
         'scratchpad.enabled', 'workflows.enabled', 'pullRequests.enabled',
         'servers.enabled', 'ralph.enabled', 'vimNavigation.enabled',
         'excalidraw.enabled', 'features.focusedDiff',
+        'workItems.hierarchy.enabled', 'workItems.sync.enabled', 'workItems.aiAuthoring.enabled',
     ];
 
     for (const key of liveFeatures) {

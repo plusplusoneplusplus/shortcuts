@@ -113,7 +113,7 @@ export function EffortTierSelector({
             {open && (
                 <div
                     className={cn(
-                        'absolute bottom-full mb-1 left-0 z-50',
+                        'absolute bottom-full mb-1 left-0 z-[10000]',
                         'min-w-[140px] py-0.5 rounded-md shadow-lg',
                         'bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]',
                     )}

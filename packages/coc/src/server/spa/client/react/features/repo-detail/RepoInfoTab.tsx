@@ -14,14 +14,12 @@ interface RepoInfoTabProps {
 interface LastModelsByMode {
     task?: string;
     ask?: string;
-    plan?: string;
     note?: string;
 }
 
 interface LastSkillsByMode {
     task?: string | string[];
     ask?: string | string[];
-    plan?: string | string[];
 }
 
 interface PerRepoPreferences {
@@ -202,8 +200,7 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
                     !preferences.defaultModel &&
                     !preferences.defaultModels &&
                     !hasSkillValue(preferences.lastSkills?.task) &&
-                    !hasSkillValue(preferences.lastSkills?.ask) &&
-                    !hasSkillValue(preferences.lastSkills?.plan)
+                    !hasSkillValue(preferences.lastSkills?.ask)
                 ) ? (
                     <div className="text-xs text-[#848484]" id="repo-preferences-empty">No preferences set</div>
                 ) : (
@@ -221,7 +218,6 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
                         <MetaRow label="Effort" value={preferences.lastEffort || 'default'} />
                         <MetaRow label="Task Skill" value={formatSkillValue(preferences.lastSkills?.task)} />
                         <MetaRow label="Ask Skill" value={formatSkillValue(preferences.lastSkills?.ask)} />
-                        <MetaRow label="Plan Skill" value={formatSkillValue(preferences.lastSkills?.plan)} />
                     </div>
                 )}
             </div>

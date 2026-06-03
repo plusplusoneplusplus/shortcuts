@@ -43,6 +43,14 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
             getBranchRange: (...args: unknown[]) => mocks.getBranchRange(...args),
             listBranchRangeFiles: (...args: unknown[]) => mocks.listBranchRangeFiles(...args),
         },
+        preferences: {
+            getRepo: vi.fn().mockResolvedValue({}),
+            patchRepo: vi.fn().mockResolvedValue({}),
+        },
+        agentProviders: {
+            getReasoningEfforts: vi.fn().mockResolvedValue({ reasoningEfforts: {} }),
+            getEffortTiers: vi.fn().mockResolvedValue({ effortTiers: {}, defaults: {} }),
+        },
     }),
     requestSpaApi: vi.fn().mockResolvedValue(null),
 }));
@@ -130,10 +138,14 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({
 
 vi.mock('../../../../src/server/spa/client/react/features/git/diff/useClassification', () => ({
     useClassification: () => ({
-        state: { activeFilters: [], activeFilterMode: 'all' },
-        status: 'idle',
-        classification: { getHunkClassification: undefined },
+        state: { status: 'idle', activeFilters: new Set() },
+        classify: vi.fn(),
+        toggleFilter: vi.fn(),
+        setFilters: vi.fn(),
+        getFileBadge: vi.fn(),
         getHunkClassification: undefined,
+        isHunkDimmed: vi.fn(),
+        isFileDimmed: vi.fn(),
     }),
 }));
 

@@ -212,8 +212,12 @@ export interface CLIConfig {
     };
     /** Work Items configuration */
     workItems?: {
-        /** Work item hierarchy board feature (Azure DevOps-like Epic/Feature/PBI hierarchy). Disabled by default. */
+        /** Work item hierarchy board feature (Azure DevOps-like Epic/Feature/PBI hierarchy). Enabled by default. */
         hierarchy?: {
+            enabled?: boolean;
+        };
+        /** Manual external work-item sync. Requires hierarchy mode. Disabled by default. */
+        sync?: {
             enabled?: boolean;
         };
         /** AI-assisted work item authoring — Create/Improve with AI composer. Disabled by default. */
@@ -437,6 +441,10 @@ export interface ResolvedCLIConfig {
         hierarchy: {
             enabled: boolean;
         };
+        /** Manual external work-item sync feature. Requires hierarchy mode. */
+        sync: {
+            enabled: boolean;
+        };
         /** AI-assisted work item authoring feature. */
         aiAuthoring: {
             enabled: boolean;
@@ -587,6 +595,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     workItems: {
         hierarchy: {
+            enabled: true,
+        },
+        sync: {
             enabled: false,
         },
         aiAuthoring: {

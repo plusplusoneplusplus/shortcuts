@@ -92,10 +92,10 @@ describe('appReducer – myWorkExcludedTypes', () => {
         const result = appReducer(baseState as any, {
             type: 'SET_WELCOME_PREFERENCES',
             payload: {
-                activityFilters: { myWorkExcludedTypes: ['run-workflow', 'plan'] },
+                activityFilters: { myWorkExcludedTypes: ['run-workflow', 'run-script'] },
             },
         });
-        expect(result.myWorkExcludedTypes).toEqual(['run-workflow', 'plan']);
+        expect(result.myWorkExcludedTypes).toEqual(['run-workflow', 'run-script']);
         expect(result.preferencesLoaded).toBe(true);
     });
 

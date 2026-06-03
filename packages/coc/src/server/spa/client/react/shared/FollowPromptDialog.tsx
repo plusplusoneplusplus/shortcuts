@@ -66,14 +66,14 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
         return () => { cancelled = true; };
     }, [selectedWsId]);
 
-    // Pre-populate selectedSkills from saved plan preference when both are ready
+    // Pre-populate selectedSkills from saved task preference when both are ready.
     useEffect(() => {
-        if (!prefsLoaded || savedSkills.plan.length === 0 || skills.length === 0) return;
+        if (!prefsLoaded || savedSkills.task.length === 0 || skills.length === 0) return;
         setSelectedSkills(prev => {
             if (prev.length > 0) return prev;
-            return savedSkills.plan.filter(name => skills.some(s => s.name === name));
+            return savedSkills.task.filter(name => skills.some(s => s.name === name));
         });
-    }, [prefsLoaded, savedSkills.plan, skills]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [prefsLoaded, savedSkills.task, skills]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const toggleSkill = useCallback((name: string) => {
         setSelectedSkills(prev =>
@@ -135,7 +135,7 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
 
             await getSpaCocClient().queue.enqueue(body);
             setSelectedSkills([]);
-            setSkill('plan', skillNames);
+            setSkill('task', skillNames);
             addToast('Queued successfully', 'success');
             onClose();
         } catch (err) {

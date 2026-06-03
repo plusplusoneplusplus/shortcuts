@@ -107,7 +107,7 @@ export interface CreateProcessRequest extends Partial<AIProcess> {
 
 export interface ProcessMessageRequest {
   content: string;
-  mode?: 'ask' | 'plan' | 'autopilot';
+  mode?: 'ask' | 'autopilot';
   deliveryMode?: 'immediate' | 'enqueue' | 'steer';
   images?: string[];
   skillNames?: string[];
@@ -128,7 +128,7 @@ export interface PendingProcessMessage {
   id: string;
   content: string;
   displayContent?: string;
-  mode?: 'ask' | 'plan' | 'autopilot' | string;
+  mode?: 'ask' | 'autopilot' | string;
   model?: string;
   /**
    * Optional per-turn reasoning-effort override captured at message-buffer

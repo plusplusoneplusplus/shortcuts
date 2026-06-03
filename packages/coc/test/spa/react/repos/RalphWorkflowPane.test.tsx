@@ -184,6 +184,104 @@ describe('RalphWorkflowPane', () => {
         expect(screen.getByTestId('ralph-workflow-node-3')).toBeInTheDocument();
     });
 
+    it('renders an empty session-files state when no files are available', () => {
+        const view: RalphSessionView = {
+            record: makeRecord({ iterations: [makeIter(1)] }),
+            sections: [makeSection(1)],
+            files: [],
+        };
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.getByTestId('ralph-session-files-empty')).toHaveTextContent(/No session files/i);
+    });
+
+    it('renders markdown session files with the markdown renderer', () => {
+        const view: RalphSessionView = {
+            record: makeRecord({ iterations: [makeIter(1)] }),
+            sections: [makeSection(1)],
+            files: [
+                { name: 'progress.md', content: '# Progress\n\n**Done** with iteration 1.' },
+            ],
+        };
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        const content = screen.getByTestId('ralph-session-file-content');
+        expect(content.querySelector('.markdown-body')).not.toBeNull();
+        expect(content).toHaveTextContent('Progress');
+        expect(content).toHaveTextContent('Done');
+    });
+
+    it('formats JSON session files as indented plain text', () => {
+        const view: RalphSessionView = {
+            record: makeRecord({ iterations: [makeIter(1)] }),
+            sections: [makeSection(1)],
+            files: [
+                { name: 'session.json', content: '{"answer":42,"nested":{"ok":true}}' },
+            ],
+        };
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.getByTestId('ralph-session-file-text').textContent).toBe(
+            '{\n  "answer": 42,\n  "nested": {\n    "ok": true\n  }\n}',
+        );
+    });
+
+    it('pre-selects the file matching selectedFileName', () => {
+        const view: RalphSessionView = {
+            record: makeRecord({ iterations: [makeIter(1)] }),
+            sections: [makeSection(1)],
+            files: [
+                { name: 'progress.md', content: '# Progress' },
+                { name: 'session.json', content: '{"selected":true}' },
+            ],
+        };
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={view}
+                selectedFileName="session.json"
+            />,
+        );
+        expect(screen.getByRole('button', { name: 'session.json' })).toHaveAttribute('aria-current', 'true');
+        expect(screen.getByTestId('ralph-session-file-text')).toHaveTextContent('"selected": true');
+    });
+
+    it('selects the first returned file by default', () => {
+        const view: RalphSessionView = {
+            record: makeRecord({ iterations: [makeIter(1)] }),
+            sections: [makeSection(1)],
+            files: [
+                { name: 'a-first.md', content: '# First file' },
+                { name: 'b-second.md', content: '# Second file' },
+            ],
+        };
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.getByRole('button', { name: 'a-first.md' })).toHaveAttribute('aria-current', 'true');
+        expect(screen.getByTestId('ralph-session-file-content')).toHaveTextContent('First file');
+    });
+
+    it('updates the displayed file when a user selects a file', async () => {
+        const user = userEvent.setup();
+        const onSelectFile = vi.fn();
+        const view: RalphSessionView = {
+            record: makeRecord({ iterations: [makeIter(1)] }),
+            sections: [makeSection(1)],
+            files: [
+                { name: 'progress.md', content: '# Progress' },
+                { name: 'session.json', content: '{"clicked":true}' },
+            ],
+        };
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={view}
+                onSelectFile={onSelectFile}
+            />,
+        );
+        await user.click(screen.getByRole('button', { name: 'session.json' }));
+        expect(onSelectFile).toHaveBeenCalledWith('session.json');
+        expect(screen.getByTestId('ralph-session-file-text')).toHaveTextContent('"clicked": true');
+    });
+
     // ----------------------------------------------------------------------
     // Continue loop button
     // ----------------------------------------------------------------------

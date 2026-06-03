@@ -353,12 +353,12 @@ describe('Follow-up FIFO — mixed delivery mode interactions', () => {
         ];
         await store.addProcess(proc);
 
-        // First drain → plan mode
+        // First drain → legacy plan mode normalized to ask
         const t1 = followUpTask({ id: 'mode-t1', processId: 'proc-mode', content: 'trigger' });
         queueManager.tasks.set(t1.id, t1);
         await executor.execute(t1);
         const firstCall = queueManager.enqueue.mock.calls[0];
-        expect(firstCall[0].payload.mode).toBe('plan');
+        expect(firstCall[0].payload.mode).toBe('ask');
 
         // Second drain → autopilot mode
         const t2 = followUpTask({ id: 'mode-t2', processId: 'proc-mode', content: 'trigger2' });

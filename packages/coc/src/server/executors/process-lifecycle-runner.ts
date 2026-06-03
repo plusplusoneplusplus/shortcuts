@@ -35,6 +35,7 @@ import {
     LogCategory,
     mergeConsecutiveContentItems,
     modelMetadataStore,
+    resolveModelForProvider,
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
 import type { ChatPayload, PrClassificationPayload } from '../tasks/task-types';
@@ -52,6 +53,7 @@ import {
     isRunScriptPayload,
     hasNoteChatContext,
     isRalphMode,
+    normalizeChatMode,
     serializeRalphMetadata,
 } from '../tasks/task-types';
 import { deriveScriptTitle } from './title-generator';
@@ -306,6 +308,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         const processId = toQueueProcessId(task.id);
         const prompt = applySkillContent(extractPrompt(task), task);
         const payload = task.payload as any;
+        const normalizedPayloadMode = isChatPayload(task.payload)
+            ? normalizeChatMode(payload?.mode)
+            : undefined;
         const selectedSkills = isChatPayload(task.payload)
             ? (task.payload as ChatPayload).context?.skills
             : isPrClassificationPayload(task.payload)
@@ -313,8 +318,17 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 : undefined;
         const displayPrompt = prependSelectedSkillsDirective(prompt, selectedSkills);
         const workingDirectory = opts.getWorkingDirectoryFn(task);
-        const seededTokenLimit = task.config.model !== undefined
-            ? modelMetadataStore.getContextWindow(task.config.model)
+        const taskProvider = (isChatPayload(task.payload) ? (task.payload as ChatPayload).provider : undefined) ?? this.provider;
+        const providerModel = resolveModelForProvider(taskProvider, task.config.model);
+        if (providerModel.coerced) {
+            logger.warn(
+                LogCategory.AI,
+                `[QueueExecutor] Dropping model '${providerModel.requestedModel}' for task ${task.id} because provider '${taskProvider}' does not support it; using provider default.`,
+            );
+        }
+        const processModel = providerModel.model;
+        const seededTokenLimit = processModel !== undefined
+            ? modelMetadataStore.getContextWindow(processModel)
             : undefined;
 
         const process: AIProcess = {
@@ -330,12 +344,12 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 type: task.type,
                 queueTaskId: task.id,
                 priority: task.priority,
-                model: task.config.model,
-                mode: payload?.mode,
+                model: processModel,
+                mode: normalizedPayloadMode,
                 workspaceId: payload?.workspaceId || task.repoId,
                 // Use per-task provider from payload when available; fall back to
                 // the server-level default (this.provider) set at startup.
-                provider: (isChatPayload(task.payload) ? (task.payload as ChatPayload).provider : undefined) ?? this.provider,
+                provider: taskProvider,
                 workflowName: isRunWorkflowPayload(task.payload)
                     ? path.basename(task.payload.workflowPath)
                     : undefined,
@@ -366,8 +380,8 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 turnIndex: 0,
                 timeline: [],
                 images: payloadImages?.length > 0 ? payloadImages : undefined,
-                ...(task.config.model !== undefined ? { model: task.config.model } : {}),
-                ...(payload?.mode !== undefined ? { mode: payload.mode } : {}),
+                ...(processModel !== undefined ? { model: processModel } : {}),
+                ...(normalizedPayloadMode !== undefined ? { mode: normalizedPayloadMode } : {}),
             },
         ];
 
@@ -421,6 +435,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             logger.debug(LogCategory.AI, `[QueueExecutor] Task ${task.id} completed in ${duration}ms`);
 
             const sessionId = (result as any)?.sessionId;
+            const effectiveModel = (result as any)?.effectiveModel as string | undefined;
             const responseText = (result as any)?.response ?? '';
 
             const finalTimeline = (result as any)?.timeline
@@ -438,6 +453,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         toolCalls: (result as any)?.toolCalls || undefined,
                         timeline: finalTimeline,
                         suggestions: (result as any)?.pendingSuggestions ?? this.sessions.get(processId)?.pendingSuggestions,
+                        ...(effectiveModel ? { model: effectiveModel } : {}),
                         ...(tokenUsage ? { tokenUsage } : {}),
                     }),
                     {
@@ -446,6 +462,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                             if (TERMINAL_STATUSES.has(current.status)) return {};
                             const tokenLimit = tokenUsage?.tokenLimit ?? current.tokenLimit;
                             const currentTokens = tokenUsage?.currentTokens ?? current.currentTokens;
+                            const systemTokens = tokenUsage?.systemTokens ?? current.systemTokens;
+                            const toolDefinitionsTokens = tokenUsage?.toolDefinitionsTokens ?? current.toolDefinitionsTokens;
+                            const conversationTokens = tokenUsage?.conversationTokens ?? current.conversationTokens;
                             const prevCumulative = current.cumulativeTokenUsage;
                             const cumulativeTokenUsage = tokenUsage ? {
                                 inputTokens: (prevCumulative?.inputTokens ?? 0) + tokenUsage.inputTokens,
@@ -468,8 +487,16 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                     endTime: new Date(),
                                     result: typeof result === 'string' ? result : JSON.stringify(result),
                                     ...(sessionId ? { sdkSessionId: sessionId } : {}),
+                                    metadata: {
+                                        ...(current.metadata ?? {}),
+                                        type: current.metadata?.type ?? task.type,
+                                        model: effectiveModel,
+                                    },
                                     ...(tokenLimit !== undefined ? { tokenLimit } : {}),
                                     ...(currentTokens !== undefined ? { currentTokens } : {}),
+                                    ...(systemTokens !== undefined ? { systemTokens } : {}),
+                                    ...(toolDefinitionsTokens !== undefined ? { toolDefinitionsTokens } : {}),
+                                    ...(conversationTokens !== undefined ? { conversationTokens } : {}),
                                     ...(cumulativeTokenUsage ? { cumulativeTokenUsage } : {}),
                                 };
                             }
@@ -478,8 +505,16 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                 endTime: new Date(),
                                 result: typeof result === 'string' ? result : JSON.stringify(result),
                                 ...(sessionId ? { sdkSessionId: sessionId } : {}),
+                                metadata: {
+                                    ...(current.metadata ?? {}),
+                                    type: current.metadata?.type ?? task.type,
+                                    model: effectiveModel,
+                                },
                                 ...(tokenLimit !== undefined ? { tokenLimit } : {}),
                                 ...(currentTokens !== undefined ? { currentTokens } : {}),
+                                ...(systemTokens !== undefined ? { systemTokens } : {}),
+                                ...(toolDefinitionsTokens !== undefined ? { toolDefinitionsTokens } : {}),
+                                ...(conversationTokens !== undefined ? { conversationTokens } : {}),
                                 ...(cumulativeTokenUsage ? { cumulativeTokenUsage } : {}),
                             };
                         },
@@ -534,8 +569,8 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     }
                 }
 
-                // Eagerly detect .plan.md in conversation turns and set planFilePath
-                if (currentProc && (currentProc.metadata as any)?.mode === 'plan' && !(currentProc.metadata as any)?.planFilePath) {
+                // Eagerly detect .plan.md in Ask planning conversations and set planFilePath.
+                if (currentProc && (currentProc.metadata as any)?.mode === 'ask' && !(currentProc.metadata as any)?.planFilePath) {
                     const detected = scanTurnsForPlanFile(combinedTurns);
                     if (detected) {
                         try {

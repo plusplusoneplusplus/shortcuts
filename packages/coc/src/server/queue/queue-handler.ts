@@ -5,7 +5,7 @@
  * Each module owns one HTTP concern (enqueue, stats, control, follow-up, images).
  */
 
-import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, StoredEffortTiersMap } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import type { MultiRepoQueueRouter } from './multi-repo-queue-router';
 import type { QueueGlobalState } from '../routes/queue-shared';
@@ -23,7 +23,10 @@ export function registerQueueRoutes(
     bridge: MultiRepoQueueRouter,
     store?: ProcessStore,
     globalWorkspaceRootPath?: string,
-    options: { getDefaultProvider?: () => 'copilot' | 'codex' | 'claude' } = {},
+    options: {
+        getDefaultProvider?: () => 'copilot' | 'codex' | 'claude';
+        getEffortTiersForProvider?: (provider: 'copilot' | 'codex' | 'claude') => StoredEffortTiersMap | undefined;
+    } = {},
 ): void {
     const state: QueueGlobalState = {
         globalPaused: false,
@@ -32,7 +35,14 @@ export function registerQueueRoutes(
         globalAutopilotPausedUntil: undefined,
         resumeInProgress: new Set(),
     };
-    const ctx = { bridge, store, globalWorkspaceRootPath, state, getDefaultProvider: options.getDefaultProvider };
+    const ctx = {
+        bridge,
+        store,
+        globalWorkspaceRootPath,
+        state,
+        getDefaultProvider: options.getDefaultProvider,
+        getEffortTiersForProvider: options.getEffortTiersForProvider,
+    };
     registerQueueEnqueueRoutes(routes, ctx);
     registerQueueStatsRoutes(routes, ctx);
     registerQueueControlRoutes(routes, ctx);

@@ -1,13 +1,18 @@
 import type {
   CreateWorkItemFromChatRequest,
   CreateWorkItemRequest,
+  ConvertWorkItemTrackerResponse,
   ExecuteWorkItemRequest,
   ExecuteWorkItemResponse,
+  ImportFromGitHubRequest,
   ImproveWorkItemAiDraftRequest,
   NewWorkItemAiDraftRequest,
   RequestWorkItemChangesRequest,
   RequestWorkItemChangesResponse,
   ResolveWorkItemCommentsRequest,
+  SyncGitHubEpicResponse,
+  WorkItemSyncProvider,
+  WorkItemSyncStatusResponse,
   UpdateWorkItemRequest,
   WorkItem,
   WorkItemAiGenerationResponse,
@@ -130,6 +135,37 @@ export class WorkItemsClient {
     });
   }
 
+  syncStatus(workspaceId: string, provider?: WorkItemSyncProvider): Promise<WorkItemSyncStatusResponse> {
+    return this.transport.request<WorkItemSyncStatusResponse>(path(workspaceId, '/sync/status'), {
+      query: provider ? { provider } : undefined,
+    });
+  }
+
+  importFromGitHub(workspaceId: string, request: ImportFromGitHubRequest): Promise<WorkItem> {
+    return this.transport.request<WorkItem>(path(workspaceId, '/import-from-github'), {
+      method: 'POST',
+      body: { ...request },
+    });
+  }
+
+  syncGitHubEpic(workspaceId: string, workItemId: string): Promise<SyncGitHubEpicResponse> {
+    return this.transport.request<SyncGitHubEpicResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/sync-from-github`), {
+      method: 'POST',
+    });
+  }
+
+  convertLocalEpicToGitHub(workspaceId: string, workItemId: string): Promise<ConvertWorkItemTrackerResponse> {
+    return this.transport.request<ConvertWorkItemTrackerResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/convert-to-github`), {
+      method: 'POST',
+    });
+  }
+
+  convertGitHubEpicToLocal(workspaceId: string, workItemId: string): Promise<ConvertWorkItemTrackerResponse> {
+    return this.transport.request<ConvertWorkItemTrackerResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/convert-to-local`), {
+      method: 'POST',
+    });
+  }
+
   resolveComments(workspaceId: string, workItemId: string, request: ResolveWorkItemCommentsRequest): Promise<ExecuteWorkItemResponse> {
     return this.transport.request(path(workspaceId, `/${encodePathSegment(workItemId)}/resolve-comments`), {
       method: 'POST',
@@ -142,6 +178,7 @@ export class WorkItemsClient {
     if (filter?.q) query.q = filter.q;
     if (filter?.type) query.type = filter.type;
     if (filter?.status) query.status = filter.status;
+    if (filter?.tracker) query.tracker = filter.tracker;
     if (filter?.includeArchived !== undefined) query.includeArchived = filter.includeArchived;
     if (filter?.includeDone !== undefined) query.includeDone = filter.includeDone;
     return this.transport.request<WorkItemTreeResponse>(path(workspaceId, '/tree'), { query });

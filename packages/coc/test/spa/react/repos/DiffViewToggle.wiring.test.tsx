@@ -45,6 +45,14 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
         explorer: {
             readBlob: () => Promise.resolve({ content: '', encoding: 'base64', mimeType: 'application/octet-stream' }),
         },
+        preferences: {
+            getRepo: vi.fn().mockResolvedValue({}),
+            patchRepo: vi.fn().mockResolvedValue({}),
+        },
+        agentProviders: {
+            getReasoningEfforts: vi.fn().mockResolvedValue({ reasoningEfforts: {} }),
+            getEffortTiers: vi.fn().mockResolvedValue({ effortTiers: {}, defaults: {} }),
+        },
     }),
     requestSpaApi: vi.fn().mockResolvedValue(null),
 }));

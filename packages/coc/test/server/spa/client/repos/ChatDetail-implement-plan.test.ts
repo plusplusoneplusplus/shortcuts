@@ -4,8 +4,8 @@
  * Source-level wiring tests for the ImplementPlanCard handoff in ChatDetail.
  *
  * We verify that ChatDetail.tsx imports ImplementPlanCard and gates its render
- * on the three required conditions: terminal status, plan mode, and a known
- * plan file path. Also verifies that the new existing-runs props are wired.
+ * on the required conditions: terminal status, Ask mode, and a known plan file
+ * path. Also verifies that the new existing-runs props are wired.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
@@ -27,9 +27,9 @@ describe('ChatDetail implement-plan handoff', () => {
         expect(source).toContain("import type { ImplementationRecord, ExistingRun, RunLiveStatus } from './ImplementPlanCard'");
     });
 
-    it('gates rendering on terminal status, not busy, plan mode, and a known plan path', () => {
+    it('gates rendering on terminal status, not busy, Ask mode, and a known plan path', () => {
         const guard = source.match(
-            /isTerminal\s*&&\s*!planChatBusy\s*&&\s*resolveLoadedTaskMode\(task\)\s*===\s*'plan'\s*&&\s*effectivePlanPath/,
+            /isTerminal\s*&&\s*!planChatBusy\s*&&\s*resolveLoadedTaskMode\(task\)\s*===\s*'ask'\s*&&\s*effectivePlanPath/,
         );
         expect(guard).not.toBeNull();
     });

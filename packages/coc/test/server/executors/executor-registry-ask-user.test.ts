@@ -2,8 +2,8 @@
  * ExecutorRegistry.getAskUserHandles — followUpExecutor regression
  *
  * Regression: ask-user questions raised during a follow-up turn lived in
- * followUpExecutor.sessions but getAskUserHandles only searched chatExecutor
- * and planExecutor.  The fix adds followUpExecutor to the lookup chain so that
+ * followUpExecutor.sessions but getAskUserHandles only searched chatExecutor.
+ * The fix adds followUpExecutor to the lookup chain so that
  * POST /api/processes/:id/ask-user-response returns 200 instead of 404 when
  * the user answers a question in a second (or later) turn.
  */
@@ -83,28 +83,15 @@ describe('ExecutorRegistry.getAskUserHandles', () => {
     it('returns handles from chatExecutor when question lives there', () => {
         const { registry } = createRegistry();
         vi.spyOn((registry as any).chatExecutor, 'getAskUserHandles').mockReturnValue(fakeHandles);
-        vi.spyOn((registry as any).planExecutor, 'getAskUserHandles').mockReturnValue(undefined);
         vi.spyOn((registry as any).followUpExecutor, 'getAskUserHandles').mockReturnValue(undefined);
 
         expect(registry.getAskUserHandles('queue_task-1')).toBe(fakeHandles);
-        expect((registry as any).planExecutor.getAskUserHandles).not.toHaveBeenCalled();
-        expect((registry as any).followUpExecutor.getAskUserHandles).not.toHaveBeenCalled();
-    });
-
-    it('returns handles from planExecutor when question lives there', () => {
-        const { registry } = createRegistry();
-        vi.spyOn((registry as any).chatExecutor, 'getAskUserHandles').mockReturnValue(undefined);
-        vi.spyOn((registry as any).planExecutor, 'getAskUserHandles').mockReturnValue(fakeHandles);
-        vi.spyOn((registry as any).followUpExecutor, 'getAskUserHandles').mockReturnValue(undefined);
-
-        expect(registry.getAskUserHandles('queue_task-2')).toBe(fakeHandles);
         expect((registry as any).followUpExecutor.getAskUserHandles).not.toHaveBeenCalled();
     });
 
     it('returns handles from followUpExecutor when question lives there (regression: second turn)', () => {
         const { registry } = createRegistry();
         vi.spyOn((registry as any).chatExecutor, 'getAskUserHandles').mockReturnValue(undefined);
-        vi.spyOn((registry as any).planExecutor, 'getAskUserHandles').mockReturnValue(undefined);
         vi.spyOn((registry as any).followUpExecutor, 'getAskUserHandles').mockReturnValue(fakeHandles);
 
         // Before the fix this returned undefined, causing 404 on /ask-user-response
@@ -114,7 +101,6 @@ describe('ExecutorRegistry.getAskUserHandles', () => {
     it('returns undefined when no executor has a handle', () => {
         const { registry } = createRegistry();
         vi.spyOn((registry as any).chatExecutor, 'getAskUserHandles').mockReturnValue(undefined);
-        vi.spyOn((registry as any).planExecutor, 'getAskUserHandles').mockReturnValue(undefined);
         vi.spyOn((registry as any).followUpExecutor, 'getAskUserHandles').mockReturnValue(undefined);
 
         expect(registry.getAskUserHandles('queue_task-none')).toBeUndefined();

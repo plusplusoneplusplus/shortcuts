@@ -457,11 +457,11 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
 
     // ── Instructions state ───────────────────────────────────────────────────
     const [instrContents, setInstrContents] = useState<Record<InstructionMode, string | null>>({
-        base: null, ask: null, plan: null, autopilot: null,
+        base: null, ask: null, autopilot: null,
     });
     const [instrLoading, setInstrLoading] = useState(true);
     const [instrDraft, setInstrDraft] = useState<Record<InstructionMode, string>>({
-        base: '', ask: '', plan: '', autopilot: '',
+        base: '', ask: '', autopilot: '',
     });
     const [instrSaving, setInstrSaving] = useState(false);
 
@@ -473,7 +473,6 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
             setInstrDraft({
                 base: data.base ?? '',
                 ask: data.ask ?? '',
-                plan: data.plan ?? '',
                 autopilot: data.autopilot ?? '',
             });
         } catch {

@@ -1,6 +1,6 @@
 # Server Architecture
 
-Standalone Node.js CLI for executing YAML-based AI workflows. Depends on the published `@plusplusoneplusplus/forge` package. Published as `@plusplusoneplusplus/coc`. Requires Node.js ≥ 24.
+Standalone Node.js CLI for executing YAML-based AI workflows. Depends on `@plusplusoneplusplus/coc-workflow` for pure workflow compilation/execution and `@plusplusoneplusplus/forge` for runtime/process/queue utilities. Published as `@plusplusoneplusplus/coc`. Requires Node.js ≥ 24.
 
 ## CLI Commands
 
@@ -9,6 +9,10 @@ coc run <path>              # Execute a workflow
 coc validate <path>         # Validate YAML without executing
 coc list [dir]              # List workflow packages in a directory
 coc serve                   # Start AI Execution Dashboard web server
+coc queue submit [message]  # Submit a chat task to a running CoC server queue
+coc queue list              # List active queued/running tasks, optionally filtered
+coc queue cancel <taskId>   # Cancel a queued or running task
+coc queue status <taskId>   # Show status/details for a single queue task
 coc skills                  # Manage CoC skills (list, install-bundled, install, delete, check-updates)
 coc wipe-data               # Clear all stored data
 ```
@@ -51,6 +55,7 @@ src/
 │   ├── serve.ts          # Start server
 │   ├── wipe-data.ts      # Clear stored data
 │   ├── skills.ts         # Skills management
+│   ├── queue.ts          # Queue submit/list/cancel/status CLI commands
 │   └── options-resolver.ts  # Shared option resolution
 ├── server/               # HTTP/WebSocket server (see module layout below)
 ├── ai-invoker.ts         # AI invoker factory
@@ -108,7 +113,6 @@ The `executors/` directory contains the AI chat execution layer:
 | `base-executor.ts` | Abstract base: streaming, throttling, tool-event capture |
 | `chat-base-executor.ts` | Abstract chat executor: AI call lifecycle, memory/options helpers |
 | `chat-executor.ts` | Ask-mode executor (interactive) |
-| `plan-executor.ts` | Plan-mode executor |
 | `autopilot-executor.ts` | Autopilot-mode executor |
 | `follow-up-executor.ts` | Follow-up message executor |
 | `note-chat-executor.ts` | Note chat executor |
@@ -120,6 +124,8 @@ The `executors/` directory contains the AI chat execution layer:
 | `prompt-builder.ts` | System message, memory context, skill injection |
 | `chat-tool-builder.ts` | Common chat tool bundle assembly |
 | `bounded-memory-addon.ts` | Wires bounded MEMORY.md into chat executors |
+
+CoC chat tasks use Ask, Autopilot, or Ralph modes. Legacy stored or incoming chat payloads with `mode='plan'` are normalized to Ask before dispatch, metadata persistence, schedule execution, and follow-up execution; the server does not route CoC chat work through a dedicated Plan executor.
 
 ## Configuration
 

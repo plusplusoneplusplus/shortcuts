@@ -26,15 +26,15 @@ import type { Route } from '../types';
 // Constants
 // ============================================================================
 
-/** Valid mode values accepted as the :mode URL parameter. */
-const VALID_MODES = new Set(['base', 'ask', 'plan', 'autopilot'] as const);
-type InstructionMode = 'base' | 'ask' | 'plan' | 'autopilot';
+/** Active custom-instruction modes exposed by the API. */
+const ACTIVE_MODES = ['base', 'ask', 'autopilot'] as const;
+const VALID_MODES = new Set(ACTIVE_MODES);
+type InstructionMode = typeof ACTIVE_MODES[number];
 
 /** Maps mode to file name relative to the instruction dir. */
 const MODE_TO_FILE: Record<InstructionMode, string> = {
     base: 'instructions.md',
     ask: 'instructions-ask.md',
-    plan: 'instructions-plan.md',
     autopilot: 'instructions-autopilot.md',
 };
 
@@ -47,11 +47,12 @@ function resolveInstructionPath(workspaceRoot: string, mode: InstructionMode): s
 }
 
 function parseMode(raw: string): InstructionMode | undefined {
+    if (raw === 'plan') return 'ask';
     return VALID_MODES.has(raw as InstructionMode) ? (raw as InstructionMode) : undefined;
 }
 
 function invalidModeError(raw: string | undefined) {
-    return badRequest(`Invalid mode '${raw}'. Valid values: base, ask, plan, autopilot`);
+    return badRequest(`Invalid mode '${raw}'. Valid values: base, ask, autopilot`);
 }
 
 // ============================================================================
@@ -75,7 +76,7 @@ export function registerInstructionRoutes(routes: Route[], store: ProcessStore):
                 const fileSet = findInstructionFiles(workspace.rootPath);
                 const result: Record<string, string | null> = {};
 
-                for (const mode of VALID_MODES) {
+                for (const mode of ACTIVE_MODES) {
                     const filePath = fileSet[mode];
                     if (filePath) {
                         try {

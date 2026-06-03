@@ -15,11 +15,13 @@ import {
     executeWorkflow,
     flattenWorkflowResult,
     setLogger,
-} from '@plusplusoneplusplus/forge';
+} from '@plusplusoneplusplus/coc-workflow';
 import type {
     WorkflowConfig,
     WorkflowProgressEvent,
     FlatWorkflowResult,
+} from '@plusplusoneplusplus/coc-workflow';
+import type {
     AIProcess,
 } from '@plusplusoneplusplus/forge';
 import {

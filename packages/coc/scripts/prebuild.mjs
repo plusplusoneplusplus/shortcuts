@@ -11,16 +11,23 @@ export function getNpmExecutable(platform = process.platform) {
     return platform === 'win32' ? 'npm.cmd' : 'npm';
 }
 
-export function buildCocMemory({
+export const REQUIRED_BUILD_WORKSPACES = [
+    '@plusplusoneplusplus/coc-workflow',
+    '@plusplusoneplusplus/coc-memory',
+];
+
+export function buildRequiredWorkspacePackages({
     rootDir = repoRoot,
     run = execFileSync,
     npmExecutable = getNpmExecutable(),
 } = {}) {
-    run(npmExecutable, ['run', 'build', '-w', '@plusplusoneplusplus/coc-memory'], {
-        cwd: rootDir,
-        stdio: 'inherit',
-        ...(npmExecutable.endsWith('.cmd') ? { shell: true } : {}),
-    });
+    for (const workspace of REQUIRED_BUILD_WORKSPACES) {
+        run(npmExecutable, ['run', 'build', '-w', workspace], {
+            cwd: rootDir,
+            stdio: 'inherit',
+            ...(npmExecutable.endsWith('.cmd') ? { shell: true } : {}),
+        });
+    }
 }
 
 export function resolveBuildCommit({
@@ -57,7 +64,7 @@ export function writeBuildInfo({
 }
 
 export function runPrebuild() {
-    buildCocMemory();
+    buildRequiredWorkspacePackages();
     writeBuildInfo();
 }
 

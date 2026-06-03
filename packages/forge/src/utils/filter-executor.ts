@@ -14,7 +14,7 @@ import type {
     FilterRule,
     FilterStats,
     RuleFilterConfig
-} from '../workflow/pipeline-compat';
+} from '@plusplusoneplusplus/coc-workflow/workflow';
 import type {
     AIInvoker,
     ProcessTracker,

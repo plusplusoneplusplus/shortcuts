@@ -51,6 +51,7 @@ export function buildRuntimeDashboardConfig(
             claudeEnabled: config.claude?.enabled ?? false,
             defaultProvider: (config.defaultProvider ?? 'copilot') as 'copilot' | 'codex' | 'claude',
             workItemsHierarchyEnabled: config.workItems?.hierarchy?.enabled ?? false,
+            workItemsSyncEnabled: config.workItems?.sync?.enabled ?? false,
             workItemsAiAuthoringEnabled: config.workItems?.aiAuthoring?.enabled ?? false,
             gitCommitLookupEnabled: config.features?.gitCommitLookup ?? false,
             effortLevelsEnabled: config.effortLevels?.enabled ?? false,

@@ -1,9 +1,9 @@
 import type { ChatPayload, ChatMode } from '../tasks/task-types';
-import { isChatPayload, TaskDefs, getTaskDef } from '../tasks/task-types';
+import { isChatPayload, TaskDefs, getTaskDef, normalizeChatMode } from '../tasks/task-types';
 import { applyFollowUpToTask } from '../shared/queue-utils';
 import { processToQueuedTask } from '../shared/process-history-mapper';
 import type { Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
-import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, sdkServiceRegistry, SDK_PROVIDER_COPILOT, getLogger, LogCategory, normalizeExecutionPath, resolveWorkspaceExecutionContext, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
+import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, sdkServiceRegistry, SDK_PROVIDER_COPILOT, getLogger, LogCategory, normalizeExecutionPath, resolveModelForProvider, resolveWorkspaceExecutionContext, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import { BaseExecutor } from '../executors/base-executor';
 import { resolveSkillConfig } from '../executors/skill-config-resolver';
 import { TitleGenerationService } from '../executors/title-generator';
@@ -20,6 +20,7 @@ import {
     markFinalCheckEnqueued,
 } from '../ralph/enqueue-final-check';
 import { orchestrateFinalCheck } from '../ralph/orchestrate-final-check';
+import { buildRalphIterationPrompt } from '../ralph/iteration-prompt';
 import { loadConfigFile, DEFAULT_CONFIG } from '../../config';
 
 export const DEFAULT_FOLLOW_UP_SUGGESTIONS = { enabled: true, count: 3 } as const;
@@ -220,6 +221,14 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         logger.debug(LogCategory.AI, `[Ralph] Enqueuing iteration ${nextIteration}/${maxIterations} for session ${sessionId ?? processId}`);
 
         try {
+            const nextPrompt = buildRalphIterationPrompt({
+                originalGoal: ralphCtx?.originalGoal ?? '',
+                progressPath: (this.dataDir && payload.workspaceId)
+                    ? new RalphSessionStore({ dataDir: this.dataDir }).getProgressPath(payload.workspaceId, sessionId ?? processId)
+                    : undefined,
+                currentIteration: nextIteration,
+                maxIterations,
+            });
             this.queueManager.enqueue({
                 type: 'chat',
                 repoId: completedTask.repoId,
@@ -228,7 +237,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 payload: {
                     kind: 'chat' as const,
                     mode: 'ralph' as const,
-                    prompt: payload.prompt,
+                    prompt: nextPrompt,
                     workspaceId: payload.workspaceId,
                     workingDirectory: payload.workingDirectory,
                     folderPath: (payload as any).folderPath,
@@ -457,7 +466,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             processId: derivedProcessId,
             type: reconstructed.type ?? 'chat',
             priority: 'normal',
-            payload: { ...(reconstructed.payload as any), prompt, attachments, imageTempDir, ...(images ? { images } : {}), ...(mode ? { mode } : {}), ...(deliveryMode ? { deliveryMode } : {}) },
+            payload: { ...(reconstructed.payload as any), prompt, attachments, imageTempDir, ...(images ? { images } : {}), ...(normalizeChatMode(mode) ? { mode: normalizeChatMode(mode) } : {}), ...(deliveryMode ? { deliveryMode } : {}) },
             config: {},
             displayName: prompt.trim().substring(0, 57) + (prompt.trim().length > 57 ? '...' : ''),
         });
@@ -568,6 +577,16 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         if (!proc?.pendingMessages?.length) return;
         if (!this.queueManager) return;
         const [nextMsg, ...rest] = proc.pendingMessages;
+        const sessionProvider = proc.metadata?.provider === 'codex' || proc.metadata?.provider === 'claude' || proc.metadata?.provider === 'copilot'
+            ? proc.metadata.provider
+            : 'copilot';
+        const resolvedModel = resolveModelForProvider(sessionProvider, nextMsg.model);
+        if (resolvedModel.coerced) {
+            getLogger().warn(
+                LogCategory.AI,
+                `[QueueExecutor] Dropping buffered model '${resolvedModel.requestedModel}' for process ${processId} because provider '${sessionProvider}' does not support it; using provider default.`,
+            );
+        }
 
         // Append the deferred user turn at the correct position (after the
         // assistant response that just completed) before enqueuing the follow-up.
@@ -582,8 +601,8 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 timeline: [],
                 ...(nextMsg.images ? { images: nextMsg.images } : {}),
                 ...(nextMsg.pasteExternalized ? { pasteExternalized: true } : {}),
-                ...(nextMsg.model ? { model: nextMsg.model } : {}),
-                ...(nextMsg.mode ? { mode: nextMsg.mode } : {}),
+                ...(resolvedModel.model ? { model: resolvedModel.model } : {}),
+                ...(normalizeChatMode(nextMsg.mode) ? { mode: normalizeChatMode(nextMsg.mode) } : {}),
             }),
         );
 
@@ -600,8 +619,8 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 kind: 'chat' as const,
                 processId,
                 prompt: nextMsg.content,
-                ...(nextMsg.mode ? { mode: nextMsg.mode } : {}),
-                ...(nextMsg.model ? { model: nextMsg.model } : {}),
+                ...(normalizeChatMode(nextMsg.mode) ? { mode: normalizeChatMode(nextMsg.mode) } : {}),
+                ...(resolvedModel.model ? { model: resolvedModel.model } : {}),
                 ...(pendingEffort ? { reasoningEffort: pendingEffort } : {}),
                 ...(nextMsg.attachments ? { attachments: nextMsg.attachments } : {}),
                 ...(nextMsg.imageTempDir ? { imageTempDir: nextMsg.imageTempDir } : {}),
@@ -630,7 +649,7 @@ function getScheduleRunContext(context: ChatPayload['context'] | undefined): Rec
  * Concurrency model:
  * - `run-workflow` tasks (including work items) → **exclusive** — serialized 1-at-a-time per repo queue.
  *   Work items must never run concurrently within the same workspace.
- * - `chat` tasks with `ask` or `plan` mode (e.g. coc-chat sessions) → **shared** — up to
+ * - `chat` tasks with `ask` mode (e.g. coc-chat sessions) → **shared** — up to
  *   `sharedConcurrency` (default 5) run concurrently. Multiple background-agent chat sessions
  *   are fully supported and process in parallel. Ralph grilling phase uses `mode='ask'`
  *   and stays in the shared lane.

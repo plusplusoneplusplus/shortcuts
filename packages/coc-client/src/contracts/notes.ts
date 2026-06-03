@@ -241,7 +241,7 @@ export type CreateNoteChatResponse = EnqueueTaskResponse;
 
 export interface SendNoteCommentResolutionMessageRequest {
   content: string;
-  mode?: 'ask' | 'plan' | 'autopilot';
+  mode?: 'ask' | 'autopilot';
   noteContent: string;
   documentUri: string;
   commentIds: string[];
@@ -258,4 +258,3 @@ export interface NoteEditSnapshot {
   turnIndex: number;
   tooLarge?: boolean;
 }
-

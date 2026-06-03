@@ -1,7 +1,7 @@
 export type ScheduleStatus = 'active' | 'paused' | 'stopped' | string;
 export type ScheduleOnFailure = 'notify' | 'stop' | string;
 export type ScheduleTargetType = 'prompt' | 'script';
-export type ScheduleMode = 'ask' | 'plan' | 'autopilot';
+export type ScheduleMode = 'ask' | 'autopilot';
 export type ScheduleSource = 'user' | 'repo';
 
 export interface Schedule {

@@ -35,6 +35,8 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | DELETE | `/api/workspaces/:id` | Unregister workspace |
 | GET | `/api/workspaces/:id/preferences` | Per-repo preferences |
 | PATCH | `/api/workspaces/:id/preferences` | Update per-repo preferences |
+| GET | `/api/workspaces/:id/instructions` | List custom instruction files for active modes: base, Ask, and Autopilot |
+| GET/PUT/DELETE | `/api/workspaces/:id/instructions/:mode` | Read, update, or delete one custom instruction file. Active modes are `base`, `ask`, and `autopilot`; legacy `plan` route inputs are accepted as an Ask alias. |
 | GET | `/api/workspaces/:id/summary` | Aggregated workspace summary |
 | GET | `/api/workspaces/:id/endev/status` | Cached EnDev xDPU eligibility status; `?refresh=true` revalidates |
 | POST | `/api/workspaces/:id/endev/revalidate` | Force EnDev xDPU eligibility revalidation |
@@ -60,7 +62,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | GET | `/api/processes` | List processes (with search/filter) |
 | GET | `/api/processes/:id` | Process detail |
 | DELETE | `/api/processes/:id` | Delete process |
-| POST | `/api/processes/:id/message` | Follow-up message. Body accepts `content`, optional `mode`, `deliveryMode`, `images`, `skillNames`, `model`, and `reasoningEffort` (`'low'\|'medium'\|'high'\|'xhigh'`) for a per-turn override. |
+| POST | `/api/processes/:id/message` | Follow-up message. Body accepts `content`, optional `mode` (`ask` or `autopilot`; legacy `plan` is accepted as Ask), `deliveryMode`, `images`, `skillNames`, `model`, and `reasoningEffort` (`'low'\|'medium'\|'high'\|'xhigh'`) for a per-turn override. |
 | POST | `/api/processes/:id/cancel` | Cancel running process |
 | POST | `/api/processes/:id/promote-to-ralph` | Promote completed ask-mode chat to Ralph session (see [ralph.md](ralph.md)) |
 | PATCH | `/api/processes/:id/pin` | Pin/unpin process |
@@ -77,10 +79,10 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 |--------|------|-------------|
 | GET | `/api/queue` | List queue tasks |
 | GET | `/api/queue/models` | List model IDs for the configured default provider |
-| POST | `/api/queue` | Enqueue a task |
-| POST | `/api/workspaces/:id/queue/generate` | Enqueue a Generate Plan chat task. Body accepts optional `provider`, `model`, and `reasoningEffort` overrides, which are validated through the shared chat queue validation path. |
-| DELETE | `/api/queue/:id` | Remove from queue |
-| POST | `/api/queue/:id/cancel` | Cancel queued task |
+| GET | `/api/queue/:id` | Get a single queue task, falling back to reconstructed process history for completed/historical chat tasks when available |
+| POST | `/api/queue` | Enqueue a task. Chat payloads use `mode='ask'`, `mode='autopilot'`, or internal Ralph routing; legacy `mode='plan'` is accepted and normalized to Ask. Body `config.effortTier` accepts `low`, `medium`, or `high`; the server resolves it to `config.model` and `config.reasoningEffort` from the active provider's stored/default tier map, while explicit `config.model` and `config.reasoningEffort` take precedence and `effortTier` is not stored. |
+| POST | `/api/workspaces/:id/queue/generate` | Enqueue a Generate Plan chat task using Ask semantics. Body accepts optional `provider`, `model`, and `reasoningEffort` overrides, which are validated through the shared chat queue validation path. |
+| DELETE | `/api/queue/:id` | Cancel a queued or running task |
 | PATCH | `/api/queue/pause` | Pause/resume queue |
 
 ## Ralph Sessions
@@ -89,7 +91,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 |--------|------|-------------|
 | POST | `/api/processes/:id/ralph-start` | Start Ralph execution after grilling. Body accepts optional `provider`, `config.model`, and `config.reasoningEffort` overrides for the first execution task. |
 | POST | `/api/ralph-launch` | Direct Ralph launch (skip grilling). Body accepts optional `provider`, `config.model`, and `config.reasoningEffort` overrides for the first execution task. |
-| GET | `/api/workspaces/:wsId/ralph-sessions/:sessionId` | Read session journal (record + progress sections) |
+| GET | `/api/workspaces/:wsId/ralph-sessions/:sessionId` | Read session journal (`record`, parsed progress `sections`, and alphabetically ordered raw session `files`) |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/continue` | Extend completed session (CAP_REACHED or NO_SIGNAL) by N iterations |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/new-loop` | New goal loop after RALPH_COMPLETE |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/resume` | Resume stuck executing session (no in-flight task) |
@@ -104,6 +106,8 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | DELETE | `/api/schedules/:id` | Delete schedule |
 | POST | `/api/schedules/:id/run` | Trigger immediate run |
 | GET | `/api/schedules/:id/runs` | Run history |
+
+Prompt schedules expose Ask and Autopilot modes. Stored or incoming schedule entries with `mode='plan'` are read as Ask at runtime; no schedule data migration is required.
 
 ## Tasks
 
@@ -241,12 +245,22 @@ See [mcp-settings.md](mcp-settings.md).
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/workspaces/:id/work-items` | List work items |
-| POST | `/api/workspaces/:id/work-items` | Create work item |
+| GET | `/api/workspaces/:id/work-items` | List work items. Supports standard field filters plus `tracker=local-only\|github-backed`, which filters by inherited Epic-rooted tracker identity. |
+| POST | `/api/workspaces/:id/work-items` | Create work item. Root Epic payloads may include `tracker` metadata; absent tracker metadata is treated as `local-only`. Creating a child under a GitHub-backed Epic tree creates the GitHub issue first, encodes the parent via hidden body metadata, then stores `githubMirror` metadata on the local item. Legacy `syncLinks` payloads are rejected. |
 | GET | `/api/workspaces/:id/work-items/:itemId` | Read work item |
-| PATCH | `/api/workspaces/:id/work-items/:itemId` | Update work item |
+| PATCH | `/api/workspaces/:id/work-items/:itemId` | Update work item. `tracker` metadata is accepted only on root Epic items. Legacy `syncLinks` payloads are rejected. |
 | DELETE | `/api/workspaces/:id/work-items/:itemId` | Delete work item |
 | POST | `/api/workspaces/:id/work-items/:itemId/execute` | Enqueue a work-item implementation run. Body accepts optional `skillNames`, `provider`, `model`, and `reasoningEffort` overrides. |
+| POST | `/api/workspaces/:id/work-items/:itemId/sync-from-github` | Re-pull a GitHub-backed root Epic from the workspace-configured GitHub repo. GitHub-owned fields are overwritten, local execution/lifecycle fields are preserved, mirrored descendants missing from the freshly discovered metadata subtree are deleted, and a deleted GitHub root issue deletes the local mirror tree. |
+| POST | `/api/workspaces/:id/work-items/:itemId/convert-to-github` | Convert a local-only root Epic tree to GitHub-backed tracking by creating GitHub issues for the root and each descendant in the workspace-configured repo, encoding parent links in hidden body metadata, and storing mirror metadata locally. |
+| POST | `/api/workspaces/:id/work-items/:itemId/convert-to-local` | Detach a GitHub-backed root Epic tree into local-only tracking by removing GitHub mirror metadata from the root and descendants while preserving local lifecycle status, plans, execution history, runs, and commits. |
+| GET | `/api/workspaces/:id/work-items/tree` | Read the hierarchy tree. Supports `tracker=local-only\|github-backed`; descendants inherit the tracker identity of their root Epic. |
+| POST | `/api/workspaces/:id/work-items/import-from-github` | Import an existing GitHub Epic issue from the workspace-configured repository. Body accepts either `issueNumber` or `issueUrl`; URL owner/repo must match the workspace-configured repo. The server pulls the root issue plus descendants discovered from hidden `coc-work-item-sync` parent metadata into a local read mirror and returns the root Epic work item. |
+| GET | `/api/workspaces/:id/work-items/sync/status` | GitHub tracker provider status. Returns disabled reasons unless both `workItems.hierarchy.enabled` and `workItems.sync.enabled` are true; without a `provider` query it reports all supported providers. Provider credentials remain external. |
+
+Work items use Epic-rooted tracker identity. A root Epic may carry `tracker: { kind: 'local-only' }` or `tracker: { kind: 'github-backed', provider: 'github', github: { issueId?, issueNumber?, issueUrl?, lastPulledAt? } }`; descendants inherit the root identity for listing and tree filtering. Tracker metadata is not valid on non-root items. GitHub-backed mirror items carry `githubMirror: { issueId?, issueNumber, issueUrl?, state?, updatedAt?, lastPulledAt? }` so each local item can be matched to its GitHub issue while sync ownership remains rooted at the Epic; the public work-item contract does not expose per-item `syncLinks`. Local-only root Epics can be converted to GitHub-backed trees, which creates one GitHub issue per local item using the workspace-configured repo and hidden body metadata for parent links; GitHub-backed roots can be converted back to local-only by dropping mirror metadata locally without deleting remote issues. GitHub-owned mirror fields are title, description, type, parent, tags, and issue open/closed state; CoC lifecycle status, plans, execution history, runs, and commits remain local. Legacy persisted `syncLinks` are migrated on read when they can be rooted at a GitHub-backed Epic: the root link becomes Epic tracker metadata, item links become `githubMirror`, and `syncLinks` are removed from stored detail/index data. GitHub issue mapping owns only `coc:` labels (`coc:type:*`, `coc:status:*`, `coc:priority:*`) and the hidden `<!-- coc-work-item-sync {json} -->` metadata block; non-`coc:` issue labels remain user labels/tags. GitHub-backed Epic roots are also pulled by a background poller. Per-workspace preferences under `workItems.sync.github` support `owner`, `repo`, `pollingEnabled` (default `true`), and `pollIntervalMinutes` (default `5`, range `1..1440`); polling scans only workspaces with imported GitHub-backed Epic roots and uses the same GitHub→local mirror logic as manual re-pull.
+
+The sync route layer retains provider status for GitHub availability checks while Epic-rooted operations use explicit import, pull, and conversion endpoints. GitHub Issues is registered by default and uses external authentication through `gh`/environment-backed GitHub auth without persisting tokens; its status adapter resolves workspace owner/repo and reports provider availability. Azure Boards is reserved and appears in provider status as planned/unavailable.
 
 ### AI Authoring (gated by `workItems.aiAuthoring` flag, default `false`)
 

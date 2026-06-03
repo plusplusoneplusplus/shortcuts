@@ -40,7 +40,7 @@ describe('RepoDetail SUB_TABS', () => {
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['chats', 'git', 'terminal', 'work-items', 'schedules', 'explorer', 'workflows', 'pull-requests', 'tasks', 'notes', 'settings', 'wiki']);
+        expect(keys).toEqual(['chats', 'git', 'terminal', 'work-items', 'pull-requests', 'explorer', 'workflows', 'schedules', 'tasks', 'notes', 'settings', 'wiki']);
     });
 
     it('includes "wiki" entry without a shortcut', () => {
@@ -75,7 +75,7 @@ describe('RepoDetail VISIBLE_SUB_TABS', () => {
 
     it('contains all non-wiki tabs in order', () => {
         const keys = VISIBLE_SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['chats', 'git', 'terminal', 'work-items', 'schedules', 'explorer', 'workflows', 'pull-requests', 'tasks', 'notes', 'settings']);
+        expect(keys).toEqual(['chats', 'git', 'terminal', 'work-items', 'pull-requests', 'explorer', 'workflows', 'schedules', 'tasks', 'notes', 'settings']);
     });
 
     it('renders visibleSubTabs.map in the tab strip', () => {

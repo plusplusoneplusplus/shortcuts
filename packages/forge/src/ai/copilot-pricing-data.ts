@@ -202,6 +202,18 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
         source: COPILOT_PRICING_SOURCE,
     },
     {
+        modelId: 'claude-opus-4.8',
+        displayName: 'Claude Opus 4.8',
+        provider: 'anthropic',
+        releaseStatus: 'GA',
+        category: 'Powerful',
+        usdPerMillionInputTokens: 5,
+        usdPerMillionCachedInputTokens: 0.5,
+        usdPerMillionCacheWriteTokens: 6.25,
+        usdPerMillionOutputTokens: 25,
+        source: COPILOT_PRICING_SOURCE,
+    },
+    {
         modelId: 'gemini-2.5-pro',
         displayName: 'Gemini 2.5 Pro',
         provider: 'google',

@@ -18,6 +18,7 @@ import type { ConversationTurn } from '@plusplusoneplusplus/forge';
 import { FileProcessStore, SqliteProcessStore, SqliteQueueStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
+import type { CLIConfig } from '../../src/config';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -113,9 +114,16 @@ describe('Queue Handler', () => {
         fs.rmSync(dataDir, { recursive: true, force: true });
     });
 
-    async function startServer(): Promise<ExecutionServer> {
+    async function startServer(fileConfig?: CLIConfig): Promise<ExecutionServer> {
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({
+            port: 0,
+            host: 'localhost',
+            store,
+            dataDir,
+            fileConfig,
+            configPath: fileConfig ? path.join(dataDir, 'config.yaml') : undefined,
+        });
         return server;
     }
 
@@ -180,6 +188,69 @@ describe('Queue Handler', () => {
             expect(body.task.priority).toBe('low');
         });
 
+        it('should resolve config.effortTier to model and reasoningEffort before storing', async () => {
+            const srv = await startServer({
+                models: {
+                    providers: {
+                        copilot: {
+                            effortTiers: {
+                                high: { model: 'configured-high-model', reasoningEffort: 'xhigh' },
+                            },
+                        },
+                    },
+                },
+            });
+
+            const res = await postJSON(`${srv.url}/api/queue`, makeTask({
+                config: { effortTier: 'high' },
+            }));
+
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.config.model).toBe('configured-high-model');
+            expect(body.task.config.reasoningEffort).toBe('xhigh');
+            expect(body.task.config.effortTier).toBeUndefined();
+        });
+
+        it('should preserve explicit model and reasoningEffort when effortTier is also supplied', async () => {
+            const srv = await startServer({
+                models: {
+                    providers: {
+                        copilot: {
+                            effortTiers: {
+                                high: { model: 'configured-high-model', reasoningEffort: 'xhigh' },
+                            },
+                        },
+                    },
+                },
+            });
+
+            const res = await postJSON(`${srv.url}/api/queue`, makeTask({
+                config: {
+                    effortTier: 'high',
+                    model: 'explicit-model',
+                    reasoningEffort: 'low',
+                },
+            }));
+
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.config.model).toBe('explicit-model');
+            expect(body.task.config.reasoningEffort).toBe('low');
+            expect(body.task.config.effortTier).toBeUndefined();
+        });
+
+        it('should reject invalid config.effortTier values', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, makeTask({
+                config: { effortTier: 'ultra' },
+            }));
+
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).error).toContain('Invalid effortTier');
+        });
+
         it('should default to normal priority for invalid values', async () => {
             const srv = await startServer();
 
@@ -242,7 +313,7 @@ describe('Queue Handler', () => {
             expect(body.task.payload.mode).toBe('autopilot');
         });
 
-        it('should enqueue chat type with plan mode', async () => {
+        it('should normalize legacy plan mode to ask when enqueueing chat type', async () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue`, makeTask({
@@ -252,7 +323,7 @@ describe('Queue Handler', () => {
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
             expect(body.task.type).toBe('chat');
-            expect(body.task.payload.mode).toBe('plan');
+            expect(body.task.payload.mode).toBe('ask');
         });
 
         it('should enqueue chat type', async () => {

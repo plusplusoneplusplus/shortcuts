@@ -5,7 +5,7 @@
  * plan-file task groups in the Activity tab. Covers:
  *   - `computeAggregateMode` (uniform / mixed / empty / non-chat children)
  *   - Render: data-testid + data-* attribute contract
- *   - Mode pill label + tooltip (PLAN/AUTO/ASK/SCRP/MIX)
+ *   - Mode pill label + tooltip (ASK/AUTO/SCRP/MIX)
  *   - Status dot color via aggregateStatus
  *   - Chevron rotation reflects expand state, click toggles + stops propagation
  *   - Failed / cancelled count badges
@@ -58,12 +58,12 @@ describe('computeAggregateMode', () => {
         expect(computeAggregateMode([])).toBe('auto');
     });
 
-    it('returns the shared mode when all chat children agree on "plan"', () => {
+    it('normalizes legacy plan children to the Ask aggregate mode', () => {
         const children = [
             makeChild({ id: 'a', type: 'chat', mode: 'plan' }),
             makeChild({ id: 'b', type: 'chat', mode: 'plan' }),
         ];
-        expect(computeAggregateMode(children)).toBe('plan');
+        expect(computeAggregateMode(children)).toBe('ask');
     });
 
     it('returns the shared mode when all chat children agree on "ask"', () => {
@@ -75,7 +75,7 @@ describe('computeAggregateMode', () => {
     });
 
     it('returns "auto" when all chat children have mode "autopilot" or unset', () => {
-        // The frontend convention: anything that is not ask/plan on a chat task
+        // The frontend convention: anything that is not ask on a chat task
         // is treated as autopilot.
         const children = [
             makeChild({ id: 'a', type: 'chat', mode: 'autopilot' }),
@@ -92,10 +92,10 @@ describe('computeAggregateMode', () => {
         expect(computeAggregateMode(children)).toBe('script');
     });
 
-    it('returns "mixed" when children disagree on mode (ask vs plan)', () => {
+    it('returns "mixed" when children disagree on mode (ask vs autopilot)', () => {
         const children = [
             makeChild({ id: 'a', type: 'chat', mode: 'ask' }),
-            makeChild({ id: 'b', type: 'chat', mode: 'plan' }),
+            makeChild({ id: 'b', type: 'chat', mode: 'autopilot' }),
         ];
         expect(computeAggregateMode(children)).toBe('mixed');
     });
@@ -122,7 +122,7 @@ describe('computeAggregateMode', () => {
     it('treats a single child group as that child\'s mode', () => {
         // Sanity: degenerate one-child group still returns the child's mode.
         const children = [makeChild({ id: 'a', type: 'chat', mode: 'plan' })];
-        expect(computeAggregateMode(children)).toBe('plan');
+        expect(computeAggregateMode(children)).toBe('ask');
     });
 });
 
@@ -141,7 +141,7 @@ describe('HistoryGroupHeader render', () => {
             <HistoryGroupHeader
                 group={props.group ?? defaultGroup}
                 isExpanded={props.isExpanded ?? false}
-                aggregateMode={props.aggregateMode ?? 'plan'}
+                aggregateMode={props.aggregateMode ?? 'ask'}
                 onToggle={props.onToggle ?? onToggle}
                 onContextMenu={props.onContextMenu ?? onContextMenu}
                 isSelected={props.isSelected}
@@ -161,7 +161,7 @@ describe('HistoryGroupHeader render', () => {
     it('exposes data-plan-file, data-aggregate-mode, data-aggregate-status, data-expanded', () => {
         renderHeader({
             isExpanded: true,
-            aggregateMode: 'plan',
+            aggregateMode: 'ask',
             group: makeGroup({
                 planFilePath: '/repo/foo.plan.md',
                 aggregateStatus: 'failed',
@@ -170,7 +170,7 @@ describe('HistoryGroupHeader render', () => {
         });
         const header = screen.getByTestId('history-group-header');
         expect(header.getAttribute('data-plan-file')).toBe('/repo/foo.plan.md');
-        expect(header.getAttribute('data-aggregate-mode')).toBe('plan');
+        expect(header.getAttribute('data-aggregate-mode')).toBe('ask');
         expect(header.getAttribute('data-aggregate-status')).toBe('failed');
         expect(header.getAttribute('data-expanded')).toBe('true');
     });
@@ -201,7 +201,6 @@ describe('HistoryGroupHeader render', () => {
     // Mode pill labels ─────────────────────────────────────────────────
     const modeCases: Array<{ mode: GroupAggregateMode; label: string }> = [
         { mode: 'ask', label: 'ASK' },
-        { mode: 'plan', label: 'PLAN' },
         { mode: 'auto', label: 'AUTO' },
         { mode: 'script', label: 'SCRP' },
         { mode: 'mixed', label: 'MIX' },
@@ -228,16 +227,16 @@ describe('HistoryGroupHeader render', () => {
         const mixSpan = screen.getByText('MIX');
         const tooltip = mixSpan.getAttribute('title') ?? '';
         expect(tooltip).toContain('Mixed modes');
-        // Tooltip surfaces every distinct mode + its child count
-        expect(tooltip).toContain('2 PLAN');
+        // Tooltip surfaces every distinct normalized mode + its child count.
+        expect(tooltip).not.toContain('PLAN');
         expect(tooltip).toContain('1 AUTO');
-        expect(tooltip).toContain('1 ASK');
+        expect(tooltip).toContain('3 ASK');
     });
 
     it('mode pill tooltip describes uniform mode in human-readable form', () => {
-        renderHeader({ aggregateMode: 'plan' });
-        const planSpan = screen.getByText('PLAN');
-        expect(planSpan.getAttribute('title')).toContain('proposes changes');
+        renderHeader({ aggregateMode: 'ask' });
+        const askSpan = screen.getByText('ASK');
+        expect(askSpan.getAttribute('title')).toContain('read-only');
     });
 
     // Chevron behaviour ────────────────────────────────────────────────

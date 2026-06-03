@@ -7,6 +7,7 @@ import { type ReactNode } from 'react';
 import { cn } from '../../ui';
 import type { WorkItemTreeNode } from '@plusplusoneplusplus/coc-client';
 import { formatRelativeTime } from '../../utils/format';
+import { WorkItemGitHubMirrorBadge } from './WorkItemGitHubMirrorBadge';
 
 // ── Type display config ──────────────────────────────────────────────────────
 
@@ -78,6 +79,7 @@ export interface WorkItemHierarchyNodeProps {
     onAddChild?: (node: WorkItemTreeNode) => void;
     /** When true the '+' add-child button is always visible (no hover). */
     isMobile?: boolean;
+    highlighted?: boolean;
     children?: ReactNode;
 }
 
@@ -92,6 +94,7 @@ export function WorkItemHierarchyNode({
     onContextMenu,
     onAddChild,
     isMobile = false,
+    highlighted = false,
     children,
 }: WorkItemHierarchyNodeProps) {
     const { item, rollup } = node;
@@ -117,14 +120,16 @@ export function WorkItemHierarchyNode({
                     selected
                         ? 'bg-[#ddf4ff] dark:bg-[#0969da]/20 border-[color-mix(in_srgb,#0969da_42%,#d0d7de)] dark:border-[#0969da]/40'
                         : 'hover:bg-[#f6f8fa] dark:hover:bg-[#2a2d2e] hover:border-[#eaeef2] dark:hover:border-[#3c3c3c]',
+                    highlighted && 'animate-pulse ring-2 ring-[#0078d4]/50',
                 )}
                 style={{
                     paddingLeft: `${depthPadding}px`,
-                    gridTemplateColumns: 'auto auto minmax(0, 1fr) auto',
+                    gridTemplateColumns: 'auto auto minmax(0, 1fr) auto auto',
                 }}
                 onClick={() => onSelect(item.id)}
                 onContextMenu={e => { e.preventDefault(); onContextMenu(e, node); }}
                 data-testid={`hierarchy-node-row-${item.id}`}
+                data-work-item-id={item.id}
                 type="button"
             >
                 {/* Guide line for nested depth */}
@@ -178,6 +183,12 @@ export function WorkItemHierarchyNode({
                         {' ago'}
                     </span>
                 </span>
+
+                <WorkItemGitHubMirrorBadge
+                    mirror={item.githubMirror}
+                    compact
+                    data-testid={`hierarchy-node-github-mirror-badge-${item.id}`}
+                />
 
                 {/* Rollup summary for containers */}
                 {isContainer && rollup.descendantCount > 0 && (

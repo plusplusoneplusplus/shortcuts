@@ -61,6 +61,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.terminal).toEqual({ enabled: true });
             expect(DEFAULT_CONFIG.scratchpad).toEqual({ enabled: true, layout: 'vertical' });
             expect(DEFAULT_CONFIG.workflows).toEqual({ enabled: false });
+            expect(DEFAULT_CONFIG.workItems.sync.enabled).toBe(false);
         });
 
         it('should default terminal feature to enabled', () => {
@@ -473,6 +474,33 @@ timeout: 300
             expect(result.workflows.enabled).toBe(false);
         });
 
+        it('should preserve provider-scoped model settings', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, {
+                models: {
+                    enabled: ['legacy-model'],
+                    reasoningEfforts: { 'legacy-model': 'high' },
+                    providers: {
+                        copilot: {
+                            enabled: ['copilot-model'],
+                            reasoningEfforts: { 'copilot-model': 'low' },
+                            effortTiers: {
+                                high: { model: 'configured-high-model', reasoningEffort: 'xhigh' },
+                            },
+                        },
+                    },
+                },
+            });
+
+            expect(result.models?.enabled).toEqual(['legacy-model']);
+            expect(result.models?.reasoningEfforts).toEqual({ 'legacy-model': 'high' });
+            expect(result.models?.providers?.copilot?.enabled).toEqual(['copilot-model']);
+            expect(result.models?.providers?.copilot?.reasoningEfforts).toEqual({ 'copilot-model': 'low' });
+            expect(result.models?.providers?.copilot?.effortTiers?.high).toEqual({
+                model: 'configured-high-model',
+                reasoningEffort: 'xhigh',
+            });
+        });
+
         it('should override workflows.enabled from file', () => {
             const result = mergeConfig(DEFAULT_CONFIG, { workflows: { enabled: true } });
             expect(result.workflows.enabled).toBe(true);
@@ -832,6 +860,8 @@ timeout: 300
                 '    enabled: true',
                 '  hierarchy:',
                 '    enabled: true',
+                '  sync:',
+                '    enabled: true',
                 'effortLevels:',
                 '  enabled: true',
             ].join('\n'));
@@ -1083,6 +1113,9 @@ timeout: 300
                       "enabled": false,
                     },
                     "hierarchy": {
+                      "enabled": true,
+                    },
+                    "sync": {
                       "enabled": false,
                     },
                   },
@@ -1140,6 +1173,7 @@ timeout: 300
                   "vimNavigation.enabled": "file",
                   "workItems.aiAuthoring.enabled": "default",
                   "workItems.hierarchy.enabled": "default",
+                  "workItems.sync.enabled": "default",
                   "workflows.enabled": "file",
                 },
               }

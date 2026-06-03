@@ -92,7 +92,7 @@ export function createAskUserTool(deps: AskUserToolDeps) {
             'Ask the user one or more questions and wait for their responses. Use this when you need ' +
             'clarification, confirmation, or choices from the user before proceeding. ' +
             'Questions render together as one interactive UI widget. ' +
-            'IMPORTANT: Only use this in interactive (ask/plan) mode, never in autopilot.',
+            'IMPORTANT: Only use this in interactive Ask or Ralph contexts, never in autopilot.',
         parameters: {
             type: 'object' as const,
             properties: {

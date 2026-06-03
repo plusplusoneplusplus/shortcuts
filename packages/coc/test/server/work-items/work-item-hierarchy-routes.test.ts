@@ -137,6 +137,102 @@ describe('Work Item Hierarchy Routes', () => {
             expect(res.body.roots[0].children).toEqual([]);
         });
 
+        it('preserves epic-rooted tracker metadata on tree nodes', async () => {
+            const itemRes = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Imported GitHub epic',
+                type: 'epic',
+                tracker: {
+                    kind: 'github-backed',
+                    provider: 'github',
+                    github: {
+                        issueNumber: 42,
+                        issueUrl: 'https://github.com/org/repo/issues/42',
+                        lastPulledAt: '2026-01-02T00:00:00.000Z',
+                    },
+                },
+            });
+            expect(itemRes.status).toBe(201);
+
+            const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items/tree`);
+            expect(res.status).toBe(200);
+            expect(res.body.roots).toHaveLength(1);
+            expect(res.body.roots[0].item.tracker).toEqual({
+                kind: 'github-backed',
+                provider: 'github',
+                github: {
+                    issueNumber: 42,
+                    issueUrl: 'https://github.com/org/repo/issues/42',
+                    lastPulledAt: '2026-01-02T00:00:00.000Z',
+                },
+            });
+        });
+
+        it('rejects tracker metadata on non-root work items', async () => {
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Not an epic root',
+                type: 'work-item',
+                tracker: {
+                    kind: 'github-backed',
+                    provider: 'github',
+                    github: { issueNumber: 42 },
+                },
+            });
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('root epic');
+        });
+
+        it('filters tree by inherited epic-rooted tracker kind', async () => {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                id: 'local-epic',
+                title: 'Local Epic',
+                type: 'epic',
+            });
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                id: 'local-feature',
+                title: 'Local Feature',
+                type: 'feature',
+                parentId: 'local-epic',
+            });
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                id: 'github-epic',
+                title: 'GitHub Epic',
+                type: 'epic',
+                tracker: {
+                    kind: 'github-backed',
+                    provider: 'github',
+                    github: { issueNumber: 101 },
+                },
+            });
+            await store.addWorkItem({
+                id: 'github-feature',
+                repoId: REPO_ID,
+                title: 'GitHub Feature',
+                description: '',
+                status: 'created',
+                type: 'feature',
+                parentId: 'github-epic',
+                githubMirror: { issueNumber: 102 },
+                createdAt: '2026-01-01T00:00:00.000Z',
+                updatedAt: '2026-01-01T00:00:00.000Z',
+                source: 'manual',
+            });
+
+            const githubRes = await request('GET', `/api/workspaces/${REPO_ID}/work-items/tree?tracker=github-backed`);
+            expect(githubRes.status).toBe(200);
+            expect(githubRes.body.roots).toHaveLength(1);
+            expect(githubRes.body.roots[0].item.id).toBe('github-epic');
+            expect(githubRes.body.roots[0].children[0].item.id).toBe('github-feature');
+            expect(githubRes.body.total).toBe(2);
+
+            const localRes = await request('GET', `/api/workspaces/${REPO_ID}/work-items/tree?tracker=local-only`);
+            expect(localRes.status).toBe(200);
+            expect(localRes.body.roots).toHaveLength(1);
+            expect(localRes.body.roots[0].item.id).toBe('local-epic');
+            expect(localRes.body.roots[0].children[0].item.id).toBe('local-feature');
+            expect(localRes.body.total).toBe(2);
+        });
+
         it('builds a nested tree: epic → feature → pbi → work-item', async () => {
             const epicRes = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
                 title: 'My Epic',

@@ -844,9 +844,29 @@ describe('parseRalphSessionDeepLink', () => {
             .toEqual({ workspaceId: 'ws-1', sessionId: 'sess-42' });
     });
 
+    it('parses a bare session URL without a selected file', () => {
+        expect(parseRalphSessionDeepLink('#repos/ws-1/activity/ralph/sess-42'))
+            .toEqual({ workspaceId: 'ws-1', sessionId: 'sess-42' });
+    });
+
+    it('treats a trailing slash after the session URL as no selected file', () => {
+        expect(parseRalphSessionDeepLink('#repos/ws-1/activity/ralph/sess-42/'))
+            .toEqual({ workspaceId: 'ws-1', sessionId: 'sess-42' });
+    });
+
+    it('parses an optional selected filename after the session id', () => {
+        expect(parseRalphSessionDeepLink('#repos/ws-1/activity/ralph/sess-42/progress.md'))
+            .toEqual({ workspaceId: 'ws-1', sessionId: 'sess-42', fileName: 'progress.md' });
+    });
+
     it('decodes URL-encoded session ids and workspace ids', () => {
         expect(parseRalphSessionDeepLink('#repos/ws%201/chats/ralph/sess%2F42'))
             .toEqual({ workspaceId: 'ws 1', sessionId: 'sess/42' });
+    });
+
+    it('decodes URL-encoded selected filenames', () => {
+        expect(parseRalphSessionDeepLink('#repos/ws%201/chats/ralph/sess%2F42/session%20data.json'))
+            .toEqual({ workspaceId: 'ws 1', sessionId: 'sess/42', fileName: 'session data.json' });
     });
 
     it('returns null when the ralph segment is missing', () => {

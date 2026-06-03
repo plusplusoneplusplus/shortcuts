@@ -18,6 +18,7 @@ const WORK_ITEMS_DIR = path.join(REACT_SRC, 'features', 'work-items');
 
 const NODE_SRC_PATH = path.join(WORK_ITEMS_DIR, 'WorkItemHierarchyNode.tsx');
 const TREE_SRC_PATH = path.join(WORK_ITEMS_DIR, 'WorkItemHierarchyTree.tsx');
+const GITHUB_MIRROR_BADGE_SRC_PATH = path.join(WORK_ITEMS_DIR, 'WorkItemGitHubMirrorBadge.tsx');
 const PICKER_SRC_PATH = path.join(WORK_ITEMS_DIR, 'WorkItemParentPicker.tsx');
 const DETAIL_SRC_PATH = path.join(WORK_ITEMS_DIR, 'WorkItemDetail.tsx');
 const TAB_SRC_PATH = path.join(WORK_ITEMS_DIR, 'WorkItemsTab.tsx');
@@ -73,6 +74,12 @@ describe('WorkItemHierarchyNode — type system', () => {
     it('renders rollup count summary', () => {
         expect(src).toContain('rollup');
         expect(src).toContain('descendantCount');
+    });
+
+    it('renders a compact GitHub mirror badge for mirrored rows', () => {
+        expect(src).toContain('WorkItemGitHubMirrorBadge');
+        expect(src).toContain('hierarchy-node-github-mirror-badge-');
+        expect(src).toContain('mirror={item.githubMirror}');
     });
 });
 
@@ -134,6 +141,54 @@ describe('WorkItemHierarchyTree — structure', () => {
 
     it('handles disabled response from tree endpoint', () => {
         expect(src).toContain('disabled');
+    });
+});
+
+describe('WorkItemHierarchyTree — GitHub tracker workflow', () => {
+    let src: string;
+
+    beforeAll(() => {
+        src = fs.readFileSync(TREE_SRC_PATH, 'utf-8');
+    });
+
+    it('does not expose the removed per-item preview/apply toolbar', () => {
+        expect(src).not.toContain('hierarchy-sync-toolbar');
+        expect(src).not.toContain('workItems.syncPreview');
+        expect(src).not.toContain('workItems.syncApply');
+        expect(src).not.toContain('conflictResolutions');
+    });
+
+    it('uses import as the GitHub tracker seeding action', () => {
+        expect(src).toContain('onImportFromGitHub');
+        expect(src).toContain('import-from-github-btn');
+        expect(src).toContain('empty-import-from-github-btn');
+    });
+
+    it('keeps manual GitHub pulls as a per-Epic context action', () => {
+        expect(src).toContain('Sync from GitHub');
+        expect(src).toContain('workItems.syncGitHubEpic');
+        expect(src).toContain("node.item.tracker?.kind === 'github-backed'");
+    });
+});
+
+describe('WorkItemGitHubMirrorBadge — mirrored provider badge', () => {
+    let src: string;
+
+    beforeAll(() => {
+        src = fs.readFileSync(GITHUB_MIRROR_BADGE_SRC_PATH, 'utf-8');
+    });
+
+    it('renders GitHub mirror metadata as external anchors when requested', () => {
+        expect(src).toContain('WorkItemGitHubMirrorMetadata');
+        expect(src).toContain('href={mirror.issueUrl}');
+        expect(src).toContain('rel="noreferrer"');
+    });
+
+    it('surfaces open/closed mirror state without conflict-resolution UI', () => {
+        expect(src).toContain("state === 'closed'");
+        expect(src).not.toContain('conflict');
+        expect(src).not.toContain('dirty');
+        expect(src).not.toMatch(/token|secret|password|credential/i);
     });
 });
 
@@ -227,6 +282,13 @@ describe('WorkItemDetail — container vs leaf', () => {
         expect(src).toContain('Parent');
     });
 
+    it('shows GitHub mirror badges and links in the detail panel', () => {
+        expect(src).toContain('WorkItemGitHubMirrorBadge');
+        expect(src).toContain('work-item-github-mirror-badge');
+        expect(src).toContain('work-item-github-mirror');
+        expect(src).not.toContain('work-item-sync-links');
+    });
+
     it('does not auto-execute containers (autoExecute hidden)', () => {
         // The auto-execute toggle should be guarded by !isContainer
         const autoExecutePos = src.indexOf('autoExecute');
@@ -276,6 +338,50 @@ describe('WorkItemsTab — hierarchy flag conditional', () => {
     it('has createDialogParentId state for hierarchy child creation', () => {
         expect(src).toContain('createDialogParentId');
         expect(src).toContain('setCreateDialogParentId');
+    });
+
+    it('passes import and highlight props to WorkItemHierarchyTree', () => {
+        const treeIdx = src.indexOf('<WorkItemHierarchyTree');
+        expect(treeIdx).toBeGreaterThan(-1);
+        const treeBlock = src.slice(treeIdx, src.indexOf('/>', treeIdx) + 2);
+        expect(treeBlock).toContain('onImportFromGitHub');
+        expect(treeBlock).toContain('highlightedWorkItemId={highlightedWorkItemId}');
+    });
+});
+
+describe('WorkItemsTab — Import from GitHub entry point', () => {
+    let src: string;
+
+    beforeAll(() => {
+        src = fs.readFileSync(TAB_SRC_PATH, 'utf-8');
+    });
+
+    it('uses the exact visible label in the non-hierarchy toolbar', () => {
+        const btnIdx = src.indexOf('data-testid="import-from-github-btn"');
+        expect(btnIdx).toBeGreaterThan(-1);
+        const block = src.slice(btnIdx, btnIdx + 300);
+        expect(block).toContain('Import from GitHub');
+        expect(block).not.toContain('↓ GitHub');
+    });
+});
+
+describe('WorkItemHierarchyTree — Import from GitHub entry point', () => {
+    let src: string;
+
+    beforeAll(() => {
+        src = fs.readFileSync(TREE_SRC_PATH, 'utf-8');
+    });
+
+    it('accepts and renders the standalone import action in the hierarchy toolbar', () => {
+        expect(src).toContain('onImportFromGitHub');
+        expect(src).toContain('data-testid="import-from-github-btn"');
+        expect(src).toContain('Import from GitHub');
+    });
+
+    it('scrolls highlighted imported hierarchy rows into view', () => {
+        expect(src).toContain('highlightedWorkItemId');
+        expect(src).toContain('scrollIntoView({ block: \'center\', behavior: \'smooth\' })');
+        expect(src).toContain('highlighted={highlightedWorkItemId === id}');
     });
 });
 

@@ -31,6 +31,7 @@
     "@openai/codex-sdk": "^0.133.0",
     "@plusplusoneplusplus/coc-agent-sdk": "^0.1.0",
     "@plusplusoneplusplus/coc-memory": "^0.1.0",
+    "@plusplusoneplusplus/coc-workflow": "^0.1.0",
     "@plusplusoneplusplus/coc-client": "^0.1.0",
     "@plusplusoneplusplus/forge": "^1.2.0",
     "@plusplusoneplusplus/teams-bot": "^0.1.0",

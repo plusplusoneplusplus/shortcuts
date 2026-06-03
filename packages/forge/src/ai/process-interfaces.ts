@@ -447,6 +447,12 @@ export interface AIProcess {
     tokenLimit?: number;
     /** Tokens currently occupying the session context (from session.usage_info) */
     currentTokens?: number;
+    /** Tokens occupied by the system prompt in the session context */
+    systemTokens?: number;
+    /** Tokens occupied by tool definitions in the session context */
+    toolDefinitionsTokens?: number;
+    /** Tokens occupied by conversation history in the session context */
+    conversationTokens?: number;
     /** Running total of token usage across all turns in this session */
     cumulativeTokenUsage?: TokenUsage;
 
@@ -542,6 +548,12 @@ export interface SerializedAIProcess {
     tokenLimit?: number;
     /** Tokens currently occupying the session context */
     currentTokens?: number;
+    /** Tokens occupied by the system prompt in the session context */
+    systemTokens?: number;
+    /** Tokens occupied by tool definitions in the session context */
+    toolDefinitionsTokens?: number;
+    /** Tokens occupied by conversation history in the session context */
+    conversationTokens?: number;
     /** Running total of token usage across all turns */
     cumulativeTokenUsage?: TokenUsage;
 

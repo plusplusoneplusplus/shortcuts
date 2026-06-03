@@ -86,9 +86,10 @@ interface WorkItemSectionProps {
     workspaceId: string;
     onSelectWorkItem: (id: string) => void;
     selectedWorkItemId?: string | null;
+    highlightedWorkItemId?: string | null;
 }
 
-export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkItemId }: WorkItemSectionProps) {
+export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkItemId, highlightedWorkItemId }: WorkItemSectionProps) {
     const { state, dispatch } = useWorkItems();
     const items = state.workItemsByRepo[workspaceId] || [];
     const pagination = state.paginationByRepo[workspaceId];
@@ -240,7 +241,7 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
         ];
     }, [contextMenu, handlePin, handleArchive, handleDelete]);
 
-    if (items.length === 0 && !isLoading && !searchInput) return null;
+    const shouldHideEmptySection = items.length === 0 && !isLoading && !searchInput;
 
     const toggleGroup = (status: string) =>
         setCollapsed(prev => {
@@ -277,6 +278,15 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
         : items.length;
     // Subtract archived from displayed count when hidden
     const displayCount = showArchived ? totalCount : totalCount - archivedCount;
+
+    useEffect(() => {
+        if (!highlightedWorkItemId) return;
+        const element = Array.from(document.querySelectorAll<HTMLElement>('[data-work-item-id]'))
+            .find(candidate => candidate.dataset.workItemId === highlightedWorkItemId);
+        element?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, [highlightedWorkItemId, visibleItems]);
+
+    if (shouldHideEmptySection) return null;
 
     return (
         <div data-testid="work-items-section">
@@ -371,10 +381,12 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
                                                 'p-2 cursor-pointer',
                                                 selectedWorkItemId === item.id && 'ring-2 ring-[#0078d4]',
                                                 item.archivedAt && 'opacity-50',
+                                                highlightedWorkItemId === item.id && 'animate-pulse ring-2 ring-[#0078d4]/50',
                                             )}
                                             onClick={() => onSelectWorkItem(item.id)}
                                             onContextMenu={(e) => handleContextMenu(e, item)}
                                             data-testid={`work-item-card-${item.id}`}
+                                            data-work-item-id={item.id}
                                         >
                                             <div className="flex items-center gap-1 min-w-0 text-xs">
                                                 {item.pinnedAt && (

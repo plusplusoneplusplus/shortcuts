@@ -113,5 +113,68 @@ describe('CLI', () => {
             expect(optionNames).toContain('--dry-run');
             expect(optionNames).toContain('--data-dir');
         });
+
+        it('should have queue command with submit, list, cancel, and status subcommands', () => {
+            const program = createProgram();
+            const queueCmd = program.commands.find(c => c.name() === 'queue');
+            expect(queueCmd).toBeDefined();
+
+            const submitCmd = queueCmd!.commands.find(c => c.name() === 'submit');
+            expect(submitCmd).toBeDefined();
+            const listCmd = queueCmd!.commands.find(c => c.name() === 'list');
+            expect(listCmd).toBeDefined();
+            const cancelCmd = queueCmd!.commands.find(c => c.name() === 'cancel');
+            expect(cancelCmd).toBeDefined();
+            const statusCmd = queueCmd!.commands.find(c => c.name() === 'status');
+            expect(statusCmd).toBeDefined();
+        });
+
+        it('queue submit command should have expected options', () => {
+            const program = createProgram();
+            const queueCmd = program.commands.find(c => c.name() === 'queue')!;
+            const submitCmd = queueCmd.commands.find(c => c.name() === 'submit')!;
+            const optionNames = submitCmd.options.map(o => o.long || o.short);
+            expect(optionNames).toContain('--mode');
+            expect(optionNames).toContain('--provider');
+            expect(optionNames).toContain('--effort-tier');
+            expect(optionNames).toContain('--model');
+            expect(optionNames).toContain('--reasoning-effort');
+            expect(optionNames).toContain('--workspace-id');
+            expect(optionNames).toContain('--priority');
+            expect(optionNames).toContain('--display-name');
+            expect(optionNames).toContain('--server-url');
+            expect(optionNames).toContain('--output');
+        });
+
+        it('queue list command should have expected options', () => {
+            const program = createProgram();
+            const queueCmd = program.commands.find(c => c.name() === 'queue')!;
+            const listCmd = queueCmd.commands.find(c => c.name() === 'list')!;
+            const optionNames = listCmd.options.map(o => o.long || o.short);
+            expect(optionNames).toContain('--workspace-id');
+            expect(optionNames).toContain('--repo-id');
+            expect(optionNames).toContain('--status');
+            expect(optionNames).toContain('--limit');
+            expect(optionNames).toContain('--server-url');
+            expect(optionNames).toContain('--output');
+        });
+
+        it('queue cancel command should have expected options', () => {
+            const program = createProgram();
+            const queueCmd = program.commands.find(c => c.name() === 'queue')!;
+            const cancelCmd = queueCmd.commands.find(c => c.name() === 'cancel')!;
+            const optionNames = cancelCmd.options.map(o => o.long || o.short);
+            expect(optionNames).toContain('--reason');
+            expect(optionNames).toContain('--server-url');
+        });
+
+        it('queue status command should have expected options', () => {
+            const program = createProgram();
+            const queueCmd = program.commands.find(c => c.name() === 'queue')!;
+            const statusCmd = queueCmd.commands.find(c => c.name() === 'status')!;
+            const optionNames = statusCmd.options.map(o => o.long || o.short);
+            expect(optionNames).toContain('--server-url');
+            expect(optionNames).toContain('--output');
+        });
     });
 });

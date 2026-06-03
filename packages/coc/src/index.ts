@@ -4,7 +4,7 @@
  * CoC (Copilot of Copilot) CLI Entry Point
  *
  * Standalone CLI tool for executing YAML-based AI pipelines.
- * Uses @plusplusoneplusplus/forge for pipeline execution.
+ * Uses @plusplusoneplusplus/coc-workflow for pipeline execution.
  *
  * Usage:
  *   coc run <path>       Execute a pipeline

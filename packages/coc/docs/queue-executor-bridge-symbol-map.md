@@ -39,7 +39,7 @@ the desired end-state (see `CONTEXT.md`) and its dependencies on other symbols.
 
 > **Cross-cutting note:** `buildModeSystemMessage` and `withRepoInstructions` are
 > called from both `executeFollowUp` (follow-up-executor) and the standard-chat
-> branch of `executeByType` (chat/plan/autopilot executors).  They must live in a
+> branch of `executeByType` (ask/autopilot executors).  They must live in a
 > shared module that all executor modules can import — `prompt-builder.ts` is the
 > natural home.
 
@@ -116,9 +116,9 @@ Exported.  Implements `TaskExecutor` (forge) and `QueueExecutorBridge`.
 | `extractPrompt(task)` | `executors/prompt-builder.ts` | `findContextFileSuffix`, `buildFollowPromptText` (forge) |
 | `applySkillContent(prompt, task)` | `executors/prompt-builder.ts` | — (pure transformation) |
 | `buildExecutionContext(task)` | `base-executor.ts` | `getWorkingDirectory`, `store`, `approvePermissions` |
-| `executeByType(task, prompt)` | `base-executor.ts` (dispatcher) | `executeRunPipeline`, `executeTaskGeneration`, `executeResolveComments`, `executeWithAI`, `buildFollowUpSuggestionsAddon`, `buildModeSystemMessage`, `withRepoInstructions`, `getWorkingDirectory`, `resolveSkillConfig`, `registry` |
+| `executeByType(task, prompt)` | `base-executor.ts` (dispatcher) | `TaskExecutorRegistry`, `executeRunPipeline`, `executeWithAI`, `getWorkingDirectory`, `registry` |
 | `executeWithAI(task, prompt, options)` | `base-executor.ts` | `getOrCreateSession`, `buildToolEventHandler`, `checkThrottleAndFlush`, `appendTimelineItem`, `toAgentMode`, `resolveSkillConfig`, `getWorkingDirectory`, `ImageBlobStore`, `saveImagesToTempFiles`, `cleanupTempDir` |
-| `executeTaskGeneration(task)` | `executors/plan-executor.ts` | `executeWithAI`, `resolveTaskRoot`, `resolveWorkspaceIdForPath`, `gatherFeatureContext` (forge), prompt-builder helpers (forge) |
+| `TaskGenerationExecutor.executeTask(task)` | `executors/task-generation-executor.ts` | `executeWithAI`, `resolveTaskRoot`, `resolveWorkspaceIdForPath`, `gatherFeatureContext` (forge), prompt-builder helpers (forge) |
 | `executeRunPipeline(task)` | `executors/workflow-executor.ts` | `createCLIAIInvoker`, `compileToWorkflow`/`executeWorkflow`/`flattenWorkflowResult` (forge), `store` |
 | `executeResolveComments(task)` | `executors/chat-executor.ts` | `executeWithAI`, `store`, `getWsServer`, `dataDir`, `TaskCommentsManager` |
 | `getWorkingDirectory(task)` | `base-executor.ts` | — |
@@ -149,8 +149,9 @@ Exported.  Implements `TaskExecutor` (forge) and `QueueExecutorBridge`.
 | `executors/base-executor.ts` | `TERMINAL_STATUSES`, `CHAT_MODE_TO_AGENT_MODE`, `THROTTLE_TIME_MS`, `THROTTLE_CHUNK_COUNT`, `toAgentMode`, `CLITaskExecutorOptions`, `ProcessSessionState`, `CLITaskExecutor` class (constructor, all session/stream/cancel/lifecycle methods: `setQueueManager`, `execute`, `cancel`, `cancelProcess`, `isSessionAlive`, `generateTitleIfNeeded`, `buildToolEventHandler`, `buildExecutionContext`, `executeByType`, `executeWithAI`, `getWorkingDirectory`, `resolveSkillConfig`, `resolveWorkspaceIdForPath`, `getOrCreateSession`, `cleanupSession`, `appendTimelineItem`, `checkThrottleAndFlush`, `flushConversationTurn`, `persistOutput`) |
 | `executors/prompt-builder.ts` | `buildModeSystemMessage`, `withRepoInstructions`, `extractPrompt`, `applySkillContent`, `findContextFileSuffix` |
 | `executors/follow-up-executor.ts` | `requeueForFollowUp`, `executeFollowUp`, `buildFollowUpSuggestionsAddon`, `buildConversationHistoryContext` |
-| `executors/plan-executor.ts` | `executeTaskGeneration` |
-| `executors/chat-executor.ts` | `executeResolveComments` (ask/plan/resolve-comments branch of `executeByType`) |
+| `executors/task-generation-executor.ts` | `TaskGenerationExecutor` |
+| `executors/chat-executor.ts` | ask-mode chat branch of `executeByType` |
+| `executors/resolve-comments-executor.ts` | resolve-comments branch of `executeByType` |
 | `executors/autopilot-executor.ts` | autopilot chat branch of `executeByType` (no unique private method today — dispatches through `executeWithAI`) |
 | `executors/workflow-executor.ts` | `executeRunPipeline` |
 | `executors/shell-executor.ts` | `run-script` dispatch (currently via `registry.get('run-script')` — `RunScriptStrategy` already in a separate file) |
@@ -167,7 +168,7 @@ These relationships constrain the extraction order:
    `ProcessSessionState` + `sessions` map + `getOrCreateSession` + `cleanupSession` + `appendTimelineItem` + `checkThrottleAndFlush` + `flushConversationTurn` **must all land in `base-executor.ts`** before any executor module is extracted.  No executor module may own its own streaming lifecycle.
 
 2. **`executeWithAI` is the only AI call site for chat tasks.**  
-   All of `chat-executor`, `plan-executor`, `autopilot-executor`, and `follow-up-executor` delegate to `executeWithAI` in `base-executor.ts`.  Extract `executeWithAI` before those modules.
+   All of `chat-executor`, `task-generation-executor`, `autopilot-executor`, and `follow-up-executor` delegate to `executeWithAI` in `base-executor.ts`.  Extract `executeWithAI` before those modules.
 
 3. **`buildModeSystemMessage` + `withRepoInstructions` are shared across `follow-up-executor` and all chat-mode executors.**  
    Extract `prompt-builder.ts` before extracting any chat executor.

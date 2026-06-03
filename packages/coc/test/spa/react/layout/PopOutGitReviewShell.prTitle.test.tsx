@@ -54,6 +54,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
             list: () => Promise.resolve({ providers: [] }),
             listModels: () => Promise.resolve({ models: [] }),
             getReasoningEfforts: () => Promise.resolve([]),
+            getEffortTiers: () => Promise.resolve({ effortTiers: {}, defaults: {} }),
             setEnabledModels: () => Promise.resolve(),
             setReasoningEffort: () => Promise.resolve(),
         },
@@ -126,6 +127,8 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/diffSource', 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getHostname: () => 'localhost',
     getActiveProvider: () => 'copilot',
+    getDefaultProvider: () => 'copilot',
+    isEffortLevelsEnabled: () => false,
 }));
 
 import { PopOutGitReviewShell } from '../../../../src/server/spa/client/react/layout/PopOutGitReviewShell';

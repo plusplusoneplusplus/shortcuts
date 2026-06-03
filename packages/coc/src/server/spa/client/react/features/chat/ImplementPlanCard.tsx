@@ -1,5 +1,5 @@
 /**
- * ImplementPlanCard — inline action card shown after a completed plan-mode chat.
+ * ImplementPlanCard — inline action card shown after a completed plan-file chat.
  *
  * Renders a CTA that enqueues a new autopilot task referencing the plan file.
  * When prior implementation runs exist (recorded in task metadata), a status
@@ -15,7 +15,7 @@ import { cn } from '../../ui/cn';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
-/** Persisted in `task.metadata.implementations` on the source plan-mode task. */
+/** Persisted in `task.metadata.implementations` on the source plan-file task. */
 export interface ImplementationRecord {
     processId: string;
     planFilePath: string;

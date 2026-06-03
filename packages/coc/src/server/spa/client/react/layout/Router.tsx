@@ -201,14 +201,16 @@ export function parseTasksDeepLink(hash: string): string | null {
 /**
  * Parse a Ralph workflow deep-link:
  *   `#repos/{wsId}/(activity|chats|tasks)/ralph/{sessionId}`
+ *   `#repos/{wsId}/(activity|chats|tasks)/ralph/{sessionId}/{filename}`
  *
- * Returns `{ workspaceId, sessionId }` when the hash matches, `null`
- * otherwise. The chat-surface segment is allowed to be either alias
- * (matches `parseActivityDeepLink`).
+ * Returns `{ workspaceId, sessionId, fileName? }` when the hash matches,
+ * `null` otherwise. The chat-surface segment is allowed to be either alias
+ * (matches `parseActivityDeepLink`). A trailing slash after `{sessionId}` is
+ * treated the same as the bare session URL.
  */
 export function parseRalphSessionDeepLink(
     hash: string,
-): { workspaceId: string; sessionId: string } | null {
+): { workspaceId: string; sessionId: string; fileName?: string } | null {
     const cleaned = hash.replace(/^#/, '');
     const parts = cleaned.split('/');
     if (
@@ -218,10 +220,14 @@ export function parseRalphSessionDeepLink(
         parts[3] === 'ralph' &&
         parts[4]
     ) {
-        return {
+        const parsed: { workspaceId: string; sessionId: string; fileName?: string } = {
             workspaceId: decodeURIComponent(parts[1]),
             sessionId: decodeURIComponent(parts[4]),
         };
+        if (parts[5]) {
+            parsed.fileName = decodeURIComponent(parts[5]);
+        }
+        return parsed;
     }
     return null;
 }

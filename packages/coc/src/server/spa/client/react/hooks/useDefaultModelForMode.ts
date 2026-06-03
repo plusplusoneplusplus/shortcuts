@@ -9,7 +9,7 @@
  * 4. Legacy `defaultModel` only as Copilot migration fallback
  * 5. undefined (CLI default)
  *
- * The `chatMode` parameter uses the UI chat modes ('ask' | 'plan' | 'autopilot' | 'ralph').
+ * The `chatMode` parameter uses the UI chat modes ('ask' | 'autopilot' | 'ralph').
  * 'autopilot' and 'ralph' map to the 'task' preference key.
  */
 
@@ -17,7 +17,7 @@ import { useState, useEffect } from 'react';
 import { getSpaCocClient } from '../api/cocClient';
 import { getActiveProvider } from '../utils/config';
 
-export type ChatModeForModel = 'ask' | 'plan' | 'autopilot' | 'ralph';
+export type ChatModeForModel = 'ask' | 'autopilot' | 'ralph';
 
 /** Map UI chat mode to the preference key used by the server. */
 function toPreferenceMode(chatMode: ChatModeForModel): string {

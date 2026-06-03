@@ -35,7 +35,6 @@ export interface ModePillSelectorProps {
 
 const DEFAULT_OPTIONS: readonly ModePillOption[] = [
     { value: 'ask', label: 'Ask', dotClass: 'bg-yellow-500' },
-    { value: 'plan', label: 'Plan', dotClass: 'bg-blue-500' },
     { value: 'autopilot', label: 'Autopilot', dotClass: 'bg-green-500' },
 ];
 

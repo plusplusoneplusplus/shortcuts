@@ -14,7 +14,7 @@ import type {
     ProcessStore, ProcessFilter, AIProcess, AIProcessStatus,
     CreateTaskInput, Attachment, QueuedTask, SearchFilter,
 } from '@plusplusoneplusplus/forge';
-import { deserializeProcess, PASTE_THRESHOLD, isQueueProcessId, toTaskId, toQueueProcessId } from '@plusplusoneplusplus/forge';
+import { deserializeProcess, getLogger, LogCategory, PASTE_THRESHOLD, isQueueProcessId, resolveModelForProvider, toTaskId, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import {
     sendJSON, parseBody, parseQueryParams, parseIncludeFields, stripExcludedFields,
@@ -27,6 +27,8 @@ import { processMessageAttachments } from '../core/attachment-utils';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { truncateDisplayName } from '../shared/queue-utils';
 import { prependSelectedSkillsDirective } from '../executors/prompt-builder';
+import { normalizeChatMode } from '../tasks/task-types';
+import type { ChatProvider } from '../tasks/task-types';
 import type { ApiRouteContext } from './api-shared';
 import { createRoute, asString } from './route-utils';
 
@@ -572,9 +574,9 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, new APIError(501, 'Follow-up execution not available', 'NOT_IMPLEMENTED'));
             }
 
-            // Validate optional mode override (ask | plan | autopilot)
-            const VALID_MODES = ['ask', 'plan', 'autopilot'];
-            const modeOverride: string | undefined = typeof body.mode === 'string' && VALID_MODES.includes(body.mode) ? body.mode : undefined;
+            // Validate optional mode override; legacy `plan` is accepted as Ask.
+            const normalizedMode = normalizeChatMode(body.mode);
+            const modeOverride: string | undefined = normalizedMode === 'ralph' ? undefined : normalizedMode;
 
             // Validate optional deliveryMode (immediate | enqueue), default to 'enqueue'
             const VALID_DELIVERY_MODES = ['immediate', 'enqueue'];
@@ -592,8 +594,19 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             // Read optional client-provided optimistic ID for reconciliation
             const optimisticId: string | undefined = typeof body.optimisticId === 'string' ? body.optimisticId : undefined;
 
-            // Validate optional model override
-            const modelOverride: string | undefined = typeof body.model === 'string' && body.model.trim().length > 0 ? body.model.trim() : undefined;
+            // Validate optional model override against the conversation provider.
+            const rawModelOverride: string | undefined = typeof body.model === 'string' && body.model.trim().length > 0 ? body.model.trim() : undefined;
+            const sessionProvider: ChatProvider = proc.metadata?.provider === 'codex' || proc.metadata?.provider === 'claude' || proc.metadata?.provider === 'copilot'
+                ? proc.metadata.provider
+                : 'copilot';
+            const resolvedModelOverride = resolveModelForProvider(sessionProvider, rawModelOverride);
+            if (resolvedModelOverride.coerced) {
+                getLogger().warn(
+                    LogCategory.AI,
+                    `[Process] Dropping model '${resolvedModelOverride.requestedModel}' for process ${id} because provider '${sessionProvider}' does not support it; using provider default.`,
+                );
+            }
+            const modelOverride = resolvedModelOverride.model;
 
             // Validate optional per-turn reasoning-effort override. Accepted
             // values mirror the SDK contract: low | medium | high | xhigh.
@@ -830,7 +843,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const pendingMsg = {
                 id: crypto.randomUUID(),
                 content: body.content as string,
-                mode: typeof body.mode === 'string' ? body.mode : undefined,
+                mode: normalizeChatMode(body.mode),
                 createdAt: new Date().toISOString(),
             };
 

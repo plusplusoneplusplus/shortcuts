@@ -24,11 +24,13 @@ import type {
     TurnSource,
 } from '@plusplusoneplusplus/forge';
 import type { ChatMode, ChatProvider } from '../tasks/task-types';
+import { normalizeChatModeOrDefault } from '../tasks/task-types';
 import {
     approveAllPermissions,
     getLogger,
     LogCategory,
     mergeConsecutiveContentItems,
+    resolveModelForProvider,
     resolveReasoningSelection,
 } from '@plusplusoneplusplus/forge';
 import {
@@ -52,7 +54,6 @@ import type { ChatTurnContext } from './chat-turn-context-builder';
 /** Map CoC ChatMode to SDK AgentMode for protocol-level enforcement. */
 const CHAT_MODE_TO_AGENT_MODE: Record<ChatMode, AgentMode> = {
     ask: 'interactive',
-    plan: 'plan',
     autopilot: 'autopilot',
     ralph: 'autopilot',
 };
@@ -103,7 +104,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         processId: string,
         message: string,
         attachments?: Attachment[],
-        mode?: ChatMode,
+        mode?: ChatMode | string,
         deliveryMode?: string,
         images?: string[],
         selectedSkillNames?: string[],
@@ -139,10 +140,10 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
         const workingDirectory = process.workingDirectory || this.defaultWorkingDirectory;
 
-        const previousMode = process.metadata?.mode as ChatMode | undefined;
+        const previousMode = normalizeChatModeOrDefault(process.metadata?.mode);
         let currentMode: ChatMode;
         if (mode) {
-            currentMode = mode;
+            currentMode = normalizeChatModeOrDefault(mode);
         } else {
             // Fail-loud: every enqueue site should resolve mode via
             // resolveFollowUpMode() before reaching the executor. Falling
@@ -155,13 +156,22 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             currentMode = 'ask';
         }
 
+        const processModel = typeof process.metadata?.model === 'string' ? process.metadata.model : undefined;
+        const providerModel = resolveModelForProvider(sessionProvider, model ?? processModel);
+        if (providerModel.coerced) {
+            logger.warn(
+                LogCategory.AI,
+                `[FollowUp] Dropping model '${providerModel.requestedModel}' for process ${processId} because provider '${sessionProvider}' does not support it; using provider default.`,
+            );
+        }
+
         const metadataUpdates: Record<string, unknown> = {};
         if (mode && mode !== previousMode) {
             metadataUpdates.previousMode = previousMode;
             metadataUpdates.mode = currentMode;
         }
-        if (model && model !== process.metadata?.model) {
-            metadataUpdates.model = model;
+        if ((model || processModel) && providerModel.model !== process.metadata?.model) {
+            metadataUpdates.model = providerModel.model;
         }
         if (Object.keys(metadataUpdates).length > 0) {
             await this.store.updateProcess(processId, {
@@ -179,7 +189,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             autoFolderContextForFollowUp = await this.buildAutoFolderContext(
                 workingDirectory,
                 wsId,
-                currentMode === 'plan' ? 'plan' : 'ask',
+                'ask',
             );
         }
         const notePath = process.metadata?.notePath as string | undefined;
@@ -240,7 +250,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 scheduleWakeup: loopDeps.scheduleWakeup,
                 loopTools: loopDeps.loopTools,
                 askUser: {
-                    enabled: (currentMode === 'ask' || currentMode === 'plan') && this.askUser.enabled,
+                    enabled: currentMode === 'ask' && this.askUser.enabled,
                     deps: {
                         emitQuestions: async (questionPayloads) => {
                             await this.store.updateProcess(processId, { pendingAskUser: questionPayloads });
@@ -292,12 +302,19 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 : systemMessage;
 
             const resolvedDeliveryMode = (deliveryMode === 'immediate' ? 'immediate' : 'enqueue') as DeliveryMode;
-            const processModel = typeof process.metadata?.model === 'string' ? process.metadata.model : undefined;
-            let reasoningModel = model ?? processModel;
+            let reasoningModel = providerModel.model;
             // Resolve per-repo default model when no explicit or process model is set.
             if (!reasoningModel && this.dataDir && wsId) {
                 const { resolveDefaultModel } = await import('../preferences-handler');
-                reasoningModel = resolveDefaultModel(this.dataDir, wsId, 'followUp');
+                const defaultModel = resolveDefaultModel(this.dataDir, wsId, 'followUp');
+                const resolvedDefaultModel = resolveModelForProvider(sessionProvider, defaultModel);
+                if (resolvedDefaultModel.coerced) {
+                    logger.warn(
+                        LogCategory.AI,
+                        `[FollowUp] Dropping default model '${resolvedDefaultModel.requestedModel}' for provider '${sessionProvider}'; using provider default.`,
+                    );
+                }
+                reasoningModel = resolvedDefaultModel.model;
             }
             // Resolve reasoning effort:
             //   per-turn override (from EffortPillSelector)
@@ -394,6 +411,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     timeline: followUpTimeline,
                     suggestions: pendingSuggestions,
                     tokenUsage: result.tokenUsage,
+                    ...(result.effectiveModel ? { model: result.effectiveModel } : {}),
                     ...(turnSource ? { turnSource } : {}),
                 }),
                 {
@@ -401,6 +419,9 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     additionalUpdates: (current) => {
                         const tokenLimit = result.tokenUsage?.tokenLimit ?? current.tokenLimit;
                         const currentTokens = result.tokenUsage?.currentTokens ?? current.currentTokens;
+                        const systemTokens = result.tokenUsage?.systemTokens ?? current.systemTokens;
+                        const toolDefinitionsTokens = result.tokenUsage?.toolDefinitionsTokens ?? current.toolDefinitionsTokens;
+                        const conversationTokens = result.tokenUsage?.conversationTokens ?? current.conversationTokens;
                         const prevCumulative = current.cumulativeTokenUsage;
                         const cumulativeTokenUsage = result.tokenUsage ? {
                             inputTokens: (prevCumulative?.inputTokens ?? 0) + result.tokenUsage.inputTokens,
@@ -420,8 +441,16 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                             status: 'completed' as const,
                             endTime: new Date(),
                             result: result.response || undefined,
+                            metadata: {
+                                ...(current.metadata ?? {}),
+                                type: current.metadata?.type ?? 'chat',
+                                model: result.effectiveModel,
+                            },
                             ...(tokenLimit !== undefined ? { tokenLimit } : {}),
                             ...(currentTokens !== undefined ? { currentTokens } : {}),
+                            ...(systemTokens !== undefined ? { systemTokens } : {}),
+                            ...(toolDefinitionsTokens !== undefined ? { toolDefinitionsTokens } : {}),
+                            ...(conversationTokens !== undefined ? { conversationTokens } : {}),
                             ...(cumulativeTokenUsage ? { cumulativeTokenUsage } : {}),
                         };
                     },

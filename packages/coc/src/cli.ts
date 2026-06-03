@@ -11,6 +11,7 @@ import { Command } from 'commander';
 import { executeRun } from './commands/run';
 import { executeValidate } from './commands/validate';
 import { executeList } from './commands/list';
+import { executeQueueCancel, executeQueueList, executeQueueStatus, executeQueueSubmit } from './commands/queue';
 import { resolveRunOptions, resolveListOptions, resolveServeOptions, resolveWipeDataOptions } from './commands/options-resolver';
 import { resolveConfig } from './config';
 import { setColorEnabled } from './logger';
@@ -144,6 +145,73 @@ export function createProgram(): Command {
 
             const { executeServe } = await import('./commands/serve');
             const exitCode = await executeServe(options);
+            process.exit(exitCode);
+        });
+
+    // ========================================================================
+    // coc queue
+    // ========================================================================
+
+    const queue = program
+        .command('queue')
+        .description('Submit and manage CoC server queue tasks');
+
+    queue
+        .command('submit')
+        .description('Submit a chat task to the queue')
+        .argument('[message]', 'Prompt text (reads from stdin when omitted)')
+        .option('--mode <mode>', 'Chat mode: ask, autopilot', 'autopilot')
+        .option('--provider <provider>', 'Agent provider: copilot, codex, claude')
+        .option('--effort-tier <tier>', 'Effort tier: low, medium, high')
+        .option('--model <model>', 'Explicit model override')
+        .option('--reasoning-effort <effort>', 'Reasoning effort: low, medium, high, xhigh')
+        .option('--workspace-id <id>', 'Workspace ID (defaults to the registered workspace for cwd)')
+        .option('--priority <priority>', 'Queue priority: low, normal, high', 'normal')
+        .option('--display-name <name>', 'Human-readable label for the task')
+        .option('--server-url <url>', 'CoC server URL (default: COC_SERVER_URL or http://localhost:4000)')
+        .option('-o, --output <format>', 'Output format: text, json', 'text')
+        .action(async (message: string | undefined, opts: Record<string, unknown>) => {
+            applyGlobalOptions(opts);
+            const exitCode = await executeQueueSubmit(message, opts);
+            process.exit(exitCode);
+        });
+
+    queue
+        .command('list')
+        .description('List queued and running queue tasks')
+        .option('--workspace-id <id>', 'Filter by workspace')
+        .option('--repo-id <id>', 'Filter by repo')
+        .option('--status <status>', 'Filter by status: queued, running, completed, failed, cancelled')
+        .option('--limit <n>', 'Max tasks to show', '20')
+        .option('--server-url <url>', 'CoC server URL (default: COC_SERVER_URL or http://localhost:4000)')
+        .option('-o, --output <format>', 'Output format: table, json', 'table')
+        .action(async (opts: Record<string, unknown>) => {
+            applyGlobalOptions(opts);
+            const exitCode = await executeQueueList(opts);
+            process.exit(exitCode);
+        });
+
+    queue
+        .command('cancel')
+        .description('Cancel a queued or running queue task')
+        .argument('<taskId>', 'Queue task ID to cancel')
+        .option('--reason <reason>', 'Optional cancellation reason')
+        .option('--server-url <url>', 'CoC server URL (default: COC_SERVER_URL or http://localhost:4000)')
+        .action(async (taskId: string, opts: Record<string, unknown>) => {
+            applyGlobalOptions(opts);
+            const exitCode = await executeQueueCancel(taskId, opts);
+            process.exit(exitCode);
+        });
+
+    queue
+        .command('status')
+        .description('Show the current status of a queue task')
+        .argument('<taskId>', 'Queue task ID to inspect')
+        .option('--server-url <url>', 'CoC server URL (default: COC_SERVER_URL or http://localhost:4000)')
+        .option('-o, --output <format>', 'Output format: text, json', 'text')
+        .action(async (taskId: string, opts: Record<string, unknown>) => {
+            applyGlobalOptions(opts);
+            const exitCode = await executeQueueStatus(taskId, opts);
             process.exit(exitCode);
         });
 

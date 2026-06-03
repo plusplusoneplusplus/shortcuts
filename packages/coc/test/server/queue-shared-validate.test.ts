@@ -128,6 +128,24 @@ describe('validateAndParseTask – chat kind injection (existing behavior)', () 
         expect(result.valid).toBe(true);
         expect((result.input!.payload as any).mode).toBe('ask');
     });
+
+    it('normalizes legacy plan payload.mode to ask for new chats', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello', mode: 'plan' },
+        });
+        expect(result.valid).toBe(true);
+        expect((result.input!.payload as any).mode).toBe('ask');
+    });
+
+    it('normalizes legacy plan payload.mode to ask for follow-ups', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello', processId: 'queue_xyz', mode: 'plan' },
+        });
+        expect(result.valid).toBe(true);
+        expect((result.input!.payload as any).mode).toBe('ask');
+    });
 });
 
 // ============================================================================
@@ -184,6 +202,26 @@ describe('validateAndParseTask – payload.model promotion to config.model', () 
 
         expect(result.valid).toBe(true);
         expect(result.input!.config.model).toBe('claude-sonnet-4.6');
+    });
+
+    it('drops a Claude payload model for a Codex chat task', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello', provider: 'codex', model: 'claude-opus-4.8' },
+        });
+
+        expect(result.valid).toBe(true);
+        expect(result.input!.config.model).toBeUndefined();
+    });
+
+    it('keeps a GPT payload model for a Codex chat task', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello', provider: 'codex', model: 'gpt-5.5' },
+        });
+
+        expect(result.valid).toBe(true);
+        expect(result.input!.config.model).toBe('gpt-5.5');
     });
 });
 
@@ -252,6 +290,45 @@ describe('validateAndParseTask – payload.reasoningEffort mapping', () => {
 
         expect(result.valid).toBe(true);
         expect(result.input!.config.reasoningEffort).toBe('xhigh');
+    });
+});
+
+// ============================================================================
+// config.effortTier validation
+// ============================================================================
+
+describe('validateAndParseTask – config.effortTier validation', () => {
+    it('preserves a valid effortTier for enqueue-time resolution', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'Hello', mode: 'ask' },
+            config: { effortTier: 'high' },
+        });
+
+        expect(result.valid).toBe(true);
+        expect((result.input!.config as Record<string, unknown>).effortTier).toBe('high');
+    });
+
+    it('rejects unknown effortTier values', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'Hello', mode: 'ask' },
+            config: { effortTier: 'ultra' },
+        });
+
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('Invalid effortTier');
+    });
+
+    it('rejects non-string effortTier values', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'Hello', mode: 'ask' },
+            config: { effortTier: 1 },
+        });
+
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('Invalid effortTier');
     });
 });
 

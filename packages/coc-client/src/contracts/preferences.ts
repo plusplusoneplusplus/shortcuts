@@ -54,6 +54,21 @@ export interface PerRepoPreferences {
     gitRemote?: string;
     intervalMinutes?: number;
   };
+  /** Work-item feature preferences scoped to this workspace. Never stores credentials. */
+  workItems?: {
+    sync?: {
+      github?: {
+        /** Optional non-secret owner override when origin cannot identify the GitHub repo. */
+        owner?: string;
+        /** Optional non-secret repository-name override when origin cannot identify the GitHub repo. */
+        repo?: string;
+        /** Whether background GitHub→local polling is active for imported GitHub-backed Epics. Defaults to true. */
+        pollingEnabled?: boolean;
+        /** Background GitHub→local polling cadence in minutes. Defaults to 5. */
+        pollIntervalMinutes?: number;
+      };
+    };
+  };
   [key: string]: unknown;
 }
 

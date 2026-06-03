@@ -94,6 +94,7 @@
     }
   },
   "scripts": {
+    "prebuild": "node scripts/prebuild.mjs",
     "build": "tsc",
     "test": "vitest",
     "test:run": "vitest run",
@@ -102,6 +103,7 @@
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
+    "@plusplusoneplusplus/coc-workflow": "*",
     "@plusplusoneplusplus/coc-agent-sdk": "*",
     "@github/copilot-sdk": "^0.3.0",
     "@octokit/rest": "^22.0.1",

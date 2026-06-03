@@ -1,12 +1,12 @@
 /**
  * Chat Mode Executor Unit Tests
  *
- * Tests for ChatExecutor, PlanExecutor, and AutopilotExecutor.
+ * Tests for ChatExecutor and AutopilotExecutor.
  *
  * Verified for each executor:
  * - Happy path: AI SDK called with correct agentMode, systemMessage, returns result
- * - System message: ask/plan get READ_ONLY_SYSTEM_MESSAGE, autopilot gets undefined
- * - Agent mode: ask → interactive, plan → plan, autopilot → autopilot
+ * - System message: ask gets READ_ONLY_SYSTEM_MESSAGE, autopilot gets no read-only directive
+ * - Agent mode: ask → interactive, autopilot → autopilot
  * - AI unavailability throws with helpful message
  * - AI sendMessage failure (success: false) propagates as thrown error
  * - Streaming chunks are forwarded via store.emitProcessOutput
@@ -20,7 +20,6 @@ import * as os from 'os';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
 import { READ_ONLY_SYSTEM_MESSAGE } from '@plusplusoneplusplus/forge';
 import { ChatExecutor } from '../../../src/server/executors/chat-executor';
-import { PlanExecutor } from '../../../src/server/executors/plan-executor';
 import { AutopilotExecutor } from '../../../src/server/executors/autopilot-executor';
 import { ClassificationExecutor } from '../../../src/server/executors/classification-executor';
 import type { ChatModeExecutorOptions } from '../../../src/server/executors/chat-base-executor';
@@ -89,7 +88,7 @@ function makeOptions(
     };
 }
 
-function makeChatTask(mode: 'ask' | 'plan' | 'autopilot', id = 'task-1'): QueuedTask {
+function makeChatTask(mode: 'ask' | 'autopilot', id = 'task-1'): QueuedTask {
     return {
         id,
         type: 'chat',
@@ -150,6 +149,22 @@ describe('ChatBaseExecutor provider routing', () => {
 
         expect(resolveAiServiceForProvider).toHaveBeenCalledWith('claude');
     });
+
+    it('drops cross-provider model before sending to Codex', async () => {
+        const resolveAiServiceForProvider = vi.fn().mockReturnValue(sdkMocks.service as any);
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            provider: 'copilot',
+            resolveAiServiceForProvider,
+        }));
+        const task = makeChatTask('ask', 'task-codex-model');
+        task.config = { model: 'claude-opus-4.8' } as any;
+        task.payload = { ...(task.payload as any), provider: 'codex', workspaceId: 'ws-abc' } as any;
+
+        await executor.execute(task, 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call).not.toHaveProperty('model');
+    });
 });
 
 // ============================================================================
@@ -171,13 +186,6 @@ const executors: ExecutorFactory[] = [
         expectsSystemMessage: true,
         makeExecutor: (store, overrides) => new ChatExecutor(store, makeOptions(store, overrides)),
         makeTask: (id) => makeChatTask('ask', id),
-    },
-    {
-        label: 'PlanExecutor (plan)',
-        expectedAgentMode: 'plan',
-        expectsSystemMessage: true,
-        makeExecutor: (store, overrides) => new PlanExecutor(store, makeOptions(store, overrides)),
-        makeTask: (id) => makeChatTask('plan', id),
     },
     {
         label: 'AutopilotExecutor (autopilot)',
@@ -392,7 +400,7 @@ describe('ChatExecutor system message content', () => {
     });
 });
 
-describe('PlanExecutor system message content', () => {
+describe('ChatExecutor legacy plan-mode system message content', () => {
     let store: ReturnType<typeof createMockProcessStore>;
 
     beforeEach(() => {
@@ -402,8 +410,8 @@ describe('PlanExecutor system message content', () => {
         sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1' });
     });
 
-    it('injects note-file permission block when payload has noteChat.notePath', async () => {
-        const executor = new PlanExecutor(store, makeOptions(store));
+    it('injects note-file permission block when a legacy plan payload has noteChat.notePath', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store));
         const task: QueuedTask = {
             id: 'task-plan-note',
             type: 'chat',
@@ -979,23 +987,10 @@ describe('create_work_item / create_bug tool wiring', () => {
         expect(toolNames).toContain('create_bug');
     });
 
-    it('PlanExecutor includes create_work_item and create_bug tools', async () => {
-        const executor = new PlanExecutor(store, makeOptions(store), dataDir);
-        const task = makeTaskWithWorkspace('plan', 'task-wi-plan');
-
-        await executor.execute(task, 'Hello');
-
-        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-        const toolNames = (call.tools ?? []).map((t: any) => t.name);
-        expect(toolNames).toContain('create_work_item');
-        expect(toolNames).toContain('create_bug');
-    });
-
-    it('all three executors include create_work_item and create_bug tools', async () => {
+    it('all live initial executors include create_work_item and create_bug tools', async () => {
         for (const { mode, Ctor, id } of [
             { mode: 'ask' as const, Ctor: ChatExecutor, id: 'sfx-ask' },
             { mode: 'autopilot' as const, Ctor: AutopilotExecutor, id: 'sfx-auto' },
-            { mode: 'plan' as const, Ctor: PlanExecutor, id: 'sfx-plan' },
         ]) {
             sdkMocks.resetAll();
             sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
@@ -1013,13 +1008,12 @@ describe('create_work_item / create_bug tool wiring', () => {
         }
     });
 
-    it('all three initial executors include tavily_web_search when explicitly enabled', async () => {
+    it('all live initial executors include tavily_web_search when explicitly enabled', async () => {
         writeRepoPreferences(dataDir, 'ws-123', { disabledLlmTools: [] });
 
         for (const { mode, Ctor, id } of [
             { mode: 'ask' as const, Ctor: ChatExecutor, id: 'tavily-ask' },
             { mode: 'autopilot' as const, Ctor: AutopilotExecutor, id: 'tavily-auto' },
-            { mode: 'plan' as const, Ctor: PlanExecutor, id: 'tavily-plan' },
         ]) {
             sdkMocks.resetAll();
             sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
@@ -1044,7 +1038,6 @@ describe('create_work_item / create_bug tool wiring', () => {
         for (const { mode, Ctor, id } of [
             { mode: 'ask' as const, Ctor: ChatExecutor, id: 'classic-ask' },
             { mode: 'autopilot' as const, Ctor: AutopilotExecutor, id: 'classic-auto' },
-            { mode: 'plan' as const, Ctor: PlanExecutor, id: 'classic-plan' },
         ]) {
             sdkMocks.resetAll();
             sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
@@ -1066,10 +1059,10 @@ describe('create_work_item / create_bug tool wiring', () => {
 });
 
 // ============================================================================
-// PlanExecutor auto-folder: notes/Plans/ path
+// Legacy plan auto-folder: notes/Plans/ path
 // ============================================================================
 
-describe('PlanExecutor auto-folder path (notes/Plans)', () => {
+describe('ChatExecutor legacy plan auto-folder path (notes/Plans)', () => {
     let store: ReturnType<typeof createMockProcessStore>;
     const DATA_DIR = '/tmp/test-coc';
 
@@ -1106,8 +1099,8 @@ describe('PlanExecutor auto-folder path (notes/Plans)', () => {
         };
     }
 
-    it('system message contains notes/Plans path for plan mode', async () => {
-        const executor = new PlanExecutor(store, makeOptions(store), DATA_DIR);
+    it('system message contains notes/Plans path for legacy plan mode', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store), DATA_DIR);
         const task = makePlanTaskWithWorkdir('plan-path-test');
 
         await executor.execute(task, 'Plan something');
@@ -1119,8 +1112,8 @@ describe('PlanExecutor auto-folder path (notes/Plans)', () => {
         expect(sysContent).not.toContain('/tasks/');
     });
 
-    it('creates notes/Plans directory via mkdir during plan mode', async () => {
-        const executor = new PlanExecutor(store, makeOptions(store), DATA_DIR);
+    it('creates notes/Plans directory via mkdir during legacy plan mode', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store), DATA_DIR);
         const task = makePlanTaskWithWorkdir('plan-mkdir-test');
 
         await executor.execute(task, 'Plan something');
@@ -1132,7 +1125,7 @@ describe('PlanExecutor auto-folder path (notes/Plans)', () => {
         );
     });
 
-    it('ChatExecutor also uses notes/Plans (same as PlanExecutor)', async () => {
+    it('ChatExecutor also uses notes/Plans for ask mode', async () => {
         const executor = new ChatExecutor(store, makeOptions(store), DATA_DIR);
         const task: QueuedTask = {
             id: 'chat-tasks-root',
@@ -1153,7 +1146,7 @@ describe('PlanExecutor auto-folder path (notes/Plans)', () => {
 
         await executor.execute(task, 'Hello');
 
-        // mkdir SHOULD be called — ask mode now targets notes/Plans like plan mode
+        // mkdir SHOULD be called — ask mode targets notes/Plans
         const expectedPath = path.join(DATA_DIR, 'repos', 'ws-chat-test', 'notes', 'Plans');
         expect(vi.mocked(fs.promises.mkdir)).toHaveBeenCalledWith(
             expectedPath,

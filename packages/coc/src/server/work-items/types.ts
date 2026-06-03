@@ -92,6 +92,95 @@ export const ALLOWED_CHILD_TYPES: Record<WorkItemType, readonly WorkItemType[]> 
 };
 
 // ============================================================================
+// Tracker Ownership
+// ============================================================================
+
+/** Top-level tracker partition for an Epic tree. */
+export type WorkItemTrackerKind = 'local-only' | 'github-backed';
+
+/** All valid tracker kinds (useful for validation). */
+export const WORK_ITEM_TRACKER_KINDS: readonly WorkItemTrackerKind[] = Object.freeze([
+    'local-only', 'github-backed',
+]);
+
+/** GitHub-backed Epic root metadata. Repository identity is workspace-scoped config, not per Epic. */
+export interface WorkItemGitHubTrackerMetadata {
+    /** Provider-native issue ID for the imported/pushed Epic root. */
+    issueId?: string;
+    /** Provider-native issue number for the imported/pushed Epic root. */
+    issueNumber?: number;
+    /** Browser URL for the imported/pushed Epic root issue. */
+    issueUrl?: string;
+    /** Last successful GitHub→local pull timestamp for this Epic tree. */
+    lastPulledAt?: string;
+}
+
+/** Per-item read-mirror details for a GitHub-backed Epic tree. */
+export interface WorkItemGitHubMirrorMetadata {
+    /** Provider-native issue ID for this mirrored item. */
+    issueId?: string;
+    /** Provider-native issue number for this mirrored item. */
+    issueNumber: number;
+    /** Browser URL for this mirrored GitHub issue. */
+    issueUrl?: string;
+    /** Mirrored GitHub issue open/closed state. CoC lifecycle status stays local. */
+    state?: string;
+    /** Provider updated-at timestamp for the mirrored issue. */
+    updatedAt?: string;
+    /** Last successful GitHub→local pull timestamp for this item. */
+    lastPulledAt?: string;
+}
+
+/**
+ * Tracker identity for a work-item tree.
+ *
+ * This is set on the Epic root. Descendants inherit the root identity instead of
+ * carrying per-item sync ownership.
+ */
+export type WorkItemTrackerMetadata =
+    | { kind: 'local-only' }
+    | { kind: 'github-backed'; provider: 'github'; github: WorkItemGitHubTrackerMetadata };
+
+// ============================================================================
+// External Provider Metadata
+// ============================================================================
+
+/** External work-item sync provider. Azure Boards is reserved for a future adapter. */
+export type WorkItemSyncProvider = 'github' | 'azure-boards';
+
+/** Remote issue identity encoded in provider-owned metadata such as GitHub issue bodies. */
+export interface WorkItemSyncRemoteIdentity {
+    /** GitHub owner or future provider account/organization name. */
+    owner?: string;
+    /** GitHub repository name or future provider repository identity. */
+    repo?: string;
+    /** Optional provider project identity for providers that need one. */
+    projectId?: string;
+    /** Provider-native issue/work-item ID. */
+    issueId?: string;
+    /** Provider-native issue number when available. */
+    issueNumber?: number;
+    /** Browser URL for the remote issue/work item. */
+    issueUrl?: string;
+}
+
+/** Parent reference captured in provider-owned metadata for hierarchy reconstruction. */
+export interface WorkItemSyncParentReference {
+    /** CoC parent work item ID when known. */
+    workItemId?: string;
+    /** Remote parent issue/work-item ID when known. */
+    issueId?: string;
+    /** Remote parent issue number when available. */
+    issueNumber?: number;
+    /** Browser URL for the remote parent. */
+    issueUrl?: string;
+    /** Remote parent owner when it differs from the child remote. */
+    owner?: string;
+    /** Remote parent repo when it differs from the child remote. */
+    repo?: string;
+}
+
+// ============================================================================
 // Plan Types
 // ============================================================================
 
@@ -222,6 +311,10 @@ export interface WorkItem {
     type?: WorkItemType;
     /** Parent work item ID (hierarchy). Only set when hierarchy is enabled. */
     parentId?: string;
+    /** Epic-rooted tracker identity. Set on Epic roots; descendants inherit it. */
+    tracker?: WorkItemTrackerMetadata;
+    /** GitHub read-mirror identity for items inside a GitHub-backed Epic tree. */
+    githubMirror?: WorkItemGitHubMirrorMetadata;
     /** ISO timestamp when the work item was created. */
     createdAt: string;
     /** ISO timestamp of last modification. */
@@ -315,6 +408,10 @@ export interface WorkItemIndexEntry {
     type?: WorkItemType;
     /** Parent work item ID (hierarchy). Only set when hierarchy is enabled. */
     parentId?: string;
+    /** Epic-rooted tracker identity. Set on Epic roots; descendants inherit it. */
+    tracker?: WorkItemTrackerMetadata;
+    /** GitHub read-mirror identity for items inside a GitHub-backed Epic tree. */
+    githubMirror?: WorkItemGitHubMirrorMetadata;
     source: WorkItemSource;
     priority?: WorkItemPriority;
     planVersion?: number;
@@ -348,6 +445,8 @@ export interface WorkItemFilter {
     tags?: string[];
     /** Filter by type. */
     type?: WorkItemType;
+    /** Filter by inherited Epic-rooted tracker kind. */
+    tracker?: WorkItemTrackerKind;
     /** Full-text search query (case-insensitive substring match against title, description, tags). */
     search?: string;
     /** Pagination offset (0-based). */
@@ -445,6 +544,11 @@ export function getLastRunTime(executionHistory: WorkItemExecution[] | undefined
     return latest;
 }
 
+/** Return the item-local tracker kind, defaulting absent metadata to local-only. */
+export function getOwnWorkItemTrackerKind(item: { tracker?: WorkItemTrackerMetadata }): WorkItemTrackerKind {
+    return item.tracker?.kind ?? 'local-only';
+}
+
 /** Extract an index entry from a full work item. */
 export function toIndexEntry(item: WorkItem): WorkItemIndexEntry {
     return {
@@ -456,6 +560,8 @@ export function toIndexEntry(item: WorkItem): WorkItemIndexEntry {
         status: item.status,
         type: item.type,
         parentId: item.parentId,
+        tracker: item.tracker,
+        githubMirror: item.githubMirror,
         source: item.source,
         priority: item.priority,
         planVersion: item.plan?.version,

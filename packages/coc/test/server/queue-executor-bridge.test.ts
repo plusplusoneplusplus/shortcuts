@@ -2,7 +2,7 @@
  * Queue Executor Bridge Tests
  *
  * Tests for CLITaskExecutor and createQueueExecutorBridge:
- * - Task execution by type (chat with ask/plan/autopilot modes, run-workflow, run-script)
+ * - Task execution by type (chat with ask/autopilot/Ralph modes, run-workflow, run-script)
  * - Process tracking in ProcessStore
  * - Cancellation handling
  * - Error handling and failure paths
@@ -66,11 +66,18 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         ...actual,
         sdkServiceRegistry: { getOrThrow: () => sdkMocks.service },
         executePipeline: (...args: any[]) => mockExecutePipeline(...args),
+        gatherFeatureContext: (...args: any[]) => mockGatherFeatureContext(...args),
+        resolveSkillSync: (...args: any[]) => mockResolveSkillSync(...args),
+    };
+});
+
+vi.mock('@plusplusoneplusplus/coc-workflow', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/coc-workflow')>();
+    return {
+        ...actual,
         executeWorkflow: (...args: any[]) => mockExecuteWorkflow(...args),
         compileToWorkflow: (...args: any[]) => mockCompileToWorkflow(...args),
         flattenWorkflowResult: (...args: any[]) => mockFlattenWorkflowResult(...args),
-        gatherFeatureContext: (...args: any[]) => mockGatherFeatureContext(...args),
-        resolveSkillSync: (...args: any[]) => mockResolveSkillSync(...args),
     };
 });
 
@@ -451,7 +458,7 @@ describe('CLITaskExecutor', () => {
             }));
         });
 
-        it('should pass mode=plan to sendMessage for plan-mode chat tasks', async () => {
+        it('should normalize legacy plan-mode chat tasks to interactive sendMessage', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
@@ -469,7 +476,7 @@ describe('CLITaskExecutor', () => {
 
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
                 prompt: expect.stringContaining('Plan the refactoring'),
-                mode: 'plan',
+                mode: 'interactive',
             }));
             // Prompt should NOT contain the old plan prefix
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
@@ -2126,11 +2133,11 @@ describe('CLITaskExecutor', () => {
     });
 
     // ========================================================================
-    // No-op / Plan-Mode Chat Tasks
+    // No-op / Legacy Plan-Mode Chat Tasks
     // ========================================================================
 
     describe('no-op task types', () => {
-        it('should execute plan-mode code-review chat task via AI', async () => {
+        it('should execute legacy plan-mode code-review chat task via Ask AI', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
@@ -7068,6 +7075,85 @@ describe('Ralph session queue continuity', () => {
         // Drain all queued + running work (including the unrelated exclusive
         // backlog) before disposing so every in-flight ralph-session write has
         // settled before afterEach removes the data directory.
+        await executor.drainAndDispose(5000);
+    });
+
+    it('RALPH_NEXT enqueue carries the correct iteration number in payload.prompt (AC-01 regression)', async () => {
+        // Regression: previously payload.prompt was carried forward verbatim from
+        // iteration 1 ("Iteration 1 of N"), so every sub-task stored an incorrect
+        // iteration counter even though the executor rebuilt the effective prompt.
+        const iterDone = deferred<{ success: boolean; response: string; sessionId: string }>();
+        const nextIterDone = deferred<{ success: boolean; response: string; sessionId: string }>();
+        mockSendMessage
+            .mockImplementationOnce(() => iterDone.promise)
+            .mockImplementationOnce(() => nextIterDone.promise);
+
+        const queueManager = new TaskQueueManager({ isExclusive: defaultIsExclusive });
+
+        // Capture the continuation task the moment it is enqueued.
+        let capturedContTask: QueuedTask | undefined;
+        queueManager.on('taskAdded', (task: QueuedTask) => {
+            if ((task.payload as any)?.context?.ralph?.currentIteration === 2) {
+                capturedContTask = { ...task };
+            }
+        });
+
+        const { executor } = createQueueExecutorBridge(queueManager, store, {
+            dataDir,
+            exclusiveConcurrency: 1,
+        });
+
+        // Enqueue Ralph iteration 1 with a progress path so the prompt includes the counter.
+        queueManager.enqueue({
+            type: 'chat',
+            priority: 'normal',
+            repoId: workspaceId,
+            payload: {
+                kind: 'chat',
+                mode: 'ralph',
+                prompt: 'Load skill.\n\nProgress journal: /some/progress.md\nIteration 1 of 5.\n\n<goal>Do the work.</goal>',
+                workspaceId,
+                workingDirectory: '',
+                context: {
+                    ralph: {
+                        phase: 'executing',
+                        sessionId,
+                        originalGoal: 'Do the work.',
+                        currentIteration: 1,
+                        maxIterations: 5,
+                    },
+                },
+            } as any,
+            config: {},
+            displayName: 'Ralph iteration 1',
+        });
+
+        await waitForCondition(() => mockSendMessage.mock.calls.length >= 1, 3000);
+
+        // Resolve iter 1 with RALPH_NEXT → bridge should enqueue iter 2 with updated prompt.
+        iterDone.resolve({
+            success: true,
+            response: 'Progress.\n\nRALPH_PROGRESS:\nFiles: x\nDecisions: d\nRemaining: more\nRALPH_NEXT',
+            sessionId: 'sdk-iter-1',
+        });
+
+        await waitForCondition(() => capturedContTask !== undefined, 3000);
+
+        // The stored payload.prompt must reflect the *next* iteration (2), not the original (1).
+        const storedPrompt = (capturedContTask!.payload as any).prompt as string;
+        expect(storedPrompt).toContain('Iteration 2 of 5');
+        expect(storedPrompt).not.toContain('Iteration 1 of 5');
+
+        // The ralph context must also carry the correct currentIteration.
+        expect((capturedContTask!.payload as any).context.ralph.currentIteration).toBe(2);
+
+        // Clean up: allow iter 2 to terminate without spawning further work.
+        nextIterDone.resolve({
+            success: true,
+            response: 'Done.',
+            sessionId: 'sdk-iter-2',
+        });
+
         await executor.drainAndDispose(5000);
     });
 

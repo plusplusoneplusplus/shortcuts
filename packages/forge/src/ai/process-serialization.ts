@@ -107,6 +107,9 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
         // Context window tracking fields
         tokenLimit: process.tokenLimit,
         currentTokens: process.currentTokens,
+        systemTokens: process.systemTokens,
+        toolDefinitionsTokens: process.toolDefinitionsTokens,
+        conversationTokens: process.conversationTokens,
         cumulativeTokenUsage: process.cumulativeTokenUsage,
         // Pending messages (plain JSON, no Date conversion needed)
         pendingMessages: process.pendingMessages,
@@ -214,6 +217,9 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
         // Context window tracking fields
         tokenLimit: serialized.tokenLimit,
         currentTokens: serialized.currentTokens,
+        systemTokens: serialized.systemTokens,
+        toolDefinitionsTokens: serialized.toolDefinitionsTokens,
+        conversationTokens: serialized.conversationTokens,
         cumulativeTokenUsage: serialized.cumulativeTokenUsage,
         // Pending messages (plain JSON, no Date conversion needed)
         pendingMessages: serialized.pendingMessages,

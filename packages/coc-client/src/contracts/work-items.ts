@@ -14,6 +14,27 @@ export type WorkItemStatus =
 export type WorkItemPriority = 'high' | 'normal' | 'low';
 export type WorkItemSource = 'manual' | 'chat' | 'schedule';
 export type WorkItemType = 'work-item' | 'bug' | 'goal' | 'epic' | 'feature' | 'pbi';
+export type WorkItemTrackerKind = 'local-only' | 'github-backed';
+
+export interface WorkItemGitHubTrackerMetadata {
+  issueId?: string;
+  issueNumber?: number;
+  issueUrl?: string;
+  lastPulledAt?: string;
+}
+
+export interface WorkItemGitHubMirrorMetadata {
+  issueId?: string;
+  issueNumber: number;
+  issueUrl?: string;
+  state?: string;
+  updatedAt?: string;
+  lastPulledAt?: string;
+}
+
+export type WorkItemTrackerMetadata =
+  | { kind: 'local-only' }
+  | { kind: 'github-backed'; provider: 'github'; github: WorkItemGitHubTrackerMetadata };
 
 /**
  * Allowed parent types for each work item type.
@@ -41,6 +62,50 @@ export const ALLOWED_CHILD_TYPES: Record<WorkItemType, readonly WorkItemType[]> 
   bug:         [],
   goal:        [],
 };
+
+export type WorkItemSyncProvider = 'github' | 'azure-boards';
+
+export const WORK_ITEM_SYNC_ITEM_LIMIT = 200;
+export type WorkItemSyncDisabledReason = 'hierarchy-disabled' | 'sync-disabled';
+
+export interface WorkItemSyncRepository {
+  provider: WorkItemSyncProvider;
+  owner?: string;
+  repo?: string;
+  projectId?: string;
+  url?: string;
+  source?: 'preference' | 'workspaceRemote' | 'origin';
+}
+
+export interface WorkItemSyncProviderStatus {
+  provider: WorkItemSyncProvider;
+  available: boolean;
+  reason?:
+    | 'provider-unavailable'
+    | 'provider-disabled'
+    | 'incomplete-preference'
+    | 'missing-workspace'
+    | 'missing-origin'
+    | 'non-github-origin'
+    | 'auth-unavailable'
+    | 'unknown';
+  message?: string;
+  repository?: WorkItemSyncRepository;
+  auth?: {
+    mode: 'external';
+    authenticated?: boolean;
+    message?: string;
+  };
+}
+
+export interface WorkItemSyncStatusResponse {
+  enabled: boolean;
+  disabled?: boolean;
+  disabledReason?: WorkItemSyncDisabledReason;
+  maxItems: number;
+  provider?: WorkItemSyncProviderStatus;
+  providers: WorkItemSyncProviderStatus[];
+}
 
 export interface WorkItemPlan {
   version: number;
@@ -82,6 +147,10 @@ export interface WorkItem {
   type?: WorkItemType;
   /** Parent work item ID (hierarchy). Only set when hierarchy is enabled. */
   parentId?: string;
+  /** Epic-rooted tracker identity. Set on Epic roots; descendants inherit it. */
+  tracker?: WorkItemTrackerMetadata;
+  /** GitHub read-mirror identity for items inside a GitHub-backed Epic tree. */
+  githubMirror?: WorkItemGitHubMirrorMetadata;
   createdAt: string;
   updatedAt: string;
   completedAt?: string;
@@ -114,6 +183,7 @@ export interface WorkItemFilter {
   priority?: WorkItemPriority;
   tags?: string[];
   type?: WorkItemType;
+  tracker?: WorkItemTrackerKind;
   q?: string;
   offset?: number;
   limit?: number;
@@ -136,6 +206,8 @@ export interface CreateWorkItemRequest {
   type?: WorkItemType;
   /** Parent work item ID (hierarchy). Only accepted when hierarchy flag is enabled. */
   parentId?: string;
+  /** Epic-rooted tracker identity. Only accepted on root Epic items. */
+  tracker?: WorkItemTrackerMetadata;
   source?: WorkItemSource;
   sourceId?: string;
   priority?: WorkItemPriority;
@@ -144,6 +216,29 @@ export interface CreateWorkItemRequest {
   /** Success criteria for a `goal` item (markdown). */
   successCriteria?: string;
   plan?: { content: string; resolvedBy?: string };
+}
+
+export interface ImportFromGitHubRequest extends JsonObject {
+  /** Full GitHub issue URL, e.g. https://github.com/<owner>/<repo>/issues/<number>. */
+  issueUrl?: string;
+  /** Issue number in the workspace-configured GitHub repository. */
+  issueNumber?: number;
+}
+
+export interface SyncGitHubEpicResponse extends JsonObject {
+  root: WorkItem;
+  items: WorkItem[];
+  created: number;
+  updated: number;
+  deleted: number;
+  deletedItemIds: string[];
+}
+
+export interface ConvertWorkItemTrackerResponse extends JsonObject {
+  root: WorkItem;
+  items: WorkItem[];
+  remoteCreated: number;
+  localUpdated: number;
 }
 
 export interface CreateWorkItemFromChatRequest extends JsonObject {
@@ -156,7 +251,7 @@ export interface CreateWorkItemFromChatRequest extends JsonObject {
   extractPlan?: boolean;
 }
 
-export interface UpdateWorkItemRequest extends Partial<Pick<WorkItem, 'title' | 'description' | 'status' | 'priority' | 'tags' | 'autoExecute'>> {
+export interface UpdateWorkItemRequest extends Partial<Pick<WorkItem, 'title' | 'description' | 'status' | 'priority' | 'tags' | 'autoExecute' | 'tracker'>> {
   completedAt?: string;
   reviewComments?: unknown[];
   /** Update success criteria for a `goal` item (markdown). */
@@ -288,6 +383,8 @@ export interface WorkItemTreeFilter {
   q?: string;
   type?: WorkItemType;
   status?: WorkItemStatus;
+  /** Filter by inherited Epic-rooted tracker kind. */
+  tracker?: WorkItemTrackerKind;
   includeArchived?: boolean;
   /** When true, items with status "done" are included. Defaults to false. */
   includeDone?: boolean;

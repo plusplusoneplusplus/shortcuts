@@ -1,5 +1,13 @@
 /** Shared types for the schedule management feature. */
 
+export type PromptScheduleMode = 'ask' | 'autopilot';
+
+export function normalizePromptScheduleMode(mode: unknown, fallback: PromptScheduleMode = 'ask'): PromptScheduleMode {
+    if (mode === 'autopilot') return 'autopilot';
+    if (mode === 'ask' || mode === 'plan') return 'ask';
+    return fallback;
+}
+
 export interface Schedule {
     id: string;
     name: string;
@@ -15,7 +23,7 @@ export interface Schedule {
     createdAt: string;
     outputFolder?: string;
     model?: string;
-    mode?: 'ask' | 'plan' | 'autopilot';
+    mode?: PromptScheduleMode;
     /** 'user' = stored in schedules.json; 'repo' = loaded from .github/schedules/ */
     source?: 'user' | 'repo';
 }

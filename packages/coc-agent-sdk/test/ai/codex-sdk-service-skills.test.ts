@@ -152,4 +152,19 @@ describe('CodexSDKService skills', () => {
             }),
         );
     });
+
+    it('returns the effective Codex model after provider normalization', async () => {
+        svc = new CodexSDKService();
+        const codexMock = makeCodexSdkMock();
+        (svc as unknown as { sdk: unknown }).sdk = codexMock;
+        (svc as unknown as { availabilityCache: unknown }).availabilityCache = { available: true };
+
+        const result = await svc.sendMessage({ prompt: 'test', model: 'claude-opus-4.8' });
+
+        expect(result.success).toBe(true);
+        expect(result.effectiveModel).toBeUndefined();
+        expect(codexMock.startThread).toHaveBeenCalledWith(
+            expect.not.objectContaining({ model: expect.any(String) }),
+        );
+    });
 });

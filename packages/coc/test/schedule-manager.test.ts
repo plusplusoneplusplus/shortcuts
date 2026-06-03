@@ -1270,7 +1270,7 @@ describe('ScheduleManager', () => {
             });
 
             const updated = await manager.updateSchedule(REPO_ID, schedule.id, { mode: 'plan' });
-            expect(updated!.mode).toBe('plan');
+            expect(updated!.mode).toBe('ask');
         });
 
         it('persists and restores mode', () => {
@@ -1318,13 +1318,13 @@ describe('ScheduleManager', () => {
             mgr.dispose();
         });
 
-        it('forwards plan mode to payload.mode', async () => {
+        it('forwards legacy plan mode as ask payload.mode', async () => {
             const enqueued: any[] = [];
             const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_mode_plan'; } };
             const mgr = new ScheduleManager(persistence, mockQueue as any);
 
             const schedule = mgr.addSchedule(REPO_ID, {
-                name: 'Plan Mode Schedule',
+                name: 'Legacy Plan Mode Schedule',
                 target: 'my-task.md',
                 cron: '0 9 * * *',
                 params: {},
@@ -1335,7 +1335,7 @@ describe('ScheduleManager', () => {
 
             await mgr.triggerRun(REPO_ID, schedule.id);
 
-            expect(enqueued[0].payload.mode).toBe('plan');
+            expect(enqueued[0].payload.mode).toBe('ask');
 
             mgr.dispose();
         });

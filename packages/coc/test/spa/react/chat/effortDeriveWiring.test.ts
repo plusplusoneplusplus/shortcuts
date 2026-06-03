@@ -107,6 +107,12 @@ describe('ChatDetail effort-derive wiring', () => {
         expect(src).toContain('modelCommand.modelOverride]');
     });
 
+    it('clears stale modelOverride when sessionProvider changes', () => {
+        expect(src).toContain('previousSessionProviderRef');
+        expect(src).toContain('modelCommand.setModelOverride(null)');
+        expect(src).toContain('[sessionProvider, modelCommand.setModelOverride]');
+    });
+
     it('uses chatEffectiveModelId for the mid-conversation derive', () => {
         expect(src).toContain('chatEffectiveModelId');
     });

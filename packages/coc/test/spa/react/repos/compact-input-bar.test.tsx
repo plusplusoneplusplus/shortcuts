@@ -208,11 +208,9 @@ describe('FollowUpInputArea — stacked input card layout', () => {
         expect(bar.className).not.toMatch(/(?:^|\s)focus:ring-yellow/);
     });
 
-    it.each([
-        ['plan', 'focus-within:ring-blue-500/30'],
-        ['autopilot', 'focus-within:ring-green-500/30'],
-    ] as const)('chat-input-bar uses %s ring class for %s mode', (mode, ringClass) => {
-        render(<FollowUpInputArea {...makeFollowUpProps({ selectedMode: mode })} />);
+    it('chat-input-bar uses the Autopilot ring class for autopilot mode', () => {
+        const ringClass = 'focus-within:ring-green-500/30';
+        render(<FollowUpInputArea {...makeFollowUpProps({ selectedMode: 'autopilot' })} />);
         const bar = screen.getByTestId('chat-input-bar');
         expect(bar.className).toContain(ringClass);
     });
@@ -240,8 +238,8 @@ describe('FollowUpInputArea — stacked input card layout', () => {
         render(<FollowUpInputArea {...makeFollowUpProps({ selectedMode: 'autopilot' })} />);
         expect(screen.getByTestId('mode-selector')).toBeTruthy();
         expect(screen.getByTestId('mode-pill-ask')).toBeTruthy();
-        expect(screen.getByTestId('mode-pill-plan')).toBeTruthy();
         expect(screen.getByTestId('mode-pill-autopilot')).toBeTruthy();
+        expect(screen.queryByTestId('mode-pill-plan')).toBeNull();
         expect(screen.getByTestId('mode-pill-autopilot').getAttribute('aria-checked')).toBe('true');
         expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('false');
     });
@@ -255,8 +253,8 @@ describe('FollowUpInputArea — stacked input card layout', () => {
     it('clicking a pill dispatches setSelectedMode with the new mode', () => {
         const setSelectedMode = vi.fn();
         render(<FollowUpInputArea {...makeFollowUpProps({ selectedMode: 'ask', setSelectedMode })} />);
-        fireEvent.click(screen.getByTestId('mode-pill-plan'));
-        expect(setSelectedMode).toHaveBeenCalledWith('plan');
+        fireEvent.click(screen.getByTestId('mode-pill-autopilot'));
+        expect(setSelectedMode).toHaveBeenCalledWith('autopilot');
     });
 
     it('respects allowedModes when rendering pills', () => {
@@ -495,7 +493,7 @@ describe('FollowUpInputArea — compactModeSelector legacy single-row layout', (
         const setSelectedMode = vi.fn();
         render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true, selectedMode: 'ask', setSelectedMode })} />);
         fireEvent.click(screen.getByTestId('mode-cycle-btn'));
-        expect(setSelectedMode).toHaveBeenCalledWith('plan');
+        expect(setSelectedMode).toHaveBeenCalledWith('autopilot');
     });
 
     it('respects allowedModes when cycling (ask → autopilot)', () => {
@@ -535,12 +533,12 @@ describe('NewChatArea — stacked input card layout', () => {
         expect(bar.className).toContain('border');
     });
 
-    it('renders the mode pill selector with all three modes by default', () => {
+    it('renders the mode pill selector with active modes by default', () => {
         render(<NewChatArea workspaceId="ws-1" />);
         expect(screen.getByTestId('mode-selector')).toBeTruthy();
         expect(screen.getByTestId('mode-pill-ask')).toBeTruthy();
-        expect(screen.getByTestId('mode-pill-plan')).toBeTruthy();
         expect(screen.getByTestId('mode-pill-autopilot')).toBeTruthy();
+        expect(screen.queryByTestId('mode-pill-plan')).toBeNull();
         expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
     });
 

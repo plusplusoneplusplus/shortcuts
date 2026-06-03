@@ -57,6 +57,8 @@ export interface IInvocationResult {
     error?: string;
     /** Session ID used for this request, if a session was created */
     sessionId?: string;
+    /** Model that the provider actually used. Omitted means provider default. */
+    effectiveModel?: string;
 }
 
 // ============================================================================

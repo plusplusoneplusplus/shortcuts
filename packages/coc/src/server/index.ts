@@ -84,6 +84,7 @@ interface CloseHandlerDeps {
     loopInfraDispose?: () => void;
     mcpOauthDispose?: () => void;
     syncEngines?: Map<string, SyncEngine>;
+    workItemGitHubPullPoller?: { dispose(): void };
     containerLink?: { stop(): void };
     activeSockets: Set<import('net').Socket>;
     server: http.Server;
@@ -108,6 +109,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.loopInfraDispose?.();
         deps.mcpOauthDispose?.();
         deps.syncEngines?.forEach(e => e.stop());
+        deps.workItemGitHubPullPoller?.dispose();
         deps.containerLink?.stop();
         gitInfoCache.dispose();
         deps.notesGitTimerManager.dispose();
@@ -483,7 +485,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     }
 
     const routes: Route[] = [];
-    const { wikiManager } = registerAllRoutes(routes, {
+    const { wikiManager, workItemGitHubPullPoller } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
         dataDir, configPath: options.configPath,
@@ -599,6 +601,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 excalidrawEnabled: liveConfig.excalidraw?.enabled ?? false,
                 mcpOauthEnabled: liveConfig.mcpOauth?.enabled ?? false,
                 focusedDiffEnabled: liveConfig.features?.focusedDiff ?? false,
+                workItemsHierarchyEnabled: liveConfig.workItems?.hierarchy?.enabled ?? false,
+                workItemsSyncEnabled: liveConfig.workItems?.sync?.enabled ?? false,
+                workItemsAiAuthoringEnabled: liveConfig.workItems?.aiAuthoring?.enabled ?? false,
                 bindAddress: host,
             });
         },
@@ -647,6 +652,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             }
         } catch { /* best-effort */ }
     }
+    workItemGitHubPullPoller.start().catch(error => {
+        const message = error instanceof Error ? error.message : String(error);
+        process.stderr.write(`[work-items/github-poll] Failed to start background polling: ${message}\n`);
+    });
 
     const address = server.address();
     const actualPort = typeof address === 'object' && address ? address.port : port;
@@ -685,6 +694,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             loopInfraDispose: loopInfra?.dispose,
             mcpOauthDispose: mcpOauthInfra?.dispose,
             syncEngines,
+            workItemGitHubPullPoller,
             containerLink,
             activeSockets, server,
         }),

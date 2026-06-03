@@ -645,7 +645,7 @@ describe('LoopExecutor', () => {
             expect(call.payload.context.source).toBe('loop');
         });
 
-        it('uses process metadata.mode when resolving follow-up mode', async () => {
+        it('normalizes legacy process metadata.mode when resolving follow-up mode', async () => {
             const { deps, store, timerRegistry, queueManager, processStore } = createDeps();
             processStore.getProcess.mockImplementation(async (id: string) => ({
                 id,
@@ -663,7 +663,7 @@ describe('LoopExecutor', () => {
 
             expect(queueManager.enqueue).toHaveBeenCalled();
             const call = queueManager.enqueue.mock.calls[0][0];
-            expect(call.payload.mode).toBe('plan');
+            expect(call.payload.mode).toBe('ask');
         });
 
         it('overwrites stale mode on requeue with resolved mode', async () => {

@@ -659,11 +659,12 @@ export class ClaudeSDKService implements ISDKService {
                         const errText = typeof msg.result === 'string' && msg.result
                             ? msg.result
                             : `Claude returned ${msg.subtype}`;
-                        return {
-                            success: false,
-                            error: errText,
-                            sessionId: currentSessionId,
-                        };
+                    return {
+                        success: false,
+                        error: errText,
+                        sessionId: currentSessionId,
+                        effectiveModel: model,
+                    };
                     }
                     tokenUsage = addClaudeUsage(tokenUsage, msg);
                     // If the result contains text not yet emitted, add it.
@@ -691,11 +692,12 @@ export class ClaudeSDKService implements ISDKService {
                 response: chunks.join(''),
                 sessionId: currentSessionId,
                 ...(tokenUsage ? { tokenUsage } : {}),
+                effectiveModel: model,
                 ...(toolCalls.size > 0 ? { toolCalls: Array.from(toolCalls.values()) } : {}),
             } as IInvocationResult;
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            return { success: false, error: message, sessionId: currentSessionId };
+            return { success: false, error: message, sessionId: currentSessionId, effectiveModel: this.normalizeClaudeModel(options.model) };
         } finally {
             signalCleanup?.();
             mcpCleanup();

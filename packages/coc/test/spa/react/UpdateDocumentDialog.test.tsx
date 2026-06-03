@@ -102,6 +102,48 @@ describe('UpdateDocumentDialog', () => {
         });
     });
 
+    it('keeps submit disabled when the user clears the prompt before path resolution finishes', async () => {
+        const workspaces = [{ id: 'ws-1', name: 'Test', rootPath: '/project' }];
+        let resolveSettings!: (response: any) => void;
+        const settingsPromise = new Promise<any>(resolve => {
+            resolveSettings = resolve;
+        });
+
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/tasks/settings')) {
+                return settingsPromise;
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
+        });
+
+        await act(async () => {
+            renderDialogWithWorkspace(workspaces);
+        });
+
+        const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+        const submit = screen.getByRole('button', { name: 'Submit' });
+
+        await act(async () => {
+            fireEvent.change(textarea, { target: { value: '' } });
+        });
+
+        expect(textarea.value).toBe('');
+        expect(submit).toBeDisabled();
+
+        await act(async () => {
+            resolveSettings({
+                ok: true,
+                json: () => Promise.resolve({ folderPath: '/resolved/tasks' }),
+            });
+            await settingsPromise;
+        });
+
+        await waitFor(() => {
+            expect(textarea.value).toBe('');
+            expect(submit).toBeDisabled();
+        });
+    });
+
     it('submits to /api/queue on Submit click', async () => {
         const onClose = vi.fn();
 
