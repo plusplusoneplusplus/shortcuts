@@ -1417,6 +1417,47 @@ describe('ChatListPane', () => {
             expect(document.querySelector('[data-task-id="g3-a"]')).toBeNull();
         });
 
+        it('keeps a manually collapsed unseen plan-file group collapsed after same-workspace refresh', () => {
+            const groupForPlan = (planFilePath: string) =>
+                screen.getByTitle(planFilePath).closest('[data-testid="history-group"]') as HTMLElement;
+            const { rerender, props } = renderGrouped({
+                workspaceId: 'ws-a',
+                unseenProcessIds: new Set(['g2-a']),
+                onMarkAllRead: vi.fn(),
+            });
+
+            const unseenGroup = groupForPlan('/plans/plan2.md');
+            const unseenChevron = unseenGroup.querySelector('[data-testid="group-chevron"]')!;
+            expect(unseenGroup.getAttribute('data-expanded')).toBe('false');
+
+            fireEvent.click(unseenChevron);
+            expect(unseenGroup.getAttribute('data-expanded')).toBe('true');
+            expect(document.querySelector('[data-task-id="g2-a"]')).toBeTruthy();
+
+            fireEvent.click(unseenChevron);
+            expect(unseenGroup.getAttribute('data-expanded')).toBe('false');
+            expect(document.querySelector('[data-task-id="g2-a"]')).toBeNull();
+
+            rerender(
+                <ChatListPane
+                    {...props}
+                    history={[
+                        ...makeGroupedHistory(),
+                        makeHistoryTask({ id: 'refresh-a', displayName: 'Refresh Task A', planFilePath: '/plans/refresh.md', startTime: 600 }),
+                        makeHistoryTask({ id: 'refresh-b', displayName: 'Refresh Task B', planFilePath: '/plans/refresh.md', startTime: 700 }),
+                    ]}
+                />,
+            );
+
+            const refreshedUnseenGroup = groupForPlan('/plans/plan2.md');
+            expect(refreshedUnseenGroup.getAttribute('data-expanded')).toBe('false');
+            expect(document.querySelector('[data-task-id="g2-a"]')).toBeNull();
+            expect(screen.getByTestId('group-unseen-dot')).toBeTruthy();
+            expect(screen.getByTestId('unseen-count-badge').textContent).toBe('1');
+            expect(screen.getByTestId('mark-all-read-btn')).toBeTruthy();
+            expect(groupForPlan('/plans/refresh.md').getAttribute('data-expanded')).toBe('false');
+        });
+
     });
 
     // ── Search ─────────────────────────────────────────────────────────
