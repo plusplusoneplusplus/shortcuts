@@ -1,42 +1,42 @@
 /**
- * AI review summary panel — shows the AI-generated digest for the PR
- * including the headline copy, a metric grid, and bulleted findings.
+ * Review summary panel built from deterministic provider facts: PR description,
+ * diff stats, checks, reviewers, and comment threads.
  */
 
 import { cn } from '../../ui';
 import { findingTagClass } from './pr-mock-data';
-import type { AiSummary } from './pr-mock-data';
+import type { PrReviewSummary } from './pr-detail-summary';
 
-interface PrAiSummaryPanelProps {
-    summary: AiSummary;
+interface PrReviewSummaryPanelProps {
+    summary: PrReviewSummary;
 }
 
-export function PrAiSummaryPanel({ summary }: PrAiSummaryPanelProps) {
+export function PrReviewSummaryPanel({ summary }: PrReviewSummaryPanelProps) {
     return (
         <article
             className="relative overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
-            data-testid="pr-ai-summary"
+            data-testid="pr-review-summary"
         >
             <span
                 aria-hidden="true"
-                className="absolute inset-y-0 left-0 w-[3px] bg-gradient-to-br from-purple-500 to-blue-500"
+                className="absolute inset-y-0 left-0 w-[3px] bg-gradient-to-br from-blue-500 to-cyan-500"
             />
-            <header className="flex min-h-[30px] items-center justify-between gap-1.5 border-b border-gray-200 bg-gradient-to-b from-purple-50 to-white px-2 py-1 dark:border-gray-700 dark:from-purple-900/30 dark:to-gray-900">
+            <header className="flex min-h-[30px] items-center justify-between gap-1.5 border-b border-gray-200 bg-gradient-to-b from-blue-50 to-white px-2 py-1 dark:border-gray-700 dark:from-blue-900/30 dark:to-gray-900">
                 <h2 className="m-0 text-[13px] font-semibold leading-tight text-gray-900 dark:text-gray-100">
-                    AI review summary
+                    Review summary
                 </h2>
-                <span className="inline-flex min-h-[20px] items-center gap-1 rounded-full bg-purple-100 px-1.5 py-0.5 text-[11px] font-semibold text-purple-700 dark:bg-purple-900/40 dark:text-purple-200">
-                    Generated from diff, checks, and threads
+                <span className="inline-flex min-h-[20px] items-center gap-1 rounded-full bg-blue-100 px-1.5 py-0.5 text-[11px] font-semibold text-blue-700 dark:bg-blue-900/40 dark:text-blue-200">
+                    Provider facts
                 </span>
             </header>
             <div className="p-2">
                 <p
                     className="m-0 mb-1.5 text-[13px] leading-[1.38] text-gray-800 dark:text-gray-200"
-                    data-testid="pr-ai-summary-copy"
+                    data-testid="pr-review-summary-copy"
                 >
                     {summary.summary}
                 </p>
-                <div className="mb-1.5 grid grid-cols-2 gap-[5px] sm:grid-cols-4" data-testid="pr-ai-metrics">
+                <div className="mb-1.5 grid grid-cols-2 gap-[5px] sm:grid-cols-5" data-testid="pr-review-metrics">
                     {summary.metrics.map(metric => (
                         <div
                             key={metric.key}
@@ -51,7 +51,7 @@ export function PrAiSummaryPanel({ summary }: PrAiSummaryPanelProps) {
                         </div>
                     ))}
                 </div>
-                <ul className="m-0 grid list-none gap-1 p-0" data-testid="pr-ai-findings">
+                <ul className="m-0 grid list-none gap-1 p-0" data-testid="pr-review-findings">
                     {summary.findings.map((finding, idx) => (
                         <li
                             key={`${finding.tag}-${idx}`}

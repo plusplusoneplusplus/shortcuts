@@ -1,12 +1,10 @@
 /**
- * Coverage for the small AI presentational sub-panels on the redesigned
- * PR review page.
+ * Coverage for the small presentational sub-panels on the redesigned PR review page.
  */
 
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { PrAiSummaryPanel } from '../../../../../src/server/spa/client/react/features/pull-requests/PrAiSummaryPanel';
-import { PrQuickReviewWorkflow } from '../../../../../src/server/spa/client/react/features/pull-requests/PrQuickReviewWorkflow';
+import { PrReviewSummaryPanel } from '../../../../../src/server/spa/client/react/features/pull-requests/PrReviewSummaryPanel';
 import { PrAiGroupedThreads } from '../../../../../src/server/spa/client/react/features/pull-requests/PrAiGroupedThreads';
 import { PrCommitTable } from '../../../../../src/server/spa/client/react/features/pull-requests/PrCommitTable';
 import {
@@ -15,12 +13,11 @@ import {
 } from '../../../../../src/server/spa/client/react/features/pull-requests/PrChecksAndReadiness';
 import { PrFilesPanel } from '../../../../../src/server/spa/client/react/features/pull-requests/PrFilesPanel';
 import { PrConversationPanel } from '../../../../../src/server/spa/client/react/features/pull-requests/PrConversationPanel';
+import { buildPrReviewSummary } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-detail-summary';
 import {
     buildAiThreadGroupsFromThreads,
-    getMockAiSummary,
     getMockCheckRows,
     getMockMergeReadiness,
-    getMockPersonaLenses,
     getMockTimeline,
 } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-mock-data';
 import { parseDiffFileList } from '../../../../../src/server/spa/client/react/features/git/diff';
@@ -35,21 +32,36 @@ const samplePr: PullRequest = {
     status: 'open',
     createdAt: '2026-04-01T10:00:00Z',
     updatedAt: '2026-04-02T12:30:00Z',
+    description: 'Switches the ingestion worker to a streaming JSONL pipeline.',
 };
 
-describe('PrAiSummaryPanel', () => {
-    it('renders the metric grid and finding list', () => {
-        render(<PrAiSummaryPanel summary={getMockAiSummary(samplePr)} />);
-        expect(screen.getByTestId('pr-ai-summary')).toBeInTheDocument();
-        expect(screen.getByTestId('pr-ai-metrics').children.length).toBe(4);
-        expect(screen.getByTestId('pr-ai-findings').children.length).toBeGreaterThan(0);
-    });
-});
+describe('PrReviewSummaryPanel', () => {
+    it('renders deterministic metric and finding facts', () => {
+        const summary = buildPrReviewSummary({
+            pr: samplePr,
+            diffStats: { additions: 240, deletions: 60, changedFiles: 6 },
+            checks: [{
+                id: 'lint',
+                name: 'lint',
+                status: 'failure',
+                source: 'check',
+                description: 'eslint failed',
+            }],
+            reviewers: [{ identity: { displayName: 'Reviewer' }, vote: 'approved' }],
+            threads: [{
+                id: 'thread-1',
+                status: 'active',
+                comments: [{ id: 'c1', body: 'Please handle the null stream case.' }],
+                threadContext: { filePath: 'src/stream.ts', line: 42 },
+            }],
+        });
 
-describe('PrQuickReviewWorkflow', () => {
-    it('renders one card per persona lens', () => {
-        render(<PrQuickReviewWorkflow lenses={getMockPersonaLenses()} />);
-        expect(screen.getAllByTestId('pr-quick-workflow-lens')).toHaveLength(3);
+        render(<PrReviewSummaryPanel summary={summary} />);
+        expect(screen.getByTestId('pr-review-summary')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-review-summary-copy').textContent).toBe(samplePr.description);
+        expect(screen.getByTestId('pr-review-metrics').children.length).toBe(5);
+        expect(screen.getByTestId('pr-review-findings').textContent).toContain('lint: eslint failed');
+        expect(screen.getByTestId('pr-review-findings').textContent).toContain('src/stream.ts:42');
     });
 });
 

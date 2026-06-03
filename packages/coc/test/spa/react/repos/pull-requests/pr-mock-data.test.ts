@@ -1,6 +1,5 @@
 /**
- * Tests for the deterministic AI mock data helpers used by the
- * redesigned PR review page.
+ * Tests for deterministic PR helper fixtures still used by the redesigned PR review page.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -12,19 +11,12 @@ import {
     checkStatusClass,
     commitIntentClass,
     findingTagClass,
-    getMockAiAnswer,
-    getMockAiSummary,
-    getMockBranchSnapshot,
     getMockCheckRows,
     getMockCommitRows,
     getMockMergeReadiness,
-    getMockPersonaLenses,
     getMockPrFileCount,
     getMockPrReviewMinutes,
     getMockQueueRisk,
-    getMockReviewSummaryText,
-    getMockSeedChat,
-    getMockSuggestedPrompts,
     getMockThreadGroups,
     getMockTimeline,
     getQueueFilterDefinitions,
@@ -53,60 +45,8 @@ const basePr: PullRequest = {
     updatedAt: new Date('2026-04-02T12:30:00Z').toISOString(),
 };
 
-describe('AI mock data', () => {
-    it('returns deterministic AI summary for the same PR', () => {
-        const a = getMockAiSummary(basePr);
-        const b = getMockAiSummary({ ...basePr });
-        expect(a).toEqual(b);
-        expect(a.metrics).toHaveLength(4);
-        expect(a.findings.length).toBeGreaterThan(0);
-        expect(['Low', 'Medium', 'High']).toContain(a.risk);
-        expect(a.confidence).toBeGreaterThan(0);
-        expect(a.confidence).toBeLessThanOrEqual(100);
-    });
-
-    it('classifies refactor PRs as high risk', () => {
-        const summary = getMockAiSummary({
-            ...basePr,
-            title: 'refactor(tasks): replace scheduler persistence',
-        });
-        expect(summary.risk).toBe('High');
-    });
-
-    it('classifies docs PRs as low risk', () => {
-        const summary = getMockAiSummary({
-            ...basePr,
-            title: 'docs(api): clarify webhook replay order',
-            description: 'Tighten the wording on the webhook replay order docs.',
-        });
-        expect(summary.risk).toBe('Low');
-    });
-
-    it('classifies streaming PRs as medium risk', () => {
-        const summary = getMockAiSummary({
-            ...basePr,
-            title: 'feat(stream): add JSONL backpressure',
-            description: 'streaming worker backpressure',
-        });
-        expect(summary.risk).toBe('Medium');
-    });
-
-    it('exposes branch snapshot helpers with stable shape', () => {
-        const snap = getMockBranchSnapshot(basePr);
-        expect(snap.sourceBranch).toBe(basePr.sourceBranch);
-        expect(snap.targetBranch).toBe(basePr.targetBranch);
-        expect(snap.additions).toBeGreaterThan(0);
-        expect(snap.deletions).toBeGreaterThan(0);
-        expect(snap.commitCount).toBeGreaterThan(0);
-        expect(snap.fileCount).toBeGreaterThan(0);
-    });
-
-    it('returns persona lenses, timeline, and thread groups', () => {
-        expect(getMockPersonaLenses().map(lens => lens.persona)).toEqual([
-            'Reviewer',
-            'Author',
-            'Tech lead',
-        ]);
+describe('PR deterministic fixture helpers', () => {
+    it('returns timeline and thread groups', () => {
         expect(getMockTimeline().length).toBeGreaterThanOrEqual(3);
         const groups = getMockThreadGroups();
         expect(groups.length).toBeGreaterThanOrEqual(4);
@@ -117,21 +57,6 @@ describe('AI mock data', () => {
         expect(getMockCommitRows().length).toBeGreaterThanOrEqual(5);
         expect(getMockCheckRows().some(row => row.status === 'warning')).toBe(true);
         expect(getMockMergeReadiness().some(item => item.tag === 'risk')).toBe(true);
-    });
-
-    it('returns suggested prompts and seed chat for the assistant', () => {
-        expect(getMockSuggestedPrompts()).not.toHaveLength(0);
-        const chat = getMockSeedChat();
-        expect(chat[0]?.role).toBe('ai');
-        const chatAgain = getMockSeedChat();
-        expect(chatAgain).not.toBe(chat); // returns a defensive copy
-    });
-
-    it('matches AI answers based on question keywords', () => {
-        expect(getMockAiAnswer('What can I ignore?').answer).toMatch(/skim|ignore|fixture/i);
-        expect(getMockAiAnswer('Draft a comment').answer).toMatch(/comment|draft/i);
-        expect(getMockAiAnswer('Can this merge today?').answer).toMatch(/test|merge|owner/i);
-        expect(getMockAiAnswer('Anything else?').answer.length).toBeGreaterThan(0);
     });
 
     it('exposes class-name helpers for tags, intents, statuses, and risks', () => {
@@ -156,11 +81,6 @@ describe('AI mock data', () => {
         expect(riskPillClass('Low')).toContain('green');
         expect(riskPillClass('Medium')).toContain('yellow');
         expect(riskPillClass('High')).toContain('red');
-    });
-
-    it('returns a non-empty review summary text', () => {
-        const summary = getMockReviewSummaryText(basePr);
-        expect(summary.length).toBeGreaterThan(20);
     });
 });
 

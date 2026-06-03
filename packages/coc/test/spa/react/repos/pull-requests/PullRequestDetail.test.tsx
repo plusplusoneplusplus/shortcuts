@@ -257,7 +257,7 @@ describe('hero metadata', () => {
         mockFetchDetail(makePr());
         await act(async () => { await renderDetail(); });
         await waitFor(() => expect(screen.getByTestId('pr-risk-pill')).toBeInTheDocument());
-        expect(screen.getByTestId('pr-risk-pill').textContent).toMatch(/AI risk:/);
+        expect(screen.getByTestId('pr-risk-pill').textContent).toMatch(/Risk:/);
     });
 
     it('renders the additions/deletions delta and file count from the real diff', async () => {
@@ -284,6 +284,54 @@ describe('hero metadata', () => {
         expect(screen.getByTestId('pr-run-ai-pass')).toBeInTheDocument();
         expect(screen.getByTestId('pr-copy-summary')).toBeInTheDocument();
         expect(screen.getByTestId('pr-open-ai-assistant')).toBeInTheDocument();
+    });
+
+    it('renders deterministic review-summary facts and copies the PR description', async () => {
+        const clipboardWrite = vi.fn().mockResolvedValue(undefined);
+        Object.defineProperty(navigator, 'clipboard', {
+            configurable: true,
+            value: { writeText: clipboardWrite },
+        });
+        const pr = makePr({
+            description: 'Fix flaky network calls with bounded retries.',
+            reviewers: [
+                { identity: { displayName: 'Bob' }, vote: 'approved' },
+                { identity: { displayName: 'Carol' }, vote: 'noVote' },
+            ],
+        });
+        const threads = makeThreads([{
+            status: 'active',
+            threadContext: { filePath: 'src/retry.ts', line: 44 },
+            comments: [{
+                id: 'comment-actual',
+                body: 'Please handle timeout cancellation before merge.',
+            }],
+        }]);
+        const checks = [{
+            id: 'lint',
+            name: 'lint',
+            status: 'failure',
+            source: 'check',
+            description: 'eslint failed',
+        }];
+
+        mockFetchDetail(pr, threads, SAMPLE_DIFF, [], checks);
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('pr-review-summary')).toBeInTheDocument());
+
+        expect(screen.getByTestId('pr-review-summary-copy').textContent).toBe('Fix flaky network calls with bounded retries.');
+        const metrics = screen.getByTestId('pr-review-metrics').textContent ?? '';
+        expect(metrics).toContain('+2 / -1');
+        expect(metrics).toContain('0/1 passing');
+        expect(metrics).toContain('1/2 approved');
+        expect(metrics).toContain('1/1 unresolved');
+        const findings = screen.getByTestId('pr-review-findings').textContent ?? '';
+        expect(findings).toContain('lint: eslint failed');
+        expect(findings).toContain('src/retry.ts:44');
+        expect(screen.queryByTestId('pr-quick-workflow')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('pr-copy-summary'));
+        expect(clipboardWrite).toHaveBeenCalledWith('Fix flaky network calls with bounded retries.');
     });
 });
 

@@ -22,7 +22,7 @@ spa/client/react/
 │   ├── chat/           # Chat UI: ChatDetail, ChatListPane, ConversationArea
 │   ├── memory/         # Memory V2 route, facts/review/episodes tabs, repo memory settings section
 │   ├── notes/          # Notes UI: NoteEditor, Mermaid zoom/pan, sidebar, multi-root dropdown (useNotesRoots)
-│   ├── pull-requests/  # PR dashboard: attention groups, real diff-stat queue badges/risk, BatchCommandPanel
+│   ├── pull-requests/  # PR dashboard: attention groups, real diff-stat queue badges/risk, deterministic review summary, BatchCommandPanel
 │   └── terminal/       # Terminal UI: TerminalView, pin/unpin
 ├── processes/          # Process detail, DAG visualization
 ├── queue/              # Queue management (EnqueueDialog, QueueView)
@@ -219,5 +219,7 @@ Local React hooks (`fetchApi`, `useWebSocket`, `seenStateApi`) wrap the client f
 The Pull Requests tab is enabled by default through `pullRequests.enabled`. The left queue rail starts with the "Open PR by # or URL" input; successful opens from that input are validated through the PR detail API, recorded through the repo-scoped recent-opened PR API, and shown in a compact "Recently opened" list directly below the input. Recent entries stay hidden when empty or when the rail is collapsed, open through the same overview navigation path, and confirmed 404s remove the stale entry from the list.
 
 Queue rows use server-enriched provider/git diff stats for file count, review-minute estimates, and deterministic risk tiers: low below 200 changed lines, medium from 200 through 800, and high above 800. Missing diff stats render unavailable queue metadata instead of falling back to mock data.
+
+The PR detail overview renders a deterministic review-summary card from the PR description, parsed/provider diff stats, checks, reviewers, and comment threads. Findings are derived from failing checks and unresolved threads, and the former persona-lens grid is not rendered.
 
 PR review suggestions remain behind the separate `pullRequests.suggestions` config flag. The `For You` filter includes a `Generate suggestions`/`Refresh` action that first refreshes review history, then asks the server to rank open PRs. The UI shows inline progress, empty-state guidance, and recovery messages for missing review history or provider errors.
