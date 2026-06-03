@@ -94,6 +94,7 @@
     }
   },
   "scripts": {
+    "prebuild": "node scripts/prebuild.mjs",
     "build": "tsc",
     "test": "vitest",
     "test:run": "vitest run",
