@@ -282,6 +282,30 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
         expect(screen.getByTestId('ralph-session-unseen-dot')).toBeTruthy();
     });
 
+    it('starts unseen Ralph sessions collapsed again after remounting the same workspace', () => {
+        const history = fixtureFiveIterPlusThreeStandalone();
+        const unseenId = `ralph-${SESSION_ID}-1`;
+        const { unmount } = renderActivity(history, {
+            activeTab: 'chats',
+            workspaceId: 'ws-a',
+            unseenProcessIds: new Set([unseenId]),
+        });
+
+        fireEvent.click(screen.getByTestId('ralph-session-chevron'));
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('true');
+
+        unmount();
+        renderActivity(history, {
+            activeTab: 'chats',
+            workspaceId: 'ws-a',
+            unseenProcessIds: new Set([unseenId]),
+        });
+
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('ralph-session-children')).toBeNull();
+        expect(screen.getByTestId('ralph-session-unseen-dot')).toBeTruthy();
+    });
+
     it('Today section count badge reflects entries (1 ralph session + 3 standalones = 4)', () => {
         const { container } = renderActivity(fixtureFiveIterPlusThreeStandalone());
         const sections = Array.from(container.querySelectorAll('[data-section]')).map(el => el.getAttribute('data-section'));

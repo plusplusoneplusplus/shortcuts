@@ -1371,6 +1371,27 @@ describe('ChatListPane', () => {
             expect(screen.getAllByTestId('history-group')[0].getAttribute('data-expanded')).toBe('false');
         });
 
+        it('starts plan-file groups collapsed again after remounting the same workspace', () => {
+            const { unmount } = renderGrouped({
+                workspaceId: 'ws-a',
+                unseenProcessIds: new Set(['g2-a']),
+            });
+
+            fireEvent.click(screen.getAllByTestId('group-chevron')[0]);
+            expect(screen.getAllByTestId('history-group')[0].getAttribute('data-expanded')).toBe('true');
+
+            unmount();
+            renderGrouped({
+                workspaceId: 'ws-a',
+                unseenProcessIds: new Set(['g2-a']),
+            });
+
+            const unseenGroup = screen.getByTestId('group-unseen-dot').closest('[data-testid="history-group"]') as HTMLElement;
+            expect(unseenGroup.getAttribute('data-expanded')).toBe('false');
+            expect(screen.queryByTestId('history-group-children')).toBeNull();
+            expect(screen.getByTestId('unseen-count-badge').textContent).toBe('1');
+        });
+
     });
 
     // ── Search ─────────────────────────────────────────────────────────
