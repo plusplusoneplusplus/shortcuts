@@ -15,6 +15,10 @@ export default defineConfig({
     },
     test: {
         globals: true,
+        // The full CoC suite emits tens of thousands of console lines from
+        // passing tests; suppress them by default so local broad validation
+        // stays comfortably under outer command timeouts.
+        silent: process.env.VITEST_VERBOSE_LOGS !== '1',
         environment: 'node',
         include: ['test/**/*.test.ts', 'test/**/*.test.tsx'],
         setupFiles: ['test/setup.ts'],

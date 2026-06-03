@@ -167,7 +167,7 @@ describe('WorkItemHierarchyTree — Remote tracker workflow', () => {
     });
 
     it('renders provider filter chips in the Remote tracker header', () => {
-        expect(src).toContain('WORK_ITEM_REMOTE_PROVIDER_FILTERS');
+        expect(src).toContain('getRemoteProviderFilterOptions');
         expect(src).toContain('remote-provider-filter');
         expect(src).toContain('onRemoteProviderFilterChange');
     });
