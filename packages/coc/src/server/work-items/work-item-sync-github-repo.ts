@@ -3,6 +3,7 @@ import { execFileSync } from 'child_process';
 export interface WorkItemSyncGithubPreference {
     owner?: string;
     repo?: string;
+    [key: string]: unknown;
 }
 
 export interface WorkItemSyncRepoPreferences {
@@ -11,6 +12,7 @@ export interface WorkItemSyncRepoPreferences {
             github?: WorkItemSyncGithubPreference;
         };
     };
+    [key: string]: unknown;
 }
 
 export interface WorkItemSyncWorkspaceInfo {
