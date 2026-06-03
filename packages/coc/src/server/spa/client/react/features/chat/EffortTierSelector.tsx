@@ -44,6 +44,7 @@ export interface EffortTierSelectorProps {
     disabled?: boolean;
     'data-testid'?: string;
     className?: string;
+    mobileTapTarget?: boolean;
 }
 
 export function EffortTierSelector({
@@ -52,6 +53,7 @@ export function EffortTierSelector({
     onChange,
     disabled = false,
     className,
+    mobileTapTarget = false,
     ...rest
 }: EffortTierSelectorProps) {
     const testId = rest['data-testid'] ?? 'effort-tier-selector';
@@ -84,7 +86,8 @@ export function EffortTierSelector({
                 disabled={disabled}
                 onClick={() => setOpen(o => !o)}
                 className={cn(
-                    'ctool shrink-0 inline-flex items-center gap-1 h-[22px] px-1.5 rounded-sm text-[11px]',
+                    'ctool shrink-0 inline-flex items-center gap-1 rounded-sm text-[11px]',
+                    mobileTapTarget ? 'h-8 px-2 lg:h-[22px] lg:px-1.5' : 'h-[22px] px-1.5',
                     'text-[#5a5a5a] dark:text-[#cccccc]',
                     'hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e]',
                     'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50',

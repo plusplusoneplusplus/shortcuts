@@ -386,7 +386,7 @@ export function FollowUpInputArea({
                 'shrink-0 rounded bg-[#f14c4c] text-white font-medium hover:bg-[#d93636] disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-[#f14c4c]',
                 compactModeSelector
                     ? 'h-[34px] px-2 sm:px-3 text-sm'
-                    : 'h-[24px] px-1.5 text-[11px]',
+                    : 'h-8 px-2 lg:h-[24px] lg:px-1.5 text-[11px]',
             )}
             onClick={() => {
                 if (!isCancelling) onStop?.();
@@ -649,6 +649,7 @@ export function FollowUpInputArea({
                                 selected={activeProvider ?? 'copilot'}
                                 onChange={() => {}}
                                 disabled={true}
+                                mobileTapTarget={true}
                             />
                             <span aria-hidden="true" data-testid="chat-toolbar-divider-provider" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                             {/* Mode pill selector — first in toolbar (desktop ≥1024px). */}
@@ -669,7 +670,7 @@ export function FollowUpInputArea({
                                 <button
                                     type="button"
                                     onClick={() => setSelectedMode(cycleMode(selectedMode, allowedModes))}
-                                    className="ctool lg:hidden shrink-0 inline-flex items-center gap-0.5 h-[22px] px-1.5 mr-0.5 rounded-sm border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
+                                    className="ctool lg:hidden shrink-0 inline-flex items-center gap-0.5 h-8 px-2 mr-0.5 rounded-sm border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
                                     data-testid="mode-cycle-btn-compact"
                                     aria-label={`Mode: ${selectedMode}. Tap to switch.`}
                                     title={MODE_TOOLTIPS[selectedMode] + ' (tap to cycle)'}
@@ -691,6 +692,7 @@ export function FollowUpInputArea({
                                     selectedTier={selectedEffortTier}
                                     onChange={onEffortTierChange}
                                     data-testid="follow-up-effort-tier-selector"
+                                    mobileTapTarget={true}
                                 />
                             )}
                             {/* Model selector chip — shows the active model
@@ -699,7 +701,7 @@ export function FollowUpInputArea({
                                 <div className="relative shrink-0" data-testid="model-picker-chip-container">
                                     <button
                                         type="button"
-                                        className="ctool inline-flex items-center gap-1 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 min-w-0 max-w-[40vw] sm:max-w-[180px] transition-colors"
+                                        className="ctool inline-flex items-center gap-1 h-8 px-2 lg:h-[22px] lg:px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 min-w-0 max-w-[40vw] sm:max-w-[180px] transition-colors"
                                         onClick={() => {
                                             if (modelCommand.modelMenuVisible) {
                                                 modelCommand.dismissModelMenu();
@@ -782,7 +784,7 @@ export function FollowUpInputArea({
                             <div ref={toolsMenuRef} className="relative shrink-0 lg:hidden" data-testid="chat-toolbar-overflow">
                                 <button
                                     type="button"
-                                    className="ctool inline-flex items-center justify-center h-[22px] w-[22px] rounded-sm text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
+                                    className="ctool inline-flex items-center justify-center h-8 w-8 rounded-sm text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
                                     onClick={() => setToolsMenuOpen(o => !o)}
                                     aria-label="More actions"
                                     title="More actions (slash, mention, attach)"
@@ -907,6 +909,7 @@ export function FollowUpInputArea({
                                     ctrlHeld={modHeld}
                                     onSend={(dm) => { void onSend(undefined, dm); }}
                                     label={selectedMode === 'ralph' ? 'Promote to Ralph' : 'Send'}
+                                    mobileTapTarget={true}
                                 />
                             )}
                         </div>

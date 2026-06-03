@@ -20,6 +20,7 @@ export interface AgentSelectorChipProps {
     selected: ChatProvider;
     onChange: (provider: ChatProvider) => void;
     disabled?: boolean;
+    mobileTapTarget?: boolean;
 }
 
 /** Bot icon for Codex — small hexagon outline, matching the existing provider badge. */
@@ -66,7 +67,7 @@ function ProviderIcon({ id }: { id: string }) {
     return <CopilotIcon />;
 }
 
-export function AgentSelectorChip({ providers, loading, selected, onChange, disabled }: AgentSelectorChipProps) {
+export function AgentSelectorChip({ providers, loading, selected, onChange, disabled, mobileTapTarget = false }: AgentSelectorChipProps) {
     const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -91,7 +92,8 @@ export function AgentSelectorChip({ providers, loading, selected, onChange, disa
                 disabled={disabled || loading}
                 onClick={() => setOpen(o => !o)}
                 className={cn(
-                    'ctool shrink-0 inline-flex items-center gap-1 h-[22px] px-1.5 rounded-sm text-[11px]',
+                    'ctool shrink-0 inline-flex items-center gap-1 rounded-sm text-[11px]',
+                    mobileTapTarget ? 'h-8 px-2 lg:h-[22px] lg:px-1.5' : 'h-[22px] px-1.5',
                     'text-[#5a5a5a] dark:text-[#cccccc]',
                     'hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e]',
                     'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50',

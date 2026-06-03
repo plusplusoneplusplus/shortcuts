@@ -1,0 +1,25 @@
+/**
+ * @vitest-environment jsdom
+ */
+import { describe, expect, it, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { QueueFollowUpButton } from '../../../../src/server/spa/client/react/ui/QueueFollowUpButton';
+
+describe('QueueFollowUpButton', () => {
+    it('preserves compact desktop sizing while exposing a 32px mobile/tablet tap target', () => {
+        render(
+            <QueueFollowUpButton
+                disabled={false}
+                ctrlHeld={false}
+                onSend={vi.fn()}
+                mobileTapTarget={true}
+            />,
+        );
+
+        const tokens = screen.getByTestId('activity-chat-send-btn').className.split(/\s+/);
+        expect(tokens).toContain('h-8');
+        expect(tokens).toContain('lg:h-[24px]');
+        expect(tokens).toContain('lg:pl-2');
+        expect(tokens).toContain('lg:pr-1.5');
+    });
+});

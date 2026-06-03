@@ -26,8 +26,14 @@ vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
     Button: ({ children, ...rest }: any) => <button {...rest}>{children}</button>,
     SuggestionChips: () => null,
     SendButton: () => <button data-testid="activity-chat-send-btn">Send</button>,
-    QueueFollowUpButton: ({ onSend }: any) => (
-        <button data-testid="activity-chat-send-btn" onClick={() => onSend('enqueue')}>Send</button>
+    QueueFollowUpButton: ({ onSend, mobileTapTarget }: any) => (
+        <button
+            data-testid="activity-chat-send-btn"
+            className={mobileTapTarget ? 'h-8 lg:h-[24px]' : 'h-[24px]'}
+            onClick={() => onSend('enqueue')}
+        >
+            Send
+        </button>
     ),
 }));
 
@@ -124,6 +130,22 @@ function defaultProps(overrides: Partial<Parameters<typeof FollowUpInputArea>[0]
     };
 }
 
+function classTokens(element: HTMLElement) {
+    return element.className.split(/\s+/);
+}
+
+function expectMobileTapTarget(element: HTMLElement, desktopHeight: string) {
+    const tokens = classTokens(element);
+    expect(tokens).toContain('h-8');
+    expect(tokens).toContain(desktopHeight);
+}
+
+function expectSquareMobileTapTarget(element: HTMLElement) {
+    const tokens = classTokens(element);
+    expect(tokens).toContain('h-8');
+    expect(tokens).toContain('w-8');
+}
+
 describe('FollowUpInputArea – compact mobile toolbar', () => {
     beforeEach(() => {
         Element.prototype.scrollIntoView = vi.fn();
@@ -139,6 +161,57 @@ describe('FollowUpInputArea – compact mobile toolbar', () => {
         expect(tokens).toContain('lg:flex-wrap');
         // The unprefixed `flex-wrap` (which would wrap on mobile) must be gone.
         expect(tokens).not.toContain('flex-wrap');
+    });
+
+    it('gives visible mobile/tablet toolbar actions approximately 32px tap targets', () => {
+        render(<FollowUpInputArea
+            {...defaultProps({
+                modelCommand: {
+                    modelMenuVisible: false,
+                    modelFilter: '',
+                    filteredModels: [],
+                    modelHighlightIndex: 0,
+                    modelOverride: null,
+                    setModelOverride: vi.fn(),
+                    handleModelSelect: vi.fn(),
+                    showModelMenu: vi.fn(),
+                    dismissModelMenu: vi.fn(),
+                    handleModelKeyDown: vi.fn(),
+                    setModelFilter: vi.fn(),
+                },
+                sessionModel: 'gpt-5.5',
+            })}
+        />);
+
+        expectMobileTapTarget(screen.getByTestId('agent-selector-chip-btn'), 'lg:h-[22px]');
+        expectMobileTapTarget(screen.getByTestId('mode-cycle-btn-compact'), 'h-8');
+        expectMobileTapTarget(screen.getByTestId('model-picker-chip'), 'lg:h-[22px]');
+        expectSquareMobileTapTarget(screen.getByTestId('chat-toolbar-overflow-btn'));
+        expectMobileTapTarget(screen.getByTestId('activity-chat-send-btn'), 'lg:h-[24px]');
+    });
+
+    it('gives the active-generation stop action a 32px mobile/tablet tap target', () => {
+        render(<FollowUpInputArea {...defaultProps({ isActiveGeneration: true, onStop: vi.fn() })} />);
+
+        expectMobileTapTarget(screen.getByTestId('activity-chat-stop-btn'), 'lg:h-[24px]');
+    });
+
+    it('gives the effort-tier selector a 32px mobile/tablet tap target', () => {
+        render(<FollowUpInputArea
+            {...defaultProps({
+                useEffortTierMode: true,
+                selectedEffortTier: 'low',
+                onEffortTierChange: vi.fn(),
+                effortTierMap: {
+                    'very-low': { model: 'gpt-5-mini', reasoningEffort: '' },
+                    low: { model: 'gpt-5.5', reasoningEffort: 'low' },
+                    medium: { model: 'gpt-5.5', reasoningEffort: 'medium' },
+                    high: { model: 'gpt-5.5', reasoningEffort: 'high' },
+                } as any,
+            })}
+        />);
+
+        expectMobileTapTarget(screen.getByTestId('effort-tier-trigger-btn'), 'lg:h-[22px]');
     });
 
     it('collapses slash/mention/attach into an overflow menu that is reachable', () => {
