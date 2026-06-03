@@ -1,13 +1,15 @@
 /**
- * Layout/source-string tests for WorkItemDetail inline edit mode.
- * These tests verify that the source file contains the expected patterns
- * for the container work item inline edit feature (AC-01, AC-02, AC-03).
+ * Source-pattern tests for WorkItemDetail always-on inline editing.
+ *
+ * The work item detail view no longer has an Edit button / edit-mode toggle.
+ * Every field renders as an editable control at all times and a single Ctrl+S
+ * (Cmd+S) persists all dirty fields in one batch (AC-01..AC-05).
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
-describe('WorkItemDetail inline edit', () => {
+describe('WorkItemDetail always-on inline editing', () => {
     let src: string;
 
     beforeAll(() => {
@@ -17,123 +19,94 @@ describe('WorkItemDetail inline edit', () => {
         );
     });
 
-    describe('AC-01: Edit mode for container items', () => {
-        it('imports isWorkItemsHierarchyEnabled', () => {
-            expect(src).toContain('isWorkItemsHierarchyEnabled');
+    describe('AC-01: no Edit button / edit-mode toggle', () => {
+        it('removes the Edit button testid and edit-toggle handlers', () => {
+            expect(src).not.toContain('wi-edit-btn');
+            expect(src).not.toContain('wi-edit-save-btn');
+            expect(src).not.toContain('wi-edit-cancel-btn');
+            expect(src).not.toContain('handleEditStart');
+            expect(src).not.toContain('handleEditCancel');
+            expect(src).not.toMatch(/\bisEditing\b/);
         });
 
-        it('imports WorkItemParentPicker', () => {
-            expect(src).toContain('WorkItemParentPicker');
+        it('renders fields as always-on inputs', () => {
+            expect(src).toContain('wi-title-input');
+            expect(src).toContain('wi-description-input');
+            expect(src).toContain('wi-priority-select');
+            expect(src).toContain('wi-tags-input');
         });
 
-        it('defines hierarchyEnabled constant', () => {
-            expect(src).toContain('hierarchyEnabled = isWorkItemsHierarchyEnabled()');
-        });
-
-        it('defines isEditing state', () => {
-            expect(src).toContain('isEditing');
-        });
-
-        it('renders Edit button only when isContainer and hierarchyEnabled', () => {
-            expect(src).toContain('isContainer && hierarchyEnabled');
-            expect(src).toContain("wi-edit-btn");
-        });
-
-        it('shows Save and Cancel buttons in edit mode', () => {
-            expect(src).toContain("wi-edit-save-btn");
-            expect(src).toContain("wi-edit-cancel-btn");
-        });
-
-        it('handleEditStart populates edit state from item', () => {
-            expect(src).toContain('handleEditStart');
-            expect(src).toContain('setEditTitle(item.title)');
-        });
-
-        it('handleEditCancel clears editing state', () => {
-            expect(src).toContain('handleEditCancel');
-            expect(src).toContain('setIsEditing(false)');
-        });
-
-        it('resets edit mode when workItemId changes', () => {
-            expect(src).toContain('setIsEditing(false)');
-            expect(src).toContain('[workItemId]');
+        it('binds inputs to the unified draft via updateDraft', () => {
+            expect(src).toContain('const updateDraft');
+            expect(src).toContain("updateDraft('title'");
+            expect(src).toContain("updateDraft('description'");
+            expect(src).toContain("updateDraft('priority'");
+            expect(src).toContain("updateDraft('tags'");
+            expect(src).toContain("updateDraft('status'");
         });
     });
 
-    describe('AC-02: Editable fields', () => {
-        it('has title input in edit mode', () => {
-            expect(src).toContain('wi-edit-title-input');
+    describe('AC-02: batched Ctrl+S save', () => {
+        it('has a single Save affordance gated on isDirty', () => {
+            expect(src).toContain('wi-save-btn');
+            expect(src).toContain('disabled={!isDirty || saving}');
         });
 
-        it('has description textarea in edit mode', () => {
-            expect(src).toContain('wi-edit-description-input');
+        it('listens for Ctrl+S / Cmd+S to trigger save', () => {
+            expect(src).toContain('e.metaKey || e.ctrlKey');
+            expect(src).toMatch(/e\.key === 's'/);
+            expect(src).toContain("addEventListener('keydown'");
         });
 
-        it('has priority select with High, Normal, Low options', () => {
-            expect(src).toContain('wi-edit-priority-select');
-            expect(src).toContain('"high"');
-            expect(src).toContain('"normal"');
-            expect(src).toContain('"low"');
+        it('status feeds the draft instead of instant-saving', () => {
+            expect(src).not.toContain('handleStatusChange');
+            const idx = src.indexOf('work-item-status-select');
+            const statusSelect = src.slice(idx - 400, idx + 200);
+            expect(statusSelect).toContain("updateDraft('status'");
         });
 
-        it('has tags input', () => {
-            expect(src).toContain('wi-edit-tags-input');
+        it('saves metadata in a single PATCH via workItems.update', () => {
+            expect(src).toContain('workItems.update(workspaceId, workItemId, updates');
         });
 
-        it('has parent edit section for non-epic containers', () => {
-            expect(src).toContain('work-item-parent-edit');
-            expect(src).toContain('wi-edit-parent-btn');
-        });
-
-        it('does not offer parent unlink in edit UI — no null parentId send', () => {
-            // The new edit UI should not set parentId to null
-            expect(src).not.toContain("parentId: null");
-        });
-
-        it('keeps type immutable — no type field in edit form', () => {
-            expect(src).not.toContain("updates.type");
+        it('plan changes join the same save action via updatePlan', () => {
+            expect(src).toContain('planChanged');
+            expect(src).toContain('workItems.updatePlan(workspaceId, workItemId, planDraft');
         });
     });
 
-    describe('AC-03: Validation, save, and error handling', () => {
-        it('handleEditSave trims title and validates', () => {
-            expect(src).toContain('trimmedTitle = editTitle.trim()');
-            expect(src).toContain("Title is required");
+    describe('AC-04: dirty indicator + navigation warning', () => {
+        it('shows an unsaved-changes indicator when dirty', () => {
+            expect(src).toContain('wi-dirty-indicator');
+            expect(src).toContain('isDirty');
+        });
+
+        it('warns on page unload while dirty', () => {
+            expect(src).toContain("addEventListener('beforeunload'");
+        });
+
+        it('guards in-app back navigation while dirty', () => {
+            expect(src).toContain('guardedBack');
+            expect(src).toContain('unsaved changes');
+        });
+    });
+
+    describe('AC-05: save failure preserves values', () => {
+        it('validates title and shows inline error', () => {
+            expect(src).toContain('draft.title.trim()');
+            expect(src).toContain('Title is required');
+            expect(src).toContain('wi-edit-error');
+            expect(src).toContain('setEditError');
+        });
+
+        it('does not invent new request fields — reuses UpdateWorkItemRequest shape', () => {
+            expect(src).not.toContain('updates.type');
+            expect(src).not.toContain('parentId: null');
         });
 
         it('normalizes tags to unique trimmed non-empty values', () => {
-            expect(src).toContain("split(',')");
-            expect(src).toContain('new Set(parsedTags)');
-        });
-
-        it('shows edit error display', () => {
-            expect(src).toContain('wi-edit-error');
-            expect(src).toContain('editError');
-        });
-
-        it('does not send status from editor', () => {
-            const handleSaveBlock = src.slice(
-                src.indexOf('handleEditSave = useCallback'),
-                src.indexOf('}, [editTitle')
-            );
-            expect(handleSaveBlock).not.toContain('status');
-        });
-
-        it('dispatches WORK_ITEM_UPDATED on success', () => {
-            expect(src).toContain("WORK_ITEM_UPDATED");
-        });
-
-        it('disables controls during save via saving state', () => {
-            expect(src).toContain('disabled={saving}');
-        });
-
-        it('uses existing PATCH endpoint via workItems.update', () => {
-            expect(src).toContain('workItems.update(workspaceId, workItemId');
-        });
-
-        it('shows WorkItemParentPicker with onlyPick for parent editing', () => {
-            expect(src).toContain('onlyPick={true}');
-            expect(src).toContain('showParentPicker');
+            expect(src).toContain('function parseTags');
+            expect(src).toContain('new Set(tags.split');
         });
     });
 });
