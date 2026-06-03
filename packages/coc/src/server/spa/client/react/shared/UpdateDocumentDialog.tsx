@@ -3,7 +3,7 @@
  * Uses a pre-filled prompt template for document updating.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { FloatingDialog, Button } from '../ui';
 import { useApp } from '../contexts/AppContext';
 import { useGlobalToast } from '../contexts/ToastContext';
@@ -37,6 +37,7 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
     const [selectedWsId, setSelectedWsId] = useState(wsId);
     const [resolvedPath, setResolvedPath] = useState(taskPath);
     const [prompt, setPrompt] = useState(`Update the document at "${taskPath}" `);
+    const promptEditedRef = useRef(false);
     const [submitting, setSubmitting] = useState(false);
     const aiSelection = useModalJobAiSelection({ workspaceId: selectedWsId, mode: 'autopilot' });
 
@@ -58,15 +59,9 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
                     : taskPath;
             }
             setResolvedPath(full);
-            setPrompt(prev => {
-                // Only auto-update the prompt if user hasn't edited it
-                const oldDefault = `Update the document at "${taskPath}" `;
-                const curDefault = prev.startsWith('Update the document at "') && prev.endsWith('" ');
-                if (prev === oldDefault || curDefault) {
-                    return `Update the document at "${full}" `;
-                }
-                return prev;
-            });
+            if (!promptEditedRef.current) {
+                setPrompt(`Update the document at "${full}" `);
+            }
         });
         return () => { cancelled = true; };
     }, [selectedWsId, taskPath, state.workspaces]);
@@ -151,7 +146,10 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
                             id="update-doc-instruction"
                             className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] resize-y min-h-[80px]"
                             value={prompt}
-                            onChange={e => setPrompt(e.target.value)}
+                            onChange={e => {
+                                promptEditedRef.current = true;
+                                setPrompt(e.target.value);
+                            }}
                             onKeyDown={e => {
                                 if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !submitting && prompt.trim()) {
                                     e.preventDefault();
