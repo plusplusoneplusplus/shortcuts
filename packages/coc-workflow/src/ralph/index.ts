@@ -23,3 +23,15 @@ export type { BuildRalphIterationPromptInput } from './iteration-prompt';
 export { buildFinalCheckPrompt } from './final-check-prompt';
 export type { BuildFinalCheckPromptInput } from './final-check-prompt';
 export { parseFinalCheckResult } from './final-check-result-parser';
+export { decideRalphIterationActions } from './iteration-decision';
+export type {
+    DecideRalphIterationActionsInput,
+    RalphCompleteSessionAction,
+    RalphEnqueueFinalCheckAction,
+    RalphEnqueueNextIterationAction,
+    RalphIterationAction,
+    RalphIterationCompletionReason,
+    RalphIterationDecision,
+    RalphRecordIterationAction,
+    RalphSurfaceTerminalReasonAction,
+} from './iteration-decision';
