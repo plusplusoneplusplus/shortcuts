@@ -155,13 +155,15 @@ describe('GET /api/agent-providers/:provider/effort-tiers', () => {
             defaults: Record<string, { model: string; reasoningEffort: string | null }>;
         };
         expect(data.provider).toBe('copilot');
-        // All three tiers populated from defaults, source: 'default'.
+        // All four tiers populated from defaults, source: 'default'.
         expect(data.effortTiers).toEqual({
+            'very-low': { model: 'gpt-5.4-mini',     reasoningEffort: 'low',   source: 'default' },
             low:    { model: 'claude-sonnet-4.6', reasoningEffort: 'high',  source: 'default' },
             medium: { model: 'claude-opus-4.8',   reasoningEffort: null,    source: 'default' },
             high:   { model: 'gpt-5.5',           reasoningEffort: 'xhigh', source: 'default' },
         });
         expect(data.defaults).toEqual({
+            'very-low': { model: 'gpt-5.4-mini',     reasoningEffort: 'low'   },
             low:    { model: 'claude-sonnet-4.6', reasoningEffort: 'high'  },
             medium: { model: 'claude-opus-4.8',   reasoningEffort: null    },
             high:   { model: 'gpt-5.5',           reasoningEffort: 'xhigh' },
@@ -183,11 +185,13 @@ describe('GET /api/agent-providers/:provider/effort-tiers', () => {
         };
         expect(data.provider).toBe('codex');
         expect(data.effortTiers).toEqual({
+            'very-low': { model: 'gpt-5.4-mini', reasoningEffort: 'low',   source: 'default' },
             low:    { model: 'gpt-5.4-mini', reasoningEffort: 'xhigh', source: 'default' },
             medium: { model: 'gpt-5.5',      reasoningEffort: 'high',  source: 'default' },
             high:   { model: 'gpt-5.5',      reasoningEffort: 'xhigh', source: 'default' },
         });
         expect(data.defaults).toEqual({
+            'very-low': { model: 'gpt-5.4-mini', reasoningEffort: 'low'   },
             low:    { model: 'gpt-5.4-mini', reasoningEffort: 'xhigh' },
             medium: { model: 'gpt-5.5',      reasoningEffort: 'high'  },
             high:   { model: 'gpt-5.5',      reasoningEffort: 'xhigh' },
@@ -216,6 +220,7 @@ describe('GET /api/agent-providers/:provider/effort-tiers', () => {
         expect(status).toBe(200);
         const data = body as { provider: string; effortTiers: Record<string, unknown> };
         expect(data.effortTiers).toEqual({
+            'very-low': { model: 'gpt-5.4-mini', reasoningEffort: 'low', source: 'default' },
             low:    { model: 'fast-model', reasoningEffort: null,     source: 'config' },
             medium: { model: 'mid-model',  reasoningEffort: 'medium', source: 'config' },
             high:   { model: 'opus-model', reasoningEffort: 'high',   source: 'config' },
@@ -241,8 +246,10 @@ describe('GET /api/agent-providers/:provider/effort-tiers', () => {
         const { body } = await apiGet('/api/agent-providers/copilot/effort-tiers');
         const data = body as { effortTiers: Record<string, { source: string; model: string }> };
         expect(data.effortTiers.medium).toEqual({ model: 'mid-model', reasoningEffort: 'medium', source: 'config' });
+        expect(data.effortTiers['very-low'].source).toBe('default');
         expect(data.effortTiers.low.source).toBe('default');
         expect(data.effortTiers.high.source).toBe('default');
+        expect(data.effortTiers['very-low'].model).toBe('gpt-5.4-mini');
         expect(data.effortTiers.low.model).toBe('claude-sonnet-4.6');
     });
 
@@ -272,6 +279,7 @@ describe('GET /api/agent-providers/:provider/effort-tiers', () => {
         expect(status).toBe(200);
         // Copilot shows its own defaults — never the codex stored entry.
         const data = body as { effortTiers: Record<string, { source: string }> };
+        expect(data.effortTiers['very-low'].source).toBe('default');
         expect(data.effortTiers.low.source).toBe('default');
         expect(data.effortTiers.medium.source).toBe('default');
         expect(data.effortTiers.high.source).toBe('default');
@@ -337,6 +345,34 @@ describe('PUT /api/agent-providers/:provider/effort-tiers — single-tier upsert
         });
     });
 
+    it('writes and round-trips the very-low tier', async () => {
+        mockGetAll.mockReturnValue([]);
+        const cfgFns = makeConfigFunctions({});
+        const ctx = makeCtx({ ...cfgFns });
+        server = makeServer(ctx);
+        await startServer();
+
+        const put = await apiPut('/api/agent-providers/copilot/effort-tiers', {
+            tier: 'very-low',
+            model: 'configured-very-low',
+            reasoningEffort: 'low',
+        });
+        expect(put.status).toBe(200);
+        expect(cfgFns.writtenConfig?.models?.providers?.copilot?.effortTiers?.['very-low']).toEqual({
+            model: 'configured-very-low',
+            reasoningEffort: 'low',
+        });
+
+        const { status, body } = await apiGet('/api/agent-providers/copilot/effort-tiers');
+        expect(status).toBe(200);
+        const data = body as { effortTiers: Record<string, unknown> };
+        expect(data.effortTiers['very-low']).toEqual({
+            model: 'configured-very-low',
+            reasoningEffort: 'low',
+            source: 'config',
+        });
+    });
+
     it('returns 400 for invalid tier key', async () => {
         const ctx = makeCtx();
         server = makeServer(ctx);
@@ -348,6 +384,7 @@ describe('PUT /api/agent-providers/:provider/effort-tiers — single-tier upsert
         });
         expect(status).toBe(400);
         expect((body as { error: string }).error).toContain('Invalid tier');
+        expect((body as { error: string }).error).toContain('very-low, low, medium, high');
     });
 
     it('returns 400 when model is missing', async () => {
@@ -452,6 +489,8 @@ describe('PUT /api/agent-providers/:provider/effort-tiers — full-map replace',
         expect(status).toBe(200);
         const data = body as { effortTiers: Record<string, { model: string; source: string }> };
         // full-map replace: stored 'low' is cleared, so it surfaces as default
+        expect(data.effortTiers['very-low'].source).toBe('default');
+        expect(data.effortTiers['very-low'].model).toBe('gpt-5.4-mini');
         expect(data.effortTiers.low.source).toBe('default');
         expect(data.effortTiers.low.model).toBe('claude-sonnet-4.6');
         expect(data.effortTiers.medium).toEqual({ model: 'new-mid', reasoningEffort: null, source: 'config' });
@@ -473,6 +512,7 @@ describe('PUT /api/agent-providers/:provider/effort-tiers — full-map replace',
         });
         expect(status).toBe(400);
         expect((body as { error: string }).error).toContain('Invalid tier key');
+        expect((body as { error: string }).error).toContain('very-low, low, medium, high');
     });
 
     it('returns 400 when full map entry is missing model', async () => {

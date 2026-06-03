@@ -148,9 +148,10 @@ export interface EffortTierEntry {
     reasoningEffort?: string | null;
 }
 
-export type EffortTiersMap = Partial<Record<'low' | 'medium' | 'high', EffortTierEntry>>;
+export type EffortTiersMap = Partial<Record<'very-low' | 'low' | 'medium' | 'high', EffortTierEntry>>;
 
-const VALID_TIER_KEYS = new Set<string>(['low', 'medium', 'high']);
+const VALID_TIER_KEYS = new Set<string>(['very-low', 'low', 'medium', 'high']);
+const VALID_TIER_KEYS_LABEL = 'very-low, low, medium, high';
 
 // ── Provider-scoped model helpers ────────────────────────────────────────────
 
@@ -540,7 +541,7 @@ export function registerAgentProvidersRoutes(routes: Route[], ctx: AgentProvider
                         // Single-tier upsert: { tier, model, reasoningEffort? }
                         const tier = parsed.tier as string;
                         if (!VALID_TIER_KEYS.has(tier)) {
-                            send400(res, `Invalid tier: ${tier}. Valid tiers: low, medium, high`);
+                            send400(res, `Invalid tier: ${tier}. Valid tiers: ${VALID_TIER_KEYS_LABEL}`);
                             return;
                         }
                         if (typeof parsed.model !== 'string' || !parsed.model) {
@@ -557,7 +558,7 @@ export function registerAgentProvidersRoutes(routes: Route[], ctx: AgentProvider
                         const validated: EffortTiersMap = {};
                         for (const key of Object.keys(raw)) {
                             if (!VALID_TIER_KEYS.has(key)) {
-                                send400(res, `Invalid tier key: ${key}. Valid tiers: low, medium, high`);
+                                send400(res, `Invalid tier key: ${key}. Valid tiers: ${VALID_TIER_KEYS_LABEL}`);
                                 return;
                             }
                             const entry = raw[key] as Record<string, unknown>;
@@ -568,7 +569,7 @@ export function registerAgentProvidersRoutes(routes: Route[], ctx: AgentProvider
                             const effort = entry.reasoningEffort !== undefined
                                 ? (entry.reasoningEffort === null || typeof entry.reasoningEffort === 'string' ? entry.reasoningEffort as string | null : undefined)
                                 : undefined;
-                            validated[key as 'low' | 'medium' | 'high'] = { model: entry.model as string, reasoningEffort: effort };
+                            validated[key as 'very-low' | 'low' | 'medium' | 'high'] = { model: entry.model as string, reasoningEffort: effort };
                         }
                         updateMap = validated;
                     } else {

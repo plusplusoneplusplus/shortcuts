@@ -302,11 +302,11 @@ describe('validateAndParseTask – config.effortTier validation', () => {
         const result = validateAndParseTask({
             type: 'chat',
             payload: { prompt: 'Hello', mode: 'ask' },
-            config: { effortTier: 'high' },
+            config: { effortTier: 'very-low' },
         });
 
         expect(result.valid).toBe(true);
-        expect((result.input!.config as Record<string, unknown>).effortTier).toBe('high');
+        expect((result.input!.config as Record<string, unknown>).effortTier).toBe('very-low');
     });
 
     it('rejects unknown effortTier values', () => {
@@ -318,6 +318,7 @@ describe('validateAndParseTask – config.effortTier validation', () => {
 
         expect(result.valid).toBe(false);
         expect(result.error).toContain('Invalid effortTier');
+        expect(result.error).toContain('very-low, low, medium, high');
     });
 
     it('rejects non-string effortTier values', () => {

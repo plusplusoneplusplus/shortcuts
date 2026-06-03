@@ -247,7 +247,7 @@ export const PerRepoPreferencesSchema = z.object({
     lastModel: z.string().optional(),
     lastModels: LastModelsByModeSchema.optional(),
     lastDepth: z.enum(['deep', 'normal']).optional(),
-    lastEffort: z.enum(['low', 'medium', 'high']).optional(),
+    lastEffort: z.enum(['very-low', 'low', 'medium', 'high']).optional(),
     lastSkills: LastSkillsByModeSchema.optional(),
     skillUsageMap: stringRecordSchema.optional(),
     commitSkillUsageMap: stringRecordSchema.optional(),

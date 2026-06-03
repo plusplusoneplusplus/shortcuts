@@ -448,7 +448,7 @@ describe('readPreferences / writePreferences', () => {
     });
 
     it('round-trips lastEffort through write and read', () => {
-        for (const level of ['low', 'medium', 'high'] as const) {
+        for (const level of ['very-low', 'low', 'medium', 'high'] as const) {
             writeRepoPreferences(tmpDir, 'r', { lastEffort: level });
             const loaded = readRepoPreferences(tmpDir, 'r');
             expect(loaded.lastEffort).toBe(level);
@@ -733,6 +733,7 @@ describe('validatePreferences', () => {
     // -- lastEffort field --
 
     it('accepts valid lastEffort values', () => {
+        expect(validatePreferences({ lastEffort: 'very-low' })).toEqual({ lastEffort: 'very-low' });
         expect(validatePreferences({ lastEffort: 'low' })).toEqual({ lastEffort: 'low' });
         expect(validatePreferences({ lastEffort: 'medium' })).toEqual({ lastEffort: 'medium' });
         expect(validatePreferences({ lastEffort: 'high' })).toEqual({ lastEffort: 'high' });
@@ -2182,9 +2183,9 @@ describe('Per-Repo Preferences REST API', () => {
     });
 
     it('PATCH persists lastEffort', async () => {
-        const res = await patchJSON(repoUrl(repoId), { lastEffort: 'high' });
+        const res = await patchJSON(repoUrl(repoId), { lastEffort: 'very-low' });
         expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({ lastEffort: 'high' });
+        expect(JSON.parse(res.body)).toEqual({ lastEffort: 'very-low' });
     });
 
     it('PATCH persists lastSkills with single mode (array)', async () => {
