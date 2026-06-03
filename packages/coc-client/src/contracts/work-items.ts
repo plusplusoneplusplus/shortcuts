@@ -72,6 +72,8 @@ export interface WorkItemSyncRepository {
   provider: WorkItemSyncProvider;
   owner?: string;
   repo?: string;
+  organizationUrl?: string;
+  project?: string;
   projectId?: string;
   url?: string;
   source?: 'preference' | 'workspaceRemote' | 'origin';
@@ -86,6 +88,8 @@ export interface WorkItemSyncProviderStatus {
     | 'incomplete-preference'
     | 'missing-workspace'
     | 'missing-origin'
+    | 'missing-org-url'
+    | 'missing-project'
     | 'non-github-origin'
     | 'auth-unavailable'
     | 'unknown';

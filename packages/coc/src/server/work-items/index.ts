@@ -80,6 +80,12 @@ export {
     type ImportGitHubEpicTreeResult,
 } from './work-item-sync-github-provider';
 export {
+    createAzureBoardsWorkItemSyncProviderAdapter,
+    resolveAzureDevOpsCliAccessToken,
+    type AzureBoardsAccessTokenResolver,
+    type CreateAzureBoardsWorkItemSyncProviderOptions,
+} from './work-item-sync-azure-boards-provider';
+export {
     DEFAULT_WORK_ITEM_GITHUB_PULL_INTERVAL_MINUTES,
     WorkItemGitHubPullPoller,
     type WorkItemGitHubPullPollerOptions,

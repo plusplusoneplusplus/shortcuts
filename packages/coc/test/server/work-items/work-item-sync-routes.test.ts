@@ -7,9 +7,15 @@ import type { Route } from '../../../src/server/types';
 import { createRouter } from '../../../src/server/shared/router';
 import { registerWorkItemSyncRoutes } from '../../../src/server/routes/work-item-sync-routes';
 import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
-import type { WorkItemSyncProviderAdapter } from '../../../src/server/work-items';
+import {
+    createAzureBoardsWorkItemSyncProviderAdapter,
+    type WorkItemSyncProviderAdapter,
+} from '../../../src/server/work-items';
+import { writeRepoPreferences } from '../../../src/server/preferences-handler';
+import { writeProvidersConfig } from '../../../src/server/providers/providers-config';
 
 const REPO_ID = 'sync-test-repo';
+const SECOND_REPO_ID = 'sync-test-repo-2';
 
 let tmpDir: string;
 let store: FileWorkItemStore;
@@ -42,18 +48,33 @@ function makeFakeProvider(): WorkItemSyncProviderAdapter {
     };
 }
 
+function makeAzureProvider(resolveAccessToken = async () => 'azure-cli-access'): WorkItemSyncProviderAdapter {
+    return createAzureBoardsWorkItemSyncProviderAdapter({
+        dataDir: tmpDir,
+        resolveAccessToken,
+    });
+}
+
 function makeServer(providers: WorkItemSyncProviderAdapter[] = []): http.Server {
     const routes: Route[] = [];
     registerWorkItemSyncRoutes({
         routes,
         workItemStore: store,
         processStore: {
-            getWorkspaces: async () => [{
-                id: REPO_ID,
-                name: 'Sync Test',
-                rootPath: tmpDir,
-                remoteUrl: 'https://github.com/plusplusoneplusplus/shortcuts.git',
-            }],
+            getWorkspaces: async () => [
+                {
+                    id: REPO_ID,
+                    name: 'Sync Test',
+                    rootPath: tmpDir,
+                    remoteUrl: 'https://github.com/plusplusoneplusplus/shortcuts.git',
+                },
+                {
+                    id: SECOND_REPO_ID,
+                    name: 'Second Sync Test',
+                    rootPath: tmpDir,
+                    remoteUrl: 'https://github.com/plusplusoneplusplus/other.git',
+                },
+            ],
         } as any,
         dataDir: tmpDir,
         getHierarchyEnabled: () => hierarchyEnabled,
@@ -172,22 +193,137 @@ describe('Work Item Sync Routes', () => {
                 provider: 'azure-boards',
                 available: false,
                 reason: 'provider-unavailable',
-                message: expect.stringContaining('planned but unavailable'),
+                message: expect.stringContaining('not registered'),
             }),
         ]);
         expect(JSON.stringify(status.body)).not.toMatch(/token|secret|password|credential/i);
     });
 
-    it('reports Azure Boards as planned but unavailable without registering an Azure adapter', async () => {
-        await startServer([makeFakeProvider()]);
+    it('reports Azure Boards available from global org URL, workspace project, and Azure CLI auth', async () => {
+        await writeProvidersConfig({
+            providers: {
+                ado: { orgUrl: 'https://dev.azure.com/octo-org' },
+            },
+        }, tmpDir);
+        writeRepoPreferences(tmpDir, REPO_ID, {
+            workItems: {
+                sync: {
+                    azureBoards: { project: 'Project Alpha' },
+                },
+            },
+        });
+        await startServer([makeFakeProvider(), makeAzureProvider()]);
 
         const status = await request('GET', `/api/workspaces/${REPO_ID}/work-items/sync/status?provider=azure-boards`);
         expect(status.status).toBe(200);
         expect(status.body.provider).toMatchObject({
             provider: 'azure-boards',
+            available: true,
+            repository: {
+                provider: 'azure-boards',
+                organizationUrl: 'https://dev.azure.com/octo-org',
+                project: 'Project Alpha',
+                projectId: 'Project Alpha',
+                url: 'https://dev.azure.com/octo-org/Project%20Alpha',
+                source: 'preference',
+            },
+            auth: { mode: 'external', authenticated: true },
+        });
+        expect(JSON.stringify(status.body)).not.toMatch(/azure-cli-access|token|bearer|authorization/i);
+    });
+
+    it('reports Azure Boards unavailable with explicit sanitized missing-config and auth reasons', async () => {
+        await startServer([makeFakeProvider(), makeAzureProvider(async () => undefined)]);
+
+        const missingOrg = await request('GET', `/api/workspaces/${REPO_ID}/work-items/sync/status?provider=azure-boards`);
+        expect(missingOrg.status).toBe(200);
+        expect(missingOrg.body.provider).toMatchObject({
+            provider: 'azure-boards',
             available: false,
-            reason: 'provider-unavailable',
-            message: expect.stringContaining('planned but unavailable'),
+            reason: 'missing-org-url',
+            auth: { mode: 'external', authenticated: false },
+        });
+
+        await stopServer();
+        await writeProvidersConfig({
+            providers: {
+                ado: { orgUrl: 'https://dev.azure.com/octo-org' },
+            },
+        }, tmpDir);
+        await startServer([makeFakeProvider(), makeAzureProvider(async () => undefined)]);
+
+        const missingProject = await request('GET', `/api/workspaces/${REPO_ID}/work-items/sync/status?provider=azure-boards`);
+        expect(missingProject.status).toBe(200);
+        expect(missingProject.body.provider).toMatchObject({
+            provider: 'azure-boards',
+            available: false,
+            reason: 'missing-project',
+            repository: {
+                provider: 'azure-boards',
+                organizationUrl: 'https://dev.azure.com/octo-org',
+            },
+            auth: { mode: 'external', authenticated: false },
+        });
+
+        await stopServer();
+        writeRepoPreferences(tmpDir, REPO_ID, {
+            workItems: {
+                sync: {
+                    azureBoards: { project: 'Project Alpha' },
+                },
+            },
+        });
+        await startServer([makeFakeProvider(), makeAzureProvider(async () => undefined)]);
+
+        const authMissing = await request('GET', `/api/workspaces/${REPO_ID}/work-items/sync/status?provider=azure-boards`);
+        expect(authMissing.status).toBe(200);
+        expect(authMissing.body.provider).toMatchObject({
+            provider: 'azure-boards',
+            available: false,
+            reason: 'auth-unavailable',
+            repository: {
+                provider: 'azure-boards',
+                project: 'Project Alpha',
+            },
+            auth: { mode: 'external', authenticated: false },
+        });
+        expect(JSON.stringify(authMissing.body)).not.toMatch(/token|bearer|authorization/i);
+    });
+
+    it('keeps Azure Boards project configuration scoped per workspace', async () => {
+        await writeProvidersConfig({
+            providers: {
+                ado: { orgUrl: 'https://dev.azure.com/octo-org' },
+            },
+        }, tmpDir);
+        writeRepoPreferences(tmpDir, REPO_ID, {
+            workItems: {
+                sync: {
+                    azureBoards: { project: 'Project Alpha' },
+                },
+            },
+        });
+        writeRepoPreferences(tmpDir, SECOND_REPO_ID, {
+            workItems: {
+                sync: {
+                    azureBoards: { project: 'Project Beta' },
+                },
+            },
+        });
+        await startServer([makeFakeProvider(), makeAzureProvider()]);
+
+        const first = await request('GET', `/api/workspaces/${REPO_ID}/work-items/sync/status?provider=azure-boards`);
+        const second = await request('GET', `/api/workspaces/${SECOND_REPO_ID}/work-items/sync/status?provider=azure-boards`);
+
+        expect(first.status).toBe(200);
+        expect(second.status).toBe(200);
+        expect(first.body.provider.repository).toMatchObject({
+            organizationUrl: 'https://dev.azure.com/octo-org',
+            project: 'Project Alpha',
+        });
+        expect(second.body.provider.repository).toMatchObject({
+            organizationUrl: 'https://dev.azure.com/octo-org',
+            project: 'Project Beta',
         });
     });
 

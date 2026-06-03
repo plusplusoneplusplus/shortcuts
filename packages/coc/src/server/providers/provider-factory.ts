@@ -20,7 +20,7 @@ import type { ProvidersFileConfig } from './providers-config';
 export { ProviderType };
 
 /** Azure DevOps resource ID for OAuth token requests via `az account get-access-token`. */
-const ADO_RESOURCE_ID = '499b84ac-1321-427f-aa17-267ca6975798';
+export const ADO_RESOURCE_ID = '499b84ac-1321-427f-aa17-267ca6975798';
 
 /** Sentinel returned when an ADO remote is detected but no credentials are available. */
 export interface AdoNoCredentialsSentinel {

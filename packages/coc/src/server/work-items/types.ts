@@ -145,7 +145,7 @@ export type WorkItemTrackerMetadata =
 // External Provider Metadata
 // ============================================================================
 
-/** External work-item sync provider. Azure Boards is reserved for a future adapter. */
+/** External work-item sync provider. */
 export type WorkItemSyncProvider = 'github' | 'azure-boards';
 
 /** Remote issue identity encoded in provider-owned metadata such as GitHub issue bodies. */

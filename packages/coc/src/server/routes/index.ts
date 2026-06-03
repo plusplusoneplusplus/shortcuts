@@ -67,6 +67,7 @@ import { registerWorkItemChangesRoutes } from './work-item-changes-routes';
 import { registerWorkItemAiRoutes } from './work-item-ai-routes';
 import { createWorkItemAiGenerators } from '../work-items/work-item-ai-generator';
 import { FileWorkItemStore } from '../work-items/work-item-store';
+import { createAzureBoardsWorkItemSyncProviderAdapter } from '../work-items/work-item-sync-azure-boards-provider';
 import { createGitHubWorkItemSyncProviderAdapter } from '../work-items/work-item-sync-github-provider';
 import { WorkItemGitHubPullPoller } from '../work-items/work-item-github-pull-poller';
 import { handleWorkItemTaskComplete, autoVersionPlanFromResolvedComments } from '../work-items/work-item-executor';
@@ -484,7 +485,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         dataDir,
         getHierarchyEnabled: getWorkItemsHierarchyEnabled,
         getSyncEnabled: getWorkItemsSyncEnabled,
-        providers: [createGitHubWorkItemSyncProviderAdapter()],
+        providers: [
+            createGitHubWorkItemSyncProviderAdapter(),
+            createAzureBoardsWorkItemSyncProviderAdapter({ dataDir }),
+        ],
         onGitHubBackedEpicTreeChanged: (workspaceId) => workItemGitHubPullPoller?.configureWorkspace(workspaceId),
     });
     registerWorkItemRoutes({
