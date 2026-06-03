@@ -22,10 +22,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Corpus, Task } from './corpus';
 import { runRollout, RolloutResult, RolloutOptions } from './rollout';
-import { scoreRollout, ScoreResult, ScoringWeights, DEFAULT_WEIGHTS } from './scoring';
+import { scoreRollout, ScoreResult, ScoringWeights, DEFAULT_WEIGHTS, ScoreOptions } from './scoring';
 import { proposeOptimizedSkill } from './optimizer';
 import { evaluateGate, GateResult } from './gate';
-import { CopilotCliOptions } from './cli-driver';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,7 +37,7 @@ export interface LoopConfig {
     optimizerModel: string;
     maxSteps: number;
     weights: ScoringWeights;
-    cliOptions: CopilotCliOptions;
+    cliOptions: ScoreOptions;
 }
 
 export interface StepHistory {

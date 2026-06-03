@@ -9,6 +9,11 @@
  *   visibleTests?  string  Shell command the agent can run to verify its work (shown in prompt).
  *   hiddenTests?   string  Shell command run post-rollout for scoring (NEVER shown to target).
  *   judgeRubric?   string  Rubric for the LLM judge scoring step.
+ *   judgeTarget?  "diff" | "stdout"  What the evaluator inspects. Default "diff" (legacy
+ *                 diff-judge path). "stdout" selects the generic reference-based path that
+ *                 compares the rollout's stdout against `idealOutput`.
+ *   idealOutput?  string  Reference/ideal answer for the task. REQUIRED when
+ *                 judgeTarget="stdout"; ignored otherwise.
  *   split       "train" | "selection"  Which split this task belongs to.
  *
  * The corpus must have ≥1 train task and ≥1 selection task.
@@ -27,6 +32,10 @@ export interface Task {
     visibleTests?: string;
     hiddenTests?: string;
     judgeRubric?: string;
+    /** What the evaluator inspects. Default "diff". "stdout" selects the reference path. */
+    judgeTarget?: 'diff' | 'stdout';
+    /** Reference/ideal answer; required when judgeTarget="stdout". */
+    idealOutput?: string;
     split: 'train' | 'selection';
 }
 
@@ -53,10 +62,16 @@ function validateTask(raw: unknown): asserts raw is Task {
     if (t.split !== 'train' && t.split !== 'selection') {
         throw new Error(`Task ${t.id}: split must be "train" or "selection", got "${t.split}"`);
     }
-    for (const opt of ['seedRef', 'visibleTests', 'hiddenTests', 'judgeRubric'] as const) {
+    for (const opt of ['seedRef', 'visibleTests', 'hiddenTests', 'judgeRubric', 'idealOutput'] as const) {
         if (t[opt] !== undefined && typeof t[opt] !== 'string') {
             throw new Error(`Task ${t.id}: ${opt} must be a string if provided`);
         }
+    }
+    if (t.judgeTarget !== undefined && t.judgeTarget !== 'diff' && t.judgeTarget !== 'stdout') {
+        throw new Error(`Task ${t.id}: judgeTarget must be "diff" or "stdout", got "${t.judgeTarget}"`);
+    }
+    if (t.judgeTarget === 'stdout' && (typeof t.idealOutput !== 'string' || t.idealOutput.trim().length === 0)) {
+        throw new Error(`Task ${t.id}: idealOutput is required (non-empty string) when judgeTarget="stdout"`);
     }
 }
 

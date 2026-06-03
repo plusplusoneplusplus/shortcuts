@@ -137,4 +137,48 @@ describe('loadCorpus', () => {
         expect(corpus.trainTasks[0].visibleTests).toBe('echo ok');
         expect(corpus.trainTasks[0].judgeRubric).toBe('Is it good?');
     });
+
+    it('loads a stdout/reference task with idealOutput', () => {
+        const refTask: Task = {
+            id: 'ref-task',
+            prompt: 'Break down the commit',
+            judgeTarget: 'stdout',
+            idealOutput: 'Split into 2 commits: engine, then integration.',
+            split: 'train',
+        };
+        writeCorpus(tmpDir, [refTask, VALID_SELECTION_TASK]);
+        const corpus = loadCorpus(tmpDir);
+        expect(corpus.trainTasks[0].judgeTarget).toBe('stdout');
+        expect(corpus.trainTasks[0].idealOutput).toContain('2 commits');
+    });
+
+    it('rejects invalid judgeTarget values', () => {
+        writeCorpus(tmpDir, [
+            { id: 't1', prompt: 'p', split: 'train', judgeTarget: 'plan' },
+            VALID_SELECTION_TASK,
+        ]);
+        expect(() => loadCorpus(tmpDir)).toThrow(/judgeTarget/i);
+    });
+
+    it('requires idealOutput when judgeTarget is stdout', () => {
+        writeCorpus(tmpDir, [
+            { id: 't1', prompt: 'p', split: 'train', judgeTarget: 'stdout' },
+            VALID_SELECTION_TASK,
+        ]);
+        expect(() => loadCorpus(tmpDir)).toThrow(/idealOutput/i);
+    });
+
+    it('rejects empty idealOutput when judgeTarget is stdout', () => {
+        writeCorpus(tmpDir, [
+            { id: 't1', prompt: 'p', split: 'train', judgeTarget: 'stdout', idealOutput: '   ' },
+            VALID_SELECTION_TASK,
+        ]);
+        expect(() => loadCorpus(tmpDir)).toThrow(/idealOutput/i);
+    });
+
+    it('treats a task without judgeTarget as the default diff path', () => {
+        writeCorpus(tmpDir, [VALID_TRAIN_TASK, VALID_SELECTION_TASK]);
+        const corpus = loadCorpus(tmpDir);
+        expect(corpus.trainTasks[0].judgeTarget).toBeUndefined();
+    });
 });

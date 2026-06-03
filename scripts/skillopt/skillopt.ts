@@ -57,7 +57,8 @@ Optional:
   --optimizer-model <m>  Copilot model for optimizer     (default: same as --target-model)
   --max-steps <n>        Max optimization steps          (default: 10)
   --w1 <weight>          Hidden-test weight              (default: 0.7)
-  --w2 <weight>          LLM-judge weight                (default: 0.3)
+  --w2 <weight>          LLM-judge / reference weight    (default: 0.3)
+  --judge-samples <n>    Judge samples to average (self-consistency, default: 1)
   --timeout-ms <ms>      Per-CLI-call timeout ms         (default: 300000)
   --help                 Show this help and exit
 
@@ -88,6 +89,7 @@ function parseCliArgs() {
                 'max-steps': { type: 'string' },
                 w1: { type: 'string' },
                 w2: { type: 'string' },
+                'judge-samples': { type: 'string' },
                 'timeout-ms': { type: 'string' },
                 help: { type: 'boolean', short: 'h' },
             },
@@ -166,9 +168,14 @@ async function main() {
     const w1 = parseFloat((values.w1 as string | undefined) ?? String(DEFAULT_WEIGHTS.hiddenTestWeight));
     const w2 = parseFloat((values.w2 as string | undefined) ?? String(DEFAULT_WEIGHTS.llmJudgeWeight));
     const timeoutMs = parseInt((values['timeout-ms'] as string | undefined) ?? '300000', 10);
+    const judgeSamples = parseInt((values['judge-samples'] as string | undefined) ?? '1', 10);
 
     if (isNaN(maxSteps) || maxSteps < 1) {
         console.error('Error: --max-steps must be a positive integer');
+        process.exit(1);
+    }
+    if (isNaN(judgeSamples) || judgeSamples < 1) {
+        console.error('Error: --judge-samples must be a positive integer');
         process.exit(1);
     }
     if (isNaN(w1) || isNaN(w2) || w1 < 0 || w2 < 0) {
@@ -187,7 +194,7 @@ async function main() {
         optimizerModel,
         maxSteps,
         weights: { hiddenTestWeight: w1, llmJudgeWeight: w2 },
-        cliOptions: { timeoutMs },
+        cliOptions: { timeoutMs, judgeSamples },
     };
 
     console.log('[skillopt] SkillOpt starting');
@@ -198,6 +205,7 @@ async function main() {
     console.log(`[skillopt]   optimizer-model: ${optimizerModel}`);
     console.log(`[skillopt]   max-steps:      ${maxSteps}`);
     console.log(`[skillopt]   weights:        w1=${w1} w2=${w2}`);
+    console.log(`[skillopt]   judge-samples:  ${judgeSamples}`);
 
     try {
         const summary = await runLoop(corpus, config);
