@@ -33,8 +33,8 @@ import { ProviderEffortTiersSection } from '../../../../../src/server/spa/client
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function makeEffortTiersResponse(tiers: Record<string, unknown> = {}) {
-    return { provider: 'copilot', effortTiers: tiers };
+function makeEffortTiersResponse(tiers: Record<string, unknown> = {}, defaults: Record<string, unknown> = {}) {
+    return { provider: 'copilot', effortTiers: tiers, defaults };
 }
 
 function makeModelsResponse(models: Array<{ id: string; name?: string; enabled?: boolean; supportedReasoningEfforts?: string[] }> = []) {
@@ -57,6 +57,7 @@ function makeModelsResponse(models: Array<{ id: string; name?: string; enabled?:
 }
 
 const SAMPLE_MODELS = [
+    { id: 'gpt-5.4-mini', name: 'GPT-5.4 Mini', enabled: true, supportedReasoningEfforts: ['low', 'medium', 'high'] },
     { id: 'fast-model', name: 'Fast Model', enabled: true },
     { id: 'mid-model', name: 'Mid Model', enabled: true, supportedReasoningEfforts: ['low', 'medium', 'high'] },
     { id: 'opus-model', name: 'Opus Model', enabled: true, supportedReasoningEfforts: ['medium', 'high'] },
@@ -75,20 +76,31 @@ describe('ProviderEffortTiersSection', () => {
         cleanup();
     });
 
-    it('renders three tier rows (Low / Medium / High)', async () => {
+    it('renders four tier rows with Very Low first', async () => {
         render(<ProviderEffortTiersSection provider="copilot" />);
 
         await waitFor(() => {
             expect(screen.getByTestId('effort-tiers-table')).toBeTruthy();
         });
 
+        expect(screen.getByTestId('effort-tier-row-very-low')).toBeTruthy();
         expect(screen.getByTestId('effort-tier-row-low')).toBeTruthy();
         expect(screen.getByTestId('effort-tier-row-medium')).toBeTruthy();
         expect(screen.getByTestId('effort-tier-row-high')).toBeTruthy();
 
+        expect(screen.getByTestId('effort-tier-name-very-low').textContent).toBe('Very Low');
         expect(screen.getByTestId('effort-tier-name-low').textContent).toBe('Low');
         expect(screen.getByTestId('effort-tier-name-medium').textContent).toBe('Medium');
         expect(screen.getByTestId('effort-tier-name-high').textContent).toBe('High');
+
+        const rowIds = Array.from(screen.getByTestId('effort-tiers-table').querySelectorAll('tbody tr'))
+            .map(row => row.getAttribute('data-testid'));
+        expect(rowIds).toEqual([
+            'effort-tier-row-very-low',
+            'effort-tier-row-low',
+            'effort-tier-row-medium',
+            'effort-tier-row-high',
+        ]);
     });
 
     it('model dropdown lists all provider models', async () => {
@@ -210,6 +222,52 @@ describe('ProviderEffortTiersSection', () => {
         });
     });
 
+    it('saves an edited very-low tier without persisting unchanged defaults', async () => {
+        mockGetEffortTiers.mockResolvedValue(makeEffortTiersResponse(
+            {
+                'very-low': { model: 'gpt-5.4-mini', reasoningEffort: 'low', source: 'default' },
+                low: { model: 'fast-model', reasoningEffort: null, source: 'default' },
+            },
+            {
+                'very-low': { model: 'gpt-5.4-mini', reasoningEffort: 'low' },
+                low: { model: 'fast-model', reasoningEffort: null },
+            },
+        ));
+        mockReplaceEffortTiers.mockResolvedValue(makeEffortTiersResponse(
+            {
+                'very-low': { model: 'mid-model', reasoningEffort: 'medium', source: 'config' },
+                low: { model: 'fast-model', reasoningEffort: null, source: 'default' },
+            },
+            {
+                'very-low': { model: 'gpt-5.4-mini', reasoningEffort: 'low' },
+                low: { model: 'fast-model', reasoningEffort: null },
+            },
+        ));
+
+        render(<ProviderEffortTiersSection provider="copilot" />);
+
+        await waitFor(() => {
+            const modelSelect = screen.getByTestId('effort-tier-model-select-very-low') as HTMLSelectElement;
+            expect(modelSelect.value).toBe('gpt-5.4-mini');
+        });
+
+        fireEvent.change(screen.getByTestId('effort-tier-model-select-very-low'), { target: { value: 'mid-model' } });
+
+        await waitFor(() => {
+            const effortSelect = screen.getByTestId('effort-tier-effort-select-very-low') as HTMLSelectElement;
+            expect(effortSelect.disabled).toBe(false);
+        });
+
+        fireEvent.change(screen.getByTestId('effort-tier-effort-select-very-low'), { target: { value: 'medium' } });
+        fireEvent.click(screen.getByTestId('effort-tiers-save'));
+
+        await waitFor(() => {
+            expect(mockReplaceEffortTiers).toHaveBeenCalledWith('copilot', {
+                'very-low': { model: 'mid-model', reasoningEffort: 'medium' },
+            });
+        });
+    });
+
     it('cancel button reverts local changes', async () => {
         render(<ProviderEffortTiersSection provider="copilot" />);
 
@@ -274,61 +332,64 @@ describe('ProviderEffortTiersSection', () => {
         expect(screen.getByText('Unsaved changes')).toBeTruthy();
     });
 
-    it('shows Default badge on default-source rows and hides the Clear button', async () => {
+    it('shows Very Low prefilled from provider defaults with a Default badge and no Clear button', async () => {
         // GET returns a default entry the admin has not overridden.
         mockGetEffortTiers.mockResolvedValue({
             provider: 'copilot',
             effortTiers: {
-                low: { model: 'fast-model', reasoningEffort: 'high', source: 'default' },
+                'very-low': { model: 'gpt-5.4-mini', reasoningEffort: 'low', source: 'default' },
             },
             defaults: {
-                low: { model: 'fast-model', reasoningEffort: 'high' },
+                'very-low': { model: 'gpt-5.4-mini', reasoningEffort: 'low' },
             },
         });
 
         render(<ProviderEffortTiersSection provider="copilot" />);
 
         await waitFor(() => {
-            expect(screen.getByTestId('effort-tier-default-badge-low')).toBeTruthy();
+            expect(screen.getByTestId('effort-tier-default-badge-very-low')).toBeTruthy();
         });
 
-        // No Clear button on a row that is already showing a default.
-        expect(screen.queryByTestId('effort-tier-clear-low')).toBeNull();
+        const modelSelect = screen.getByTestId('effort-tier-model-select-very-low') as HTMLSelectElement;
+        const effortSelect = screen.getByTestId('effort-tier-effort-select-very-low') as HTMLSelectElement;
+        expect(modelSelect.value).toBe('gpt-5.4-mini');
+        expect(effortSelect.value).toBe('low');
+        expect(screen.queryByTestId('effort-tier-clear-very-low')).toBeNull();
     });
 
-    it('Clear on an overridden row reverts to the default (and removes Default badge briefly until source flips)', async () => {
+    it('Clear on an overridden very-low row reverts to the default', async () => {
         mockGetEffortTiers.mockResolvedValue({
             provider: 'copilot',
             effortTiers: {
-                low: { model: 'mid-model', reasoningEffort: 'medium', source: 'config' },
+                'very-low': { model: 'mid-model', reasoningEffort: 'medium', source: 'config' },
             },
             defaults: {
-                low: { model: 'fast-model', reasoningEffort: 'high' },
+                'very-low': { model: 'gpt-5.4-mini', reasoningEffort: 'low' },
             },
         });
 
         render(<ProviderEffortTiersSection provider="copilot" />);
 
         await waitFor(() => {
-            const modelSelect = screen.getByTestId('effort-tier-model-select-low') as HTMLSelectElement;
+            const modelSelect = screen.getByTestId('effort-tier-model-select-very-low') as HTMLSelectElement;
             expect(modelSelect.value).toBe('mid-model');
         });
 
         // The row is an explicit override → Clear button is visible, no Default badge.
-        expect(screen.queryByTestId('effort-tier-default-badge-low')).toBeNull();
-        expect(screen.getByTestId('effort-tier-clear-low')).toBeTruthy();
+        expect(screen.queryByTestId('effort-tier-default-badge-very-low')).toBeNull();
+        expect(screen.getByTestId('effort-tier-clear-very-low')).toBeTruthy();
 
-        fireEvent.click(screen.getByTestId('effort-tier-clear-low'));
+        fireEvent.click(screen.getByTestId('effort-tier-clear-very-low'));
 
         await waitFor(() => {
-            const modelSelect = screen.getByTestId('effort-tier-model-select-low') as HTMLSelectElement;
+            const modelSelect = screen.getByTestId('effort-tier-model-select-very-low') as HTMLSelectElement;
             // Reverted to default model (not emptied).
-            expect(modelSelect.value).toBe('fast-model');
+            expect(modelSelect.value).toBe('gpt-5.4-mini');
         });
 
         // After revert, the row now shows as default → Default badge appears, Clear hidden.
-        expect(screen.getByTestId('effort-tier-default-badge-low')).toBeTruthy();
-        expect(screen.queryByTestId('effort-tier-clear-low')).toBeNull();
+        expect(screen.getByTestId('effort-tier-default-badge-very-low')).toBeTruthy();
+        expect(screen.queryByTestId('effort-tier-clear-very-low')).toBeNull();
         // The change is dirty because it differs from the stored remote baseline.
         expect(screen.getByText('Unsaved changes')).toBeTruthy();
     });
