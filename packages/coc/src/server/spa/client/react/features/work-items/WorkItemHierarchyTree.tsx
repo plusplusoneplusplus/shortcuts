@@ -4,7 +4,7 @@
  * Includes create actions, search, and context menu per node.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Button, cn } from '../../ui';
 import { getSpaCocClient } from '../../api/cocClient';
 import { useWorkItems } from '../../contexts/WorkItemContext';
@@ -21,10 +21,14 @@ import {
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
 import { TYPE_LABELS } from './WorkItemHierarchyNode';
 import {
-    buildWorkItemTreeFilter,
+    WORK_ITEM_REMOTE_PROVIDER_FILTERS,
+    buildWorkItemTreeFilters,
     getWorkItemTrackerViewCopy,
+    isRemoteTrackerView,
     isGitHubTrackerView as isGitHubTrackerKind,
     shouldShowLocalRootCreationActions,
+    type WorkItemRemoteProviderFilter,
+    type WorkItemTrackerViewKind,
 } from './workItemTrackerViews';
 
 const TYPE_CHILD_LABELS: Record<WorkItemTypeLabel, string> = {
@@ -54,6 +58,12 @@ export interface WorkItemHierarchyTreeProps {
     workspaceId: string;
     /** Filters the tree to one Epic-rooted tracker partition. */
     trackerKind?: WorkItemTrackerKind;
+    /** Filters the tree to multiple Epic-rooted tracker partitions, merged in order. */
+    trackerKinds?: readonly WorkItemTrackerKind[];
+    /** UI-level tracker view used for copy and Remote provider controls. */
+    trackerViewKind?: WorkItemTrackerViewKind;
+    remoteProviderFilter?: WorkItemRemoteProviderFilter;
+    onRemoteProviderFilterChange?: (provider: WorkItemRemoteProviderFilter) => void;
     selectedWorkItemId: string | null;
     onSelectWorkItem: (id: string) => void;
     /** Called when a new work item is created from within the tree. */
@@ -62,7 +72,9 @@ export interface WorkItemHierarchyTreeProps {
     onCreateItem: (type: WorkItemTypeLabel, parentId?: string) => void;
     /** When provided, renders the "✨ Create with AI" entry point in the tree header and empty state. */
     onCreateWithAi?: () => void;
-    /** When provided, renders the standalone GitHub issue import entry point in the tree header. */
+    /** When provided in Remote view, opens provider selection before importing a remote Epic tree. */
+    onImportFromRemote?: () => void;
+    /** Legacy GitHub-only import entry point used outside the Remote/Synced tracker view. */
     onImportFromGitHub?: () => void;
     /** Newly imported item id to scroll to and highlight once the tree renders it. */
     highlightedWorkItemId?: string | null;
@@ -73,11 +85,16 @@ export interface WorkItemHierarchyTreeProps {
 export function WorkItemHierarchyTree({
     workspaceId,
     trackerKind,
+    trackerKinds,
+    trackerViewKind,
+    remoteProviderFilter = 'all',
+    onRemoteProviderFilterChange,
     selectedWorkItemId,
     onSelectWorkItem,
     onCreated,
     onCreateItem,
     onCreateWithAi,
+    onImportFromRemote,
     onImportFromGitHub,
     highlightedWorkItemId,
     isMobile = false,
@@ -90,9 +107,15 @@ export function WorkItemHierarchyTree({
     const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => loadCollapsed(workspaceId));
     const [showArchived, setShowArchived] = useState(false);
     const [showDone, setShowDone] = useState(false);
-    const trackerCopy = getWorkItemTrackerViewCopy(trackerKind);
-    const showLocalRootCreationActions = shouldShowLocalRootCreationActions(trackerKind);
+    const [syncNotice, setSyncNotice] = useState<{ tone: 'success' | 'warning'; message: string } | null>(null);
+    const effectiveTrackerKinds = useMemo(
+        () => trackerKinds ? [...trackerKinds] : (trackerKind ? [trackerKind] : []),
+        [trackerKind, trackerKinds],
+    );
+    const trackerCopy = getWorkItemTrackerViewCopy(trackerViewKind, remoteProviderFilter);
+    const showLocalRootCreationActions = shouldShowLocalRootCreationActions(trackerViewKind ?? trackerKind);
     const isGitHubTrackerView = isGitHubTrackerKind(trackerKind);
+    const isRemoteView = isRemoteTrackerView(trackerViewKind);
 
     const [contextMenu, setContextMenu] = useState<{
         node: WorkItemTreeNode;
@@ -125,22 +148,28 @@ export function WorkItemHierarchyTree({
         setLoading(true);
         setError(null);
         try {
-            const resp: WorkItemTreeResponse = await getSpaCocClient().workItems.tree(workspaceId, {
-                ...buildWorkItemTreeFilter({ searchQuery, trackerKind, showArchived, showDone }),
+            const filters = buildWorkItemTreeFilters({
+                searchQuery,
+                trackerKinds: effectiveTrackerKinds,
+                showArchived,
+                showDone,
             });
-            if (resp.disabled) {
+            const responses: WorkItemTreeResponse[] = await Promise.all(
+                filters.map(filter => getSpaCocClient().workItems.tree(workspaceId, filter)),
+            );
+            if (responses.some(resp => resp.disabled)) {
                 setError('Hierarchy feature is disabled.');
                 return;
             }
-            setTreeData(resp.roots);
-            setTotal(resp.total);
+            setTreeData(responses.flatMap(resp => resp.roots));
+            setTotal(responses.reduce((sum, resp) => sum + resp.total, 0));
             lastFetchedAt.current = new Date().toISOString();
         } catch (err: any) {
             setError(err.message ?? 'Failed to load hierarchy');
         } finally {
             setLoading(false);
         }
-    }, [workspaceId, trackerKind, searchQuery, showArchived, showDone]);
+    }, [workspaceId, effectiveTrackerKinds, searchQuery, showArchived, showDone]);
 
     // Initial load
     useEffect(() => { fetchTree(); }, [fetchTree]);
@@ -249,7 +278,7 @@ export function WorkItemHierarchyTree({
             }
         }
 
-        // Pin/archive/delete
+        // Remote provider sync
         if (node.item.tracker?.kind === 'github-backed') {
             items.push({
                 label: 'Sync from GitHub',
@@ -258,6 +287,7 @@ export function WorkItemHierarchyTree({
                 onClick: async () => {
                     try {
                         await getSpaCocClient().workItems.syncGitHubEpic(workspaceId, node.item.id);
+                        setSyncNotice({ tone: 'success', message: 'Synced latest GitHub state into this Epic tree.' });
                         fetchTree();
                     } catch (err: any) {
                         alert(err.message ?? 'Failed to sync from GitHub');
@@ -265,7 +295,31 @@ export function WorkItemHierarchyTree({
                 },
             });
         }
+        if (node.item.tracker?.kind === 'azure-boards-backed') {
+            items.push({
+                label: 'Sync from Azure Boards',
+                icon: '↻',
+                separator: childTypes.length > 0 || effectiveType !== 'epic',
+                onClick: async () => {
+                    try {
+                        const result = await getSpaCocClient().workItems.syncAzureBoardsEpic(workspaceId, node.item.id);
+                        if (result.warnings.length > 0) {
+                            setSyncNotice({
+                                tone: 'warning',
+                                message: `${result.warnings.length} local Azure-owned edit${result.warnings.length === 1 ? '' : 's'} overwritten by newer Azure Boards state.`,
+                            });
+                        } else {
+                            setSyncNotice({ tone: 'success', message: 'Synced latest Azure Boards state into this Epic tree.' });
+                        }
+                        fetchTree();
+                    } catch (err: any) {
+                        alert(err.message ?? 'Failed to sync from Azure Boards');
+                    }
+                },
+            });
+        }
 
+        // Pin/archive/delete
         items.push({
             label: node.item.pinnedAt ? 'Unpin' : 'Pin',
             icon: '📌',
@@ -392,8 +446,61 @@ export function WorkItemHierarchyTree({
                             Import from GitHub
                         </Button>
                     )}
+                    {isRemoteView && onImportFromRemote && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={onImportFromRemote}
+                            data-testid="import-from-remote-btn"
+                            title="Import a GitHub issue or Azure Boards work item"
+                            className="whitespace-nowrap"
+                        >
+                            Import remote
+                        </Button>
+                    )}
                 </div>
             </div>
+
+            {isRemoteView && (
+                <div className="px-3 py-2 shrink-0 border-b border-[#eaeef2] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e]">
+                    <div className="flex flex-wrap items-center gap-1.5" data-testid="remote-provider-filter" aria-label="Remote provider filter">
+                        {WORK_ITEM_REMOTE_PROVIDER_FILTERS.map(option => {
+                            const active = remoteProviderFilter === option.kind;
+                            return (
+                                <button
+                                    key={option.kind}
+                                    type="button"
+                                    className={cn(
+                                        'inline-flex items-center gap-1 border rounded-full px-2 py-px text-[12px] leading-[1.4] whitespace-nowrap transition-colors',
+                                        active
+                                            ? 'border-[#0969da] text-[#0969da] bg-[#ddf4ff] dark:border-[#0969da] dark:text-[#58a6ff] dark:bg-[#0969da]/15'
+                                            : 'border-[#d0d7de] dark:border-[#555] text-[#656d76] dark:text-[#999] bg-white dark:bg-transparent',
+                                    )}
+                                    onClick={() => onRemoteProviderFilterChange?.(option.kind)}
+                                    data-testid={`remote-provider-filter-${option.kind}`}
+                                >
+                                    {option.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {syncNotice && (
+                <div
+                    className={cn(
+                        'mx-3 mt-2 rounded-md border px-3 py-2 text-[12px] leading-[1.4] flex items-start justify-between gap-2',
+                        syncNotice.tone === 'warning'
+                            ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
+                            : 'border-green-300 bg-green-50 text-green-800 dark:border-green-700 dark:bg-green-900/20 dark:text-green-300',
+                    )}
+                    data-testid={syncNotice.tone === 'warning' ? 'hierarchy-sync-warning' : 'hierarchy-sync-success'}
+                >
+                    <span>{syncNotice.message}</span>
+                    <button className="text-[10px] shrink-0" onClick={() => setSyncNotice(null)} type="button">x</button>
+                </div>
+            )}
 
             {/* ── Search + filter chips ── */}
             <div className="px-3 py-3 shrink-0 grid gap-2 border-b border-[#eaeef2] dark:border-[#3c3c3c]">
@@ -487,6 +594,11 @@ export function WorkItemHierarchyTree({
                         {!searchQuery && isGitHubTrackerView && onImportFromGitHub && (
                             <Button variant="primary" size="sm" onClick={onImportFromGitHub} data-testid="empty-import-from-github-btn">
                                 Import from GitHub
+                            </Button>
+                        )}
+                        {!searchQuery && isRemoteView && onImportFromRemote && (
+                            <Button variant="primary" size="sm" onClick={onImportFromRemote} data-testid="empty-import-from-remote-btn">
+                                Import remote work item
                             </Button>
                         )}
                     </div>

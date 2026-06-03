@@ -76,10 +76,11 @@ describe('WorkItemHierarchyNode — type system', () => {
         expect(src).toContain('descendantCount');
     });
 
-    it('renders a compact GitHub mirror badge for mirrored rows', () => {
-        expect(src).toContain('WorkItemGitHubMirrorBadge');
-        expect(src).toContain('hierarchy-node-github-mirror-badge-');
-        expect(src).toContain('mirror={item.githubMirror}');
+    it('renders a compact provider-specific mirror badge for mirrored rows', () => {
+        expect(src).toContain('WorkItemRemoteMirrorBadge');
+        expect(src).toContain('hierarchy-node-remote-mirror-badge-');
+        expect(src).toContain('githubMirror={item.githubMirror}');
+        expect(src).toContain('azureBoardsMirror={item.azureBoardsMirror}');
     });
 });
 
@@ -144,7 +145,7 @@ describe('WorkItemHierarchyTree — structure', () => {
     });
 });
 
-describe('WorkItemHierarchyTree — GitHub tracker workflow', () => {
+describe('WorkItemHierarchyTree — Remote tracker workflow', () => {
     let src: string;
 
     beforeAll(() => {
@@ -158,20 +159,31 @@ describe('WorkItemHierarchyTree — GitHub tracker workflow', () => {
         expect(src).not.toContain('conflictResolutions');
     });
 
-    it('uses import as the GitHub tracker seeding action', () => {
-        expect(src).toContain('onImportFromGitHub');
-        expect(src).toContain('import-from-github-btn');
-        expect(src).toContain('empty-import-from-github-btn');
+    it('uses a provider-neutral import action as the Remote tracker seeding action', () => {
+        expect(src).toContain('onImportFromRemote');
+        expect(src).toContain('import-from-remote-btn');
+        expect(src).toContain('empty-import-from-remote-btn');
+        expect(src).toContain('Import remote');
     });
 
-    it('keeps manual GitHub pulls as a per-Epic context action', () => {
+    it('renders provider filter chips in the Remote tracker header', () => {
+        expect(src).toContain('WORK_ITEM_REMOTE_PROVIDER_FILTERS');
+        expect(src).toContain('remote-provider-filter');
+        expect(src).toContain('onRemoteProviderFilterChange');
+    });
+
+    it('keeps manual provider pulls as per-Epic context actions', () => {
         expect(src).toContain('Sync from GitHub');
         expect(src).toContain('workItems.syncGitHubEpic');
         expect(src).toContain("node.item.tracker?.kind === 'github-backed'");
+        expect(src).toContain('Sync from Azure Boards');
+        expect(src).toContain('workItems.syncAzureBoardsEpic');
+        expect(src).toContain("node.item.tracker?.kind === 'azure-boards-backed'");
+        expect(src).toContain('hierarchy-sync-warning');
     });
 });
 
-describe('WorkItemGitHubMirrorBadge — mirrored provider badge', () => {
+describe('WorkItemGitHubMirrorBadge — mirrored provider badges', () => {
     let src: string;
 
     beforeAll(() => {
@@ -182,6 +194,13 @@ describe('WorkItemGitHubMirrorBadge — mirrored provider badge', () => {
         expect(src).toContain('WorkItemGitHubMirrorMetadata');
         expect(src).toContain('href={mirror.issueUrl}');
         expect(src).toContain('rel="noreferrer"');
+    });
+
+    it('renders Azure Boards mirror metadata as external anchors when requested', () => {
+        expect(src).toContain('WorkItemAzureBoardsMirrorMetadata');
+        expect(src).toContain('href={mirror.workItemUrl}');
+        expect(src).toContain('Azure Boards #');
+        expect(src).toContain('WorkItemRemoteMirrorBadge');
     });
 
     it('surfaces open/closed mirror state without conflict-resolution UI', () => {
@@ -283,9 +302,11 @@ describe('WorkItemDetail — container vs leaf', () => {
     });
 
     it('shows GitHub mirror badges and links in the detail panel', () => {
-        expect(src).toContain('WorkItemGitHubMirrorBadge');
+        expect(src).toContain('WorkItemRemoteMirrorBadge');
         expect(src).toContain('work-item-github-mirror-badge');
         expect(src).toContain('work-item-github-mirror');
+        expect(src).toContain('work-item-azure-boards-mirror-badge');
+        expect(src).toContain('work-item-azure-boards-mirror');
         expect(src).not.toContain('work-item-sync-links');
     });
 
@@ -340,42 +361,44 @@ describe('WorkItemsTab — hierarchy flag conditional', () => {
         expect(src).toContain('setCreateDialogParentId');
     });
 
-    it('passes import and highlight props to WorkItemHierarchyTree', () => {
+    it('passes Remote tracker and highlight props to WorkItemHierarchyTree', () => {
         const treeIdx = src.indexOf('<WorkItemHierarchyTree');
         expect(treeIdx).toBeGreaterThan(-1);
         const treeBlock = src.slice(treeIdx, src.indexOf('/>', treeIdx) + 2);
-        expect(treeBlock).toContain('onImportFromGitHub');
+        expect(treeBlock).toContain('trackerViewKind={activeTracker}');
+        expect(treeBlock).toContain('trackerKinds={remoteTrackerKinds}');
+        expect(treeBlock).toContain('remoteProviderFilter={remoteProviderFilter}');
+        expect(treeBlock).toContain('onImportFromRemote');
         expect(treeBlock).toContain('highlightedWorkItemId={highlightedWorkItemId}');
     });
 });
 
-describe('WorkItemsTab — Import from GitHub entry point', () => {
+describe('WorkItemsTab — Remote tracker entry point', () => {
     let src: string;
 
     beforeAll(() => {
         src = fs.readFileSync(TAB_SRC_PATH, 'utf-8');
     });
 
-    it('uses the exact visible label in the non-hierarchy toolbar', () => {
-        const btnIdx = src.indexOf('data-testid="import-from-github-btn"');
-        expect(btnIdx).toBeGreaterThan(-1);
-        const block = src.slice(btnIdx, btnIdx + 300);
-        expect(block).toContain('Import from GitHub');
-        expect(block).not.toContain('↓ GitHub');
+    it('uses Local and Remote top-level tracker tabs with no Azure tab', () => {
+        expect(src).toContain("useState<WorkItemTrackerViewKind>('local')");
+        expect(src).toContain('WORK_ITEM_TRACKER_TABS');
+        expect(src).toContain('remoteProviderFilter');
+        expect(src).not.toContain("setActiveTracker('azure-boards-backed')");
     });
 });
 
-describe('WorkItemHierarchyTree — Import from GitHub entry point', () => {
+describe('WorkItemHierarchyTree — Remote import entry point', () => {
     let src: string;
 
     beforeAll(() => {
         src = fs.readFileSync(TREE_SRC_PATH, 'utf-8');
     });
 
-    it('accepts and renders the standalone import action in the hierarchy toolbar', () => {
-        expect(src).toContain('onImportFromGitHub');
-        expect(src).toContain('data-testid="import-from-github-btn"');
-        expect(src).toContain('Import from GitHub');
+    it('accepts and renders the standalone Remote import action in the hierarchy toolbar', () => {
+        expect(src).toContain('onImportFromRemote');
+        expect(src).toContain('data-testid="import-from-remote-btn"');
+        expect(src).toContain('Import remote');
     });
 
     it('scrolls highlighted imported hierarchy rows into view', () => {

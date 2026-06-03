@@ -18,12 +18,12 @@ import type { DiffComment } from '../../../comments/diff-comment-types';
 import { computeStorageKey, patchDiffComment } from '../../utils/diffCommentApi';
 import { isWorkItemsHierarchyEnabled } from '../../utils/config';
 import { WorkItemParentPicker } from './WorkItemParentPicker';
-import { ALLOWED_CHILD_TYPES, type UpdateWorkItemRequest, type WorkItemGitHubMirrorMetadata } from '@plusplusoneplusplus/coc-client';
+import { ALLOWED_CHILD_TYPES, type UpdateWorkItemRequest, type WorkItemAzureBoardsMirrorMetadata, type WorkItemGitHubMirrorMetadata } from '@plusplusoneplusplus/coc-client';
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
 import { TYPE_LABELS } from './WorkItemHierarchyNode';
 import { WorkItemAiComposer } from './WorkItemAiComposer';
 import { isWorkItemsAiAuthoringEnabled } from '../../utils/config';
-import { WorkItemGitHubMirrorBadge } from './WorkItemGitHubMirrorBadge';
+import { WorkItemRemoteMirrorBadge } from './WorkItemGitHubMirrorBadge';
 
 const UNSAVED_CHANGES_MESSAGE = 'You have unsaved changes. Leave without saving?';
 
@@ -82,6 +82,7 @@ interface WorkItemFull {
     executionHistory?: Array<{ taskId: string; processId?: string; startedAt: string; completedAt?: string; status: string; error?: string; autoReExecuted?: boolean; title?: string; sessionCategory?: string }>;
     tags?: string[];
     githubMirror?: WorkItemGitHubMirrorMetadata;
+    azureBoardsMirror?: WorkItemAzureBoardsMirrorMetadata;
     autoExecute?: boolean;
     autoResolveAndReExecute?: boolean;
     autoReExecuteCycles?: number;
@@ -629,7 +630,12 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             Plan v{item.plan.version}
                         </span>
                     )}
-                    <WorkItemGitHubMirrorBadge mirror={item.githubMirror} asLink data-testid="work-item-github-mirror-badge" />
+                    <WorkItemRemoteMirrorBadge
+                        githubMirror={item.githubMirror}
+                        azureBoardsMirror={item.azureBoardsMirror}
+                        asLink
+                        data-testid={item.githubMirror ? 'work-item-github-mirror-badge' : 'work-item-azure-boards-mirror-badge'}
+                    />
                     <span className="text-[12px] leading-[1.4] text-[#656d76] dark:text-[#999]">Updated {formatRelativeTime(item.updatedAt)}</span>
                     {isDirty && (
                         <span className="inline-flex items-center gap-1 rounded-full px-2 py-px text-[11px] leading-[1.4] border border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-400 whitespace-nowrap" data-testid="wi-dirty-indicator">
@@ -776,14 +782,17 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     </section>
                 ) : null}
 
-                {item.githubMirror ? (
-                    <section data-testid="work-item-github-mirror">
-                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">GitHub mirror</h3>
+                {item.githubMirror || item.azureBoardsMirror ? (
+                    <section data-testid={item.githubMirror ? 'work-item-github-mirror' : 'work-item-azure-boards-mirror'}>
+                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">
+                            {item.githubMirror ? 'GitHub mirror' : 'Azure Boards mirror'}
+                        </h3>
                         <div className="flex flex-wrap gap-2">
-                            <WorkItemGitHubMirrorBadge
-                                mirror={item.githubMirror}
+                            <WorkItemRemoteMirrorBadge
+                                githubMirror={item.githubMirror}
+                                azureBoardsMirror={item.azureBoardsMirror}
                                 asLink
-                                data-testid="work-item-github-mirror-link"
+                                data-testid={item.githubMirror ? 'work-item-github-mirror-link' : 'work-item-azure-boards-mirror-link'}
                             />
                         </div>
                     </section>

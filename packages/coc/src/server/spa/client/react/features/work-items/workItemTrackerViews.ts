@@ -1,9 +1,17 @@
-import type { WorkItemTrackerKind, WorkItemTreeFilter } from '@plusplusoneplusplus/coc-client';
+import type { WorkItemSyncProvider, WorkItemTrackerKind, WorkItemTreeFilter } from '@plusplusoneplusplus/coc-client';
+
+export type WorkItemTrackerViewKind = 'local' | 'remote';
+export type WorkItemRemoteProviderFilter = 'all' | WorkItemSyncProvider;
 
 export interface WorkItemTrackerTab {
-    kind: WorkItemTrackerKind;
+    kind: WorkItemTrackerViewKind;
     label: string;
     description: string;
+}
+
+export interface WorkItemRemoteProviderFilterOption {
+    kind: WorkItemRemoteProviderFilter;
+    label: string;
 }
 
 export interface WorkItemTrackerViewCopy {
@@ -14,30 +22,50 @@ export interface WorkItemTrackerViewCopy {
 
 export const WORK_ITEM_TRACKER_TABS: readonly WorkItemTrackerTab[] = Object.freeze([
     {
-        kind: 'local-only',
+        kind: 'local',
         label: 'Local',
         description: 'Local Epics',
     },
     {
-        kind: 'github-backed',
-        label: 'GitHub',
-        description: 'Mirrored Epics',
+        kind: 'remote',
+        label: 'Remote',
+        description: 'Synced Epics',
     },
 ]);
 
-export function getWorkItemTrackerViewCopy(trackerKind?: WorkItemTrackerKind): WorkItemTrackerViewCopy {
-    if (trackerKind === 'local-only') {
+export const WORK_ITEM_REMOTE_PROVIDER_FILTERS: readonly WorkItemRemoteProviderFilterOption[] = Object.freeze([
+    { kind: 'all', label: 'All' },
+    { kind: 'github', label: 'GitHub' },
+    { kind: 'azure-boards', label: 'Azure Boards' },
+]);
+
+export function getWorkItemTrackerViewCopy(viewKind?: WorkItemTrackerViewKind, remoteProviderFilter: WorkItemRemoteProviderFilter = 'all'): WorkItemTrackerViewCopy {
+    if (viewKind === 'local') {
         return {
             title: 'Local tracker',
-            subtitle: 'Local Epic trees that never sync to GitHub.',
+            subtitle: 'Local Epic trees that never sync to a remote provider.',
             empty: 'No local Epic trees yet. Create an Epic to start, or add an unparented Work Item.',
         };
     }
-    if (trackerKind === 'github-backed') {
+    if (viewKind === 'remote') {
+        if (remoteProviderFilter === 'github') {
+            return {
+                title: 'Remote tracker',
+                subtitle: 'GitHub-backed Epic trees mirrored into CoC for local execution.',
+                empty: 'No GitHub-backed Epic trees yet. Import a GitHub issue to create a mirrored Epic tree.',
+            };
+        }
+        if (remoteProviderFilter === 'azure-boards') {
+            return {
+                title: 'Remote tracker',
+                subtitle: 'Azure Boards-backed Epic trees mirrored into CoC for local execution.',
+                empty: 'No Azure Boards-backed Epic trees yet. Import an Azure Boards work item to create a mirrored Epic tree.',
+            };
+        }
         return {
-            title: 'GitHub tracker',
-            subtitle: 'GitHub-backed Epic trees mirrored into CoC for local execution.',
-            empty: 'No GitHub-backed Epic trees yet. Import a GitHub issue to create a mirrored Epic tree.',
+            title: 'Remote tracker',
+            subtitle: 'GitHub and Azure Boards Epic trees synced into CoC for local execution.',
+            empty: 'No synced Epic trees yet. Import a GitHub issue or Azure Boards work item to create a mirrored tree.',
         };
     }
     return {
@@ -47,12 +75,24 @@ export function getWorkItemTrackerViewCopy(trackerKind?: WorkItemTrackerKind): W
     };
 }
 
+export function getTrackerKindsForView(viewKind: WorkItemTrackerViewKind, remoteProviderFilter: WorkItemRemoteProviderFilter = 'all'): WorkItemTrackerKind[] {
+    if (viewKind === 'local') return ['local-only'];
+    if (remoteProviderFilter === 'github') return ['github-backed'];
+    if (remoteProviderFilter === 'azure-boards') return ['azure-boards-backed'];
+    return ['github-backed', 'azure-boards-backed'];
+}
+
+export function isRemoteTrackerView(viewKind?: WorkItemTrackerViewKind): boolean {
+    return viewKind === 'remote';
+}
+
 export function isGitHubTrackerView(trackerKind?: WorkItemTrackerKind): boolean {
     return trackerKind === 'github-backed';
 }
 
-export function shouldShowLocalRootCreationActions(trackerKind?: WorkItemTrackerKind): boolean {
-    return !isGitHubTrackerView(trackerKind);
+export function shouldShowLocalRootCreationActions(viewKind?: WorkItemTrackerViewKind | WorkItemTrackerKind): boolean {
+    if (viewKind === 'remote' || viewKind === 'github-backed' || viewKind === 'azure-boards-backed') return false;
+    return true;
 }
 
 export function buildWorkItemTreeFilter({
@@ -72,4 +112,24 @@ export function buildWorkItemTreeFilter({
         includeArchived: showArchived,
         includeDone: showDone,
     };
+}
+
+export function buildWorkItemTreeFilters({
+    searchQuery,
+    trackerKinds,
+    showArchived,
+    showDone,
+}: {
+    searchQuery: string;
+    trackerKinds?: readonly WorkItemTrackerKind[];
+    showArchived: boolean;
+    showDone: boolean;
+}): WorkItemTreeFilter[] {
+    const kinds = trackerKinds && trackerKinds.length > 0 ? trackerKinds : [undefined];
+    return kinds.map(trackerKind => buildWorkItemTreeFilter({
+        searchQuery,
+        trackerKind,
+        showArchived,
+        showDone,
+    }));
 }

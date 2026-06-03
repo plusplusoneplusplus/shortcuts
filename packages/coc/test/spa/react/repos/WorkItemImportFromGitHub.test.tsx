@@ -58,7 +58,7 @@ const importedItem = {
     updatedAt: '2026-01-01T00:00:00.000Z',
 };
 
-describe('Import from GitHub work item placement', () => {
+describe('Import from remote work item placement', () => {
     let scrollIntoView: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
@@ -104,24 +104,26 @@ describe('Import from GitHub work item placement', () => {
         expect(screen.getByTestId('work-item-card-wi-imported').className).toContain('animate-pulse');
     });
 
-    it('renders the exact hierarchy import action and scrolls the highlighted imported tree row into view', async () => {
-        const onImportFromGitHub = vi.fn();
+    it('renders the Remote hierarchy import action and scrolls the highlighted imported tree row into view', async () => {
+        const onImportFromRemote = vi.fn();
         render(
             <WorkItemHierarchyTree
                 workspaceId="ws-test"
+                trackerViewKind="remote"
+                trackerKinds={['github-backed']}
                 selectedWorkItemId={null}
                 onSelectWorkItem={vi.fn()}
                 onCreated={vi.fn()}
                 onCreateItem={vi.fn()}
-                onImportFromGitHub={onImportFromGitHub}
+                onImportFromRemote={onImportFromRemote}
                 highlightedWorkItemId="wi-imported"
             />,
         );
 
-        const importButton = await screen.findByRole('button', { name: 'Import from GitHub' });
+        const importButton = await screen.findByRole('button', { name: 'Import remote' });
         fireEvent.click(importButton);
 
-        expect(onImportFromGitHub).toHaveBeenCalledTimes(1);
+        expect(onImportFromRemote).toHaveBeenCalledTimes(1);
         await waitFor(() => {
             expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
         });
