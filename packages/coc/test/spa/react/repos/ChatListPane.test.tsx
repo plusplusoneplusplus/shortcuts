@@ -1352,6 +1352,35 @@ describe('ChatListPane', () => {
             );
         });
 
+        it('keeps a selected unseen plan-file group collapsed after workspace switches', () => {
+            const groupForPlan = (planFilePath: string) =>
+                screen.getByTitle(planFilePath).closest('[data-testid="history-group"]') as HTMLElement;
+            const { rerender, props } = renderGrouped({
+                workspaceId: 'ws-a',
+                selectedTaskId: 'g2-a',
+                unseenProcessIds: new Set(['g2-a']),
+                onMarkAllRead: vi.fn(),
+            });
+
+            const selectedUnseenGroup = groupForPlan('/plans/plan2.md');
+            fireEvent.click(selectedUnseenGroup.querySelector('[data-testid="group-chevron"]')!);
+            expect(selectedUnseenGroup.getAttribute('data-expanded')).toBe('true');
+            expect(document.querySelector('[data-task-id="g2-a"]')).toBeTruthy();
+
+            rerender(<ChatListPane {...props} workspaceId="__all" />);
+            const allReposGroup = groupForPlan('/plans/plan2.md');
+            expect(allReposGroup.getAttribute('data-expanded')).toBe('false');
+            expect(document.querySelector('[data-task-id="g2-a"]')).toBeNull();
+            expect(screen.getByTestId('group-unseen-dot')).toBeTruthy();
+            expect(screen.getByTestId('unseen-count-badge').textContent).toBe('1');
+
+            rerender(<ChatListPane {...props} workspaceId="ws-a" />);
+            const repoGroup = groupForPlan('/plans/plan2.md');
+            expect(repoGroup.getAttribute('data-expanded')).toBe('false');
+            expect(document.querySelector('[data-task-id="g2-a"]')).toBeNull();
+            expect(screen.getByTestId('group-unseen-dot')).toBeTruthy();
+        });
+
         it('respects manual plan-file group toggles only until the workspace changes or remounts', () => {
             const { rerender, props } = renderGrouped({ workspaceId: 'ws-a' });
             const firstGroup = screen.getAllByTestId('history-group')[0];
