@@ -7,6 +7,7 @@ import type { DiffSource, CommitDiffSource, RangeDiffSource, WorkingTreeDiffSour
 import type { ReviewComment, ReviewOptions } from '../../src/review/types';
 import { AIReviewer, AIReviewerConfig, parseReviewFindings, extractJsonFromResponse } from '../../src/review/ai-reviewer';
 import type { SDKInvocationResult } from '@plusplusoneplusplus/coc-agent-sdk';
+import { createMockSDKService } from '@plusplusoneplusplus/coc-agent-sdk/testing';
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -37,14 +38,30 @@ function makeWorkingTreeSource(): WorkingTreeDiffSource {
     };
 }
 
+const viFactory = (impl?: (...args: any[]) => any): any => {
+    const spy = impl ? vi.fn(impl) : vi.fn();
+    const h = spy as any;
+    h.calls = spy.mock.calls;
+    const origMRV = spy.mockResolvedValue.bind(spy);
+    const origMRVO = spy.mockResolvedValueOnce.bind(spy);
+    const origMI = spy.mockImplementation.bind(spy);
+    const origMIO = spy.mockImplementationOnce.bind(spy);
+    const origReset = spy.mockReset.bind(spy);
+    h.mockResolvedValue = (v: unknown) => { origMRV(v); return h; };
+    h.mockResolvedValueOnce = (v: unknown) => { origMRVO(v); return h; };
+    h.mockImplementation = (fn: (...a: unknown[]) => unknown) => { origMI(fn); return h; };
+    h.mockImplementationOnce = (fn: (...a: unknown[]) => unknown) => { origMIO(fn); return h; };
+    h.mockReset = () => { origReset(); h.calls = spy.mock.calls; return h; };
+    return h;
+};
+
 function makeMockSdkService(response?: Partial<SDKInvocationResult>) {
-    return {
-        sendMessage: vi.fn().mockResolvedValue({
-            success: true,
-            response: '[]',
-            ...response,
-        }),
-    } as unknown as AIReviewerConfig['sdkService'];
+    const merged = { success: true, response: '[]', ...response };
+    const { service } = createMockSDKService(
+        { sendMessageResponse: merged },
+        viFactory,
+    );
+    return service as unknown as AIReviewerConfig['sdkService'];
 }
 
 function makeConfig(overrides?: Partial<AIReviewerConfig>): AIReviewerConfig {

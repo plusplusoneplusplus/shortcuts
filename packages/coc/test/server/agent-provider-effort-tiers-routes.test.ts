@@ -13,7 +13,8 @@ import type { AgentProvidersRouteContext } from '../../src/server/agent-provider
 import { RuntimeConfigService } from '../../src/config/runtime-config-service';
 import type { Route } from '../../src/server/types';
 import type { CLIConfig } from '../../src/config';
-import type { ModelInfo, ISDKService } from '@plusplusoneplusplus/forge';
+import type { ModelInfo } from '@plusplusoneplusplus/forge';
+import { createMockSDKService } from '../helpers/mock-sdk-service';
 
 // Mock modelMetadataStore from forge
 const mockGetAll = vi.fn<() => ModelInfo[]>().mockReturnValue([]);
@@ -79,25 +80,6 @@ function makeConfigFunctions(initialConfig?: CLIConfig): {
         getConfigFilePath: () => '/fake/config.yaml',
     };
     return result;
-}
-
-function makeAiService(overrides?: Partial<ISDKService>): ISDKService {
-    return {
-        isAvailable: async () => ({ available: true }),
-        clearAvailabilityCache: () => undefined,
-        listModels: async () => [],
-        sendMessage: async () => ({ success: true, response: 'ok', sessionId: 'sess-1' }),
-        transform: async () => '',
-        forkSession: async () => 'forked',
-        abortSession: async () => false,
-        softAbortSession: async () => false,
-        steerSession: async () => false,
-        hasActiveSession: () => false,
-        getActiveSessionCount: () => 0,
-        cleanup: async () => undefined,
-        dispose: () => undefined,
-        ...overrides,
-    };
 }
 
 function makeCtx(overrides?: Partial<AgentProvidersRouteContext>): AgentProvidersRouteContext {
@@ -528,9 +510,9 @@ describe('PUT /api/agent-providers/:provider/effort-tiers — per-provider isola
 
     it('writes to codex without touching copilot tiers', async () => {
         mockGetAll.mockReturnValue([]);
-        const codexService = makeAiService({
-            listModels: async () => [makeModelInfo('gpt-5.5', 'GPT-5.5')] as unknown as any[],
-        });
+        const codexService = createMockSDKService({
+            overrides: { listModels: async () => [makeModelInfo('gpt-5.5', 'GPT-5.5')] as unknown as any[] },
+        }).service;
         const cfgFns = makeConfigFunctions({
             models: { providers: { copilot: { effortTiers: { low: { model: 'copilot-low' } } } } },
         });

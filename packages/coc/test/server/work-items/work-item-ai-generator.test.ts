@@ -17,7 +17,7 @@ import {
 } from '../../../src/server/work-items/work-item-ai-generator';
 import type { NewItemDraftContext, ImproveItemDraftContext } from '../../../src/server/routes/work-item-ai-routes';
 import { MAX_CLARIFICATION_ROUNDS } from '../../../src/server/routes/work-item-ai-routes';
-import type { ISDKService } from '@plusplusoneplusplus/forge';
+import { createMockSDKService, createFailingMock } from '../../helpers/mock-sdk-service';
 
 // ============================================================================
 // parseAiDraftResponse
@@ -331,30 +331,6 @@ describe('buildImproveItemPrompt', () => {
 // ============================================================================
 
 describe('createWorkItemAiGenerators', () => {
-    /**
-     * Build a minimal mock ISDKService that returns a fixed AI response.
-     */
-    function makeMockService(response: object): ISDKService {
-        return {
-            sendMessage: async () => ({
-                success: true,
-                response: JSON.stringify(response),
-            }),
-            isAvailable: async () => ({ available: true }),
-        } as unknown as ISDKService;
-    }
-
-    function makeMockServiceError(errorMsg: string): ISDKService {
-        return {
-            sendMessage: async () => ({
-                success: false,
-                response: '',
-                error: errorMsg,
-            }),
-            isAvailable: async () => ({ available: true }),
-        } as unknown as ISDKService;
-    }
-
     const newCtx: NewItemDraftContext = {
         workspaceId: 'ws-test',
         prompt: 'Build a search feature',
@@ -381,7 +357,9 @@ describe('createWorkItemAiGenerators', () => {
             workItem: { title: 'Search Feature', priority: 'normal' },
             goal: '## Objective\nBuild search.',
         };
-        const service = makeMockService(mockDraft);
+        const service = createMockSDKService({
+            sendMessageResponse: { success: true, response: JSON.stringify(mockDraft) },
+        }).service;
         const { generateNewItemDraft } = createWorkItemAiGenerators({ aiService: service });
 
         const result = await generateNewItemDraft(newCtx);
@@ -398,7 +376,9 @@ describe('createWorkItemAiGenerators', () => {
             questions: ['What types of content to search?'],
             clarificationCount: 0,
         };
-        const service = makeMockService(mockClarification);
+        const service = createMockSDKService({
+            sendMessageResponse: { success: true, response: JSON.stringify(mockClarification) },
+        }).service;
         const { generateNewItemDraft } = createWorkItemAiGenerators({ aiService: service });
 
         const result = await generateNewItemDraft(newCtx);
@@ -413,7 +393,9 @@ describe('createWorkItemAiGenerators', () => {
             kind: 'draft',
             workItem: { title: 'Improved Search', description: 'Better description' },
         };
-        const service = makeMockService(mockDraft);
+        const service = createMockSDKService({
+            sendMessageResponse: { success: true, response: JSON.stringify(mockDraft) },
+        }).service;
         const { generateImproveItemDraft } = createWorkItemAiGenerators({ aiService: service });
 
         const result = await generateImproveItemDraft(improveCtx);
@@ -424,17 +406,16 @@ describe('createWorkItemAiGenerators', () => {
     });
 
     it('generateNewItemDraft throws when AI service reports failure', async () => {
-        const service = makeMockServiceError('LLM unavailable');
+        const service = createFailingMock('LLM unavailable').service;
         const { generateNewItemDraft } = createWorkItemAiGenerators({ aiService: service });
 
         await expect(generateNewItemDraft(newCtx)).rejects.toThrow(/LLM unavailable/i);
     });
 
     it('generateImproveItemDraft throws when AI returns non-JSON', async () => {
-        const service = {
-            sendMessage: async () => ({ success: true, response: 'Here is a nice plan for you!' }),
-            isAvailable: async () => ({ available: true }),
-        } as unknown as ISDKService;
+        const service = createMockSDKService({
+            sendMessageResponse: { success: true, response: 'Here is a nice plan for you!' },
+        }).service;
         const { generateImproveItemDraft } = createWorkItemAiGenerators({ aiService: service });
 
         await expect(generateImproveItemDraft(improveCtx)).rejects.toThrow(/non-JSON/i);
@@ -449,7 +430,9 @@ describe('createWorkItemAiGenerators', () => {
                 { title: 'Logout endpoint', type: 'work-item' },
             ],
         };
-        const service = makeMockService(mockDraft);
+        const service = createMockSDKService({
+            sendMessageResponse: { success: true, response: JSON.stringify(mockDraft) },
+        }).service;
         const { generateNewItemDraft } = createWorkItemAiGenerators({ aiService: service });
 
         const result = await generateNewItemDraft({ ...newCtx, hierarchyEnabled: true });

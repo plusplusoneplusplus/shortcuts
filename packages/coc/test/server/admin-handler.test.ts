@@ -17,8 +17,9 @@ import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import { registerAdminRoutes } from '../../src/server/admin/admin-handler';
 import { createRouter } from '../../src/server/shared/router';
 import type { Route } from '../../src/server/types';
-import type { ISDKService, IAvailabilityResult } from '@plusplusoneplusplus/forge';
+import type { IAvailabilityResult } from '@plusplusoneplusplus/forge';
 import { SDKServiceRegistry } from '@plusplusoneplusplus/forge';
+import { createMockSDKService } from '../helpers/mock-sdk-service';
 
 // ============================================================================
 // Helpers
@@ -1927,16 +1928,10 @@ describe('Admin Handler', () => {
 // GET /api/admin/codex/availability — unit tests (direct route registration)
 // ============================================================================
 
-function makeMockSdkService(result: IAvailabilityResult): ISDKService {
-    return {
-        isAvailable: async () => result,
-    } as unknown as ISDKService;
-}
-
 function makeRegistryWith(services: Record<string, IAvailabilityResult>): SDKServiceRegistry {
     const registry = new SDKServiceRegistry();
     for (const [name, avail] of Object.entries(services)) {
-        registry.register(name, makeMockSdkService(avail));
+        registry.register(name, createMockSDKService({ available: avail }).service);
     }
     return registry;
 }
