@@ -1,10 +1,10 @@
 /**
  * Hardcoded default effort-tier mappings per provider.
  *
- * Each provider exposes three tiers — `low`, `medium`, `high` — each pinned to
- * a default model and reasoning-effort. These defaults are surfaced by the
- * admin GET endpoint so the UI is always pre-populated and chat resolution
- * never sees an empty tier map.
+ * Each provider exposes four tiers — `very-low`, `low`, `medium`, `high` —
+ * each pinned to a default model and reasoning-effort. These defaults are
+ * surfaced by the admin GET endpoint so the UI is always pre-populated and
+ * chat resolution never sees an empty tier map.
  *
  * Stored config wins per-tier: defaults only fill in tiers the user has not
  * explicitly configured. Defaults are intentionally NOT baked into stored
@@ -14,7 +14,7 @@
  * `reasoningEffort: null` means "Auto" / no preference (the SDK chooses).
  */
 
-export type EffortTierKey = 'low' | 'medium' | 'high';
+export type EffortTierKey = 'very-low' | 'low' | 'medium' | 'high';
 
 export interface EffortTierDefaultEntry {
     model: string;
@@ -27,18 +27,21 @@ export type EffortTierDefaultsMap = Record<EffortTierKey, EffortTierDefaultEntry
 export type DefaultedProvider = 'copilot' | 'codex' | 'claude';
 
 const COPILOT_DEFAULTS: EffortTierDefaultsMap = {
+    'very-low': { model: 'gpt-5.4-mini',      reasoningEffort: 'low'   },
     low:    { model: 'claude-sonnet-4.6', reasoningEffort: 'high'  },
     medium: { model: 'claude-opus-4.8',   reasoningEffort: null    },
     high:   { model: 'gpt-5.5',           reasoningEffort: 'xhigh' },
 };
 
 const CODEX_DEFAULTS: EffortTierDefaultsMap = {
+    'very-low': { model: 'gpt-5.4-mini', reasoningEffort: 'low'   },
     low:    { model: 'gpt-5.4-mini',  reasoningEffort: 'xhigh' },
     medium: { model: 'gpt-5.5',       reasoningEffort: 'high'  },
     high:   { model: 'gpt-5.5',       reasoningEffort: 'xhigh' },
 };
 
 const CLAUDE_DEFAULTS: EffortTierDefaultsMap = {
+    'very-low': { model: 'claude-haiku-4.5',  reasoningEffort: 'low'    },
     low:    { model: 'claude-sonnet-4.6', reasoningEffort: 'high'   },
     medium: { model: 'claude-opus-4-7',   reasoningEffort: 'medium' },
     high:   { model: 'claude-opus-4-7',   reasoningEffort: 'xhigh'  },
@@ -60,6 +63,7 @@ export function getDefaultEffortTiers(provider: string): EffortTierDefaultsMap |
         const map = PROVIDER_DEFAULTS[provider as DefaultedProvider];
         // Return a shallow clone so callers cannot mutate the module-level constants.
         return {
+            'very-low': { ...map['very-low'] },
             low:    { ...map.low },
             medium: { ...map.medium },
             high:   { ...map.high },
@@ -97,7 +101,7 @@ export function mergeEffortTiersWithDefaults(
 ): MergedEffortTiersMap {
     const defaults = getDefaultEffortTiers(provider);
     const result: MergedEffortTiersMap = {};
-    const tiers: EffortTierKey[] = ['low', 'medium', 'high'];
+    const tiers: EffortTierKey[] = ['very-low', 'low', 'medium', 'high'];
 
     for (const tier of tiers) {
         const storedEntry = stored?.[tier];
