@@ -1392,6 +1392,31 @@ describe('ChatListPane', () => {
             expect(screen.getByTestId('unseen-count-badge').textContent).toBe('1');
         });
 
+        it('keeps new plan-file groups collapsed after history refresh without closing expanded groups', () => {
+            const groupForPlan = (planFilePath: string) =>
+                screen.getByTitle(planFilePath).closest('[data-testid="history-group"]') as HTMLElement;
+            const { rerender, props } = renderGrouped({ workspaceId: 'ws-a' });
+
+            const existingGroup = groupForPlan('/plans/plan2.md');
+            fireEvent.click(existingGroup.querySelector('[data-testid="group-chevron"]')!);
+            expect(existingGroup.getAttribute('data-expanded')).toBe('true');
+
+            rerender(
+                <ChatListPane
+                    {...props}
+                    history={[
+                        ...makeGroupedHistory(),
+                        makeHistoryTask({ id: 'g3-a', displayName: 'G3 Task A', planFilePath: '/plans/plan3.md', startTime: 600 }),
+                        makeHistoryTask({ id: 'g3-b', displayName: 'G3 Task B', planFilePath: '/plans/plan3.md', startTime: 700 }),
+                    ]}
+                />,
+            );
+
+            expect(groupForPlan('/plans/plan2.md').getAttribute('data-expanded')).toBe('true');
+            expect(groupForPlan('/plans/plan3.md').getAttribute('data-expanded')).toBe('false');
+            expect(document.querySelector('[data-task-id="g3-a"]')).toBeNull();
+        });
+
     });
 
     // ── Search ─────────────────────────────────────────────────────────

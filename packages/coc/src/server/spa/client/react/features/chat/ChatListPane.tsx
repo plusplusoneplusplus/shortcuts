@@ -728,49 +728,26 @@ export function ChatListPane({
         return { today, week, older };
     }, [groupedUnpinned, filteredUnpinned, listModeConfig, historyGrouping, unseenProcessIds]);
 
-    // Expand/collapse state for plan-file groups
-    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-    const observedGroupKeysRef = useRef<Set<string>>(new Set());
+    // Only explicit user expansions are tracked; groups otherwise render
+    // collapsed immediately, including the first paint after workspace changes.
+    const [expandedGroupState, setExpandedGroupState] = useState<{ workspaceId?: string; groups: Set<string> }>({
+        workspaceId,
+        groups: new Set(),
+    });
     const toggleGroup = useCallback((planFilePath: string) => {
-        setCollapsedGroups(prev => {
-            const next = new Set(prev);
-            next.has(planFilePath) ? next.delete(planFilePath) : next.add(planFilePath);
-            return next;
+        setExpandedGroupState(prev => {
+            const groups = new Set(prev.workspaceId === workspaceId ? prev.groups : []);
+            groups.has(planFilePath) ? groups.delete(planFilePath) : groups.add(planFilePath);
+            return { workspaceId, groups };
         });
-    }, []);
-
-    useEffect(() => {
-        observedGroupKeysRef.current = new Set();
-        setCollapsedGroups(new Set());
     }, [workspaceId]);
 
-    // Newly observed groups default collapsed; explicit toggles stay local to
-    // the current mounted workspace view.
     useEffect(() => {
-        if (!groupedUnpinned) {
-            observedGroupKeysRef.current = new Set();
-            setCollapsedGroups(new Set());
-            return;
-        }
-        const groupKeys = new Set(groupedUnpinned
-            .filter((e): e is HistoryGroup => e.kind === 'group')
-            .map(g => g.planFilePath));
-        const observedGroupKeys = observedGroupKeysRef.current;
-
-        setCollapsedGroups(prev => {
-            const next = new Set<string>();
-            for (const key of groupKeys) {
-                if (prev.has(key) || !observedGroupKeys.has(key)) {
-                    next.add(key);
-                }
-            }
-            if (next.size === prev.size && [...next].every(key => prev.has(key))) {
-                return prev;
-            }
-            return next;
+        setExpandedGroupState(prev => {
+            if (prev.workspaceId === workspaceId && prev.groups.size === 0) return prev;
+            return { workspaceId, groups: new Set() };
         });
-        observedGroupKeysRef.current = groupKeys;
-    }, [groupedUnpinned, workspaceId]);
+    }, [workspaceId]);
 
     // Count pinned tasks that are still running (not yet in history)
     const pinnedRunningCount = useMemo(() => {
@@ -2345,7 +2322,7 @@ export function ChatListPane({
                                             );
                                         }
                                         if (entry.kind === 'group') {
-                                            const expanded = !collapsedGroups.has(entry.planFilePath);
+                                            const expanded = expandedGroupState.workspaceId === workspaceId && expandedGroupState.groups.has(entry.planFilePath);
                                             const aggregateMode = computeAggregateMode(entry.children);
                                             const groupHasUnseen = !!unseenProcessIds && entry.children.some((c: any) => unseenProcessIds.has(c.id));
                                             return (
