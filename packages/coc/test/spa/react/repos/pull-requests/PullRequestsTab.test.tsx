@@ -65,19 +65,32 @@ const makePr = (overrides: Partial<any> = {}) => ({
     ...overrides,
 });
 
+const makeRecentEntry = (overrides: Partial<any> = {}) => ({
+    workspaceId: 'ws-1',
+    repoId: 'repo-1',
+    number: 1,
+    title: 'Fix bug',
+    openedAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+});
+
+function jsonResponse(body: unknown, init: { ok?: boolean; status?: number; statusText?: string } = {}) {
+    return {
+        ok: init.ok ?? true,
+        status: init.status ?? 200,
+        statusText: init.statusText ?? '',
+        headers: { get: () => 'application/json' },
+        json: () => Promise.resolve(body),
+        text: () => Promise.resolve(JSON.stringify(body)),
+    } as any;
+}
+
 function mockFetchOk(pullRequests: any[], extra: Record<string, unknown> = {}) {
-    global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ pullRequests, ...extra }),
-    } as any);
+    global.fetch = vi.fn().mockResolvedValue(jsonResponse({ pullRequests, entries: [], ...extra }));
 }
 
 function mockFetchError(status: number, body: object) {
-    global.fetch = vi.fn().mockResolvedValue({
-        ok: false,
-        status,
-        json: () => Promise.resolve(body),
-    } as any);
+    global.fetch = vi.fn().mockResolvedValue(jsonResponse(body, { ok: false, status }));
 }
 
 function mockFetchNetworkError() {
@@ -289,38 +302,24 @@ describe('PR review suggestions', () => {
     it('generates suggestions by refreshing review history before ranking', async () => {
         configMock.pullRequestsSuggestionsEnabled = true;
         const fetchMock = vi.fn()
-            .mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({ pullRequests: [makePr({ id: 1, number: 1, title: 'Suggested PR' })] }),
-            } as any)
-            .mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({ suggestions: [], rankedAt: null }),
-            } as any)
-            .mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({ pullRequests: [makePr({ id: 1, number: 1, title: 'Suggested PR' })] }),
-            } as any)
-            .mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({
-                    reviews: [{
-                        number: 10,
-                        title: 'Reviewed PR',
-                        author: { id: 'u1', displayName: 'Reviewer' },
-                        filesChanged: ['src/file.ts'],
-                        labels: [],
-                        reviewedAt: '2026-01-01T00:00:00.000Z',
-                        targetBranch: 'main',
-                        url: 'https://example.invalid/pr/10',
-                    }],
-                    fetchedAt: '2026-01-01T00:00:00.000Z',
-                }),
-            } as any)
-            .mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({ suggestions: [{ prNumber: 1, score: 95 }], rankedAt: '2026-01-01T00:01:00.000Z' }),
-            } as any);
+            .mockResolvedValueOnce(jsonResponse({ pullRequests: [makePr({ id: 1, number: 1, title: 'Suggested PR' })] }))
+            .mockResolvedValueOnce(jsonResponse({ entries: [] }))
+            .mockResolvedValueOnce(jsonResponse({ suggestions: [], rankedAt: null }))
+            .mockResolvedValueOnce(jsonResponse({ pullRequests: [makePr({ id: 1, number: 1, title: 'Suggested PR' })] }))
+            .mockResolvedValueOnce(jsonResponse({
+                reviews: [{
+                    number: 10,
+                    title: 'Reviewed PR',
+                    author: { id: 'u1', displayName: 'Reviewer' },
+                    filesChanged: ['src/file.ts'],
+                    labels: [],
+                    reviewedAt: '2026-01-01T00:00:00.000Z',
+                    targetBranch: 'main',
+                    url: 'https://example.invalid/pr/10',
+                }],
+                fetchedAt: '2026-01-01T00:00:00.000Z',
+            }))
+            .mockResolvedValueOnce(jsonResponse({ suggestions: [{ prNumber: 1, score: 95 }], rankedAt: '2026-01-01T00:01:00.000Z' }));
         global.fetch = fetchMock;
 
         await act(async () => { await renderTab(); });
@@ -335,33 +334,22 @@ describe('PR review suggestions', () => {
             fireEvent.click(screen.getByTestId('generate-suggestions-empty-button'));
         });
 
-        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
-        expect(String(fetchMock.mock.calls[3][0])).toContain('/repos/repo-1/pull-requests/review-history/refresh');
-        expect(fetchMock.mock.calls[3][1]?.method).toBe('POST');
-        expect(String(fetchMock.mock.calls[4][0])).toContain('/repos/repo-1/pull-requests/suggestions/refresh');
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(6));
+        expect(String(fetchMock.mock.calls[4][0])).toContain('/repos/repo-1/pull-requests/review-history/refresh');
         expect(fetchMock.mock.calls[4][1]?.method).toBe('POST');
+        expect(String(fetchMock.mock.calls[5][0])).toContain('/repos/repo-1/pull-requests/suggestions/refresh');
+        expect(fetchMock.mock.calls[5][1]?.method).toBe('POST');
         await waitFor(() => expect(screen.getByText('Suggested PR')).toBeInTheDocument());
     });
 
     it('shows an informational empty-state message when no review history exists', async () => {
         configMock.pullRequestsSuggestionsEnabled = true;
         const fetchMock = vi.fn()
-            .mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({ pullRequests: [makePr({ id: 1, number: 1, title: 'Open PR' })] }),
-            } as any)
-            .mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({ suggestions: [], rankedAt: null }),
-            } as any)
-            .mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({ pullRequests: [makePr({ id: 1, number: 1, title: 'Open PR' })] }),
-            } as any)
-            .mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({ reviews: [], fetchedAt: '2026-01-01T00:00:00.000Z' }),
-            } as any);
+            .mockResolvedValueOnce(jsonResponse({ pullRequests: [makePr({ id: 1, number: 1, title: 'Open PR' })] }))
+            .mockResolvedValueOnce(jsonResponse({ entries: [] }))
+            .mockResolvedValueOnce(jsonResponse({ suggestions: [], rankedAt: null }))
+            .mockResolvedValueOnce(jsonResponse({ pullRequests: [makePr({ id: 1, number: 1, title: 'Open PR' })] }))
+            .mockResolvedValueOnce(jsonResponse({ reviews: [], fetchedAt: '2026-01-01T00:00:00.000Z' }));
         global.fetch = fetchMock;
 
         await act(async () => { await renderTab(); });
@@ -376,7 +364,7 @@ describe('PR review suggestions', () => {
 
         await waitFor(() => expect(screen.getByTestId('suggestions-info')).toHaveTextContent('No past reviewed PRs found yet'));
         expect(screen.queryByTestId('suggestions-error')).not.toBeInTheDocument();
-        expect(fetchMock).toHaveBeenCalledTimes(4);
+        expect(fetchMock).toHaveBeenCalledTimes(5);
         expect(fetchMock.mock.calls.some(call => String(call[0]).includes('/suggestions/refresh'))).toBe(false);
     });
 });
@@ -414,8 +402,9 @@ describe('load more', () => {
         const firstPage = Array.from({ length: 25 }, (_, i) => makePr({ id: i + 1, title: `PR ${i + 1}` }));
         const secondPage = [makePr({ id: 26, title: 'PR 26' })];
         global.fetch = vi.fn()
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ pullRequests: firstPage }) } as any)
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ pullRequests: secondPage }) } as any);
+            .mockResolvedValueOnce(jsonResponse({ pullRequests: firstPage }))
+            .mockResolvedValueOnce(jsonResponse({ entries: [] }))
+            .mockResolvedValueOnce(jsonResponse({ pullRequests: secondPage }));
 
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(25));
@@ -771,14 +760,78 @@ describe('open PR by number or URL', () => {
         const button = screen.getByTestId('open-pr-button') as HTMLButtonElement;
         expect(input.placeholder).toMatch(/PR/i);
         expect(button).toBeDisabled();
+        expect(screen.queryByTestId('recent-opened-prs')).not.toBeInTheDocument();
+    });
+
+    it('renders populated recent entries below the Open PR input', async () => {
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(jsonResponse({ pullRequests: [] }))
+            .mockResolvedValueOnce(jsonResponse({
+                entries: [makeRecentEntry({ number: 42, title: 'Recently reopened PR' })],
+            }));
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+
+        await waitFor(() => expect(screen.getByTestId('recent-opened-prs')).toBeInTheDocument());
+        expect(screen.getByText('Recently reopened PR')).toBeInTheDocument();
+        expect(screen.getByText('#42')).toBeInTheDocument();
+    });
+
+    it('clicking a recent entry validates and opens that PR overview', async () => {
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(jsonResponse({ pullRequests: [] }))
+            .mockResolvedValueOnce(jsonResponse({
+                entries: [makeRecentEntry({ number: 8, title: 'Recent click target' })],
+            }))
+            .mockResolvedValueOnce(jsonResponse({ id: 8, number: 8, title: 'Recent click target' }));
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByText('Recent click target')).toBeInTheDocument());
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('recent-opened-pr-entry'));
+        });
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+        expect(String(fetchMock.mock.calls[2][0])).toContain('/repos/repo-1/pull-requests/8');
+        expect(window.location.hash).toContain('#repos/repo-1/pull-requests/8/overview');
+    });
+
+    it('hides recent entries when the queue rail is collapsed', async () => {
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(jsonResponse({ pullRequests: [] }))
+            .mockResolvedValueOnce(jsonResponse({
+                entries: [makeRecentEntry({ number: 24, title: 'Collapsed recent PR' })],
+            }));
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByText('Collapsed recent PR')).toBeInTheDocument());
+
+        await act(async () => { fireEvent.click(screen.getByTestId('pr-queue-toggle')); });
+
+        expect(screen.queryByTestId('recent-opened-prs')).not.toBeInTheDocument();
     });
 
     it('opens a PR by bare number on Enter, validating via /pull-requests/:n first', async () => {
         const fetchMock = vi.fn()
             // initial list fetch
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ pullRequests: [] }) } as any)
+            .mockResolvedValueOnce(jsonResponse({ pullRequests: [] }))
+            // recent-opened fetch
+            .mockResolvedValueOnce(jsonResponse({ entries: [] }))
             // open-pr validation fetch
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ id: 7, number: 7 }) } as any);
+            .mockResolvedValueOnce(jsonResponse({
+                id: 7,
+                number: 7,
+                title: 'Validated PR',
+                url: 'https://github.com/acme/web/pull/7?notification=1',
+            }))
+            // recent-opened record fetch
+            .mockResolvedValueOnce(jsonResponse({
+                entries: [makeRecentEntry({ number: 7, title: 'Validated PR', webUrl: 'https://github.com/acme/web/pull/7' })],
+            }));
         global.fetch = fetchMock;
 
         await act(async () => { await renderTab(); });
@@ -789,18 +842,31 @@ describe('open PR by number or URL', () => {
             fireEvent.keyDown(input, { key: 'Enter' });
         });
 
-        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-        expect(String(fetchMock.mock.calls[1][0])).toContain('/repos/repo-1/pull-requests/7');
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+        expect(String(fetchMock.mock.calls[2][0])).toContain('/repos/repo-1/pull-requests/7');
+        expect(String(fetchMock.mock.calls[3][0])).toContain('/repos/repo-1/pull-requests/recent-opened');
+        expect(fetchMock.mock.calls[3][1]?.method).toBe('POST');
+        expect(JSON.parse(fetchMock.mock.calls[3][1]?.body as string)).toMatchObject({
+            workspaceId: 'ws-1',
+            number: 7,
+            title: 'Validated PR',
+            webUrl: 'https://github.com/acme/web/pull/7?notification=1',
+        });
         await waitFor(() =>
             expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_PR', prId: 7 }),
         );
         expect(window.location.hash).toContain('#repos/repo-1/pull-requests/7/overview');
+        await waitFor(() => expect(screen.getByText('Validated PR')).toBeInTheDocument());
     });
 
     it('opens a PR by bare number when the Open button is clicked', async () => {
         const fetchMock = vi.fn()
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ pullRequests: [] }) } as any)
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ id: 12, number: 12 }) } as any);
+            .mockResolvedValueOnce(jsonResponse({ pullRequests: [] }))
+            .mockResolvedValueOnce(jsonResponse({ entries: [] }))
+            .mockResolvedValueOnce(jsonResponse({ id: 12, number: 12, title: 'Button PR' }))
+            .mockResolvedValueOnce(jsonResponse({
+                entries: [makeRecentEntry({ number: 12, title: 'Button PR' })],
+            }));
         global.fetch = fetchMock;
 
         await act(async () => { await renderTab(); });
@@ -810,8 +876,8 @@ describe('open PR by number or URL', () => {
             fireEvent.click(screen.getByTestId('open-pr-button'));
         });
 
-        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-        expect(String(fetchMock.mock.calls[1][0])).toContain('/repos/repo-1/pull-requests/12');
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+        expect(String(fetchMock.mock.calls[2][0])).toContain('/repos/repo-1/pull-requests/12');
         expect(window.location.hash).toContain('pull-requests/12/overview');
     });
 
@@ -821,8 +887,12 @@ describe('open PR by number or URL', () => {
             { id: 'ws-2', remoteUrl: 'git@github.com:acme/api.git' },
         ];
         const fetchMock = vi.fn()
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ pullRequests: [] }) } as any)
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ id: 99, number: 99 }) } as any);
+            .mockResolvedValueOnce(jsonResponse({ pullRequests: [] }))
+            .mockResolvedValueOnce(jsonResponse({ entries: [] }))
+            .mockResolvedValueOnce(jsonResponse({ id: 99, number: 99, title: 'API workspace PR' }))
+            .mockResolvedValueOnce(jsonResponse({
+                entries: [makeRecentEntry({ workspaceId: 'ws-2', repoId: 'ws-2', number: 99, title: 'API workspace PR' })],
+            }));
         global.fetch = fetchMock;
 
         await act(async () => { await renderTab(); });
@@ -834,8 +904,14 @@ describe('open PR by number or URL', () => {
             fireEvent.click(screen.getByTestId('open-pr-button'));
         });
 
-        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-        expect(String(fetchMock.mock.calls[1][0])).toContain('/repos/ws-2/pull-requests/99');
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+        expect(String(fetchMock.mock.calls[2][0])).toContain('/repos/ws-2/pull-requests/99');
+        expect(String(fetchMock.mock.calls[3][0])).toContain('/repos/ws-2/pull-requests/recent-opened');
+        expect(JSON.parse(fetchMock.mock.calls[3][1]?.body as string)).toMatchObject({
+            workspaceId: 'ws-2',
+            number: 99,
+            title: 'API workspace PR',
+        });
         await waitFor(() =>
             expect(window.location.hash).toContain('#repos/ws-2/pull-requests/99/overview'),
         );
@@ -843,8 +919,12 @@ describe('open PR by number or URL', () => {
 
     it('opens closed/merged or non-listed PRs (validation succeeds even if missing from list)', async () => {
         const fetchMock = vi.fn()
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ pullRequests: [] }) } as any)
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ id: 50, number: 50, status: 'merged' }) } as any);
+            .mockResolvedValueOnce(jsonResponse({ pullRequests: [] }))
+            .mockResolvedValueOnce(jsonResponse({ entries: [] }))
+            .mockResolvedValueOnce(jsonResponse({ id: 50, number: 50, status: 'merged', title: 'Merged PR' }))
+            .mockResolvedValueOnce(jsonResponse({
+                entries: [makeRecentEntry({ number: 50, title: 'Merged PR' })],
+            }));
         global.fetch = fetchMock;
 
         await act(async () => { await renderTab(); });
@@ -858,8 +938,9 @@ describe('open PR by number or URL', () => {
     it('shows an inline error and does not navigate when validation returns 404', async () => {
         const originalHash = window.location.hash;
         const fetchMock = vi.fn()
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ pullRequests: [] }) } as any)
-            .mockResolvedValueOnce({ ok: false, status: 404, json: () => Promise.resolve({ error: 'not found' }) } as any);
+            .mockResolvedValueOnce(jsonResponse({ pullRequests: [] }))
+            .mockResolvedValueOnce(jsonResponse({ entries: [] }))
+            .mockResolvedValueOnce(jsonResponse({ error: 'not found' }, { ok: false, status: 404 }));
         global.fetch = fetchMock;
 
         await act(async () => { await renderTab(); });
@@ -872,11 +953,38 @@ describe('open PR by number or URL', () => {
             expect.objectContaining({ type: 'SET_SELECTED_PR' }),
         );
         expect(window.location.hash).toBe(originalHash);
+        expect(fetchMock.mock.calls.some(call =>
+            String(call[0]).includes('/recent-opened') && call[1]?.method === 'POST',
+        )).toBe(false);
+    });
+
+    it('removes a stale recent entry after a confirmed 404 on click', async () => {
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(jsonResponse({ pullRequests: [] }))
+            .mockResolvedValueOnce(jsonResponse({
+                entries: [makeRecentEntry({ number: 77, title: 'Stale recent PR' })],
+            }))
+            .mockResolvedValueOnce(jsonResponse({ error: 'not found' }, { ok: false, status: 404 }))
+            .mockResolvedValueOnce(jsonResponse({ entries: [] }));
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByText('Stale recent PR')).toBeInTheDocument());
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('recent-opened-pr-entry'));
+        });
+
+        await waitFor(() => expect(screen.getByTestId('open-pr-error')).toHaveTextContent('Pull request #77 not found.'));
+        await waitFor(() => expect(screen.queryByTestId('recent-opened-prs')).not.toBeInTheDocument());
+        expect(String(fetchMock.mock.calls[3][0])).toContain('/repos/repo-1/pull-requests/recent-opened/77');
+        expect(fetchMock.mock.calls[3][1]?.method).toBe('DELETE');
     });
 
     it('shows an inline error for invalid input and does not call the API', async () => {
         const fetchMock = vi.fn()
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ pullRequests: [] }) } as any);
+            .mockResolvedValueOnce(jsonResponse({ pullRequests: [] }))
+            .mockResolvedValueOnce(jsonResponse({ entries: [] }));
         global.fetch = fetchMock;
 
         await act(async () => { await renderTab(); });
@@ -884,13 +992,15 @@ describe('open PR by number or URL', () => {
         await act(async () => { fireEvent.click(screen.getByTestId('open-pr-button')); });
 
         await waitFor(() => expect(screen.getByTestId('open-pr-error')).toBeInTheDocument());
-        expect(fetchMock).toHaveBeenCalledTimes(1); // only initial list fetch
+        expect(fetchMock).toHaveBeenCalledTimes(2); // initial list + recent-opened fetches only
+        expect(fetchMock.mock.calls.some(call => String(call[0]).includes('/pull-requests/not'))).toBe(false);
     });
 
     it('shows a "repository not registered" error for a URL with no matching workspace and does not call PR API', async () => {
         mockWorkspaces = [{ id: 'ws-1', remoteUrl: 'https://github.com/acme/web.git' }];
         const fetchMock = vi.fn()
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ pullRequests: [] }) } as any);
+            .mockResolvedValueOnce(jsonResponse({ pullRequests: [] }))
+            .mockResolvedValueOnce(jsonResponse({ entries: [] }));
         global.fetch = fetchMock;
 
         await act(async () => { await renderTab(); });
@@ -902,12 +1012,13 @@ describe('open PR by number or URL', () => {
         await waitFor(() => expect(screen.getByTestId('open-pr-error')).toBeInTheDocument());
         expect(screen.getByTestId('open-pr-error').textContent).toMatch(/not registered/i);
         // No PR validation request was made.
-        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
     it('clears the error when the user edits the input again', async () => {
         const fetchMock = vi.fn()
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ pullRequests: [] }) } as any);
+            .mockResolvedValueOnce(jsonResponse({ pullRequests: [] }))
+            .mockResolvedValueOnce(jsonResponse({ entries: [] }));
         global.fetch = fetchMock;
 
         await act(async () => { await renderTab(); });
@@ -919,4 +1030,3 @@ describe('open PR by number or URL', () => {
         expect(screen.queryByTestId('open-pr-error')).not.toBeInTheDocument();
     });
 });
-

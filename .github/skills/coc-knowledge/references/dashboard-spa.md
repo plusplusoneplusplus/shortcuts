@@ -206,6 +206,8 @@ The SPA consumes `@plusplusoneplusplus/coc-client` for typed REST transport. Dom
 
 Local React hooks (`fetchApi`, `useWebSocket`, `seenStateApi`) wrap the client for React state management.
 
-## Pull Request Suggestions
+## Pull Requests Tab
 
-The Pull Requests tab is enabled by default through `pullRequests.enabled`; PR review suggestions remain behind the separate `pullRequests.suggestions` config flag. The `For You` filter includes a `Generate suggestions`/`Refresh` action that first refreshes review history, then asks the server to rank open PRs. The UI shows inline progress, empty-state guidance, and recovery messages for missing review history or provider errors.
+The Pull Requests tab is enabled by default through `pullRequests.enabled`. The left queue rail starts with the "Open PR by # or URL" input; successful opens from that input are validated through the PR detail API, recorded through the repo-scoped recent-opened PR API, and shown in a compact "Recently opened" list directly below the input. Recent entries stay hidden when empty or when the rail is collapsed, open through the same overview navigation path, and confirmed 404s remove the stale entry from the list.
+
+PR review suggestions remain behind the separate `pullRequests.suggestions` config flag. The `For You` filter includes a `Generate suggestions`/`Refresh` action that first refreshes review history, then asks the server to rank open PRs. The UI shows inline progress, empty-state guidance, and recovery messages for missing review history or provider errors.
