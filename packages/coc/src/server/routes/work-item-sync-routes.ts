@@ -1,6 +1,6 @@
 import * as http from 'http';
 import * as url from 'url';
-import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { detectRemoteUrl, type ProcessStore, type WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import {
     type WorkItemSyncDisabledReason,
     type WorkItemSyncProvider as WorkItemSyncProviderName,
@@ -16,6 +16,7 @@ import {
     DEFAULT_WORK_ITEM_SYNC_PROVIDER,
     SUPPORTED_WORK_ITEM_SYNC_PROVIDERS,
     WORK_ITEM_SYNC_MAX_ITEMS,
+    detectWorkItemSyncProviderFromRemoteUrl,
     isSupportedWorkItemSyncProvider,
     unavailableWorkItemSyncProviderStatus,
     type WorkItemSyncProviderAdapter,
@@ -120,11 +121,20 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
         (ctx.providers ?? []).map(adapter => [adapter.provider, adapter]),
     );
 
+    async function resolveWorkspaceRemote(workspace: WorkspaceInfo | undefined): Promise<WorkspaceInfo | undefined> {
+        if (!workspace || workspace.remoteUrl?.trim()) return workspace;
+        const remoteUrl = await detectRemoteUrl(workspace.rootPath);
+        if (!remoteUrl) return workspace;
+        const updated = await ctx.processStore.updateWorkspace(workspace.id, { remoteUrl });
+        return updated ?? { ...workspace, remoteUrl };
+    }
+
     async function buildProviderContext(workspaceId: string): Promise<WorkItemSyncProviderContext> {
         const workspaces = await ctx.processStore.getWorkspaces();
+        const workspace = await resolveWorkspaceRemote(workspaces.find(candidate => candidate.id === workspaceId));
         return {
             workspaceId,
-            workspace: workspaces.find(workspace => workspace.id === workspaceId),
+            workspace,
             preferences: readRepoPreferences(ctx.dataDir, workspaceId),
         };
     }
@@ -229,13 +239,17 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
 
                 const parsed = url.parse(req.url ?? '/', true);
                 const queryProvider = typeof parsed.query.provider === 'string' ? parsed.query.provider : undefined;
-                const providerNames = queryProvider ? [parseProvider(queryProvider)] : SUPPORTED_WORK_ITEM_SYNC_PROVIDERS;
                 const providerContext = await buildProviderContext(workspaceId);
+                const remoteProvider = detectWorkItemSyncProviderFromRemoteUrl(providerContext.workspace?.remoteUrl);
+                const providerNames = queryProvider
+                    ? [parseProvider(queryProvider)]
+                    : remoteProvider ? [remoteProvider] : [];
                 const providers = await Promise.all(providerNames.map(provider => getProviderStatus(provider, providerContext)));
                 const response: WorkItemSyncStatusResponse = {
                     enabled: true,
                     disabled: false,
                     maxItems: WORK_ITEM_SYNC_MAX_ITEMS,
+                    remoteProvider,
                     provider: providers[0],
                     providers,
                 };

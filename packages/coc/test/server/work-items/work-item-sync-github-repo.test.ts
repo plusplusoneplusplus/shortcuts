@@ -1,10 +1,22 @@
 import { describe, expect, it } from 'vitest';
+import { detectWorkItemSyncProviderFromRemoteUrl } from '../../../src/server/work-items';
 import {
     parseGitHubRemoteUrl,
     resolveGitHubWorkItemSyncRepo,
 } from '../../../src/server/work-items/work-item-sync-github-repo';
 
 describe('work item GitHub sync repo detection', () => {
+    it('classifies supported work item sync providers from repo remote URL forms', () => {
+        expect(detectWorkItemSyncProviderFromRemoteUrl('https://github.com/octo-org/octo-repo.git')).toBe('github');
+        expect(detectWorkItemSyncProviderFromRemoteUrl('git@github.com:octo-org/octo-repo.git')).toBe('github');
+        expect(detectWorkItemSyncProviderFromRemoteUrl('ssh://git@github.com/octo-org/octo-repo.git')).toBe('github');
+        expect(detectWorkItemSyncProviderFromRemoteUrl('https://dev.azure.com/octo-org/Project/_git/octo-repo')).toBe('azure-boards');
+        expect(detectWorkItemSyncProviderFromRemoteUrl('git@ssh.dev.azure.com:v3/octo-org/Project/octo-repo')).toBe('azure-boards');
+        expect(detectWorkItemSyncProviderFromRemoteUrl('https://octo-org.visualstudio.com/Project/_git/octo-repo')).toBe('azure-boards');
+        expect(detectWorkItemSyncProviderFromRemoteUrl('https://example.com/octo-org/octo-repo.git')).toBeUndefined();
+        expect(detectWorkItemSyncProviderFromRemoteUrl(undefined)).toBeUndefined();
+    });
+
     it('parses common GitHub origin remote URL forms', () => {
         expect(parseGitHubRemoteUrl('https://github.com/octo-org/octo-repo.git')).toEqual({
             owner: 'octo-org',

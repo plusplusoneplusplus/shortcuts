@@ -3,6 +3,8 @@ import * as http from 'http';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
+import { execFileSync } from 'child_process';
+import type { WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import type { Route } from '../../../src/server/types';
 import { createRouter } from '../../../src/server/shared/router';
 import { registerWorkItemSyncRoutes } from '../../../src/server/routes/work-item-sync-routes';
@@ -117,27 +119,41 @@ class FakeAzureBoardsTransport implements AzureBoardsWorkItemTransport {
 
 function makeServer(
     providers: WorkItemSyncProviderAdapter[] = [],
-    options: { azureBoardsTransport?: AzureBoardsWorkItemTransport } = {},
+    options: {
+        azureBoardsTransport?: AzureBoardsWorkItemTransport;
+        workspaces?: WorkspaceInfo[];
+    } = {},
 ): http.Server {
     const routes: Route[] = [];
+    let workspaces = options.workspaces ?? [
+        {
+            id: REPO_ID,
+            name: 'Sync Test',
+            rootPath: tmpDir,
+            remoteUrl: 'https://github.com/plusplusoneplusplus/shortcuts.git',
+        },
+        {
+            id: SECOND_REPO_ID,
+            name: 'Second Sync Test',
+            rootPath: tmpDir,
+            remoteUrl: 'https://github.com/plusplusoneplusplus/other.git',
+        },
+    ];
     registerWorkItemSyncRoutes({
         routes,
         workItemStore: store,
         processStore: {
-            getWorkspaces: async () => [
-                {
-                    id: REPO_ID,
-                    name: 'Sync Test',
-                    rootPath: tmpDir,
-                    remoteUrl: 'https://github.com/plusplusoneplusplus/shortcuts.git',
-                },
-                {
-                    id: SECOND_REPO_ID,
-                    name: 'Second Sync Test',
-                    rootPath: tmpDir,
-                    remoteUrl: 'https://github.com/plusplusoneplusplus/other.git',
-                },
-            ],
+            getWorkspaces: async () => workspaces,
+            updateWorkspace: async (id: string, updates: Partial<Omit<WorkspaceInfo, 'id'>>) => {
+                const index = workspaces.findIndex(workspace => workspace.id === id);
+                if (index === -1) return undefined;
+                workspaces = [
+                    ...workspaces.slice(0, index),
+                    { ...workspaces[index], ...updates },
+                    ...workspaces.slice(index + 1),
+                ];
+                return workspaces[index];
+            },
         } as any,
         dataDir: tmpDir,
         getHierarchyEnabled: () => hierarchyEnabled,
@@ -150,7 +166,10 @@ function makeServer(
 
 async function startServer(
     providers: WorkItemSyncProviderAdapter[] = [],
-    options: { azureBoardsTransport?: AzureBoardsWorkItemTransport } = {},
+    options: {
+        azureBoardsTransport?: AzureBoardsWorkItemTransport;
+        workspaces?: WorkspaceInfo[];
+    } = {},
 ): Promise<void> {
     server = makeServer(providers, options);
     await new Promise<void>((resolve, reject) => {
@@ -239,11 +258,12 @@ describe('Work Item Sync Routes', () => {
         });
     });
 
-    it('reports provider status without exposing credentials', async () => {
+    it('reports only the repo remote provider status without exposing credentials', async () => {
         await startServer([makeFakeProvider()]);
 
         const status = await request('GET', `/api/workspaces/${REPO_ID}/work-items/sync/status`);
         expect(status.status).toBe(200);
+        expect(status.body.remoteProvider).toBe('github');
         expect(status.body.provider).toMatchObject({
             provider: 'github',
             available: true,
@@ -256,14 +276,93 @@ describe('Work Item Sync Routes', () => {
         });
         expect(status.body.providers).toEqual([
             expect.objectContaining({ provider: 'github', available: true }),
-            expect.objectContaining({
-                provider: 'azure-boards',
-                available: false,
-                reason: 'provider-unavailable',
-                message: expect.stringContaining('not registered'),
-            }),
         ]);
         expect(JSON.stringify(status.body)).not.toMatch(/token|secret|password|credential/i);
+    });
+
+    it('reports Azure Boards as the only remote provider for Azure DevOps workspace remotes', async () => {
+        await writeProvidersConfig({
+            providers: {
+                ado: { orgUrl: 'https://dev.azure.com/octo-org' },
+            },
+        }, tmpDir);
+        writeRepoPreferences(tmpDir, REPO_ID, {
+            workItems: {
+                sync: {
+                    azureBoards: { project: 'Project Alpha' },
+                },
+            },
+        });
+        await startServer([makeFakeProvider(), makeAzureProvider()], {
+            workspaces: [{
+                id: REPO_ID,
+                name: 'Sync Test',
+                rootPath: tmpDir,
+                remoteUrl: 'git@ssh.dev.azure.com:v3/octo-org/Project Alpha/octo-repo',
+            }],
+        });
+
+        const status = await request('GET', `/api/workspaces/${REPO_ID}/work-items/sync/status`);
+
+        expect(status.status).toBe(200);
+        expect(status.body.remoteProvider).toBe('azure-boards');
+        expect(status.body.providers).toEqual([
+            expect.objectContaining({ provider: 'azure-boards', available: true }),
+        ]);
+    });
+
+    it('does not fall back to provider configuration for unsupported remotes', async () => {
+        await writeProvidersConfig({
+            providers: {
+                ado: { orgUrl: 'https://dev.azure.com/octo-org' },
+            },
+        }, tmpDir);
+        writeRepoPreferences(tmpDir, REPO_ID, {
+            workItems: {
+                sync: {
+                    github: { owner: 'override-org', repo: 'override-repo' },
+                    azureBoards: { project: 'Project Alpha' },
+                },
+            },
+        });
+        await startServer([makeFakeProvider(), makeAzureProvider()], {
+            workspaces: [{
+                id: REPO_ID,
+                name: 'Sync Test',
+                rootPath: tmpDir,
+                remoteUrl: 'https://example.com/octo-org/octo-repo.git',
+            }],
+        });
+
+        const status = await request('GET', `/api/workspaces/${REPO_ID}/work-items/sync/status`);
+
+        expect(status.status).toBe(200);
+        expect(status.body.remoteProvider).toBeUndefined();
+        expect(status.body.provider).toBeUndefined();
+        expect(status.body.providers).toEqual([]);
+    });
+
+    it('refreshes a missing workspace remote before deriving the remote provider', async () => {
+        execFileSync('git', ['init'], { cwd: tmpDir, stdio: 'ignore' });
+        execFileSync('git', ['remote', 'add', 'origin', 'https://github.com/plusplusoneplusplus/shortcuts.git'], {
+            cwd: tmpDir,
+            stdio: 'ignore',
+        });
+        await startServer([makeFakeProvider()], {
+            workspaces: [{
+                id: REPO_ID,
+                name: 'Sync Test',
+                rootPath: tmpDir,
+            }],
+        });
+
+        const status = await request('GET', `/api/workspaces/${REPO_ID}/work-items/sync/status`);
+
+        expect(status.status).toBe(200);
+        expect(status.body.remoteProvider).toBe('github');
+        expect(status.body.providers).toEqual([
+            expect.objectContaining({ provider: 'github', available: true }),
+        ]);
     });
 
     it('reports Azure Boards available from global org URL, workspace project, and Azure CLI auth', async () => {

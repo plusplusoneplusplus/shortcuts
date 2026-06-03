@@ -128,6 +128,8 @@ export interface WorkItemSyncStatusResponse {
   disabled?: boolean;
   disabledReason?: WorkItemSyncDisabledReason;
   maxItems: number;
+  /** Provider derived from the workspace repository remote URL, when supported. */
+  remoteProvider?: WorkItemSyncProvider;
   provider?: WorkItemSyncProviderStatus;
   providers: WorkItemSyncProviderStatus[];
 }
