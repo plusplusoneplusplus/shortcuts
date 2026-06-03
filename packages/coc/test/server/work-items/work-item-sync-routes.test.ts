@@ -105,6 +105,14 @@ class FakeAzureBoardsTransport implements AzureBoardsWorkItemTransport {
         }
         return result;
     }
+
+    async createWorkItem(): Promise<AzureBoardsWorkItem> {
+        throw new Error('FakeAzureBoardsTransport.createWorkItem is not used by sync route tests.');
+    }
+
+    async updateWorkItem(): Promise<AzureBoardsWorkItem> {
+        throw new Error('FakeAzureBoardsTransport.updateWorkItem is not used by sync route tests.');
+    }
 }
 
 function makeServer(

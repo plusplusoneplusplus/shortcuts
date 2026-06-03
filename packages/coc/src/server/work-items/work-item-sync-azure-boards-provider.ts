@@ -11,9 +11,13 @@ import type {
     WorkItemSyncProviderContext,
 } from './work-item-sync-provider';
 import {
+    formatAzureBoardsTags,
+    mapCocWorkItemTypeToAzureBoardsType,
     mapAzureBoardsPriorityToWorkItemPriority,
     mapAzureBoardsStateToWorkItemStatus,
     mapAzureBoardsTypeToCocWorkItemType,
+    mapWorkItemPriorityToAzureBoardsPriority,
+    mapWorkItemStatusToAzureBoardsState,
 } from './work-item-sync-azure-boards-mapping';
 import type {
     WorkItem,
@@ -72,6 +76,35 @@ export interface AzureBoardsWorkItemTransport {
         rootWorkItemId: number,
         limit?: number,
     ): Promise<AzureBoardsWorkItem[]>;
+    createWorkItem(
+        project: AvailableAzureBoardsWorkItemSyncProject,
+        input: AzureBoardsWorkItemCreateInput,
+    ): Promise<AzureBoardsWorkItem>;
+    updateWorkItem(
+        project: AvailableAzureBoardsWorkItemSyncProject,
+        workItemId: number,
+        input: AzureBoardsWorkItemUpdateInput,
+    ): Promise<AzureBoardsWorkItem>;
+}
+
+export interface AzureBoardsWorkItemCreateInput {
+    workItemType: string;
+    title: string;
+    description: string;
+    state: string;
+    priority: number;
+    tags?: string;
+    parentWorkItemId?: number;
+}
+
+export interface AzureBoardsWorkItemUpdateInput {
+    title: string;
+    description: string;
+    state: string;
+    priority: number;
+    tags?: string;
+    parentWorkItemId?: number | null;
+    expectedRevision?: number;
 }
 
 export interface ImportAzureBoardsEpicTreeResult {
@@ -92,6 +125,34 @@ export interface CreateAzureBoardsWorkItemSyncProviderOptions {
     resolveAccessToken?: AzureBoardsAccessTokenResolver;
 }
 
+export interface CreateAzureBoardsWorkItemForLocalChildOptions {
+    project: AvailableAzureBoardsWorkItemSyncProject;
+    transport: AzureBoardsWorkItemTransport;
+    item: WorkItem;
+    parent: WorkItem;
+    now?: () => string;
+}
+
+export interface CreateAzureBoardsWorkItemForLocalChildResult {
+    workItem: AzureBoardsWorkItem;
+    azureBoardsMirror: WorkItemAzureBoardsMirrorMetadata;
+}
+
+export interface UpdateAzureBoardsWorkItemForLocalMirrorOptions {
+    project: AvailableAzureBoardsWorkItemSyncProject;
+    transport: AzureBoardsWorkItemTransport;
+    item: WorkItem;
+    remoteWorkItemId: number;
+    parentWorkItemId?: number | null;
+    expectedRevision?: number;
+    now?: () => string;
+}
+
+export interface UpdateAzureBoardsWorkItemForLocalMirrorResult {
+    workItem: AzureBoardsWorkItem;
+    azureBoardsMirror: WorkItemAzureBoardsMirrorMetadata;
+}
+
 interface AzureBoardsRestWorkItem {
     id?: number;
     rev?: number;
@@ -101,6 +162,12 @@ interface AzureBoardsRestWorkItem {
     _links?: {
         html?: { href?: string };
     };
+}
+
+interface AzureBoardsJsonPatchOperation {
+    op: 'add' | 'remove' | 'replace' | 'test';
+    path: string;
+    value?: unknown;
 }
 
 const execFileAsync = promisify(execFile) as ExecFileAsync;
@@ -282,6 +349,10 @@ function azureApiUrl(project: AvailableAzureBoardsWorkItemSyncProject, pathSuffi
     return url;
 }
 
+function azureWorkItemRelationUrl(project: AvailableAzureBoardsWorkItemSyncProject, workItemId: number): string {
+    return `${normalizeOrgUrl(project.organizationUrl)}/${encodeURIComponent(project.project)}/_apis/wit/workItems/${workItemId}`;
+}
+
 async function readResponseBody(res: IncomingMessage): Promise<string> {
     const chunks: Buffer[] = [];
     for await (const chunk of res) {
@@ -341,17 +412,73 @@ export class AzureBoardsRestWorkItemTransport implements AzureBoardsWorkItemTran
         return result;
     }
 
-    private async requestJson<T>(url: URL): Promise<{ status: number; body: T }> {
+    async createWorkItem(
+        project: AvailableAzureBoardsWorkItemSyncProject,
+        input: AzureBoardsWorkItemCreateInput,
+    ): Promise<AzureBoardsWorkItem> {
+        const url = azureApiUrl(project, `/workitems/$${encodeURIComponent(input.workItemType)}`);
+        const response = await this.requestJson<AzureBoardsRestWorkItem>(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json-patch+json' },
+            body: createWorkItemPatch(project, input),
+        });
+        if (response.status < 200 || response.status >= 300) {
+            throw new Error(`Azure Boards API create request failed with status ${response.status}.`);
+        }
+        const item = normalizeRestWorkItem(response.body);
+        if (!item) {
+            throw new Error('Azure Boards API did not return a valid created work item.');
+        }
+        return item;
+    }
+
+    async updateWorkItem(
+        project: AvailableAzureBoardsWorkItemSyncProject,
+        workItemId: number,
+        input: AzureBoardsWorkItemUpdateInput,
+    ): Promise<AzureBoardsWorkItem> {
+        const current = Object.prototype.hasOwnProperty.call(input, 'parentWorkItemId')
+            ? await this.getWorkItem(project, workItemId)
+            : undefined;
+        if (Object.prototype.hasOwnProperty.call(input, 'parentWorkItemId') && !current) {
+            throw new Error(`Azure Boards work item ${workItemId} was not found.`);
+        }
+
+        const url = azureApiUrl(project, `/workitems/${encodeURIComponent(String(workItemId))}`);
+        const response = await this.requestJson<AzureBoardsRestWorkItem>(url, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json-patch+json' },
+            body: updateWorkItemPatch(project, input, current),
+        });
+        if (response.status < 200 || response.status >= 300) {
+            throw new Error(`Azure Boards API update request failed with status ${response.status}.`);
+        }
+        const item = normalizeRestWorkItem(response.body);
+        if (!item) {
+            throw new Error(`Azure Boards API did not return a valid updated work item for ID ${workItemId}.`);
+        }
+        return item;
+    }
+
+    private async requestJson<T>(
+        url: URL,
+        options: {
+            method?: string;
+            headers?: Record<string, string>;
+            body?: unknown;
+        } = {},
+    ): Promise<{ status: number; body: T }> {
         const token = await this.resolveAccessToken();
         if (!token) {
             throw new Error('Azure Boards API requires Azure CLI authentication.');
         }
         return new Promise((resolve, reject) => {
             const req = https.request(url, {
-                method: 'GET',
+                method: options.method ?? 'GET',
                 headers: {
                     Accept: 'application/json',
                     Authorization: `Bearer ${token}`,
+                    ...options.headers,
                 },
             }, async res => {
                 try {
@@ -363,9 +490,89 @@ export class AzureBoardsRestWorkItemTransport implements AzureBoardsWorkItemTran
                 }
             });
             req.on('error', reject);
+            if (options.body !== undefined) {
+                req.write(JSON.stringify(options.body));
+            }
             req.end();
         });
     }
+}
+
+function createWorkItemPatch(
+    project: AvailableAzureBoardsWorkItemSyncProject,
+    input: AzureBoardsWorkItemCreateInput,
+): AzureBoardsJsonPatchOperation[] {
+    const operations: AzureBoardsJsonPatchOperation[] = [
+        { op: 'add', path: '/fields/System.Title', value: input.title },
+        { op: 'add', path: '/fields/System.Description', value: input.description },
+        { op: 'add', path: '/fields/System.State', value: input.state },
+        { op: 'add', path: '/fields/Microsoft.VSTS.Common.Priority', value: input.priority },
+    ];
+    if (input.tags) {
+        operations.push({ op: 'add', path: '/fields/System.Tags', value: input.tags });
+    }
+    if (input.parentWorkItemId !== undefined) {
+        operations.push({
+            op: 'add',
+            path: '/relations/-',
+            value: {
+                rel: 'System.LinkTypes.Hierarchy-Reverse',
+                url: azureWorkItemRelationUrl(project, input.parentWorkItemId),
+            },
+        });
+    }
+    return operations;
+}
+
+function updateWorkItemPatch(
+    project: AvailableAzureBoardsWorkItemSyncProject,
+    input: AzureBoardsWorkItemUpdateInput,
+    current: AzureBoardsWorkItem | undefined,
+): AzureBoardsJsonPatchOperation[] {
+    const operations: AzureBoardsJsonPatchOperation[] = [];
+    if (input.expectedRevision !== undefined) {
+        operations.push({ op: 'test', path: '/rev', value: input.expectedRevision });
+    }
+    operations.push(
+        { op: 'replace', path: '/fields/System.Title', value: input.title },
+        { op: 'replace', path: '/fields/System.Description', value: input.description },
+        { op: 'replace', path: '/fields/System.State', value: input.state },
+        { op: 'replace', path: '/fields/Microsoft.VSTS.Common.Priority', value: input.priority },
+        { op: 'replace', path: '/fields/System.Tags', value: input.tags ?? '' },
+    );
+
+    if (Object.prototype.hasOwnProperty.call(input, 'parentWorkItemId')) {
+        const existingParent = current ? parentRelation(current) : undefined;
+        const desiredParentId = input.parentWorkItemId ?? undefined;
+        if (existingParent?.workItemId !== desiredParentId) {
+            if (existingParent) {
+                operations.push({ op: 'remove', path: `/relations/${existingParent.index}` });
+            }
+            if (desiredParentId !== undefined) {
+                operations.push({
+                    op: 'add',
+                    path: '/relations/-',
+                    value: {
+                        rel: 'System.LinkTypes.Hierarchy-Reverse',
+                        url: azureWorkItemRelationUrl(project, desiredParentId),
+                    },
+                });
+            }
+        }
+    }
+
+    return operations;
+}
+
+function parentRelation(item: Pick<AzureBoardsWorkItem, 'relations'>): { index: number; workItemId: number } | undefined {
+    for (const [index, relation] of (item.relations ?? []).entries()) {
+        if (relation.rel !== 'System.LinkTypes.Hierarchy-Reverse') continue;
+        const workItemId = relationWorkItemId(relation);
+        if (workItemId !== undefined) {
+            return { index, workItemId };
+        }
+    }
+    return undefined;
 }
 
 function relationWorkItemId(relation: AzureBoardsWorkItemRelation): number | undefined {
@@ -404,6 +611,13 @@ function azureBoardsMirrorForWorkItem(
         updatedAt: item.updatedAt,
         lastPulledAt: pulledAt,
     };
+}
+
+export function azureBoardsRemoteWorkItemIdForLocalItem(item: WorkItem): number | undefined {
+    return item.azureBoardsMirror?.workItemId
+        ?? (item.tracker?.kind === 'azure-boards-backed' && item.tracker.provider === 'azure-boards'
+            ? item.tracker.azureBoards.workItemId
+            : undefined);
 }
 
 function azureBoardsBackedTrackerForRoot(item: AzureBoardsWorkItem, pulledAt: string): WorkItem['tracker'] {
@@ -468,6 +682,61 @@ function mirrorTypeForAzureBoardsWorkItem(remote: AzureBoardsWorkItem, rootId: n
 
 function priorityForAzureBoardsWorkItem(remote: AzureBoardsWorkItem) {
     return mapAzureBoardsPriorityToWorkItemPriority(remote.priority).priority;
+}
+
+function azureBoardsInputFieldsForLocalItem(item: WorkItem) {
+    const typeMapping = mapCocWorkItemTypeToAzureBoardsType({
+        type: item.type,
+        tags: item.tags,
+    });
+    return {
+        workItemType: typeMapping.workItemType,
+        title: item.title,
+        description: item.description ?? '',
+        state: mapWorkItemStatusToAzureBoardsState(item.status),
+        priority: mapWorkItemPriorityToAzureBoardsPriority(item.priority),
+        tags: formatAzureBoardsTags(typeMapping.tags),
+    };
+}
+
+export async function createAzureBoardsWorkItemForLocalChild(
+    options: CreateAzureBoardsWorkItemForLocalChildOptions,
+): Promise<CreateAzureBoardsWorkItemForLocalChildResult> {
+    const syncedAt = (options.now ?? (() => new Date().toISOString()))();
+    const parentWorkItemId = azureBoardsRemoteWorkItemIdForLocalItem(options.parent);
+    if (parentWorkItemId === undefined) {
+        throw new Error(`Parent work item '${options.parent.id}' is not mirrored to Azure Boards.`);
+    }
+    const created = await options.transport.createWorkItem(options.project, {
+        ...azureBoardsInputFieldsForLocalItem(options.item),
+        parentWorkItemId,
+    });
+    return {
+        workItem: created,
+        azureBoardsMirror: azureBoardsMirrorForWorkItem(created, syncedAt),
+    };
+}
+
+export async function updateAzureBoardsWorkItemForLocalMirror(
+    options: UpdateAzureBoardsWorkItemForLocalMirrorOptions,
+): Promise<UpdateAzureBoardsWorkItemForLocalMirrorResult> {
+    const syncedAt = (options.now ?? (() => new Date().toISOString()))();
+    const input: AzureBoardsWorkItemUpdateInput = {
+        ...azureBoardsInputFieldsForLocalItem(options.item),
+        expectedRevision: options.expectedRevision,
+    };
+    if (Object.prototype.hasOwnProperty.call(options, 'parentWorkItemId')) {
+        input.parentWorkItemId = options.parentWorkItemId;
+    }
+    const updated = await options.transport.updateWorkItem(
+        options.project,
+        options.remoteWorkItemId,
+        input,
+    );
+    return {
+        workItem: updated,
+        azureBoardsMirror: azureBoardsMirrorForWorkItem(updated, syncedAt),
+    };
 }
 
 function collectLocalTreeEntries(

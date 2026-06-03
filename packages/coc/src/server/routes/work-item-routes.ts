@@ -40,6 +40,22 @@ import {
     createGitHubIssueForLocalChild,
     type GitHubWorkItemIssueTransport,
 } from '../work-items/work-item-sync-github-provider';
+import {
+    AzureBoardsRestWorkItemTransport,
+    azureBoardsProjectFromStatus,
+    azureBoardsRemoteWorkItemIdForLocalItem,
+    createAzureBoardsWorkItemForLocalChild,
+    createAzureBoardsWorkItemSyncProviderAdapter,
+    updateAzureBoardsWorkItemForLocalMirror,
+    type AzureBoardsWorkItem,
+    type AzureBoardsWorkItemTransport,
+    type AvailableAzureBoardsWorkItemSyncProject,
+} from '../work-items/work-item-sync-azure-boards-provider';
+import {
+    unavailableWorkItemSyncProviderStatus,
+    type WorkItemSyncProviderAdapter,
+    type WorkItemSyncProviderContext,
+} from '../work-items/work-item-sync-provider';
 import { executeWorkItem, type EnqueueFunction } from '../work-items/work-item-executor';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 
@@ -66,6 +82,10 @@ export interface WorkItemRouteContext {
     dataDir?: string;
     /** Override GitHub transport for testing. Defaults to GhCliGitHubWorkItemIssueTransport. */
     githubTransport?: GitHubWorkItemIssueTransport;
+    /** Override Azure Boards transport for testing. Defaults to AzureBoardsRestWorkItemTransport. */
+    azureBoardsTransport?: AzureBoardsWorkItemTransport;
+    /** Override Azure Boards status adapter for testing. Defaults to the Azure CLI-backed adapter. */
+    azureBoardsProvider?: WorkItemSyncProviderAdapter;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -216,6 +236,39 @@ function githubRepoUnavailableError(repo: Exclude<GitHubWorkItemSyncRepo, { avai
     );
 }
 
+function workItemSyncProviderUnavailableError(status: Awaited<ReturnType<WorkItemSyncProviderAdapter['getStatus']>>): APIError {
+    return new APIError(
+        409,
+        status.message ?? `Work item sync provider '${status.provider}' is unavailable.`,
+        'WORK_ITEM_SYNC_PROVIDER_UNAVAILABLE',
+        { provider: status },
+    );
+}
+
+function azureBoardsProviderError(message: string, code: string, details?: unknown): APIError {
+    return new APIError(409, message, code, details);
+}
+
+function azureBoardsOperationFailedError(action: string, error: unknown, code: string): APIError {
+    if (error instanceof APIError) return error;
+    const detail = error instanceof Error ? error.message : String(error);
+    return azureBoardsProviderError(
+        `Azure Boards ${action} failed: ${detail}`,
+        code,
+    );
+}
+
+function azureBoardsMirrorIsStale(local: WorkItem, remote: AzureBoardsWorkItem): boolean {
+    const localRevision = local.azureBoardsMirror?.revision
+        ?? (local.tracker?.kind === 'azure-boards-backed' ? local.tracker.azureBoards.revision : undefined);
+    if (localRevision !== undefined && remote.revision !== undefined && remote.revision !== localRevision) {
+        return true;
+    }
+    const localUpdatedAt = local.azureBoardsMirror?.updatedAt
+        ?? (local.tracker?.kind === 'azure-boards-backed' ? local.tracker.azureBoards.updatedAt : undefined);
+    return Boolean(localUpdatedAt && remote.updatedAt && localUpdatedAt !== remote.updatedAt);
+}
+
 export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
     const { routes, workItemStore, processStore, enqueue, getWsServer } = ctx;
     const isHierarchyEnabled = () => ctx.getHierarchyEnabled?.() ?? false;
@@ -263,6 +316,34 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
         return repo;
     }
 
+    async function buildAzureBoardsProviderContext(repoId: string): Promise<WorkItemSyncProviderContext> {
+        const workspaces = await ctx.processStore?.getWorkspaces?.() ?? [];
+        return {
+            workspaceId: repoId,
+            workspace: workspaces.find(workspace => workspace.id === repoId),
+            preferences: ctx.dataDir ? readRepoPreferences(ctx.dataDir, repoId) : {},
+        };
+    }
+
+    async function resolveAvailableAzureBoardsProject(repoId: string): Promise<AvailableAzureBoardsWorkItemSyncProject> {
+        if (!ctx.dataDir) {
+            throw azureBoardsProviderError(
+                'Azure Boards-backed work item writes require the server data directory.',
+                'WORK_ITEM_AZURE_BOARDS_PROJECT_UNAVAILABLE',
+            );
+        }
+        const provider = ctx.azureBoardsProvider ?? createAzureBoardsWorkItemSyncProviderAdapter({ dataDir: ctx.dataDir });
+        const status = await provider.getStatus(await buildAzureBoardsProviderContext(repoId));
+        if (!status.available) {
+            throw workItemSyncProviderUnavailableError(status);
+        }
+        const project = azureBoardsProjectFromStatus(status);
+        if (!project) {
+            throw workItemSyncProviderUnavailableError(unavailableWorkItemSyncProviderStatus('azure-boards'));
+        }
+        return project;
+    }
+
     async function pushNewGitHubBackedChildIfNeeded(
         item: WorkItem,
         parentItem: WorkItem | undefined,
@@ -293,6 +374,171 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             ...item,
             githubMirror: result.githubMirror,
         };
+    }
+
+    async function pushNewAzureBoardsBackedChildIfNeeded(
+        item: WorkItem,
+        parentItem: WorkItem | undefined,
+        repoId: string,
+        now: string,
+    ): Promise<WorkItem> {
+        if (!parentItem) return item;
+        const root = await findTreeRoot(parentItem, repoId);
+        if (root.tracker?.kind !== 'azure-boards-backed' || root.tracker.provider !== 'azure-boards') return item;
+        if (azureBoardsRemoteWorkItemIdForLocalItem(parentItem) === undefined) {
+            throw azureBoardsProviderError(
+                `Parent work item '${parentItem.id}' is not mirrored to Azure Boards.`,
+                'WORK_ITEM_AZURE_BOARDS_PARENT_NOT_MIRRORED',
+            );
+        }
+
+        const project = await resolveAvailableAzureBoardsProject(repoId);
+        const transport = ctx.azureBoardsTransport ?? new AzureBoardsRestWorkItemTransport();
+        try {
+            const result = await createAzureBoardsWorkItemForLocalChild({
+                project,
+                transport,
+                item,
+                parent: parentItem,
+                now: () => now,
+            });
+            return {
+                ...item,
+                azureBoardsMirror: result.azureBoardsMirror,
+            };
+        } catch (error) {
+            throw azureBoardsOperationFailedError(
+                'child creation',
+                error,
+                'WORK_ITEM_AZURE_BOARDS_CREATE_FAILED',
+            );
+        }
+    }
+
+    async function azureBoardsParentWorkItemIdForUpdate(
+        current: WorkItem,
+        root: WorkItem,
+        newParent: WorkItem | undefined,
+        repoId: string,
+    ): Promise<number | null | undefined> {
+        if (!newParent) return null;
+        const newParentRoot = await findTreeRoot(newParent, repoId);
+        if (newParentRoot.id !== root.id || newParentRoot.tracker?.kind !== 'azure-boards-backed') {
+            throw azureBoardsProviderError(
+                `Parent work item '${newParent.id}' is not in the same Azure Boards-backed Epic tree as '${current.id}'.`,
+                'WORK_ITEM_AZURE_BOARDS_PARENT_NOT_MIRRORED',
+            );
+        }
+        const parentWorkItemId = azureBoardsRemoteWorkItemIdForLocalItem(newParent);
+        if (parentWorkItemId === undefined) {
+            throw azureBoardsProviderError(
+                `Parent work item '${newParent.id}' is not mirrored to Azure Boards.`,
+                'WORK_ITEM_AZURE_BOARDS_PARENT_NOT_MIRRORED',
+            );
+        }
+        return parentWorkItemId;
+    }
+
+    async function pushAzureBoardsBackedUpdateIfNeeded(
+        current: WorkItem,
+        updates: Partial<WorkItem>,
+        repoId: string,
+        parentChanged: boolean,
+        newParent: WorkItem | undefined,
+    ): Promise<Partial<WorkItem>> {
+        const hasAzureWritableChange = updates.title !== undefined
+            || updates.description !== undefined
+            || updates.status !== undefined
+            || updates.priority !== undefined
+            || updates.tags !== undefined
+            || parentChanged;
+        if (!hasAzureWritableChange) return updates;
+
+        const root = await findTreeRoot(current, repoId);
+        if (root.tracker?.kind !== 'azure-boards-backed' || root.tracker.provider !== 'azure-boards') {
+            return updates;
+        }
+
+        const remoteWorkItemId = azureBoardsRemoteWorkItemIdForLocalItem(current);
+        if (remoteWorkItemId === undefined) {
+            throw azureBoardsProviderError(
+                `Work item '${current.id}' is not mirrored to Azure Boards.`,
+                'WORK_ITEM_AZURE_BOARDS_ITEM_NOT_MIRRORED',
+            );
+        }
+
+        const project = await resolveAvailableAzureBoardsProject(repoId);
+        const transport = ctx.azureBoardsTransport ?? new AzureBoardsRestWorkItemTransport();
+        const remote = await transport.getWorkItem(project, remoteWorkItemId);
+        if (!remote) {
+            throw azureBoardsProviderError(
+                `Azure Boards work item ${remoteWorkItemId} no longer exists.`,
+                'WORK_ITEM_AZURE_BOARDS_ITEM_NOT_FOUND',
+            );
+        }
+        if (azureBoardsMirrorIsStale(current, remote)) {
+            throw azureBoardsProviderError(
+                `Azure Boards work item ${remoteWorkItemId} changed remotely; refresh before saving local edits.`,
+                'WORK_ITEM_AZURE_BOARDS_CONFLICT',
+                {
+                    provider: 'azure-boards',
+                    workItemId: remoteWorkItemId,
+                    localRevision: current.azureBoardsMirror?.revision,
+                    remoteRevision: remote.revision,
+                },
+            );
+        }
+
+        const parentWorkItemId = parentChanged
+            ? await azureBoardsParentWorkItemIdForUpdate(current, root, newParent, repoId)
+            : undefined;
+        const itemForRemote: WorkItem = {
+            ...current,
+            ...updates,
+            parentId: parentChanged ? newParent?.id : current.parentId,
+        };
+
+        const updateOptions: Parameters<typeof updateAzureBoardsWorkItemForLocalMirror>[0] = {
+            project,
+            transport,
+            item: itemForRemote,
+            remoteWorkItemId,
+            expectedRevision: current.azureBoardsMirror?.revision
+                ?? (current.tracker?.kind === 'azure-boards-backed' ? current.tracker.azureBoards.revision : undefined),
+        };
+        if (parentChanged) {
+            updateOptions.parentWorkItemId = parentWorkItemId;
+        }
+
+        let result;
+        try {
+            result = await updateAzureBoardsWorkItemForLocalMirror(updateOptions);
+        } catch (error) {
+            throw azureBoardsOperationFailedError(
+                'update',
+                error,
+                'WORK_ITEM_AZURE_BOARDS_UPDATE_FAILED',
+            );
+        }
+
+        const nextUpdates: Partial<WorkItem> = {
+            ...updates,
+            azureBoardsMirror: result.azureBoardsMirror,
+        };
+        if (current.id === root.id && current.tracker?.kind === 'azure-boards-backed') {
+            nextUpdates.tracker = {
+                ...current.tracker,
+                azureBoards: {
+                    ...current.tracker.azureBoards,
+                    workItemId: result.azureBoardsMirror.workItemId,
+                    workItemUrl: result.azureBoardsMirror.workItemUrl,
+                    revision: result.azureBoardsMirror.revision,
+                    updatedAt: result.azureBoardsMirror.updatedAt,
+                    lastPulledAt: result.azureBoardsMirror.lastPulledAt,
+                },
+            };
+        }
+        return nextUpdates;
     }
 
     // GET /api/workspaces/:id/work-items — List with optional filters
@@ -509,6 +755,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
 
             try {
                 item = await pushNewGitHubBackedChildIfNeeded(item, parentItem, repoId, now);
+                item = await pushNewAzureBoardsBackedChildIfNeeded(item, parentItem, repoId, now);
             } catch (err) {
                 return handleAPIError(res, err);
             }
@@ -558,14 +805,15 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 return handleAPIError(res, badRequest('Invalid JSON body'));
             }
 
+            const current = await workItemStore.getWorkItem(workItemId, repoId);
+            if (!current) {
+                return handleAPIError(res, notFound('Work item'));
+            }
+
             // Validate status transition if status is being changed
             if (body.status) {
                 if (!WORK_ITEM_STATUSES.includes(body.status)) {
                     return handleAPIError(res, badRequest(`Invalid status: ${body.status}`));
-                }
-                const current = await workItemStore.getWorkItem(workItemId, repoId);
-                if (!current) {
-                    return handleAPIError(res, notFound('Work item'));
                 }
                 if (current.status !== body.status && !isValidTransition(current.status, body.status)) {
                     return handleAPIError(res, badRequest(
@@ -593,10 +841,6 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 if (!isObject(body.plan) || typeof body.plan.content !== 'string') {
                     return handleAPIError(res, badRequest('plan.content must be a string'));
                 }
-                const current = await workItemStore.getWorkItem(workItemId, repoId);
-                if (!current) {
-                    return handleAPIError(res, notFound('Work item'));
-                }
                 const now = new Date().toISOString();
                 const newVersion = (current.plan?.version ?? 0) + 1;
                 const resolvedBy = body.plan.resolvedBy === 'ai' ? 'ai' : 'user';
@@ -620,10 +864,6 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 } catch (err) {
                     return handleAPIError(res, badRequest(err instanceof Error ? err.message : 'Invalid tracker metadata'));
                 }
-                const current = await workItemStore.getWorkItem(workItemId, repoId);
-                if (!current) {
-                    return handleAPIError(res, notFound('Work item'));
-                }
                 const resultingParentId = 'parentId' in body
                     ? (body.parentId === null || body.parentId === '' ? undefined : String(body.parentId))
                     : current.parentId;
@@ -638,12 +878,15 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             }
 
             // Handle parentId reparenting when hierarchy is enabled
+            let newParentForRemote: WorkItem | undefined;
+            let parentChanged = false;
             if ('parentId' in body) {
                 if (!isHierarchyEnabled()) {
                     return handleAPIError(res, badRequest(
                         'parentId requires the workItems.hierarchy feature flag to be enabled',
                     ));
                 }
+                parentChanged = true;
                 if (body.parentId === null || body.parentId === '') {
                     // Unlink parent
                     updates.parentId = undefined;
@@ -660,24 +903,35 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                         return handleAPIError(res, badRequest('Parent work item must be in the same workspace'));
                     }
                     // Fetch the current item to know its type for parent-child validation
-                    const currentForType = await workItemStore.getWorkItem(workItemId, repoId);
-                    if (currentForType) {
-                        const childType = getEffectiveType(currentForType.type);
-                        const parentType = getEffectiveType(newParent.type);
-                        if (!isValidParentChildTypes(childType, parentType)) {
-                            return handleAPIError(res, badRequest(
-                                `Invalid parent-child type combination: '${parentType}' cannot be a parent of '${childType}'`,
-                            ));
-                        }
+                    const childType = getEffectiveType(current.type);
+                    const parentType = getEffectiveType(newParent.type);
+                    if (!isValidParentChildTypes(childType, parentType)) {
+                        return handleAPIError(res, badRequest(
+                            `Invalid parent-child type combination: '${parentType}' cannot be a parent of '${childType}'`,
+                        ));
                     }
                     updates.parentId = body.parentId;
+                    newParentForRemote = newParent;
                 }
+            }
+
+            let remoteReadyUpdates: Partial<WorkItem>;
+            try {
+                remoteReadyUpdates = await pushAzureBoardsBackedUpdateIfNeeded(
+                    current,
+                    updates,
+                    repoId,
+                    parentChanged,
+                    newParentForRemote,
+                );
+            } catch (err) {
+                return handleAPIError(res, err);
             }
 
             if (pendingPlanVersion) {
                 await workItemStore.savePlanVersion(workItemId, pendingPlanVersion);
             }
-            const updated = await workItemStore.updateWorkItem(workItemId, updates);
+            const updated = await workItemStore.updateWorkItem(workItemId, remoteReadyUpdates);
             if (!updated) {
                 return handleAPIError(res, notFound('Work item'));
             }
