@@ -69,9 +69,10 @@ describe('WorkItemDetail always-on inline editing', () => {
             expect(src).toContain('workItems.update(workspaceId, workItemId, updates');
         });
 
-        it('plan changes join the same save action via updatePlan', () => {
+        it('plan changes join the same PATCH payload', () => {
             expect(src).toContain('planChanged');
-            expect(src).toContain('workItems.updatePlan(workspaceId, workItemId, planDraft');
+            expect(src).toContain('updates.plan');
+            expect(src).not.toContain('workItems.updatePlan(workspaceId, workItemId, planDraft');
         });
     });
 
@@ -88,6 +89,12 @@ describe('WorkItemDetail always-on inline editing', () => {
         it('guards in-app back navigation while dirty', () => {
             expect(src).toContain('guardedBack');
             expect(src).toContain('unsaved changes');
+        });
+
+        it('guards SPA hash and link navigation while dirty', () => {
+            expect(src).toContain("addEventListener('hashchange'");
+            expect(src).toContain("addEventListener('click'");
+            expect(src).toContain('lastAllowedHashRef');
         });
     });
 

@@ -262,6 +262,8 @@ Work items use Epic-rooted tracker identity. A root Epic may carry `tracker: { k
 
 The sync route layer retains provider status for GitHub availability checks while Epic-rooted operations use explicit import, pull, and conversion endpoints. GitHub Issues is registered by default and uses external authentication through `gh`/environment-backed GitHub auth without persisting tokens; its status adapter resolves workspace owner/repo and reports provider availability. Azure Boards is reserved and appears in provider status as planned/unavailable.
 
+`PATCH /api/workspaces/:id/work-items/:itemId` accepts work-item metadata fields and an optional `plan: { content, resolvedBy?, summary? }` object in the same request. When `plan.content` is present, the server creates the next plan version, stores it on the work item, opens the corresponding change record, broadcasts one `work-item-updated` event, and returns the updated work item. The dedicated `PUT /plan` endpoint remains available for plan-only workflows.
+
 ### AI Authoring (gated by `workItems.aiAuthoring` flag, default `false`)
 
 Draft generation is ephemeral — no data is persisted until the caller explicitly applies it via the standard create/update/plan endpoints.

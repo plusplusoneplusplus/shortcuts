@@ -30,6 +30,8 @@ import type {
     WorkItem,
     WorkItemTrackerKind,
     WorkItemTrackerMetadata,
+    WorkItemPlanVersion,
+    WorkItemChange,
 } from '../work-items/types';
 import { WORK_ITEM_STATUSES, WORK_ITEM_TYPES, WORK_ITEM_TRACKER_KINDS, isValidTransition, HIERARCHY_CONTAINER_TYPES, isValidParentChildTypes, getEffectiveType } from '../work-items/types';
 import { resolveGitHubWorkItemSyncRepo, type GitHubWorkItemSyncRepo } from '../work-items/work-item-sync-github-repo';
@@ -532,6 +534,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             }
 
             const updates: Partial<WorkItem> = {};
+            let pendingPlanVersion: WorkItemPlanVersion | undefined;
             if (body.title !== undefined) updates.title = body.title;
             if (body.description !== undefined) updates.description = body.description;
             if (body.status !== undefined) updates.status = body.status;
@@ -544,6 +547,31 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             if (body.grillSessionId !== undefined) updates.grillSessionId = body.grillSessionId;
             if (body.syncLinks !== undefined) {
                 return handleAPIError(res, badRequest(LEGACY_SYNC_LINKS_ERROR));
+            }
+            if (body.plan !== undefined) {
+                if (!isObject(body.plan) || typeof body.plan.content !== 'string') {
+                    return handleAPIError(res, badRequest('plan.content must be a string'));
+                }
+                const current = await workItemStore.getWorkItem(workItemId, repoId);
+                if (!current) {
+                    return handleAPIError(res, notFound('Work item'));
+                }
+                const now = new Date().toISOString();
+                const newVersion = (current.plan?.version ?? 0) + 1;
+                const resolvedBy = body.plan.resolvedBy === 'ai' ? 'ai' : 'user';
+                pendingPlanVersion = {
+                    version: newVersion,
+                    content: body.plan.content,
+                    createdAt: now,
+                    resolvedBy,
+                    summary: typeof body.plan.summary === 'string' ? body.plan.summary : undefined,
+                };
+                updates.plan = {
+                    version: newVersion,
+                    content: body.plan.content,
+                    updatedAt: now,
+                    resolvedBy,
+                };
             }
             if (body.tracker !== undefined) {
                 try {
@@ -605,9 +633,23 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 }
             }
 
+            if (pendingPlanVersion) {
+                await workItemStore.savePlanVersion(workItemId, pendingPlanVersion);
+            }
             const updated = await workItemStore.updateWorkItem(workItemId, updates);
             if (!updated) {
                 return handleAPIError(res, notFound('Work item'));
+            }
+
+            if (updates.plan) {
+                const change: WorkItemChange = {
+                    id: crypto.randomUUID(),
+                    planVersion: updates.plan.version,
+                    commits: [],
+                    startedAt: updates.plan.updatedAt ?? new Date().toISOString(),
+                    status: 'open',
+                };
+                workItemStore.addChange(workItemId, change).catch(() => { /* non-fatal */ });
             }
 
             // Auto-execute if status transitioned to 'readyToExecute' and autoExecute is enabled

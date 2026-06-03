@@ -18,12 +18,14 @@ import type { DiffComment } from '../../../comments/diff-comment-types';
 import { computeStorageKey, patchDiffComment } from '../../utils/diffCommentApi';
 import { isWorkItemsHierarchyEnabled } from '../../utils/config';
 import { WorkItemParentPicker } from './WorkItemParentPicker';
-import { ALLOWED_CHILD_TYPES, type WorkItemGitHubMirrorMetadata } from '@plusplusoneplusplus/coc-client';
+import { ALLOWED_CHILD_TYPES, type UpdateWorkItemRequest, type WorkItemGitHubMirrorMetadata } from '@plusplusoneplusplus/coc-client';
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
 import { TYPE_LABELS } from './WorkItemHierarchyNode';
 import { WorkItemAiComposer } from './WorkItemAiComposer';
 import { isWorkItemsAiAuthoringEnabled } from '../../utils/config';
 import { WorkItemGitHubMirrorBadge } from './WorkItemGitHubMirrorBadge';
+
+const UNSAVED_CHANGES_MESSAGE = 'You have unsaved changes. Leave without saving?';
 
 const STATUS_LABELS: Record<string, { label: string; badgeStatus: string }> = {
     created:          { label: 'Created',          badgeStatus: 'queued' },
@@ -398,7 +400,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         setSaving(true);
         setEditError(null);
         try {
-            const updates: Record<string, unknown> = {};
+            const updates: UpdateWorkItemRequest = {};
             if (trimmedTitle !== base.title) updates.title = trimmedTitle;
             if (draft.description !== base.description) updates.description = draft.description;
             if (draft.priority !== base.priority) updates.priority = draft.priority;
@@ -411,13 +413,17 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                 updates.successCriteria = draft.successCriteria;
             }
             const planChanged = planDraft !== null && planDraft !== (item.plan?.content ?? '');
+            if (planChanged) {
+                updates.plan = {
+                    content: planDraft as string,
+                    resolvedBy: 'user',
+                    summary: 'Updated from inline editing',
+                };
+            }
 
             let updated: WorkItemFull = item;
             if (Object.keys(updates).length > 0) {
-                updated = await getSpaCocClient().workItems.update(workspaceId, workItemId, updates as any) as any;
-            }
-            if (planChanged) {
-                await getSpaCocClient().workItems.updatePlan(workspaceId, workItemId, planDraft as string);
+                updated = await getSpaCocClient().workItems.update(workspaceId, workItemId, updates) as any;
             }
             dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item: updated as any });
             await fetchItem();
@@ -453,9 +459,51 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         return () => window.removeEventListener('beforeunload', onBeforeUnload);
     }, [isDirty]);
 
+    const lastAllowedHashRef = useRef(window.location.hash);
+    const revertingHashRef = useRef(false);
+
+    useEffect(() => {
+        if (!isDirty) {
+            lastAllowedHashRef.current = window.location.hash;
+            return;
+        }
+        const onHashChange = () => {
+            if (revertingHashRef.current) {
+                revertingHashRef.current = false;
+                return;
+            }
+            const nextHash = window.location.hash;
+            if (nextHash === lastAllowedHashRef.current) return;
+            if (window.confirm(UNSAVED_CHANGES_MESSAGE)) {
+                lastAllowedHashRef.current = nextHash;
+                return;
+            }
+            revertingHashRef.current = true;
+            window.location.hash = lastAllowedHashRef.current;
+        };
+        const onDocumentClick = (event: MouseEvent) => {
+            const anchor = (event.target as Element | null)?.closest?.('a[href^="#"]') as HTMLAnchorElement | null;
+            if (!anchor) return;
+            const nextHash = new URL(anchor.href, window.location.href).hash;
+            if (!nextHash || nextHash === window.location.hash) return;
+            if (window.confirm(UNSAVED_CHANGES_MESSAGE)) {
+                lastAllowedHashRef.current = nextHash;
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+        };
+        window.addEventListener('hashchange', onHashChange);
+        document.addEventListener('click', onDocumentClick, true);
+        return () => {
+            window.removeEventListener('hashchange', onHashChange);
+            document.removeEventListener('click', onDocumentClick, true);
+        };
+    }, [isDirty]);
+
     // Guard in-app back navigation while there are unsaved changes.
     const guardedBack = useCallback(() => {
-        if (isDirty && !window.confirm('You have unsaved changes. Leave without saving?')) return;
+        if (isDirty && !window.confirm(UNSAVED_CHANGES_MESSAGE)) return;
         onBack?.();
     }, [isDirty, onBack]);
 

@@ -254,6 +254,12 @@ export interface CreateWorkItemFromChatRequest extends JsonObject {
 export interface UpdateWorkItemRequest extends Partial<Pick<WorkItem, 'title' | 'description' | 'status' | 'priority' | 'tags' | 'autoExecute' | 'tracker'>> {
   completedAt?: string;
   reviewComments?: unknown[];
+  /** Update the current plan as part of the work-item PATCH batch. */
+  plan?: {
+    content: string;
+    resolvedBy?: 'user' | 'ai';
+    summary?: string;
+  };
   /** Update success criteria for a `goal` item (markdown). */
   successCriteria?: string;
   /** Link a spec-drafting chat process to a `goal` item. */

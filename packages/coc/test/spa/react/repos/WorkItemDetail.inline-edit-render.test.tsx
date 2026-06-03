@@ -3,8 +3,8 @@
  *
  * Covers:
  * - AC-01: every field renders editable at all times; no Edit button.
- * - AC-02: Ctrl+S batches all dirty fields into a single PATCH (plus a single
- *   updatePlan call when plan is dirty); status no longer instant-saves.
+ * - AC-02: Ctrl+S batches all dirty fields, including plan, into a single PATCH;
+ *   status no longer instant-saves.
  * - AC-04: a dirty indicator appears when there are unsaved changes.
  * - AC-05: save failure keeps the user on the page, shows an inline error, and
  *   preserves the edited values for retry.
@@ -105,7 +105,11 @@ describe('WorkItemDetail inline editing (render)', () => {
         mockUpdatePlan.mockResolvedValue({ version: 2 });
     });
 
-    afterEach(() => cleanup());
+    afterEach(() => {
+        cleanup();
+        vi.restoreAllMocks();
+        window.location.hash = '';
+    });
 
     it('AC-01: renders all fields editable with no Edit button', async () => {
         renderDetail();
@@ -170,7 +174,7 @@ describe('WorkItemDetail inline editing (render)', () => {
         expect(screen.getByTestId('wi-dirty-indicator')).toBeTruthy();
     });
 
-    it('AC-03: editing the plan marks dirty and Ctrl+S includes a single updatePlan', async () => {
+    it('AC-03: editing the plan marks dirty and Ctrl+S includes plan in the single PATCH', async () => {
         renderDetail();
         await screen.findByTestId('wi-title-input');
         const planInput = screen.getByTestId('mock-plan-input');
@@ -181,9 +185,15 @@ describe('WorkItemDetail inline editing (render)', () => {
 
         fireEvent.keyDown(window, { key: 's', ctrlKey: true });
 
-        await waitFor(() => expect(mockUpdatePlan).toHaveBeenCalledTimes(1));
-        const [, , planContent] = mockUpdatePlan.mock.calls[0];
-        expect(planContent).toBe('# New plan');
+        await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+        const [, , updates] = mockUpdate.mock.calls[0];
+        expect(updates).toMatchObject({
+            plan: {
+                content: '# New plan',
+                resolvedBy: 'user',
+            },
+        });
+        expect(mockUpdatePlan).not.toHaveBeenCalled();
     });
 
     it('AC-03: description has a Source/Preview toggle and edits flow into the batch', async () => {
@@ -217,5 +227,36 @@ describe('WorkItemDetail inline editing (render)', () => {
         await Promise.resolve();
         expect(mockUpdate).not.toHaveBeenCalled();
         expect(mockUpdatePlan).not.toHaveBeenCalled();
+    });
+
+    it('AC-04: blocks programmatic hash route changes when dirty and the user cancels', async () => {
+        window.location.hash = '#repos/ws-1/work-items/wi-1';
+        const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+        renderDetail();
+        const title = await screen.findByTestId('wi-title-input');
+        fireEvent.change(title, { target: { value: 'Edited title' } });
+
+        window.location.hash = '#repos/ws-1/activity';
+        fireEvent(window, new HashChangeEvent('hashchange'));
+
+        await waitFor(() => expect(window.location.hash).toBe('#repos/ws-1/work-items/wi-1'));
+        expect(confirm).toHaveBeenCalledWith('You have unsaved changes. Leave without saving?');
+    });
+
+    it('AC-04: prevents hash-link navigation when dirty and the user cancels', async () => {
+        window.location.hash = '#repos/ws-1/work-items/wi-1';
+        const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+        renderDetail();
+        const title = await screen.findByTestId('wi-title-input');
+        fireEvent.change(title, { target: { value: 'Edited title' } });
+
+        const link = document.createElement('a');
+        link.href = '#repos/ws-1/activity';
+        link.textContent = 'Activity';
+        document.body.appendChild(link);
+        fireEvent.click(link);
+
+        expect(window.location.hash).toBe('#repos/ws-1/work-items/wi-1');
+        expect(confirm).toHaveBeenCalledWith('You have unsaved changes. Leave without saving?');
     });
 });
