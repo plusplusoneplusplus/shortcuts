@@ -101,6 +101,11 @@ function Invoke-EnsureTunnel {
     }
 
     $create = Invoke-DevTunnelCli -Arguments @('create', $TunnelId)
+    if (Test-DevTunnelNotOwnedError $create.Output) {
+        Write-Log "Dev tunnel '$TunnelId' is not accessible to the current account; the tunnel ID is owned by a different account or in use elsewhere." -Color Red
+        Write-Log "Log in as the tunnel's owner ('devtunnel user login'), or rerun with a different -TunnelId." -Color Yellow
+        return [pscustomobject]@{ Status = 'NotOwned'; Port = $null }
+    }
     if (Test-DevTunnelAuthError $create.Output) {
         Write-Log "devtunnel is not authenticated. Run 'devtunnel user login', then rerun this script." -Color Yellow
         return [pscustomobject]@{ Status = 'Unauthenticated'; Port = $null }
@@ -111,6 +116,11 @@ function Invoke-EnsureTunnel {
     }
 
     $portList = Invoke-DevTunnelCli -Arguments @('port', 'list', $TunnelId)
+    if (Test-DevTunnelNotOwnedError $portList.Output) {
+        Write-Log "Dev tunnel '$TunnelId' is not accessible to the current account; the tunnel ID is owned by a different account or in use elsewhere." -Color Red
+        Write-Log "Log in as the tunnel's owner ('devtunnel user login'), or rerun with a different -TunnelId." -Color Yellow
+        return [pscustomobject]@{ Status = 'NotOwned'; Port = $null }
+    }
     if (Test-DevTunnelAuthError $portList.Output) {
         Write-Log "devtunnel is not authenticated. Run 'devtunnel user login', then rerun this script." -Color Yellow
         return [pscustomobject]@{ Status = 'Unauthenticated'; Port = $null }
@@ -163,7 +173,7 @@ if ($status.Status -eq 'Ready') {
     Write-Log "Start CoC with: .\scripts\coc-serve-loop.ps1 -TunnelId $TunnelId" -Color Green
     exit 0
 }
-if ($status.Status -eq 'Unauthenticated' -or $status.Status -eq 'InvalidConfiguration') {
+if ($status.Status -eq 'Unauthenticated' -or $status.Status -eq 'InvalidConfiguration' -or $status.Status -eq 'NotOwned') {
     exit 2
 }
 exit 1

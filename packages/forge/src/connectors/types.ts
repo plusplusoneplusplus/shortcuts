@@ -91,8 +91,14 @@ export interface SshConnectionState {
     lastChecked?: number;
 }
 
+export interface ConnectorReadable {
+    on(event: 'data', listener: (chunk: Buffer | string) => void): unknown;
+}
+
 export interface ManagedChildProcess {
     pid?: number;
+    stdout?: ConnectorReadable | null;
+    stderr?: ConnectorReadable | null;
     kill(signal?: NodeJS.Signals | number): boolean;
     once(event: 'exit', listener: (code: number | null, signal: NodeJS.Signals | null) => void): this;
     once(event: 'error', listener: (error: Error) => void): this;

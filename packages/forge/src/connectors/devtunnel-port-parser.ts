@@ -133,3 +133,43 @@ export function parseDevTunnelHttpPortInfo(output: string): ParsedHttpPort {
 export function parseDevTunnelHttpPort(output: string): number {
     return parseDevTunnelHttpPortInfo(output).port;
 }
+
+function toValidPort(value: string): number | undefined {
+    const port = Number(value);
+    return Number.isInteger(port) && port > 0 && port <= 65535 ? port : undefined;
+}
+
+/**
+ * Parse the local forwarded port from `devtunnel connect` output for a given remote host port.
+ *
+ * `devtunnel connect` forwards the remote (host) port to a possibly-different local port and logs
+ * lines such as:
+ *   "Forwarding from 127.0.0.1:63770 to host port 46279."
+ *   "Forwarding from [::1]:63770 to host port 46279."
+ *   "Forwarding port 46279 to local port 63770."
+ * Returns the local port mapped to `hostPort`, or undefined if no mapping is present.
+ */
+export function parseDevTunnelForwardedPort(output: string, hostPort: number): number | undefined {
+    if (!output || !Number.isInteger(hostPort)) {
+        return undefined;
+    }
+    for (const line of output.split(/\r?\n/)) {
+        // "Forwarding from <addr>:<local> to host port <host>"
+        const fromMatch = line.match(/forwarding from .*?:(\d{1,5})\s+to host port\s+(\d{1,5})/i);
+        if (fromMatch && Number(fromMatch[2]) === hostPort) {
+            const local = toValidPort(fromMatch[1]);
+            if (local !== undefined) {
+                return local;
+            }
+        }
+        // "Forwarding port <host> to local port <local>"
+        const toMatch = line.match(/forwarding port\s+(\d{1,5})\s+to local port\s+(\d{1,5})/i);
+        if (toMatch && Number(toMatch[1]) === hostPort) {
+            const local = toValidPort(toMatch[2]);
+            if (local !== undefined) {
+                return local;
+            }
+        }
+    }
+    return undefined;
+}

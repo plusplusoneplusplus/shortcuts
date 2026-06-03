@@ -9,6 +9,7 @@ interface HealthTarget {
     tunnelId?: string;
     localPort?: number;
     publicUrl?: string;
+    lastError?: string;
 }
 
 async function fetchOptionalServerName(baseUrl: string): Promise<string | undefined> {
@@ -36,7 +37,7 @@ export async function checkRemoteServerHealth(target: HealthTarget): Promise<Rem
             localPort: target.localPort,
             publicUrl: target.publicUrl,
             lastChecked,
-            error: 'No effective endpoint is available',
+            error: target.lastError ?? 'No effective endpoint is available',
         };
     }
 
