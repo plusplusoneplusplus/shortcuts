@@ -252,6 +252,35 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
         expect(screen.queryByTestId('ralph-session-children')).toBeNull();
     });
 
+    it('keeps unseen Ralph sessions collapsed after workspace switches in the Activity tab', () => {
+        const history = fixtureFiveIterPlusThreeStandalone();
+        const unseenId = `ralph-${SESSION_ID}-1`;
+        const { rerender, props } = renderActivity(history, {
+            workspaceId: 'ws-a',
+            unseenProcessIds: new Set([unseenId]),
+        });
+
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('ralph-session-children')).toBeNull();
+        expect(screen.getByTestId('ralph-session-unseen-dot')).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('ralph-session-chevron'));
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('true');
+
+        rerender(<ChatListPane {...props} workspaceId="__all" />);
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('ralph-session-children')).toBeNull();
+        expect(screen.getByTestId('ralph-session-unseen-dot')).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('ralph-session-chevron'));
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('true');
+
+        rerender(<ChatListPane {...props} workspaceId="ws-a" />);
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('ralph-session-children')).toBeNull();
+        expect(screen.getByTestId('ralph-session-unseen-dot')).toBeTruthy();
+    });
+
     it('keeps unseen Ralph sessions collapsed after workspace switches in the Chats tab', () => {
         const history = fixtureFiveIterPlusThreeStandalone();
         const unseenId = `ralph-${SESSION_ID}-1`;
