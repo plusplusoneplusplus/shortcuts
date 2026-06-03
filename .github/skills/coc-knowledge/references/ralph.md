@@ -6,10 +6,11 @@ file-backed session journal. The session store lives in
 Portable Ralph contracts and pure helpers live in
 `@plusplusoneplusplus/coc-workflow/ralph`, including session/final-check record
 types, signal parsing, progress-section parsing/formatting, iteration prompt
-building, final-check prompt building, final-check result parsing, and
-iteration action-decision intents. The CoC server owns all side effects: queue
-tasks, process metadata, WebSocket events, repo-scoped path resolution, and
-filesystem persistence.
+building, final-check prompt building, final-check result parsing,
+final-check progress-section formatting, and pure iteration/final-check
+action-decision intents. The CoC server owns all side effects: queue tasks,
+process metadata, WebSocket events, repo-scoped path resolution, and filesystem
+persistence.
 
 ## Session Journal
 

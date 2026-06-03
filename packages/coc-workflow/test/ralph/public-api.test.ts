@@ -6,6 +6,8 @@ import {
     buildFinalCheckPrompt,
     buildRalphIterationPrompt,
     decideRalphIterationActions,
+    decideRalphFinalCheckActions,
+    formatFinalCheckProgressSection,
     formatProgressSection,
     parseFinalCheckResult,
     parseProgressSections,
@@ -30,6 +32,8 @@ describe('Ralph public module boundary', () => {
         expect(typeof buildFinalCheckPrompt).toBe('function');
         expect(typeof parseFinalCheckResult).toBe('function');
         expect(typeof decideRalphIterationActions).toBe('function');
+        expect(typeof decideRalphFinalCheckActions).toBe('function');
+        expect(typeof formatFinalCheckProgressSection).toBe('function');
     });
 
     it('declares the ./ralph JavaScript and declaration subpath', () => {

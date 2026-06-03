@@ -9,6 +9,7 @@ export type {
     RalphIterationRecord,
     RalphLoopRecord,
     RalphParseResult,
+    RalphSessionCompleteReason,
     RalphSessionPhase,
     RalphSessionRecord,
     RalphSignal,
@@ -35,3 +36,19 @@ export type {
     RalphRecordIterationAction,
     RalphSurfaceTerminalReasonAction,
 } from './iteration-decision';
+export {
+    countStartedGapFixLoops,
+    decideRalphFinalCheckActions,
+    formatFinalCheckProgressSection,
+} from './final-check-decision';
+export type {
+    DecideRalphFinalCheckActionsInput,
+    FormatFinalCheckProgressSectionInput,
+    RalphAppendFinalCheckSectionAction,
+    RalphBroadcastSessionCompleteAction,
+    RalphFinalCheckAction,
+    RalphFinalCheckDecision,
+    RalphFinalCheckRecordPatch,
+    RalphStartGapFixLoopAction,
+    RalphUpsertFinalCheckRecordAction,
+} from './final-check-decision';

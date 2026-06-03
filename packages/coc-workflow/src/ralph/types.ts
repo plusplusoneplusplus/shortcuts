@@ -27,6 +27,15 @@ export type RalphTerminalReason =
     | 'CANCELLED'
     | 'NO_SIGNAL';
 
+export type RalphSessionCompleteReason =
+    | 'signal'
+    | 'cap'
+    | 'final-check-failed'
+    | 'final-check-enqueue-failed'
+    | 'final-check-session-missing'
+    | 'final-check-gap-loop-start-failed'
+    | 'final-check-gap-enqueue-failed';
+
 export interface RalphIterationRecord {
     iteration: number;
     /** 1-based index of the loop this iteration belongs to. */
