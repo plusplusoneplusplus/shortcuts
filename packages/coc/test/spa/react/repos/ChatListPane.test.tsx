@@ -1307,8 +1307,8 @@ describe('ChatListPane', () => {
 
         it('expanded child rows are marked with data-group-child', () => {
             renderGrouped();
-            // Groups auto-collapse when all children are seen — expand both groups
-            // by clicking their chevrons before asserting on child rows.
+            // Groups default collapsed — expand both groups by clicking their
+            // chevrons before asserting on child rows.
             const chevrons = screen.getAllByTestId('group-chevron');
             chevrons.forEach(c => fireEvent.click(c));
             const g1a = document.querySelector('[data-task-id="g1-a"]') as HTMLElement | null;
@@ -1345,7 +1345,7 @@ describe('ChatListPane', () => {
             expect(screen.getByTestId('mark-all-read-btn')).toBeTruthy();
         });
 
-        it('respects manual plan-file group toggles until the workspace changes', () => {
+        it('respects manual plan-file group toggles only until the workspace changes or remounts', () => {
             const { rerender, props } = renderGrouped({ workspaceId: 'ws-a' });
             const firstGroup = screen.getAllByTestId('history-group')[0];
             const firstChevron = screen.getAllByTestId('group-chevron')[0];
@@ -1354,7 +1354,13 @@ describe('ChatListPane', () => {
             fireEvent.click(firstChevron);
             expect(firstGroup.getAttribute('data-expanded')).toBe('true');
 
-            rerender(<ChatListPane {...props} workspaceId="ws-b" />);
+            rerender(<ChatListPane {...props} workspaceId="__all" />);
+            expect(screen.getAllByTestId('history-group')[0].getAttribute('data-expanded')).toBe('false');
+
+            fireEvent.click(screen.getAllByTestId('group-chevron')[0]);
+            expect(screen.getAllByTestId('history-group')[0].getAttribute('data-expanded')).toBe('true');
+
+            rerender(<ChatListPane {...props} workspaceId="ws-a" />);
             expect(screen.getAllByTestId('history-group')[0].getAttribute('data-expanded')).toBe('false');
         });
 
