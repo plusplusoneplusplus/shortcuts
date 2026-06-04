@@ -91,6 +91,11 @@ green when provider metadata is missing.
 
 `QueuedFollowUps` renders pending messages as compact dashed-border cards with cancel buttons.
 
+`ConversationMetadataPopover` keeps long identifiers as separate label/value rows
+for wrapping and log links, while short categorical fields render as a compact
+summary chip strip and related fields collapse into `Time`, `Workspace`,
+`Ralph`, `Goal`, and `System` rows.
+
 ## Tool Call Rendering
 
 Inside `WhisperCollapsedGroup`, tool calls render as compact "whisper-row" variant:
