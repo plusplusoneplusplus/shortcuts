@@ -42,7 +42,7 @@ import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
 import { computeSummary, parseFullDiff } from '@plusplusoneplusplus/forge';
-import type { IPullRequestsService, ISDKService, ProcessStore } from '@plusplusoneplusplus/forge';
+import type { IPullRequestsService, ISDKService, ProcessStore, ProviderPullRequest } from '@plusplusoneplusplus/forge';
 import { readReviewHistoryCache, fetchAndCacheReviewHistory, readSuggestionsCache, rankAndCacheSuggestions, toPrMetadata } from './pr-suggestions';
 
 // ============================================================================
@@ -222,6 +222,30 @@ function makePrDetailCacheKey(repoId: string, prId: string): string {
     return `${repoId}|${prId}`;
 }
 
+async function getCachedPullRequestDetail(
+    repoId: string,
+    prId: string,
+    getPullRequest: (repoId: string, prId: string) => Promise<ProviderPullRequest>,
+): Promise<ProviderPullRequest> {
+    const cacheKey = makePrDetailCacheKey(repoId, prId);
+    const cached = prDetailCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+        console.debug(`[pr-detail-cache] hit key=${cacheKey}`);
+        return cached.data as ProviderPullRequest;
+    }
+
+    if (cached) {
+        console.debug(`[pr-detail-cache] expired key=${cacheKey}`);
+    } else {
+        console.debug(`[pr-detail-cache] miss key=${cacheKey}`);
+    }
+
+    const pr = await getPullRequest(repoId, prId);
+    prDetailCache.set(cacheKey, { data: pr, expiresAt: Date.now() + PR_DETAIL_TTL_MS });
+    console.debug(`[pr-detail-cache] set key=${cacheKey}`);
+    return pr;
+}
+
 /** Clear all cached PR detail entries (and all sub-endpoint caches). Exported for testing. */
 export function clearPrDetailCache(): void {
     prDetailCache.clear();
@@ -307,29 +331,143 @@ function clearPrSubCacheEntries(repoId: string, prId: string): void {
     prChecksCache.delete(key);
 }
 
+type FullContextUnavailableReason =
+    | 'pr-detail-unavailable'
+    | 'missing-pr-shas'
+    | 'missing-local-path'
+    | 'git-diff-failed'
+    | 'git-fetch-failed';
+
+interface FullContextDiffResult {
+    diff: string | null;
+    unavailableReason?: FullContextUnavailableReason;
+}
+
+const execFileAsync = promisify(execFile);
+
+function isMissingCommitError(err: unknown): boolean {
+    const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+    return message.includes('bad object')
+        || message.includes('unknown revision')
+        || message.includes('ambiguous argument')
+        || message.includes('invalid object')
+        || message.includes('needed a single revision')
+        || message.includes('not a valid object name');
+}
+
+async function runGit(localPath: string, args: string[], timeout = 10_000): Promise<string> {
+    const { stdout } = await execFileAsync(
+        'git',
+        args,
+        { cwd: localPath, encoding: 'utf-8', timeout },
+    );
+    return stdout;
+}
+
+async function hasGitCommit(localPath: string, sha: string): Promise<boolean> {
+    try {
+        await runGit(localPath, ['cat-file', '-e', `${sha}^{commit}`]);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function pushUnique(values: string[], value: string | undefined): void {
+    const trimmed = value?.trim();
+    if (trimmed && !values.includes(trimmed)) {
+        values.push(trimmed);
+    }
+}
+
+function buildFetchCandidates(prId: string, prData: ProviderPullRequest, missingBase: boolean, missingHead: boolean): string[] {
+    const candidates: string[] = [];
+    if (missingBase) {
+        pushUnique(candidates, prData.baseSha);
+        pushUnique(candidates, prData.targetBranch);
+        pushUnique(candidates, prData.targetBranch ? `refs/heads/${prData.targetBranch}` : undefined);
+    }
+
+    if (missingHead) {
+        pushUnique(candidates, prData.headSha);
+        pushUnique(candidates, prData.sourceBranch);
+        pushUnique(candidates, prData.sourceBranch ? `refs/heads/${prData.sourceBranch}` : undefined);
+        pushUnique(candidates, `refs/pull/${prId}/head`);
+    }
+
+    return candidates;
+}
+
+async function fetchMissingPrCommits(
+    localPath: string,
+    remote: string,
+    prId: string,
+    prData: ProviderPullRequest,
+): Promise<boolean> {
+    const baseSha = prData.baseSha;
+    const headSha = prData.headSha;
+    if (!baseSha || !headSha) return false;
+
+    let missingBase = !(await hasGitCommit(localPath, baseSha));
+    let missingHead = !(await hasGitCommit(localPath, headSha));
+    if (!missingBase && !missingHead) return true;
+
+    const candidates = buildFetchCandidates(prId, prData, missingBase, missingHead);
+    for (const candidate of candidates) {
+        try {
+            await runGit(localPath, ['fetch', '--no-tags', '--quiet', remote, candidate], 30_000);
+        } catch (err) {
+            console.warn(`[pr-full-context] failed to fetch ${candidate}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+
+        missingBase = !(await hasGitCommit(localPath, baseSha));
+        missingHead = !(await hasGitCommit(localPath, headSha));
+        if (!missingBase && !missingHead) return true;
+    }
+
+    return false;
+}
+
 /**
  * Attempt to produce a full-file-context diff by running `git diff -U99999`
- * with the PR's base and head SHAs against the local repo checkout.
- *
- * Returns the diff string on success, or null if git is unavailable,
- * the SHAs are not present locally (e.g. fork commits), or any other error.
+ * with the PR's base and head SHAs against the local repo checkout. When the
+ * SHAs are missing locally, fetch PR refs/commits into the requested repo
+ * without checking out branches or modifying the working tree.
  */
 async function getFullContextFileDiff(
     localPath: string,
-    baseSha: string,
-    headSha: string,
+    remote: string,
+    prId: string,
+    prData: ProviderPullRequest,
     filePath: string,
-): Promise<string | null> {
-    const execFileAsync = promisify(execFile);
+): Promise<FullContextDiffResult> {
+    const baseSha = prData.baseSha;
+    const headSha = prData.headSha;
+    if (!baseSha || !headSha) {
+        return { diff: null, unavailableReason: 'missing-pr-shas' };
+    }
+
     try {
-        const { stdout } = await execFileAsync(
-            'git',
-            ['diff', '-U99999', baseSha, headSha, '--', filePath],
-            { cwd: localPath, encoding: 'utf-8', timeout: 10_000 },
-        );
-        return stdout || null;
-    } catch {
-        return null;
+        const stdout = await runGit(localPath, ['diff', '-U99999', baseSha, headSha, '--', filePath]);
+        return { diff: stdout || null, unavailableReason: stdout ? undefined : 'git-diff-failed' };
+    } catch (err) {
+        if (!isMissingCommitError(err)) {
+            console.warn(`[pr-full-context] git diff failed before fetch: ${err instanceof Error ? err.message : String(err)}`);
+            return { diff: null, unavailableReason: 'git-diff-failed' };
+        }
+    }
+
+    const fetched = await fetchMissingPrCommits(localPath, remote, prId, prData);
+    if (!fetched) {
+        return { diff: null, unavailableReason: 'git-fetch-failed' };
+    }
+
+    try {
+        const stdout = await runGit(localPath, ['diff', '-U99999', baseSha, headSha, '--', filePath]);
+        return { diff: stdout || null, unavailableReason: stdout ? undefined : 'git-diff-failed' };
+    } catch (err) {
+        console.warn(`[pr-full-context] git diff failed after fetch: ${err instanceof Error ? err.message : String(err)}`);
+        return { diff: null, unavailableReason: 'git-diff-failed' };
     }
 }
 
@@ -695,9 +833,7 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                     return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
                 }
 
-                const pr = await prSvc.getPullRequest(repoId, prId);
-                prDetailCache.set(cacheKey, { data: pr, expiresAt: Date.now() + PR_DETAIL_TTL_MS });
-                console.debug(`[pr-detail-cache] set key=${cacheKey}`);
+                const pr = await getCachedPullRequestDetail(repoId, prId, prSvc.getPullRequest.bind(prSvc));
                 sendJson(res, pr);
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
@@ -945,20 +1081,34 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 const fileDiff = extractFileDiffFromCombined(combinedDiff, filePath);
 
                 if (fullContext) {
-                    // Try to get a full-context diff via local git
-                    const cachedDetail = prDetailCache.get(makePrDetailCacheKey(repoId, prId));
-                    const prData = cachedDetail?.data as { headSha?: string; baseSha?: string } | undefined;
-                    const baseSha = prData?.baseSha;
-                    const headSha = prData?.headSha;
+                    let prData: ProviderPullRequest;
+                    try {
+                        prData = await getCachedPullRequestDetail(repoId, prId, prSvc.getPullRequest.bind(prSvc));
+                    } catch (err) {
+                        console.warn(`[pr-full-context] failed to load PR detail: ${err instanceof Error ? err.message : String(err)}`);
+                        return sendJson(res, {
+                            diff: fileDiff ?? '',
+                            fullContextUnavailable: true,
+                            fullContextUnavailableReason: 'pr-detail-unavailable',
+                        });
+                    }
 
-                    if (baseSha && headSha && repo.localPath) {
-                        const fullCtxDiff = await getFullContextFileDiff(repo.localPath, baseSha, headSha, filePath);
-                        if (fullCtxDiff) {
-                            return sendJson(res, { diff: fullCtxDiff, fullContextUnavailable: false });
+                    let unavailableReason: FullContextUnavailableReason = 'missing-local-path';
+
+                    if (repo.localPath) {
+                        const fullCtxDiff = await getFullContextFileDiff(
+                            repo.localPath,
+                            repo.remoteUrl ?? 'origin',
+                            prId,
+                            prData,
+                            filePath,
+                        );
+                        unavailableReason = fullCtxDiff.unavailableReason ?? 'git-diff-failed';
+                        if (fullCtxDiff.diff) {
+                            return sendJson(res, { diff: fullCtxDiff.diff, fullContextUnavailable: false });
                         }
                     }
-                    // Could not produce full-context diff; return hunk diff with flag
-                    return sendJson(res, { diff: fileDiff ?? '', fullContextUnavailable: true });
+                    return sendJson(res, { diff: fileDiff ?? '', fullContextUnavailable: true, fullContextUnavailableReason: unavailableReason });
                 }
 
                 sendJson(res, { diff: fileDiff ?? '' });

@@ -7,11 +7,13 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { createRouter } from '../../src/server/shared/router';
 import { registerPrRoutes, clearPrListCache, clearPrDetailCache, clearPrDiffCache, clearPrThreadsCache, clearPrCommitsCache, clearPrReviewersCache, clearPrChecksCache } from '../../src/server/repos/pr-routes';
 import type { Route } from '../../src/server/types';
 import type { IPullRequestsService } from '@plusplusoneplusplus/forge';
-import type { PullRequest, CommentThread, Reviewer } from '@plusplusoneplusplus/forge';
+import type { ProviderPullRequest, CommentThread, Reviewer } from '@plusplusoneplusplus/forge';
 import type { ProviderPullRequestCheck, ProviderPullRequestCommit } from '@plusplusoneplusplus/forge';
 
 // ── Mock ProviderFactory and RepoTreeService ─────────────────────────────────
@@ -50,7 +52,7 @@ const mockRepoInfo = {
     remoteUrl: REMOTE_URL,
 };
 
-const mockPr: PullRequest = {
+const mockPr: ProviderPullRequest = {
     id: 42,
     number: 42,
     title: 'Add feature X',
@@ -111,6 +113,27 @@ let server: http.Server;
 let baseUrl: string;
 let mockSvc: Partial<IPullRequestsService>;
 let mockResolveRepo: ReturnType<typeof vi.fn>;
+const execFileAsync = promisify(execFile);
+
+async function git(cwd: string, args: string[]): Promise<string> {
+    const { stdout } = await execFileAsync('git', args, { cwd, encoding: 'utf-8' });
+    return stdout.trim();
+}
+
+async function writeAndCommitFile(repoPath: string, filePath: string, content: string, message: string): Promise<string> {
+    const fullPath = path.join(repoPath, filePath);
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+    fs.writeFileSync(fullPath, content, 'utf-8');
+    await git(repoPath, ['add', filePath]);
+    await git(repoPath, ['commit', '-m', message]);
+    return git(repoPath, ['rev-parse', 'HEAD']);
+}
+
+async function initGitRepo(repoPath: string): Promise<void> {
+    await git(repoPath, ['init', '-b', 'main']);
+    await git(repoPath, ['config', 'user.email', 'test@example.com']);
+    await git(repoPath, ['config', 'user.name', 'Test User']);
+}
 
 function makeServer(dir: string): http.Server {
     const routes: Route[] = [];
@@ -742,6 +765,7 @@ describe('GET .../diff/files/:path?fullContext=true (AC-02)', () => {
         expect(body.fullContextUnavailable).toBe(true);
         // Should still include the hunk diff as fallback
         expect(body.diff).toContain('diff --git a/src/foo.ts');
+        expect(mockSvc.getPullRequest).toHaveBeenCalledWith(REPO_ID, '42');
     });
 
     it('with ?fullContext=true and cached PR detail missing SHAs: returns fullContextUnavailable=true', async () => {
@@ -770,6 +794,73 @@ describe('GET .../diff/files/:path?fullContext=true (AC-02)', () => {
         const body = await res.json() as { diff: string; fullContextUnavailable: boolean };
         expect(body.fullContextUnavailable).toBe(true);
         expect(body.diff).toContain('diff --git a/src/foo.ts');
+    });
+
+    it('with ?fullContext=true and PR detail fetch fails: returns hunk diff fallback', async () => {
+        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('detail unavailable'));
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}?fullContext=true`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { diff: string; fullContextUnavailable: boolean; fullContextUnavailableReason?: string };
+        expect(body.fullContextUnavailable).toBe(true);
+        expect(body.fullContextUnavailableReason).toBe('pr-detail-unavailable');
+        expect(body.diff).toContain('diff --git a/src/foo.ts');
+    });
+
+    it('with ?fullContext=true fetches a missing PR head commit and returns full context', async () => {
+        const remotePath = path.join(tmpDir, 'remote.git');
+        const sourcePath = path.join(tmpDir, 'source');
+        const localPath = path.join(tmpDir, 'local');
+
+        fs.mkdirSync(sourcePath, { recursive: true });
+        await initGitRepo(sourcePath);
+        const baseSha = await writeAndCommitFile(
+            sourcePath,
+            'src/foo.ts',
+            ['line1', 'line2', 'line3', 'line4', 'line5', ''].join('\n'),
+            'base',
+        );
+        await git(sourcePath, ['clone', '--bare', sourcePath, remotePath]);
+        await git(tmpDir, ['clone', remotePath, localPath]);
+        await git(localPath, ['rev-parse', `${baseSha}^{commit}`]);
+
+        await git(sourcePath, ['checkout', '-b', 'feature/full-context']);
+        const headSha = await writeAndCommitFile(
+            sourcePath,
+            'src/foo.ts',
+            ['line1', 'line2 changed', 'line3', 'line4', 'line5', ''].join('\n'),
+            'feature',
+        );
+        await git(sourcePath, ['push', remotePath, 'feature/full-context']);
+
+        await expect(execFileAsync('git', ['rev-parse', `${headSha}^{commit}`], { cwd: localPath, encoding: 'utf-8' })).rejects.toThrow();
+
+        mockResolveRepo.mockResolvedValueOnce({
+            ...mockRepoInfo,
+            localPath,
+            remoteUrl: remotePath,
+        });
+        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+            ...mockPr,
+            baseSha,
+            headSha,
+            sourceBranch: 'feature/full-context',
+            targetBranch: 'main',
+        });
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}?fullContext=true`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { diff: string; fullContextUnavailable: boolean; fullContextUnavailableReason?: string };
+        expect(body.fullContextUnavailable).toBe(false);
+        expect(body.fullContextUnavailableReason).toBeUndefined();
+        expect(body.diff).toContain('@@ -1,5 +1,5 @@');
+        expect(body.diff).toContain('-line2');
+        expect(body.diff).toContain('+line2 changed');
+        expect(body.diff).toContain(' line5');
+        expect(mockSvc.getPullRequest).toHaveBeenCalledWith(REPO_ID, '42');
+        await git(localPath, ['rev-parse', `${headSha}^{commit}`]);
+        expect(await git(localPath, ['branch', '--show-current'])).toBe('main');
+        expect(await git(localPath, ['status', '--porcelain'])).toBe('');
     });
 });
 

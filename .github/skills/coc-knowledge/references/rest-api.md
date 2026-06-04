@@ -200,6 +200,9 @@ Users can add up to **10** additional notes roots per workspace — subfolders i
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/repos/:repoId/pull-requests` | List pull requests; rows are enriched with `diffStats` (`additions`, `deletions`, `changedFiles`) when the provider exposes PR diffs |
+| GET | `/api/repos/:repoId/pull-requests/:prId` | Fetch and cache PR detail, including provider SHA fields (`baseSha`, `headSha`) when available |
+| GET | `/api/repos/:repoId/pull-requests/:prId/diff` | Fetch and cache the provider unified diff for a PR |
+| GET | `/api/repos/:repoId/pull-requests/:prId/diff/files/:path` | Return the hunk diff for one PR file; with `fullContext=true`, the server uses cached or freshly fetched PR detail and attempts to fetch missing PR commits into the requested repo checkout before falling back to the hunk diff with `fullContextUnavailable: true` |
 | GET | `/api/repos/:repoId/pull-requests/recent-opened` | List recently opened PR entries for a workspace/repo (`workspaceId` query, defaults to `repoId`) |
 | POST | `/api/repos/:repoId/pull-requests/recent-opened` | Record a recently opened PR entry after successful validation/open; body includes `workspaceId`, `number`, `title`, optional `webUrl` |
 | DELETE | `/api/repos/:repoId/pull-requests/recent-opened/:prNumber` | Remove a stale recently opened PR entry for a workspace/repo (`workspaceId` query, defaults to `repoId`) |

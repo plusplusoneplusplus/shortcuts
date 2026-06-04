@@ -23,7 +23,7 @@ export interface FileDiffState {
     requestFullDiff: () => void;
     /**
      * True when a full-context diff was requested but the server could not
-     * produce one (e.g. PR SHAs not locally available). The diff field holds
+     * produce one after loading/fetching PR commits. The diff field holds
      * the normal hunk-only diff as a fallback.
      */
     fullContextUnavailable?: boolean;
