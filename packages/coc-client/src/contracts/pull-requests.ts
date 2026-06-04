@@ -37,10 +37,43 @@ export interface PullRequestListQuery {
   search?: string;
 }
 
+export interface PullRequestDiffStats {
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+}
+
+export interface PullRequestListItem {
+  [key: string]: unknown;
+  diffStats?: PullRequestDiffStats;
+}
+
 export interface PullRequestListResponse {
-  pullRequests: unknown[];
+  pullRequests: PullRequestListItem[];
   total: number;
   fetchedAt?: number;
+}
+
+// ── Recently opened PRs ─────────────────────────────────────────────
+
+export interface RecentOpenedPullRequestEntry {
+  workspaceId: string;
+  repoId: string;
+  number: number;
+  title: string;
+  webUrl?: string;
+  /** ISO 8601 string. */
+  openedAt: string;
+}
+
+export interface RecentOpenedPullRequestsResponse {
+  entries: RecentOpenedPullRequestEntry[];
+}
+
+export interface RecordRecentOpenedPullRequestRequest {
+  number: number;
+  title: string;
+  webUrl?: string;
 }
 
 export interface PullRequestThreadsResponse {

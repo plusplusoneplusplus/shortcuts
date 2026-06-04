@@ -22,7 +22,7 @@ spa/client/react/
 │   ├── chat/           # Chat UI: ChatDetail, ChatListPane, ConversationArea
 │   ├── memory/         # Memory V2 route, facts/review/episodes tabs, repo memory settings section
 │   ├── notes/          # Notes UI: NoteEditor, Mermaid zoom/pan, sidebar, multi-root dropdown (useNotesRoots)
-│   ├── pull-requests/  # PR dashboard: attention groups, BatchCommandPanel
+│   ├── pull-requests/  # PR dashboard: attention groups, provider-derived PR helpers, real diff-stat queue badges/risk, deterministic review summary, BatchCommandPanel
 │   └── terminal/       # Terminal UI: TerminalView, pin/unpin
 ├── processes/          # Process detail, DAG visualization
 ├── queue/              # Queue management (EnqueueDialog, QueueView)
@@ -36,6 +36,12 @@ spa/client/react/
 ├── utils/              # Utility modules
 └── featureFlags.ts     # Compile-time feature flags
 ```
+
+`features/chat/ChatListPane.tsx` keeps grouped chat-history expansion state
+local to the mounted view. Ralph session groups and plan-file/history groups
+render collapsed by default on mount or workspace switch; unread dots/count
+badges and Mark all read controls remain the visibility affordances for unread
+children.
 
 ## Key Contexts
 
@@ -122,7 +128,7 @@ Stacked layout with:
 1. `RichTextInput` (contenteditable)
 2. Toolbar reads as ownership zones separated by 1 px vertical dividers (`chat-toolbar-divider-*`):
    - **New chat (`NewChatArea`)**: `AgentSelectorChip` → divider → `ModePillSelector` → divider → model picker → `EffortPillSelector` → spacer → ctool buttons (`/`, `@`, attach) → divider → send
-   - **Follow-up (`FollowUpInputArea`)**: `ModePillSelector` → divider → model picker → `EffortPillSelector` (rendered only when the parent supplies `onEffortChange`) → spacer → ctool buttons → `ComposerMetaStrip` → divider → `QueueFollowUpButton`. Provider isn't switchable on a follow-up (locked to the session), so the row starts at the mode zone.
+   - **Follow-up (`FollowUpInputArea`)**: provider chip → divider → `ModePillSelector` → divider → model picker → `EffortPillSelector` (rendered only when the parent supplies `onEffortChange`) → spacer → ctool buttons → `ComposerMetaStrip` → divider → `QueueFollowUpButton`. Provider isn't switchable on a follow-up (locked to the session), so the provider chip is read-only. At widths below `lg` (≤1023px), the row stays `flex-nowrap`, the segmented mode selector collapses to a tap-to-cycle button, slash/mention/attach collapse into a single overflow menu, `ComposerMetaStrip` is hidden, and visible reachable controls use approximately 32px tap targets; `lg:` classes restore the compact desktop sizes and wrapping behavior.
 3. `ComposerMetaStrip`: cwd chip + context-window fuel gauge + provider badge for non-Copilot sessions. The context-window gauge renders a segmented system/tool/conversation breakdown when `useChatSSE` receives all three persisted snapshot values (`sessionSystemTokens`, `sessionToolTokens`, `sessionConversationTokens`) or the same fields from live `token-usage`; otherwise it falls back to the single-colour usage bar. In the follow-up toolbar it sits between the tools zone and the send divider so its info reads as status next to send.
 
 Focus indicator propagates mode-colored ring from contenteditable to parent card.
@@ -135,7 +141,9 @@ Modal job-submission dialogs use `shared/ModalJobAiControls.tsx` when they need 
 
 `EffortPillSelector` drives the per-turn `reasoningEffort` override (Low/Medium/High; `null` = no override, falls back to the persisted per-model effort then the SDK default). The chip is structurally a dropdown menu (`AgentSelectorChip` style): trigger button (bars icon + label + chevron) opens a popover listbox with `Auto`/`Low`/`Medium`/`High` entries. The `Auto` entry explicitly clears the override and is also what the currently-selected level toggles to when re-clicked. New chats persist the selection alongside the draft (`useDraftStore` → `Draft.effortOverride`). Follow-ups thread the choice through `useSendMessage → ProcessMessageRequest.reasoningEffort → POST /api/processes/:id/message` and into either `bridge.enqueue` (queued) or `bridge.executeFollowUp` (direct/buffered). The server mirrors the value into `task.config.reasoningEffort` via `queue-shared.validateAndParseTask`, so executors see it from a single canonical location.
 
-When effort-tier mode is enabled, `EffortTierSelector` tooltips expose the concrete model and reasoning effort mapped to the selected tier and each configured menu option; empty reasoning effort displays as `Auto`, and unconfigured options remain disabled with an Admin configuration tooltip.
+When effort-tier mode is enabled, `EffortTierSelector` lists `Very Low`, `Low`, `Medium`, and `High` in that order. Tooltips expose the concrete model and reasoning effort mapped to the selected tier and each configured menu option; empty reasoning effort displays as `Auto`, and unconfigured options remain disabled with an Admin configuration tooltip.
+
+The Admin AI Provider page's `ProviderEffortTiersSection` uses the same tier order (`Very Low`, `Low`, `Medium`, `High`) when editing provider defaults. Rows sourced from hardcoded provider defaults are prefilled and marked with a `Default` badge; saving persists only rows explicitly changed from those defaults, and clearing an override reverts that row to its provider default.
 
 The model-picker chip in both `NewChatArea` and `FollowUpInputArea` mirrors the `AgentSelectorChip` style: icon + label + chevron, no inline `✕` clear. When a `modelOverride` is set, `ModelCommandMenu` renders a `Use default` entry at the top of the dropdown that calls `setModelOverride(null)`; clearing flows through the menu rather than a chip-side button. `NoteChatPanel` reuses the same menu without passing `onClearOverride`, so the clear row only appears in the chat composers.
 
@@ -194,9 +202,11 @@ The top-level `#memory` route is embedded in the Admin shell's Knowledge group a
 
 ## Work Items
 
-`WorkItemsTab` presents hierarchy mode as two top-level tracker tabs: **Local** and **GitHub**. The Local tab passes `tracker=local-only` to the tree endpoint and shows local creation actions for local-only Epic trees. The GitHub tab passes `tracker=github-backed`, shows only GitHub-backed mirrored Epic trees, and exposes `Import from GitHub` as the way to seed a GitHub-backed Epic from the workspace-configured repository. The standalone import dialog imports an existing GitHub Epic issue, the server pulls descendants discovered through hidden parent metadata into a GitHub-backed local mirror, then the SPA switches to the GitHub tab and selects/highlights the root Epic row/card.
+`WorkItemsTab` presents hierarchy mode as two top-level tracker tabs: **Local** and **Remote**. The Local tab passes `tracker=local-only` to the tree endpoint and shows local creation actions for local-only Epic trees. The Remote tab calls `workItems.syncStatus(...)` without a provider override, uses the workspace repo remote-derived `remoteProvider` as the authoritative visible provider, and only requests the matching `tracker=github-backed` or `tracker=azure-boards-backed` tree. When one supported provider is detected, the provider chip header shows only that provider (no All chip), the title/subtitle/empty copy and import dialog are provider-specific, and unavailable/auth/setup warnings apply only to the detected provider. Missing, unsupported, or unrecognized workspace remotes show a concise setup message and hide provider chips and import affordances. The Remote import action opens directly in the detected provider mode, then the SPA switches to Remote, selects/highlights the imported root Epic row/card, and keeps the provider filter aligned with the imported provider.
 
-The split Local/GitHub tracker views do not show the legacy per-item preview/import/export/sync toolbar. GitHub-backed Epic roots expose a `Sync from GitHub` context-menu action that calls the per-Epic pull endpoint; adding children under GitHub-backed roots still uses the normal create flow, which pushes the new child to GitHub before storing its mirror metadata.
+`WorkItemDetail` is an always-editable inline form: title, description, priority, tags, status, parent, success criteria, and plan content remain editable without an Edit-mode toggle. Description and plan use per-field Source/Preview markdown controls. The view tracks a unified dirty draft; Ctrl+S/Cmd+S and the Save button send one `workItems.update` PATCH containing every dirty metadata field plus `plan.content` when changed. There is no instant status save and no standalone plan save from the detail screen. Dirty work-item detail pages show an unsaved-changes indicator, install a `beforeunload` warning, guard the local back breadcrumb, block dirty hash route changes when the user cancels, and intercept hash links before navigation.
+
+The split Local/Remote tracker views do not show the legacy per-item preview/import/export/sync toolbar. Remote-backed Epic roots expose provider-aware context-menu actions (`Sync from GitHub` or `Sync from Azure Boards`) that call the matching per-Epic pull endpoint; Azure sync warnings from remote-wins conflict handling are shown inline in the tree. Adding children under GitHub- or Azure-backed roots still uses the normal create flow, which pushes the new child to the backing provider before storing its mirror metadata. Tree rows and detail headers use provider-specific mirror badges that link to the GitHub issue or Azure Boards work item when the remote URL is available.
 
 ## coc-client Integration
 
@@ -204,6 +214,12 @@ The SPA consumes `@plusplusoneplusplus/coc-client` for typed REST transport. Dom
 
 Local React hooks (`fetchApi`, `useWebSocket`, `seenStateApi`) wrap the client for React state management.
 
-## Pull Request Suggestions
+## Pull Requests Tab
 
-The Pull Requests tab is enabled by default through `pullRequests.enabled`; PR review suggestions remain behind the separate `pullRequests.suggestions` config flag. The `For You` filter includes a `Generate suggestions`/`Refresh` action that first refreshes review history, then asks the server to rank open PRs. The UI shows inline progress, empty-state guidance, and recovery messages for missing review history or provider errors.
+The Pull Requests tab is enabled by default through `pullRequests.enabled`. The left queue rail starts with the "Open PR by # or URL" input; successful opens from that input are validated through the PR detail API, recorded through the repo-scoped recent-opened PR API, and shown in a compact "Recently opened" list directly below the input. Recent entries stay hidden when empty or when the rail is collapsed, open through the same overview navigation path, and confirmed 404s remove the stale entry from the list.
+
+Queue rows use server-enriched provider/git diff stats for file count, review-minute estimates, and deterministic risk tiers: low below 200 changed lines, medium from 200 through 800, and high above 800. Missing diff stats render unavailable queue metadata instead of falling back to mock data.
+
+The PR detail overview renders a deterministic review-summary card from the PR description, parsed/provider diff stats, checks, reviewers, and comment threads. Findings are derived from failing checks and unresolved threads, and the former persona-lens grid is not rendered.
+
+PR review suggestions remain behind the separate `pullRequests.suggestions` config flag. The `For You` filter includes a `Generate suggestions`/`Refresh` action that first refreshes review history, then asks the server to rank open PRs. The UI shows inline progress, empty-state guidance, and recovery messages for missing review history or provider errors.

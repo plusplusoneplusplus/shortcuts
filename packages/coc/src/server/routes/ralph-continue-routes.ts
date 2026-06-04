@@ -137,6 +137,9 @@ export function registerRalphContinueRoutes(routes: Route[], ctx: RalphContinueR
             }
 
             const nextIteration = record.currentIteration + 1;
+            const loopIndex = record.loops?.[record.loops.length - 1]?.loopIndex
+                ?? record.iterations[record.iterations.length - 1]?.loopIndex
+                ?? 1;
             const taskInput = buildRalphIterationTask({
                 workspaceId,
                 workingDirectory,
@@ -146,6 +149,7 @@ export function registerRalphContinueRoutes(routes: Route[], ctx: RalphContinueR
                 iteration: nextIteration,
                 maxIterations: newMax,
                 dataDir,
+                extraContext: { ralph: { loopIndex } },
             });
 
             let taskId: string;

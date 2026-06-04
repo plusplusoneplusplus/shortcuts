@@ -85,6 +85,7 @@ export interface CLIConfig {
             reasoningEfforts?: Record<string, string>;
             /** Per-provider effort-tier mappings (tier → model + reasoningEffort). */
             effortTiers?: {
+                'very-low'?: { model: string; reasoningEffort?: string | null };
                 low?: { model: string; reasoningEffort?: string | null };
                 medium?: { model: string; reasoningEffort?: string | null };
                 high?: { model: string; reasoningEffort?: string | null };
@@ -314,6 +315,7 @@ export interface ResolvedCLIConfig {
             reasoningEfforts?: Record<string, string>;
             /** Per-provider effort-tier mappings (tier → model + reasoningEffort). */
             effortTiers?: {
+                'very-low'?: { model: string; reasoningEffort?: string | null };
                 low?: { model: string; reasoningEffort?: string | null };
                 medium?: { model: string; reasoningEffort?: string | null };
                 high?: { model: string; reasoningEffort?: string | null };

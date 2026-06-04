@@ -16,7 +16,7 @@
     "prebuild": "node scripts/prebuild.mjs",
     "build": "npm run build:client && tsc && npm run build:copy-client && node -e \"require('fs').copyFileSync('src/server/openapi.yaml','dist/server/openapi.yaml')\" && node -e \"const fs=require('fs');try{fs.chmodSync('dist/index.js',0o755);}catch(e){if(process.platform!=='win32')throw e;}\"",
     "test": "vitest",
-    "test:run": "vitest run",
+    "test:run": "node scripts/run-vitest.mjs",
     "coverage": "vitest run --coverage",
     "coverage:diff": "bash ../../scripts/coverage-diff.sh",
     "test:e2e": "npx playwright test --config test/e2e/playwright.config.ts",

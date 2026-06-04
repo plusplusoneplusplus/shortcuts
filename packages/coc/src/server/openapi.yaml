@@ -854,11 +854,11 @@ paths:
       tags: [agent-providers]
       summary: Get effort-tier configuration for a provider
       description: >-
-        Returns the effective effort-tier map (low / medium / high) for the
+        Returns the effective effort-tier map (very-low / low / medium / high) for the
         specified agent provider. Each tier maps to a model ID and an optional
         reasoning-effort level, plus a `source` field marking whether the value
         came from saved config (`config`) or from the hardcoded provider
-        default (`default`). All three tiers are always populated for known
+        default (`default`). All four tiers are always populated for known
         providers because defaults fill any unset tier.
       parameters:
         - name: provider
@@ -973,8 +973,10 @@ components:
       type: object
       description: >-
         Map of effort tier keys to their model/reasoning-effort configuration.
-        Any combination of low, medium, and high may be present.
+        Any combination of very-low, low, medium, and high may be present.
       properties:
+        very-low:
+          $ref: '#/components/schemas/EffortTierEntry'
         low:
           $ref: '#/components/schemas/EffortTierEntry'
         medium:
@@ -1006,7 +1008,7 @@ components:
       properties:
         tier:
           type: string
-          enum: [low, medium, high]
+          enum: [very-low, low, medium, high]
           description: Tier key to upsert
         model:
           type: string
@@ -1326,7 +1328,7 @@ components:
           description: Last-selected generation depth in the SPA.
         lastEffort:
           type: string
-          enum: [low, medium, high]
+          enum: [very-low, low, medium, high]
           description: Last-selected effort level in the Generate Task dialog.
         lastSkills:
           $ref: '#/components/schemas/LastSkillsByMode'

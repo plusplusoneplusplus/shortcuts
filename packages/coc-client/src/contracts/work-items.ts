@@ -1,6 +1,6 @@
 import type { ChatProvider, JsonObject, ReasoningEffort } from './common';
 
-export type WorkItemStatus =
+export type KnownWorkItemStatus =
   | 'created'
   | 'drafting'
   | 'planning'
@@ -9,12 +9,12 @@ export type WorkItemStatus =
   | 'aiDone'
   | 'aiFailed'
   | 'done'
-  | 'failed'
-  | string;
+  | 'failed';
+export type WorkItemStatus = KnownWorkItemStatus | (string & {});
 export type WorkItemPriority = 'high' | 'normal' | 'low';
 export type WorkItemSource = 'manual' | 'chat' | 'schedule';
 export type WorkItemType = 'work-item' | 'bug' | 'goal' | 'epic' | 'feature' | 'pbi';
-export type WorkItemTrackerKind = 'local-only' | 'github-backed';
+export type WorkItemTrackerKind = 'local-only' | 'github-backed' | 'azure-boards-backed';
 
 export interface WorkItemGitHubTrackerMetadata {
   issueId?: string;
@@ -32,9 +32,30 @@ export interface WorkItemGitHubMirrorMetadata {
   lastPulledAt?: string;
 }
 
+export interface WorkItemAzureBoardsTrackerMetadata {
+  workItemId?: number;
+  workItemUrl?: string;
+  revision?: number;
+  updatedAt?: string;
+  lastPulledAt?: string;
+}
+
+export interface WorkItemAzureBoardsMirrorMetadata {
+  workItemId: number;
+  workItemUrl?: string;
+  revision?: number;
+  workItemType?: string;
+  state?: string;
+  updatedAt?: string;
+  lastPulledAt?: string;
+  /** Hash of Azure-owned local fields after the last successful pull/push. */
+  lastSyncedLocalFingerprint?: string;
+}
+
 export type WorkItemTrackerMetadata =
   | { kind: 'local-only' }
-  | { kind: 'github-backed'; provider: 'github'; github: WorkItemGitHubTrackerMetadata };
+  | { kind: 'github-backed'; provider: 'github'; github: WorkItemGitHubTrackerMetadata }
+  | { kind: 'azure-boards-backed'; provider: 'azure-boards'; azureBoards: WorkItemAzureBoardsTrackerMetadata };
 
 /**
  * Allowed parent types for each work item type.
@@ -72,6 +93,8 @@ export interface WorkItemSyncRepository {
   provider: WorkItemSyncProvider;
   owner?: string;
   repo?: string;
+  organizationUrl?: string;
+  project?: string;
   projectId?: string;
   url?: string;
   source?: 'preference' | 'workspaceRemote' | 'origin';
@@ -86,6 +109,8 @@ export interface WorkItemSyncProviderStatus {
     | 'incomplete-preference'
     | 'missing-workspace'
     | 'missing-origin'
+    | 'missing-org-url'
+    | 'missing-project'
     | 'non-github-origin'
     | 'auth-unavailable'
     | 'unknown';
@@ -103,6 +128,8 @@ export interface WorkItemSyncStatusResponse {
   disabled?: boolean;
   disabledReason?: WorkItemSyncDisabledReason;
   maxItems: number;
+  /** Provider derived from the workspace repository remote URL, when supported. */
+  remoteProvider?: WorkItemSyncProvider;
   provider?: WorkItemSyncProviderStatus;
   providers: WorkItemSyncProviderStatus[];
 }
@@ -151,6 +178,8 @@ export interface WorkItem {
   tracker?: WorkItemTrackerMetadata;
   /** GitHub read-mirror identity for items inside a GitHub-backed Epic tree. */
   githubMirror?: WorkItemGitHubMirrorMetadata;
+  /** Azure Boards read-mirror identity for items inside an Azure Boards-backed Epic tree. */
+  azureBoardsMirror?: WorkItemAzureBoardsMirrorMetadata;
   createdAt: string;
   updatedAt: string;
   completedAt?: string;
@@ -225,6 +254,13 @@ export interface ImportFromGitHubRequest extends JsonObject {
   issueNumber?: number;
 }
 
+export interface ImportFromAzureBoardsRequest extends JsonObject {
+  /** Full Azure Boards work item URL, e.g. https://dev.azure.com/<org>/<project>/_workitems/edit/<id>. */
+  workItemUrl?: string;
+  /** Azure Boards work item ID in the workspace-configured project. */
+  workItemId?: number;
+}
+
 export interface SyncGitHubEpicResponse extends JsonObject {
   root: WorkItem;
   items: WorkItem[];
@@ -232,6 +268,31 @@ export interface SyncGitHubEpicResponse extends JsonObject {
   updated: number;
   deleted: number;
   deletedItemIds: string[];
+}
+
+export interface SyncAzureBoardsEpicResponse extends JsonObject {
+  root: WorkItem;
+  items: WorkItem[];
+  created: number;
+  updated: number;
+  deleted: number;
+  deletedItemIds: string[];
+  warnings: WorkItemSyncWarning[];
+}
+
+export interface WorkItemSyncWarning extends JsonObject {
+  provider: WorkItemSyncProvider;
+  code: 'remote-wins-conflict' | string;
+  workItemId: string;
+  remoteWorkItemId?: number;
+  fields: string[];
+  message: string;
+  localUpdatedAt?: string;
+  lastPulledAt?: string;
+  previousRevision?: number;
+  remoteRevision?: number;
+  previousUpdatedAt?: string;
+  remoteUpdatedAt?: string;
 }
 
 export interface ConvertWorkItemTrackerResponse extends JsonObject {
@@ -254,6 +315,12 @@ export interface CreateWorkItemFromChatRequest extends JsonObject {
 export interface UpdateWorkItemRequest extends Partial<Pick<WorkItem, 'title' | 'description' | 'status' | 'priority' | 'tags' | 'autoExecute' | 'tracker'>> {
   completedAt?: string;
   reviewComments?: unknown[];
+  /** Update the current plan as part of the work-item PATCH batch. */
+  plan?: {
+    content: string;
+    resolvedBy?: 'user' | 'ai';
+    summary?: string;
+  };
   /** Update success criteria for a `goal` item (markdown). */
   successCriteria?: string;
   /** Link a spec-drafting chat process to a `goal` item. */
@@ -350,17 +417,7 @@ export interface WorkItemRollup {
     bug: number;
     goal: number;
   };
-  byStatus: {
-    created: number;
-    drafting: number;
-    planning: number;
-    readyToExecute: number;
-    executing: number;
-    aiDone: number;
-    aiFailed: number;
-    done: number;
-    failed: number;
-  };
+  byStatus: Record<KnownWorkItemStatus, number> & Record<string, number>;
 }
 
 /** A node in the work item hierarchy tree. */

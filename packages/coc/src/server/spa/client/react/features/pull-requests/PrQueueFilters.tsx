@@ -9,7 +9,7 @@ import {
     getQueueFilterDefinitions,
     type QueueFilter,
     type QueueFilterCounts,
-} from './pr-mock-data';
+} from './pr-derived-data';
 
 interface PrQueueFiltersProps {
     active: QueueFilter;

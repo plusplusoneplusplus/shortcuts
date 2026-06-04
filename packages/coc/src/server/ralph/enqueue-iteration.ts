@@ -7,9 +7,9 @@
  *   - the ralph-continue route (resume after CAP_REACHED / NO_SIGNAL at cap).
  */
 
-import { buildRalphIterationPrompt } from './iteration-prompt';
+import { buildRalphIterationPrompt } from '@plusplusoneplusplus/coc-workflow/ralph';
 import { RalphSessionStore } from './ralph-session-store';
-import type { ChatProvider, ReasoningEffort } from '../tasks/task-types';
+import type { ChatContext, ChatProvider, ReasoningEffort } from '../tasks/task-types';
 
 export interface BuildRalphIterationTaskInput {
     workspaceId?: string;
@@ -24,7 +24,7 @@ export interface BuildRalphIterationTaskInput {
     /** Repo-scoped data root; used to resolve the progress-journal path. */
     dataDir?: string;
     /** Optional carry-over context (e.g. previous attachments, additional ralph fields). */
-    extraContext?: Record<string, unknown>;
+    extraContext?: ChatContext | Record<string, unknown>;
     /** Display name for the queued task. Defaults to "Ralph iteration N (sessionId)". */
     displayName?: string;
     /** Priority for the enqueued task. Defaults to 'normal'. */
@@ -56,6 +56,7 @@ export function buildRalphIterationTask(input: BuildRalphIterationTaskInput) {
     });
     const displayName = input.displayName
         ?? `Ralph iteration ${input.iteration} (${input.sessionId})`;
+    const extraRalphContext = normaliseExtraRalphContext(input.extraContext?.ralph);
     return {
         type: 'chat' as const,
         priority: input.priority ?? ('normal' as const),
@@ -78,6 +79,7 @@ export function buildRalphIterationTask(input: BuildRalphIterationTaskInput) {
             context: {
                 ...(input.extraContext ?? {}),
                 ralph: {
+                    ...extraRalphContext,
                     phase: 'executing' as const,
                     sessionId: input.sessionId,
                     originalGoal: input.originalGoal,
@@ -87,4 +89,18 @@ export function buildRalphIterationTask(input: BuildRalphIterationTaskInput) {
             },
         },
     };
+}
+
+function normaliseExtraRalphContext(value: unknown): Record<string, unknown> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return {};
+    }
+    const rest = { ...(value as Record<string, unknown>) };
+    delete rest.currentIteration;
+    delete rest.finalCheck;
+    delete rest.maxIterations;
+    delete rest.originalGoal;
+    delete rest.phase;
+    delete rest.sessionId;
+    return rest;
 }

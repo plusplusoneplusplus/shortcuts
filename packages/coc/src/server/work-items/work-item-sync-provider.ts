@@ -24,14 +24,33 @@ export function isSupportedWorkItemSyncProvider(value: string): value is WorkIte
     return SUPPORTED_WORK_ITEM_SYNC_PROVIDERS.includes(value as WorkItemSyncProviderName);
 }
 
+export function detectWorkItemSyncProviderFromRemoteUrl(remoteUrl?: string | null): WorkItemSyncProviderName | undefined {
+    const trimmed = remoteUrl?.trim();
+    if (!trimmed) return undefined;
+
+    const normalized = trimmed.replace(/^git\+/, '');
+    const scpLike = normalized.match(/^[^@]+@([^:]+):/);
+    const host = scpLike?.[1] ?? (() => {
+        try {
+            return new URL(normalized).hostname;
+        } catch {
+            return undefined;
+        }
+    })();
+    const lowerHost = host?.toLowerCase();
+
+    if (lowerHost === 'github.com') return 'github';
+    if (lowerHost === 'dev.azure.com' || lowerHost === 'ssh.dev.azure.com' || lowerHost?.endsWith('.visualstudio.com')) {
+        return 'azure-boards';
+    }
+    return undefined;
+}
+
 export function unavailableWorkItemSyncProviderStatus(provider: WorkItemSyncProviderName): WorkItemSyncProviderStatus {
-    const message = provider === 'azure-boards'
-        ? 'Azure Boards work item sync is planned but unavailable in this version.'
-        : `Work item sync provider '${provider}' is not registered.`;
     return {
         provider,
         available: false,
         reason: 'provider-unavailable',
-        message,
+        message: `Work item sync provider '${provider}' is not registered.`,
     };
 }

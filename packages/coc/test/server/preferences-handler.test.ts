@@ -366,6 +366,20 @@ describe('readPreferences / writePreferences', () => {
         expect(loaded.workItems?.sync?.github).toEqual({ owner: 'octo-org', repo: 'octo-repo' });
     });
 
+    it('round-trips non-secret workspace Azure Boards project preference', () => {
+        writeRepoPreferences(tmpDir, 'r', {
+            workItems: {
+                sync: {
+                    azureBoards: {
+                        project: 'Project Alpha',
+                    },
+                },
+            },
+        } as any);
+        const loaded = readRepoPreferences(tmpDir, 'r');
+        expect(loaded.workItems?.sync?.azureBoards).toEqual({ project: 'Project Alpha' });
+    });
+
     it('strips unknown and secret-shaped work item GitHub sync preference fields', () => {
         const repoPrefsPath = path.join(tmpDir, 'repos', 'r', 'preferences.json');
         fs.mkdirSync(path.dirname(repoPrefsPath), { recursive: true });
@@ -390,6 +404,31 @@ describe('readPreferences / writePreferences', () => {
         expect(JSON.stringify(loaded)).not.toContain('token');
     });
 
+    it('strips unknown and secret-shaped work item Azure Boards sync preference fields', () => {
+        const repoPrefsPath = path.join(tmpDir, 'repos', 'r', 'preferences.json');
+        fs.mkdirSync(path.dirname(repoPrefsPath), { recursive: true });
+        fs.writeFileSync(
+            repoPrefsPath,
+            JSON.stringify({
+                workItems: {
+                    sync: {
+                        azureBoards: {
+                            project: 'Project Alpha',
+                            pat: 'secret',
+                            token: 'secret',
+                        },
+                    },
+                },
+            }),
+            'utf-8'
+        );
+        const loaded = readRepoPreferences(tmpDir, 'r');
+        expect(loaded.workItems?.sync?.azureBoards).toEqual({ project: 'Project Alpha' });
+        expect(JSON.stringify(loaded)).not.toContain('secret');
+        expect(JSON.stringify(loaded)).not.toContain('token');
+        expect(JSON.stringify(loaded)).not.toContain('pat');
+    });
+
     it('round-trips lastDepth normal through write and read', () => {
         writeRepoPreferences(tmpDir, 'r', { lastModel: 'gpt-5.4', lastDepth: 'normal' });
         const loaded = readRepoPreferences(tmpDir, 'r');
@@ -409,7 +448,7 @@ describe('readPreferences / writePreferences', () => {
     });
 
     it('round-trips lastEffort through write and read', () => {
-        for (const level of ['low', 'medium', 'high'] as const) {
+        for (const level of ['very-low', 'low', 'medium', 'high'] as const) {
             writeRepoPreferences(tmpDir, 'r', { lastEffort: level });
             const loaded = readRepoPreferences(tmpDir, 'r');
             expect(loaded.lastEffort).toBe(level);
@@ -694,6 +733,7 @@ describe('validatePreferences', () => {
     // -- lastEffort field --
 
     it('accepts valid lastEffort values', () => {
+        expect(validatePreferences({ lastEffort: 'very-low' })).toEqual({ lastEffort: 'very-low' });
         expect(validatePreferences({ lastEffort: 'low' })).toEqual({ lastEffort: 'low' });
         expect(validatePreferences({ lastEffort: 'medium' })).toEqual({ lastEffort: 'medium' });
         expect(validatePreferences({ lastEffort: 'high' })).toEqual({ lastEffort: 'high' });
@@ -2143,9 +2183,9 @@ describe('Per-Repo Preferences REST API', () => {
     });
 
     it('PATCH persists lastEffort', async () => {
-        const res = await patchJSON(repoUrl(repoId), { lastEffort: 'high' });
+        const res = await patchJSON(repoUrl(repoId), { lastEffort: 'very-low' });
         expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({ lastEffort: 'high' });
+        expect(JSON.parse(res.body)).toEqual({ lastEffort: 'very-low' });
     });
 
     it('PATCH persists lastSkills with single mode (array)', async () => {
@@ -2612,6 +2652,63 @@ describe('registerPreferencesRoutes — sync engine wiring', () => {
                         repo: 'shortcuts',
                         pollingEnabled: false,
                         pollIntervalMinutes: 10,
+                    },
+                },
+            },
+        }));
+    });
+
+    it('PATCH workItems Azure Boards project prefs preserves GitHub prefs and triggers live callback', async () => {
+        writeRepoPreferences(tmpDir, 'my_work', {
+            workItems: {
+                sync: {
+                    github: {
+                        owner: 'plusplusoneplusplus',
+                        repo: 'shortcuts',
+                    },
+                    azureBoards: {
+                        project: 'Project Alpha',
+                    },
+                },
+            },
+        });
+        const onRepoPreferencesChanged = vi.fn();
+        const routes: Route[] = [];
+        registerPreferencesRoutes(routes, tmpDir, undefined, onRepoPreferencesChanged);
+
+        const url = '/api/workspaces/my_work/preferences';
+        const found = findRoute(routes, 'PATCH', url)!;
+        const res = fakeRes();
+
+        await found.route.handler(fakeReq('PATCH', {
+            workItems: {
+                sync: {
+                    azureBoards: {
+                        project: 'Project Beta',
+                    },
+                },
+            },
+        }), res, found.match);
+
+        expect(res.statusCode).toBe(200);
+        expect(readRepoPreferences(tmpDir, 'my_work').workItems?.sync).toEqual({
+            github: {
+                owner: 'plusplusoneplusplus',
+                repo: 'shortcuts',
+            },
+            azureBoards: {
+                project: 'Project Beta',
+            },
+        });
+        expect(onRepoPreferencesChanged).toHaveBeenCalledWith('my_work', expect.objectContaining({
+            workItems: {
+                sync: {
+                    github: {
+                        owner: 'plusplusoneplusplus',
+                        repo: 'shortcuts',
+                    },
+                    azureBoards: {
+                        project: 'Project Beta',
                     },
                 },
             },

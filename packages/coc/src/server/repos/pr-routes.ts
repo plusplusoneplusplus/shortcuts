@@ -12,6 +12,9 @@
  * GET  /api/repos/:repoId/pull-requests/:prId/diff       — get unified diff (plain text)
  * GET  /api/repos/:repoId/pull-requests/:prId/diff/files/:path — get per-file diff (JSON)
  * GET  /api/repos/:repoId/pull-requests/:prId/checks     — get CI/check statuses
+ * GET  /api/repos/:repoId/pull-requests/recent-opened    — list recently opened PRs
+ * POST /api/repos/:repoId/pull-requests/recent-opened    — record a recently opened PR
+ * DELETE /api/repos/:repoId/pull-requests/recent-opened/:prNumber — remove stale recent PR
  * GET  /api/repos/:repoId/pull-requests/:prId/review-progress — get reviewer progress (AC-04)
  * PUT  /api/repos/:repoId/pull-requests/:prId/review-progress — save reviewer progress (AC-04)
  *
@@ -29,12 +32,18 @@ import {
     writeReviewProgress,
     validateReviewProgressInput,
 } from './review-progress-store';
+import {
+    listRecentOpenedPullRequests,
+    recordRecentOpenedPullRequest,
+    removeRecentOpenedPullRequest,
+    validateRecentOpenedPullRequestInput,
+} from './recent-opened-pr-store';
 import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
-import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { computeSummary, parseFullDiff } from '@plusplusoneplusplus/forge';
+import type { IPullRequestsService, ISDKService, ProcessStore } from '@plusplusoneplusplus/forge';
 import { readReviewHistoryCache, fetchAndCacheReviewHistory, readSuggestionsCache, rankAndCacheSuggestions, toPrMetadata } from './pr-suggestions';
-import type { ISDKService } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Helpers
@@ -80,6 +89,23 @@ function isNoAdoCredentials(svc: unknown): svc is AdoNoCredentialsSentinel {
     return typeof svc === 'object' && svc !== null && (svc as AdoNoCredentialsSentinel).error === 'no-ado-credentials';
 }
 
+function parseWorkspaceId(req: Parameters<Route['handler']>[0], body: unknown, repoId: string): string {
+    if (body && typeof body === 'object') {
+        const raw = (body as Record<string, unknown>).workspaceId;
+        if (typeof raw === 'string' && raw.trim()) {
+            return raw.trim();
+        }
+    }
+    const parsed = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`);
+    return parsed.searchParams.get('workspaceId')?.trim() || repoId;
+}
+
+function parsePositiveIntegerPathSegment(raw: string): number | null {
+    if (!/^\d+$/.test(raw)) return null;
+    const number = Number(raw);
+    return Number.isSafeInteger(number) && number > 0 ? number : null;
+}
+
 // ============================================================================
 // PR list cache (in-memory, 60-min TTL)
 // ============================================================================
@@ -94,6 +120,14 @@ interface PrCacheEntry {
 
 const prListCache = new Map<string, PrCacheEntry>();
 
+interface PullRequestDiffStats {
+    additions: number;
+    deletions: number;
+    changedFiles: number;
+}
+
+const prDiffStatsCache = new Map<string, PullRequestDiffStats>();
+
 function makePrCacheKey(repoId: string, status: string, scope: string): string {
     return `${repoId}|${status}|${scope}`;
 }
@@ -101,6 +135,74 @@ function makePrCacheKey(repoId: string, status: string, scope: string): string {
 /** Clear all cached PR list entries. Exported for testing. */
 export function clearPrListCache(): void {
     prListCache.clear();
+    prDiffStatsCache.clear();
+}
+
+function getPullRequestProviderId(pr: any): number | string | undefined {
+    return pr?.number ?? pr?.id;
+}
+
+function makePrDiffStatsCacheKey(repoId: string, pr: any): string | undefined {
+    const headSha = typeof pr?.headSha === 'string' ? pr.headSha.trim() : '';
+    if (!headSha) return undefined;
+
+    const prId = getPullRequestProviderId(pr);
+    if (prId == null) return undefined;
+
+    return `${repoId}|${String(prId)}|${headSha}`;
+}
+
+function buildPullRequestDiffStats(diff: string): PullRequestDiffStats {
+    const { files } = parseFullDiff(diff);
+    const summary = computeSummary(files);
+    return {
+        additions: summary.additions,
+        deletions: summary.deletions,
+        changedFiles: summary.filesChanged,
+    };
+}
+
+async function getPullRequestDiffStats(
+    repoId: string,
+    pr: any,
+    prSvc: IPullRequestsService,
+): Promise<PullRequestDiffStats | undefined> {
+    if (typeof prSvc.getDiff !== 'function') return undefined;
+
+    const prId = getPullRequestProviderId(pr);
+    if (prId == null) return undefined;
+
+    const cacheKey = makePrDiffStatsCacheKey(repoId, pr);
+    const cached = cacheKey ? prDiffStatsCache.get(cacheKey) : undefined;
+    if (cached) return cached;
+
+    const diff = await prSvc.getDiff(repoId, prId);
+    const stats = buildPullRequestDiffStats(diff);
+    if (cacheKey) {
+        prDiffStatsCache.set(cacheKey, stats);
+    }
+    return stats;
+}
+
+async function enrichPullRequestsWithDiffStats(
+    repoId: string,
+    prs: any[],
+    prSvc: IPullRequestsService,
+): Promise<any[]> {
+    if (typeof prSvc.getDiff !== 'function') return prs;
+
+    return Promise.all(prs.map(async pr => {
+        try {
+            const diffStats = await getPullRequestDiffStats(repoId, pr, prSvc);
+            return diffStats ? { ...pr, diffStats } : pr;
+        } catch (err) {
+            const prId = getPullRequestProviderId(pr);
+            console.warn(
+                `[pr-list] failed to load diff stats for repo=${repoId} pr=${prId ?? '(unknown)'}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            return pr;
+        }
+    }));
 }
 
 // ============================================================================
@@ -251,6 +353,7 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                     }
 
                     prs = await prSvc.listPullRequests(repoId, { status, top: PR_LIST_FETCH_TOP, scope });
+                    prs = await enrichPullRequestsWithDiffStats(repoId, prs, prSvc);
                     prListCache.set(cacheKey, { data: prs, expiresAt: Date.now() + PR_LIST_TTL_MS });
                 }
 
@@ -407,6 +510,84 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 } else {
                     send500(res, err instanceof Error ? err.message : String(err));
                 }
+            }
+        },
+    });
+
+    // -- List recently opened PRs ---------------------------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/recent-opened$/,
+        handler: async (req, res, match) => {
+            try {
+                const repoId = decodeURIComponent(match![1]);
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+
+                const workspaceId = parseWorkspaceId(req, undefined, repoId);
+                const entries = listRecentOpenedPullRequests(dataDir, workspaceId, repoId);
+                return sendJson(res, { entries });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    // -- Record recently opened PR --------------------------------------------
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/recent-opened$/,
+        handler: async (req, res, match) => {
+            try {
+                const repoId = decodeURIComponent(match![1]);
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+
+                let raw: unknown;
+                try {
+                    raw = await readJsonBody<unknown>(req);
+                } catch {
+                    return send400(res, 'Invalid JSON body');
+                }
+
+                const validation = validateRecentOpenedPullRequestInput(raw);
+                if (!validation.ok) {
+                    return send400(res, validation.error);
+                }
+
+                const workspaceId = parseWorkspaceId(req, raw, repoId);
+                const entries = recordRecentOpenedPullRequest(dataDir, workspaceId, repoId, validation.entry);
+                return sendJson(res, { entries });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    // -- Remove stale recently opened PR --------------------------------------
+
+    routes.push({
+        method: 'DELETE',
+        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/recent-opened\/([^/]+)$/,
+        handler: async (req, res, match) => {
+            try {
+                const repoId = decodeURIComponent(match![1]);
+                const rawPrNumber = decodeURIComponent(match![2]);
+                const prNumber = parsePositiveIntegerPathSegment(rawPrNumber);
+                if (prNumber === null) {
+                    return send400(res, 'prNumber must be a positive integer');
+                }
+
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+
+                const workspaceId = parseWorkspaceId(req, undefined, repoId);
+                const entries = removeRecentOpenedPullRequest(dataDir, workspaceId, repoId, prNumber);
+                return sendJson(res, { entries });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
             }
         },
     });

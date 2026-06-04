@@ -57,11 +57,15 @@ describe('work items SPA client migration', () => {
         expect(section).not.toContain('/work-items/grouped');
     });
 
-    it('loads and updates plan versions through client.workItems', () => {
+    it('loads plan versions through client.workItems and persists plan via the detail Ctrl+S batch', () => {
         expect(planSection).toContain('workItems.planVersions(workspaceId, workItemId)');
         expect(planSection).toContain('workItems.getPlanVersion(workspaceId, workItemId, v)');
-        expect(planSection).toContain('workItems.updatePlan(workspaceId, workItemId, planDraft)');
         expect(planSection).toContain('workItems.resolveComments(workspaceId, workItemId');
+        // Plan persistence moved into the unified Ctrl+S PATCH batch in WorkItemDetail;
+        // the plan section no longer performs an instant standalone save.
+        expect(planSection).not.toContain('workItems.updatePlan(');
+        expect(detail).toContain('updates.plan');
+        expect(detail).not.toContain('workItems.updatePlan(workspaceId, workItemId, planDraft');
     });
 
     it('executes work items through client.workItems while keeping skill loading separate', () => {

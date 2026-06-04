@@ -5,19 +5,14 @@
  *   - PR header (title, branches, status, reviewers, labels, description)
  *   - Comment threads (via /threads endpoint)
  *   - File list, +/- counts, hunks, and diff body (parsed from /diff)
- *   - Commit list (via /commits endpoint) — intent label is still a
- *     heuristic inferred from the commit subject (editable).
- *   - The "AI grouped threads" sidebar groups REAL threads — only the
- *     severity tag is AI-derived (deterministic, mocked for now).
+ *   - Commit list (via /commits endpoint).
+ *   - Deterministic review summary facts from PR description, diff stats,
+ *     checks, reviewers, and real threads.
+ *   - The grouped threads sidebar buckets REAL threads with deterministic
+ *     severity derived from thread status and comment text.
  *   - Checks / CI table and merge-readiness (via /checks endpoint —
  *     provider-agnostic; works for both GitHub and ADO).
- *
- * AI-flavored sections still backed by deterministic fixtures in
- * `pr-mock-data.ts` (until an AI backend is wired up):
- *   - AI summary panel (risk, confidence, findings, metrics)
- *   - Persona lenses
- *   - Conversation timeline
- *   - Assistant chat drawer
+ *   - Conversation timeline derived from real threads and commits.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -28,8 +23,7 @@ import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClien
 import { formatTimestamp, prStatusBadge } from './pr-utils';
 import { ReviewerBadge } from './ReviewerBadge';
 import { ThreadList } from './ThreadList';
-import { PrAiSummaryPanel } from './PrAiSummaryPanel';
-import { PrQuickReviewWorkflow } from './PrQuickReviewWorkflow';
+import { PrReviewSummaryPanel } from './PrReviewSummaryPanel';
 import { PrConversationPanel } from './PrConversationPanel';
 import { PrAiGroupedThreads } from './PrAiGroupedThreads';
 import { PrCommitTable } from './PrCommitTable';
@@ -41,16 +35,18 @@ import type { ClassificationKey } from '../git/diff/diffSource';
 import { buildGitPrPopOutUrl } from '../../layout/Router';
 import { useGitReviewPopOut, gitReviewPrPopOutKey } from '../../contexts/GitReviewPopOutContext';
 import {
-    buildAiThreadGroupsFromThreads,
     buildCheckRowsFromChecks,
     buildCommitRowsFromPrCommits,
     buildMergeReadinessFromData,
+    buildThreadGroupsFromThreads,
     buildTimelineFromRealData,
-    getMockAiSummary,
-    getMockPersonaLenses,
-    getMockReviewSummaryText,
-    riskPillClass,
-} from './pr-mock-data';
+} from './pr-derived-data';
+import {
+    buildPrReviewSummary,
+    buildPullRequestDiffStats,
+    getPullRequestReviewSummaryText,
+    reviewRiskPillClass,
+} from './pr-detail-summary';
 import type { PullRequest, PullRequestCommit, CommentThread, PullRequestCheck } from './pr-utils';
 import { parseDiffFileList, type FileChange } from '../git/diff';
 import type { PrDetailTab } from '../../types/dashboard';
@@ -218,15 +214,27 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
         }
     }, [state.selectedPrDetailTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const aiSummary = useMemo(() => (pr ? getMockAiSummary(pr) : null), [pr]);
-    const personaLenses = useMemo(() => getMockPersonaLenses(), []);
-    const threadGroups = useMemo(() => buildAiThreadGroupsFromThreads(threads), [threads]);
+    const threadGroups = useMemo(() => buildThreadGroupsFromThreads(threads), [threads]);
     const timeline = useMemo(() => buildTimelineFromRealData(threads, commits, threadGroups), [threads, commits, threadGroups]);
     const commitRows = useMemo(() => buildCommitRowsFromPrCommits(commits), [commits]);
     const checkRows = useMemo(() => buildCheckRowsFromChecks(checks), [checks]);
     const mergeReadiness = useMemo(
         () => buildMergeReadinessFromData({ checks, threads, reviewers: pr?.reviewers ?? [] }),
         [checks, threads, pr],
+    );
+    const diffStats = useMemo(
+        () => buildPullRequestDiffStats(diff, pr?.diffStats),
+        [diff, pr?.diffStats],
+    );
+    const reviewSummary = useMemo(
+        () => pr ? buildPrReviewSummary({
+            pr,
+            diffStats,
+            checks,
+            threads,
+            reviewers: pr.reviewers ?? [],
+        }) : null,
+        [pr, diffStats, checks, threads],
     );
 
 
@@ -248,7 +256,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
 
     async function handleCopySummary() {
         if (!pr) return;
-        const text = getMockReviewSummaryText(pr);
+        const text = getPullRequestReviewSummaryText(pr);
         try {
             await navigator.clipboard.writeText(text);
         } catch {
@@ -289,15 +297,12 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     const reviewers = pr.reviewers ?? [];
     const labels = pr.labels ?? [];
     const descHtml = pr.description ? String(descMarked.parse(pr.description)) : '';
-    const unresolvedCount = aiSummary?.unresolvedCount ?? 0;
-    const hasRealDiff = diff.length > 0;
-    const totalAdditions = diff.reduce((sum, f) => sum + (f.additions ?? 0), 0);
-    const totalDeletions = diff.reduce((sum, f) => sum + (f.deletions ?? 0), 0);
-    const deltaText = hasRealDiff
-        ? `+${totalAdditions} / -${totalDeletions}`
+    const unresolvedCount = reviewSummary?.unresolvedCount ?? 0;
+    const deltaText = diffStats
+        ? `+${diffStats.additions} / -${diffStats.deletions}`
         : '';
-    const fileCountText = hasRealDiff
-        ? `${diff.length} file${diff.length === 1 ? '' : 's'}`
+    const fileCountText = diffStats
+        ? `${diffStats.changedFiles} file${diffStats.changedFiles === 1 ? '' : 's'}`
         : '';
 
     return (
@@ -336,15 +341,15 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                         )}
                     </h1>
 
-                    {aiSummary && (
+                    {reviewSummary && (
                         <span
                             className={cn(
                                 'inline-flex min-h-[20px] shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold',
-                                riskPillClass(aiSummary.risk),
+                                reviewRiskPillClass(reviewSummary.risk),
                             )}
                             data-testid="pr-risk-pill"
                         >
-                            AI risk: {aiSummary.risk}
+                            Risk: {reviewSummary.risk}
                         </span>
                     )}
                     {unresolvedCount > 0 && (
@@ -503,8 +508,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                     <div className="w-full px-2.5 pb-7 pt-2" data-testid="overview-tab">
                         <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_264px]">
                             <div className="grid gap-2">
-                                {aiSummary && <PrAiSummaryPanel summary={aiSummary} />}
-                                <PrQuickReviewWorkflow lenses={personaLenses} />
+                                {reviewSummary && <PrReviewSummaryPanel summary={reviewSummary} />}
                                 <PrConversationPanel events={timeline} />
                                 <DescriptionAndMeta
                                     descHtml={descHtml}

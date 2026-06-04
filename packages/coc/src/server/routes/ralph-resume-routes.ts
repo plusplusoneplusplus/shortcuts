@@ -83,6 +83,9 @@ export function registerRalphResumeRoutes(routes: Route[], ctx: RalphResumeRoute
             }
 
             const nextIteration = record.currentIteration + 1;
+            const loopIndex = record.loops?.[record.loops.length - 1]?.loopIndex
+                ?? record.iterations[record.iterations.length - 1]?.loopIndex
+                ?? 1;
             const taskInput = buildRalphIterationTask({
                 workspaceId,
                 workingDirectory,
@@ -92,6 +95,7 @@ export function registerRalphResumeRoutes(routes: Route[], ctx: RalphResumeRoute
                 iteration: nextIteration,
                 maxIterations: record.maxIterations,
                 dataDir,
+                extraContext: { ralph: { loopIndex } },
             });
 
             let taskId: string;

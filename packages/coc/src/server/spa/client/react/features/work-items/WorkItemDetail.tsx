@@ -10,6 +10,7 @@ import { fetchApi } from '../../hooks/useApi';
 import { getSpaCocClient } from '../../api/cocClient';
 import { formatRelativeTime } from '../../utils/format';
 import { WorkItemPlanSection } from './WorkItemPlanSection';
+import { WorkItemDescriptionEditor } from './WorkItemDescriptionEditor';
 import { WorkItemExecuteDialog } from './WorkItemExecuteDialog';
 import { useWorkItems } from '../../contexts/WorkItemContext';
 import { useCommitCommentTotals } from '../git/hooks/useCommitCommentTotals';
@@ -17,12 +18,14 @@ import type { DiffComment } from '../../../comments/diff-comment-types';
 import { computeStorageKey, patchDiffComment } from '../../utils/diffCommentApi';
 import { isWorkItemsHierarchyEnabled } from '../../utils/config';
 import { WorkItemParentPicker } from './WorkItemParentPicker';
-import { ALLOWED_CHILD_TYPES, type WorkItemGitHubMirrorMetadata } from '@plusplusoneplusplus/coc-client';
+import { ALLOWED_CHILD_TYPES, type UpdateWorkItemRequest, type WorkItemAzureBoardsMirrorMetadata, type WorkItemGitHubMirrorMetadata } from '@plusplusoneplusplus/coc-client';
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
 import { TYPE_LABELS } from './WorkItemHierarchyNode';
 import { WorkItemAiComposer } from './WorkItemAiComposer';
 import { isWorkItemsAiAuthoringEnabled } from '../../utils/config';
-import { WorkItemGitHubMirrorBadge } from './WorkItemGitHubMirrorBadge';
+import { WorkItemRemoteMirrorBadge } from './WorkItemGitHubMirrorBadge';
+
+const UNSAVED_CHANGES_MESSAGE = 'You have unsaved changes. Leave without saving?';
 
 const STATUS_LABELS: Record<string, { label: string; badgeStatus: string }> = {
     created:          { label: 'Created',          badgeStatus: 'queued' },
@@ -79,6 +82,7 @@ interface WorkItemFull {
     executionHistory?: Array<{ taskId: string; processId?: string; startedAt: string; completedAt?: string; status: string; error?: string; autoReExecuted?: boolean; title?: string; sessionCategory?: string }>;
     tags?: string[];
     githubMirror?: WorkItemGitHubMirrorMetadata;
+    azureBoardsMirror?: WorkItemAzureBoardsMirrorMetadata;
     autoExecute?: boolean;
     autoResolveAndReExecute?: boolean;
     autoReExecuteCycles?: number;
@@ -94,6 +98,34 @@ interface WorkItemFull {
     }>;
 }
 
+interface WorkItemDraft {
+    title: string;
+    description: string;
+    priority: 'high' | 'normal' | 'low';
+    tags: string;
+    status: string;
+    parentId?: string;
+    successCriteria: string;
+}
+
+/** Build the editable draft baseline from a loaded work item. */
+function draftFromItem(item: WorkItemFull): WorkItemDraft {
+    return {
+        title: item.title ?? '',
+        description: item.description ?? '',
+        priority: (item.priority ?? 'normal') as 'high' | 'normal' | 'low',
+        tags: (item.tags ?? []).join(', '),
+        status: item.status,
+        parentId: item.parentId,
+        successCriteria: item.successCriteria ?? '',
+    };
+}
+
+/** Normalize a comma-separated tag string to unique, trimmed, non-empty tags. */
+function parseTags(tags: string): string[] {
+    return [...new Set(tags.split(',').map(t => t.trim()).filter(Boolean))];
+}
+
 export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, onViewTask, onViewCommit, onNavigateToTasksTab, isMobile = false, onCreateChild }: WorkItemDetailProps) {
     const [item, setItem] = useState<WorkItemFull | null>(null);
     const [loading, setLoading] = useState(true);
@@ -105,22 +137,15 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const [resolvingDiffComments, setResolvingDiffComments] = useState(false);
     const [resolvingCommitSha, setResolvingCommitSha] = useState<string | null>(null);
     const [resolvingChangeIdx, setResolvingChangeIdx] = useState<number | null>(null);
-    // ── Inline edit state (container items only) ──
-    const [isEditing, setIsEditing] = useState(false);
-    const [editTitle, setEditTitle] = useState('');
-    const [editDescription, setEditDescription] = useState('');
-    const [editPriority, setEditPriority] = useState<'high' | 'normal' | 'low'>('normal');
-    const [editTags, setEditTags] = useState('');
-    const [editParentId, setEditParentId] = useState<string | undefined>(undefined);
+    // ── Always-on inline edit draft (unified Ctrl+S batch) ──
+    const [draft, setDraft] = useState<WorkItemDraft | null>(null);
     const [editError, setEditError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [showParentPicker, setShowParentPicker] = useState(false);
     // ── Mobile add-child type picker state ──
     const [showChildTypePicker, setShowChildTypePicker] = useState(false);
-    // ── Success criteria edit state (goal items only) ──
-    const [editingCriteria, setEditingCriteria] = useState(false);
-    const [criteriaDraft, setCriteriaDraft] = useState('');
-    const [savingCriteria, setSavingCriteria] = useState(false);
+    /** Plan content draft, lifted from WorkItemPlanSection into the unified batch. */
+    const [planDraft, setPlanDraft] = useState<string | null>(null);
 
     const [showAiComposer, setShowAiComposer] = useState(false);
     const aiAuthoringEnabled = isWorkItemsAiAuthoringEnabled();
@@ -181,26 +206,61 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         }
     }, [contextItem, onBack]);
 
-    // Reset edit mode when navigating to a different work item
+    // ── Unified dirty tracking ──────────────────────────────────────────────
+    const baseline = useMemo(() => (item ? draftFromItem(item) : null), [item]);
+    const planBaseline = item?.plan?.content ?? '';
+    const isMetaDirty = !!(draft && baseline && (
+        draft.title !== baseline.title ||
+        draft.description !== baseline.description ||
+        draft.priority !== baseline.priority ||
+        draft.tags !== baseline.tags ||
+        draft.status !== baseline.status ||
+        (draft.parentId ?? undefined) !== (baseline.parentId ?? undefined) ||
+        draft.successCriteria !== baseline.successCriteria
+    ));
+    const isPlanDirty = planDraft !== null && planDraft !== planBaseline;
+    const isDirty = isMetaDirty || isPlanDirty;
+
+    // Reset drafts when navigating to a different work item.
     useEffect(() => {
-        setIsEditing(false);
+        setDraft(null);
+        setPlanDraft(null);
         setEditError(null);
     }, [workItemId]);
+
+    // Initialize drafts once the item loads.
+    useEffect(() => {
+        if (!item) return;
+        if (draft === null) {
+            setDraft(draftFromItem(item));
+            setPlanDraft(item.plan?.content ?? '');
+        }
+    }, [item, draft]);
+
+    // Resync drafts from external updates only when there are no unsaved edits.
+    useEffect(() => {
+        if (!item || draft === null) return;
+        if (!isDirty) {
+            setDraft(draftFromItem(item));
+            setPlanDraft(item.plan?.content ?? '');
+        }
+        // Intentionally keyed on the item identity so external refreshes resync a
+        // clean draft without clobbering in-progress edits.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [item]);
+
+    const updateDraft = useCallback(<K extends keyof WorkItemDraft>(key: K, value: WorkItemDraft[K]) => {
+        setDraft(prev => {
+            const base = prev ?? (item ? draftFromItem(item) : null);
+            return base ? { ...base, [key]: value } : prev;
+        });
+    }, [item]);
 
     const handleExecuteDialogDone = useCallback(async () => {
         setShowExecuteDialog(false);
         await fetchItem();
         onExecuted?.();
     }, [fetchItem, onExecuted]);
-
-    const handleStatusChange = async (newStatus: string) => {
-        try {
-            await getSpaCocClient().workItems.updateStatus(workspaceId, workItemId, newStatus);
-            await fetchItem();
-        } catch (err: any) {
-            setError(err.message || 'Failed to update status');
-        }
-    };
 
     const handleAcceptDone = async () => {
         setAcceptingDone(true);
@@ -329,68 +389,124 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         }
     };
 
-    const handleEditStart = useCallback(() => {
-        if (!item) return;
-        setEditTitle(item.title);
-        setEditDescription(item.description || '');
-        setEditPriority((item.priority ?? 'normal') as 'high' | 'normal' | 'low');
-        setEditTags((item.tags ?? []).join(', '));
-        setEditParentId(item.parentId);
-        setEditError(null);
-        setIsEditing(true);
-    }, [item]);
-
-    const handleEditCancel = useCallback(() => {
-        setIsEditing(false);
-        setEditError(null);
-    }, []);
-
-    const handleEditSave = useCallback(async () => {
-        const trimmedTitle = editTitle.trim();
+    const handleSave = useCallback(async () => {
+        if (!item || !draft) return;
+        const trimmedTitle = draft.title.trim();
         if (!trimmedTitle) {
             setEditError('Title is required');
             return;
         }
+        const base = draftFromItem(item);
+        const type = item.type ?? 'work-item';
         setSaving(true);
         setEditError(null);
         try {
-            const parsedTags = editTags.split(',').map((t: string) => t.trim()).filter(Boolean);
-            const uniqueTags = [...new Set(parsedTags)];
-            const updates: Record<string, unknown> = {
-                title: trimmedTitle,
-                description: editDescription,
-                priority: editPriority,
-                tags: uniqueTags,
-            };
-            if (editParentId !== undefined) {
-                updates.parentId = editParentId;
+            const updates: UpdateWorkItemRequest = {};
+            if (trimmedTitle !== base.title) updates.title = trimmedTitle;
+            if (draft.description !== base.description) updates.description = draft.description;
+            if (draft.priority !== base.priority) updates.priority = draft.priority;
+            if (draft.tags !== base.tags) updates.tags = parseTags(draft.tags);
+            if (draft.status !== base.status) updates.status = draft.status;
+            if ((draft.parentId ?? undefined) !== (base.parentId ?? undefined) && draft.parentId !== undefined) {
+                updates.parentId = draft.parentId;
             }
-            const updated = await getSpaCocClient().workItems.update(workspaceId, workItemId, updates as any);
+            if (type === 'goal' && draft.successCriteria !== base.successCriteria) {
+                updates.successCriteria = draft.successCriteria;
+            }
+            const planChanged = planDraft !== null && planDraft !== (item.plan?.content ?? '');
+            if (planChanged) {
+                updates.plan = {
+                    content: planDraft as string,
+                    resolvedBy: 'user',
+                    summary: 'Updated from inline editing',
+                };
+            }
+
+            let updated: WorkItemFull = item;
+            if (Object.keys(updates).length > 0) {
+                updated = await getSpaCocClient().workItems.update(workspaceId, workItemId, updates) as any;
+            }
             dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item: updated as any });
             await fetchItem();
-            setIsEditing(false);
         } catch (err: any) {
             setEditError(err.message || 'Failed to save changes');
         } finally {
             setSaving(false);
         }
-    }, [editTitle, editDescription, editPriority, editTags, editParentId, workspaceId, workItemId, dispatch, fetchItem]);
+    }, [item, draft, planDraft, workspaceId, workItemId, dispatch, fetchItem]);
 
-    const handleCriteriaSave = useCallback(async () => {
-        setSavingCriteria(true);
-        try {
-            const updated = await getSpaCocClient().workItems.update(workspaceId, workItemId, {
-                successCriteria: criteriaDraft,
-            } as any);
-            dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item: updated as any });
-            await fetchItem();
-            setEditingCriteria(false);
-        } catch {
-            // Keep the editor open on failure; the next fetch surfaces detail-level errors.
-        } finally {
-            setSavingCriteria(false);
+    // Ctrl+S / Cmd+S saves the unified dirty batch.
+    const handleSaveRef = useRef(handleSave);
+    handleSaveRef.current = handleSave;
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) {
+                e.preventDefault();
+                if (isDirty && !saving) handleSaveRef.current();
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [isDirty, saving]);
+
+    // Warn before unloading the page while there are unsaved changes.
+    useEffect(() => {
+        if (!isDirty) return;
+        const onBeforeUnload = (e: BeforeUnloadEvent) => {
+            e.preventDefault();
+            e.returnValue = '';
+        };
+        window.addEventListener('beforeunload', onBeforeUnload);
+        return () => window.removeEventListener('beforeunload', onBeforeUnload);
+    }, [isDirty]);
+
+    const lastAllowedHashRef = useRef(window.location.hash);
+    const revertingHashRef = useRef(false);
+
+    useEffect(() => {
+        if (!isDirty) {
+            lastAllowedHashRef.current = window.location.hash;
+            return;
         }
-    }, [criteriaDraft, workspaceId, workItemId, dispatch, fetchItem]);
+        const onHashChange = () => {
+            if (revertingHashRef.current) {
+                revertingHashRef.current = false;
+                return;
+            }
+            const nextHash = window.location.hash;
+            if (nextHash === lastAllowedHashRef.current) return;
+            if (window.confirm(UNSAVED_CHANGES_MESSAGE)) {
+                lastAllowedHashRef.current = nextHash;
+                return;
+            }
+            revertingHashRef.current = true;
+            window.location.hash = lastAllowedHashRef.current;
+        };
+        const onDocumentClick = (event: MouseEvent) => {
+            const anchor = (event.target as Element | null)?.closest?.('a[href^="#"]') as HTMLAnchorElement | null;
+            if (!anchor) return;
+            const nextHash = new URL(anchor.href, window.location.href).hash;
+            if (!nextHash || nextHash === window.location.hash) return;
+            if (window.confirm(UNSAVED_CHANGES_MESSAGE)) {
+                lastAllowedHashRef.current = nextHash;
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+        };
+        window.addEventListener('hashchange', onHashChange);
+        document.addEventListener('click', onDocumentClick, true);
+        return () => {
+            window.removeEventListener('hashchange', onHashChange);
+            document.removeEventListener('click', onDocumentClick, true);
+        };
+    }, [isDirty]);
+
+    // Guard in-app back navigation while there are unsaved changes.
+    const guardedBack = useCallback(() => {
+        if (isDirty && !window.confirm(UNSAVED_CHANGES_MESSAGE)) return;
+        onBack?.();
+    }, [isDirty, onBack]);
 
     if (loading) {
         return <div className="flex items-center justify-center h-full text-sm text-[#848484]">Loading…</div>;
@@ -408,6 +524,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     }
 
     if (!item) return null;
+
+    const d: WorkItemDraft = draft ?? draftFromItem(item);
 
     const effectiveType = item.type ?? 'work-item';
     const isContainer = ['epic', 'feature', 'pbi'].includes(effectiveType);
@@ -444,7 +562,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                 {/* Breadcrumbs */}
                 <div className="flex items-center gap-1.5 text-[12px] text-[#656d76] dark:text-[#999] min-w-0 flex-wrap" id="crumbs">
                     {onBack && (
-                        <button onClick={onBack} className="text-[#656d76] hover:text-[#1f2328] dark:hover:text-[#ccc] shrink-0" data-testid="work-item-back-btn" aria-label="Back">
+                        <button onClick={guardedBack} className="text-[#656d76] hover:text-[#1f2328] dark:hover:text-[#ccc] shrink-0" data-testid="work-item-back-btn" aria-label="Back">
                             ←
                         </button>
                     )}
@@ -463,19 +581,16 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
 
                 {/* Title row */}
                 <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0 max-w-[820px]">
-                        {isEditing ? (
-                            <input
-                                type="text"
-                                className="text-[20px] font-semibold tracking-[-0.01em] w-full rounded border border-[#d0d7de] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1f2328] dark:text-[#cccccc] px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#0969da]"
-                                value={editTitle}
-                                onChange={e => setEditTitle(e.target.value)}
-                                disabled={saving}
-                                data-testid="wi-edit-title-input"
-                            />
-                        ) : (
-                            <h2 className="text-[20px] leading-[1.25] font-semibold tracking-[-0.01em] text-[#1f2328] dark:text-[#cccccc]" title={item.title} style={{ textWrap: 'pretty' } as React.CSSProperties}>{item.title}</h2>
-                        )}
+                    <div className="min-w-0 max-w-[820px] flex-1">
+                        <input
+                            type="text"
+                            className="text-[20px] font-semibold tracking-[-0.01em] w-full rounded border border-[#d0d7de] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1f2328] dark:text-[#cccccc] px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#0969da]"
+                            value={d.title}
+                            onChange={e => updateDraft('title', e.target.value)}
+                            disabled={saving}
+                            data-testid="wi-title-input"
+                            aria-label="Title"
+                        />
                     </div>
                     <Button variant="ghost" size="sm" onClick={() => {
                         const childTypes = ALLOWED_CHILD_TYPES[effectiveType as WorkItemTypeLabel] ?? [];
@@ -495,10 +610,10 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     <span className={cn('inline-flex items-center rounded-full text-[11px] leading-[1.25] px-[7px] py-px border whitespace-nowrap', typePillClass)}>
                         {TYPE_LABELS[effectiveType as WorkItemTypeLabel] ?? effectiveType}
                     </span>
-                    {/* Status dropdown styled as pill */}
+                    {/* Status dropdown styled as pill — feeds the unified dirty batch */}
                     <select
-                        value={item.status}
-                        onChange={e => handleStatusChange(e.target.value)}
+                        value={d.status}
+                        onChange={e => updateDraft('status', e.target.value)}
                         className={cn(
                             'inline-flex items-center rounded-full text-[11px] leading-[1.25] px-[7px] py-px border cursor-pointer appearance-none',
                             statusPillClass,
@@ -510,39 +625,31 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             <option key={s} value={s}>{STATUS_LABELS[s]?.label ?? s}</option>
                         ))}
                     </select>
-                    {!isEditing && item.priority && (
-                        <span className="inline-flex items-center gap-1 border border-[#d0d7de] dark:border-[#555] rounded-full px-2 py-px text-[12px] leading-[1.4] text-[#656d76] dark:text-[#999] whitespace-nowrap bg-white dark:bg-transparent">
-                            {item.priority === 'high' ? 'High' : item.priority === 'low' ? 'Low' : 'Normal'} priority
-                        </span>
-                    )}
                     {item.plan && (
                         <span className="inline-flex items-center gap-1 border border-[#d0d7de] dark:border-[#555] rounded-full px-2 py-px text-[12px] leading-[1.4] text-[#656d76] dark:text-[#999] whitespace-nowrap bg-white dark:bg-transparent">
                             Plan v{item.plan.version}
                         </span>
                     )}
-                    <WorkItemGitHubMirrorBadge mirror={item.githubMirror} asLink data-testid="work-item-github-mirror-badge" />
+                    <WorkItemRemoteMirrorBadge
+                        githubMirror={item.githubMirror}
+                        azureBoardsMirror={item.azureBoardsMirror}
+                        asLink
+                        data-testid={item.githubMirror ? 'work-item-github-mirror-badge' : 'work-item-azure-boards-mirror-badge'}
+                    />
                     <span className="text-[12px] leading-[1.4] text-[#656d76] dark:text-[#999]">Updated {formatRelativeTime(item.updatedAt)}</span>
+                    {isDirty && (
+                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-px text-[11px] leading-[1.4] border border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-400 whitespace-nowrap" data-testid="wi-dirty-indicator">
+                            ● Unsaved changes
+                        </span>
+                    )}
                 </div>
 
                 {/* Action buttons */}
                 <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                    {isContainer && hierarchyEnabled && (
-                        isEditing ? (
-                            <>
-                                <Button variant="primary" size="sm" onClick={handleEditSave} disabled={saving} loading={saving} data-testid="wi-edit-save-btn">
-                                    Save
-                                </Button>
-                                <Button variant="ghost" size="sm" onClick={handleEditCancel} disabled={saving} data-testid="wi-edit-cancel-btn">
-                                    Cancel
-                                </Button>
-                            </>
-                        ) : (
-                            <Button variant="ghost" size="sm" onClick={handleEditStart} data-testid="wi-edit-btn">
-                                Edit
-                            </Button>
-                        )
-                    )}
-                    {isMobile && isContainer && !isEditing && (
+                    <Button variant="primary" size="sm" onClick={handleSave} disabled={!isDirty || saving} loading={saving} data-testid="wi-save-btn" title="Save changes (Ctrl+S)">
+                        Save
+                    </Button>
+                    {isMobile && isContainer && (
                         <Button
                             variant="ghost"
                             size="sm"
@@ -588,7 +695,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             </Button>
                         </>
                     )}
-                    {aiAuthoringEnabled && !isEditing && (
+                    {aiAuthoringEnabled && (
                         <Button
                             variant="ghost"
                             size="sm"
@@ -650,19 +757,19 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     </div>
                 )}
 
-                {/* Parent info row */}
-                {isEditing && isContainer && effectiveType !== 'epic' ? (
+                {/* Parent info row — editable when hierarchy is enabled (epics have no parent) */}
+                {hierarchyEnabled && effectiveType !== 'epic' ? (
                     <section data-testid="work-item-parent-edit">
                         <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Parent</h3>
                         <div className="flex items-center gap-2">
                             <span className="text-xs text-[#3c3c3c] dark:text-[#cccccc] flex-1">
-                                {editParentId
-                                    ? <span className="font-mono text-[#848484]">{editParentId}</span>
+                                {d.parentId
+                                    ? <span className="font-mono text-[#848484]">{d.parentId}</span>
                                     : <span className="italic text-[#848484]">No parent</span>
                                 }
                             </span>
                             <Button variant="ghost" size="sm" onClick={() => setShowParentPicker(true)} disabled={saving} data-testid="wi-edit-parent-btn">
-                                {editParentId ? 'Change Parent' : 'Set Parent'}
+                                {d.parentId ? 'Change Parent' : 'Set Parent'}
                             </Button>
                         </div>
                     </section>
@@ -675,14 +782,17 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     </section>
                 ) : null}
 
-                {item.githubMirror ? (
-                    <section data-testid="work-item-github-mirror">
-                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">GitHub mirror</h3>
+                {item.githubMirror || item.azureBoardsMirror ? (
+                    <section data-testid={item.githubMirror ? 'work-item-github-mirror' : 'work-item-azure-boards-mirror'}>
+                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">
+                            {item.githubMirror ? 'GitHub mirror' : 'Azure Boards mirror'}
+                        </h3>
                         <div className="flex flex-wrap gap-2">
-                            <WorkItemGitHubMirrorBadge
-                                mirror={item.githubMirror}
+                            <WorkItemRemoteMirrorBadge
+                                githubMirror={item.githubMirror}
+                                azureBoardsMirror={item.azureBoardsMirror}
                                 asLink
-                                data-testid="work-item-github-mirror-link"
+                                data-testid={item.githubMirror ? 'work-item-github-mirror-link' : 'work-item-azure-boards-mirror-link'}
                             />
                         </div>
                     </section>
@@ -694,93 +804,61 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                         <h3 className="text-[13px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc]">Description</h3>
                     </div>
                     <div className="p-4">
-                    {isEditing && isContainer ? (
-                        <textarea
-                            className="w-full min-h-[80px] text-sm p-2 rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] resize-y focus:outline-none focus:ring-1 focus:ring-[#0969da]"
-                            value={editDescription}
-                            onChange={e => setEditDescription(e.target.value)}
-                            disabled={saving}
-                            data-testid="wi-edit-description-input"
-                        />
-                    ) : (
-                        <p className="max-w-[78ch] text-[14px] leading-[1.6] text-[#1f2328] dark:text-[#cccccc]" style={{ textWrap: 'pretty' } as React.CSSProperties}>
-                            {item.description || <span className="italic text-[#656d76]">No description</span>}
-                        </p>
-                    )}
+                    <WorkItemDescriptionEditor
+                        value={d.description}
+                        onChange={v => updateDraft('description', v)}
+                        dirty={!!(baseline && d.description !== baseline.description)}
+                        disabled={saving}
+                    />
                     </div>
                 </article>
 
-                {/* Success Criteria — goal items only */}
+                {/* Success Criteria — goal items only (always editable) */}
                 {effectiveType === 'goal' && (
                     <section data-testid="wi-success-criteria">
-                        <div className="flex items-center justify-between mb-1">
-                            <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase">Success Criteria</h3>
-                            {!editingCriteria && (
-                                <button
-                                    className="text-[11px] text-[#0078d4] dark:text-[#3794ff] hover:underline"
-                                    onClick={() => { setCriteriaDraft(item.successCriteria || ''); setEditingCriteria(true); }}
-                                    data-testid="wi-success-criteria-edit-btn"
-                                >
-                                    Edit
-                                </button>
-                            )}
-                        </div>
-                        {editingCriteria ? (
-                            <div className="space-y-2">
-                                <textarea
-                                    className="w-full min-h-[80px] text-sm p-2 rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] resize-y focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
-                                    value={criteriaDraft}
-                                    onChange={e => setCriteriaDraft(e.target.value)}
-                                    disabled={savingCriteria}
-                                    placeholder="What defines this goal as achieved?"
-                                    data-testid="wi-success-criteria-input"
-                                />
-                                <div className="flex items-center gap-2">
-                                    <Button variant="primary" size="sm" onClick={handleCriteriaSave} disabled={savingCriteria} loading={savingCriteria} data-testid="wi-success-criteria-save-btn">
-                                        Save
-                                    </Button>
-                                    <Button variant="ghost" size="sm" onClick={() => setEditingCriteria(false)} disabled={savingCriteria}>
-                                        Cancel
-                                    </Button>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="text-sm whitespace-pre-wrap text-[#3c3c3c] dark:text-[#cccccc]">
-                                {item.successCriteria || <span className="italic text-[#848484]">No success criteria defined</span>}
-                            </div>
-                        )}
+                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Success Criteria</h3>
+                        <textarea
+                            className="w-full min-h-[80px] text-sm p-2 rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] resize-y focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
+                            value={d.successCriteria}
+                            onChange={e => updateDraft('successCriteria', e.target.value)}
+                            disabled={saving}
+                            placeholder="What defines this goal as achieved?"
+                            data-testid="wi-success-criteria-input"
+                            aria-label="Success criteria"
+                        />
                     </section>
                 )}
-                {isEditing && isContainer && (
-                    <section className="space-y-3" data-testid="wi-edit-fields">
-                        <div>
-                            <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Priority</h3>
-                            <select
-                                className="text-sm px-2 py-1 rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
-                                value={editPriority}
-                                onChange={e => setEditPriority(e.target.value as 'high' | 'normal' | 'low')}
-                                disabled={saving}
-                                data-testid="wi-edit-priority-select"
-                            >
-                                <option value="high">High</option>
-                                <option value="normal">Normal</option>
-                                <option value="low">Low</option>
-                            </select>
-                        </div>
-                        <div>
-                            <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Tags (comma-separated)</h3>
-                            <input
-                                type="text"
-                                className="w-full text-sm px-2 py-1 rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
-                                value={editTags}
-                                onChange={e => setEditTags(e.target.value)}
-                                disabled={saving}
-                                placeholder="e.g. frontend, critical"
-                                data-testid="wi-edit-tags-input"
-                            />
-                        </div>
-                    </section>
-                )}
+                {/* Priority + Tags — always editable for every type */}
+                <section className="space-y-3" data-testid="wi-edit-fields">
+                    <div>
+                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Priority</h3>
+                        <select
+                            className="text-sm px-2 py-1 rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
+                            value={d.priority}
+                            onChange={e => updateDraft('priority', e.target.value as 'high' | 'normal' | 'low')}
+                            disabled={saving}
+                            data-testid="wi-priority-select"
+                            aria-label="Priority"
+                        >
+                            <option value="high">High</option>
+                            <option value="normal">Normal</option>
+                            <option value="low">Low</option>
+                        </select>
+                    </div>
+                    <div>
+                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Tags (comma-separated)</h3>
+                        <input
+                            type="text"
+                            className="w-full text-sm px-2 py-1 rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
+                            value={d.tags}
+                            onChange={e => updateDraft('tags', e.target.value)}
+                            disabled={saving}
+                            placeholder="e.g. frontend, critical"
+                            data-testid="wi-tags-input"
+                            aria-label="Tags"
+                        />
+                    </div>
+                </section>
 
                 {/* Plan — leaf items only */}
                 {!isContainer && (
@@ -796,6 +874,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             workItemId={workItemId}
                             plan={item.plan}
                             canEdit={canEditPlan}
+                            draftContent={planDraft}
+                            onDraftChange={setPlanDraft}
                             onUpdated={fetchItem}
                             onError={setError}
                             onNavigateToTasksTab={onNavigateToTasksTab}
@@ -1136,9 +1216,9 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     workspaceId={workspaceId}
                     workItemId={workItemId}
                     workItemType={effectiveType as any}
-                    currentParentId={editParentId}
+                    currentParentId={d.parentId}
                     onlyPick={true}
-                    onParentChanged={(newParentId) => setEditParentId(newParentId)}
+                    onParentChanged={(newParentId) => updateDraft('parentId', newParentId ?? undefined)}
                     onClose={() => setShowParentPicker(false)}
                 />
             )}

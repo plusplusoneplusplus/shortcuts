@@ -4,9 +4,8 @@
  *
  * The queue is grouped into two sections (Needs review / Ready after
  * checks) and filtered via four pills (All / Mine / Blocked / Ready).
- * Real PR data still drives the list; AI-flagged risk, file count, and
- * review minutes shown on each row come from the deterministic
- * `pr-mock-data` module.
+ * Real PR data drives the list plus queue row file count, review minutes,
+ * and deterministic risk badges.
  *
  * Desktop: resizable split-panel (queue left, detail right).
  * Mobile: single-pane toggle (queue ↔ detail).
@@ -14,7 +13,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
-import type { PrSuggestion } from '@plusplusoneplusplus/coc-client';
+import type { PrSuggestion, RecentOpenedPullRequestEntry } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useApp } from '../../contexts/AppContext';
 import { cn } from '../../ui';
@@ -36,7 +35,7 @@ import {
     AttentionGroup,
     type QueueSection,
 } from './pr-attention-groups';
-import { getMockQueueRisk, type QueueFilter, type QueueFilterCounts } from './pr-mock-data';
+import type { QueueFilter, QueueFilterCounts } from './pr-derived-data';
 import type { PullRequest, PrStatus } from './pr-utils';
 import { matchWorkspaceForPrUrl, parsePrInput, type WorkspaceLike } from './pr-open-utils';
 
@@ -92,6 +91,50 @@ function scopeForFilter(filter: QueueFilter): 'mine' | 'all' {
     return (filter === 'all' || filter === 'foryou') ? 'all' : 'mine';
 }
 
+class PullRequestOpenError extends Error {
+    readonly status: number | undefined;
+
+    constructor(message: string, status?: number) {
+        super(message);
+        this.name = 'PullRequestOpenError';
+        this.status = status;
+    }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function extractRecentPrWebUrl(value: unknown): string | undefined {
+    if (typeof value !== 'string') return undefined;
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+
+    try {
+        const parsed = new URL(trimmed);
+        if ((parsed.protocol === 'http:' || parsed.protocol === 'https:') && !parsed.username && !parsed.password) {
+            return trimmed;
+        }
+    } catch {
+        return undefined;
+    }
+    return undefined;
+}
+
+function buildRecentOpenedRecord(pr: unknown, prNumber: number): { number: number; title: string; webUrl?: string } {
+    const record = isRecord(pr) ? pr : {};
+    const rawTitle = record.title;
+    const title = typeof rawTitle === 'string' && rawTitle.trim()
+        ? rawTitle.trim()
+        : `Pull request #${prNumber}`;
+    const webUrl = extractRecentPrWebUrl(record.webUrl) ?? extractRecentPrWebUrl(record.url);
+    return {
+        number: prNumber,
+        title,
+        ...(webUrl ? { webUrl } : {}),
+    };
+}
+
 /** Filter pills that classify a PR by attention/queue section. */
 function matchesFilter(pr: PullRequest, filter: QueueFilter, suggestedPrNumbers?: Set<number>): boolean {
     if (filter === 'all' || filter === 'mine') return true;
@@ -134,6 +177,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     const [openPrInput, setOpenPrInput] = useState('');
     const [openPrError, setOpenPrError] = useState<string | null>(null);
     const [openPrLoading, setOpenPrLoading] = useState(false);
+    const [recentOpenedPrs, setRecentOpenedPrs] = useState<RecentOpenedPullRequestEntry[]>([]);
 
     // ── PR suggestions state ─────────────────────────────────────
     const suggestionsEnabled = isPullRequestsSuggestionsEnabled();
@@ -263,6 +307,23 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     useEffect(() => {
         fetchPrs(true);
     }, [fetchPrs]);
+
+    useEffect(() => {
+        let cancelled = false;
+        setRecentOpenedPrs([]);
+        getSpaCocClient().pullRequests.listRecentOpened(repoId, workspaceId)
+            .then(data => {
+                if (!cancelled) {
+                    setRecentOpenedPrs(data.entries ?? []);
+                }
+            })
+            .catch(err => {
+                if (!cancelled) {
+                    console.warn('Failed to load recently opened pull requests', err);
+                }
+            });
+        return () => { cancelled = true; };
+    }, [repoId, workspaceId]);
 
     // Fetch cached suggestions on mount when feature is enabled.
     useEffect(() => {
@@ -398,20 +459,69 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     }
 
     /** Navigate to a PR detail page after validating that the PR exists. */
-    const openPrInRepo = useCallback(async (targetRepoId: string, prNumber: number) => {
+    const openPrInRepo = useCallback(async (targetRepoId: string, prNumber: number): Promise<unknown> => {
+        let pr: unknown;
         try {
-            await getSpaCocClient().pullRequests.get(targetRepoId, String(prNumber));
+            pr = await getSpaCocClient().pullRequests.get(targetRepoId, String(prNumber));
         } catch (err) {
             if (err instanceof CocApiError && err.status === 404) {
-                throw new Error(`Pull request #${prNumber} not found.`);
+                throw new PullRequestOpenError(`Pull request #${prNumber} not found.`, 404);
             }
-            throw new Error(getSpaCocClientErrorMessage(err, `Failed to open pull request #${prNumber}.`));
+            throw new PullRequestOpenError(getSpaCocClientErrorMessage(err, `Failed to open pull request #${prNumber}.`));
         }
         dispatch({ type: 'SET_SELECTED_PR', prId: prNumber });
         dispatch({ type: 'SET_PR_DETAIL_TAB', tab: 'overview' });
         window.location.hash = `#repos/${encodeURIComponent(targetRepoId)}/pull-requests/${prNumber}/overview`;
         if (isMobile) setMobileShowDetail(true);
+        return pr;
     }, [dispatch, isMobile]);
+
+    const recordRecentOpenedPr = useCallback(async (
+        targetRepoId: string,
+        targetWorkspaceId: string,
+        prNumber: number,
+        pr: unknown,
+    ) => {
+        const data = await getSpaCocClient().pullRequests.recordRecentOpened(
+            targetRepoId,
+            targetWorkspaceId,
+            buildRecentOpenedRecord(pr, prNumber),
+        );
+        if (targetRepoId === repoId && targetWorkspaceId === workspaceId) {
+            setRecentOpenedPrs(data.entries ?? []);
+        }
+    }, [repoId, workspaceId]);
+
+    const removeRecentOpenedPr = useCallback(async (entry: RecentOpenedPullRequestEntry) => {
+        const data = await getSpaCocClient().pullRequests.removeRecentOpened(
+            entry.repoId,
+            entry.workspaceId,
+            entry.number,
+        );
+        if (entry.repoId === repoId && entry.workspaceId === workspaceId) {
+            setRecentOpenedPrs(data.entries ?? []);
+        }
+    }, [repoId, workspaceId]);
+
+    const handleRecentOpenedClick = useCallback(async (entry: RecentOpenedPullRequestEntry) => {
+        if (openPrLoading) return;
+        setOpenPrError(null);
+        setOpenPrLoading(true);
+        try {
+            await openPrInRepo(entry.repoId, entry.number);
+        } catch (err) {
+            setOpenPrError(err instanceof Error ? err.message : String(err));
+            if (err instanceof PullRequestOpenError && err.status === 404) {
+                try {
+                    await removeRecentOpenedPr(entry);
+                } catch (removeErr) {
+                    console.warn('Failed to remove stale recently opened pull request', removeErr);
+                }
+            }
+        } finally {
+            setOpenPrLoading(false);
+        }
+    }, [openPrInRepo, openPrLoading, removeRecentOpenedPr]);
 
     const handleOpenPr = useCallback(async () => {
         if (openPrLoading) return;
@@ -423,9 +533,11 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         }
 
         let targetRepoId: string;
+        let targetWorkspaceId: string;
         let prNumber: number;
         if (parsed.kind === 'number') {
             targetRepoId = repoId;
+            targetWorkspaceId = workspaceId;
             prNumber = parsed.number;
         } else {
             const ws = matchWorkspaceForPrUrl(
@@ -437,19 +549,25 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                 return;
             }
             targetRepoId = ws.id;
+            targetWorkspaceId = ws.id;
             prNumber = parsed.number;
         }
 
         setOpenPrLoading(true);
         try {
-            await openPrInRepo(targetRepoId, prNumber);
+            const pr = await openPrInRepo(targetRepoId, prNumber);
+            try {
+                await recordRecentOpenedPr(targetRepoId, targetWorkspaceId, prNumber, pr);
+            } catch (err) {
+                setOpenPrError(getSpaCocClientErrorMessage(err, 'Opened PR, but failed to update Recently opened.'));
+            }
             setOpenPrInput('');
         } catch (err) {
             setOpenPrError(err instanceof Error ? err.message : String(err));
         } finally {
             setOpenPrLoading(false);
         }
-    }, [openPrInput, openPrLoading, openPrInRepo, repoId, state.workspaces]);
+    }, [openPrInput, openPrLoading, openPrInRepo, recordRecentOpenedPr, repoId, state.workspaces, workspaceId]);
 
     function handlePrSelect(id: string, checked: boolean, shiftKey: boolean, sectionPrs: PullRequest[]) {
         const sectionIds = sectionPrs.map(getPrSelectionId);
@@ -560,6 +678,37 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                             {openPrError}
                         </div>
                     )}
+                </div>
+            )}
+            {!queueCollapsed && recentOpenedPrs.length > 0 && (
+                <div
+                    className="flex shrink-0 flex-col gap-1 border-b border-gray-200 px-2.5 py-1 dark:border-gray-700"
+                    data-testid="recent-opened-prs"
+                >
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        Recently opened
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                        {recentOpenedPrs.map(entry => (
+                            <button
+                                key={`${entry.workspaceId}:${entry.repoId}:${entry.number}`}
+                                type="button"
+                                onClick={() => { void handleRecentOpenedClick(entry); }}
+                                disabled={openPrLoading}
+                                title={`Open pull request #${entry.number}: ${entry.title}`}
+                                aria-label={`Open pull request #${entry.number}: ${entry.title}`}
+                                data-testid="recent-opened-pr-entry"
+                                className="group flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-0.5 text-left text-[11px] text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60 dark:text-gray-300 dark:hover:bg-gray-800"
+                            >
+                                <span className="shrink-0 font-semibold text-blue-600 dark:text-blue-300">
+                                    #{entry.number}
+                                </span>
+                                <span className="min-w-0 flex-1 truncate">
+                                    {entry.title}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
                 </div>
             )}
             {!queueCollapsed && (
@@ -822,9 +971,6 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
             </div>
         );
     }
-
-    // Suppress unused-warning when mock helper is only re-exported for tests.
-    void getMockQueueRisk;
 
     const effectiveLeftPanelWidth = queueCollapsed ? QUEUE_COLLAPSED_WIDTH : leftPanelWidth;
 

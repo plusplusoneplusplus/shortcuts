@@ -22,15 +22,16 @@
  * spec is developed interactively (e.g. a Ralph grilling session). Other types
  * skip it and start at `created`.
  */
-export type WorkItemStatus = 'created' | 'drafting' | 'planning' | 'readyToExecute' | 'executing' | 'aiDone' | 'aiFailed' | 'done' | 'failed';
+export type KnownWorkItemStatus = 'created' | 'drafting' | 'planning' | 'readyToExecute' | 'executing' | 'aiDone' | 'aiFailed' | 'done' | 'failed';
+export type WorkItemStatus = KnownWorkItemStatus | (string & {});
 
 /** All valid work item statuses (useful for validation). */
-export const WORK_ITEM_STATUSES: readonly WorkItemStatus[] = Object.freeze([
+export const WORK_ITEM_STATUSES: readonly KnownWorkItemStatus[] = Object.freeze([
     'created', 'drafting', 'planning', 'readyToExecute', 'executing', 'aiDone', 'aiFailed', 'done', 'failed',
 ]);
 
 /** Terminal statuses that cannot transition further. */
-export const TERMINAL_WORK_ITEM_STATUSES: ReadonlySet<WorkItemStatus> = new Set([
+export const TERMINAL_WORK_ITEM_STATUSES: ReadonlySet<KnownWorkItemStatus> = new Set([
     'done', 'failed',
 ]);
 
@@ -96,11 +97,11 @@ export const ALLOWED_CHILD_TYPES: Record<WorkItemType, readonly WorkItemType[]> 
 // ============================================================================
 
 /** Top-level tracker partition for an Epic tree. */
-export type WorkItemTrackerKind = 'local-only' | 'github-backed';
+export type WorkItemTrackerKind = 'local-only' | 'github-backed' | 'azure-boards-backed';
 
 /** All valid tracker kinds (useful for validation). */
 export const WORK_ITEM_TRACKER_KINDS: readonly WorkItemTrackerKind[] = Object.freeze([
-    'local-only', 'github-backed',
+    'local-only', 'github-backed', 'azure-boards-backed',
 ]);
 
 /** GitHub-backed Epic root metadata. Repository identity is workspace-scoped config, not per Epic. */
@@ -131,6 +132,40 @@ export interface WorkItemGitHubMirrorMetadata {
     lastPulledAt?: string;
 }
 
+/** Azure Boards-backed Epic root metadata. Organization/project identity is workspace-scoped config. */
+export interface WorkItemAzureBoardsTrackerMetadata {
+    /** Azure Boards work item ID for the imported/pushed Epic root. */
+    workItemId?: number;
+    /** Browser URL for the Azure Boards work item. */
+    workItemUrl?: string;
+    /** Azure Boards revision number from the last successful pull/push. */
+    revision?: number;
+    /** Provider updated-at timestamp. */
+    updatedAt?: string;
+    /** Last successful Azure Boards→local pull timestamp for this Epic tree. */
+    lastPulledAt?: string;
+}
+
+/** Per-item read-mirror details for an Azure Boards-backed Epic tree. */
+export interface WorkItemAzureBoardsMirrorMetadata {
+    /** Azure Boards work item ID for this mirrored item. */
+    workItemId: number;
+    /** Browser URL for this mirrored Azure Boards work item. */
+    workItemUrl?: string;
+    /** Azure Boards revision number from the last successful pull/push. */
+    revision?: number;
+    /** Mirrored Azure Boards work item type. CoC type is mapped separately. */
+    workItemType?: string;
+    /** Mirrored Azure Boards state. */
+    state?: string;
+    /** Provider updated-at timestamp. */
+    updatedAt?: string;
+    /** Last successful Azure Boards→local pull timestamp for this item. */
+    lastPulledAt?: string;
+    /** Hash of Azure-owned local fields after the last successful pull/push. Used to warn on remote-wins conflict pulls. */
+    lastSyncedLocalFingerprint?: string;
+}
+
 /**
  * Tracker identity for a work-item tree.
  *
@@ -139,13 +174,14 @@ export interface WorkItemGitHubMirrorMetadata {
  */
 export type WorkItemTrackerMetadata =
     | { kind: 'local-only' }
-    | { kind: 'github-backed'; provider: 'github'; github: WorkItemGitHubTrackerMetadata };
+    | { kind: 'github-backed'; provider: 'github'; github: WorkItemGitHubTrackerMetadata }
+    | { kind: 'azure-boards-backed'; provider: 'azure-boards'; azureBoards: WorkItemAzureBoardsTrackerMetadata };
 
 // ============================================================================
 // External Provider Metadata
 // ============================================================================
 
-/** External work-item sync provider. Azure Boards is reserved for a future adapter. */
+/** External work-item sync provider. */
 export type WorkItemSyncProvider = 'github' | 'azure-boards';
 
 /** Remote issue identity encoded in provider-owned metadata such as GitHub issue bodies. */
@@ -315,6 +351,8 @@ export interface WorkItem {
     tracker?: WorkItemTrackerMetadata;
     /** GitHub read-mirror identity for items inside a GitHub-backed Epic tree. */
     githubMirror?: WorkItemGitHubMirrorMetadata;
+    /** Azure Boards read-mirror identity for items inside an Azure Boards-backed Epic tree. */
+    azureBoardsMirror?: WorkItemAzureBoardsMirrorMetadata;
     /** ISO timestamp when the work item was created. */
     createdAt: string;
     /** ISO timestamp of last modification. */
@@ -412,6 +450,8 @@ export interface WorkItemIndexEntry {
     tracker?: WorkItemTrackerMetadata;
     /** GitHub read-mirror identity for items inside a GitHub-backed Epic tree. */
     githubMirror?: WorkItemGitHubMirrorMetadata;
+    /** Azure Boards read-mirror identity for items inside an Azure Boards-backed Epic tree. */
+    azureBoardsMirror?: WorkItemAzureBoardsMirrorMetadata;
     source: WorkItemSource;
     priority?: WorkItemPriority;
     planVersion?: number;
@@ -508,11 +548,11 @@ export interface WorkItemStore {
 
 /** Check if a work item status is terminal (done or failed). */
 export function isTerminalStatus(status: WorkItemStatus): boolean {
-    return TERMINAL_WORK_ITEM_STATUSES.has(status);
+    return isKnownWorkItemStatus(status) && TERMINAL_WORK_ITEM_STATUSES.has(status);
 }
 
 /** Valid status transitions. */
-export const VALID_TRANSITIONS: Record<WorkItemStatus, readonly WorkItemStatus[]> = {
+export const VALID_TRANSITIONS: Record<KnownWorkItemStatus, readonly KnownWorkItemStatus[]> = {
     created:        ['drafting', 'planning', 'readyToExecute', 'done', 'failed'],
     drafting:       ['planning', 'readyToExecute', 'created', 'failed'],
     planning:       ['readyToExecute', 'drafting', 'created', 'done', 'failed'],
@@ -524,8 +564,14 @@ export const VALID_TRANSITIONS: Record<WorkItemStatus, readonly WorkItemStatus[]
     failed:         ['created'],      // Allow re-opening
 };
 
+/** Check whether a status is one of CoC's built-in lifecycle states. */
+export function isKnownWorkItemStatus(status: unknown): status is KnownWorkItemStatus {
+    return typeof status === 'string' && WORK_ITEM_STATUSES.includes(status as KnownWorkItemStatus);
+}
+
 /** Check if a status transition is valid. */
 export function isValidTransition(from: WorkItemStatus, to: WorkItemStatus): boolean {
+    if (!isKnownWorkItemStatus(from) || !isKnownWorkItemStatus(to)) return false;
     return VALID_TRANSITIONS[from]?.includes(to) ?? false;
 }
 
@@ -562,6 +608,7 @@ export function toIndexEntry(item: WorkItem): WorkItemIndexEntry {
         parentId: item.parentId,
         tracker: item.tracker,
         githubMirror: item.githubMirror,
+        azureBoardsMirror: item.azureBoardsMirror,
         source: item.source,
         priority: item.priority,
         planVersion: item.plan?.version,

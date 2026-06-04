@@ -15,7 +15,7 @@ import * as http from 'http';
 import * as url from 'url';
 import type { Route } from '../types';
 import { sendJSON } from '../core/api-handler';
-import type { WorkItemStore, WorkItemIndexEntry, WorkItemStatus, WorkItemTrackerKind, WorkItemType } from '../work-items/types';
+import type { WorkItemStore, WorkItemIndexEntry, WorkItemTrackerKind, WorkItemType } from '../work-items/types';
 import { WORK_ITEM_TYPES, WORK_ITEM_STATUSES, WORK_ITEM_TRACKER_KINDS, getOwnWorkItemTrackerKind } from '../work-items/types';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -24,7 +24,7 @@ import { WORK_ITEM_TYPES, WORK_ITEM_STATUSES, WORK_ITEM_TRACKER_KINDS, getOwnWor
 interface WorkItemRollup {
     descendantCount: number;
     byType: Record<WorkItemType, number>;
-    byStatus: Record<WorkItemStatus, number>;
+    byStatus: Record<string, number>;
 }
 
 /** One node in the hierarchy tree returned by the tree endpoint. */
@@ -54,7 +54,7 @@ function emptyRollup(): WorkItemRollup {
     return {
         descendantCount: 0,
         byType: Object.fromEntries(WORK_ITEM_TYPES.map(t => [t, 0])) as Record<WorkItemType, number>,
-        byStatus: Object.fromEntries(WORK_ITEM_STATUSES.map(s => [s, 0])) as Record<WorkItemStatus, number>,
+        byStatus: Object.fromEntries(WORK_ITEM_STATUSES.map(s => [s, 0])),
     };
 }
 
@@ -63,8 +63,8 @@ function mergeRollup(target: WorkItemRollup, source: WorkItemRollup): void {
     for (const t of Object.keys(source.byType) as WorkItemType[]) {
         target.byType[t] = target.byType[t] + source.byType[t];
     }
-    for (const s of Object.keys(source.byStatus) as WorkItemStatus[]) {
-        target.byStatus[s] = target.byStatus[s] + source.byStatus[s];
+    for (const s of Object.keys(source.byStatus)) {
+        target.byStatus[s] = (target.byStatus[s] ?? 0) + source.byStatus[s];
     }
 }
 
@@ -72,7 +72,7 @@ function mergeRollup(target: WorkItemRollup, source: WorkItemRollup): void {
 function accumulateEntry(rollup: WorkItemRollup, entry: WorkItemIndexEntry): void {
     const type = (entry.type ?? 'work-item') as WorkItemType;
     rollup.byType[type] = rollup.byType[type] + 1;
-    rollup.byStatus[entry.status as WorkItemStatus] = rollup.byStatus[entry.status as WorkItemStatus] + 1;
+    rollup.byStatus[entry.status] = (rollup.byStatus[entry.status] ?? 0) + 1;
     rollup.descendantCount++;
 }
 

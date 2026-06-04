@@ -18,15 +18,16 @@ export function resolveEffortTier(
 
 /**
  * Returns the effective tier to use given a desired tier and the current map.
- * Falls back to the first configured tier in preference order [medium, low, high]
- * when the desired tier is unconfigured, leaving the desired tier unchanged if
- * nothing is configured (the UI will show zero-tier legacy-fallback anyway).
+ * Falls back to the first configured tier in preference order
+ * [medium, low, very-low, high] when the desired tier is unconfigured, leaving
+ * the desired tier unchanged if nothing is configured (the UI will show
+ * zero-tier legacy-fallback anyway).
  */
 export function resolveEffectiveTier(
     desiredTier: EffortTierKey,
     tierMap: LocalEffortTiersMap,
 ): EffortTierKey {
     if (tierMap[desiredTier]?.model) return desiredTier;
-    const fallbackOrder: EffortTierKey[] = ['medium', 'low', 'high'];
+    const fallbackOrder: EffortTierKey[] = ['medium', 'low', 'very-low', 'high'];
     return fallbackOrder.find(t => tierMap[t]?.model) ?? desiredTier;
 }

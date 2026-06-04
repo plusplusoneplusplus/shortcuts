@@ -203,6 +203,23 @@ export function FollowUpInputArea({
     // Reset dismiss state whenever a new set of suggestions arrives.
     useEffect(() => { setSuggestionsDismissed(false); }, [suggestions]);
 
+    // Mobile/tablet (≤1023px) overflow ("⋯") menu state for the inner
+    // toolbar's low-priority tool actions (slash / mention / attach). On
+    // desktop (lg+) those actions render inline and this menu is hidden, so
+    // the desktop layout is unchanged.
+    const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
+    const toolsMenuRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (!toolsMenuOpen) return;
+        function handleClick(e: MouseEvent) {
+            if (toolsMenuRef.current && !toolsMenuRef.current.contains(e.target as Node)) {
+                setToolsMenuOpen(false);
+            }
+        }
+        document.addEventListener('mousedown', handleClick);
+        return () => document.removeEventListener('mousedown', handleClick);
+    }, [toolsMenuOpen]);
+
     // Sync programmatic followUpInput changes(draft restore, clear after send) to the editor.
     // Guard prevents re-setting when the change originated from the user typing.
     // skipNextSyncRef is set by selectSkill callers so the effect does not overwrite the cursor
@@ -369,7 +386,7 @@ export function FollowUpInputArea({
                 'shrink-0 rounded bg-[#f14c4c] text-white font-medium hover:bg-[#d93636] disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-[#f14c4c]',
                 compactModeSelector
                     ? 'h-[34px] px-2 sm:px-3 text-sm'
-                    : 'h-[24px] px-1.5 text-[11px]',
+                    : 'h-8 px-2 lg:h-[24px] lg:px-1.5 text-[11px]',
             )}
             onClick={() => {
                 if (!isCancelling) onStop?.();
@@ -619,7 +636,7 @@ export function FollowUpInputArea({
                             data-testid="activity-chat-input"
                         />
                         <div
-                            className="flex flex-wrap items-center gap-x-px gap-y-0.5 pl-2 pr-1.5 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
+                            className="flex flex-nowrap lg:flex-wrap items-center gap-x-px gap-y-0.5 pl-2 pr-1.5 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
                             data-testid="chat-input-toolbar"
                         >
                             {/* Agent provider chip — leftmost, always disabled because
@@ -632,17 +649,35 @@ export function FollowUpInputArea({
                                 selected={activeProvider ?? 'copilot'}
                                 onChange={() => {}}
                                 disabled={true}
+                                mobileTapTarget={true}
                             />
                             <span aria-hidden="true" data-testid="chat-toolbar-divider-provider" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
-                            {/* Mode pill selector — first in toolbar */}
+                            {/* Mode pill selector — first in toolbar (desktop ≥1024px). */}
                             {!hideModeSelector && (
-                                <div data-testid="mode-selector" className="shrink-0 mr-0.5">
+                                <div data-testid="mode-selector" className="shrink-0 mr-0.5 hidden lg:flex">
                                     <ModePillSelector
                                         options={pillOptions}
                                         value={selectedMode}
                                         onChange={(m) => setSelectedMode(m)}
                                     />
                                 </div>
+                            )}
+                            {/* Compact mode cycle button — mobile/tablet (≤1023px)
+                                 only. The segmented ModePillSelector is too wide for
+                                 a single row on phones, so it collapses to a single
+                                 tap-to-cycle button here. */}
+                            {!hideModeSelector && (
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedMode(cycleMode(selectedMode, allowedModes))}
+                                    className="ctool lg:hidden shrink-0 inline-flex items-center gap-0.5 h-8 px-2 mr-0.5 rounded-sm border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
+                                    data-testid="mode-cycle-btn-compact"
+                                    aria-label={`Mode: ${selectedMode}. Tap to switch.`}
+                                    title={MODE_TOOLTIPS[selectedMode] + ' (tap to cycle)'}
+                                >
+                                    <span>{MODE_ICONS[selectedMode]}</span>
+                                    <span className="text-[10px] text-[#848484] leading-none" aria-hidden="true">▾</span>
+                                </button>
                             )}
                             {/* Divider between the mode zone and the model/tier zone. */}
                             {!hideModeSelector && (modelCommand || useEffortTierMode) && (
@@ -657,6 +692,7 @@ export function FollowUpInputArea({
                                     selectedTier={selectedEffortTier}
                                     onChange={onEffortTierChange}
                                     data-testid="follow-up-effort-tier-selector"
+                                    mobileTapTarget={true}
                                 />
                             )}
                             {/* Model selector chip — shows the active model
@@ -665,7 +701,7 @@ export function FollowUpInputArea({
                                 <div className="relative shrink-0" data-testid="model-picker-chip-container">
                                     <button
                                         type="button"
-                                        className="ctool inline-flex items-center gap-1 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 min-w-0 max-w-[40vw] sm:max-w-[180px] transition-colors"
+                                        className="ctool inline-flex items-center gap-1 h-8 px-2 lg:h-[22px] lg:px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 min-w-0 max-w-[40vw] sm:max-w-[180px] transition-colors"
                                         onClick={() => {
                                             if (modelCommand.modelMenuVisible) {
                                                 modelCommand.dismissModelMenu();
@@ -741,10 +777,71 @@ export function FollowUpInputArea({
                             <div className="flex-1 min-w-0" />
                             {/* Tools zone — slash/mention/attach live on the
                                  right of the spacer (matches the OpenDesign
-                                 composer ordering: mode · model · tools · send). */}
+                                 composer ordering: mode · model · tools · send).
+                                 On mobile/tablet (≤1023px) these collapse into a
+                                 single overflow ("⋯") menu so the toolbar stays
+                                 on one row; on desktop (lg+) they render inline. */}
+                            <div ref={toolsMenuRef} className="relative shrink-0 lg:hidden" data-testid="chat-toolbar-overflow">
+                                <button
+                                    type="button"
+                                    className="ctool inline-flex items-center justify-center h-8 w-8 rounded-sm text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
+                                    onClick={() => setToolsMenuOpen(o => !o)}
+                                    aria-label="More actions"
+                                    title="More actions (slash, mention, attach)"
+                                    aria-haspopup="menu"
+                                    aria-expanded={toolsMenuOpen}
+                                    data-testid="chat-toolbar-overflow-btn"
+                                >
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                                        <circle cx="3" cy="8" r="1.4" />
+                                        <circle cx="8" cy="8" r="1.4" />
+                                        <circle cx="13" cy="8" r="1.4" />
+                                    </svg>
+                                </button>
+                                {toolsMenuOpen && (
+                                    <div
+                                        className="absolute bottom-full mb-1 right-0 z-[10000] min-w-[160px] py-0.5 rounded-md shadow-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]"
+                                        role="menu"
+                                        aria-label="More composer actions"
+                                        data-testid="chat-toolbar-overflow-menu"
+                                    >
+                                        <button
+                                            type="button"
+                                            role="menuitem"
+                                            className="w-full flex items-center gap-2 px-2.5 py-2 text-left text-[12px] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] cursor-pointer"
+                                            onClick={() => { focusInputAndInsertSlash(); setToolsMenuOpen(false); }}
+                                            data-testid="chat-toolbar-overflow-slash"
+                                        >
+                                            <span aria-hidden="true" className="font-mono text-[12px] w-4 text-center text-[#848484]">/</span>
+                                            Slash command
+                                        </button>
+                                        <button
+                                            type="button"
+                                            role="menuitem"
+                                            className="w-full flex items-center gap-2 px-2.5 py-2 text-left text-[12px] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] cursor-pointer"
+                                            onClick={() => { focusInputAndInsertSlash(); setToolsMenuOpen(false); }}
+                                            data-testid="chat-toolbar-overflow-mention"
+                                        >
+                                            <span aria-hidden="true" className="font-mono text-[12px] w-4 text-center text-[#848484]">@</span>
+                                            Mention a skill
+                                        </button>
+                                        <button
+                                            type="button"
+                                            role="menuitem"
+                                            disabled={inputDisabled}
+                                            className="w-full flex items-center gap-2 px-2.5 py-2 text-left text-[12px] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                            onClick={() => { fileInputRef.current?.click(); setToolsMenuOpen(false); }}
+                                            data-testid="chat-toolbar-overflow-attach"
+                                        >
+                                            <span aria-hidden="true" className="w-4 text-center text-[#848484]">＋</span>
+                                            Attach files
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                             <button
                                 type="button"
-                                className="ctool shrink-0 inline-flex items-center gap-0.5 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
+                                className="ctool shrink-0 hidden lg:inline-flex items-center gap-0.5 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
                                 onClick={focusInputAndInsertSlash}
                                 aria-label="Insert slash command"
                                 title="Insert slash command (/)"
@@ -757,7 +854,7 @@ export function FollowUpInputArea({
                             </button>
                             <button
                                 type="button"
-                                className="ctool shrink-0 inline-flex items-center gap-0.5 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
+                                className="ctool shrink-0 hidden lg:inline-flex items-center gap-0.5 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
                                 onClick={focusInputAndInsertSlash}
                                 aria-label="Mention a skill"
                                 title="Mention a skill (@) — opens the skill picker"
@@ -772,7 +869,7 @@ export function FollowUpInputArea({
                                 type="button"
                                 disabled={inputDisabled}
                                 onClick={() => fileInputRef.current?.click()}
-                                className="ctool shrink-0 inline-flex items-center justify-center h-[22px] w-[22px] rounded-sm text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                className="ctool shrink-0 hidden lg:inline-flex items-center justify-center h-[22px] w-[22px] rounded-sm text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                 data-testid="follow-up-attach-btn"
                                 aria-label="Attach file"
                                 title="Attach files"
@@ -789,17 +886,22 @@ export function FollowUpInputArea({
                             </button>
                             {/* Live metadata: cwd + context-window fuel gauge.
                                  Sits next to send so its provider/cwd/ctx info
-                                 reads as status, not as an interactive chip. */}
-                            <ComposerMetaStrip
-                                className="mx-1"
-                                workingDirectory={workingDirectory}
-                                sessionTokenLimit={sessionTokenLimit}
-                                sessionCurrentTokens={sessionCurrentTokens}
-                                sessionModel={sessionModel}
-                                sessionSystemTokens={sessionSystemTokens}
-                                sessionToolTokens={sessionToolTokens}
-                                sessionConversationTokens={sessionConversationTokens}
-                            />
+                                 reads as status, not as an interactive chip.
+                                 Hidden on mobile/tablet (≤1023px) — it is
+                                 non-interactive status and its width would force
+                                 the compact toolbar to wrap. */}
+                            <div className="hidden lg:flex items-center">
+                                <ComposerMetaStrip
+                                    className="mx-1"
+                                    workingDirectory={workingDirectory}
+                                    sessionTokenLimit={sessionTokenLimit}
+                                    sessionCurrentTokens={sessionCurrentTokens}
+                                    sessionModel={sessionModel}
+                                    sessionSystemTokens={sessionSystemTokens}
+                                    sessionToolTokens={sessionToolTokens}
+                                    sessionConversationTokens={sessionConversationTokens}
+                                />
+                            </div>
                             <span aria-hidden="true" data-testid="chat-toolbar-divider-send" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                             {isActiveGeneration ? stopButton : (
                                 <QueueFollowUpButton
@@ -807,6 +909,7 @@ export function FollowUpInputArea({
                                     ctrlHeld={modHeld}
                                     onSend={(dm) => { void onSend(undefined, dm); }}
                                     label={selectedMode === 'ralph' ? 'Promote to Ralph' : 'Send'}
+                                    mobileTapTarget={true}
                                 />
                             )}
                         </div>

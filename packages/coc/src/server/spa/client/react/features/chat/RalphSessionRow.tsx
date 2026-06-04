@@ -65,7 +65,7 @@ export function RalphSessionRow({
     onContextMenu,
     renderTaskCard,
 }: RalphSessionRowProps) {
-    const [expanded, setExpanded] = useState(session.hasUnseen);
+    const [expanded, setExpanded] = useState(false);
     const isSelected = selectedSessionId === session.sessionId;
 
     const iterCount = session.iterations.length;

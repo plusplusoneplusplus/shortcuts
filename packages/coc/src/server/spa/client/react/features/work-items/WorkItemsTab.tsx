@@ -27,8 +27,13 @@ import { buildWorkItemHash, buildWorkItemSessionHash, buildWorkItemCommitHash } 
 import { isWorkItemsHierarchyEnabled, isWorkItemsAiAuthoringEnabled } from '../../utils/config';
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
 import { WorkItemAiComposer } from './WorkItemAiComposer';
-import type { WorkItemTrackerKind } from '@plusplusoneplusplus/coc-client';
-import { WORK_ITEM_TRACKER_TABS } from './workItemTrackerViews';
+import type { WorkItemSyncProvider, WorkItemTrackerKind } from '@plusplusoneplusplus/coc-client';
+import {
+    WORK_ITEM_TRACKER_TABS,
+    getTrackerKindsForView,
+    type WorkItemRemoteProviderFilter,
+    type WorkItemTrackerViewKind,
+} from './workItemTrackerViews';
 
 export interface WorkItemsTabProps {
     workspaceId: string;
@@ -47,7 +52,8 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
     const [showCreateDialog, setShowCreateDialog] = useState(false);
     const [createDialogType, setCreateDialogType] = useState<WorkItemTypeLabel>('work-item');
     const [createDialogParentId, setCreateDialogParentId] = useState<string | undefined>(undefined);
-    const [activeTracker, setActiveTracker] = useState<WorkItemTrackerKind>('local-only');
+    const [activeTracker, setActiveTracker] = useState<WorkItemTrackerViewKind>('local');
+    const [remoteProviderFilter, setRemoteProviderFilter] = useState<WorkItemRemoteProviderFilter>('all');
     const [mobileShowDetail, setMobileShowDetail] = useState(false);
     const { isMobile, isTablet } = useBreakpoint();
     const { dispatch } = useWorkItems();
@@ -227,10 +233,25 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
     const [showAiComposer, setShowAiComposer] = useState(false);
     const aiAuthoringEnabled = isWorkItemsAiAuthoringEnabled();
     const [showImportDialog, setShowImportDialog] = useState(false);
+    const [importDialogProvider, setImportDialogProvider] = useState<WorkItemSyncProvider>('github');
     const [highlightedWorkItemId, setHighlightedWorkItemId] = useState<string | null>(null);
 
-    const handleImported = useCallback((item: any) => {
-        setActiveTracker('github-backed');
+    const openImportDialog = useCallback((provider?: WorkItemSyncProvider) => {
+        const nextProvider = provider ?? (remoteProviderFilter === 'azure-boards' ? 'azure-boards' : 'github');
+        setImportDialogProvider(nextProvider);
+        setShowImportDialog(true);
+    }, [remoteProviderFilter]);
+    const remoteImportProviderOptions = useMemo<readonly WorkItemSyncProvider[]>(
+        () => [importDialogProvider],
+        [importDialogProvider],
+    );
+
+    const handleImported = useCallback((item: any, provider?: WorkItemSyncProvider) => {
+        const importedProvider: WorkItemRemoteProviderFilter =
+            provider
+            ?? (item?.tracker?.kind === 'azure-boards-backed' ? 'azure-boards' : item?.tracker?.kind === 'github-backed' ? 'github' : 'all');
+        setActiveTracker('remote');
+        setRemoteProviderFilter(importedProvider);
         dispatch({ type: 'WORK_ITEM_ADDED', repoId: workspaceId, item });
         setSelectedWorkItemId(item.id);
         setSelectedSessionTaskId(null);
@@ -241,6 +262,11 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
         location.hash = buildWorkItemHash(workspaceId, item.id);
         setTimeout(() => setHighlightedWorkItemId(null), 2000);
     }, [dispatch, workspaceId, isMobile]);
+
+    const remoteTrackerKinds = useMemo<WorkItemTrackerKind[]>(
+        () => getTrackerKindsForView(activeTracker, remoteProviderFilter),
+        [activeTracker, remoteProviderFilter],
+    );
 
     const listPane = hierarchyEnabled ? (
         <div className="flex flex-col h-full" data-testid="work-item-tracker-tabs-panel">
@@ -283,15 +309,18 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                 </div>
             </div>
             <WorkItemHierarchyTree
-                key={activeTracker}
+                key={`${activeTracker}-${remoteProviderFilter}`}
                 workspaceId={workspaceId}
-                trackerKind={activeTracker}
+                trackerViewKind={activeTracker}
+                trackerKinds={remoteTrackerKinds}
+                remoteProviderFilter={remoteProviderFilter}
+                onRemoteProviderFilterChange={setRemoteProviderFilter}
                 selectedWorkItemId={selectedWorkItemId}
                 onSelectWorkItem={handleSelectWorkItem}
                 onCreated={handleCreated}
                 onCreateItem={openCreateDialog}
-                onCreateWithAi={activeTracker === 'local-only' && aiAuthoringEnabled ? () => setShowAiComposer(true) : undefined}
-                onImportFromGitHub={activeTracker === 'github-backed' ? () => setShowImportDialog(true) : undefined}
+                onCreateWithAi={activeTracker === 'local' && aiAuthoringEnabled ? () => setShowAiComposer(true) : undefined}
+                onImportFromRemote={activeTracker === 'remote' ? openImportDialog : undefined}
                 highlightedWorkItemId={highlightedWorkItemId}
                 isMobile={isMobile}
             />
@@ -312,7 +341,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                             ✨ AI
                         </Button>
                     )}
-                    <Button variant="ghost" size="sm" onClick={() => setShowImportDialog(true)} data-testid="import-from-github-btn">
+                    <Button variant="ghost" size="sm" onClick={() => openImportDialog('github')} data-testid="import-from-github-btn">
                         Import from GitHub
                     </Button>
                 </div>
@@ -470,6 +499,8 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                     open={showImportDialog}
                     onClose={() => setShowImportDialog(false)}
                     workspaceId={workspaceId}
+                    initialProvider={importDialogProvider}
+                    providerOptions={activeTracker === 'remote' ? remoteImportProviderOptions : undefined}
                     onImported={handleImported}
                 />
             </>
@@ -515,6 +546,8 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                 open={showImportDialog}
                 onClose={() => setShowImportDialog(false)}
                 workspaceId={workspaceId}
+                initialProvider={importDialogProvider}
+                providerOptions={activeTracker === 'remote' ? remoteImportProviderOptions : undefined}
                 onImported={handleImported}
             />
         </>

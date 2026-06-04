@@ -1,6 +1,6 @@
 import * as http from 'http';
 import * as url from 'url';
-import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { detectRemoteUrl, type ProcessStore, type WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import {
     type WorkItemSyncDisabledReason,
     type WorkItemSyncProvider as WorkItemSyncProviderName,
@@ -16,11 +16,21 @@ import {
     DEFAULT_WORK_ITEM_SYNC_PROVIDER,
     SUPPORTED_WORK_ITEM_SYNC_PROVIDERS,
     WORK_ITEM_SYNC_MAX_ITEMS,
+    detectWorkItemSyncProviderFromRemoteUrl,
     isSupportedWorkItemSyncProvider,
     unavailableWorkItemSyncProviderStatus,
     type WorkItemSyncProviderAdapter,
     type WorkItemSyncProviderContext,
 } from '../work-items/work-item-sync-provider';
+import {
+    AzureBoardsRestWorkItemTransport,
+    azureBoardsProjectFromStatus,
+    azureBoardsWorkItemIdFromUrl,
+    deleteAzureBoardsEpicMirrorTree,
+    importAzureBoardsEpicTreeAsWorkItems,
+    type AvailableAzureBoardsWorkItemSyncProject,
+    type AzureBoardsWorkItemTransport,
+} from '../work-items/work-item-sync-azure-boards-provider';
 import {
     GhCliGitHubWorkItemIssueTransport,
     convertLocalEpicTreeToGitHubBacked,
@@ -43,6 +53,8 @@ export interface WorkItemSyncRouteContext {
     providers?: WorkItemSyncProviderAdapter[];
     /** Override GitHub transport for testing. Defaults to GhCliGitHubWorkItemIssueTransport. */
     githubTransport?: GitHubWorkItemIssueTransport;
+    /** Override Azure Boards transport for testing. Defaults to AzureBoardsRestWorkItemTransport. */
+    azureBoardsTransport?: AzureBoardsWorkItemTransport;
     /** Notify background poll infrastructure that this workspace's GitHub-backed roots changed. */
     onGitHubBackedEpicTreeChanged?: (workspaceId: string) => void | Promise<void>;
 }
@@ -109,11 +121,20 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
         (ctx.providers ?? []).map(adapter => [adapter.provider, adapter]),
     );
 
+    async function resolveWorkspaceRemote(workspace: WorkspaceInfo | undefined): Promise<WorkspaceInfo | undefined> {
+        if (!workspace || workspace.remoteUrl?.trim()) return workspace;
+        const remoteUrl = await detectRemoteUrl(workspace.rootPath);
+        if (!remoteUrl) return workspace;
+        const updated = await ctx.processStore.updateWorkspace(workspace.id, { remoteUrl });
+        return updated ?? { ...workspace, remoteUrl };
+    }
+
     async function buildProviderContext(workspaceId: string): Promise<WorkItemSyncProviderContext> {
         const workspaces = await ctx.processStore.getWorkspaces();
+        const workspace = await resolveWorkspaceRemote(workspaces.find(candidate => candidate.id === workspaceId));
         return {
             workspaceId,
-            workspace: workspaces.find(workspace => workspace.id === workspaceId),
+            workspace,
             preferences: readRepoPreferences(ctx.dataDir, workspaceId),
         };
     }
@@ -178,6 +199,22 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
         };
     }
 
+    async function resolveAvailableAzureBoardsProject(workspaceId: string): Promise<{
+        context: WorkItemSyncProviderContext;
+        project: AvailableAzureBoardsWorkItemSyncProject;
+    }> {
+        const providerContext = await buildProviderContext(workspaceId);
+        const status = await getProviderStatus('azure-boards', providerContext);
+        if (!status.available) {
+            throw providerUnavailableError(status);
+        }
+        const project = azureBoardsProjectFromStatus(status);
+        if (!project) {
+            throw providerUnavailableError(status);
+        }
+        return { context: providerContext, project };
+    }
+
     function statusResponseForDisabled(reason: WorkItemSyncDisabledReason): WorkItemSyncStatusResponse {
         return {
             enabled: false,
@@ -202,13 +239,17 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
 
                 const parsed = url.parse(req.url ?? '/', true);
                 const queryProvider = typeof parsed.query.provider === 'string' ? parsed.query.provider : undefined;
-                const providerNames = queryProvider ? [parseProvider(queryProvider)] : SUPPORTED_WORK_ITEM_SYNC_PROVIDERS;
                 const providerContext = await buildProviderContext(workspaceId);
+                const remoteProvider = detectWorkItemSyncProviderFromRemoteUrl(providerContext.workspace?.remoteUrl);
+                const providerNames = queryProvider
+                    ? [parseProvider(queryProvider)]
+                    : remoteProvider ? [remoteProvider] : [];
                 const providers = await Promise.all(providerNames.map(provider => getProviderStatus(provider, providerContext)));
                 const response: WorkItemSyncStatusResponse = {
                     enabled: true,
                     disabled: false,
                     maxItems: WORK_ITEM_SYNC_MAX_ITEMS,
+                    remoteProvider,
                     provider: providers[0],
                     providers,
                 };
@@ -301,6 +342,78 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                     candidateIssues,
                 );
                 notifyGitHubBackedEpicTreeChanged(workspaceId);
+
+                return sendJSON(res, 201, result.root);
+            } catch (error) {
+                return handleAPIError(res, error);
+            }
+        },
+    });
+
+    // POST /api/workspaces/:id/work-items/import-from-azure-boards
+    ctx.routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/import-from-azure-boards$/,
+        handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
+            try {
+                const workspaceId = decodeURIComponent(match![1]);
+                const body = await parseJsonObjectBody(req);
+                const { project } = await resolveAvailableAzureBoardsProject(workspaceId);
+
+                const workItemUrl = optionalString(body.workItemUrl, 'workItemUrl');
+                const explicitWorkItemId = optionalPositiveInteger(body.workItemId, 'workItemId');
+                if (!workItemUrl && explicitWorkItemId === undefined) {
+                    throw badRequest('Either workItemUrl or workItemId is required');
+                }
+
+                let workItemId = explicitWorkItemId;
+                if (workItemUrl) {
+                    const urlWorkItemId = azureBoardsWorkItemIdFromUrl(workItemUrl, project);
+                    if (urlWorkItemId === undefined) {
+                        throw badRequest(
+                            'workItemUrl must be a valid Azure Boards work item URL in the workspace-configured organization and project.',
+                        );
+                    }
+                    if (workItemId !== undefined && workItemId !== urlWorkItemId) {
+                        throw badRequest('workItemId must match the work item ID in workItemUrl');
+                    }
+                    workItemId = urlWorkItemId;
+                }
+                const resolvedWorkItemId = workItemId;
+                if (resolvedWorkItemId === undefined) {
+                    throw badRequest('Either workItemUrl or workItemId is required');
+                }
+
+                const allItems = await ctx.workItemStore.listWorkItems({ repoId: workspaceId });
+                const duplicate = allItems.items.find(item =>
+                    item.azureBoardsMirror?.workItemId === resolvedWorkItemId ||
+                    (
+                        item.tracker?.kind === 'azure-boards-backed' &&
+                        item.tracker.provider === 'azure-boards' &&
+                        item.tracker.azureBoards.workItemId === resolvedWorkItemId
+                    ),
+                );
+                if (duplicate) {
+                    throw new APIError(
+                        409,
+                        `Azure Boards work item ${resolvedWorkItemId} is already imported as work item '${duplicate.id}'`,
+                        'DUPLICATE_IMPORT',
+                        { existingWorkItemId: duplicate.id },
+                    );
+                }
+
+                const transport = ctx.azureBoardsTransport ?? new AzureBoardsRestWorkItemTransport();
+                const tree = await transport.listWorkItemTree(project, resolvedWorkItemId, WORK_ITEM_SYNC_MAX_ITEMS);
+                const rootWorkItem = tree.find(item => item.id === resolvedWorkItemId);
+                if (!rootWorkItem) {
+                    throw notFound(`Azure Boards work item ${resolvedWorkItemId}`);
+                }
+
+                const result = await importAzureBoardsEpicTreeAsWorkItems(
+                    { workspaceId, workItemStore: ctx.workItemStore },
+                    rootWorkItem,
+                    tree,
+                );
 
                 return sendJSON(res, 201, result.root);
             } catch (error) {
@@ -413,6 +526,57 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                     { pruneMissing: true },
                 );
                 notifyGitHubBackedEpicTreeChanged(workspaceId);
+
+                return sendJSON(res, 200, result);
+            } catch (error) {
+                return handleAPIError(res, error);
+            }
+        },
+    });
+
+    // POST /api/workspaces/:id/work-items/:workItemId/sync-from-azure-boards
+    ctx.routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/sync-from-azure-boards$/,
+        handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
+            try {
+                const workspaceId = decodeURIComponent(match![1]);
+                const workItemId = decodeURIComponent(match![2]);
+                const root = await loadRootEpic(workspaceId, workItemId, 'Azure Boards-backed tree sync');
+                if (root.tracker?.kind !== 'azure-boards-backed' || root.tracker.provider !== 'azure-boards') {
+                    throw badRequest('Work item is not an Azure Boards-backed Epic root.');
+                }
+                const azureWorkItemId = root.tracker.azureBoards.workItemId ?? root.azureBoardsMirror?.workItemId;
+                if (azureWorkItemId === undefined) {
+                    throw badRequest('Azure Boards-backed Epic root is missing an Azure Boards work item ID.');
+                }
+
+                const { project } = await resolveAvailableAzureBoardsProject(workspaceId);
+                const transport = ctx.azureBoardsTransport ?? new AzureBoardsRestWorkItemTransport();
+                const tree = await transport.listWorkItemTree(project, azureWorkItemId, WORK_ITEM_SYNC_MAX_ITEMS);
+                const rootWorkItem = tree.find(item => item.id === azureWorkItemId);
+                if (!rootWorkItem) {
+                    const deleteResult = await deleteAzureBoardsEpicMirrorTree(
+                        { workspaceId, workItemStore: ctx.workItemStore },
+                        root.id,
+                    );
+                    return sendJSON(res, 200, {
+                        root,
+                        items: [],
+                        created: 0,
+                        updated: 0,
+                        ...deleteResult,
+                        warnings: [],
+                    });
+                }
+
+                const result = await importAzureBoardsEpicTreeAsWorkItems(
+                    { workspaceId, workItemStore: ctx.workItemStore },
+                    rootWorkItem,
+                    tree,
+                    undefined,
+                    { pruneMissing: true },
+                );
 
                 return sendJSON(res, 200, result);
             } catch (error) {

@@ -1,6 +1,6 @@
 ---
 name: browser-test-with-restart
-description: Debug and verify web UI issues by opening pages in a real browser, checking for errors, applying code fixes, restarting the coc dev server, and re-testing. Use when the user asks to debug a web page, verify a UI fix in the browser, or test a localhost page after code changes.
+description: Debug and verify web UI issues by opening pages in a real browser, checking for errors, applying code fixes, rebuilding, and re-testing. Restart the coc dev server ONLY when the user explicitly asks for a restart — otherwise stop and ask for confirmation before restarting. Use when the user asks to debug a web page, verify a UI fix in the browser, or test a localhost page after code changes.
 ---
 
 # Browser Test with Server Restart
@@ -54,7 +54,9 @@ npm run build:client
 npm run build:copy-client
 ```
 
-Then restart the server and wait for it to come back:
+> ⚠️ **Only restart the server when the user has explicitly asked for it.** Restarting is disruptive (it interrupts in-flight work and other sessions sharing the server). Never restart automatically as part of this workflow. If the user has not explicitly requested a restart, stop here, report that a restart is needed, and ask the user to confirm before proceeding.
+
+Once the user has explicitly confirmed, restart the server and wait for it to come back:
 
 ```bash
 curl -s -X POST http://localhost:4000/api/admin/restart
@@ -83,6 +85,7 @@ If the browser still shows issues, capture the new errors and loop back to step 
 
 ## Tips
 
+- **Only restart the server when the user explicitly asks.** A restart interrupts in-flight work and any other sessions sharing the server. If a restart is needed but the user hasn't asked for one, stop and request confirmation first.
 - **Always rebuild before restarting.** The server serves the bundled SPA from `dist/`; a restart alone won't pick up source changes.
 - **Check console errors first.** A blank page is almost always a JS crash — the error message and stack trace are the fastest path to the root cause.
 - **Clean up browser artifacts.** The browser subagent may create screenshot files or helper scripts in the workspace. Remove them before committing.

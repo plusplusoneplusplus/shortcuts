@@ -67,6 +67,44 @@ describe('PullRequestsClient', () => {
     ]);
   });
 
+  it('lists, records, and removes recently opened PRs with workspace scope', async () => {
+    const adapter = createMockAdapter({ entries: [] });
+    const client = new PullRequestsClient(adapter);
+    const controller = new AbortController();
+
+    await client.listRecentOpened('repo/a', 'ws/a', { signal: controller.signal });
+    await client.recordRecentOpened('repo/a', 'ws/a', {
+      number: 42,
+      title: 'Add recent list',
+      webUrl: 'https://github.com/org/repo/pull/42',
+    }, { signal: controller.signal });
+    await client.removeRecentOpened('repo/a', 'ws/a', 42, { signal: controller.signal });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/repos/repo%2Fa/pull-requests/recent-opened',
+        options: { query: { workspaceId: 'ws/a' }, signal: controller.signal },
+      },
+      {
+        path: '/repos/repo%2Fa/pull-requests/recent-opened',
+        options: {
+          method: 'POST',
+          body: {
+            workspaceId: 'ws/a',
+            number: 42,
+            title: 'Add recent list',
+            webUrl: 'https://github.com/org/repo/pull/42',
+          },
+          signal: controller.signal,
+        },
+      },
+      {
+        path: '/repos/repo%2Fa/pull-requests/recent-opened/42',
+        options: { method: 'DELETE', query: { workspaceId: 'ws/a' }, signal: controller.signal },
+      },
+    ]);
+  });
+
   it('omits force query param when not true', async () => {
     const adapter = createMockAdapter({});
     const client = new PullRequestsClient(adapter);

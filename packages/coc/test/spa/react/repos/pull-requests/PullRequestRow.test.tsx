@@ -41,10 +41,18 @@ describe('PullRequestRow — title and meta', () => {
         expect(screen.queryByText(/#\d+/)).toBeNull();
     });
 
-    it('renders deterministic file count and review minutes from the AI mock', () => {
+    it('renders file count and review minutes from real diff stats', () => {
+        render(<PullRequestRow pr={makePr({
+            diffStats: { changedFiles: 4, additions: 100, deletions: 50 },
+        })} onClick={vi.fn()} />);
+        expect(document.querySelector('.pr-meta')?.textContent).toContain('4 files');
+        expect(document.querySelector('.pr-meta')?.textContent).toContain('8 min');
+    });
+
+    it('shows an unavailable state when diff stats are not supplied', () => {
         render(<PullRequestRow pr={makePr()} onClick={vi.fn()} />);
-        expect(document.querySelector('.pr-meta')?.textContent).toMatch(/\d+ files/);
-        expect(document.querySelector('.pr-meta')?.textContent).toMatch(/\d+ min/);
+        expect(document.querySelector('.pr-meta')?.textContent).toContain('n/a files');
+        expect(document.querySelector('.pr-meta')?.textContent).toContain('n/a min');
     });
 
     it('renders the last update time when updatedAt is present', () => {
@@ -110,11 +118,20 @@ describe('PullRequestRow — state dot', () => {
 });
 
 describe('PullRequestRow — risk pill', () => {
-    it('renders an AI risk pill with one of low/med/high', () => {
+    it('renders a deterministic risk pill from real diff stats', () => {
+        render(<PullRequestRow pr={makePr({
+            diffStats: { changedFiles: 2, additions: 150, deletions: 50 },
+        })} onClick={vi.fn()} />);
+        const pill = screen.getByTestId('pr-risk-pill');
+        expect(pill.getAttribute('data-risk')).toBe('med');
+        expect(pill.textContent).toBe('Med');
+    });
+
+    it('shows an unavailable risk state when diff stats are missing', () => {
         render(<PullRequestRow pr={makePr()} onClick={vi.fn()} />);
         const pill = screen.getByTestId('pr-risk-pill');
-        expect(['low', 'med', 'high']).toContain(pill.getAttribute('data-risk'));
-        expect(['Low', 'Med', 'High']).toContain(pill.textContent ?? '');
+        expect(pill.getAttribute('data-risk')).toBe('unknown');
+        expect(pill.textContent).toBe('N/A');
     });
 
     it('respects an explicit risk override', () => {

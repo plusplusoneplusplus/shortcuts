@@ -15,9 +15,10 @@ import { EffortTierSelector } from '../../../../../src/server/spa/client/react/f
 import type { LocalEffortTiersMap } from '../../../../../src/server/spa/client/react/hooks/useProviderEffortTiers';
 
 const ALL_TIERS: LocalEffortTiersMap = {
-    low: { model: 'fast-model', reasoningEffort: 'low' },
-    medium: { model: 'balanced-model', reasoningEffort: '' },
-    high: { model: 'deep-model', reasoningEffort: 'high' },
+    'very-low': { model: 'tiny-model', reasoningEffort: 'low', source: 'default' },
+    low: { model: 'fast-model', reasoningEffort: 'low', source: 'config' },
+    medium: { model: 'balanced-model', reasoningEffort: '', source: 'default' },
+    high: { model: 'deep-model', reasoningEffort: 'high', source: 'config' },
 };
 
 function renderSelector(
@@ -47,12 +48,15 @@ describe('EffortTierSelector', () => {
         expect(screen.getByTestId('effort-tier-menu')).toBeTruthy();
     });
 
-    it('renders all three tier options in the dropdown', () => {
+    it('renders all four tier options in lowest-to-highest order', () => {
         renderSelector();
         fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
-        expect(screen.getByTestId('effort-tier-option-low')).toBeTruthy();
-        expect(screen.getByTestId('effort-tier-option-medium')).toBeTruthy();
-        expect(screen.getByTestId('effort-tier-option-high')).toBeTruthy();
+        expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual([
+            'Very Low',
+            'Low',
+            'Medium',
+            'High',
+        ]);
     });
 
     it('calls onChange and closes menu when a configured tier is selected', () => {
@@ -61,6 +65,24 @@ describe('EffortTierSelector', () => {
         fireEvent.click(screen.getByTestId('effort-tier-option-high'));
         expect(onChange).toHaveBeenCalledWith('high');
         expect(screen.queryByTestId('effort-tier-menu')).toBeNull();
+    });
+
+    it('selects very-low and reflects it in data-tier-value', () => {
+        const onChange = vi.fn();
+        const { rerender } = render(
+            <EffortTierSelector tiers={ALL_TIERS} selectedTier="medium" onChange={onChange} />,
+        );
+        expect(screen.getByTestId('effort-tier-selector').getAttribute('data-tier-value')).toBe('medium');
+
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+        fireEvent.click(screen.getByTestId('effort-tier-option-very-low'));
+
+        expect(onChange).toHaveBeenCalledWith('very-low');
+        expect(screen.queryByTestId('effort-tier-menu')).toBeNull();
+        rerender(
+            <EffortTierSelector tiers={ALL_TIERS} selectedTier="very-low" onChange={onChange} />,
+        );
+        expect(screen.getByTestId('effort-tier-selector').getAttribute('data-tier-value')).toBe('very-low');
     });
 
     it('marks the current selection with data-selected=true', () => {
@@ -72,33 +94,33 @@ describe('EffortTierSelector', () => {
 
     it('disables unconfigured tiers', () => {
         const tiersWithGap: LocalEffortTiersMap = {
-            medium: { model: 'balanced', reasoningEffort: '' },
-            high: { model: 'deep', reasoningEffort: 'high' },
+            medium: { model: 'balanced', reasoningEffort: '', source: 'default' },
+            high: { model: 'deep', reasoningEffort: 'high', source: 'config' },
         };
         renderSelector({ tiers: tiersWithGap, selectedTier: 'medium' });
         fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
-        const lowOption = screen.getByTestId('effort-tier-option-low');
-        expect(lowOption.getAttribute('data-configured')).toBe('false');
-        expect(lowOption.getAttribute('aria-disabled')).toBe('true');
+        const veryLowOption = screen.getByTestId('effort-tier-option-very-low');
+        expect(veryLowOption.getAttribute('data-configured')).toBe('false');
+        expect(veryLowOption.getAttribute('aria-disabled')).toBe('true');
     });
 
     it('does not call onChange when an unconfigured tier is clicked', () => {
         const tiersWithGap: LocalEffortTiersMap = {
-            medium: { model: 'balanced', reasoningEffort: '' },
+            medium: { model: 'balanced', reasoningEffort: '', source: 'default' },
         };
         const { onChange } = renderSelector({ tiers: tiersWithGap, selectedTier: 'medium' });
         fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
-        fireEvent.click(screen.getByTestId('effort-tier-option-low'));
+        fireEvent.click(screen.getByTestId('effort-tier-option-very-low'));
         expect(onChange).not.toHaveBeenCalled();
     });
 
     it('shows tooltip "Not configured in Admin" for unconfigured tier', () => {
         const tiersWithGap: LocalEffortTiersMap = {
-            medium: { model: 'balanced', reasoningEffort: '' },
+            medium: { model: 'balanced', reasoningEffort: '', source: 'default' },
         };
         renderSelector({ tiers: tiersWithGap, selectedTier: 'medium' });
         fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
-        expect(screen.getByTestId('effort-tier-option-low').title).toBe('Low: Not configured in Admin');
+        expect(screen.getByTestId('effort-tier-option-very-low').title).toBe('Very Low: Not configured in Admin');
     });
 
     it('disables the trigger button when disabled=true', () => {
@@ -125,8 +147,8 @@ describe('EffortTierSelector', () => {
         );
         expect(screen.getByTestId('effort-tier-selector').getAttribute('data-tier-value')).toBe('medium');
         rerender(
-            <EffortTierSelector tiers={ALL_TIERS} selectedTier="high" onChange={vi.fn()} />,
+            <EffortTierSelector tiers={ALL_TIERS} selectedTier="very-low" onChange={vi.fn()} />,
         );
-        expect(screen.getByTestId('effort-tier-selector').getAttribute('data-tier-value')).toBe('high');
+        expect(screen.getByTestId('effort-tier-selector').getAttribute('data-tier-value')).toBe('very-low');
     });
 });

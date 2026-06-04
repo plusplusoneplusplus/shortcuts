@@ -9,6 +9,10 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import {
+    formatProgressSection,
+    parseProgressSections as parsePortableProgressSections,
+} from '@plusplusoneplusplus/coc-workflow/ralph';
 import { getRepoDataPath } from '../paths';
 import type {
     ParsedProgressSection,
@@ -116,9 +120,12 @@ export class RalphSessionStore {
 
         const progressPath = this.getProgressPath(workspaceId, sessionId);
         const timestamp = section.timestamp ?? new Date().toISOString();
-        const body = section.body.trim();
-        const header = `## Iteration ${section.iteration} — ${section.signal} — ${timestamp}`;
-        const block = `\n${header}\n${body}${body.endsWith('\n') ? '' : '\n'}`;
+        const block = `\n${formatProgressSection({
+            iteration: section.iteration,
+            signal: section.signal,
+            timestamp,
+            body: section.body,
+        })}`;
 
         await fs.promises.appendFile(progressPath, block, 'utf-8');
         await this.enforceSizeCap(progressPath);
@@ -600,38 +607,6 @@ function singleLine(text: string): string {
     return first.length > 240 ? `${first.slice(0, 237)}...` : first;
 }
 
-const SECTION_HEADER = /^##\s+Iteration\s+(\d+)\s+[—\-]\s+(RALPH_NEXT|RALPH_COMPLETE|NONE)\s+[—\-]\s+(\S+?)\s*$/;
-
 export function parseProgressSections(progressMd: string): ParsedProgressSection[] {
-    const lines = progressMd.replace(/\r\n/g, '\n').split('\n');
-    const sections: ParsedProgressSection[] = [];
-
-    let current: ParsedProgressSection | null = null;
-    let bodyLines: string[] = [];
-
-    const flush = () => {
-        if (!current) return;
-        current.body = bodyLines.join('\n').trim();
-        sections.push(current);
-        current = null;
-        bodyLines = [];
-    };
-
-    for (const line of lines) {
-        const m = SECTION_HEADER.exec(line);
-        if (m) {
-            flush();
-            current = {
-                iteration: Number(m[1]),
-                signal: m[2] as RalphExitSignal,
-                timestamp: m[3],
-                body: '',
-            };
-            continue;
-        }
-        if (current) bodyLines.push(line);
-    }
-    flush();
-
-    return sections;
+    return parsePortableProgressSections(progressMd);
 }

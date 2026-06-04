@@ -137,6 +137,7 @@ export function registerRalphNewLoopRoutes(routes: Route[], ctx: RalphNewLoopRou
                 iteration: nextIteration,
                 maxIterations: updated.maxIterations,
                 dataDir,
+                extraContext: { ralph: { loopIndex } },
             });
 
             let taskId: string;

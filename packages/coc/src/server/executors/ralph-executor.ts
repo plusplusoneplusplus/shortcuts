@@ -33,7 +33,7 @@ import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-exe
 import { ChatBaseExecutor } from './chat-base-executor';
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
-import { buildRalphIterationPrompt } from '../ralph/iteration-prompt';
+import { buildRalphIterationPrompt } from '@plusplusoneplusplus/coc-workflow/ralph';
 
 // ============================================================================
 // RalphExecutor
@@ -122,4 +122,3 @@ export class RalphExecutor extends ChatBaseExecutor {
 // ============================================================================
 // Helpers (exported for testing)
 // ============================================================================
-

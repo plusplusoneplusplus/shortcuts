@@ -34,12 +34,14 @@ function makeEffortTiersResponse(
 }
 
 const COPILOT_DEFAULTS = {
+    'very-low': { model: 'gpt-5.4-mini',      reasoningEffort: 'low'   },
     low:    { model: 'claude-sonnet-4.6', reasoningEffort: 'high'  },
     medium: { model: 'claude-opus-4.8',   reasoningEffort: null    },
     high:   { model: 'gpt-5.5',           reasoningEffort: 'xhigh' },
 };
 
 const COPILOT_DEFAULT_TIERS = {
+    'very-low': { ...COPILOT_DEFAULTS['very-low'], source: 'default' },
     low:    { ...COPILOT_DEFAULTS.low,    source: 'default' },
     medium: { ...COPILOT_DEFAULTS.medium, source: 'default' },
     high:   { ...COPILOT_DEFAULTS.high,   source: 'default' },
@@ -76,6 +78,7 @@ describe('useProviderEffortTiers', () => {
         await waitFor(() => expect(result.current.loading).toBe(false));
 
         expect(result.current.tiers.low?.source).toBe('default');
+        expect(result.current.tiers['very-low']?.source).toBe('default');
         expect(result.current.tiers.medium?.source).toBe('default');
         expect(result.current.tiers.high?.source).toBe('default');
         // Untouched defaults must not count as dirty.
@@ -84,6 +87,7 @@ describe('useProviderEffortTiers', () => {
 
     it('normalizes server response correctly', async () => {
         mockGetEffortTiers.mockResolvedValue(makeEffortTiersResponse({
+            'very-low': { model: 'mini-model', reasoningEffort: 'low', source: 'config' },
             low: { model: 'fast-model', reasoningEffort: null, source: 'config' },
             medium: { model: 'mid-model', reasoningEffort: 'medium', source: 'config' },
         }));
@@ -92,6 +96,7 @@ describe('useProviderEffortTiers', () => {
 
         await waitFor(() => expect(result.current.loading).toBe(false));
 
+        expect(result.current.tiers['very-low']).toEqual({ model: 'mini-model', reasoningEffort: 'low', source: 'config' });
         expect(result.current.tiers.low).toEqual({ model: 'fast-model', reasoningEffort: '', source: 'config' });
         expect(result.current.tiers.medium).toEqual({ model: 'mid-model', reasoningEffort: 'medium', source: 'config' });
         expect(result.current.tiers.high).toBeUndefined();
@@ -132,6 +137,34 @@ describe('useProviderEffortTiers', () => {
 
         expect(result.current.tiers.medium).toEqual({ model: 'mid-model', reasoningEffort: 'medium', source: 'config' });
         expect(result.current.dirty).toBe(true);
+    });
+
+    it('setTier accepts very-low and includes it in the save payload', async () => {
+        mockGetEffortTiers.mockResolvedValue(makeEffortTiersResponse({}));
+        mockReplaceEffortTiers.mockResolvedValue(makeEffortTiersResponse({
+            'very-low': { model: 'gpt-5.4-mini', reasoningEffort: 'low', source: 'config' },
+        }));
+
+        const { result } = renderHook(() => useProviderEffortTiers('copilot'));
+
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        act(() => {
+            result.current.setTier('very-low', 'gpt-5.4-mini', 'low');
+        });
+
+        await act(async () => {
+            await result.current.save();
+        });
+
+        expect(mockReplaceEffortTiers).toHaveBeenCalledWith('copilot', {
+            'very-low': { model: 'gpt-5.4-mini', reasoningEffort: 'low' },
+        });
+        expect(result.current.tiers['very-low']).toEqual({
+            model: 'gpt-5.4-mini',
+            reasoningEffort: 'low',
+            source: 'config',
+        });
     });
 
     it('clearTier reverts to default when defaults are available', async () => {

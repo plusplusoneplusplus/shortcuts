@@ -150,7 +150,7 @@ function makeStandaloneChat(id: string, label: string): any {
     };
 }
 
-function defaultProps(history: any[]) {
+function defaultProps(history: any[], overrides: Record<string, any> = {}) {
     return {
         running: [],
         queued: [],
@@ -167,11 +167,13 @@ function defaultProps(history: any[]) {
         onOpenDialog: vi.fn(),
         fetchQueue: vi.fn().mockResolvedValue(undefined),
         // No `activeTab` prop → Activity branch.
+        ...overrides,
     };
 }
 
-function renderActivity(history: any[]) {
-    return renderWithProviders(<ChatListPane {...defaultProps(history)} />);
+function renderActivity(history: any[], overrides: Record<string, any> = {}) {
+    const props = defaultProps(history, overrides);
+    return { ...renderWithProviders(<ChatListPane {...props} />), props };
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -228,6 +230,131 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
         }
         // Sanity: the children container itself isn't the standalone list.
         expect(within(childrenWrap).queryByText('Standalone chat 1')).toBeNull();
+    });
+
+    it('resets Ralph session expansion when switching between repo scope and all repos', () => {
+        const history = fixtureFiveIterPlusThreeStandalone();
+        const { rerender, props } = renderActivity(history, { workspaceId: 'ws-a' });
+
+        fireEvent.click(screen.getByTestId('ralph-session-chevron'));
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('true');
+        expect(screen.getByTestId('ralph-session-children')).toBeTruthy();
+
+        rerender(<ChatListPane {...props} workspaceId="__all" />);
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('ralph-session-children')).toBeNull();
+
+        fireEvent.click(screen.getByTestId('ralph-session-chevron'));
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('true');
+
+        rerender(<ChatListPane {...props} workspaceId="ws-a" />);
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('ralph-session-children')).toBeNull();
+    });
+
+    it('keeps unseen Ralph sessions collapsed after workspace switches in the Activity tab', () => {
+        const history = fixtureFiveIterPlusThreeStandalone();
+        const unseenId = `ralph-${SESSION_ID}-1`;
+        const { rerender, props } = renderActivity(history, {
+            workspaceId: 'ws-a',
+            unseenProcessIds: new Set([unseenId]),
+        });
+
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('ralph-session-children')).toBeNull();
+        expect(screen.getByTestId('ralph-session-unseen-dot')).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('ralph-session-chevron'));
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('true');
+
+        rerender(<ChatListPane {...props} workspaceId="__all" />);
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('ralph-session-children')).toBeNull();
+        expect(screen.getByTestId('ralph-session-unseen-dot')).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('ralph-session-chevron'));
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('true');
+
+        rerender(<ChatListPane {...props} workspaceId="ws-a" />);
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('ralph-session-children')).toBeNull();
+        expect(screen.getByTestId('ralph-session-unseen-dot')).toBeTruthy();
+    });
+
+    it('starts unseen Ralph sessions collapsed again after remounting the Activity tab', () => {
+        const history = fixtureFiveIterPlusThreeStandalone();
+        const unseenId = `ralph-${SESSION_ID}-1`;
+        const { unmount } = renderActivity(history, {
+            workspaceId: 'ws-a',
+            unseenProcessIds: new Set([unseenId]),
+        });
+
+        fireEvent.click(screen.getByTestId('ralph-session-chevron'));
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('true');
+
+        unmount();
+        renderActivity(history, {
+            workspaceId: 'ws-a',
+            unseenProcessIds: new Set([unseenId]),
+        });
+
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('ralph-session-children')).toBeNull();
+        expect(screen.getByTestId('ralph-session-unseen-dot')).toBeTruthy();
+    });
+
+    it('keeps unseen Ralph sessions collapsed after workspace switches in the Chats tab', () => {
+        const history = fixtureFiveIterPlusThreeStandalone();
+        const unseenId = `ralph-${SESSION_ID}-1`;
+        const { rerender, props } = renderActivity(history, {
+            activeTab: 'chats',
+            workspaceId: 'ws-a',
+            unseenProcessIds: new Set([unseenId]),
+        });
+
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('ralph-session-children')).toBeNull();
+        expect(screen.getByTestId('ralph-session-unseen-dot')).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('ralph-session-chevron'));
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('true');
+
+        rerender(<ChatListPane {...props} workspaceId="__all" />);
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('ralph-session-children')).toBeNull();
+        expect(screen.getByTestId('ralph-session-unseen-dot')).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('ralph-session-chevron'));
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('true');
+
+        rerender(<ChatListPane {...props} workspaceId="ws-a" />);
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('ralph-session-children')).toBeNull();
+        expect(screen.getByTestId('ralph-session-unseen-dot')).toBeTruthy();
+    });
+
+    it('starts unseen Ralph sessions collapsed again after remounting the same workspace', () => {
+        const history = fixtureFiveIterPlusThreeStandalone();
+        const unseenId = `ralph-${SESSION_ID}-1`;
+        const { unmount } = renderActivity(history, {
+            activeTab: 'chats',
+            workspaceId: 'ws-a',
+            unseenProcessIds: new Set([unseenId]),
+        });
+
+        fireEvent.click(screen.getByTestId('ralph-session-chevron'));
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('true');
+
+        unmount();
+        renderActivity(history, {
+            activeTab: 'chats',
+            workspaceId: 'ws-a',
+            unseenProcessIds: new Set([unseenId]),
+        });
+
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('ralph-session-children')).toBeNull();
+        expect(screen.getByTestId('ralph-session-unseen-dot')).toBeTruthy();
     });
 
     it('Today section count badge reflects entries (1 ralph session + 3 standalones = 4)', () => {

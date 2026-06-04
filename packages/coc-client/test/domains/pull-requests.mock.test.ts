@@ -213,6 +213,40 @@ describe('PullRequestsClient mock coverage', () => {
     expect(result.pullRequests).toEqual([{ id: 1 }]);
   });
 
+  it('lists, records, and removes recently opened PRs', async () => {
+    mock = await startMockServer();
+    const now = new Date('2026-06-03T00:00:00.000Z').toISOString();
+    const entry = {
+      workspaceId: 'ws-1',
+      repoId: 'repo-1',
+      number: 42,
+      title: 'Add recent list',
+      webUrl: 'https://github.com/org/repo/pull/42',
+      openedAt: now,
+    };
+    mock.on('GET', '/api/repos/repo-1/pull-requests/recent-opened', { body: { entries: [entry] } });
+    mock.on('POST', '/api/repos/repo-1/pull-requests/recent-opened', { body: { entries: [entry] } });
+    mock.on('DELETE', '/api/repos/repo-1/pull-requests/recent-opened/42', { body: { entries: [] } });
+    const client = createClient(mock);
+
+    await expect(client.pullRequests.listRecentOpened('repo-1', 'ws-1')).resolves.toEqual({ entries: [entry] });
+    await expect(client.pullRequests.recordRecentOpened('repo-1', 'ws-1', {
+      number: 42,
+      title: 'Add recent list',
+      webUrl: 'https://github.com/org/repo/pull/42',
+    })).resolves.toEqual({ entries: [entry] });
+    await expect(client.pullRequests.removeRecentOpened('repo-1', 'ws-1', 42)).resolves.toEqual({ entries: [] });
+
+    expectEmptyRequest(mock.requests[0], 'GET', '/api/repos/repo-1/pull-requests/recent-opened', { workspaceId: 'ws-1' });
+    expectJsonRequest(mock.requests[1], 'POST', '/api/repos/repo-1/pull-requests/recent-opened', {
+      workspaceId: 'ws-1',
+      number: 42,
+      title: 'Add recent list',
+      webUrl: 'https://github.com/org/repo/pull/42',
+    });
+    expectEmptyRequest(mock.requests[2], 'DELETE', '/api/repos/repo-1/pull-requests/recent-opened/42', { workspaceId: 'ws-1' });
+  });
+
   it('lists, gets, creates, and deletes pull-request chat bindings', async () => {
     mock = await startMockServer();
     const now = new Date('2026-04-18T00:00:00.000Z').toISOString();

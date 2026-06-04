@@ -3,6 +3,14 @@
 Ralph is a CoC server feature for iterative AI execution with a small
 file-backed session journal. The session store lives in
 `packages/coc/src/server/ralph/ralph-session-store.ts`.
+Portable Ralph contracts and pure helpers live in
+`@plusplusoneplusplus/coc-workflow/ralph`, including session/final-check record
+types, signal parsing, progress-section parsing/formatting, iteration prompt
+building, final-check prompt building, final-check result parsing,
+final-check progress-section formatting, and pure iteration/final-check
+action-decision intents. The CoC server owns all side effects: queue tasks,
+process metadata, WebSocket events, repo-scoped path resolution, and filesystem
+persistence.
 
 ## Session Journal
 
@@ -15,7 +23,8 @@ Each Ralph session owns a journal directory under the repo data directory:
 ```
 
 `session.json` is a `RalphSessionRecord` from
-`packages/coc/src/server/ralph/types.ts`. It includes `sessionId`,
+`@plusplusoneplusplus/coc-workflow/ralph` (re-exported by
+`packages/coc/src/server/ralph/types.ts` for CoC compatibility). It includes `sessionId`,
 `workspaceId`, `originalGoal`, `maxIterations`, `currentIteration`, `phase`
 (`executing`, `complete`, or `failed`), `startedAt`, and an `iterations[]`
 array. Each iteration records at least `iteration`, `signal`, `startedAt`, and
@@ -65,8 +74,9 @@ content.
 
 ## Per-Iteration User Prompt
 
-Each iteration's user prompt is built by `buildRalphIterationPrompt(...)` in
-`packages/coc/src/server/ralph/iteration-prompt.ts`. The prompt begins with a
+Each iteration's user prompt is built by `buildRalphIterationPrompt(...)` from
+`@plusplusoneplusplus/coc-workflow/ralph` (with a CoC compatibility re-export in
+`packages/coc/src/server/ralph/iteration-prompt.ts`). The prompt begins with a
 plain-language execution directive, then includes a short `<work_intent>` block
 with generic coding, testing, validation, and commit vocabulary, then a
 `<spec_contract>` block that tells the agent how to read goal.md plus optional
@@ -185,11 +195,16 @@ schedule run failed; clean, capped, or normal terminal reasons complete it.
 ## Final Check Automation
 
 `orchestrateFinalCheck(...)` in
-`packages/coc/src/server/ralph/orchestrate-final-check.ts` appends the
-final-check result to `progress.md`, reads the session once, and persists a
-`RalphFinalCheckRecord` with shared base fields (`loopIndex`,
-`sourceIteration`, `taskId`, `processId`, `startedAt`, `completedAt`) plus
-outcome-specific metadata.
+`packages/coc/src/server/ralph/orchestrate-final-check.ts` applies the portable
+action intents returned by `decideRalphFinalCheckActions(...)` from
+`@plusplusoneplusplus/coc-workflow/ralph`: it appends the final-check result to
+`progress.md`, reads the session once, and persists a `RalphFinalCheckRecord`
+with shared base fields (`loopIndex`, `sourceIteration`, `taskId`, `processId`,
+`startedAt`, `completedAt`) plus outcome-specific metadata. The queue bridge
+similarly applies `decideRalphIterationActions(...)` intents for recording
+iterations, queueing continuations/final checks, and broadcasting terminal
+completion; CoC remains the only owner of queue payloads, process metadata,
+repo-scoped paths, WebSocket events, and filesystem writes.
 
 Final-check tasks are still queued as Ralph chat tasks and still use autopilot
 capability, but `RalphExecutor` switches to validation-only system instructions

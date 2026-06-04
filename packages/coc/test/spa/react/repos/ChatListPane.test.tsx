@@ -1307,8 +1307,8 @@ describe('ChatListPane', () => {
 
         it('expanded child rows are marked with data-group-child', () => {
             renderGrouped();
-            // Groups auto-collapse when all children are seen — expand both groups
-            // by clicking their chevrons before asserting on child rows.
+            // Groups default collapsed — expand both groups by clicking their
+            // chevrons before asserting on child rows.
             const chevrons = screen.getAllByTestId('group-chevron');
             chevrons.forEach(c => fireEvent.click(c));
             const g1a = document.querySelector('[data-task-id="g1-a"]') as HTMLElement | null;
@@ -1329,6 +1329,162 @@ describe('ChatListPane', () => {
             expect(cls).toContain('border-l');
             expect(cls).toContain('pl-2');
             expect(cls).toContain('ml-3');
+        });
+
+        it('keeps unseen plan-file groups collapsed after workspace switches while preserving unread affordances', () => {
+            const onMarkAllRead = vi.fn();
+            const { rerender, props } = renderGrouped({
+                workspaceId: 'ws-a',
+                unseenProcessIds: new Set(['g2-a']),
+                onMarkAllRead,
+            });
+
+            rerender(<ChatListPane {...props} workspaceId="__all" />);
+            const unseenGroup = screen.getByTestId('group-unseen-dot').closest('[data-testid="history-group"]') as HTMLElement;
+            expect(unseenGroup.getAttribute('data-expanded')).toBe('false');
+            expect(screen.queryByTestId('history-group-children')).toBeNull();
+            expect(screen.getByTestId('unseen-count-badge').textContent).toBe('1');
+            expect(screen.getByTestId('mark-all-read-btn')).toBeTruthy();
+            fireEvent.click(screen.getByTestId('mark-all-read-btn'));
+            expect(onMarkAllRead).toHaveBeenCalledTimes(1);
+            expect(onMarkAllRead.mock.calls[0][0].map((task: any) => task.id)).toEqual(
+                expect.arrayContaining(['g2-a', 'g2-b', 'standalone', 'g1-a', 'g1-b']),
+            );
+        });
+
+        it('keeps a selected unseen plan-file group collapsed after workspace switches', () => {
+            const groupForPlan = (planFilePath: string) =>
+                screen.getByTitle(planFilePath).closest('[data-testid="history-group"]') as HTMLElement;
+            const { rerender, props } = renderGrouped({
+                workspaceId: 'ws-a',
+                selectedTaskId: 'g2-a',
+                unseenProcessIds: new Set(['g2-a']),
+                onMarkAllRead: vi.fn(),
+            });
+
+            const selectedUnseenGroup = groupForPlan('/plans/plan2.md');
+            fireEvent.click(selectedUnseenGroup.querySelector('[data-testid="group-chevron"]')!);
+            expect(selectedUnseenGroup.getAttribute('data-expanded')).toBe('true');
+            expect(document.querySelector('[data-task-id="g2-a"]')).toBeTruthy();
+
+            rerender(<ChatListPane {...props} workspaceId="__all" />);
+            const allReposGroup = groupForPlan('/plans/plan2.md');
+            expect(allReposGroup.getAttribute('data-expanded')).toBe('false');
+            expect(document.querySelector('[data-task-id="g2-a"]')).toBeNull();
+            expect(screen.getByTestId('group-unseen-dot')).toBeTruthy();
+            expect(screen.getByTestId('unseen-count-badge').textContent).toBe('1');
+
+            rerender(<ChatListPane {...props} workspaceId="ws-a" />);
+            const repoGroup = groupForPlan('/plans/plan2.md');
+            expect(repoGroup.getAttribute('data-expanded')).toBe('false');
+            expect(document.querySelector('[data-task-id="g2-a"]')).toBeNull();
+            expect(screen.getByTestId('group-unseen-dot')).toBeTruthy();
+        });
+
+        it('respects manual plan-file group toggles only until the workspace changes or remounts', () => {
+            const { rerender, props } = renderGrouped({ workspaceId: 'ws-a' });
+            const firstGroup = screen.getAllByTestId('history-group')[0];
+            const firstChevron = screen.getAllByTestId('group-chevron')[0];
+            expect(firstGroup.getAttribute('data-expanded')).toBe('false');
+
+            fireEvent.click(firstChevron);
+            expect(firstGroup.getAttribute('data-expanded')).toBe('true');
+
+            rerender(<ChatListPane {...props} workspaceId="__all" />);
+            expect(screen.getAllByTestId('history-group')[0].getAttribute('data-expanded')).toBe('false');
+
+            fireEvent.click(screen.getAllByTestId('group-chevron')[0]);
+            expect(screen.getAllByTestId('history-group')[0].getAttribute('data-expanded')).toBe('true');
+
+            rerender(<ChatListPane {...props} workspaceId="ws-a" />);
+            expect(screen.getAllByTestId('history-group')[0].getAttribute('data-expanded')).toBe('false');
+        });
+
+        it('starts plan-file groups collapsed again after remounting the same workspace', () => {
+            const { unmount } = renderGrouped({
+                workspaceId: 'ws-a',
+                unseenProcessIds: new Set(['g2-a']),
+            });
+
+            fireEvent.click(screen.getAllByTestId('group-chevron')[0]);
+            expect(screen.getAllByTestId('history-group')[0].getAttribute('data-expanded')).toBe('true');
+
+            unmount();
+            renderGrouped({
+                workspaceId: 'ws-a',
+                unseenProcessIds: new Set(['g2-a']),
+            });
+
+            const unseenGroup = screen.getByTestId('group-unseen-dot').closest('[data-testid="history-group"]') as HTMLElement;
+            expect(unseenGroup.getAttribute('data-expanded')).toBe('false');
+            expect(screen.queryByTestId('history-group-children')).toBeNull();
+            expect(screen.getByTestId('unseen-count-badge').textContent).toBe('1');
+        });
+
+        it('keeps new plan-file groups collapsed after history refresh without closing expanded groups', () => {
+            const groupForPlan = (planFilePath: string) =>
+                screen.getByTitle(planFilePath).closest('[data-testid="history-group"]') as HTMLElement;
+            const { rerender, props } = renderGrouped({ workspaceId: 'ws-a' });
+
+            const existingGroup = groupForPlan('/plans/plan2.md');
+            fireEvent.click(existingGroup.querySelector('[data-testid="group-chevron"]')!);
+            expect(existingGroup.getAttribute('data-expanded')).toBe('true');
+
+            rerender(
+                <ChatListPane
+                    {...props}
+                    history={[
+                        ...makeGroupedHistory(),
+                        makeHistoryTask({ id: 'g3-a', displayName: 'G3 Task A', planFilePath: '/plans/plan3.md', startTime: 600 }),
+                        makeHistoryTask({ id: 'g3-b', displayName: 'G3 Task B', planFilePath: '/plans/plan3.md', startTime: 700 }),
+                    ]}
+                />,
+            );
+
+            expect(groupForPlan('/plans/plan2.md').getAttribute('data-expanded')).toBe('true');
+            expect(groupForPlan('/plans/plan3.md').getAttribute('data-expanded')).toBe('false');
+            expect(document.querySelector('[data-task-id="g3-a"]')).toBeNull();
+        });
+
+        it('keeps a manually collapsed unseen plan-file group collapsed after same-workspace refresh', () => {
+            const groupForPlan = (planFilePath: string) =>
+                screen.getByTitle(planFilePath).closest('[data-testid="history-group"]') as HTMLElement;
+            const { rerender, props } = renderGrouped({
+                workspaceId: 'ws-a',
+                unseenProcessIds: new Set(['g2-a']),
+                onMarkAllRead: vi.fn(),
+            });
+
+            const unseenGroup = groupForPlan('/plans/plan2.md');
+            const unseenChevron = unseenGroup.querySelector('[data-testid="group-chevron"]')!;
+            expect(unseenGroup.getAttribute('data-expanded')).toBe('false');
+
+            fireEvent.click(unseenChevron);
+            expect(unseenGroup.getAttribute('data-expanded')).toBe('true');
+            expect(document.querySelector('[data-task-id="g2-a"]')).toBeTruthy();
+
+            fireEvent.click(unseenChevron);
+            expect(unseenGroup.getAttribute('data-expanded')).toBe('false');
+            expect(document.querySelector('[data-task-id="g2-a"]')).toBeNull();
+
+            rerender(
+                <ChatListPane
+                    {...props}
+                    history={[
+                        ...makeGroupedHistory(),
+                        makeHistoryTask({ id: 'refresh-a', displayName: 'Refresh Task A', planFilePath: '/plans/refresh.md', startTime: 600 }),
+                        makeHistoryTask({ id: 'refresh-b', displayName: 'Refresh Task B', planFilePath: '/plans/refresh.md', startTime: 700 }),
+                    ]}
+                />,
+            );
+
+            const refreshedUnseenGroup = groupForPlan('/plans/plan2.md');
+            expect(refreshedUnseenGroup.getAttribute('data-expanded')).toBe('false');
+            expect(document.querySelector('[data-task-id="g2-a"]')).toBeNull();
+            expect(screen.getByTestId('group-unseen-dot')).toBeTruthy();
+            expect(screen.getByTestId('unseen-count-badge').textContent).toBe('1');
+            expect(screen.getByTestId('mark-all-read-btn')).toBeTruthy();
+            expect(groupForPlan('/plans/refresh.md').getAttribute('data-expanded')).toBe('false');
         });
 
     });

@@ -472,11 +472,18 @@ describe('HybridSearchEngine', () => {
         });
 
         it('score is deterministic: same input → same output', async () => {
-            const engine = new HybridSearchEngine(store, null);
-            const r1 = await engine.search({ text: 'TypeScript' });
-            const r2 = await engine.search({ text: 'TypeScript' });
-            expect(r1.map(r => r.fact.id)).toEqual(r2.map(r => r.fact.id));
-            expect(r1.map(r => r.score)).toEqual(r2.map(r => r.score));
+            const now = Date.now();
+            vi.useFakeTimers();
+            vi.setSystemTime(now);
+            try {
+                const engine = new HybridSearchEngine(store, null);
+                const r1 = await engine.search({ text: 'TypeScript' });
+                const r2 = await engine.search({ text: 'TypeScript' });
+                expect(r1.map(r => r.fact.id)).toEqual(r2.map(r => r.fact.id));
+                expect(r1.map(r => r.score)).toEqual(r2.map(r => r.score));
+            } finally {
+                vi.useRealTimers();
+            }
         });
     });
 

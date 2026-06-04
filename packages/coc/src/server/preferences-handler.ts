@@ -191,8 +191,13 @@ const WorkItemsSyncGithubSchema = z.object({
     pollIntervalMinutes: z.number().int().min(1).max(1440).optional().catch(undefined),
 }).strip().transform(dropIfEmpty);
 
+const WorkItemsSyncAzureBoardsSchema = z.object({
+    project: z.string().trim().min(1).max(200).optional().catch(undefined),
+}).strip().transform(dropIfEmpty);
+
 const WorkItemsSyncSchema = z.object({
     github: WorkItemsSyncGithubSchema.optional().catch(undefined),
+    azureBoards: WorkItemsSyncAzureBoardsSchema.optional().catch(undefined),
 }).strip().transform(dropIfEmpty);
 
 const WorkItemsPreferencesSchema = z.object({
@@ -242,7 +247,7 @@ export const PerRepoPreferencesSchema = z.object({
     lastModel: z.string().optional(),
     lastModels: LastModelsByModeSchema.optional(),
     lastDepth: z.enum(['deep', 'normal']).optional(),
-    lastEffort: z.enum(['low', 'medium', 'high']).optional(),
+    lastEffort: z.enum(['very-low', 'low', 'medium', 'high']).optional(),
     lastSkills: LastSkillsByModeSchema.optional(),
     skillUsageMap: stringRecordSchema.optional(),
     commitSkillUsageMap: stringRecordSchema.optional(),
@@ -833,6 +838,12 @@ export function registerPreferencesRoutes(
                                 ? {
                                     ...(existingRepo.workItems.sync?.github ?? {}),
                                     ...(patch.workItems.sync?.github ?? {}),
+                                }
+                                : undefined,
+                            azureBoards: patch.workItems.sync?.azureBoards || existingRepo.workItems.sync?.azureBoards
+                                ? {
+                                    ...(existingRepo.workItems.sync?.azureBoards ?? {}),
+                                    ...(patch.workItems.sync?.azureBoards ?? {}),
                                 }
                                 : undefined,
                         }

@@ -53,6 +53,19 @@ describe('resolveEffortTierConfig', () => {
         expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
     });
 
+    it('resolves the very-low tier from provider defaults', () => {
+        const input = makeInput({
+            payload: { kind: 'chat', mode: 'autopilot', prompt: 'test', provider: 'codex' },
+            config: { effortTier: 'very-low' } as CreateTaskInput['config'] & { effortTier: string },
+        });
+
+        resolveEffortTierConfig(input, makeContext());
+
+        expect(input.config.model).toBe('gpt-5.4-mini');
+        expect(input.config.reasoningEffort).toBe('low');
+        expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
+    });
+
     it('does not overwrite explicit model or reasoningEffort', () => {
         const input = makeInput({
             config: {

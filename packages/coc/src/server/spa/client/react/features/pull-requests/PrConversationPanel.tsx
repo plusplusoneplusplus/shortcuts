@@ -1,13 +1,13 @@
 /**
- * Conversation timeline panel for the PR overview tab. Renders an AI-grouped
+ * Conversation timeline panel for the PR overview tab. Renders a deterministic
  * timeline of activity plus a reply textarea with a "Draft reply" assist.
  */
 
 import { useRef, useState } from 'react';
-import type { AiTimelineEvent } from './pr-mock-data';
+import type { PrTimelineEvent } from './pr-derived-data';
 
 interface PrConversationPanelProps {
-    events: AiTimelineEvent[];
+    events: PrTimelineEvent[];
 }
 
 const DRAFT_REPLY_TEMPLATE =

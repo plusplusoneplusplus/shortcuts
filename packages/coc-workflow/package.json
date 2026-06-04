@@ -9,6 +9,9 @@
       "workflow": [
         "dist/workflow/index.d.ts"
       ],
+      "ralph": [
+        "dist/ralph/index.d.ts"
+      ],
       "logger": [
         "dist/logger.d.ts"
       ],
@@ -20,6 +23,7 @@
   "exports": {
     ".": "./dist/index.js",
     "./workflow": "./dist/workflow/index.js",
+    "./ralph": "./dist/ralph/index.js",
     "./logger": "./dist/logger.js",
     "./errors": "./dist/errors/index.js"
   },

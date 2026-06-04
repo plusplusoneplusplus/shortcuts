@@ -342,7 +342,7 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
     // Follow-up executions also read it from `task.config.reasoningEffort`
     // (see follow-up-executor.ts).
     const VALID_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
-    const VALID_EFFORT_TIERS = new Set(['low', 'medium', 'high']);
+    const VALID_EFFORT_TIERS = new Set(['very-low', 'low', 'medium', 'high']);
     const payloadEffort = typeof payload.reasoningEffort === 'string' && VALID_EFFORTS.has(payload.reasoningEffort)
         ? (payload.reasoningEffort as 'low' | 'medium' | 'high' | 'xhigh')
         : undefined;
@@ -354,7 +354,7 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
     if (effortTier !== undefined && (typeof effortTier !== 'string' || !VALID_EFFORT_TIERS.has(effortTier))) {
         return {
             valid: false,
-            error: `Invalid effortTier: '${effortTier}'. Valid tiers: low, medium, high`,
+            error: `Invalid effortTier: '${effortTier}'. Valid tiers: very-low, low, medium, high`,
         };
     }
 

@@ -728,35 +728,26 @@ export function ChatListPane({
         return { today, week, older };
     }, [groupedUnpinned, filteredUnpinned, listModeConfig, historyGrouping, unseenProcessIds]);
 
-    // Expand/collapse state for plan-file groups
-    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+    // Only explicit user expansions are tracked; groups otherwise render
+    // collapsed immediately, including the first paint after workspace changes.
+    const [expandedGroupState, setExpandedGroupState] = useState<{ workspaceId?: string; groups: Set<string> }>({
+        workspaceId,
+        groups: new Set(),
+    });
     const toggleGroup = useCallback((planFilePath: string) => {
-        setCollapsedGroups(prev => {
-            const next = new Set(prev);
-            next.has(planFilePath) ? next.delete(planFilePath) : next.add(planFilePath);
-            return next;
+        setExpandedGroupState(prev => {
+            const groups = new Set(prev.workspaceId === workspaceId ? prev.groups : []);
+            groups.has(planFilePath) ? groups.delete(planFilePath) : groups.add(planFilePath);
+            return { workspaceId, groups };
         });
-    }, []);
+    }, [workspaceId]);
 
-    // Auto-collapse groups where all children are seen (on group list change)
-    const prevGroupKeysRef = useRef<string>('');
     useEffect(() => {
-        if (!groupedUnpinned) return;
-        const groupKeys = groupedUnpinned
-            .filter((e): e is HistoryGroup => e.kind === 'group')
-            .map(g => g.planFilePath)
-            .sort()
-            .join('\0');
-        if (groupKeys === prevGroupKeysRef.current) return;
-        prevGroupKeysRef.current = groupKeys;
-        const toCollapse = new Set<string>();
-        for (const entry of groupedUnpinned) {
-            if (entry.kind === 'group' && !entry.hasUnseen) {
-                toCollapse.add(entry.planFilePath);
-            }
-        }
-        if (toCollapse.size > 0) setCollapsedGroups(toCollapse);
-    }, [groupedUnpinned]);
+        setExpandedGroupState(prev => {
+            if (prev.workspaceId === workspaceId && prev.groups.size === 0) return prev;
+            return { workspaceId, groups: new Set() };
+        });
+    }, [workspaceId]);
 
     // Count pinned tasks that are still running (not yet in history)
     const pinnedRunningCount = useMemo(() => {
@@ -1711,7 +1702,7 @@ export function ChatListPane({
                                                 {section.items.map((entry: RalphHistoryEntry) =>
                                                     entry.kind === 'ralph-session' ? (
                                                         <RalphSessionRow
-                                                            key={entry.sessionId}
+                                                            key={`${workspaceId ?? '__all'}:${entry.sessionId}`}
                                                             session={entry as RalphSession}
                                                             selectedTaskId={selectedTaskId}
                                                             selectedSessionId={selectedRalphSessionId}
@@ -2310,7 +2301,7 @@ export function ChatListPane({
                                             const session = entry as RalphSession;
                                             return (
                                                 <RalphSessionRow
-                                                    key={session.sessionId}
+                                                    key={`${workspaceId ?? '__all'}:${session.sessionId}`}
                                                     session={session}
                                                     selectedTaskId={selectedTaskId}
                                                     selectedSessionId={selectedRalphSessionId}
@@ -2331,8 +2322,7 @@ export function ChatListPane({
                                             );
                                         }
                                         if (entry.kind === 'group') {
-                                            // Expanded by default if group has unseen items; user toggle overrides
-                                            const expanded = !collapsedGroups.has(entry.planFilePath);
+                                            const expanded = expandedGroupState.workspaceId === workspaceId && expandedGroupState.groups.has(entry.planFilePath);
                                             const aggregateMode = computeAggregateMode(entry.children);
                                             const groupHasUnseen = !!unseenProcessIds && entry.children.some((c: any) => unseenProcessIds.has(c.id));
                                             return (

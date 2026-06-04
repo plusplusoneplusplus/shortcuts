@@ -101,8 +101,8 @@ describe('WorkItemPlanSection — inline review', () => {
         expect(src).toContain('e.preventDefault()');
     });
 
-    it('disables context menu in edit mode', () => {
-        expect(src).toContain('if (editMode) return;');
+    it('disables context menu in source (edit) mode', () => {
+        expect(src).toContain("if (viewMode !== 'preview') return;");
     });
 
     it('attaches onContextMenu to the markdown preview div', () => {
@@ -193,8 +193,8 @@ describe('WorkItemPlanSection — inline review', () => {
         expect(src).toContain('<CommentSidebar');
     });
 
-    it('CommentSidebar is hidden in edit mode', () => {
-        expect(src).toContain('planComments.length > 0 && !editMode');
+    it('CommentSidebar is hidden in source (edit) mode', () => {
+        expect(src).toContain("planComments.length > 0 && viewMode === 'preview'");
     });
 
     it('CommentSidebar has data-testid work-item-plan-comment-sidebar', () => {
@@ -265,8 +265,17 @@ describe('WorkItemPlanSection — inline review', () => {
         expect(src).toContain('data-testid={`plan-version-tab-${v.version}`}');
     });
 
-    it('still renders PlanEditor for edit mode', () => {
-        expect(src).toContain('data-testid="work-item-plan-editor"');
+    it('renders an always-editable source editor wired to the parent draft batch', () => {
+        expect(src).toContain('<SourceEditor');
+        expect(src).toContain('onChange={onDraftChange}');
+        expect(src).toContain("testId: 'work-item-plan-mode-source'");
+    });
+
+    it('no longer performs an instant standalone plan save (folded into Ctrl+S batch)', () => {
+        expect(src).not.toContain('data-testid="work-item-plan-editor"');
+        expect(src).not.toContain('data-testid="work-item-plan-edit-btn"');
+        expect(src).not.toContain('data-testid="work-item-plan-add-btn"');
+        expect(src).not.toContain('workItems.updatePlan(');
     });
 
     it('no longer renders AI resolve preview with accept/discard buttons', () => {

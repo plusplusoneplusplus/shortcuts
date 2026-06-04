@@ -589,6 +589,50 @@ describe('Work Item Routes', () => {
             expect(res.body.grillSessionId).toBe('queue_proc-abc');
         });
 
+        it('updates metadata and plan in one PATCH while creating a plan version', async () => {
+            const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${itemId}`, {
+                title: 'Updated title',
+                description: 'Updated description',
+                plan: {
+                    content: '# Updated plan',
+                    resolvedBy: 'user',
+                    summary: 'Inline edit',
+                },
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body.title).toBe('Updated title');
+            expect(res.body.description).toBe('Updated description');
+            expect(res.body.plan).toMatchObject({
+                version: 1,
+                content: '# Updated plan',
+                resolvedBy: 'user',
+            });
+
+            const versions = await store.getPlanVersions(itemId);
+            expect(versions).toHaveLength(1);
+            expect(versions[0]).toMatchObject({
+                version: 1,
+                content: '# Updated plan',
+                resolvedBy: 'user',
+                summary: 'Inline edit',
+            });
+        });
+
+        it('does not create a plan version when a mixed PATCH fails validation', async () => {
+            const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${itemId}`, {
+                plan: {
+                    content: '# Should not persist',
+                    resolvedBy: 'user',
+                },
+                parentId: 'parent-1',
+            });
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('parentId requires the workItems.hierarchy feature flag to be enabled');
+            expect(await store.getPlanVersions(itemId)).toEqual([]);
+        });
+
         it('rejects legacy syncLinks metadata on update without changing the item', async () => {
             const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${itemId}`, {
                 syncLinks: [SYNC_LINK],

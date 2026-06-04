@@ -79,6 +79,19 @@ export interface PullRequestCommit {
     url?: string;
 }
 
+export interface PullRequestDiffStats {
+    additions: number;
+    deletions: number;
+    changedFiles: number;
+}
+
+export type QueueRiskBadge = 'low' | 'med' | 'high' | 'unknown';
+
+export interface QueueRiskSignals {
+    hasFailingCheck?: boolean;
+    hasUnresolvedBlockingThread?: boolean;
+}
+
 /** Shape of a pull request as returned by the /api/repos/:id/pull-requests endpoint. */
 export interface PullRequest {
     id: number | string;
@@ -100,6 +113,8 @@ export interface PullRequest {
     commentCount?: number;
     /** SHA of the PR head commit (used as classification cache key). */
     headSha?: string;
+    /** Real diff stats enriched by the server for list/detail queue metadata. */
+    diffStats?: PullRequestDiffStats;
 }
 
 export interface StatusBadge {
@@ -175,4 +190,44 @@ export function formatTimestamp(iso: string | null | undefined): string {
  */
 export function formatRelativeTime(iso: string | null | undefined): string {
     return formatTimestamp(iso);
+}
+
+/**
+ * Deterministic queue review-time estimate from real diff size:
+ * max(1, round(changedLines / 25 + changedFiles * 0.5)).
+ */
+export function estimateReviewMinutes(diffStats: PullRequestDiffStats | null | undefined): number | null {
+    if (!diffStats) return null;
+    const changedLines = diffStats.additions + diffStats.deletions;
+    return Math.max(1, Math.round(changedLines / 25 + diffStats.changedFiles * 0.5));
+}
+
+/**
+ * Deterministic queue risk heuristic from real PR diff stats.
+ * Risk is based on changed lines and may be bumped once by real blocking signals.
+ */
+export function deriveQueueRisk(
+    diffStats: PullRequestDiffStats | null | undefined,
+    signals: QueueRiskSignals = {},
+): QueueRiskBadge {
+    if (!diffStats) return 'unknown';
+
+    const changedLines = diffStats.additions + diffStats.deletions;
+    let risk: QueueRiskBadge;
+
+    if (changedLines < 200) {
+        risk = 'low';
+    } else if (changedLines <= 800) {
+        risk = 'med';
+    } else {
+        risk = 'high';
+    }
+
+    if (!signals.hasFailingCheck && !signals.hasUnresolvedBlockingThread) {
+        return risk;
+    }
+
+    if (risk === 'low') return 'med';
+    if (risk === 'med') return 'high';
+    return 'high';
 }

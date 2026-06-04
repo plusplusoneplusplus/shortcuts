@@ -469,9 +469,19 @@ export class FileWorkItemStore implements WorkItemStore {
         const limit = filter?.limit ?? 20;
         const groups: Record<string, WorkItemListResult> = {};
 
+        const groupedStatuses = new Set(filtered.map(entry => entry.status));
         for (const status of WORK_ITEM_STATUSES) {
             const statusItems = filtered.filter(e => e.status === status);
             if (statusItems.length === 0) continue;
+            groups[status] = {
+                items: statusItems.slice(0, limit),
+                total: statusItems.length,
+            };
+            groupedStatuses.delete(status);
+        }
+
+        for (const status of [...groupedStatuses].sort((a, b) => a.localeCompare(b))) {
+            const statusItems = filtered.filter(e => e.status === status);
             groups[status] = {
                 items: statusItems.slice(0, limit),
                 total: statusItems.length,

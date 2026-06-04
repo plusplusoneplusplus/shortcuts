@@ -31,7 +31,7 @@ import { NoteChatBindingStore } from '../notes/note-chat-binding-store';
 import { normalizeRelativeNotePath } from '../notes/note-chat-bindings-handler';
 import type { ChatProvider } from '../tasks/task-types';
 
-const EFFORT_TIER_KEYS = new Set(['low', 'medium', 'high']);
+const EFFORT_TIER_KEYS = new Set(['very-low', 'low', 'medium', 'high']);
 
 export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteContext): void {
     const { bridge, store, globalWorkspaceRootPath, state } = ctx;
@@ -356,7 +356,7 @@ export function resolveEffortTierConfig(input: CreateTaskInput, ctx: Pick<QueueR
         ? payload.provider
         : (ctx.getDefaultProvider?.() ?? 'copilot');
     const tiers = mergeEffortTiersWithDefaults(provider, ctx.getEffortTiersForProvider?.(provider));
-    const tier = tiers[rawTier as 'low' | 'medium' | 'high'];
+    const tier = tiers[rawTier as 'very-low' | 'low' | 'medium' | 'high'];
     if (!tier) return;
 
     if (typeof config.model !== 'string' || config.model.length === 0) {

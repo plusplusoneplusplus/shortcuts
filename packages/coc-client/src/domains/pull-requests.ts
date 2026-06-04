@@ -13,6 +13,8 @@ import type {
   PullRequestListResponse,
   PullRequestReviewersResponse,
   PullRequestThreadsResponse,
+  RecentOpenedPullRequestsResponse,
+  RecordRecentOpenedPullRequestRequest,
   SanitizedProviderConfigResponse,
 } from '../contracts';
 import type { CocRequestOptions, NormalizedCocClientOptions, RequestAdapter } from '../types';
@@ -60,6 +62,48 @@ export class PullRequestsClient {
       query: options?.force ? { force: 'true' } : undefined,
       signal: options?.signal,
     });
+  }
+
+  listRecentOpened(repoId: string, workspaceId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<RecentOpenedPullRequestsResponse> {
+    return this.transport.request<RecentOpenedPullRequestsResponse>(
+      `/repos/${encodePathSegment(repoId)}/pull-requests/recent-opened`,
+      {
+        query: { workspaceId },
+        signal: options?.signal,
+      },
+    );
+  }
+
+  recordRecentOpened(
+    repoId: string,
+    workspaceId: string,
+    entry: RecordRecentOpenedPullRequestRequest,
+    options?: Pick<CocRequestOptions, 'signal'>,
+  ): Promise<RecentOpenedPullRequestsResponse> {
+    return this.transport.request<RecentOpenedPullRequestsResponse>(
+      `/repos/${encodePathSegment(repoId)}/pull-requests/recent-opened`,
+      {
+        method: 'POST',
+        body: { workspaceId, ...entry },
+        signal: options?.signal,
+      },
+    );
+  }
+
+  removeRecentOpened(
+    repoId: string,
+    workspaceId: string,
+    prNumber: number,
+    options?: Pick<CocRequestOptions, 'signal'>,
+  ): Promise<RecentOpenedPullRequestsResponse> {
+    return this.transport.request<RecentOpenedPullRequestsResponse>(
+      `/repos/${encodePathSegment(repoId)}/pull-requests/recent-opened/${encodePathSegment(String(prNumber))}`,
+      {
+        method: 'DELETE',
+        query: { workspaceId },
+        signal: options?.signal,
+      },
+    );
   }
 
   getThreads(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestThreadsResponse> {

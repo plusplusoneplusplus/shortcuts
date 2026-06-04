@@ -181,6 +181,69 @@ describe('GET /api/repos/:id/pull-requests', () => {
         expect(body.total).toBe(1);
     });
 
+    it('enriches list rows with real diff stats from the provider diff', async () => {
+        const diff = [
+            'diff --git a/src/foo.ts b/src/foo.ts',
+            '--- a/src/foo.ts',
+            '+++ b/src/foo.ts',
+            '@@ -1,2 +1,3 @@',
+            ' keep',
+            '+added',
+            '+another',
+            'diff --git a/src/bar.ts b/src/bar.ts',
+            '--- a/src/bar.ts',
+            '+++ b/src/bar.ts',
+            '@@ -1 +1 @@',
+            '-old',
+            '+new',
+        ].join('\n');
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockResolvedValue([
+            { ...mockPr, headSha: 'head-42' },
+        ]);
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(diff);
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { pullRequests: Array<{ diffStats?: { additions: number; deletions: number; changedFiles: number } }> };
+        expect(body.pullRequests[0].diffStats).toEqual({
+            additions: 3,
+            deletions: 1,
+            changedFiles: 2,
+        });
+        expect(mockSvc.getDiff).toHaveBeenCalledWith(REPO_ID, 42);
+    });
+
+    it('reuses cached diff stats for the same PR head across forced list refreshes', async () => {
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockResolvedValue([
+            { ...mockPr, headSha: 'same-head' },
+        ]);
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue([
+            'diff --git a/src/foo.ts b/src/foo.ts',
+            '--- a/src/foo.ts',
+            '+++ b/src/foo.ts',
+            '@@ -1 +1,2 @@',
+            ' keep',
+            '+added',
+        ].join('\n'));
+
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?force=true`);
+
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
+        expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
+    });
+
+    it('omits diff stats when the provider does not support pull request diffs', async () => {
+        const svcWithoutDiff = { ...mockSvc };
+        delete (svcWithoutDiff as any).getDiff;
+        (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(svcWithoutDiff);
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { pullRequests: Array<{ diffStats?: unknown }> };
+        expect(body.pullRequests[0].diffStats).toBeUndefined();
+    });
+
     it('passes status to upstream and always fetches top 100', async () => {
         await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?status=closed&top=10&skip=5`);
         expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'closed', top: 100, scope: 'mine' });

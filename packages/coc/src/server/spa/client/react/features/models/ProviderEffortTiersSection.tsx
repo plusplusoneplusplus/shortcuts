@@ -1,19 +1,23 @@
 /**
  * ProviderEffortTiersSection — admin editor for per-provider effort tier mappings.
  *
- * Shows three rows (Low / Medium / High), each with a Model dropdown and a
+ * Shows four rows (Very Low / Low / Medium / High), each with a Model dropdown and a
  * dependent Reasoning Effort dropdown. Standard dirty/save/cancel card semantics.
  *
  * Uses the admin-redesign `.aip-*` and `.ar-*` class system. No Tailwind.
  */
 import React, { useMemo } from 'react';
-import { useProviderEffortTiers, type EffortTierKey } from '../../hooks/useProviderEffortTiers';
+import { TIER_KEYS, useProviderEffortTiers, type EffortTierKey } from '../../hooks/useProviderEffortTiers';
 import { useProviderModels, type AgentProvider, type ProviderModelInfo } from '../../hooks/useProviderModels';
 import { Spinner } from '../../ui';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 
-const TIER_KEYS: EffortTierKey[] = ['low', 'medium', 'high'];
-const TIER_LABELS: Record<EffortTierKey, string> = { low: 'Low', medium: 'Medium', high: 'High' };
+const TIER_LABELS: Record<EffortTierKey, string> = {
+    'very-low': 'Very Low',
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+};
 
 interface ProviderEffortTiersSectionProps {
     provider: AgentProvider;
@@ -88,8 +92,8 @@ export function ProviderEffortTiersSection({ provider }: ProviderEffortTiersSect
                 <div>
                     <h3 className="aip-panel-title" id="effort-tiers-title">Effort Tiers</h3>
                     <p className="aip-panel-desc">
-                        Map each effort level (Low / Medium / High) to a model and optional reasoning effort.
-                        Admins can preconfigure tiers even when the feature flag is off.
+                        Map each effort level (Very Low / Low / Medium / High) to a model and optional reasoning effort.
+                        Admins can preconfigure tiers before they are used in chat.
                     </p>
                 </div>
             </header>

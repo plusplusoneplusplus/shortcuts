@@ -67,6 +67,10 @@ export interface PerRepoPreferences {
         /** Background GitHub→local polling cadence in minutes. Defaults to 5. */
         pollIntervalMinutes?: number;
       };
+      azureBoards?: {
+        /** Azure Boards project name for this workspace. Organization URL is global provider config. */
+        project?: string;
+      };
     };
   };
   [key: string]: unknown;
