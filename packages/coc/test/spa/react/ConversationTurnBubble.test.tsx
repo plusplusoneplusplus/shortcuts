@@ -263,6 +263,25 @@ describe('ConversationTurnBubble — attached session context blocks', () => {
         ].join('\n');
     }
 
+    function makeRalphContextContent(message = 'Continue from this Ralph run.'): string {
+        return [
+            '<attached_ralph_session_context version="1">',
+            '<source workspace_id="ws-1" ralph_session_id="ralph-session-1234567890" phase="complete" status="completed" last_activity_at="2026-01-02T00:00:00.000Z" process_count="3" iteration_count="2">',
+            '<title>Ralph &lt;goal&gt; &amp; inspect</title>',
+            '<display_label>Ralph &lt;goal&gt; &amp; inspect - 2 iter</display_label>',
+            '<child_process_ids>',
+            '<process_id>grill-proc</process_id>',
+            '<process_id>iter-1</process_id>',
+            '<process_id>iter-2</process_id>',
+            '</child_process_ids>',
+            '<instruction>Before answering, retrieve and read the relevant Ralph child conversations by process ID using the available conversation retrieval tool. This pointer block contains only safe metadata.</instruction>',
+            '</source>',
+            '</attached_ralph_session_context>',
+            '',
+            message,
+        ].join('\n');
+    }
+
     beforeEach(() => {
         vi.restoreAllMocks();
     });
@@ -327,6 +346,83 @@ describe('ConversationTurnBubble — attached session context blocks', () => {
 
         expect(container.querySelector('.raw-content-view')?.textContent).toContain('<attached_session_context version="1">');
         expect(container.querySelector('[data-testid="attached-session-context-block"]')).toBeNull();
+    });
+
+    it('renders persisted Ralph context blocks as collapsed purple cards', () => {
+        render(
+            <ConversationTurnBubble
+                turn={makeTurn({ role: 'user', content: makeRalphContextContent() })}
+            />
+        );
+
+        const card = screen.getByTestId('attached-ralph-context-block') as HTMLDetailsElement;
+        expect(card.open).toBe(false);
+        expect(screen.getByTestId('attached-ralph-context-summary').textContent).toContain('Ralph <goal> & inspect - 2 iter');
+        expect(card.textContent).toContain('complete/completed');
+        expect(screen.getByTestId('attached-ralph-context-counts').textContent).toBe('3 processes · 2 iterations');
+        expect(screen.getByTestId('attached-ralph-context-last-activity').textContent).toBe('2026-01-02T00:00:00.000Z');
+        expect(card.textContent).toContain('ralph-se…7890');
+        expect(screen.getByTestId('user-plain-text')?.textContent).toBe('Continue from this Ralph run.');
+        expect(screen.getByTestId('user-plain-text')?.textContent).not.toContain('attached_ralph_session_context');
+    });
+
+    it('keeps Ralph source pointers visible when the collapsed card is expanded', () => {
+        render(
+            <ConversationTurnBubble
+                turn={makeTurn({ role: 'user', content: makeRalphContextContent('') })}
+            />
+        );
+
+        fireEvent.click(screen.getByText('Attached Ralph context'));
+
+        expect(screen.getByTestId('attached-ralph-context-session-id').textContent).toBe('ralph-session-1234567890');
+        expect(screen.getByText('ws-1')).toBeTruthy();
+        expect(screen.getByText('3')).toBeTruthy();
+        expect(screen.getByText('2')).toBeTruthy();
+        expect(screen.getByTestId('attached-ralph-context-child-process-ids').textContent).toContain('grill-proc, iter-1, iter-2');
+        expect(screen.getByTestId('attached-ralph-context-raw-block').textContent).toContain('<attached_ralph_session_context version="1">');
+    });
+
+    it('copies the raw Ralph context block from the expanded card', async () => {
+        const spy = vi.spyOn(formatUtils, 'copyToClipboard').mockResolvedValue(undefined);
+        render(
+            <ConversationTurnBubble
+                turn={makeTurn({ role: 'user', content: makeRalphContextContent('Use this Ralph source.') })}
+            />
+        );
+
+        fireEvent.click(screen.getByText('Attached Ralph context'));
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('attached-ralph-context-copy-raw'));
+        });
+
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(spy.mock.calls[0][0]).toContain('<attached_ralph_session_context version="1">');
+        expect(spy.mock.calls[0][0]).toContain('ralph_session_id="ralph-session-1234567890"');
+    });
+
+    it('renders coexisting session and Ralph cards while raw mode still exposes exact persisted content', () => {
+        const content = [
+            makeSessionContextContent(''),
+            makeRalphContextContent('Compare both contexts.'),
+        ].join('\n');
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({ role: 'user', content })}
+            />
+        );
+
+        expect(screen.getByTestId('attached-session-context-block')).toBeTruthy();
+        expect(screen.getByTestId('attached-ralph-context-block')).toBeTruthy();
+        expect(screen.getByTestId('user-plain-text')?.textContent).toBe('Compare both contexts.');
+
+        fireEvent.click(container.querySelector('.bubble-raw-btn') as HTMLButtonElement);
+
+        const rawContent = container.querySelector('.raw-content-view')?.textContent ?? '';
+        expect(rawContent).toContain('<attached_session_context version="1">');
+        expect(rawContent).toContain('<attached_ralph_session_context version="1">');
+        expect(container.querySelector('[data-testid="attached-session-context-block"]')).toBeNull();
+        expect(container.querySelector('[data-testid="attached-ralph-context-block"]')).toBeNull();
     });
 });
 

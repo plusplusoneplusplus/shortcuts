@@ -156,11 +156,12 @@ phase/status, safe title/display label, latest activity, process/iteration
 counts, and ordered child process IDs only. Single-session drag payloads derive
 their title from custom title/title/displayName, prompt preview or prompt
 metadata, then process ID; they do not use latest-turn previews such as
-`lastMessagePreview`. `ConversationTurnBubble` parses persisted single-session
-context blocks on user turns and renders them as collapsed "Attached session
-context" cards with title, status, last activity, workspace/process IDs, and a
-raw-block copy affordance while raw mode still exposes the exact persisted
-message content.
+`lastMessagePreview`. `ConversationTurnBubble` parses persisted attached-context
+blocks on user turns and renders them as collapsed cards: neutral "Attached
+session context" cards for single sessions and purple "Attached Ralph context"
+cards for Ralph groups. Both cards show their pointer metadata and a raw-block
+copy affordance while raw mode still exposes the exact persisted message
+content.
 
 New chats use `AgentSelectorChip` to choose a per-chat provider. The initial selection comes from the workspace's `lastChatProvider` preference when that provider is enabled and available; otherwise it falls back to the configured `defaultProvider` from runtime config, and then to Copilot if the configured default provider cannot be selected. Follow-up inputs show the provider stored on the process metadata so existing chats continue using their original provider.
 

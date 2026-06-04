@@ -271,6 +271,31 @@ describe('formatAttachedContext', () => {
         expect(result).not.toContain('/home/');
         expect(result).not.toContain('C:\\Users');
     });
+
+    it('redacts local paths from Ralph pointer metadata before formatting', () => {
+        const result = formatAttachedContext([{
+            kind: 'ralph-session',
+            id: 'ctx-ralph',
+            sourceWorkspaceId: 'ws-1',
+            sourceRalphSessionId: 'ralph-session-0001',
+            title: 'Inspect /home/example/secret/progress.md',
+            displayLabel: 'Inspect C:\\Users\\example\\run - 1 iter',
+            phase: 'complete',
+            status: 'completed',
+            lastActivityAt: '2026-01-01T00:00:00.000Z',
+            childProcessIds: ['iter-1', '/home/example/process-id'],
+            processCount: 2,
+            iterationCount: 1,
+            preview: 'Ralph source',
+        }]);
+
+        expect(result).toContain('<title>Inspect [path]</title>');
+        expect(result).toContain('<display_label>Inspect [path] - 1 iter</display_label>');
+        expect(result).toContain('process_count="1"');
+        expect(result).toContain('<process_id>iter-1</process_id>');
+        expect(result).not.toContain('/home/example');
+        expect(result).not.toContain('C:\\Users\\example');
+    });
 });
 
 describe('parseAttachedSessionContextBlocks', () => {
@@ -288,8 +313,10 @@ describe('parseAttachedSessionContextBlocks', () => {
 
         const result = parseAttachedSessionContextBlocks(content);
 
+        expect(result.attachedContexts).toHaveLength(1);
         expect(result.sessionContexts).toHaveLength(1);
         expect(result.sessionContexts[0]).toMatchObject({
+            kind: 'session',
             sourceWorkspaceId: 'ws-1',
             sourceProcessId: 'source-process-123456',
             status: 'failed',
@@ -300,10 +327,84 @@ describe('parseAttachedSessionContextBlocks', () => {
         expect(result.remainingContent).toBe('Continue debugging.');
     });
 
+    it('round-trips Ralph session context blocks', () => {
+        const formatted = formatAttachedContext([{
+            kind: 'ralph-session',
+            id: 'ctx-ralph',
+            sourceWorkspaceId: 'ws-1',
+            sourceRalphSessionId: 'ralph-session-0001',
+            title: 'Ralph <goal> & inspect',
+            displayLabel: 'Ralph <goal> & inspect - 2 iter',
+            phase: 'executing',
+            status: 'running',
+            lastActivityAt: '2026-01-01T00:00:00.000Z',
+            childProcessIds: ['grill-proc', 'iter-1', 'iter-2'],
+            processCount: 3,
+            iterationCount: 2,
+            preview: 'Ralph source',
+        }]);
+        const result = parseAttachedSessionContextBlocks(`${formatted}Continue with this Ralph run.`);
+
+        expect(result.attachedContexts).toHaveLength(1);
+        expect(result.sessionContexts).toHaveLength(0);
+        expect(result.ralphSessionContexts).toHaveLength(1);
+        expect(result.ralphSessionContexts[0]).toMatchObject({
+            kind: 'ralph-session',
+            sourceWorkspaceId: 'ws-1',
+            sourceRalphSessionId: 'ralph-session-0001',
+            title: 'Ralph <goal> & inspect',
+            displayLabel: 'Ralph <goal> & inspect - 2 iter',
+            phase: 'executing',
+            status: 'running',
+            lastActivityAt: '2026-01-01T00:00:00.000Z',
+            childProcessIds: ['grill-proc', 'iter-1', 'iter-2'],
+            processCount: 3,
+            iterationCount: 2,
+        });
+        expect(result.ralphSessionContexts[0].rawBlock).toContain('<attached_ralph_session_context version="1">');
+        expect(result.ralphSessionContexts[0].rawBlock).not.toContain('transcript');
+        expect(result.ralphSessionContexts[0].rawBlock).not.toContain('progress.md');
+        expect(result.remainingContent).toBe('Continue with this Ralph run.');
+    });
+
+    it('parses coexisting single-session and Ralph context blocks in persisted order', () => {
+        const content = [
+            '<attached_session_context version="1">',
+            '<source workspace_id="ws-1" process_id="source-process-123456" status="failed" last_activity_at="2026-01-01T00:00:00.000Z">',
+            '<title>Debug source</title>',
+            '<instruction>Before answering, retrieve and read this source conversation by process ID using the available conversation retrieval tool.</instruction>',
+            '</source>',
+            '</attached_session_context>',
+            '',
+            '<attached_ralph_session_context version="1">',
+            '<source workspace_id="ws-1" ralph_session_id="ralph-session-0001" phase="complete" status="completed" last_activity_at="2026-01-02T00:00:00.000Z" process_count="2" iteration_count="1">',
+            '<title>Ralph source</title>',
+            '<display_label>Ralph source - 1 iter</display_label>',
+            '<child_process_ids>',
+            '<process_id>grill-proc</process_id>',
+            '<process_id>iter-1</process_id>',
+            '</child_process_ids>',
+            '<instruction>Before answering, retrieve and read the relevant Ralph child conversations by process ID using the available conversation retrieval tool. This pointer block contains only safe metadata.</instruction>',
+            '</source>',
+            '</attached_ralph_session_context>',
+            '',
+            'Compare both contexts.',
+        ].join('\n');
+
+        const result = parseAttachedSessionContextBlocks(content);
+
+        expect(result.attachedContexts.map(context => context.kind)).toEqual(['session', 'ralph-session']);
+        expect(result.sessionContexts).toHaveLength(1);
+        expect(result.ralphSessionContexts).toHaveLength(1);
+        expect(result.remainingContent).toBe('Compare both contexts.');
+    });
+
     it('leaves ordinary messages unchanged', () => {
         const content = 'No attached session context here.';
         expect(parseAttachedSessionContextBlocks(content)).toEqual({
+            attachedContexts: [],
             sessionContexts: [],
+            ralphSessionContexts: [],
             remainingContent: content,
         });
     });
