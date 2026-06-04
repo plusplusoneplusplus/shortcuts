@@ -5,6 +5,7 @@ import { APIError, badRequest, conflict, handleAPIError, notFound } from '../err
 import type { ChatProvider, ReasoningEffort } from '../tasks/task-types';
 import { VALID_CHAT_PROVIDERS, VALID_REASONING_EFFORTS } from '../tasks/task-types';
 import type { FileForEachRunStore } from '../for-each/for-each-run-store';
+import type { ForEachRunExecutor } from '../for-each/for-each-run-executor';
 import type { ForEachChildMode, ForEachItem } from '../for-each/types';
 import { FOR_EACH_CHILD_MODES } from '../for-each/types';
 import type { GenerateForEachItemPlanFn } from '../for-each/for-each-plan-generator';
@@ -14,6 +15,7 @@ export interface ForEachRouteContext {
     store: FileForEachRunStore;
     getForEachEnabled: () => boolean;
     generateItemPlan: GenerateForEachItemPlanFn;
+    executor: ForEachRunExecutor;
 }
 
 interface GenerateForEachRunRequest {
@@ -93,11 +95,14 @@ function toRouteError(error: unknown): APIError {
     if (/only draft runs/i.test(message)) {
         return conflict(message);
     }
+    if (/must be approved|blocked by failed|already has a running item|cannot be retried|cannot be skipped|only failed items|only pending or failed items|no runnable pending items/i.test(message)) {
+        return conflict(message);
+    }
     return badRequest(message);
 }
 
 export function registerForEachRoutes(ctx: ForEachRouteContext): void {
-    const { routes, store } = ctx;
+    const { routes, store, executor } = ctx;
 
     routes.push({
         method: 'GET',
@@ -234,6 +239,80 @@ export function registerForEachRoutes(ctx: ForEachRouteContext): void {
                 const workspaceId = decodeCapture(match!, 1);
                 const runId = decodeCapture(match!, 2);
                 const run = await store.approveRun(workspaceId, runId);
+                sendJSON(res, 200, { run });
+            } catch (err) {
+                handleAPIError(res, toRouteError(err));
+            }
+        },
+    });
+
+    const startOrContinue = async (_req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray): Promise<void> => {
+        if (!requireEnabled(ctx, res)) return;
+        try {
+            const workspaceId = decodeCapture(match!, 1);
+            const runId = decodeCapture(match!, 2);
+            const run = await executor.startOrContinueRun(workspaceId, runId);
+            sendJSON(res, 200, { run });
+        } catch (err) {
+            handleAPIError(res, toRouteError(err));
+        }
+    };
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/for-each-runs\/([^/]+)\/start$/,
+        handler: startOrContinue,
+    });
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/for-each-runs\/([^/]+)\/continue$/,
+        handler: startOrContinue,
+    });
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/for-each-runs\/([^/]+)\/items\/([^/]+)\/retry$/,
+        handler: async (_req, res, match) => {
+            if (!requireEnabled(ctx, res)) return;
+            try {
+                const workspaceId = decodeCapture(match!, 1);
+                const runId = decodeCapture(match!, 2);
+                const itemId = decodeCapture(match!, 3);
+                const run = await executor.retryItem(workspaceId, runId, itemId);
+                sendJSON(res, 200, { run });
+            } catch (err) {
+                handleAPIError(res, toRouteError(err));
+            }
+        },
+    });
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/for-each-runs\/([^/]+)\/items\/([^/]+)\/skip$/,
+        handler: async (_req, res, match) => {
+            if (!requireEnabled(ctx, res)) return;
+            try {
+                const workspaceId = decodeCapture(match!, 1);
+                const runId = decodeCapture(match!, 2);
+                const itemId = decodeCapture(match!, 3);
+                const run = await executor.skipItemAndContinue(workspaceId, runId, itemId);
+                sendJSON(res, 200, { run });
+            } catch (err) {
+                handleAPIError(res, toRouteError(err));
+            }
+        },
+    });
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/for-each-runs\/([^/]+)\/cancel$/,
+        handler: async (_req, res, match) => {
+            if (!requireEnabled(ctx, res)) return;
+            try {
+                const workspaceId = decodeCapture(match!, 1);
+                const runId = decodeCapture(match!, 2);
+                const run = await executor.cancelRun(workspaceId, runId);
                 sendJSON(res, 200, { run });
             } catch (err) {
                 handleAPIError(res, toRouteError(err));

@@ -74,6 +74,16 @@ export interface UpdateForEachPlanInput {
     childMode?: ForEachChildMode;
 }
 
+export interface ClaimedForEachItem {
+    run: ForEachRun;
+    item: ForEachItem;
+}
+
+export interface CancelForEachRunResult {
+    run: ForEachRun;
+    childTaskIds: string[];
+}
+
 export const FOR_EACH_ITEM_STATUSES: readonly ForEachItemStatus[] = [
     'pending',
     'running',
@@ -83,4 +93,3 @@ export const FOR_EACH_ITEM_STATUSES: readonly ForEachItemStatus[] = [
 ];
 
 export const FOR_EACH_CHILD_MODES: readonly ForEachChildMode[] = ['ask', 'autopilot'];
-

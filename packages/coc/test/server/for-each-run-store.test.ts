@@ -125,5 +125,78 @@ describe('FileForEachRunStore', () => {
             })).rejects.toThrow(/initial status 'pending'/i);
         });
     });
-});
 
+    it('claims sequential items, records child links, and stops on failure', async () => {
+        await withTempDir(async (dataDir) => {
+            const store = new FileForEachRunStore({ dataDir });
+            const run = await store.createDraftRun({
+                workspaceId: WORKSPACE_ID,
+                originalRequest: 'Split this request',
+                childMode: 'ask',
+                items: [
+                    item({ id: 'item-1', title: 'First' }),
+                    item({ id: 'item-2', title: 'Second', dependsOn: ['item-1'] }),
+                ],
+            });
+            await store.approveRun(WORKSPACE_ID, run.runId);
+
+            const firstClaim = await store.claimNextRunnableItem(WORKSPACE_ID, run.runId);
+            expect(firstClaim?.item.id).toBe('item-1');
+            await store.linkRunningItemChild(WORKSPACE_ID, run.runId, 'item-1', 'task-1', 'queue_task-1');
+            await store.markRunningItemCompleted(WORKSPACE_ID, run.runId, 'item-1', 'task-1');
+
+            const secondClaim = await store.claimNextRunnableItem(WORKSPACE_ID, run.runId);
+            expect(secondClaim?.item.id).toBe('item-2');
+            await store.linkRunningItemChild(WORKSPACE_ID, run.runId, 'item-2', 'task-2', 'queue_task-2');
+            const failed = await store.markRunningItemFailed(WORKSPACE_ID, run.runId, 'item-2', 'boom', 'task-2');
+
+            expect(failed.status).toBe('failed');
+            expect(failed.items.map(i => [i.id, i.status])).toEqual([
+                ['item-1', 'completed'],
+                ['item-2', 'failed'],
+            ]);
+            await expect(store.claimNextRunnableItem(WORKSPACE_ID, run.runId)).rejects.toThrow(/blocked by failed item/i);
+        });
+    });
+
+    it('supports retry, skip, and cancellation state transitions', async () => {
+        await withTempDir(async (dataDir) => {
+            const store = new FileForEachRunStore({ dataDir });
+            const run = await store.createDraftRun({
+                workspaceId: WORKSPACE_ID,
+                originalRequest: 'Split this request',
+                childMode: 'autopilot',
+                items: [item()],
+            });
+            await store.approveRun(WORKSPACE_ID, run.runId);
+
+            const claim = await store.claimNextRunnableItem(WORKSPACE_ID, run.runId);
+            expect(claim?.item.id).toBe('item-1');
+            await store.linkRunningItemChild(WORKSPACE_ID, run.runId, 'item-1', 'task-1', 'queue_task-1');
+            await store.markRunningItemFailed(WORKSPACE_ID, run.runId, 'item-1', 'failed', 'task-1');
+
+            const retry = await store.claimFailedItemForRetry(WORKSPACE_ID, run.runId, 'item-1');
+            expect(retry.item.status).toBe('running');
+            await store.linkRunningItemChild(WORKSPACE_ID, run.runId, 'item-1', 'task-2', 'queue_task-2');
+            await store.markRunningItemFailed(WORKSPACE_ID, run.runId, 'item-1', 'failed again', 'task-2');
+
+            const skipped = await store.skipItem(WORKSPACE_ID, run.runId, 'item-1');
+            expect(skipped.status).toBe('completed');
+            expect(skipped.items[0].status).toBe('skipped');
+
+            const cancellable = await store.createDraftRun({
+                workspaceId: WORKSPACE_ID,
+                originalRequest: 'Split this request',
+                childMode: 'ask',
+                items: [item({ id: 'item-cancel' })],
+            });
+            await store.approveRun(WORKSPACE_ID, cancellable.runId);
+            await store.claimNextRunnableItem(WORKSPACE_ID, cancellable.runId);
+            await store.linkRunningItemChild(WORKSPACE_ID, cancellable.runId, 'item-cancel', 'task-cancel', 'queue_task-cancel');
+            const cancelled = await store.cancelRun(WORKSPACE_ID, cancellable.runId);
+            expect(cancelled.childTaskIds).toEqual(['task-cancel']);
+            expect(cancelled.run.status).toBe('cancelled');
+            expect(cancelled.run.items[0].status).toBe('skipped');
+        });
+    });
+});

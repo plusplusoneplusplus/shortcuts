@@ -94,6 +94,7 @@ import { registerRalphResumeRoutes } from './ralph-resume-routes';
 import { registerForEachRoutes } from './for-each-routes';
 import { FileForEachRunStore } from '../for-each/for-each-run-store';
 import { createForEachPlanGenerator } from '../for-each/for-each-plan-generator';
+import { ForEachRunExecutor } from '../for-each/for-each-run-executor';
 import { registerLoopRoutes } from '../loops/loop-handler';
 import type { LoopStore } from '../loops/loop-store';
 import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
@@ -459,6 +460,19 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // For Each routes: dedicated reviewed item-plan mode. Routes are registered
     // with a live feature guard so admin toggles take effect without restart.
     const forEachRunStore = new FileForEachRunStore({ dataDir });
+    const forEachRunExecutor = new ForEachRunExecutor({
+        store: forEachRunStore,
+        enqueueChildTask: (task) => bridge.enqueue(task),
+        cancelChildTask: (taskId) => {
+            const executor = bridge.findExecutorForTask(taskId);
+            if (executor) {
+                executor.cancelTask(taskId);
+                return true;
+            }
+            return bridge.findManagerForTask(taskId)?.cancelTask(taskId) ?? false;
+        },
+    });
+    forEachRunExecutor.attachToQueueRegistry(bridge.registry);
     const forEachPlanGenerator = createForEachPlanGenerator({
         aiService: resolvedAiService,
         resolveAiServiceForProvider: opts.resolveAiServiceForProvider,
@@ -471,6 +485,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         store: forEachRunStore,
         getForEachEnabled,
         generateItemPlan: forEachPlanGenerator.generateItemPlan,
+        executor: forEachRunExecutor,
     });
 
     // Work item routes

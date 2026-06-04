@@ -110,6 +110,11 @@ All For Each routes are workspace-scoped and gated by `forEach.enabled` (default
 | GET | `/api/workspaces/:id/for-each-runs/:runId` | Read a For Each run with reviewed item plan/state |
 | PUT | `/api/workspaces/:id/for-each-runs/:runId/plan` | Replace the reviewed draft item plan and optional shared instructions / child mode before approval |
 | POST | `/api/workspaces/:id/for-each-runs/:runId/approve` | Mark a reviewed draft plan approved. Approval does not enqueue child chats; child execution routes are separate from the draft/review API |
+| POST | `/api/workspaces/:id/for-each-runs/:runId/start` | Start an approved run by enqueueing the next runnable item as a normal Ask/Autopilot child chat |
+| POST | `/api/workspaces/:id/for-each-runs/:runId/continue` | Explicitly resume/continue pending work without auto-resuming on server startup |
+| POST | `/api/workspaces/:id/for-each-runs/:runId/items/:itemId/retry` | Retry a failed item as a new child chat and overwrite that item's active child task/process link |
+| POST | `/api/workspaces/:id/for-each-runs/:runId/items/:itemId/skip` | Mark a failed or pending item skipped and continue with the next runnable item |
+| POST | `/api/workspaces/:id/for-each-runs/:runId/cancel` | Cancel remaining work, mark pending/running items skipped, and cancel the active child task when available |
 
 ## Schedules
 

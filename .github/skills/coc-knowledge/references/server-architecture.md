@@ -100,7 +100,7 @@ The `src/server/` tree is grouped by feature domain. Cross-cutting plumbing stay
 | `terminal/` | WebSocket-based PTY (session-manager, routes, ws-server) |
 | `memory/` | Memory config, bounded-memory REST, repo-memory, promote, background-review |
 | `ralph/` | Iterative execution sessions and file-backed journal (see [ralph.md](ralph.md)) |
-| `for-each/` | Dedicated For Each run records, item-plan validation, file-backed repo-scoped draft/approval storage |
+| `for-each/` | Dedicated For Each run records, item-plan validation, file-backed repo-scoped draft/approval storage, and sequential child-chat orchestration |
 | `models/` | Model registry endpoints |
 | `messaging/` | Teams bot integration: manager, command router, per-user state |
 | `spa/` | Dashboard SPA (HTML template, React client) |

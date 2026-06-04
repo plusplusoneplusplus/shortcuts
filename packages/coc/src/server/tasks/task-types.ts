@@ -231,12 +231,22 @@ export interface ChatContext {
     scheduleParams?: Record<string, string>;
     /** Ralph-mode orchestration metadata. */
     ralph?: RalphContext;
+    /** For Each parent run linkage for child chats. */
+    forEach?: ForEachContext;
     /** PR diff classification context — dispatches to ClassificationExecutor. */
     classifyDiff?: {
         repoId: string;
         prId: string;
         headSha: string;
     };
+}
+
+/** For Each child chat linkage (mirrored verbatim into AIProcess.metadata.forEach). */
+export interface ForEachContext {
+    workspaceId: string;
+    runId: string;
+    itemId: string;
+    childMode: 'ask' | 'autopilot';
 }
 
 /** Ralph-mode orchestration context (mirrored verbatim into AIProcess.metadata.ralph). */
@@ -497,4 +507,11 @@ export function serializeRalphMetadata(payload: unknown): RalphContext | undefin
     if (!isChatPayload(payload as Record<string, unknown>)) return undefined;
     const ralph = (payload as ChatPayload).context?.ralph;
     return ralph ?? undefined;
+}
+
+export function serializeForEachMetadata(payload: unknown): ForEachContext | undefined {
+    if (!payload || typeof payload !== 'object') return undefined;
+    if (!isChatPayload(payload as Record<string, unknown>)) return undefined;
+    const forEach = (payload as ChatPayload).context?.forEach;
+    return forEach ?? undefined;
 }

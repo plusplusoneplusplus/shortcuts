@@ -7,8 +7,10 @@ import type { Route } from '../../src/server/types';
 import { createRouter } from '../../src/server/shared/router';
 import { registerForEachRoutes } from '../../src/server/routes/for-each-routes';
 import { FileForEachRunStore } from '../../src/server/for-each/for-each-run-store';
+import { ForEachRunExecutor } from '../../src/server/for-each/for-each-run-executor';
 import type { ForEachItem } from '../../src/server/for-each/types';
 import type { GenerateForEachItemPlanFn } from '../../src/server/for-each/for-each-plan-generator';
+import type { CreateTaskInput, QueuedTask } from '@plusplusoneplusplus/forge';
 
 const WORKSPACE_ID = 'ws-routes-test';
 const GENERATED_ITEMS: ForEachItem[] = [
@@ -26,6 +28,9 @@ let server: http.Server;
 let baseUrl: string;
 let forEachEnabled = false;
 let generateItemPlan: ReturnType<typeof vi.fn<GenerateForEachItemPlanFn>>;
+let executor: ForEachRunExecutor;
+let enqueuedTasks: CreateTaskInput[];
+let cancelledTaskIds: string[];
 
 function makeServer(): http.Server {
     const routes: Route[] = [];
@@ -34,6 +39,7 @@ function makeServer(): http.Server {
         store,
         getForEachEnabled: () => forEachEnabled,
         generateItemPlan,
+        executor,
     });
     return http.createServer(createRouter({ routes, spaHtml: '' }));
 }
@@ -84,6 +90,19 @@ describe('For Each routes', () => {
         tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-for-each-routes-'));
         store = new FileForEachRunStore({ dataDir: tmpDir });
         generateItemPlan = vi.fn(async () => GENERATED_ITEMS);
+        enqueuedTasks = [];
+        cancelledTaskIds = [];
+        executor = new ForEachRunExecutor({
+            store,
+            enqueueChildTask: async (input) => {
+                enqueuedTasks.push(input);
+                return `task-${enqueuedTasks.length}`;
+            },
+            cancelChildTask: async (taskId) => {
+                cancelledTaskIds.push(taskId);
+                return true;
+            },
+        });
         server = makeServer();
         await startServer();
     });
@@ -225,5 +244,162 @@ describe('For Each routes', () => {
         expect(res.body.code).toBe('FOR_EACH_PLAN_GENERATION_FAILED');
         expect(res.body.error).toMatch(/regenerate/i);
     });
-});
 
+    it('starts approved runs by enqueueing exactly one linked child chat', async () => {
+        forEachEnabled = true;
+        const created = await request('POST', `/api/workspaces/${WORKSPACE_ID}/for-each-runs/generate`, {
+            prompt: 'Split this request',
+            sharedInstructions: 'Use shared guardrails.',
+            childMode: 'autopilot',
+            provider: 'copilot',
+            config: { model: 'gpt-5.5', reasoningEffort: 'high' },
+        });
+        const runId = created.body.run.runId;
+        await request('POST', `/api/workspaces/${WORKSPACE_ID}/for-each-runs/${runId}/approve`);
+
+        const started = await request('POST', `/api/workspaces/${WORKSPACE_ID}/for-each-runs/${runId}/start`);
+
+        expect(started.status).toBe(200);
+        expect(started.body.run.status).toBe('running');
+        expect(started.body.run.items[0]).toMatchObject({
+            status: 'running',
+            childTaskId: 'task-1',
+            childProcessId: 'queue_task-1',
+        });
+        expect(enqueuedTasks).toHaveLength(1);
+        expect(enqueuedTasks[0]).toMatchObject({
+            type: 'chat',
+            repoId: WORKSPACE_ID,
+            payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                workspaceId: WORKSPACE_ID,
+                provider: 'copilot',
+                model: 'gpt-5.5',
+                reasoningEffort: 'high',
+                context: {
+                    forEach: {
+                        workspaceId: WORKSPACE_ID,
+                        runId,
+                        itemId: 'item-1',
+                        childMode: 'autopilot',
+                    },
+                },
+            },
+            config: { model: 'gpt-5.5', reasoningEffort: 'high' },
+        });
+        expect((enqueuedTasks[0].payload.prompt as string)).toContain('Item task prompt:');
+        expect((enqueuedTasks[0].payload.prompt as string)).toContain('Use shared guardrails.');
+    });
+
+    it('continues sequentially after completion and stops on child failure', async () => {
+        forEachEnabled = true;
+        const created = await request('POST', `/api/workspaces/${WORKSPACE_ID}/for-each-runs/generate`, {
+            prompt: 'Split this request',
+            childMode: 'ask',
+        });
+        const runId = created.body.run.runId;
+        await request('PUT', `/api/workspaces/${WORKSPACE_ID}/for-each-runs/${runId}/plan`, {
+            items: [
+                { id: 'item-1', title: 'First', prompt: 'Do first.', status: 'pending' },
+                { id: 'item-2', title: 'Second', prompt: 'Do second.', dependsOn: ['item-1'], status: 'pending' },
+                { id: 'item-3', title: 'Third', prompt: 'Do third.', status: 'pending' },
+            ],
+        });
+        await request('POST', `/api/workspaces/${WORKSPACE_ID}/for-each-runs/${runId}/approve`);
+        await request('POST', `/api/workspaces/${WORKSPACE_ID}/for-each-runs/${runId}/start`);
+
+        await executor.handleChildTaskCompleted({
+            id: 'task-1',
+            type: 'chat',
+            priority: 'normal',
+            status: 'completed',
+            createdAt: Date.now(),
+            payload: enqueuedTasks[0].payload,
+            config: {},
+        } as QueuedTask);
+
+        let run = await store.getRun(WORKSPACE_ID, runId);
+        expect(enqueuedTasks).toHaveLength(2);
+        expect(run?.items.map(i => [i.id, i.status])).toEqual([
+            ['item-1', 'completed'],
+            ['item-2', 'running'],
+            ['item-3', 'pending'],
+        ]);
+
+        await executor.handleChildTaskFailed({
+            id: 'task-2',
+            type: 'chat',
+            priority: 'normal',
+            status: 'failed',
+            createdAt: Date.now(),
+            payload: enqueuedTasks[1].payload,
+            config: {},
+        } as QueuedTask, new Error('boom'));
+
+        run = await store.getRun(WORKSPACE_ID, runId);
+        expect(run?.status).toBe('failed');
+        expect(run?.items.map(i => [i.id, i.status])).toEqual([
+            ['item-1', 'completed'],
+            ['item-2', 'failed'],
+            ['item-3', 'pending'],
+        ]);
+        expect(enqueuedTasks).toHaveLength(2);
+    });
+
+    it('retries failed items, skips failed items, and cancels remaining work', async () => {
+        forEachEnabled = true;
+        const created = await request('POST', `/api/workspaces/${WORKSPACE_ID}/for-each-runs/generate`, {
+            prompt: 'Split this request',
+            childMode: 'ask',
+        });
+        const runId = created.body.run.runId;
+        await request('PUT', `/api/workspaces/${WORKSPACE_ID}/for-each-runs/${runId}/plan`, {
+            items: [
+                { id: 'item-1', title: 'First', prompt: 'Do first.', status: 'pending' },
+                { id: 'item-2', title: 'Second', prompt: 'Do second.', status: 'pending' },
+            ],
+        });
+        await request('POST', `/api/workspaces/${WORKSPACE_ID}/for-each-runs/${runId}/approve`);
+        await request('POST', `/api/workspaces/${WORKSPACE_ID}/for-each-runs/${runId}/start`);
+        await executor.handleChildTaskFailed({
+            id: 'task-1',
+            type: 'chat',
+            priority: 'normal',
+            status: 'failed',
+            createdAt: Date.now(),
+            payload: enqueuedTasks[0].payload,
+            config: {},
+        } as QueuedTask, new Error('boom'));
+
+        const retry = await request('POST', `/api/workspaces/${WORKSPACE_ID}/for-each-runs/${runId}/items/item-1/retry`);
+        expect(retry.status).toBe(200);
+        expect(retry.body.run.items[0]).toMatchObject({ status: 'running', childTaskId: 'task-2' });
+
+        await executor.handleChildTaskFailed({
+            id: 'task-2',
+            type: 'chat',
+            priority: 'normal',
+            status: 'failed',
+            createdAt: Date.now(),
+            payload: enqueuedTasks[1].payload,
+            config: {},
+        } as QueuedTask, new Error('boom again'));
+
+        const skip = await request('POST', `/api/workspaces/${WORKSPACE_ID}/for-each-runs/${runId}/items/item-1/skip`);
+        expect(skip.status).toBe(200);
+        expect(skip.body.run.items.map((i: ForEachItem) => [i.id, i.status])).toEqual([
+            ['item-1', 'skipped'],
+            ['item-2', 'running'],
+        ]);
+
+        const cancel = await request('POST', `/api/workspaces/${WORKSPACE_ID}/for-each-runs/${runId}/cancel`);
+        expect(cancel.status).toBe(200);
+        expect(cancel.body.run.status).toBe('cancelled');
+        expect(cancelledTaskIds).toEqual(['task-3']);
+        expect(cancel.body.run.items.map((i: ForEachItem) => [i.id, i.status])).toEqual([
+            ['item-1', 'skipped'],
+            ['item-2', 'skipped'],
+        ]);
+    });
+});
