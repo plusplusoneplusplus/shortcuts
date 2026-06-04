@@ -1532,6 +1532,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             }}
                             attachedContext={attachedContext.items}
                             onRemoveAttachedContext={attachedContext.remove}
+                            onAttachSessionContext={attachedContext.addSession}
+                            workspaceId={workspaceId}
+                            currentProcessId={processId ?? taskId}
                             task={task}
                             slashCommands={slashCommands}
                             modelCommand={modelCommand}
@@ -1651,6 +1654,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     }}
                     attachedContext={attachedContext.items}
                     onRemoveAttachedContext={attachedContext.remove}
+                    onAttachSessionContext={attachedContext.addSession}
+                    workspaceId={workspaceId}
+                    currentProcessId={processId ?? taskId}
                     task={task}
                     slashCommands={slashCommands}
                     modelCommand={modelCommand}

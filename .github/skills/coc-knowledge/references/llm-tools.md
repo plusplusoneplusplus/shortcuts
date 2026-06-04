@@ -15,6 +15,10 @@ Exports: `DEFAULT_DISABLED_LLM_TOOLS`, `isLlmToolEnabled()`, `filterDisabledLlmT
 **Mode-aware defaults:** `getEffectiveDefaultDisabledTools(uiLayoutMode)` disables `tavily_web_search` at registry level, and also disables `create_work_item` and `create_bug` in classic mode.
 
 **Per-repo overrides:** `PerRepoPreferences.disabledLlmTools` explicitly overrides defaults (empty array = enable all). API: `GET/PUT /api/workspaces/:id/llm-tools-config`.
+The GET/PUT response also includes `conversationRetrievalAvailable`, which is
+true only when the active `ProcessStore` supports `searchConversations`; the SPA
+uses it with the `get_conversation` toggle to decide whether session-context
+attachments can be dropped into chat composers.
 
 ## Tool Factories
 

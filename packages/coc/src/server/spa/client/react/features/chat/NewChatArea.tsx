@@ -32,7 +32,7 @@ import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
 import { useChatPromptHistory } from '../../hooks/useChatPromptHistory';
-import { getDefaultProvider, isRalphEnabled, isLoopsEnabled, isEffortLevelsEnabled } from '../../utils/config';
+import { getDefaultProvider, isRalphEnabled, isLoopsEnabled, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
 import type { EffortTierKey } from '../../hooks/useProviderEffortTiers';
 import { EffortTierSelector } from './EffortTierSelector';
@@ -45,6 +45,14 @@ import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEff
 import { deriveEffort } from '../../utils/effortUtils';
 import { RalphLaunchDialog } from '../../shared/RalphLaunchDialog';
 import type { ResolvedModalJobAiSelection } from '../../shared/ModalJobAiControls';
+import { AttachedContextPreviews } from '../../ui/AttachedContextPreviews';
+import { formatAttachedContext, useAttachedContext } from './hooks/useAttachedContext';
+import {
+    dataTransferHasSessionContext,
+    readSessionContextDragPayload,
+    useConversationRetrievalCapability,
+    validateSessionContextDrop,
+} from './sessionContextDrop';
 
 export interface NewChatAreaProps {
     workspaceId?: string;
@@ -67,6 +75,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
     const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [sessionContextDropError, setSessionContextDropError] = useState<string | null>(null);
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [selectedProvider, setSelectedProvider] = useState<ChatProvider>(() => getDefaultProvider());
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
@@ -81,6 +90,9 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const userPickedForModelRef = useRef<{ provider: ChatProvider; modelId: string } | null>(null);
 
     const { attachments, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
+    const attachedContext = useAttachedContext();
+    const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
+    const canRetrieveConversations = useConversationRetrievalCapability(workspaceId, sessionContextAttachmentsEnabled);
 
     const { dispatch: queueDispatch } = useQueue();
     const { state: appState } = useApp();
@@ -353,9 +365,11 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
 
     async function handleSend() {
         const trimmed = input.trim();
-        if ((!trimmed && attachments.length === 0) || sending) return;
+        const contextItems = attachedContext.getItems();
+        if ((!trimmed && attachments.length === 0 && contextItems.length === 0) || sending) return;
 
         setError(null);
+        setSessionContextDropError(null);
         setSending(true);
         abortControllerRef.current = new AbortController();
 
@@ -383,11 +397,12 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                 contextOverride = { skills: extractedSkills };
             }
 
-            let effectivePrompt = extractedSkills.length > 0 ? cleanedPrompt : trimmed;
+            let basePrompt = extractedSkills.length > 0 ? cleanedPrompt : trimmed;
 
             if (selectedMode === 'ralph') {
-                effectivePrompt += '\n\nWhen you\'ve finished grilling me and have a clear understanding of the goal, write the final goal specification to a `.goal.md` file (e.g. `feature-name.goal.md`).';
+                basePrompt += '\n\nWhen you\'ve finished grilling me and have a clear understanding of the goal, write the final goal specification to a `.goal.md` file (e.g. `feature-name.goal.md`).';
             }
+            const effectivePrompt = formatAttachedContext(contextItems) + basePrompt;
 
             // Resolve model + reasoningEffort: tier mode takes priority over legacy controls.
             const tierPayload = useEffortTierMode ? resolveEffortTier(selectedEffortTier, effortTierMap) : null;
@@ -421,6 +436,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             setCursorPos(0);
             richTextRef.current?.setValue('');
             clearAttachments();
+            attachedContext.clear();
             promptHistory.reset();
             clearDraft(draftKey);
         } catch (err: any) {
@@ -449,6 +465,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         setCursorPos(0);
         richTextRef.current?.setValue('');
         clearAttachments();
+        attachedContext.clear();
         promptHistory.reset();
         clearDraft(draftKey);
     }
@@ -456,6 +473,31 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     function handleStop() {
         abortControllerRef.current?.abort();
         setSending(false);
+    }
+
+    function handleSessionContextDragOver(e: React.DragEvent<HTMLElement>) {
+        if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+    }
+
+    function handleSessionContextDrop(e: React.DragEvent<HTMLElement>) {
+        if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        e.preventDefault();
+        const validation = validateSessionContextDrop({
+            payload: readSessionContextDragPayload(e.dataTransfer),
+            featureEnabled: sessionContextAttachmentsEnabled,
+            activeWorkspaceId: workspaceId,
+            currentProcessId: null,
+            existingItems: attachedContext.getItems(),
+            canRetrieveConversations,
+        });
+        if (!validation.ok) {
+            setSessionContextDropError(validation.error);
+            return;
+        }
+        attachedContext.addSession(validation.payload);
+        setSessionContextDropError(null);
     }
 
     function focusInputAndInsertSlash() {
@@ -480,7 +522,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                     workingDirectory={getSelectedWorkspaceRoot()}
                     editable
                     resolvedAiSelection={resolveComposerAiSelection()}
-                    attachmentCount={attachments.length}
+                    attachmentCount={attachments.length + attachedContext.items.length}
                     title="🔄 Start Ralph from Goal"
                     confirmLabel="🔄 Start Ralph"
                     onClose={() => setRalphDirectGoalDraft(null)}
@@ -519,6 +561,14 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                 {attachmentError && (
                     <div className="text-xs text-[#f14c4c]" data-testid="new-chat-attachment-error">{attachmentError}</div>
                 )}
+                {sessionContextDropError && (
+                    <div className="text-xs text-[#f14c4c]" data-testid="new-chat-session-context-error">{sessionContextDropError}</div>
+                )}
+                <AttachedContextPreviews
+                    items={attachedContext.items}
+                    onRemove={attachedContext.remove}
+                    data-testid="new-chat-attached-context-previews"
+                />
                 <AttachmentPreviews attachments={attachments} onRemove={removeAttachment} />
                 <input
                     ref={fileInputRef}
@@ -533,7 +583,12 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         e.target.value = '';
                     }}
                 />
-                <div data-testid="chat-input-stack" className="space-y-1">
+                <div
+                    data-testid="chat-input-stack"
+                    className="space-y-1"
+                    onDragOver={handleSessionContextDragOver}
+                    onDrop={handleSessionContextDrop}
+                >
                 <div
                     data-testid="chat-input-bar"
                     className={cn(
@@ -810,7 +865,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                             >
                                 <button
                                     type="button"
-                                    disabled={!input.trim() && attachments.length === 0}
+                                    disabled={!input.trim() && attachments.length === 0 && attachedContext.items.length === 0}
                                     className="inline-flex items-center gap-1 h-[24px] pl-2 pr-2 rounded-l-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                     onClick={() => { void handleSend(); }}
                                     data-testid="new-chat-send-btn"
@@ -839,7 +894,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         ) : (
                             <button
                                 type="button"
-                                disabled={!input.trim() && attachments.length === 0}
+                                disabled={!input.trim() && attachments.length === 0 && attachedContext.items.length === 0}
                                 className="shrink-0 inline-flex items-center gap-1 h-[24px] pl-2 pr-1.5 rounded-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                 onClick={() => { void handleSend(); }}
                                 data-testid="new-chat-send-btn"

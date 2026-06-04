@@ -98,6 +98,8 @@ export interface LlmToolMeta {
 export interface LlmToolsConfig {
   tools: LlmToolMeta[];
   disabledLlmTools: string[];
+  /** True when the active process store can provide get_conversation/search_conversations. */
+  conversationRetrievalAvailable: boolean;
 }
 
 export interface LlmToolsConfigUpdate {

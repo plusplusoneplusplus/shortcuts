@@ -84,6 +84,7 @@ describe('LLM Tools Config API endpoints', () => {
         mockStore = createMockProcessStore({
             initialWorkspaces: [{ id: WORKSPACE_ID, name: 'LLM Tools Project', rootPath: '/projects/llm-tools' }],
         });
+        (mockStore as any).searchConversations = vi.fn();
         (mockStore.getWorkspaces as any).mockResolvedValue([
             { id: WORKSPACE_ID, name: 'LLM Tools Project', rootPath: '/projects/llm-tools' },
         ]);
@@ -104,6 +105,7 @@ describe('LLM Tools Config API endpoints', () => {
     });
 
     beforeEach(() => {
+        (mockStore as any).searchConversations = vi.fn();
         // Clean preferences files between tests
         const prefsPath = path.join(tmpDir, 'repos', WORKSPACE_ID, 'preferences.json');
         if (fs.existsSync(prefsPath)) fs.unlinkSync(prefsPath);
@@ -206,6 +208,19 @@ describe('LLM Tools Config API endpoints', () => {
                 expect(typeof tool.enabledByDefault).toBe('boolean');
             }
         });
+
+        it('reports conversation retrieval availability from the process store', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
+            expect(res.json().conversationRetrievalAvailable).toBe(true);
+        });
+
+        it('reports conversation retrieval unavailable when the store cannot search conversations', async () => {
+            delete (mockStore as any).searchConversations;
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
+
+            expect(res.json().conversationRetrievalAvailable).toBe(false);
+        });
     });
 
     // ========================================================================
@@ -255,6 +270,7 @@ describe('LLM Tools Config API endpoints', () => {
             const data = res.json();
             expect(data.disabledLlmTools).toEqual(['tavily_web_search', 'memory']);
             expect(data.tools).toHaveLength(getEffectiveLlmToolRegistry({ loopsEnabled: false }).length);
+            expect(data.conversationRetrievalAvailable).toBe(true);
         });
 
         it('persists disabledLlmTools to disk', async () => {

@@ -37,6 +37,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | PATCH | `/api/workspaces/:id/preferences` | Update per-repo preferences |
 | GET | `/api/workspaces/:id/instructions` | List custom instruction files for active modes: base, Ask, and Autopilot |
 | GET/PUT/DELETE | `/api/workspaces/:id/instructions/:mode` | Read, update, or delete one custom instruction file. Active modes are `base`, `ask`, and `autopilot`; legacy `plan` route inputs are accepted as an Ask alias. |
+| GET/PUT | `/api/workspaces/:id/llm-tools-config` | List/update per-workspace disabled LLM tools. Response includes `conversationRetrievalAvailable`, derived from the active process store's conversation search support. |
 | GET | `/api/workspaces/:id/summary` | Aggregated workspace summary |
 | GET | `/api/workspaces/:id/endev/status` | Cached EnDev xDPU eligibility status; `?refresh=true` revalidates |
 | POST | `/api/workspaces/:id/endev/revalidate` | Force EnDev xDPU eligibility revalidation |

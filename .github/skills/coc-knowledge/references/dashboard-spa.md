@@ -133,6 +133,15 @@ Stacked layout with:
 
 Focus indicator propagates mode-colored ring from contenteditable to parent card.
 
+When `features.sessionContextAttachments` is enabled, both `NewChatArea` and
+`FollowUpInputArea` accept drag/drop session-context payloads from same-workspace
+chat/process rows. The composers validate same-workspace, duplicate, self-drop,
+three-session cap, and `get_conversation` tool availability before adding
+removable session chips through the existing `AttachedContextPreviews` surface.
+The attached-context formatter emits pointer-only `<attached_session_context>`
+blocks in user-message content; it stores source workspace/process IDs, status,
+title, and last activity only.
+
 New chats use `AgentSelectorChip` to choose a per-chat provider. The initial selection comes from the workspace's `lastChatProvider` preference when that provider is enabled and available; otherwise it falls back to the configured `defaultProvider` from runtime config, and then to Copilot if the configured default provider cannot be selected. Follow-up inputs show the provider stored on the process metadata so existing chats continue using their original provider.
 
 `ModePillSelector` exposes Ask and Autopilot by default. Ralph is appended only where the existing Ralph feature flag and eligibility rules allow it; prompt schedules expose Ask and Autopilot only. Legacy loaded draft/task/schedule records with `mode='plan'` are normalized to Ask for display and follow-up behavior, and the dashboard does not render a separate Plan pill, badge, tooltip, icon, or custom-instruction tab. Mode accents are Ask yellow, Autopilot green, and Ralph purple.

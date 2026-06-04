@@ -6,6 +6,7 @@ import type { AttachedContextItem } from '../../../src/server/spa/client/react/f
 
 function makeItem(overrides: Partial<AttachedContextItem> = {}): AttachedContextItem {
     return {
+        kind: 'turn',
         id: 'ctx-1',
         turnIndex: 3,
         role: 'assistant',
@@ -106,5 +107,28 @@ describe('AttachedContextPreviews', () => {
             />,
         );
         expect(screen.getByTestId('custom-test-id')).toBeTruthy();
+    });
+
+    it('renders session context identity details', () => {
+        render(
+            <AttachedContextPreviews
+                items={[{
+                    kind: 'session',
+                    id: 'ctx-session',
+                    sourceWorkspaceId: 'ws-1',
+                    sourceProcessId: 'process-1234567890',
+                    title: 'Debug source session',
+                    status: 'failed',
+                    lastActivityAt: '2026-01-01T00:00:00.000Z',
+                    preview: 'Debug source session',
+                }]}
+                onRemove={vi.fn()}
+            />,
+        );
+
+        expect(screen.getByTestId('attached-session-context-chip').textContent).toContain('Session');
+        expect(screen.getByTestId('attached-session-context-chip').textContent).toContain('Debug source session');
+        expect(screen.getByTestId('attached-session-context-meta').textContent).toContain('failed');
+        expect(screen.getByTestId('attached-session-context-meta').textContent).toContain('process-…7890');
     });
 });

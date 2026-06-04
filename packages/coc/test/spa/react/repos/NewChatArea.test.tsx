@@ -8,7 +8,7 @@ import React from 'react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled } = vi.hoisted(() => ({
+const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig } = vi.hoisted(() => ({
     mockQueueDispatch: vi.fn(),
     mockAppState: {
         workspaces: [{ id: 'ws-1', rootPath: '/home/user/repo' }],
@@ -52,6 +52,8 @@ const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCo
         effectiveModelName: undefined as string | undefined,
     },
     mockRalphEnabled: { value: false },
+    mockSessionContextAttachmentsEnabled: { value: false },
+    mockGetLlmToolsConfig: vi.fn(),
 }));
 
 const OriginalFileReader = globalThis.FileReader;
@@ -90,6 +92,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isLoopsEnabled: () => false,
     getDefaultProvider: () => 'copilot' as const,
     isEffortLevelsEnabled: () => false,
+    isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled.value,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -99,6 +102,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
             patchGlobal: vi.fn().mockResolvedValue({}),
             getRepo: vi.fn().mockResolvedValue({}),
             patchRepo: vi.fn().mockResolvedValue({}),
+            getLlmToolsConfig: mockGetLlmToolsConfig,
         },
         skills: { listAllWorkspace: vi.fn().mockResolvedValue({ merged: [] }) },
         agentProviders: { list: vi.fn().mockResolvedValue({ providers: [
@@ -207,6 +211,32 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
 });
 
 import { NewChatArea } from '../../../../src/server/spa/client/react/features/chat/NewChatArea';
+import {
+    SESSION_CONTEXT_DRAG_KIND,
+    SESSION_CONTEXT_DRAG_MIME,
+    type SessionContextDragPayload,
+} from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
+
+function makeSessionPayload(overrides: Partial<SessionContextDragPayload> = {}): SessionContextDragPayload {
+    return {
+        kind: SESSION_CONTEXT_DRAG_KIND,
+        version: 1,
+        sourceWorkspaceId: 'ws-1',
+        sourceProcessId: 'source-process-123456',
+        title: 'Source chat',
+        status: 'completed',
+        lastActivityAt: '2026-01-01T00:00:00.000Z',
+        ...overrides,
+    };
+}
+
+function makeSessionDataTransfer(payload: unknown) {
+    return {
+        types: [SESSION_CONTEXT_DRAG_MIME],
+        dropEffect: 'none',
+        getData: vi.fn((format: string) => format === SESSION_CONTEXT_DRAG_MIME ? JSON.stringify(payload) : ''),
+    };
+}
 
 beforeEach(() => {
     vi.clearAllMocks();
@@ -224,6 +254,12 @@ beforeEach(() => {
     mockHistory.reset = vi.fn();
     mockDraftStore.getDraft.mockReturnValue(null);
     mockRalphEnabled.value = false;
+    mockSessionContextAttachmentsEnabled.value = false;
+    mockGetLlmToolsConfig.mockResolvedValue({
+        tools: [{ name: 'get_conversation', label: 'Get Conversation', description: '', enabledByDefault: true }],
+        disabledLlmTools: [],
+        conversationRetrievalAvailable: true,
+    });
     // Stub fetch for non-queue uses (e.g. useOnboardingPreferences → patchGlobalPreferences)
     globalThis.fetch = mockFetch;
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({}) });
@@ -486,6 +522,61 @@ describe('NewChatArea', () => {
         });
 
         expect(mockAppDispatch).not.toHaveBeenCalled();
+    });
+
+    describe('session context drops', () => {
+        it('creates a removable session chip when the feature and retrieval tool are enabled', async () => {
+            mockSessionContextAttachmentsEnabled.value = true;
+            render(<NewChatArea workspaceId="ws-1" />);
+            await waitFor(() => expect(mockGetLlmToolsConfig).toHaveBeenCalledWith('ws-1'));
+            await act(async () => {});
+
+            fireEvent.drop(screen.getByTestId('chat-input-stack'), {
+                dataTransfer: makeSessionDataTransfer(makeSessionPayload()),
+            });
+
+            const chip = screen.getByTestId('attached-session-context-chip');
+            expect(chip.textContent).toContain('Source chat');
+            expect(chip.textContent).toContain('completed');
+            expect(chip.textContent).toContain('source-p…3456');
+
+            fireEvent.click(screen.getByTestId('attached-context-remove'));
+            expect(screen.queryByTestId('attached-session-context-chip')).toBeNull();
+        });
+
+        it('shows a clear error for cross-workspace session drops', () => {
+            mockSessionContextAttachmentsEnabled.value = true;
+            render(<NewChatArea workspaceId="ws-1" />);
+
+            fireEvent.drop(screen.getByTestId('chat-input-stack'), {
+                dataTransfer: makeSessionDataTransfer(makeSessionPayload({ sourceWorkspaceId: 'ws-other' })),
+            });
+
+            expect(screen.getByTestId('new-chat-session-context-error').textContent).toBe(
+                'Only sessions from the active workspace can be attached as context.',
+            );
+            expect(screen.queryByTestId('attached-session-context-chip')).toBeNull();
+        });
+
+        it('shows a clear error when conversation retrieval is disabled', async () => {
+            mockSessionContextAttachmentsEnabled.value = true;
+            mockGetLlmToolsConfig.mockResolvedValueOnce({
+                tools: [{ name: 'get_conversation', label: 'Get Conversation', description: '', enabledByDefault: true }],
+                disabledLlmTools: ['get_conversation'],
+                conversationRetrievalAvailable: true,
+            });
+            render(<NewChatArea workspaceId="ws-1" />);
+            await waitFor(() => expect(mockGetLlmToolsConfig).toHaveBeenCalledWith('ws-1'));
+            await act(async () => {});
+
+            fireEvent.drop(screen.getByTestId('chat-input-stack'), {
+                dataTransfer: makeSessionDataTransfer(makeSessionPayload()),
+            });
+
+            expect(screen.getByTestId('new-chat-session-context-error').textContent).toBe(
+                'Conversation retrieval is not available for this chat.',
+            );
+        });
     });
 
     describe('model command in new chat', () => {

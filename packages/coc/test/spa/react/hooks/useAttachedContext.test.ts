@@ -14,9 +14,35 @@ describe('useAttachedContext', () => {
             result.current.add(3, 'assistant', 'Some snippet text');
         });
         expect(result.current.items).toHaveLength(1);
+        expect(result.current.items[0].kind).toBe('turn');
         expect(result.current.items[0].turnIndex).toBe(3);
         expect(result.current.items[0].role).toBe('assistant');
         expect(result.current.items[0].snippet).toBe('Some snippet text');
+    });
+
+    it('adds a session context item', () => {
+        const { result } = renderHook(() => useAttachedContext());
+        act(() => {
+            result.current.addSession({
+                kind: 'coc.session-context',
+                version: 1,
+                sourceWorkspaceId: 'ws-1',
+                sourceProcessId: 'source-process-123456',
+                title: 'Source chat',
+                status: 'completed',
+                lastActivityAt: '2026-01-01T00:00:00.000Z',
+            });
+        });
+        expect(result.current.items).toHaveLength(1);
+        expect(result.current.items[0]).toMatchObject({
+            kind: 'session',
+            sourceWorkspaceId: 'ws-1',
+            sourceProcessId: 'source-process-123456',
+            title: 'Source chat',
+            status: 'completed',
+            lastActivityAt: '2026-01-01T00:00:00.000Z',
+        });
+        expect(result.current.items[0].preview).toContain('source-p…3456');
     });
 
     it('generates a truncated preview', () => {
@@ -109,6 +135,7 @@ describe('formatAttachedContext', () => {
 
     it('formats a single item', () => {
         const result = formatAttachedContext([{
+            kind: 'turn',
             id: 'ctx-1',
             turnIndex: 3,
             role: 'assistant',
@@ -122,13 +149,35 @@ describe('formatAttachedContext', () => {
 
     it('formats multiple items separated by blank lines', () => {
         const result = formatAttachedContext([
-            { id: 'ctx-1', turnIndex: 1, role: 'user', snippet: 'First', preview: 'First' },
-            { id: 'ctx-2', turnIndex: 3, role: 'assistant', snippet: 'Second', preview: 'Second' },
+            { kind: 'turn', id: 'ctx-1', turnIndex: 1, role: 'user', snippet: 'First', preview: 'First' },
+            { kind: 'turn', id: 'ctx-2', turnIndex: 3, role: 'assistant', snippet: 'Second', preview: 'Second' },
         ]);
         expect(result).toContain('<context from="user" turn="1">');
         expect(result).toContain('<context from="assistant" turn="3">');
         // Two context blocks separated by \n\n, with final \n\n
         const blocks = result.trim().split('\n\n');
         expect(blocks).toHaveLength(2);
+    });
+
+    it('formats a pointer-only session context block', () => {
+        const result = formatAttachedContext([{
+            kind: 'session',
+            id: 'ctx-session',
+            sourceWorkspaceId: 'ws-1',
+            sourceProcessId: 'source-process-123456',
+            title: 'Debug <source> & inspect',
+            status: 'failed',
+            lastActivityAt: '2026-01-01T00:00:00.000Z',
+            preview: 'Debug source',
+        }]);
+
+        expect(result).toContain('<attached_session_context version="1">');
+        expect(result).toContain('workspace_id="ws-1"');
+        expect(result).toContain('process_id="source-process-123456"');
+        expect(result).toContain('status="failed"');
+        expect(result).toContain('last_activity_at="2026-01-01T00:00:00.000Z"');
+        expect(result).toContain('<title>Debug &lt;source&gt; &amp; inspect</title>');
+        expect(result).toContain('retrieve and read this source conversation by process ID');
+        expect(result).not.toContain('transcript');
     });
 });
