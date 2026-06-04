@@ -188,6 +188,8 @@ export interface CLIConfig {
         gitCommitLookup?: boolean;
         /** Cross-clone cherry-pick transfer UI in the Git tab. Disabled by default. */
         gitCrossCloneCherryPick?: boolean;
+        /** Drag/drop session-context attachments in chat composers. Disabled by default. */
+        sessionContextAttachments?: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion?: {
@@ -419,6 +421,8 @@ export interface ResolvedCLIConfig {
         gitCommitLookup: boolean;
         /** Cross-clone cherry-pick transfer UI in the Git tab. Disabled by default. */
         gitCrossCloneCherryPick: boolean;
+        /** Drag/drop session-context attachments in chat composers. Disabled by default. */
+        sessionContextAttachments: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion: {
@@ -587,6 +591,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         focusedDiff: false,
         gitCommitLookup: false,
         gitCrossCloneCherryPick: false,
+        sessionContextAttachments: false,
     },
     memoryPromotion: {
         batchSize: 50,

@@ -81,7 +81,12 @@ const EXCALIDRAW_SOURCE_KEYS = ['excalidraw.enabled'] as const;
 const CONTAINER_DEFAULT_AGENT_SOURCE_KEYS = ['containerDefaultAgent.enabled'] as const;
 const CODEX_SOURCE_KEYS = ['codex.enabled'] as const;
 const CLAUDE_SOURCE_KEYS = ['claude.enabled'] as const;
-const FEATURES_SOURCE_KEYS = ['features.autoMemoryPromotion', 'features.focusedDiff', 'features.gitCrossCloneCherryPick'] as const;
+const FEATURES_SOURCE_KEYS = [
+    'features.autoMemoryPromotion',
+    'features.focusedDiff',
+    'features.gitCrossCloneCherryPick',
+    'features.sessionContextAttachments',
+] as const;
 const WORK_ITEMS_HIERARCHY_SOURCE_KEYS = ['workItems.hierarchy.enabled'] as const;
 const WORK_ITEMS_SYNC_SOURCE_KEYS = ['workItems.sync.enabled'] as const;
 const WORK_ITEMS_AI_AUTHORING_SOURCE_KEYS = ['workItems.aiAuthoring.enabled'] as const;
@@ -330,6 +335,7 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
                     focusedDiff: override?.features?.focusedDiff ?? base.features?.focusedDiff ?? false,
                     gitCommitLookup: override?.features?.gitCommitLookup ?? base.features?.gitCommitLookup ?? false,
                     gitCrossCloneCherryPick: override?.features?.gitCrossCloneCherryPick ?? base.features?.gitCrossCloneCherryPick ?? false,
+                    sessionContextAttachments: override?.features?.sessionContextAttachments ?? base.features?.sessionContextAttachments ?? false,
                 },
             }),
         },

@@ -41,6 +41,8 @@ export interface DashboardOptions {
     excalidrawEnabled?: boolean;
     /** Whether the focused-diff classification feature is enabled. */
     focusedDiffEnabled?: boolean;
+    /** Whether drag/drop session-context attachments are enabled in chat composers. */
+    sessionContextAttachmentsEnabled?: boolean;
     /** Whether the Work Items hierarchy board is enabled in server config. */
     workItemsHierarchyEnabled?: boolean;
     /** Whether manual Work Items external sync is enabled in server config. */

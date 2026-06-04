@@ -46,6 +46,7 @@ describe('ADMIN_EDITABLE_KEYS', () => {
             'codex.enabled',
             'defaultProvider',
             'features.gitCrossCloneCherryPick',
+            'features.sessionContextAttachments',
             'workItems.hierarchy.enabled',
             'workItems.sync.enabled',
             'workItems.aiAuthoring.enabled',
@@ -213,6 +214,7 @@ describe('validate()', () => {
         'excalidraw.enabled',
         'mcpOauth.enabled',
         'features.gitCrossCloneCherryPick',
+        'features.sessionContextAttachments',
         'workItems.hierarchy.enabled',
         'workItems.sync.enabled',
         'workItems.aiAuthoring.enabled',
@@ -354,6 +356,7 @@ describe('apply()', () => {
         ['excalidraw.enabled', (c) => c.excalidraw?.enabled],
         ['mcpOauth.enabled', (c) => c.mcpOauth?.enabled],
         ['features.gitCrossCloneCherryPick', (c) => c.features?.gitCrossCloneCherryPick],
+        ['features.sessionContextAttachments', (c) => c.features?.sessionContextAttachments],
         ['workItems.hierarchy.enabled', (c) => c.workItems?.hierarchy?.enabled],
         ['workItems.sync.enabled', (c) => c.workItems?.sync?.enabled],
         ['workItems.aiAuthoring.enabled', (c) => c.workItems?.aiAuthoring?.enabled],
@@ -427,6 +430,7 @@ describe('runtime classification', () => {
         'servers.enabled', 'ralph.enabled', 'vimNavigation.enabled',
         'excalidraw.enabled', 'features.focusedDiff',
         'features.gitCrossCloneCherryPick',
+        'features.sessionContextAttachments',
         'workItems.hierarchy.enabled', 'workItems.sync.enabled', 'workItems.aiAuthoring.enabled',
     ];
 

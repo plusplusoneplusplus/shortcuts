@@ -55,6 +55,7 @@ export function buildRuntimeDashboardConfig(
             workItemsAiAuthoringEnabled: config.workItems?.aiAuthoring?.enabled ?? false,
             gitCommitLookupEnabled: config.features?.gitCommitLookup ?? false,
             gitCrossCloneCherryPickEnabled: config.features?.gitCrossCloneCherryPick ?? false,
+            sessionContextAttachmentsEnabled: config.features?.sessionContextAttachments ?? false,
             effortLevelsEnabled: config.effortLevels?.enabled ?? false,
         },
         hostname: config.serve?.serverName || shortenHostname(hostname),

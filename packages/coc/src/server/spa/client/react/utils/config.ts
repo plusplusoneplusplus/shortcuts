@@ -28,6 +28,7 @@ interface DashboardConfig {
     excalidrawEnabled?: boolean;
     mcpOauthEnabled?: boolean;
     focusedDiffEnabled?: boolean;
+    sessionContextAttachmentsEnabled?: boolean;
     containerDefaultAgentEnabled?: boolean;
     bindAddress?: string;
     /** Whether the Codex SDK provider is enabled (feature flag). */
@@ -111,6 +112,7 @@ async function _fetchAndApplyRuntimeConfig(apiBase: string): Promise<void> {
             excalidrawEnabled: data.features.excalidrawEnabled,
             mcpOauthEnabled: data.features.mcpOauthEnabled,
             focusedDiffEnabled: data.features.focusedDiffEnabled,
+            sessionContextAttachmentsEnabled: data.features.sessionContextAttachmentsEnabled,
             containerDefaultAgentEnabled: data.features.containerDefaultAgentEnabled,
             codexEnabled: data.features.codexEnabled,
             defaultProvider: data.features.defaultProvider,
@@ -249,6 +251,11 @@ export function isMcpOauthEnabled(): boolean {
 
 export function isFocusedDiffEnabled(): boolean {
     return getConfig().focusedDiffEnabled === true;
+}
+
+/** Returns true when drag/drop session-context attachments are enabled. */
+export function isSessionContextAttachmentsEnabled(): boolean {
+    return getConfig().sessionContextAttachmentsEnabled === true;
 }
 
 export function isContainerDefaultAgentEnabled(): boolean {

@@ -10,6 +10,7 @@ describe('loadRuntimeConfig', () => {
     let loadRuntimeConfig: () => Promise<void>;
     let isRalphEnabled: () => boolean;
     let isGitCrossCloneCherryPickEnabled: () => boolean;
+    let isSessionContextAttachmentsEnabled: () => boolean;
     let isContainerMode: () => boolean;
     let setCurrentAgentId: (id: string | null) => void;
     let _resetRuntimeConfig: () => void;
@@ -20,6 +21,7 @@ describe('loadRuntimeConfig', () => {
         loadRuntimeConfig = mod.loadRuntimeConfig;
         isRalphEnabled = mod.isRalphEnabled;
         isGitCrossCloneCherryPickEnabled = mod.isGitCrossCloneCherryPickEnabled;
+        isSessionContextAttachmentsEnabled = mod.isSessionContextAttachmentsEnabled;
         isContainerMode = mod.isContainerMode;
         setCurrentAgentId = mod.setCurrentAgentId;
         _resetRuntimeConfig = mod._resetRuntimeConfig;
@@ -37,6 +39,7 @@ describe('loadRuntimeConfig', () => {
         (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', ralphEnabled: false };
         expect(isRalphEnabled()).toBe(false);
         expect(isGitCrossCloneCherryPickEnabled()).toBe(false);
+        expect(isSessionContextAttachmentsEnabled()).toBe(false);
 
         vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
             ok: true,
@@ -59,6 +62,7 @@ describe('loadRuntimeConfig', () => {
                     mcpOauthEnabled: false,
                     focusedDiffEnabled: false,
                     gitCrossCloneCherryPickEnabled: true,
+                    sessionContextAttachmentsEnabled: true,
                 },
                 hostname: 'test-host',
                 bindAddress: '127.0.0.1',
@@ -68,6 +72,7 @@ describe('loadRuntimeConfig', () => {
         await loadRuntimeConfig();
         expect(isRalphEnabled()).toBe(true);
         expect(isGitCrossCloneCherryPickEnabled()).toBe(true);
+        expect(isSessionContextAttachmentsEnabled()).toBe(true);
     });
 
     it('falls back to bootstrap config on fetch failure', async () => {
