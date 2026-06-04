@@ -78,6 +78,7 @@ import type { WorkItemChangeCommit } from '../work-items/types';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
 import type { ResolvedCLIConfig } from '../../config';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
+import type { ChatProvider } from '../tasks/task-types';
 import type { TerminalSessionManager } from '../terminal/index';
 import { registerRemoteServerRoutes } from '../servers/remote-server-routes';
 import { RemoteServerStore } from '../servers/remote-server-store';
@@ -90,6 +91,9 @@ import { registerRalphNewLoopRoutes } from './ralph-new-loop-routes';
 import { registerRalphPromoteRoutes } from './ralph-promote-routes';
 import { registerRalphLaunchRoutes } from './ralph-launch-routes';
 import { registerRalphResumeRoutes } from './ralph-resume-routes';
+import { registerForEachRoutes } from './for-each-routes';
+import { FileForEachRunStore } from '../for-each/for-each-run-store';
+import { createForEachPlanGenerator } from '../for-each/for-each-plan-generator';
 import { registerLoopRoutes } from '../loops/loop-handler';
 import type { LoopStore } from '../loops/loop-store';
 import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
@@ -151,6 +155,7 @@ export interface RegisterRoutesOptions {
     loopStore?: LoopStore;
     loopExecutor?: LoopExecutor;
     mcpOauthManager?: McpOauthManager;
+    resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
     loopEmit?: LoopEventEmit;
     hostname?: string;
     bindAddress?: string;
@@ -450,6 +455,23 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerRalphPromoteRoutes(routes, { bridge, store, dataDir });
     registerRalphLaunchRoutes(routes, { bridge, dataDir });
     registerRalphResumeRoutes(routes, { bridge, store, dataDir });
+
+    // For Each routes: dedicated reviewed item-plan mode. Routes are registered
+    // with a live feature guard so admin toggles take effect without restart.
+    const forEachRunStore = new FileForEachRunStore({ dataDir });
+    const forEachPlanGenerator = createForEachPlanGenerator({
+        aiService: resolvedAiService,
+        resolveAiServiceForProvider: opts.resolveAiServiceForProvider,
+    });
+    const getForEachEnabled = opts.runtimeConfigService
+        ? () => opts.runtimeConfigService!.config.forEach?.enabled ?? false
+        : () => opts.resolvedConfig?.forEach?.enabled ?? false;
+    registerForEachRoutes({
+        routes,
+        store: forEachRunStore,
+        getForEachEnabled,
+        generateItemPlan: forEachPlanGenerator.generateItemPlan,
+    });
 
     // Work item routes
     const workItemStore = new FileWorkItemStore({ dataDir });

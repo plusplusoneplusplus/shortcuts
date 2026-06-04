@@ -99,6 +99,18 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/new-loop` | New goal loop after RALPH_COMPLETE |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/resume` | Resume stuck executing session (no in-flight task) |
 
+## For Each Runs
+
+All For Each routes are workspace-scoped and gated by `forEach.enabled` (default `false`); disabled routes return unavailable/not-found behavior. Parent run state is stored under `~/.coc/repos/<workspaceId>/for-each-runs/<runId>/` as `run.json` plus `items.json`, never as a Ralph session.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/workspaces/:id/for-each-runs` | List For Each runs for a workspace with item status counts |
+| POST | `/api/workspaces/:id/for-each-runs/generate` | Generate a structured JSON draft item plan and persist a draft run. Body requires `prompt` and `childMode` (`ask` or `autopilot`) and accepts `sharedInstructions`, `provider`, and `config.model` / `config.reasoningEffort` |
+| GET | `/api/workspaces/:id/for-each-runs/:runId` | Read a For Each run with reviewed item plan/state |
+| PUT | `/api/workspaces/:id/for-each-runs/:runId/plan` | Replace the reviewed draft item plan and optional shared instructions / child mode before approval |
+| POST | `/api/workspaces/:id/for-each-runs/:runId/approve` | Mark a reviewed draft plan approved. Approval does not enqueue child chats; child execution routes are separate from the draft/review API |
+
 ## Schedules
 
 | Method | Path | Description |

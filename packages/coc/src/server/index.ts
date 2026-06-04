@@ -517,6 +517,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         loopStore: loopInfra?.loopStore,
         loopExecutor: loopInfra?.loopExecutor,
         mcpOauthManager: mcpOauthInfra?.manager,
+        resolveAiServiceForProvider,
         loopEmit: loopInfra?.emit,
         hostname: os.hostname(),
         bindAddress: host,
