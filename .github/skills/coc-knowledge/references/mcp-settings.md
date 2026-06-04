@@ -75,6 +75,10 @@ Moves a server between global and workspace config. Body: `{ targetScope: "globa
 
 `POST /api/mcp-oauth/start` is registered only when the active AI SDK service exposes SDK client creation (`createClient`). It starts an OAuth flow for configured HTTP/SSE MCP servers by resolving workspace config first, then global config. Pending OAuth lifecycle endpoints (`/api/mcp-oauth/pending...`) are always registered when the MCP OAuth manager is present.
 
+## OAuth Auto-Refresh (Background)
+
+When `mcpOauth.autoRefresh.enabled` is true, a background loop runs every 5 minutes against `~/.copilot/mcp-oauth-config/`: it dedups duplicate entries the SDK accumulates per `serverUrl` and refreshes AAD tokens within 10 minutes of expiry (`offline_access` is always appended so refresh tokens keep rolling). `invalid_grant` deletes the entry; transient errors leave it untouched. Interval/window are hardcoded. Disabled by default; restart required to take effect. Implementation in `packages/coc/src/server/mcp-oauth/mcp-oauth-refresher.ts`.
+
 ## Invariants
 
 - Never expose secrets (`env`, headers, full `args`) through the list endpoint. Only the detail endpoint exposes env keys (masked) and full args.

@@ -147,6 +147,13 @@ export interface CLIConfig {
     /** MCP OAuth support (auto-detect mcp.oauth_required events). Disabled by default. */
     mcpOauth?: {
         enabled?: boolean;
+        /**
+         * Periodically dedup `~/.copilot/mcp-oauth-config/` and proactively
+         * refresh AAD-backed tokens before they expire. Disabled by default.
+         */
+        autoRefresh?: {
+            enabled?: boolean;
+        };
     };
     /** Vim-style navigation configuration (hjkl pane focus, j/k message stepping). Disabled by default. */
     vimNavigation?: {
@@ -373,6 +380,9 @@ export interface ResolvedCLIConfig {
     /** MCP OAuth subsystem configuration. */
     mcpOauth: {
         enabled: boolean;
+        autoRefresh: {
+            enabled: boolean;
+        };
     };
     /** Vim-style navigation configuration. */
     vimNavigation: {
@@ -548,6 +558,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     mcpOauth: {
         enabled: false,
+        autoRefresh: {
+            enabled: false,
+        },
     },
     vimNavigation: {
         enabled: false,

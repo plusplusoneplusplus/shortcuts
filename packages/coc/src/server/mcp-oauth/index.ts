@@ -23,3 +23,14 @@ export type {
     InitiateMcpOAuthOptions,
     InitiateMcpOAuthResult,
 } from './mcp-oauth-initiator';
+export {
+    runMcpOauthMaintenancePass,
+    startMcpOauthMaintenanceTimer,
+    aadTokenEndpoint,
+} from './mcp-oauth-refresher';
+export type {
+    MaintenancePassOptions,
+    MaintenancePassResult,
+    MaintenanceTimerOptions,
+    MaintenanceTimerHandle,
+} from './mcp-oauth-refresher';

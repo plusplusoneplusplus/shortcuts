@@ -835,6 +835,8 @@ timeout: 300
                 '  enabled: true',
                 'mcpOauth:',
                 '  enabled: true',
+                '  autoRefresh:',
+                '    enabled: true',
                 'excalidraw:',
                 '  enabled: true',
                 'containerDefaultAgent:',
@@ -1020,6 +1022,9 @@ timeout: 300
                   },
                   "mcpConfig": "\${HOME}/mcp.json",
                   "mcpOauth": {
+                    "autoRefresh": {
+                      "enabled": false,
+                    },
                     "enabled": false,
                   },
                   "memoryPromotion": {
@@ -1139,6 +1144,7 @@ timeout: 300
                   "groupSingleLineMessages": "file",
                   "loops.enabled": "file",
                   "mcpConfig": "file",
+                  "mcpOauth.autoRefresh.enabled": "default",
                   "mcpOauth.enabled": "default",
                   "memoryPromotion.aiNormalization.enabled": "file",
                   "memoryPromotion.aiNormalization.model": "file",

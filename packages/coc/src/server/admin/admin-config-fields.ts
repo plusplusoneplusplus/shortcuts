@@ -223,6 +223,11 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         if (!cfg.mcpOauth) { cfg.mcpOauth = {}; }
         cfg.mcpOauth.enabled = v;
     }, 'restartRequired'),
+    bool('mcpOauth.autoRefresh.enabled', (cfg, v) => {
+        if (!cfg.mcpOauth) { cfg.mcpOauth = {}; }
+        if (!cfg.mcpOauth.autoRefresh) { cfg.mcpOauth.autoRefresh = {}; }
+        cfg.mcpOauth.autoRefresh.enabled = v;
+    }, 'restartRequired'),
     bool('containerDefaultAgent.enabled', (cfg, v) => {
         if (!cfg.containerDefaultAgent) { cfg.containerDefaultAgent = {}; }
         cfg.containerDefaultAgent.enabled = v;

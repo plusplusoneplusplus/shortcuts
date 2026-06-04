@@ -69,7 +69,12 @@ export interface AdminResolvedConfig {
   codex?: { enabled?: boolean };
   claude?: { enabled?: boolean };
   defaultProvider?: 'copilot' | 'codex' | 'claude';
-  mcpOauth?: { enabled?: boolean };
+  mcpOauth?: {
+    enabled?: boolean;
+    autoRefresh?: {
+      enabled?: boolean;
+    };
+  };
   workItems?: { hierarchy?: { enabled?: boolean }; sync?: { enabled?: boolean }; aiAuthoring?: { enabled?: boolean } };
   effortLevels?: { enabled?: boolean };
   [key: string]: unknown;
@@ -123,6 +128,7 @@ export interface AdminConfigUpdate {
   'servers.enabled'?: boolean;
   'excalidraw.enabled'?: boolean;
   'mcpOauth.enabled'?: boolean;
+  'mcpOauth.autoRefresh.enabled'?: boolean;
   'codex.enabled'?: boolean;
   'claude.enabled'?: boolean;
   defaultProvider?: 'copilot' | 'codex' | 'claude';
