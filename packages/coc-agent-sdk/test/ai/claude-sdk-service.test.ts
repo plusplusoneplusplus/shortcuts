@@ -14,6 +14,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
+import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { PassThrough, Writable } from 'stream';
@@ -21,6 +22,7 @@ import {
     ClaudeSDKService,
     mapClaudeAccountInfoToQuota,
     mapClaudeRateLimitInfoToQuota,
+    mapOAuthUsageToQuota,
     registerClaudeSDKService,
 } from '../../src/claude-sdk-service';
 import {
@@ -1193,10 +1195,14 @@ describe('ClaudeSDKService.getAccountQuota', () => {
         mockDynamicImport.mockReset();
         queryFn.mockReset();
         mockDynamicImport.mockResolvedValue({ query: queryFn });
+        // Point to a nonexistent file so the OAuth path fails gracefully and
+        // tests are deterministic on machines that have Claude installed.
+        process.env['CLAUDE_CREDENTIALS_FILE'] = '/nonexistent/__test_credentials__.json';
     });
 
     afterEach(() => {
         svc.dispose();
+        delete process.env['CLAUDE_CREDENTIALS_FILE'];
     });
 
     it('returns empty quota snapshots before Claude emits rate-limit info or accountInfo is observed', async () => {
@@ -1303,8 +1309,200 @@ describe('mapClaudeAccountInfoToQuota', () => {
 });
 
 // ============================================================================
-// Session operations
+// mapOAuthUsageToQuota
 // ============================================================================
+
+describe('mapOAuthUsageToQuota', () => {
+    it('maps both five_hour and seven_day windows into quota snapshots', () => {
+        const result = mapOAuthUsageToQuota({
+            five_hour: { utilization: 72, resets_at: '2026-06-04T12:00:00.000Z' },
+            seven_day: { utilization: 45, resets_at: '2026-06-11T00:00:00.000Z' },
+        });
+
+        expect(Object.keys(result.quotaSnapshots)).toEqual(['five_hour', 'seven_day']);
+
+        const fiveHour = result.quotaSnapshots.five_hour;
+        expect(fiveHour.isUnlimitedEntitlement).toBe(false);
+        expect(fiveHour.entitlementRequests).toBe(100);
+        expect(fiveHour.usedRequests).toBe(72);
+        expect(fiveHour.remainingPercentage).toBeCloseTo(0.28);
+        expect(fiveHour.usageAllowedWithExhaustedQuota).toBe(false);
+        expect(fiveHour.overage).toBe(0);
+        expect(fiveHour.resetDate).toBe('2026-06-04T12:00:00.000Z');
+
+        const sevenDay = result.quotaSnapshots.seven_day;
+        expect(sevenDay.usedRequests).toBe(45);
+        expect(sevenDay.remainingPercentage).toBeCloseTo(0.55);
+        expect(sevenDay.resetDate).toBe('2026-06-11T00:00:00.000Z');
+    });
+
+    it('omits resetDate when resets_at is absent', () => {
+        const result = mapOAuthUsageToQuota({
+            five_hour: { utilization: 30 },
+        });
+        expect(result.quotaSnapshots.five_hour.resetDate).toBeUndefined();
+    });
+
+    it('skips a window when utilization is missing or non-numeric', () => {
+        const result = mapOAuthUsageToQuota({
+            five_hour: { resets_at: '2026-06-04T12:00:00.000Z' },
+            seven_day: { utilization: 'notanumber', resets_at: '2026-06-11T00:00:00.000Z' },
+        });
+        expect(Object.keys(result.quotaSnapshots)).toHaveLength(0);
+    });
+
+    it('clamps utilization over 100% and computes overage correctly', () => {
+        const result = mapOAuthUsageToQuota({
+            five_hour: { utilization: 110 },
+        });
+        const snap = result.quotaSnapshots.five_hour;
+        expect(snap.remainingPercentage).toBe(0);
+        expect(snap.usedRequests).toBe(110);
+        expect(snap.overage).toBe(10);
+    });
+
+    it('returns empty snapshots for an empty API response object', () => {
+        const result = mapOAuthUsageToQuota({});
+        expect(result).toEqual({ quotaSnapshots: {} });
+    });
+
+    it('returns only the windows present in the response', () => {
+        const result = mapOAuthUsageToQuota({
+            seven_day: { utilization: 20 },
+        });
+        expect(Object.keys(result.quotaSnapshots)).toEqual(['seven_day']);
+        expect(result.quotaSnapshots.seven_day.usedRequests).toBe(20);
+    });
+});
+
+// ============================================================================
+// getAccountQuota — Linux OAuth integration
+// ============================================================================
+
+describe('ClaudeSDKService.getAccountQuota (Linux OAuth)', () => {
+    let svc: ClaudeSDKService;
+    const queryFn = vi.fn();
+    let fetchSpy: ReturnType<typeof vi.fn>;
+    let tempCredFile: string;
+
+    beforeEach(() => {
+        svc = new ClaudeSDKService();
+        mockDynamicImport.mockReset();
+        queryFn.mockReset();
+        mockDynamicImport.mockResolvedValue({ query: queryFn });
+        fetchSpy = vi.fn();
+        vi.stubGlobal('fetch', fetchSpy);
+        tempCredFile = path.join(os.tmpdir(), `coc-test-creds-${Date.now()}.json`);
+        process.env['CLAUDE_CREDENTIALS_FILE'] = tempCredFile;
+    });
+
+    afterEach(() => {
+        svc.dispose();
+        vi.unstubAllGlobals();
+        delete process.env['CLAUDE_CREDENTIALS_FILE'];
+        try { fs.unlinkSync(tempCredFile); } catch { /* already removed or never created */ }
+    });
+
+    it('fetches quota from OAuth API on Linux with valid credentials', async () => {
+        fs.writeFileSync(tempCredFile, JSON.stringify({ access_token: 'tok-123' }));
+        fetchSpy.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                five_hour: { utilization: 72, resets_at: '2026-06-04T12:00:00.000Z' },
+                seven_day: { utilization: 45, resets_at: '2026-06-11T00:00:00.000Z' },
+            }),
+        });
+
+        const quota = await svc.getAccountQuota();
+
+        expect(fetchSpy).toHaveBeenCalledWith(
+            'https://api.anthropic.com/api/oauth/usage',
+            expect.objectContaining({ headers: expect.objectContaining({ 'Authorization': 'Bearer tok-123' }) })
+        );
+        expect(quota.quotaSnapshots).toHaveProperty('five_hour');
+        expect(quota.quotaSnapshots).toHaveProperty('seven_day');
+        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(72);
+        expect(quota.quotaSnapshots.seven_day.usedRequests).toBe(45);
+    });
+
+    it('returns empty snapshots when the credentials file is missing', async () => {
+        // tempCredFile is never written — it does not exist
+        const quota = await svc.getAccountQuota();
+        expect(quota).toEqual({ quotaSnapshots: {} });
+        expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('returns empty snapshots when the credentials file contains invalid JSON', async () => {
+        fs.writeFileSync(tempCredFile, 'not-json{{{');
+
+        const quota = await svc.getAccountQuota();
+        expect(quota).toEqual({ quotaSnapshots: {} });
+        expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('returns empty snapshots when access_token is missing from credentials', async () => {
+        fs.writeFileSync(tempCredFile, JSON.stringify({ refresh_token: 'refresh-only' }));
+
+        const quota = await svc.getAccountQuota();
+        expect(quota).toEqual({ quotaSnapshots: {} });
+        expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('returns empty snapshots on a non-2xx API response', async () => {
+        fs.writeFileSync(tempCredFile, JSON.stringify({ access_token: 'tok-bad' }));
+        fetchSpy.mockResolvedValueOnce({ ok: false, status: 401 });
+
+        const quota = await svc.getAccountQuota();
+        expect(quota).toEqual({ quotaSnapshots: {} });
+    });
+
+    it('returns empty snapshots on a network error', async () => {
+        fs.writeFileSync(tempCredFile, JSON.stringify({ access_token: 'tok-net' }));
+        fetchSpy.mockRejectedValueOnce(new Error('Network failure'));
+
+        const quota = await svc.getAccountQuota();
+        expect(quota).toEqual({ quotaSnapshots: {} });
+    });
+
+    it('returns empty snapshots when the API response JSON is malformed', async () => {
+        fs.writeFileSync(tempCredFile, JSON.stringify({ access_token: 'tok-bad-body' }));
+        fetchSpy.mockResolvedValueOnce({
+            ok: true,
+            json: async () => { throw new SyntaxError('Unexpected token'); },
+        });
+
+        const quota = await svc.getAccountQuota();
+        expect(quota).toEqual({ quotaSnapshots: {} });
+    });
+
+    it('prefers event-cached rate-limit data over the OAuth API', async () => {
+        fs.writeFileSync(tempCredFile, JSON.stringify({ access_token: 'tok-123' }));
+        fetchSpy.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ five_hour: { utilization: 10 } }),
+        });
+
+        // Simulate a rate_limit_event being captured via sendMessage
+        queryFn.mockReturnValueOnce(makeQueryHandle([
+            {
+                type: 'rate_limit_event',
+                rate_limit_info: {
+                    status: 'allowed_warning',
+                    rateLimitType: 'five_hour',
+                    utilization: 0.90,
+                },
+            },
+            { type: 'result', subtype: 'success' },
+        ]));
+        await svc.sendMessage({ prompt: 'hello' });
+
+        const quota = await svc.getAccountQuota();
+
+        // Rate-limit event takes priority, OAuth fetch should NOT be called
+        expect(fetchSpy).not.toHaveBeenCalled();
+        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(90);
+    });
+});
 
 describe('ClaudeSDKService session operations', () => {
     let svc: ClaudeSDKService;
