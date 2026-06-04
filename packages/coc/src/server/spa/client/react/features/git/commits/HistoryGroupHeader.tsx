@@ -56,10 +56,10 @@ export function computeAggregateMode(children: ProcessHistoryItem[]): GroupAggre
 }
 
 const MODE_LABEL: Record<GroupAggregateMode, string> = {
-    ask: 'ASK',
-    auto: 'AUTO',
-    script: 'SCRP',
-    mixed: 'MIX',
+    ask: 'A',
+    auto: 'A',
+    script: 'S',
+    mixed: 'M',
 };
 
 const STATUS_DOT_CLASSES: Record<HistoryGroup['aggregateStatus'], string> = {

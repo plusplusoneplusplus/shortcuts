@@ -134,7 +134,7 @@ export function RalphSessionRow({
                     aria-label={`phase: ${PHASE_DOT_LABEL[session.phase]}`}
                 />
                 <span className={modeBadgeClasses} title="Ralph · iterative goal-driven session">
-                    RALPH
+                    R
                 </span>
                 <span className="min-w-0 flex items-center gap-1 overflow-hidden">
                     <button

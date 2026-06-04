@@ -162,12 +162,12 @@ export function getTaskModeKey(task: any): 'ask' | 'auto' | 'script' | 'ralph' {
     return 'auto';
 }
 
-export function getTaskModeLabel(task: any): 'ASK' | 'AUTO' | 'SCRP' | 'RLPH' {
+export function getTaskModeLabel(task: any): 'A' | 'S' | 'R' {
     const key = getTaskModeKey(task);
-    if (key === 'ask') return 'ASK';
-    if (key === 'script') return 'SCRP';
-    if (key === 'ralph') return 'RLPH';
-    return 'AUTO';
+    if (key === 'ask') return 'A';
+    if (key === 'script') return 'S';
+    if (key === 'ralph') return 'R';
+    return 'A';
 }
 
 /** Extract a short preview of the user prompt from the task payload. */
