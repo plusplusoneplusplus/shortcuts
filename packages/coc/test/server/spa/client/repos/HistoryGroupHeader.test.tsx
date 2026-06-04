@@ -5,7 +5,7 @@
  * plan-file task groups in the Activity tab. Covers:
  *   - `computeAggregateMode` (uniform / mixed / empty / non-chat children)
  *   - Render: data-testid + data-* attribute contract
- *   - Mode pill label + tooltip (ASK/AUTO/SCRP/MIX)
+ *   - Mode pill label + tooltip (A/A/S/M)
  *   - Status dot color via aggregateStatus
  *   - Chevron rotation reflects expand state, click toggles + stops propagation
  *   - Failed / cancelled count badges
@@ -200,10 +200,10 @@ describe('HistoryGroupHeader render', () => {
 
     // Mode pill labels ─────────────────────────────────────────────────
     const modeCases: Array<{ mode: GroupAggregateMode; label: string }> = [
-        { mode: 'ask', label: 'ASK' },
-        { mode: 'auto', label: 'AUTO' },
-        { mode: 'script', label: 'SCRP' },
-        { mode: 'mixed', label: 'MIX' },
+        { mode: 'ask', label: 'A' },
+        { mode: 'auto', label: 'A' },
+        { mode: 'script', label: 'S' },
+        { mode: 'mixed', label: 'M' },
     ];
     modeCases.forEach(({ mode, label }) => {
         it(`renders "${label}" as the mode pill text for aggregateMode="${mode}"`, () => {
@@ -224,7 +224,7 @@ describe('HistoryGroupHeader render', () => {
                 ],
             }),
         });
-        const mixSpan = screen.getByText('MIX');
+        const mixSpan = screen.getByText('M');
         const tooltip = mixSpan.getAttribute('title') ?? '';
         expect(tooltip).toContain('Mixed modes');
         // Tooltip surfaces every distinct normalized mode + its child count.
@@ -235,7 +235,7 @@ describe('HistoryGroupHeader render', () => {
 
     it('mode pill tooltip describes uniform mode in human-readable form', () => {
         renderHeader({ aggregateMode: 'ask' });
-        const askSpan = screen.getByText('ASK');
+        const askSpan = screen.getByText('A');
         expect(askSpan.getAttribute('title')).toContain('read-only');
     });
 
