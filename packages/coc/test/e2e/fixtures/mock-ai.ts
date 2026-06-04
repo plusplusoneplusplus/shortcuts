@@ -1,30 +1,28 @@
 /**
  * Playwright-Compatible Mock AI Service for E2E Tests
  *
- * Provides a lightweight mock of CopilotSDKService that works in
- * Playwright tests (no Vitest dependency).  Exposes call tracking
- * and per-test override helpers (`mockResolvedValueOnce`, etc.).
+ * Re-bases the e2e fixture onto the single canonical ISDKService mock
+ * (`createMockSDKService` from `@plusplusoneplusplus/coc-agent-sdk/testing`).
+ * The fixture no longer defines its own service object or mock-fn; it only
+ * injects a background-aware mock-fn factory (so title / follow-up prompts don't
+ * consume per-test one-shot overrides) and layers Playwright-specific streaming /
+ * tool-call response builders on top.
+ *
+ * Vitest-free: the canonical mock accepts an injectable MockFnFactory, so this
+ * fixture pulls in no test-runner dependency and works under Playwright.
  */
 
-// ---------------------------------------------------------------------------
-// Lightweight mock-function utility (Vitest-free)
-// ---------------------------------------------------------------------------
+import {
+    createMockSDKService,
+    type MockSDKService,
+    type MockFnHandle,
+    type MockFnFactory,
+} from '@plusplusoneplusplus/coc-agent-sdk/testing';
+import type { IInvocationResult } from '@plusplusoneplusplus/coc-agent-sdk';
 
-export interface MockFn<TReturn = unknown> {
-    (...args: unknown[]): TReturn;
-    /** Accumulated call arguments */
-    calls: unknown[][];
-    /** Set the default resolved value (async functions) */
-    mockResolvedValue(value: unknown): MockFn<TReturn>;
-    /** Queue a one-shot resolved value */
-    mockResolvedValueOnce(value: unknown): MockFn<TReturn>;
-    /** Set the default implementation */
-    mockImplementation(fn: (...args: unknown[]) => unknown): MockFn<TReturn>;
-    /** Queue a one-shot implementation */
-    mockImplementationOnce(fn: (...args: unknown[]) => unknown): MockFn<TReturn>;
-    /** Reset to the initial configured state */
-    mockReset(): MockFn<TReturn>;
-}
+// ---------------------------------------------------------------------------
+// Background-aware mock-fn factory (Vitest-free)
+// ---------------------------------------------------------------------------
 
 /**
  * Recognize background/system AI prompts (title generation, follow-up
@@ -40,9 +38,17 @@ function isBackgroundPrompt(prompt: string | undefined): boolean {
     );
 }
 
-function createMockFn<TReturn = unknown>(defaultImpl: (...args: unknown[]) => TReturn): MockFn<TReturn> {
-    const initialImpl = defaultImpl;
-    let currentImpl = defaultImpl;
+/**
+ * A `MockFnFactory` variant that skips the one-shot queue for background
+ * prompts. Injected into `createMockSDKService` so the e2e fixture preserves its
+ * background-aware override semantics while reusing the canonical service mock.
+ *
+ * `opts` is the first arg for `sendMessage(opts)` and the third for the
+ * `sendFollowUp(sessionId, message, opts)` signature, matching the builders.
+ */
+const createBackgroundAwareMockFn: MockFnFactory = (defaultImpl) => {
+    const initialImpl: (...args: unknown[]) => unknown = defaultImpl ?? (() => undefined);
+    let currentImpl: (...args: unknown[]) => unknown = initialImpl;
     const onceQueue: Array<(...args: unknown[]) => unknown> = [];
 
     const fn = ((...args: unknown[]) => {
@@ -55,12 +61,12 @@ function createMockFn<TReturn = unknown>(defaultImpl: (...args: unknown[]) => TR
             return onceQueue.shift()!(...args);
         }
         return currentImpl(...args);
-    }) as MockFn<TReturn>;
+    }) as MockFnHandle;
 
     fn.calls = [];
 
     fn.mockResolvedValue = (value: unknown) => {
-        currentImpl = (() => Promise.resolve(value)) as () => TReturn;
+        currentImpl = () => Promise.resolve(value);
         return fn;
     };
 
@@ -70,7 +76,7 @@ function createMockFn<TReturn = unknown>(defaultImpl: (...args: unknown[]) => TR
     };
 
     fn.mockImplementation = (impl: (...args: unknown[]) => unknown) => {
-        currentImpl = impl as (...args: unknown[]) => TReturn;
+        currentImpl = impl;
         return fn;
     };
 
@@ -87,7 +93,7 @@ function createMockFn<TReturn = unknown>(defaultImpl: (...args: unknown[]) => TR
     };
 
     return fn;
-}
+};
 
 // ---------------------------------------------------------------------------
 // Chunk Gate (for intermediate streaming verification)
@@ -126,12 +132,12 @@ export interface MockToolEvent {
 // ---------------------------------------------------------------------------
 
 export interface E2EMockAIControls {
-    /** The mock service object injected into the server */
-    service: Record<string, unknown>;
+    /** The mock service object injected into the server (full ISDKService). */
+    service: MockSDKService;
     /** Mock for sendMessage */
-    mockSendMessage: MockFn;
+    mockSendMessage: MockFnHandle;
     /** Mock for isAvailable */
-    mockIsAvailable: MockFn;
+    mockIsAvailable: MockFnHandle;
     /** Reset all mocks to their default state */
     resetAll: () => void;
     /**
@@ -169,46 +175,42 @@ export interface E2EMockAIOptions {
 }
 
 /**
- * Creates a mock CopilotSDKService suitable for Playwright E2E tests.
+ * Creates a mock CopilotSDKService suitable for Playwright E2E tests, backed by
+ * the canonical `createMockSDKService` ISDKService mock.
  *
  * Defaults (no options):
  * - isAvailable → { available: true }
  * - sendMessage → { success: true, response: 'AI response text', sessionId: 'session-123' }
- * - sendFollowUp → { success: true, response: 'Follow-up response', sessionId: 'sess-follow' }
- * - hasKeptAliveSession → true
- * - canResumeSession → true
+ *
+ * Title prompts ("Summarise the following conversation…") are routed to a
+ * separate title handle by the canonical mock; other background prompts
+ * ("Generate a title for:") reach sendMessage but skip queued one-shot overrides.
  */
 export function createE2EMockSDKService(options?: E2EMockAIOptions): E2EMockAIControls {
     const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-    const defaultAvailability = { available: options?.available ?? true };
-    const defaultSendMessage = options?.sendMessageResponse ?? {
-        success: true,
-        response: 'AI response text',
-        sessionId: 'session-123',
-    };
 
-    const mockIsAvailable = createMockFn(() => Promise.resolve(defaultAvailability));
-    const mockSendMessage = createMockFn(() => Promise.resolve(defaultSendMessage));
+    const base = createMockSDKService(
+        {
+            available: options?.available,
+            sendMessageResponse: options?.sendMessageResponse as IInvocationResult | undefined,
+        },
+        createBackgroundAwareMockFn,
+    );
 
-    const service = {
-        isAvailable: mockIsAvailable,
-        sendMessage: mockSendMessage,
-        // Stubs for methods the executor may reference but doesn't critically need
-        createClient: () => Promise.resolve(),
-        abortSession: () => {},
-        hasActiveSession: () => false,
-        getActiveSessionCount: () => 0,
-        cleanup: () => Promise.resolve(),
-        dispose: () => Promise.resolve(),
-    };
+    // Preserve the historical e2e contract: a no-op warm client (resolving to
+    // `undefined`) disables the autocomplete prewarm path
+    // (`PromptAutocompleteService.prewarm`), so its background
+    // "Reply with JSON only" sendMessage call never fires during e2e and per-task
+    // call counts stay deterministic. The canonical mock's default createClient
+    // resolves truthy, which would otherwise enable prewarm.
+    base.service.createClient = () => Promise.resolve(undefined);
 
     let activeGate: ChunkGate | null = null;
 
     const resetAll = () => {
         activeGate?.releaseAll();
         activeGate = null;
-        mockIsAvailable.mockReset();
-        mockSendMessage.mockReset();
+        base.resetAll();
     };
 
     function createStreamingResponse(
@@ -305,9 +307,9 @@ export function createE2EMockSDKService(options?: E2EMockAIOptions): E2EMockAICo
     }
 
     return {
-        service,
-        mockSendMessage,
-        mockIsAvailable,
+        service: base.service,
+        mockSendMessage: base.mockSendMessage,
+        mockIsAvailable: base.mockIsAvailable,
         resetAll,
         createStreamingResponse,
         createToolCallResponse,
