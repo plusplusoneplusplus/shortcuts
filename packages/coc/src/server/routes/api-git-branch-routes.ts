@@ -6,8 +6,8 @@
  * cherry-pick, git-ops tracking, and amending commit messages.
  */
 
-import { BranchService } from '@plusplusoneplusplus/forge';
-import type { GitOpJob } from '@plusplusoneplusplus/forge';
+import { BranchService, detectRemoteUrl, normalizeRemoteUrl } from '@plusplusoneplusplus/forge';
+import type { GitOpJob, ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody, execGitArgsSync } from '../core/api-handler';
 import { handleAPIError, missingFields, notFound, badRequest, conflict } from '../errors';
 import { gitCache } from '../git/git-cache';
@@ -354,6 +354,47 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
         },
     }));
 
+    // POST /api/workspaces/:id/git/patch/export — Export one commit as a format-patch payload
+    routes.push(createRoute({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/patch\/export$/,
+        handler: async ({ match, res, req }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
+            if (!ws) return;
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+            if (!body.hash || typeof body.hash !== 'string') return void handleAPIError(res, missingFields(['hash']));
+            const hash = body.hash.trim();
+            if (!/^[a-fA-F0-9]{4,40}$/.test(hash)) return void handleAPIError(res, badRequest('Missing or invalid hash'));
+
+            const result = await branchService.exportCommitPatch(ws.rootPath, hash);
+            if (!result.success) return void handleAPIError(res, notFound('Commit'));
+
+            const remoteUrl = await resolveWorkspaceRemoteUrl(ws, store);
+            const normalizedSourceRemoteUrl = remoteUrl ? normalizeRemoteUrl(remoteUrl) || null : null;
+            return {
+                sourceWorkspace: {
+                    id: ws.id,
+                    name: ws.name,
+                },
+                sourceCommit: {
+                    hash: result.commitHash,
+                    subject: result.subject,
+                    author: {
+                        name: result.authorName,
+                        email: result.authorEmail,
+                        date: result.authorDate,
+                    },
+                },
+                normalizedSourceRemoteUrl,
+                patch: {
+                    format: 'format-patch',
+                    body: result.patch,
+                },
+            };
+        },
+    }));
+
     // POST /api/workspaces/:id/git/amend — Amend the HEAD commit message
     routes.push(createRoute({
         method: 'POST',
@@ -574,6 +615,15 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
             return { taskId, jobId };
         },
     }));
+}
+
+async function resolveWorkspaceRemoteUrl(ws: WorkspaceInfo, store: ProcessStore): Promise<string | undefined> {
+    if (ws.remoteUrl?.trim()) return ws.remoteUrl;
+    const remoteUrl = await detectRemoteUrl(ws.rootPath);
+    if (remoteUrl && remoteUrl !== ws.remoteUrl) {
+        await store.updateWorkspace(ws.id, { remoteUrl });
+    }
+    return remoteUrl;
 }
 
 function buildRebaseReorderPrompt(repoRoot: string, commits: string[]): string {

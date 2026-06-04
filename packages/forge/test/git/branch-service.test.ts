@@ -951,6 +951,68 @@ describe('BranchService.cherryPick', () => {
     });
 });
 
+// ── exportCommitPatch ──────────────────────────────────────────────
+describe('BranchService.exportCommitPatch', () => {
+    let service: BranchService;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        setLogger(nullLogger);
+        service = new BranchService();
+    });
+
+    it('exports a commit as a format-patch payload with metadata', async () => {
+        const fullHash = 'abcdef1234567890abcdef1234567890abcdef12';
+        const patch = 'From abcdef1234567890 Mon Sep 17 00:00:00 2001\nSubject: [PATCH] Add thing\n';
+        const metadata = [
+            fullHash,
+            'Add thing',
+            'Ada Dev',
+            'ada@example.test',
+            '2026-06-04T04:00:00+00:00',
+        ].join('\0') + '\n';
+        mockedExecAsync
+            .mockResolvedValueOnce({ stdout: `${fullHash}\n`, stderr: '' })
+            .mockResolvedValueOnce({ stdout: metadata, stderr: '' })
+            .mockResolvedValueOnce({ stdout: patch, stderr: '' });
+
+        const result = await service.exportCommitPatch('/repo', 'abcdef1');
+
+        expect(result).toEqual({
+            success: true,
+            commitHash: fullHash,
+            subject: 'Add thing',
+            authorName: 'Ada Dev',
+            authorEmail: 'ada@example.test',
+            authorDate: '2026-06-04T04:00:00+00:00',
+            patch,
+        });
+        expect(mockedExecAsync).toHaveBeenCalledWith(
+            'git rev-parse --verify abcdef1^{commit}',
+            expect.objectContaining({ cwd: '/repo' })
+        );
+        expect(mockedExecAsync).toHaveBeenCalledWith(
+            `git format-patch -1 --stdout --no-stat ${fullHash}`,
+            expect.objectContaining({ cwd: '/repo', timeout: 600000 })
+        );
+    });
+
+    it('rejects invalid commit hashes before invoking git', async () => {
+        const result = await service.exportCommitPatch('/repo', 'main;rm -rf /');
+
+        expect(result).toEqual({ success: false, error: 'Invalid commit hash' });
+        expect(mockedExecAsync).not.toHaveBeenCalled();
+    });
+
+    it('returns a failure when git cannot resolve the commit', async () => {
+        mockedExecAsync.mockRejectedValueOnce(new Error('fatal: Needed a single revision'));
+
+        const result = await service.exportCommitPatch('/repo', 'deadbeef');
+
+        expect(result).toEqual({ success: false, error: 'fatal: Needed a single revision' });
+    });
+});
+
 // ── rebaseAutosquash ──────────────────────────────────────────────
 describe('BranchService.rebaseAutosquash', () => {
     let service: BranchService;

@@ -24,6 +24,7 @@ import {
     BranchListOptions,
     PaginatedBranchResult,
     GitOperationResult,
+    GitPatchExportResult,
     RepoState,
 } from './types';
 
@@ -747,6 +748,43 @@ export class BranchService {
             }
             getLogger().error('Git', `Failed to cherry-pick ${hash}`, error instanceof Error ? error : undefined);
             return { success: false, conflicts: false, message: errorMessage };
+        }
+    }
+
+    /**
+     * Export one commit as a format-patch payload suitable for git am.
+     */
+    async exportCommitPatch(repoRoot: string, hash: string): Promise<GitPatchExportResult> {
+        const trimmedHash = hash.trim();
+        if (!/^[a-fA-F0-9]{4,40}$/.test(trimmedHash)) {
+            return { success: false, error: 'Invalid commit hash' };
+        }
+
+        try {
+            const commitHash = (await this.execGit(`git rev-parse --verify ${trimmedHash}^{commit}`, { cwd: repoRoot })).trim();
+            const metadata = await this.execGit(`git show -s --format=%H%x00%s%x00%an%x00%ae%x00%aI ${commitHash}`, { cwd: repoRoot });
+            const [fullHash, subject, authorName, authorEmail, authorDate] = metadata.replace(/\n$/, '').split('\0');
+            if (!fullHash || !subject || !authorName || !authorEmail || !authorDate) {
+                return { success: false, error: 'Failed to read commit metadata' };
+            }
+
+            const patch = await this.execGit(`git format-patch -1 --stdout --no-stat ${commitHash}`, {
+                cwd: repoRoot,
+                timeout: 600000,
+            });
+            return {
+                success: true,
+                commitHash: fullHash,
+                subject,
+                authorName,
+                authorEmail,
+                authorDate,
+                patch,
+            };
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            getLogger().error('Git', `Failed to export commit patch ${trimmedHash}`, error instanceof Error ? error : undefined);
+            return { success: false, error: errorMessage };
         }
     }
 

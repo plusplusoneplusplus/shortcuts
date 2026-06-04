@@ -41,6 +41,7 @@ vi.mock('child_process', function () { return ({
 const mockGetBranchStatus = vi.fn();
 const mockHasUncommittedChanges = vi.fn();
 const mockGetCurrentBranch = vi.fn();
+const mockExportCommitPatch = vi.fn();
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
@@ -49,6 +50,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         BranchService: vi.fn().mockImplementation(function () { return ({
             getBranchStatus: vi.fn(async (...args: any[]) => mockGetBranchStatus(...args)),
             hasUncommittedChanges: vi.fn(async (...args: any[]) => mockHasUncommittedChanges(...args)),
+            exportCommitPatch: vi.fn(async (...args: any[]) => mockExportCommitPatch(...args)),
         }); }),
         GitRangeService: vi.fn().mockImplementation(function () { return ({
             getCurrentBranch: vi.fn(async (...args: any[]) => mockGetCurrentBranch(...args)),
@@ -111,7 +113,7 @@ describe('Git API endpoints', () => {
     beforeAll(async () => {
         store = createMockProcessStore();
         (store.getWorkspaces as any).mockResolvedValue([
-            { id: WORKSPACE_ID, name: 'Test Repo', rootPath: WORKSPACE_ROOT },
+            { id: WORKSPACE_ID, name: 'Test Repo', rootPath: WORKSPACE_ROOT, remoteUrl: 'https://token@example.com/org/repo.git' },
         ]);
 
         const routes: Route[] = [];
@@ -132,6 +134,7 @@ describe('Git API endpoints', () => {
         mockGetBranchStatus.mockReset();
         mockHasUncommittedChanges.mockReset();
         mockGetCurrentBranch.mockReset();
+        mockExportCommitPatch.mockReset();
         // Sensible defaults
         mockHasUncommittedChanges.mockReturnValue(false);
         mockGetCurrentBranch.mockReturnValue('main');
@@ -395,6 +398,86 @@ describe('Git API endpoints', () => {
             expect(res2.status).toBe(200);
             expect(res2.json().subject).toBe('Cached commit');
             expect(mockForgeExecGit).not.toHaveBeenCalled();
+        });
+    });
+
+    // ========================================================================
+    // POST /api/workspaces/:id/git/patch/export
+    // ========================================================================
+
+    describe('POST /api/workspaces/:id/git/patch/export', () => {
+        const fullHash = 'abcdef1234567890abcdef1234567890abcdef12';
+
+        it('returns a format-patch payload with source commit and workspace metadata', async () => {
+            mockExportCommitPatch.mockResolvedValue({
+                success: true,
+                commitHash: fullHash,
+                subject: 'Add portable patch export',
+                authorName: 'Patch Author',
+                authorEmail: 'patch-author@example.test',
+                authorDate: '2026-06-04T04:00:00+00:00',
+                patch: 'From abcdef1234567890 Mon Sep 17 00:00:00 2001\nSubject: [PATCH] Add portable patch export\n',
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/patch/export`, {
+                method: 'POST',
+                body: JSON.stringify({ hash: 'abcdef1' }),
+            });
+
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data).toEqual({
+                sourceWorkspace: { id: WORKSPACE_ID, name: 'Test Repo' },
+                sourceCommit: {
+                    hash: fullHash,
+                    subject: 'Add portable patch export',
+                    author: {
+                        name: 'Patch Author',
+                        email: 'patch-author@example.test',
+                        date: '2026-06-04T04:00:00+00:00',
+                    },
+                },
+                normalizedSourceRemoteUrl: 'example.com/org/repo',
+                patch: {
+                    format: 'format-patch',
+                    body: 'From abcdef1234567890 Mon Sep 17 00:00:00 2001\nSubject: [PATCH] Add portable patch export\n',
+                },
+            });
+            expect(mockExportCommitPatch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'abcdef1');
+        });
+
+        it('returns 404 when the commit cannot be exported', async () => {
+            mockExportCommitPatch.mockResolvedValue({ success: false, error: 'fatal: bad object deadbeef' });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/patch/export`, {
+                method: 'POST',
+                body: JSON.stringify({ hash: 'deadbeef' }),
+            });
+
+            expect(res.status).toBe(404);
+            expect(res.json().error).toBe('Commit not found');
+        });
+
+        it('does not leak source root paths or remote credentials in the payload', async () => {
+            mockExportCommitPatch.mockResolvedValue({
+                success: true,
+                commitHash: fullHash,
+                subject: 'Avoid leaking local paths',
+                authorName: 'Patch Author',
+                authorEmail: 'patch-author@example.test',
+                authorDate: '2026-06-04T04:00:00+00:00',
+                patch: 'From abcdef1234567890 Mon Sep 17 00:00:00 2001\nSubject: [PATCH] Avoid leaking local paths\n',
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/patch/export`, {
+                method: 'POST',
+                body: JSON.stringify({ hash: 'abcdef1' }),
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body).not.toContain(WORKSPACE_ROOT);
+            expect(res.body).not.toContain('token');
+            expect(res.json().normalizedSourceRemoteUrl).toBe('example.com/org/repo');
         });
     });
 

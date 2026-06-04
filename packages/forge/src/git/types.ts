@@ -259,6 +259,19 @@ export interface GitOperationResult {
     error?: string;
 }
 
+export interface GitPatchExportPayload {
+    commitHash: string;
+    subject: string;
+    authorName: string;
+    authorEmail: string;
+    authorDate: string;
+    patch: string;
+}
+
+export type GitPatchExportResult =
+    | ({ success: true } & GitPatchExportPayload)
+    | { success: false; error: string };
+
 /**
  * Current state of the repository (merge/rebase/cherry-pick in progress).
  */
