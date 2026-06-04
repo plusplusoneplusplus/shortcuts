@@ -44,6 +44,7 @@ import type { ChatProvider } from './AgentSelectorChip';
 import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
 import { deriveEffort } from '../../utils/effortUtils';
 import { RalphLaunchDialog } from '../../shared/RalphLaunchDialog';
+import { ForEachLaunchDialog } from '../../shared/ForEachLaunchDialog';
 import type { ResolvedModalJobAiSelection } from '../../shared/ModalJobAiControls';
 import { AttachedContextPreviews } from '../../ui/AttachedContextPreviews';
 import { formatAttachedContext, useAttachedContext } from './hooks/useAttachedContext';
@@ -58,6 +59,7 @@ import {
 export interface NewChatAreaProps {
     workspaceId?: string;
     onBack?: () => void;
+    onForEachRunSelected?: (runId: string) => void;
 }
 
 function isChatProvider(value: unknown): value is ChatProvider {
@@ -70,7 +72,7 @@ function isSelectableProvider(provider: ChatProvider, providers: Array<{ id: str
     return status?.enabled === true && status?.available === true;
 }
 
-export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
+export function NewChatArea({ workspaceId, onBack, onForEachRunSelected }: NewChatAreaProps) {
     const [input, setInput] = useState('');
     const [cursorPos, setCursorPos] = useState(0);
     const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
@@ -82,6 +84,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
     const [selectedEffortTier, setSelectedEffortTier] = useState<EffortTierKey>('medium');
     const [ralphDirectGoalDraft, setRalphDirectGoalDraft] = useState<string | null>(null);
+    const [forEachRequestDraft, setForEachRequestDraft] = useState<string | null>(null);
     const richTextRef = useRef<RichTextInputHandle>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -371,8 +374,31 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         const contextItems = attachedContext.getItems();
         if ((!trimmed && attachments.length === 0 && contextItems.length === 0) || sending) return;
         if (selectedMode === 'for-each') {
-            setError('For Each item planning is unavailable because the dedicated For Each API is not registered.');
+            if (!workspaceId) {
+                setError('Select a workspace before starting a For Each run.');
+                setSessionContextDropError(null);
+                return;
+            }
+            if (attachments.length > 0) {
+                setError(`Remove ${attachments.length} file attachment${attachments.length === 1 ? '' : 's'} before starting For Each. For Each v1 sends request text only.`);
+                setSessionContextDropError(null);
+                return;
+            }
+            const sessionContextSendError = validateSessionContextAttachmentsForSend({
+                featureEnabled: sessionContextAttachmentsEnabled,
+                activeWorkspaceId: workspaceId,
+                currentProcessId: null,
+                items: contextItems,
+                canRetrieveConversations,
+            });
+            if (sessionContextSendError) {
+                setError(null);
+                setSessionContextDropError(sessionContextSendError);
+                return;
+            }
+            setError(null);
             setSessionContextDropError(null);
+            setForEachRequestDraft(formatAttachedContext(contextItems) + trimmed);
             return;
         }
         const sessionContextSendError = validateSessionContextAttachmentsForSend({
@@ -490,6 +516,21 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         clearDraft(draftKey);
     }
 
+    async function handleForEachRunApproved(run: { runId: string }) {
+        onForEachRunSelected?.(run.runId);
+        if (!appState.onboardingProgress?.hasUsedChat) {
+            await updateOnboarding({ hasUsedChat: true }).catch(() => {});
+        }
+        setForEachRequestDraft(null);
+        setInput('');
+        setCursorPos(0);
+        richTextRef.current?.setValue('');
+        clearAttachments();
+        attachedContext.clear();
+        promptHistory.reset();
+        clearDraft(draftKey);
+    }
+
     function handleStop() {
         abortControllerRef.current?.abort();
         setSending(false);
@@ -547,6 +588,17 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                     confirmLabel="🔄 Start Ralph"
                     onClose={() => setRalphDirectGoalDraft(null)}
                     onLaunched={handleRalphDirectGoalLaunched}
+                />
+            )}
+            {forEachRequestDraft !== null && (
+                <ForEachLaunchDialog
+                    open={forEachRequestDraft !== null}
+                    workspaceId={workspaceId ?? ''}
+                    request={forEachRequestDraft}
+                    resolvedAiSelection={resolveComposerAiSelection()}
+                    attachmentCount={attachments.length}
+                    onClose={() => setForEachRequestDraft(null)}
+                    onApproved={handleForEachRunApproved}
                 />
             )}
             {/* Back button — rendered when a back handler is provided (mobile new-chat flow) */}
@@ -911,6 +963,31 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                     Start from goal...
                                 </button>
                             </div>
+                        ) : selectedMode === 'for-each' && isForEachEnabled() ? (
+                            <button
+                                type="button"
+                                disabled={!input.trim() && attachments.length === 0 && attachedContext.items.length === 0}
+                                className="shrink-0 inline-flex items-center gap-1 h-[24px] pl-2 pr-1.5 rounded-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                onClick={() => { void handleSend(); }}
+                                data-testid="new-chat-send-btn"
+                                title="Generate a reviewed For Each item plan"
+                            >
+                                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                    <path
+                                        d="M4 3.5h8M4 8h8M4 12.5h8"
+                                        stroke="currentColor"
+                                        strokeWidth="1.2"
+                                        strokeLinecap="round"
+                                    />
+                                    <path
+                                        d="M2.5 3.5h.01M2.5 8h.01M2.5 12.5h.01"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                    />
+                                </svg>
+                                <span>Plan items</span>
+                            </button>
                         ) : (
                             <button
                                 type="button"

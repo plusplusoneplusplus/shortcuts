@@ -101,7 +101,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 
 ## For Each Runs
 
-All For Each routes are workspace-scoped and gated by `forEach.enabled` (default `false`); disabled routes return unavailable/not-found behavior. Parent run state is stored under `~/.coc/repos/<workspaceId>/for-each-runs/<runId>/` as `run.json` plus `items.json`, never as a Ralph session.
+All For Each routes are workspace-scoped and gated by `forEach.enabled` (default `false`); disabled routes return unavailable/not-found behavior. Parent run state is stored under `~/.coc/repos/<workspaceId>/for-each-runs/<runId>/` as `run.json` plus `items.json`, never as a Ralph session. `@plusplusoneplusplus/coc-client` exposes these routes through `client.forEach`, and the dashboard uses that domain for New Chat plan generation/review plus the For Each detail pane actions.
 
 | Method | Path | Description |
 |--------|------|-------------|

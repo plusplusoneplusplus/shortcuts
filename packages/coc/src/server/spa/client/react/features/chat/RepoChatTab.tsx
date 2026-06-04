@@ -18,6 +18,7 @@ import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { ChatListPane } from './ChatListPane';
 import { ChatDetailPane } from './ChatDetailPane';
 import { RalphWorkflowPaneContainer } from './RalphWorkflowPaneContainer';
+import { ForEachRunPane } from './ForEachRunPane';
 import { useUnseenChat } from './hooks/useUnseenChat';
 import { useChatPaneNavigation } from './hooks/useChatPaneNavigation';
 import { ChatPreferencesProvider, ChatPrefsSync } from '../../contexts/ChatPreferencesContext';
@@ -27,7 +28,7 @@ import { adaptSearchResults } from '../../utils/search-adapter';
 import type { ProcessHistoryItem } from '@plusplusoneplusplus/coc-client';
 import { TaskDefs } from '../../../../../tasks/task-types';
 import { isQueueProcessId, toQueueProcessId, toTaskId } from '../../utils/queue-process-id';
-import { parseRalphSessionDeepLink } from '../../layout/Router';
+import { parseForEachRunDeepLink, parseRalphSessionDeepLink } from '../../layout/Router';
 
 export interface RepoChatTabProps {
     workspaceId: string;
@@ -48,6 +49,16 @@ function buildRalphSessionHash(
         + '/' + getActivityTabSegment(mode)
         + '/ralph/' + encodeURIComponent(sessionId);
     return fileName ? base + '/' + encodeURIComponent(fileName) : base;
+}
+
+function buildForEachRunHash(
+    workspaceId: string,
+    mode: RepoChatTabProps['mode'],
+    runId: string,
+): string {
+    return '#repos/' + encodeURIComponent(workspaceId)
+        + '/' + getActivityTabSegment(mode)
+        + '/for-each/' + encodeURIComponent(runId);
 }
 
 type QueuePauseOptions = { durationHours?: 1 | 2 | 3 | 4 | 8; until?: number | string };
@@ -532,15 +543,21 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
 
     const [selectedRalphSessionId, setSelectedRalphSessionId] = useState<string | null>(null);
     const [selectedRalphFileName, setSelectedRalphFileName] = useState<string | null>(null);
+    const [selectedForEachRunId, setSelectedForEachRunId] = useState<string | null>(null);
 
-    // When a chat task is selected, drop any active Ralph session selection so
+    // When a chat task is selected, drop any active parent-run selection so
     // the right pane consistently reflects the user's most recent click.
     useEffect(() => {
-        if (selectedTaskId && selectedRalphSessionId) {
-            setSelectedRalphSessionId(null);
-            setSelectedRalphFileName(null);
+        if (selectedTaskId) {
+            if (selectedRalphSessionId) {
+                setSelectedRalphSessionId(null);
+                setSelectedRalphFileName(null);
+            }
+            if (selectedForEachRunId) {
+                setSelectedForEachRunId(null);
+            }
         }
-    }, [selectedTaskId, selectedRalphSessionId]);
+    }, [selectedTaskId, selectedRalphSessionId, selectedForEachRunId]);
 
     const handleSelectRalphSession = useCallback((sessionId: string) => {
         // Selecting a Ralph session clears the chat-task selection.
@@ -551,9 +568,24 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         }
         setSelectedRalphSessionId(sessionId);
         setSelectedRalphFileName(null);
+        setSelectedForEachRunId(null);
         // Write a refresh-survivable hash. `mode === 'tasks' ? 'tasks' : ...`
         // mirrors the convention in `selectTask` so layout mode round-trips.
         const next = buildRalphSessionHash(workspaceId, mode, sessionId);
+        if (location.hash !== next) location.hash = next;
+        if (isMobile) setMobileShowDetail(true);
+    }, [queueDispatch, workspaceId, selectedTaskId, isMobile, mode]);
+
+    const handleSelectForEachRun = useCallback((runId: string) => {
+        if (selectedTaskId) {
+            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
+            setSelectedTask(null);
+            selectedTaskRef.current = null;
+        }
+        setSelectedRalphSessionId(null);
+        setSelectedRalphFileName(null);
+        setSelectedForEachRunId(runId);
+        const next = buildForEachRunHash(workspaceId, mode, runId);
         if (location.hash !== next) location.hash = next;
         if (isMobile) setMobileShowDetail(true);
     }, [queueDispatch, workspaceId, selectedTaskId, isMobile, mode]);
@@ -586,13 +618,33 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         return () => window.removeEventListener('hashchange', apply);
     }, [workspaceId]);
 
+    useEffect(() => {
+        const apply = () => {
+            const parsed = parseForEachRunDeepLink(location.hash);
+            if (parsed && parsed.workspaceId === workspaceId) {
+                setSelectedForEachRunId((prev) => (prev === parsed.runId ? prev : parsed.runId));
+            } else {
+                setSelectedForEachRunId((prev) => (prev === null ? prev : null));
+            }
+        };
+        apply();
+        window.addEventListener('hashchange', apply);
+        return () => window.removeEventListener('hashchange', apply);
+    }, [workspaceId]);
+
     const handleSelectRalphIteration = useCallback((processId: string) => {
         // Switching to an iteration's chat detail clears the workflow pane.
         setSelectedRalphSessionId(null);
         setSelectedRalphFileName(null);
+        setSelectedForEachRunId(null);
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: workspaceId });
         if (isMobile) setMobileShowDetail(true);
     }, [queueDispatch, workspaceId, isMobile]);
+
+    const handleSelectForEachChildProcess = useCallback((processId: string) => {
+        setSelectedForEachRunId(null);
+        selectTask(processId);
+    }, [selectTask]);
 
     const { focusedPane, cursorTaskId } = useChatPaneNavigation({
         listContainerRef,
@@ -667,6 +719,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                 selectedTaskRef.current = null;
                 setSelectedRalphSessionId(null);
                 setSelectedRalphFileName(null);
+                setSelectedForEachRunId(null);
                 const tabSegment = getActivityTabSegment(mode);
                 location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/' + tabSegment;
                 if (isMobile) setMobileShowDetail(true);
@@ -706,6 +759,16 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                                     selectedFileName={selectedRalphFileName ?? undefined}
                                     onSelectFile={handleSelectRalphFile}
                                 />
+                            ) : selectedForEachRunId ? (
+                                <ForEachRunPane
+                                    workspaceId={workspaceId}
+                                    runId={selectedForEachRunId}
+                                    onClose={() => {
+                                        setSelectedForEachRunId(null);
+                                        setMobileShowDetail(false);
+                                    }}
+                                    onSelectChildProcess={handleSelectForEachChildProcess}
+                                />
                             ) : (
                                 <ChatDetailPane
                                     selectedTaskId={selectedTaskId}
@@ -713,6 +776,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                                     onBack={() => setMobileShowDetail(false)}
                                     workspaceId={workspaceId}
                                     readOnly={mode === 'tasks'}
+                                    onForEachRunSelected={handleSelectForEachRun}
                                 />
                             )}
                         </div>
@@ -796,12 +860,20 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                         selectedFileName={selectedRalphFileName ?? undefined}
                         onSelectFile={handleSelectRalphFile}
                     />
+                ) : selectedForEachRunId ? (
+                    <ForEachRunPane
+                        workspaceId={workspaceId}
+                        runId={selectedForEachRunId}
+                        onClose={() => setSelectedForEachRunId(null)}
+                        onSelectChildProcess={handleSelectForEachChildProcess}
+                    />
                 ) : (
                     <ChatDetailPane
                         selectedTaskId={selectedTaskId}
                         selectedTask={selectedTask}
                         workspaceId={workspaceId}
                         readOnly={mode === 'tasks'}
+                        onForEachRunSelected={handleSelectForEachRun}
                     />
                 )}
             </div>

@@ -183,6 +183,7 @@ export function parseActivityDeepLink(hash: string): string | null {
     const cleaned = hash.replace(/^#/, '');
     const parts = cleaned.split('/');
     if (parts[0] === 'repos' && parts[1] && (parts[2] === 'chats' || parts[2] === 'activity') && parts[3]) {
+        if (parts[3] === 'ralph' || parts[3] === 'for-each') return null;
         return decodeURIComponent(parts[3]);
     }
     return null;
@@ -193,6 +194,7 @@ export function parseTasksDeepLink(hash: string): string | null {
     const cleaned = hash.replace(/^#/, '');
     const parts = cleaned.split('/');
     if (parts[0] === 'repos' && parts[1] && parts[2] === 'tasks' && parts[3]) {
+        if (parts[3] === 'ralph' || parts[3] === 'for-each') return null;
         return decodeURIComponent(parts[3]);
     }
     return null;
@@ -228,6 +230,30 @@ export function parseRalphSessionDeepLink(
             parsed.fileName = decodeURIComponent(parts[5]);
         }
         return parsed;
+    }
+    return null;
+}
+
+/**
+ * Parse a For Each run deep-link:
+ *   `#repos/{wsId}/(activity|chats|tasks)/for-each/{runId}`
+ */
+export function parseForEachRunDeepLink(
+    hash: string,
+): { workspaceId: string; runId: string } | null {
+    const cleaned = hash.replace(/^#/, '');
+    const parts = cleaned.split('/');
+    if (
+        parts[0] === 'repos' &&
+        parts[1] &&
+        (parts[2] === 'chats' || parts[2] === 'activity' || parts[2] === 'tasks') &&
+        parts[3] === 'for-each' &&
+        parts[4]
+    ) {
+        return {
+            workspaceId: decodeURIComponent(parts[1]),
+            runId: decodeURIComponent(parts[4]),
+        };
     }
     return null;
 }
@@ -530,17 +556,16 @@ export function Router() {
                     // Chats / activity deep-link handling — select task when ID present.
                     // Both URL segments are aliases for the chat surface (the canonical
                     // key differs by layout mode). Treat them identically here.
-                    // The `ralph/<sid>` sub-segment is a separate Ralph workflow link
-                    // owned by RepoChatTab — leave the queue task selection alone.
-                    if ((parts[2] === 'chats' || parts[2] === 'activity') && parts[3] && parts[3] !== 'ralph') {
+                    // Parent-run sub-segments are owned by RepoChatTab detail panes.
+                    if ((parts[2] === 'chats' || parts[2] === 'activity') && parts[3] && parts[3] !== 'ralph' && parts[3] !== 'for-each') {
                         const rawId = decodeURIComponent(parts[3]);
                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: rawId, repoId });
                     } else if (parts[2] === 'chats' || parts[2] === 'activity') {
                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId });
                     }
                     // Tasks deep-link handling — select task when ID present.
-                    // Skip the `ralph/<sid>` sub-segment (handled by RepoChatTab).
-                    if (parts[2] === 'tasks' && parts[3] && parts[3] !== 'ralph') {
+                    // Skip parent-run sub-segments (handled by RepoChatTab).
+                    if (parts[2] === 'tasks' && parts[3] && parts[3] !== 'ralph' && parts[3] !== 'for-each') {
                         const rawId = decodeURIComponent(parts[3]);
                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: rawId, repoId });
                     } else if (parts[2] === 'tasks') {

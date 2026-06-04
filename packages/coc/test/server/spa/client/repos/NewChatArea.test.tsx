@@ -20,6 +20,7 @@ let mockRepoPreferences: Record<string, unknown> = {};
 let mockModelOverride: string | null = null;
 let mockUseModelsProviders: Array<string | undefined> = [];
 let mockUseDefaultModelArgs: Array<[string | undefined, string, string | undefined]> = [];
+let mockForEachEnabled = false;
 let mockAgentProviders: any[] = [
     { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
     { id: 'codex', label: 'Codex', enabled: false, available: false },
@@ -50,6 +51,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => 'http://localhost:4000/api',
     isRalphEnabled: () => false,
+    isForEachEnabled: () => mockForEachEnabled,
     isLoopsEnabled: () => false,
     getDefaultProvider: () => mockDefaultProvider,
     isEffortLevelsEnabled: () => mockEffortLevelsEnabled,
@@ -102,6 +104,17 @@ vi.mock('../../../../../src/server/spa/client/react/shared/RichTextInput', () =>
     )),
 }));
 
+vi.mock('../../../../../src/server/spa/client/react/shared/ForEachLaunchDialog', () => ({
+    ForEachLaunchDialog: ({ open, request, onApproved }: any) => open ? (
+        <div data-testid="for-each-launch-dialog">
+            <div data-testid="for-each-launch-request">{request}</div>
+            <button type="button" data-testid="for-each-dialog-approve" onClick={() => onApproved({ runId: 'for-each-run-1' })}>
+                Approve
+            </button>
+        </div>
+    ) : null,
+}));
+
 vi.mock('../../../../../src/server/spa/client/react/ui/AttachmentPreviews', () => ({
     AttachmentPreviews: () => null,
 }));
@@ -111,26 +124,35 @@ vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
         autopilot: { border: 'border-green-500', ring: 'ring-green-500' },
         ask: { border: 'border-yellow-500', ring: 'ring-yellow-500' },
         plan: { border: 'border-blue-500', ring: 'ring-blue-500' },
+        ralph: { border: 'border-purple-500', ring: 'ring-purple-500' },
+        'for-each': { border: 'border-sky-500', ring: 'ring-sky-500' },
     },
     MODE_ICONS: {
         ask: '💡',
         plan: '📋',
         autopilot: '🤖',
+        ralph: '🔄',
+        'for-each': '🔁',
     },
     MODE_LABELS: {
         ask: '💡 Ask',
         plan: '📋 Plan',
         autopilot: '🤖 Autopilot',
+        ralph: '🔄 Ralph',
+        'for-each': '🔁 For Each',
     },
     MODE_TOOLTIPS: {
         ask: 'Ask — get answers without making changes',
         plan: 'Plan — create a step-by-step plan',
         autopilot: 'Autopilot — execute changes automatically',
+        ralph: 'Ralph — iterative AI coding loop with guided goal setting',
+        'for-each': 'For Each — generate a reviewed item plan, then run each item separately',
     },
     cycleMode: (current: string) => {
-        const next: Record<string, string> = { autopilot: 'ask', ask: 'autopilot', plan: 'autopilot' };
+        const next: Record<string, string> = { autopilot: 'ask', ask: 'autopilot', plan: 'autopilot', 'for-each': 'ask' };
         return next[current];
     },
+    normalizeChatMode: (mode: string) => mode === 'plan' ? 'ask' : mode,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/ui/cn', () => ({
@@ -248,6 +270,7 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         mockModelOverride = null;
         mockUseModelsProviders = [];
         mockUseDefaultModelArgs = [];
+        mockForEachEnabled = false;
         mockEffortLevelsEnabled = false;
         mockEffortTiers = {};
         mockAgentProviders = [
@@ -468,6 +491,23 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         expect(body.payload.provider).toBe('codex');
         expect(body.payload.model).toBe('shared-model');
     });
+
+    it('opens the For Each launch dialog instead of enqueueing generic chat when enabled', async () => {
+        mockForEachEnabled = true;
+        const onForEachRunSelected = vi.fn();
+
+        render(<NewChatArea workspaceId="ws-1" onForEachRunSelected={onForEachRunSelected} />);
+        fireEvent.click(screen.getByTestId('mode-pill-for-each'));
+        typeInInput('Split this work into items');
+        await clickSend();
+
+        expect(screen.getByTestId('for-each-launch-dialog')).toBeTruthy();
+        expect(screen.getByTestId('for-each-launch-request').textContent).toBe('Split this work into items');
+        expect(mockEnqueueTask).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByTestId('for-each-dialog-approve'));
+        await waitFor(() => expect(onForEachRunSelected).toHaveBeenCalledWith('for-each-run-1'));
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -482,6 +522,7 @@ describe('NewChatArea – Effort Tier selector', () => {
         mockModelOverride = null;
         mockUseModelsProviders = [];
         mockUseDefaultModelArgs = [];
+        mockForEachEnabled = false;
         mockEffortLevelsEnabled = false;
         mockEffortTiers = {};
         mockAgentProviders = [
