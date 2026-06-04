@@ -271,11 +271,11 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
     const listPane = hierarchyEnabled ? (
         <div className="flex flex-col h-full" data-testid="work-item-tracker-tabs-panel">
             <div
-                className="border-b border-[#d0d7de] dark:border-[#474749] bg-white dark:bg-[#1e1e1e] px-3 py-2 shrink-0"
+                className="border-b border-[#d0d7de] dark:border-[#474749] bg-white dark:bg-[#1e1e1e] px-2 py-2 shrink-0"
                 role="tablist"
                 aria-label="Work item tracker"
             >
-                <div className="grid grid-cols-2 gap-1 rounded-lg border border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] p-1">
+                <div className="grid grid-cols-2 gap-1 rounded-[7px] border border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] p-[3px]">
                     {WORK_ITEM_TRACKER_TABS.map(tab => {
                         const active = activeTracker === tab.kind;
                         return (
@@ -285,9 +285,9 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                                 role="tab"
                                 aria-selected={active}
                                 className={cn(
-                                    'rounded-md px-2.5 py-1.5 text-left transition-colors',
+                                    'rounded-[5px] px-[7px] py-[5px] text-left transition-colors min-h-[30px] flex items-center',
                                     active
-                                        ? 'bg-white text-[#1f2328] shadow-sm dark:bg-[#333] dark:text-[#f0f0f0]'
+                                        ? 'bg-white text-[#1f2328] shadow-[0_1px_2px_rgba(31,35,40,0.08)] dark:bg-[#333] dark:text-[#f0f0f0]'
                                         : 'text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#f0f0f0]',
                                 )}
                                 onClick={() => {
@@ -301,8 +301,10 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                                 }}
                                 data-testid={`work-item-tracker-tab-${tab.kind}`}
                             >
-                                <span className="block text-[12px] font-semibold leading-[1.25]">{tab.label}</span>
-                                <span className="block text-[10px] leading-[1.25] opacity-75">{tab.description}</span>
+                                <span className="flex items-center w-full gap-1.5 min-w-0">
+                                    <strong className="text-[12px] leading-[1.2] font-semibold">{tab.label}</strong>
+                                    <span className="ml-auto text-[11px] font-semibold font-mono leading-[1.2]" />
+                                </span>
                             </button>
                         );
                     })}
@@ -517,7 +519,10 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                     {listPane}
                 </div>
                 <div
-                    className="flex items-center justify-center w-1 cursor-col-resize hover:bg-[#007acc]/30 active:bg-[#007acc]/50 transition-colors flex-shrink-0"
+                    className="w-[6px] cursor-col-resize flex-shrink-0 transition-colors"
+                    style={{
+                        background: 'linear-gradient(to right, #eaeef2, #f6f8fa 1px, #f6f8fa calc(100% - 1px), #eaeef2)',
+                    }}
                     onMouseDown={handleMouseDown}
                     onTouchStart={handleTouchStart}
                     role="separator"

@@ -31,25 +31,34 @@ const TYPE_PREFIX: Record<WorkItemTypeLabel, string> = {
     goal: 'GOAL',
 };
 
+const TYPE_SHORT: Record<WorkItemTypeLabel, string> = {
+    epic:        'E',
+    feature:     'F',
+    pbi:         'P',
+    'work-item': 'W',
+    bug:         'B',
+    goal:        'G',
+};
+
 const TYPE_PILL_CLASS: Record<WorkItemTypeLabel, string> = {
-    epic:        'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
-    feature:     'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
-    pbi:         'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300',
-    'work-item': 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
-    bug:         'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
-    goal:        'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+    epic:        'text-[#8250df] bg-[color-mix(in_srgb,#8250df_10%,white)] border-[color-mix(in_srgb,#8250df_25%,#d0d7de)] dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-700/40',
+    feature:     'text-[#0969da] bg-[#ddf4ff] border-[color-mix(in_srgb,#0969da_25%,#d0d7de)] dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700/40',
+    pbi:         'text-[#0a7280] bg-[#ddf7fa] border-[#b6e8ef] dark:bg-cyan-900/30 dark:text-cyan-300 dark:border-cyan-700/40',
+    'work-item': 'text-[#656d76] bg-[#f6f8fa] border-[#d0d7de] dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600',
+    bug:         'text-[#cf222e] bg-[#ffebe9] border-[color-mix(in_srgb,#cf222e_25%,#d0d7de)] dark:bg-red-900/30 dark:text-red-300 dark:border-red-700/40',
+    goal:        'text-[#9a6700] bg-[#fff8c5] border-[color-mix(in_srgb,#9a6700_25%,#d0d7de)] dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700/40',
 };
 
 const STATUS_CHIP_CLASS: Record<string, string> = {
-    created:          'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-    drafting:         'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-    planning:         'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-    readyToExecute:   'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-    executing:        'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    aiDone:           'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
-    aiFailed:         'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
-    done:             'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-    failed:           'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    created:          'bg-[#f6f8fa] text-[#656d76] border-[#d0d7de] dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600',
+    drafting:         'bg-[#fff8c5] text-[#9a6700] border-[color-mix(in_srgb,#9a6700_25%,#d0d7de)] dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-700/40',
+    planning:         'bg-[#fff8c5] text-[#9a6700] border-[color-mix(in_srgb,#9a6700_25%,#d0d7de)] dark:bg-yellow-900/20 dark:text-yellow-400 dark:border-yellow-700/40',
+    readyToExecute:   'bg-[#dafbe1] text-[#1a7f37] border-[color-mix(in_srgb,#1a7f37_30%,#d0d7de)] dark:bg-green-900/20 dark:text-green-400 dark:border-green-700/40',
+    executing:        'bg-[#ddf4ff] text-[#0969da] border-[color-mix(in_srgb,#0969da_30%,#d0d7de)] dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-700/40',
+    aiDone:           'bg-[color-mix(in_srgb,#8250df_10%,white)] text-[#8250df] border-[color-mix(in_srgb,#8250df_25%,#d0d7de)] dark:bg-purple-900/20 dark:text-purple-400 dark:border-purple-700/40',
+    aiFailed:         'bg-[#fff8c5] text-[#9a6700] border-[color-mix(in_srgb,#9a6700_25%,#d0d7de)] dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-700/40',
+    done:             'bg-[#dafbe1] text-[#1a7f37] border-[color-mix(in_srgb,#1a7f37_30%,#d0d7de)] dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-700/40',
+    failed:           'bg-[#ffebe9] text-[#cf222e] border-[color-mix(in_srgb,#cf222e_25%,#d0d7de)] dark:bg-red-900/20 dark:text-red-400 dark:border-red-700/40',
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -101,30 +110,30 @@ export function WorkItemHierarchyNode({
     const effectiveType = (item.type ?? 'work-item') as WorkItemTypeLabel;
     const typeLabel = TYPE_LABELS[effectiveType] ?? effectiveType;
     const typePrefix = TYPE_PREFIX[effectiveType] ?? 'WI';
+    const typeShort = TYPE_SHORT[effectiveType] ?? 'W';
     const pillClass = TYPE_PILL_CLASS[effectiveType] ?? TYPE_PILL_CLASS['work-item'];
     const statusChipClass = STATUS_CHIP_CLASS[item.status] ?? STATUS_CHIP_CLASS.created;
     const statusLabel = STATUS_LABEL[item.status] ?? item.status;
     const isContainer = ['epic', 'feature', 'pbi'].includes(effectiveType);
 
-    const indentWidth = depth * 16;
-
-    const depthPadding = depth === 0 ? 8 : depth === 1 ? 28 : depth === 2 ? 48 : 68;
-    const guideLeft = depth === 1 ? 18 : depth === 2 ? 38 : depth === 3 ? 58 : 0;
+    const depthPadding = depth === 0 ? 5 : depth === 1 ? 19 : depth === 2 ? 34 : 49;
+    const guideLeft = depth === 1 ? 11 : depth === 2 ? 26 : depth === 3 ? 41 : 0;
 
     return (
         <div data-testid={`hierarchy-node-${item.id}`}>
             <button
                 className={cn(
-                    'group w-full grid items-center gap-1.5 rounded-md border border-transparent text-left relative',
-                    'py-[7px] px-2 text-[12px] transition-colors cursor-pointer',
+                    'group w-full grid items-center gap-[5px] rounded-[5px] border border-transparent text-left relative',
+                    'min-h-[30px] py-[3px] text-[12px] transition-colors cursor-pointer',
                     selected
-                        ? 'bg-[#ddf4ff] dark:bg-[#0969da]/20 border-[color-mix(in_srgb,#0969da_42%,#d0d7de)] dark:border-[#0969da]/40'
+                        ? 'bg-[#ddf4ff] dark:bg-[#0969da]/20 border-[color-mix(in_srgb,#0969da_42%,#d0d7de)] dark:border-[#0969da]/40 min-h-[44px]'
                         : 'hover:bg-[#f6f8fa] dark:hover:bg-[#2a2d2e] hover:border-[#eaeef2] dark:hover:border-[#3c3c3c]',
                     highlighted && 'animate-pulse ring-2 ring-[#0078d4]/50',
                 )}
                 style={{
                     paddingLeft: `${depthPadding}px`,
-                    gridTemplateColumns: 'auto auto minmax(0, 1fr) auto auto',
+                    paddingRight: '5px',
+                    gridTemplateColumns: '14px 18px minmax(0, 1fr) auto auto',
                 }}
                 onClick={() => onSelect(item.id)}
                 onContextMenu={e => { e.preventDefault(); onContextMenu(e, node); }}
@@ -135,7 +144,7 @@ export function WorkItemHierarchyNode({
                 {/* Guide line for nested depth */}
                 {depth > 0 && (
                     <span
-                        className="absolute top-[-7px] bottom-[-7px] w-px bg-[#eaeef2] dark:bg-[#3c3c3c]"
+                        className="absolute top-[-4px] bottom-[-4px] w-px bg-[#eaeef2] dark:bg-[#3c3c3c]"
                         style={{ left: `${guideLeft}px` }}
                         aria-hidden="true"
                     />
@@ -144,8 +153,8 @@ export function WorkItemHierarchyNode({
                 {/* Collapse toggle */}
                 <span
                     className={cn(
-                        'w-[18px] h-[18px] inline-flex items-center justify-center text-[#656d76] dark:text-[#999] rounded',
-                        hasChildren ? 'hover:bg-[#eaeef2] dark:hover:bg-[#3c3c3c] hover:text-[#1f2328] dark:hover:text-[#ccc] cursor-pointer' : '',
+                        'w-[14px] h-[20px] inline-flex items-center justify-center text-[#656d76] dark:text-[#999] text-[12px] font-semibold font-mono',
+                        hasChildren ? 'cursor-pointer' : '',
                     )}
                     onClick={e => { e.stopPropagation(); if (hasChildren) onToggleCollapse(item.id); }}
                     data-testid={`hierarchy-node-collapse-${item.id}`}
@@ -155,35 +164,40 @@ export function WorkItemHierarchyNode({
                     {hasChildren ? (collapsed ? '›' : 'v') : ''}
                 </span>
 
-                {/* Type pill */}
+                {/* Type pill — compact single letter */}
                 <span
                     className={cn(
-                        'inline-flex items-center rounded-full text-[11px] leading-[1.25] px-[7px] py-px border border-transparent whitespace-nowrap font-medium',
+                        'inline-flex items-center justify-center w-[18px] min-w-[18px] h-[18px] rounded-full text-[10px] leading-none font-semibold font-mono border whitespace-nowrap',
                         pillClass,
                     )}
                     title={typeLabel}
                     data-testid={`hierarchy-node-type-${item.id}`}
                 >
-                    {typeLabel}
+                    {typeShort}
                 </span>
 
-                {/* Tree title — two-line: title + meta subtitle */}
+                {/* Tree main — title + meta that shows on hover/select */}
                 <span className="min-w-0 grid gap-px" data-testid={`hierarchy-node-title-${item.id}`}>
-                    <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-[12px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc]">
-                        {item.title}
-                    </strong>
-                    <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[11px] leading-[1.25] text-[#656d76] dark:text-[#999]">
+                    <span className="flex items-baseline gap-[5px] min-w-0">
+                        <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-[12px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc]">
+                            {item.title}
+                        </strong>
                         {item.workItemNumber != null && (
-                            <span className="font-mono tabular-nums">{typePrefix}-{item.workItemNumber}</span>
+                            <code className="text-[10px] text-[#656d76] dark:text-[#999] font-mono shrink-0">{typePrefix}-{item.workItemNumber}</code>
                         )}
-                        {item.workItemNumber != null && ' · '}
+                    </span>
+                    <span className={cn(
+                        'overflow-hidden text-ellipsis whitespace-nowrap text-[10.5px] leading-[1.15] text-[#656d76] dark:text-[#999]',
+                        selected || isMobile ? 'block' : 'hidden group-hover:block',
+                    )}>
                         {statusLabel}
-                        {' · updated '}
+                        {' \u00b7 updated '}
                         {formatRelativeTime(item.updatedAt)}
                         {' ago'}
                     </span>
                 </span>
 
+                {/* Mirror badge */}
                 <WorkItemRemoteMirrorBadge
                     githubMirror={item.githubMirror}
                     azureBoardsMirror={item.azureBoardsMirror}
@@ -191,17 +205,14 @@ export function WorkItemHierarchyNode({
                     data-testid={`hierarchy-node-remote-mirror-badge-${item.id}`}
                 />
 
-                {/* Rollup summary for containers */}
-                {isContainer && rollup.descendantCount > 0 && (
+                {/* Rollup summary for containers, status pill for leaf items */}
+                {isContainer && rollup.descendantCount > 0 ? (
                     <span className="shrink-0 text-[11px] text-[#656d76] dark:text-[#999] font-mono tabular-nums whitespace-nowrap" title="Done / Total descendants">
                         {rollup.byStatus.done}/{rollup.descendantCount}
                     </span>
-                )}
-
-                {/* Status chip — hidden when rollup is shown */}
-                {!(isContainer && rollup.descendantCount > 0) && (
+                ) : (
                     <span
-                        className={cn('shrink-0 px-1 py-0.5 rounded text-[9px] font-medium leading-none', statusChipClass)}
+                        className={cn('shrink-0 inline-flex items-center justify-center h-[18px] px-1.5 rounded-full text-[10px] font-semibold leading-none border whitespace-nowrap', statusChipClass)}
                         data-testid={`hierarchy-node-status-${item.id}`}
                     >
                         {statusLabel}

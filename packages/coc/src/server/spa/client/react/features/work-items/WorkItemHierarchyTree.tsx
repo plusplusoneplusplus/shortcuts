@@ -564,138 +564,199 @@ export function WorkItemHierarchyTree({
         );
     }, [collapsedIds, selectedWorkItemId, onSelectWorkItem, handleToggleCollapse, handleContextMenu, isMobile, handleAddChild]);
 
+    const readyCount = useMemo(() => {
+        const countReady = (nodes: WorkItemTreeNode[]): number =>
+            nodes.reduce((sum, n) => sum + (n.item.status === 'readyToExecute' ? 1 : 0) + countReady(n.children), 0);
+        return countReady(treeData);
+    }, [treeData]);
+    const runCount = useMemo(() => {
+        const countRunning = (nodes: WorkItemTreeNode[]): number =>
+            nodes.reduce((sum, n) => sum + (n.item.status === 'executing' || n.item.status === 'aiDone' ? 1 : 0) + countRunning(n.children), 0);
+        return countRunning(treeData);
+    }, [treeData]);
+
     // ── Render ────────────────────────────────────────────────────────────────
     return (
         <div className="flex flex-col h-full" data-testid="work-item-hierarchy-tree">
-            {/* ── Pane header ── */}
-            <div className="border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] px-3 py-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 shrink-0">
-                <div className="min-w-[140px] flex-1">
-                    <h1 className="text-[16px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc] truncate">{trackerCopy.title}</h1>
-                    <p className="text-[12px] leading-[1.4] text-[#656d76] dark:text-[#999] truncate">{trackerCopy.subtitle}</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-1 shrink-0">
+            {/* ── Rail top: search + actions + filters ── */}
+            <div className="border-b border-[#d0d7de] dark:border-[#474749] bg-white dark:bg-[#1e1e1e] px-2 py-2 shrink-0 grid gap-1.5">
+                {/* Command line: search + New + Import + more */}
+                <div className="grid gap-1 items-center" style={{ gridTemplateColumns: 'minmax(0, 1fr) auto auto auto' }}>
+                    <label className="flex items-center gap-1.5 border border-[#d0d7de] dark:border-[#555] bg-white dark:bg-[#1e1e1e] rounded-md px-2 h-7">
+                        <span className="text-[#656d76] dark:text-[#999] text-[12px] font-mono shrink-0">s</span>
+                        <input
+                            type="search"
+                            className="flex-1 min-w-0 border-0 outline-none bg-transparent text-[12px] text-[#1f2328] dark:text-[#cccccc] placeholder-[#656d76] dark:placeholder-[#999]"
+                            placeholder="Search work items"
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            data-testid="hierarchy-search-input"
+                        />
+                    </label>
                     {showLocalRootCreationActions && (
-                        <>
-                            <Button
-                                variant="primary"
-                                size="sm"
-                                onClick={() => onCreateItem('epic')}
-                                data-testid="create-epic-btn"
-                                title="Create top-level Epic"
-                            >
-                                + Epic
-                            </Button>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => onCreateItem('work-item')}
-                                data-testid="create-wi-btn"
-                                title="Create unparented Work Item"
-                            >
-                                + WI
-                            </Button>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => onCreateItem('bug')}
-                                data-testid="create-bug-btn"
-                                title="Create unparented Bug"
-                                aria-label="Create unparented Bug"
-                            >
-                                🐛
-                            </Button>
-                        </>
-                    )}
-                    {onCreateWithAi && (
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={onCreateWithAi}
-                            data-testid="hierarchy-create-with-ai-btn"
-                            title="Create with AI"
-                            aria-label="Create with AI"
+                        <button
+                            className="inline-flex items-center justify-center gap-[5px] min-h-7 border border-[rgba(31,35,40,0.15)] rounded-md bg-[#1f883d] text-white px-2 text-[12px] font-semibold tracking-[0.02em] whitespace-nowrap hover:bg-[#1a7f37] dark:bg-[#238636] dark:hover:bg-[#2ea043]"
+                            onClick={() => onCreateItem('epic')}
+                            data-testid="create-epic-btn"
+                            title="Create new work item"
+                            type="button"
                         >
-                            ✨
-                        </Button>
-                    )}
-                    {onImportFromGitHub && (
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={onImportFromGitHub}
-                            data-testid="import-from-github-btn"
-                            title="Import a GitHub issue as a work item"
-                            className="whitespace-nowrap"
-                        >
-                            Import from GitHub
-                        </Button>
+                            New
+                        </button>
                     )}
                     {remoteProviderAffordancesVisible && detectedRemoteProvider && onImportFromRemote && (
-                        <Button
-                            variant="ghost"
-                            size="sm"
+                        <button
+                            className="inline-flex items-center justify-center gap-[5px] min-h-7 border border-[#d0d7de] dark:border-[#555] rounded-md bg-[#f6f8fa] dark:bg-[#333] text-[#1f2328] dark:text-[#f0f0f0] px-2 text-[12px] font-semibold tracking-[0.02em] whitespace-nowrap hover:bg-[#f3f4f6] dark:hover:bg-[#3c3c3c]"
                             onClick={() => onImportFromRemote(detectedRemoteProvider)}
                             data-testid="import-from-remote-btn"
                             title={`Import a ${REMOTE_PROVIDER_LABELS[detectedRemoteProvider]} Epic tree`}
-                            className="whitespace-nowrap"
+                            type="button"
                         >
                             Import remote
-                        </Button>
+                        </button>
                     )}
+                    {onImportFromGitHub && (
+                        <button
+                            className="inline-flex items-center justify-center gap-[5px] min-h-7 border border-[#d0d7de] dark:border-[#555] rounded-md bg-[#f6f8fa] dark:bg-[#333] text-[#1f2328] dark:text-[#f0f0f0] px-2 text-[12px] font-semibold tracking-[0.02em] whitespace-nowrap hover:bg-[#f3f4f6] dark:hover:bg-[#3c3c3c]"
+                            onClick={onImportFromGitHub}
+                            data-testid="import-from-github-btn"
+                            title="Import from GitHub"
+                            type="button"
+                        >
+                            Import
+                        </button>
+                    )}
+                    {onCreateWithAi && (
+                        <button
+                            className="inline-flex items-center justify-center w-7 h-7 border border-[#d0d7de] dark:border-[#555] rounded-md bg-[#f6f8fa] dark:bg-[#333] text-[#1f2328] dark:text-[#f0f0f0] text-[12px] font-semibold hover:bg-[#f3f4f6] dark:hover:bg-[#3c3c3c]"
+                            type="button"
+                            data-testid="hierarchy-create-with-ai-btn"
+                            title="Create with AI"
+                            aria-label="Create with AI"
+                            onClick={onCreateWithAi}
+                        >
+                            ✨
+                        </button>
+                    )}
+                    <button
+                        className="inline-flex items-center justify-center w-7 h-7 border border-[#d0d7de] dark:border-[#555] rounded-md bg-[#f6f8fa] dark:bg-[#333] text-[#1f2328] dark:text-[#f0f0f0] text-[12px] font-semibold hover:bg-[#f3f4f6] dark:hover:bg-[#3c3c3c]"
+                        type="button"
+                        aria-label="More actions"
+                        title="More actions"
+                    >
+                        ...
+                    </button>
+                </div>
+                {/* Filter chips */}
+                <div className="flex items-center gap-1 min-w-0 overflow-x-auto" style={{ scrollbarWidth: 'none' }} aria-label="Tree filters">
+                    <button
+                        className={cn(
+                            'border rounded-full bg-white dark:bg-transparent h-6 px-2 text-[11px] inline-flex items-center gap-1 whitespace-nowrap transition-colors',
+                            !showDone && !showArchived
+                                ? 'border-[#0969da] text-[#0969da] bg-[#ddf4ff] dark:border-[#0969da] dark:text-[#58a6ff] dark:bg-[#0969da]/15 font-semibold'
+                                : 'border-[#d0d7de] dark:border-[#555] text-[#656d76] dark:text-[#999]',
+                        )}
+                        onClick={() => { setShowDone(false); setShowArchived(false); }}
+                        type="button"
+                        aria-pressed={!showDone && !showArchived}
+                    >
+                        Open <span className="font-mono">{total}</span>
+                    </button>
+                    <button
+                        className={cn(
+                            'border rounded-full bg-white dark:bg-transparent h-6 px-2 text-[11px] inline-flex items-center gap-1 whitespace-nowrap transition-colors',
+                            showDone
+                                ? 'border-[color-mix(in_srgb,#1a7f37_35%,#d0d7de)] text-[#1a7f37] bg-[#dafbe1] dark:border-[#1a7f37]/40 dark:text-[#3fb950] dark:bg-[#1a7f37]/15 font-semibold'
+                                : 'border-[#d0d7de] dark:border-[#555] text-[#656d76] dark:text-[#999]',
+                        )}
+                        onClick={() => setShowDone(p => !p)}
+                        title="Toggle done items"
+                        data-testid="hierarchy-done-toggle"
+                        type="button"
+                    >
+                        Done
+                    </button>
+                    <button
+                        className={cn(
+                            'border rounded-full bg-white dark:bg-transparent h-6 px-2 text-[11px] inline-flex items-center gap-1 whitespace-nowrap transition-colors',
+                            showArchived
+                                ? 'border-[color-mix(in_srgb,#9a6700_30%,#d0d7de)] text-[#9a6700] bg-[#fff8c5] dark:border-[#9a6700]/40 dark:text-[#d29922] dark:bg-[#9a6700]/15 font-semibold'
+                                : 'border-[#d0d7de] dark:border-[#555] text-[#656d76] dark:text-[#999]',
+                        )}
+                        onClick={() => setShowArchived(p => !p)}
+                        title="Toggle archived items"
+                        data-testid="hierarchy-archived-toggle"
+                        type="button"
+                    >
+                        Archived
+                    </button>
+                    {isRemoteView && remoteProviderFilterOptions.length > 0 && remoteProviderFilterOptions.map(option => {
+                        const active = visibleRemoteProviderFilter === option.kind;
+                        return (
+                            <button
+                                key={option.kind}
+                                type="button"
+                                className={cn(
+                                    'border rounded-full bg-white dark:bg-transparent h-6 px-2 text-[11px] inline-flex items-center gap-1 whitespace-nowrap transition-colors',
+                                    active
+                                        ? 'border-[#0969da] text-[#0969da] bg-[#ddf4ff] dark:border-[#0969da] dark:text-[#58a6ff] dark:bg-[#0969da]/15 font-semibold'
+                                        : 'border-[#d0d7de] dark:border-[#555] text-[#656d76] dark:text-[#999]',
+                                )}
+                                onClick={() => onRemoteProviderFilterChange?.(option.kind)}
+                                data-testid={`remote-provider-filter-${option.kind}`}
+                                aria-pressed={active}
+                            >
+                                {option.label}
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
 
-            {isRemoteView && (
-                <div className="px-3 py-2 shrink-0 border-b border-[#eaeef2] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e]">
-                    {remoteProviderFilterOptions.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1.5" data-testid="remote-provider-filter" aria-label="Remote provider filter">
-                            {remoteProviderFilterOptions.map(option => {
-                                const active = visibleRemoteProviderFilter === option.kind;
-                                return (
-                                    <button
-                                        key={option.kind}
-                                        type="button"
-                                        className={cn(
-                                            'inline-flex items-center gap-1 border rounded-full px-2 py-px text-[12px] leading-[1.4] whitespace-nowrap transition-colors',
-                                            active
-                                                ? 'border-[#0969da] text-[#0969da] bg-[#ddf4ff] dark:border-[#0969da] dark:text-[#58a6ff] dark:bg-[#0969da]/15'
-                                                : 'border-[#d0d7de] dark:border-[#555] text-[#656d76] dark:text-[#999] bg-white dark:bg-transparent',
-                                        )}
-                                        onClick={() => onRemoteProviderFilterChange?.(option.kind)}
-                                        data-testid={`remote-provider-filter-${option.kind}`}
-                                    >
-                                        {option.label}
-                                    </button>
-                                );
-                            })}
-                        </div>
+            {/* ── Rail summary metrics ── */}
+            <div className="grid grid-cols-4 border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] shrink-0" aria-label="Work item summary">
+                <div className="px-1.5 py-[5px] border-r border-[#eaeef2] dark:border-[#3c3c3c]">
+                    <strong className="block text-[12px] leading-[1.2] font-semibold font-mono text-[#1f2328] dark:text-[#cccccc]">{total}</strong>
+                    <span className="block text-[10px] leading-[1.2] text-[#656d76] dark:text-[#999]">items</span>
+                </div>
+                <div className="px-1.5 py-[5px] border-r border-[#eaeef2] dark:border-[#3c3c3c]">
+                    <strong className="block text-[12px] leading-[1.2] font-semibold font-mono text-[#1f2328] dark:text-[#cccccc]">{readyCount}</strong>
+                    <span className="block text-[10px] leading-[1.2] text-[#656d76] dark:text-[#999]">ready</span>
+                </div>
+                <div className="px-1.5 py-[5px] border-r border-[#eaeef2] dark:border-[#3c3c3c]">
+                    <strong className="block text-[12px] leading-[1.2] font-semibold font-mono text-[#1f2328] dark:text-[#cccccc]">{runCount}</strong>
+                    <span className="block text-[10px] leading-[1.2] text-[#656d76] dark:text-[#999]">runs</span>
+                </div>
+                <div className="px-1.5 py-[5px]">
+                    <strong className="block text-[12px] leading-[1.2] font-semibold font-mono text-[#1f2328] dark:text-[#cccccc]">0</strong>
+                    <span className="block text-[10px] leading-[1.2] text-[#656d76] dark:text-[#999]">review</span>
+                </div>
+            </div>
+
+            {isRemoteView && remoteStatusNotice && (
+                <div
+                    className={cn(
+                        'mx-2 mt-2 rounded-md border px-2.5 py-1.5 text-[12px] leading-[1.4]',
+                        remoteStatusNotice.tone === 'success'
+                            ? 'border-green-300 bg-green-50 text-green-800 dark:border-green-700 dark:bg-green-900/20 dark:text-green-300'
+                            : remoteStatusNotice.tone === 'warning'
+                                ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
+                                : remoteStatusNotice.tone === 'error'
+                                    ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-900/20 dark:text-red-300'
+                                    : 'border-[#d0d7de] bg-[#f6f8fa] text-[#656d76] dark:border-[#3c3c3c] dark:bg-[#252526] dark:text-[#999]',
                     )}
-                    {remoteStatusNotice && (
-                        <div
-                            className={cn(
-                                'mt-2 rounded-md border px-2.5 py-1.5 text-[12px] leading-[1.4]',
-                                remoteStatusNotice.tone === 'success'
-                                    ? 'border-green-300 bg-green-50 text-green-800 dark:border-green-700 dark:bg-green-900/20 dark:text-green-300'
-                                    : remoteStatusNotice.tone === 'warning'
-                                        ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
-                                        : remoteStatusNotice.tone === 'error'
-                                            ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-900/20 dark:text-red-300'
-                                            : 'border-[#d0d7de] bg-[#f6f8fa] text-[#656d76] dark:border-[#3c3c3c] dark:bg-[#252526] dark:text-[#999]',
-                            )}
-                            role={remoteStatusNotice.tone === 'error' ? 'alert' : 'status'}
-                            data-testid="remote-sync-status-message"
-                            data-status-tone={remoteStatusNotice.tone}
-                        >
-                            {remoteStatusNotice.message}
-                        </div>
-                    )}
+                    role={remoteStatusNotice.tone === 'error' ? 'alert' : 'status'}
+                    data-testid="remote-sync-status-message"
+                    data-status-tone={remoteStatusNotice.tone}
+                >
+                    {remoteStatusNotice.message}
                 </div>
             )}
 
             {syncNotice && (
                 <div
                     className={cn(
-                        'mx-3 mt-2 rounded-md border px-3 py-2 text-[12px] leading-[1.4] flex items-start justify-between gap-2',
+                        'mx-2 mt-2 rounded-md border px-3 py-2 text-[12px] leading-[1.4] flex items-start justify-between gap-2',
                         syncNotice.tone === 'warning'
                             ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
                             : 'border-green-300 bg-green-50 text-green-800 dark:border-green-700 dark:bg-green-900/20 dark:text-green-300',
@@ -707,65 +768,8 @@ export function WorkItemHierarchyTree({
                 </div>
             )}
 
-            {/* ── Search + filter chips ── */}
-            <div className="px-3 py-3 shrink-0 grid gap-2 border-b border-[#eaeef2] dark:border-[#3c3c3c]">
-                <label className="flex items-center gap-2 border border-[#d0d7de] dark:border-[#555] bg-white dark:bg-[#1e1e1e] rounded-md px-2.5 min-h-[32px]">
-                    <svg className="w-4 h-4 text-[#656d76] dark:text-[#999] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m21 21-4.2-4.2" /></svg>
-                    <input
-                        type="search"
-                        className="flex-1 min-w-0 border-0 outline-none bg-transparent text-[12px] text-[#1f2328] dark:text-[#cccccc] placeholder-[#656d76] dark:placeholder-[#999]"
-                        placeholder="Search work items…"
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        data-testid="hierarchy-search-input"
-                    />
-                </label>
-                <div className="flex items-center gap-1.5 flex-wrap" aria-label="Work item filters">
-                    <button
-                        className={cn(
-                            'inline-flex items-center gap-1 border rounded-full px-2 py-px text-[12px] leading-[1.4] whitespace-nowrap transition-colors',
-                            !showDone && !showArchived
-                                ? 'border-[#0969da] text-[#0969da] bg-[#ddf4ff] dark:border-[#0969da] dark:text-[#58a6ff] dark:bg-[#0969da]/15'
-                                : 'border-[#d0d7de] dark:border-[#555] text-[#656d76] dark:text-[#999] bg-white dark:bg-transparent',
-                        )}
-                        onClick={() => { setShowDone(false); setShowArchived(false); }}
-                        type="button"
-                    >
-                        Open branches
-                    </button>
-                    <button
-                        className={cn(
-                            'inline-flex items-center gap-1 border rounded-full px-2 py-px text-[12px] leading-[1.4] whitespace-nowrap transition-colors',
-                            showDone
-                                ? 'border-[color-mix(in_srgb,#1a7f37_35%,#d0d7de)] text-[#1a7f37] bg-[#dafbe1] dark:border-[#1a7f37]/40 dark:text-[#3fb950] dark:bg-[#1a7f37]/15'
-                                : 'border-[#d0d7de] dark:border-[#555] text-[#656d76] dark:text-[#999] bg-white dark:bg-transparent',
-                        )}
-                        onClick={() => setShowDone(p => !p)}
-                        title="Toggle done items"
-                        data-testid="hierarchy-done-toggle"
-                        type="button"
-                    >
-                        Done
-                    </button>
-                    <button
-                        className={cn(
-                            'inline-flex items-center gap-1 border rounded-full px-2 py-px text-[12px] leading-[1.4] whitespace-nowrap transition-colors',
-                            showArchived
-                                ? 'border-[color-mix(in_srgb,#9a6700_30%,#d0d7de)] text-[#9a6700] bg-[#fff8c5] dark:border-[#9a6700]/40 dark:text-[#d29922] dark:bg-[#9a6700]/15'
-                                : 'border-[#d0d7de] dark:border-[#555] text-[#656d76] dark:text-[#999] bg-white dark:bg-transparent',
-                        )}
-                        onClick={() => setShowArchived(p => !p)}
-                        title="Toggle archived items"
-                        data-testid="hierarchy-archived-toggle"
-                        type="button"
-                    >
-                        Archived
-                    </button>
-                </div>
-            </div>
-
             {/* ── Tree body ── */}
-            <div className="flex-1 overflow-y-auto min-h-0">
+            <div className="flex-1 overflow-y-auto min-h-0 p-1">
                 {loading ? (
                     <div className="flex items-center justify-center h-16 text-sm text-[#848484]" data-testid="hierarchy-loading">
                         Loading…
@@ -808,13 +812,21 @@ export function WorkItemHierarchyTree({
                         )}
                     </div>
                 ) : (
-                    <div className="p-2" data-testid="hierarchy-tree-list">
-                        {/* Rooted nodes (epics and parented items at each level) */}
+                    <div data-testid="hierarchy-tree-list">
+                        {/* Section header */}
+                        <div className="sticky top-0 z-[1] flex items-center gap-[5px] h-[26px] px-[5px] text-[#656d76] dark:text-[#999] text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ background: 'color-mix(in srgb, var(--tw-bg-opacity, white) 94%, transparent)', backdropFilter: 'blur(6px)' }}>
+                            <span>{trackerViewKind === 'remote' ? 'Remote tree' : 'Local tree'}</span>
+                            <span className="inline-flex items-center justify-center h-[17px] min-w-[18px] px-[5px] rounded-full border border-[#d0d7de] dark:border-[#555] bg-[#f6f8fa] dark:bg-[#333] text-[#656d76] dark:text-[#999] text-[10px] font-semibold font-mono leading-none">
+                                {total}
+                            </span>
+                        </div>
+
+                        {/* Rooted nodes */}
                         {treeData
                             .filter(n => n.item.type === 'epic' || (n.item.type && ['feature', 'pbi'].includes(n.item.type) && n.item.parentId == null))
                             .map(n => renderNode(n, 0))}
 
-                        {/* Unparented group — roots that are not epics */}
+                        {/* Unparented group */}
                         {(() => {
                             const unparented = treeData.filter(n => {
                                 const t = n.item.type ?? 'work-item';
@@ -830,13 +842,16 @@ export function WorkItemHierarchyTree({
                                 </div>
                             );
                         })()}
-
-                        {/* Count */}
-                        <div className="px-2 py-2 text-[10px] text-[#848484] dark:text-[#999]">
-                            {total} item{total !== 1 ? 's' : ''}
-                        </div>
                     </div>
                 )}
+            </div>
+
+            {/* ── Rail footer ── */}
+            <div className="border-t border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] px-2 py-[5px] text-[#656d76] dark:text-[#999] text-[11px] flex items-center justify-between gap-2 shrink-0">
+                <span className="truncate">
+                    {isRemoteView ? (remoteStatus.loading ? 'Checking sync...' : 'Last sync') : 'Local changes saved'}
+                </span>
+                <span className="font-mono text-[11px]">{total} item{total !== 1 ? 's' : ''}</span>
             </div>
 
             {/* ── Context menu ── */}
