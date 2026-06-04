@@ -29,6 +29,10 @@ export type SessionContextDropValidation =
     | { ok: true; payload: SessionContextDragPayload }
     | { ok: false; error: string };
 
+function getSessionContextItems(items: AttachedContextItem[]): Extract<AttachedContextItem, { kind: 'session' }>[] {
+    return items.filter((item): item is Extract<AttachedContextItem, { kind: 'session' }> => item.kind === 'session');
+}
+
 function looksLikeLocalPath(value: string): boolean {
     return value.startsWith('/')
         || value.startsWith('~/')
@@ -130,7 +134,7 @@ export function validateSessionContextDrop(options: {
         return { ok: false, error: 'A follow-up cannot attach its own current session as context.' };
     }
 
-    const sessionItems = options.existingItems.filter(item => item.kind === 'session');
+    const sessionItems = getSessionContextItems(options.existingItems);
     if (sessionItems.some(item =>
         item.sourceWorkspaceId === options.payload!.sourceWorkspaceId
         && item.sourceProcessId === options.payload!.sourceProcessId
@@ -148,6 +152,51 @@ export function validateSessionContextDrop(options: {
     }
 
     return { ok: true, payload: options.payload };
+}
+
+export function validateSessionContextAttachmentsForSend(options: {
+    featureEnabled: boolean;
+    activeWorkspaceId?: string | null;
+    currentProcessId?: string | null;
+    items: AttachedContextItem[];
+    canRetrieveConversations: boolean | null | undefined;
+}): string | null {
+    const sessionItems = getSessionContextItems(options.items);
+    if (sessionItems.length === 0) return null;
+
+    if (!options.featureEnabled) {
+        return 'Session context attachments are disabled.';
+    }
+    if (!options.activeWorkspaceId) {
+        return 'Open a workspace before attaching session context.';
+    }
+    if (sessionItems.some(item => item.sourceWorkspaceId !== options.activeWorkspaceId)) {
+        return 'Only sessions from the active workspace can be attached as context.';
+    }
+    if (options.currentProcessId && sessionItems.some(item => item.sourceProcessId === options.currentProcessId)) {
+        return 'A follow-up cannot attach its own current session as context.';
+    }
+    if (sessionItems.length > MAX_SESSION_CONTEXT_ATTACHMENTS) {
+        return `You can attach up to ${MAX_SESSION_CONTEXT_ATTACHMENTS} sessions as context.`;
+    }
+
+    const seen = new Set<string>();
+    for (const item of sessionItems) {
+        const key = `${item.sourceWorkspaceId}\0${item.sourceProcessId}`;
+        if (seen.has(key)) {
+            return 'This session is already attached to the message.';
+        }
+        seen.add(key);
+    }
+
+    if (options.canRetrieveConversations == null) {
+        return 'Checking conversation retrieval capability. Try again shortly.';
+    }
+    if (options.canRetrieveConversations !== true) {
+        return 'Conversation retrieval is not available for this chat.';
+    }
+
+    return null;
 }
 
 export function useConversationRetrievalCapability(workspaceId: string | undefined, enabled: boolean): boolean | null {

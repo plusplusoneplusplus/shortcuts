@@ -69,6 +69,8 @@ export interface FollowUpInputAreaProps {
     onAttachSessionContext?: (payload: SessionContextDragPayload) => void;
     workspaceId?: string;
     currentProcessId?: string | null;
+    sessionContextAttachmentsEnabled?: boolean;
+    canRetrieveConversations?: boolean | null;
     task: any;
     slashCommands: {
         handleInputChange: (val: string, cursor: number) => void;
@@ -184,6 +186,8 @@ export function FollowUpInputArea({
     onAttachSessionContext,
     workspaceId,
     currentProcessId,
+    sessionContextAttachmentsEnabled: sessionContextAttachmentsEnabledProp,
+    canRetrieveConversations: canRetrieveConversationsProp,
     task,
     slashCommands,
     modelCommand,
@@ -217,8 +221,12 @@ export function FollowUpInputArea({
     const [sessionContextDropError, setSessionContextDropError] = useState<string | null>(null);
     const activeWorkspaceId = workspaceId ?? task?.metadata?.workspaceId ?? task?.workspaceId ?? task?.payload?.workspaceId;
     const activeProcessId = currentProcessId ?? task?.processId ?? task?.id ?? null;
-    const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
-    const canRetrieveConversations = useConversationRetrievalCapability(activeWorkspaceId, sessionContextAttachmentsEnabled);
+    const sessionContextAttachmentsEnabled = sessionContextAttachmentsEnabledProp ?? isSessionContextAttachmentsEnabled();
+    const localCanRetrieveConversations = useConversationRetrievalCapability(
+        activeWorkspaceId,
+        sessionContextAttachmentsEnabled && canRetrieveConversationsProp === undefined,
+    );
+    const canRetrieveConversations = canRetrieveConversationsProp ?? localCanRetrieveConversations;
     // Reset dismiss state whenever a new set of suggestions arrives.
     useEffect(() => { setSuggestionsDismissed(false); }, [suggestions]);
 

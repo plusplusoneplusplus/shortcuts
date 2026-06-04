@@ -505,6 +505,37 @@ describe('useSendMessage', () => {
     });
 
     describe('attached context integration', () => {
+        it('blocks session context sends when retrieval capability is unavailable', async () => {
+            fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+            const setError = vi.fn();
+            const clearAttachedContext = vi.fn();
+            const opts = makeOptions({
+                workspaceId: 'ws-1',
+                sessionContextAttachmentsEnabled: true,
+                conversationRetrievalAvailable: false,
+                setError,
+                clearAttachedContext,
+                getAttachedContext: () => [{
+                    kind: 'session',
+                    id: 'ctx-session',
+                    sourceWorkspaceId: 'ws-1',
+                    sourceProcessId: 'source-proc',
+                    title: 'Source session',
+                    status: 'completed',
+                    lastActivityAt: '2026-01-01T00:00:00.000Z',
+                    preview: 'Source session · completed',
+                }],
+            });
+            opts.followUpInputRef.current = 'my follow-up';
+
+            const { result } = renderHook(() => useSendMessage(opts));
+            await act(async () => { await result.current.sendFollowUp(); });
+
+            expect(setError).toHaveBeenCalledWith('Conversation retrieval is not available for this chat.');
+            expect(fetchMock).not.toHaveBeenCalled();
+            expect(clearAttachedContext).not.toHaveBeenCalled();
+        });
+
         it('prepends context block to rawContent when attached context items exist', async () => {
             fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
             const getAttachedContext = vi.fn().mockReturnValue([

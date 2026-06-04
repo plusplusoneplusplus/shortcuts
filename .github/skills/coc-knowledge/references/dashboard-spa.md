@@ -137,7 +137,9 @@ When `features.sessionContextAttachments` is enabled, both `NewChatArea` and
 `FollowUpInputArea` accept drag/drop session-context payloads from same-workspace
 chat/process rows. The composers validate same-workspace, duplicate, self-drop,
 three-session cap, and `get_conversation` tool availability before adding
-removable session chips through the existing `AttachedContextPreviews` surface.
+removable session chips through the existing `AttachedContextPreviews` surface;
+send paths re-check the same constraints before formatting already-attached
+session chips so stale feature/capability state cannot send unusable source IDs.
 The attached-context formatter emits pointer-only `<attached_session_context>`
 blocks in user-message content; it stores source workspace/process IDs, status,
 title, and last activity only. `ConversationTurnBubble` parses persisted

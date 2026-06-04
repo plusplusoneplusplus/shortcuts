@@ -51,6 +51,7 @@ import {
     dataTransferHasSessionContext,
     readSessionContextDragPayload,
     useConversationRetrievalCapability,
+    validateSessionContextAttachmentsForSend,
     validateSessionContextDrop,
 } from './sessionContextDrop';
 
@@ -367,6 +368,18 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         const trimmed = input.trim();
         const contextItems = attachedContext.getItems();
         if ((!trimmed && attachments.length === 0 && contextItems.length === 0) || sending) return;
+        const sessionContextSendError = validateSessionContextAttachmentsForSend({
+            featureEnabled: sessionContextAttachmentsEnabled,
+            activeWorkspaceId: workspaceId,
+            currentProcessId: null,
+            items: contextItems,
+            canRetrieveConversations,
+        });
+        if (sessionContextSendError) {
+            setError(null);
+            setSessionContextDropError(sessionContextSendError);
+            return;
+        }
 
         setError(null);
         setSessionContextDropError(null);

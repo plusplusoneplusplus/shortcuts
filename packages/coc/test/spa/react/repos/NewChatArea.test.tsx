@@ -577,6 +577,31 @@ describe('NewChatArea', () => {
                 'Conversation retrieval is not available for this chat.',
             );
         });
+
+        it('blocks sending a previously attached session when the feature is disabled before submit', async () => {
+            mockSessionContextAttachmentsEnabled.value = true;
+            const { rerender } = render(<NewChatArea workspaceId="ws-1" />);
+            await waitFor(() => expect(mockGetLlmToolsConfig).toHaveBeenCalledWith('ws-1'));
+            await act(async () => {});
+
+            fireEvent.drop(screen.getByTestId('chat-input-stack'), {
+                dataTransfer: makeSessionDataTransfer(makeSessionPayload()),
+            });
+            expect(screen.getByTestId('attached-session-context-chip')).toBeTruthy();
+
+            mockSessionContextAttachmentsEnabled.value = false;
+            rerender(<NewChatArea workspaceId="ws-1" />);
+            fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'Use this context' } });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            });
+
+            expect(mockEnqueueTask).not.toHaveBeenCalled();
+            expect(screen.getByTestId('new-chat-session-context-error').textContent).toBe(
+                'Session context attachments are disabled.',
+            );
+        });
     });
 
     describe('model command in new chat', () => {
