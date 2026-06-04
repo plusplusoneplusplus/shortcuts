@@ -298,6 +298,12 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         // in FollowUpExecutor.
         if (!payload.mode && !payload.processId) payload.mode = 'autopilot';
         const normalizedMode = normalizeChatMode(payload.mode);
+        if (payload.mode !== undefined && !normalizedMode) {
+            return {
+                valid: false,
+                error: `Invalid chat mode: ${payload.mode}. Valid modes: ask, autopilot, ralph`,
+            };
+        }
         if (normalizedMode) payload.mode = normalizedMode;
         // Validate provider field if present.
         if (payload.provider !== undefined && !VALID_CHAT_PROVIDERS.has(payload.provider)) {

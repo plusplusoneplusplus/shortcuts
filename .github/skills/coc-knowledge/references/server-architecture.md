@@ -161,6 +161,9 @@ terminal:
 workflows:
   enabled: true
 
+forEach:
+  enabled: false
+
 codex:
   enabled: false
 

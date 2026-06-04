@@ -53,6 +53,14 @@ export const RALPH_MODE_PILL_OPTION: ModePillOption = {
     title: 'Ralph — iterative AI coding loop with guided goal setting',
 };
 
+/** Pill option for For Each mode — appended to DEFAULT_MODE_PILL_OPTIONS when For Each is enabled. */
+export const FOR_EACH_MODE_PILL_OPTION: ModePillOption = {
+    value: 'for-each',
+    label: 'For Each',
+    dotClass: 'bg-sky-500',
+    title: 'For Each — generate a reviewed item plan, then run each item separately',
+};
+
 export function ModePillSelector({
     options,
     value,

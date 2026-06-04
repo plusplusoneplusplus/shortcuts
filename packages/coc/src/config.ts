@@ -140,6 +140,10 @@ export interface CLIConfig {
             maxGapFixLoops?: number;
         };
     };
+    /** Dedicated For Each mode configuration. Disabled by default. */
+    forEach?: {
+        enabled?: boolean;
+    };
     /** Loops/recurring follow-up subsystem configuration. Disabled by default. */
     loops?: {
         enabled?: boolean;
@@ -377,6 +381,10 @@ export interface ResolvedCLIConfig {
             maxGapFixLoops: number;
         };
     };
+    /** Dedicated For Each mode configuration. */
+    forEach: {
+        enabled: boolean;
+    };
     /** Loops/recurring follow-up subsystem configuration. */
     loops: {
         enabled: boolean;
@@ -560,6 +568,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         finalCheck: {
             maxGapFixLoops: 3,
         },
+    },
+    forEach: {
+        enabled: false,
     },
     loops: {
         enabled: true,

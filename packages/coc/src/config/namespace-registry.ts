@@ -30,6 +30,7 @@ export type ResolvedConfigNamespaceValues = Pick<
     | 'pullRequests'
     | 'servers'
     | 'ralph'
+    | 'forEach'
     | 'vimNavigation'
     | 'loops'
     | 'mcpOauth'
@@ -73,6 +74,7 @@ const PULL_REQUESTS_SOURCE_KEYS = ['pullRequests.enabled', 'pullRequests.suggest
 const SERVERS_SOURCE_KEYS = ['servers.enabled'] as const;
 const RALPH_SOURCE_KEYS = ['ralph.enabled'] as const;
 const RALPH_FINAL_CHECK_SOURCE_KEYS = ['ralph.finalCheck.maxGapFixLoops'] as const;
+const FOR_EACH_SOURCE_KEYS = ['forEach.enabled'] as const;
 const VIM_NAVIGATION_SOURCE_KEYS = ['vimNavigation.enabled'] as const;
 const LOOPS_SOURCE_KEYS = ['loops.enabled'] as const;
 const MCP_OAUTH_SOURCE_KEYS = ['mcpOauth.enabled'] as const;
@@ -118,6 +120,7 @@ export const CONFIG_NAMESPACE_SOURCE_KEYS = [
     ...SERVERS_SOURCE_KEYS,
     ...RALPH_SOURCE_KEYS,
     ...RALPH_FINAL_CHECK_SOURCE_KEYS,
+    ...FOR_EACH_SOURCE_KEYS,
     ...VIM_NAVIGATION_SOURCE_KEYS,
     ...LOOPS_SOURCE_KEYS,
     ...MCP_OAUTH_SOURCE_KEYS,
@@ -278,6 +281,11 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
                     },
                 },
             }),
+        },
+        {
+            name: 'forEach',
+            sourceDescriptors: [source('forEach.', ['forEach'], FOR_EACH_SOURCE_KEYS)],
+            merge: (base, override) => ({ forEach: { enabled: override?.forEach?.enabled ?? base.forEach?.enabled ?? false } }),
         },
         {
             name: 'vimNavigation',

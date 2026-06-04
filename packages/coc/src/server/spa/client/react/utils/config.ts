@@ -22,6 +22,7 @@ interface DashboardConfig {
     pullRequestsSuggestionsEnabled?: boolean;
     serversEnabled?: boolean;
     ralphEnabled?: boolean;
+    forEachEnabled?: boolean;
     vimNavigationEnabled?: boolean;
     containerMode?: boolean;
     loopsEnabled?: boolean;
@@ -107,6 +108,7 @@ async function _fetchAndApplyRuntimeConfig(apiBase: string): Promise<void> {
             pullRequestsSuggestionsEnabled: data.features.pullRequestsSuggestionsEnabled,
             serversEnabled: data.features.serversEnabled,
             ralphEnabled: data.features.ralphEnabled,
+            forEachEnabled: data.features.forEachEnabled,
             vimNavigationEnabled: data.features.vimNavigationEnabled,
             loopsEnabled: data.features.loopsEnabled,
             excalidrawEnabled: data.features.excalidrawEnabled,
@@ -227,6 +229,10 @@ export function isServersEnabled(): boolean {
 
 export function isRalphEnabled(): boolean {
     return getConfig().ralphEnabled === true;
+}
+
+export function isForEachEnabled(): boolean {
+    return getConfig().forEachEnabled === true;
 }
 
 export function isVimNavigationEnabled(): boolean {

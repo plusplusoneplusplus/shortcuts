@@ -65,6 +65,7 @@ export interface AdminResolvedConfig {
   workflows?: { enabled?: boolean };
   pullRequests?: { enabled?: boolean; suggestions?: boolean };
   servers?: { enabled?: boolean };
+  forEach?: { enabled?: boolean };
   excalidraw?: { enabled?: boolean };
   codex?: { enabled?: boolean };
   claude?: { enabled?: boolean };
@@ -133,6 +134,7 @@ export interface AdminConfigUpdate {
   'pullRequests.enabled'?: boolean;
   'pullRequests.suggestions'?: boolean;
   'servers.enabled'?: boolean;
+  'forEach.enabled'?: boolean;
   'excalidraw.enabled'?: boolean;
   'mcpOauth.enabled'?: boolean;
   'mcpOauth.autoRefresh.enabled'?: boolean;
@@ -167,6 +169,7 @@ export interface RuntimeDashboardConfig {
     pullRequestsSuggestionsEnabled: boolean;
     serversEnabled: boolean;
     ralphEnabled: boolean;
+    forEachEnabled: boolean;
     vimNavigationEnabled: boolean;
     loopsEnabled: boolean;
     excalidrawEnabled: boolean;

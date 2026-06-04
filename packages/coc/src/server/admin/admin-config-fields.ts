@@ -195,6 +195,10 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         if (!cfg.ralph) { cfg.ralph = {}; }
         cfg.ralph.enabled = v;
     }),
+    bool('forEach.enabled', (cfg, v) => {
+        if (!cfg.forEach) { cfg.forEach = {}; }
+        cfg.forEach.enabled = v;
+    }),
     {
         key: 'ralph.finalCheck.maxGapFixLoops',
         runtime: 'live' as AdminConfigFieldRuntime,

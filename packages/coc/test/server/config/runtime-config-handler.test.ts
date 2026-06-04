@@ -30,6 +30,7 @@ function createMockRuntimeConfigService(overrides: Partial<ResolvedCLIConfig> = 
         pullRequests: { enabled: false },
         servers: { enabled: false },
         ralph: { enabled: false },
+        forEach: { enabled: false },
         vimNavigation: { enabled: false },
         loops: { enabled: false },
         excalidraw: { enabled: false },
@@ -70,6 +71,7 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.pullRequestsEnabled).toBe(false);
         expect(result.features.serversEnabled).toBe(false);
         expect(result.features.ralphEnabled).toBe(false);
+        expect(result.features.forEachEnabled).toBe(false);
         expect(result.features.vimNavigationEnabled).toBe(false);
         expect(result.features.loopsEnabled).toBe(false);
         expect(result.features.excalidrawEnabled).toBe(false);
@@ -86,6 +88,12 @@ describe('buildRuntimeDashboardConfig', () => {
         const svc = createMockRuntimeConfigService({ ralph: { enabled: true } });
         const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
         expect(result.features.ralphEnabled).toBe(true);
+    });
+
+    it('reflects forEach.enabled = true from config', () => {
+        const svc = createMockRuntimeConfigService({ forEach: { enabled: true } });
+        const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
+        expect(result.features.forEachEnabled).toBe(true);
     });
 
     it('defaults workItemsHierarchyEnabled to false', () => {
@@ -383,6 +391,39 @@ describe('getBundleETag with config revision', () => {
         const etag1Again = getBundleETag(1);
         expect(etag1).not.toBe(etag2);
         expect(etag1Again).toBe(etag1);
+    });
+});
+
+describe('forEach.enabled live enablement end-to-end', () => {
+    it('forEach.enabled update through service is reflected in runtime dashboard config', async () => {
+        const fs = await import('fs');
+        const path = await import('path');
+        const os = await import('os');
+        const { RuntimeConfigService } = await import('../../../src/config/runtime-config-service');
+
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-for-each-'));
+        try {
+            const configPath = path.join(tmpDir, 'config.yaml');
+            const svc = new RuntimeConfigService({ configPath });
+
+            const before = buildRuntimeDashboardConfig(svc, 'test-host', '127.0.0.1');
+            expect(before.features.forEachEnabled).toBe(false);
+            expect(before.revision).toBe(0);
+
+            const updateResult = await svc.updateConfig({ 'forEach.enabled': true });
+            expect(updateResult.config.forEach.enabled).toBe(true);
+            expect(updateResult.revision).toBe(1);
+
+            const after = buildRuntimeDashboardConfig(svc, 'test-host', '127.0.0.1');
+            expect(after.features.forEachEnabled).toBe(true);
+            expect(after.revision).toBe(1);
+
+            const effect = updateResult.effects.find(e => e.field === 'forEach.enabled');
+            expect(effect).toBeDefined();
+            expect(effect!.runtime).toBe('live');
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
     });
 });
 

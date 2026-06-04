@@ -7,11 +7,13 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 describe('isRalphEnabled', () => {
     let isRalphEnabled: () => boolean;
+    let isForEachEnabled: () => boolean;
 
     beforeEach(async () => {
         // Fresh import each time to avoid module cache
         const mod = await import('../../../../src/server/spa/client/react/utils/config');
         isRalphEnabled = mod.isRalphEnabled;
+        isForEachEnabled = mod.isForEachEnabled;
     });
 
     afterEach(() => {
@@ -36,5 +38,13 @@ describe('isRalphEnabled', () => {
     it('returns true when ralphEnabled is true', () => {
         (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', ralphEnabled: true };
         expect(isRalphEnabled()).toBe(true);
+    });
+
+    it('returns true only when forEachEnabled is true', () => {
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', forEachEnabled: false };
+        expect(isForEachEnabled()).toBe(false);
+
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', forEachEnabled: true };
+        expect(isForEachEnabled()).toBe(true);
     });
 });

@@ -610,6 +610,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 pullRequestsSuggestionsEnabled: liveConfig.pullRequests?.suggestions ?? false,
                 serversEnabled: liveConfig.servers?.enabled ?? false,
                 ralphEnabled: liveConfig.ralph?.enabled ?? false,
+                forEachEnabled: liveConfig.forEach?.enabled ?? false,
                 vimNavigationEnabled: liveConfig.vimNavigation?.enabled ?? false,
                 loopsEnabled: liveConfig.loops?.enabled ?? false,
                 excalidrawEnabled: liveConfig.excalidraw?.enabled ?? false,

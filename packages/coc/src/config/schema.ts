@@ -114,6 +114,9 @@ export const CLIConfigSchema = z.object({
             maxGapFixLoops: z.number().int().min(1).optional(),
         }).passthrough().optional(),
     }).passthrough().optional(),
+    forEach: z.object({
+        enabled: z.boolean().optional(),
+    }).passthrough().optional(),
     loops: z.object({
         enabled: z.boolean().optional(),
     }).passthrough().optional(),

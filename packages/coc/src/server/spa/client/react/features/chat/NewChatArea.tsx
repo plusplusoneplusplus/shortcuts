@@ -25,14 +25,14 @@ import { useSlashCommands } from './hooks/useSlashCommands';
 import { useModelCommand, selectPickableModels } from './hooks/useModelCommand';
 import { SlashCommandMenu, getMetaSkillItems, mergeSkillsWithMeta, type SkillItem } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
-import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION } from './ModePillSelector';
+import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION, FOR_EACH_MODE_PILL_OPTION } from './ModePillSelector';
 import { EffortPillSelector, buildEffortOptionsForModel } from './EffortPillSelector';
 import type { EffortLevel } from './EffortPillSelector';
 import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
 import { useChatPromptHistory } from '../../hooks/useChatPromptHistory';
-import { getDefaultProvider, isRalphEnabled, isLoopsEnabled, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
+import { getDefaultProvider, isRalphEnabled, isForEachEnabled, isLoopsEnabled, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
 import type { EffortTierKey } from '../../hooks/useProviderEffortTiers';
 import { EffortTierSelector } from './EffortTierSelector';
@@ -126,9 +126,11 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     }, [modelCommand.modelOverride, pickableModels]);
 
     const modePillOptions = useMemo(
-        () => isRalphEnabled()
-            ? [...DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION]
-            : DEFAULT_MODE_PILL_OPTIONS,
+        () => [
+            ...DEFAULT_MODE_PILL_OPTIONS,
+            ...(isRalphEnabled() ? [RALPH_MODE_PILL_OPTION] : []),
+            ...(isForEachEnabled() ? [FOR_EACH_MODE_PILL_OPTION] : []),
+        ],
         [],
     );
     const visibleModes = useMemo(
@@ -368,6 +370,11 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         const trimmed = input.trim();
         const contextItems = attachedContext.getItems();
         if ((!trimmed && attachments.length === 0 && contextItems.length === 0) || sending) return;
+        if (selectedMode === 'for-each') {
+            setError('For Each item planning is unavailable because the dedicated For Each API is not registered.');
+            setSessionContextDropError(null);
+            return;
+        }
         const sessionContextSendError = validateSessionContextAttachmentsForSend({
             featureEnabled: sessionContextAttachmentsEnabled,
             activeWorkspaceId: workspaceId,

@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 describe('loadRuntimeConfig', () => {
     let loadRuntimeConfig: () => Promise<void>;
     let isRalphEnabled: () => boolean;
+    let isForEachEnabled: () => boolean;
     let isGitCrossCloneCherryPickEnabled: () => boolean;
     let isSessionContextAttachmentsEnabled: () => boolean;
     let isContainerMode: () => boolean;
@@ -20,6 +21,7 @@ describe('loadRuntimeConfig', () => {
         const mod = await import('../../../../src/server/spa/client/react/utils/config');
         loadRuntimeConfig = mod.loadRuntimeConfig;
         isRalphEnabled = mod.isRalphEnabled;
+        isForEachEnabled = mod.isForEachEnabled;
         isGitCrossCloneCherryPickEnabled = mod.isGitCrossCloneCherryPickEnabled;
         isSessionContextAttachmentsEnabled = mod.isSessionContextAttachmentsEnabled;
         isContainerMode = mod.isContainerMode;
@@ -38,6 +40,7 @@ describe('loadRuntimeConfig', () => {
     it('updates feature flags from API response', async () => {
         (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', ralphEnabled: false };
         expect(isRalphEnabled()).toBe(false);
+        expect(isForEachEnabled()).toBe(false);
         expect(isGitCrossCloneCherryPickEnabled()).toBe(false);
         expect(isSessionContextAttachmentsEnabled()).toBe(false);
 
@@ -56,6 +59,7 @@ describe('loadRuntimeConfig', () => {
                     pullRequestsEnabled: false,
                     serversEnabled: false,
                     ralphEnabled: true,
+                    forEachEnabled: true,
                     vimNavigationEnabled: false,
                     loopsEnabled: false,
                     excalidrawEnabled: false,
@@ -71,6 +75,7 @@ describe('loadRuntimeConfig', () => {
 
         await loadRuntimeConfig();
         expect(isRalphEnabled()).toBe(true);
+        expect(isForEachEnabled()).toBe(true);
         expect(isGitCrossCloneCherryPickEnabled()).toBe(true);
         expect(isSessionContextAttachmentsEnabled()).toBe(true);
     });
@@ -114,6 +119,7 @@ describe('loadRuntimeConfig', () => {
                     pullRequestsEnabled: false,
                     serversEnabled: false,
                     ralphEnabled: false,
+                    forEachEnabled: false,
                     vimNavigationEnabled: false,
                     loopsEnabled: false,
                     excalidrawEnabled: false,
@@ -149,6 +155,7 @@ describe('loadRuntimeConfig', () => {
                     pullRequestsEnabled: false,
                     serversEnabled: false,
                     ralphEnabled: false,
+                    forEachEnabled: false,
                     vimNavigationEnabled: false,
                     loopsEnabled: false,
                     excalidrawEnabled: false,
@@ -186,6 +193,7 @@ describe('loadRuntimeConfig', () => {
                     pullRequestsEnabled: false,
                     serversEnabled: false,
                     ralphEnabled: true,
+                    forEachEnabled: true,
                     vimNavigationEnabled: false,
                     loopsEnabled: true,
                     excalidrawEnabled: false,
@@ -201,6 +209,7 @@ describe('loadRuntimeConfig', () => {
 
         expect(fetchSpy).toHaveBeenCalledWith('/api/agent/agent-123/config/runtime');
         expect(isRalphEnabled()).toBe(true);
+        expect(isForEachEnabled()).toBe(true);
     });
 
     it('does not reload config when setCurrentAgentId is called outside container mode', async () => {

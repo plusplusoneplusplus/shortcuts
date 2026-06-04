@@ -41,6 +41,7 @@ export function buildRuntimeDashboardConfig(
             pullRequestsSuggestionsEnabled: config.pullRequests?.suggestions ?? false,
             serversEnabled: config.servers?.enabled ?? false,
             ralphEnabled: config.ralph?.enabled ?? false,
+            forEachEnabled: config.forEach?.enabled ?? false,
             vimNavigationEnabled: config.vimNavigation?.enabled ?? false,
             loopsEnabled: config.loops?.enabled ?? false,
             excalidrawEnabled: config.excalidraw?.enabled ?? false,

@@ -42,6 +42,14 @@ describe('modeConfig', () => {
             expect(cycleMode('ralph', allowed)).toBe('ask');
         });
 
+        it('cycles through currently visible modes including For Each', () => {
+            const allowed: ChatMode[] = ['ask', 'autopilot', 'ralph', 'for-each'];
+            expect(cycleMode('ask', allowed)).toBe('autopilot');
+            expect(cycleMode('autopilot', allowed)).toBe('ralph');
+            expect(cycleMode('ralph', allowed)).toBe('for-each');
+            expect(cycleMode('for-each', allowed)).toBe('ask');
+        });
+
         it('handles single-mode allowedModes', () => {
             expect(cycleMode('ask', ['ask'])).toBe('ask');
         });
@@ -52,6 +60,8 @@ describe('modeConfig', () => {
             expect(MODE_LABELS).toHaveProperty('ask');
             expect(MODE_LABELS).toHaveProperty('autopilot');
             expect(MODE_LABELS).toHaveProperty('ralph');
+            expect(MODE_LABELS).toHaveProperty('for-each');
+            expect(MODE_LABELS['for-each']).toContain('For Each');
             expect(MODE_LABELS).not.toHaveProperty('plan');
         });
     });
@@ -61,13 +71,14 @@ describe('modeConfig', () => {
             expect(MODE_ICONS).toHaveProperty('ask');
             expect(MODE_ICONS).toHaveProperty('autopilot');
             expect(MODE_ICONS).toHaveProperty('ralph');
+            expect(MODE_ICONS).toHaveProperty('for-each');
             expect(MODE_ICONS).not.toHaveProperty('plan');
         });
     });
 
     describe('MODE_BORDER_COLORS', () => {
         it('has border and ring styles for active modes only', () => {
-            for (const mode of ['ask', 'autopilot', 'ralph'] as ChatMode[]) {
+            for (const mode of ['ask', 'autopilot', 'ralph', 'for-each'] as ChatMode[]) {
                 expect(MODE_BORDER_COLORS[mode]).toHaveProperty('border');
                 expect(MODE_BORDER_COLORS[mode]).toHaveProperty('ring');
             }
@@ -78,6 +89,10 @@ describe('modeConfig', () => {
     describe('normalizeChatMode', () => {
         it('normalizes legacy plan to ask', () => {
             expect(normalizeChatMode('plan')).toBe('ask');
+        });
+
+        it('preserves for-each as a UI mode', () => {
+            expect(normalizeChatMode('for-each')).toBe('for-each');
         });
     });
 });

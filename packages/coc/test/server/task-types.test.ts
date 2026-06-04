@@ -637,6 +637,7 @@ describe('normalizeChatMode', () => {
 
     it('returns undefined for invalid or missing values', () => {
         expect(normalizeChatMode('bogus')).toBeUndefined();
+        expect(normalizeChatMode('for-each')).toBeUndefined();
         expect(normalizeChatMode(undefined)).toBeUndefined();
     });
 
