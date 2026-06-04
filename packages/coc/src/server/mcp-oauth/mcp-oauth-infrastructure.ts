@@ -1,21 +1,39 @@
-/**
- * MCP OAuth Infrastructure Builder
- *
- * Constructs the McpOauthManager and returns a dispose hook the server
- * can call on shutdown. Mirrors the loop-infrastructure pattern.
- */
-
 import { McpOauthManager, type McpOauthManagerOptions } from './mcp-oauth-manager';
+import {
+    startMcpOauthMaintenanceTimer,
+    type MaintenanceTimerHandle,
+    type MaintenanceTimerOptions,
+} from './mcp-oauth-refresher';
 
 export interface McpOauthInfrastructure {
     manager: McpOauthManager;
+    refreshTimer?: MaintenanceTimerHandle;
     dispose: () => void;
 }
 
-export function createMcpOauthInfrastructure(options: McpOauthManagerOptions = {}): McpOauthInfrastructure {
-    const manager = new McpOauthManager(options);
+export interface CreateMcpOauthInfrastructureOptions extends McpOauthManagerOptions {
+    autoRefresh?: { enabled: boolean } & Omit<MaintenanceTimerOptions, 'logger' | 'fetch' | 'now'>;
+}
+
+export function createMcpOauthInfrastructure(
+    options: CreateMcpOauthInfrastructureOptions = {},
+): McpOauthInfrastructure {
+    const { autoRefresh, ...managerOptions } = options;
+    const manager = new McpOauthManager(managerOptions);
+    const refreshTimer = autoRefresh?.enabled
+        ? startMcpOauthMaintenanceTimer({
+            homeDir: autoRefresh.homeDir,
+            expiryWindowSeconds: autoRefresh.expiryWindowSeconds,
+            intervalMs: autoRefresh.intervalMs,
+            runOnStart: autoRefresh.runOnStart,
+        })
+        : undefined;
     return {
         manager,
-        dispose: () => manager.clear(),
+        refreshTimer,
+        dispose: () => {
+            refreshTimer?.stop();
+            manager.clear();
+        },
     };
 }

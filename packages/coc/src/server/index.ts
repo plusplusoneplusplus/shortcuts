@@ -197,7 +197,13 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     // MCP OAuth infra — enabled by default when any MCP server may be configured.
     const mcpOauthEnabled = resolvedConfig.mcpOauth?.enabled ?? true;
-    const mcpOauthInfra = mcpOauthEnabled ? createMcpOauthInfrastructure() : undefined;
+    const mcpOauthInfra = mcpOauthEnabled
+        ? createMcpOauthInfrastructure({
+            autoRefresh: resolvedConfig.mcpOauth?.autoRefresh?.enabled
+                ? { enabled: true }
+                : undefined,
+        })
+        : undefined;
 
     // Register the Codex provider unconditionally so per-chat routing can resolve
     // Codex even when it was enabled after startup. Codex authentication is owned
