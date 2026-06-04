@@ -222,9 +222,13 @@ function makePrDetailCacheKey(repoId: string, prId: string): string {
     return `${repoId}|${prId}`;
 }
 
-/** Clear all cached PR detail entries. Exported for testing. */
+/** Clear all cached PR detail entries (and all sub-endpoint caches). Exported for testing. */
 export function clearPrDetailCache(): void {
     prDetailCache.clear();
+    prThreadsCache.clear();
+    prCommitsCache.clear();
+    prReviewersCache.clear();
+    prChecksCache.clear();
 }
 
 // ============================================================================
@@ -248,6 +252,59 @@ export function clearPrDiffCache(): void {
 /** Clear the cached diff for one specific PR (used by force-refresh). */
 function clearPrDiffCacheEntry(repoId: string, prId: string): void {
     prDiffCache.delete(makePrDiffCacheKey(repoId, prId));
+}
+
+// ============================================================================
+// PR sub-endpoint caches (threads/commits/reviewers/checks)
+// ============================================================================
+
+const PR_THREADS_TTL_MS  = 10 * 60 * 1000;
+const PR_COMMITS_TTL_MS  = 30 * 60 * 1000;
+const PR_REVIEWERS_TTL_MS = 30 * 60 * 1000;
+const PR_CHECKS_TTL_MS   = 10 * 60 * 1000;
+
+interface PrSubCacheEntry {
+    data: any;
+    expiresAt: number;
+}
+
+const prThreadsCache   = new Map<string, PrSubCacheEntry>();
+const prCommitsCache   = new Map<string, PrSubCacheEntry>();
+const prReviewersCache = new Map<string, PrSubCacheEntry>();
+const prChecksCache    = new Map<string, PrSubCacheEntry>();
+
+/** Cache key for per-PR sub-endpoint caches — same format as detail cache. */
+function makePrSubCacheKey(repoId: string, prId: string): string {
+    return `${repoId}|${prId}`;
+}
+
+/** Clear all cached PR threads entries. Exported for testing. */
+export function clearPrThreadsCache(): void {
+    prThreadsCache.clear();
+}
+
+/** Clear all cached PR commits entries. Exported for testing. */
+export function clearPrCommitsCache(): void {
+    prCommitsCache.clear();
+}
+
+/** Clear all cached PR reviewers entries. Exported for testing. */
+export function clearPrReviewersCache(): void {
+    prReviewersCache.clear();
+}
+
+/** Clear all cached PR checks entries. Exported for testing. */
+export function clearPrChecksCache(): void {
+    prChecksCache.clear();
+}
+
+/** Evict all per-PR sub-endpoint cache entries for one PR (used by force-refresh). */
+function clearPrSubCacheEntries(repoId: string, prId: string): void {
+    const key = makePrSubCacheKey(repoId, prId);
+    prThreadsCache.delete(key);
+    prCommitsCache.delete(key);
+    prReviewersCache.delete(key);
+    prChecksCache.delete(key);
 }
 
 /**
@@ -610,6 +667,8 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                     prDetailCache.delete(cacheKey);
                     // Also evict the diff cache so the next diff request refetches.
                     clearPrDiffCacheEntry(repoId, prId);
+                    // Evict all sub-endpoint caches for this PR.
+                    clearPrSubCacheEntries(repoId, prId);
                     console.debug(`[pr-detail-cache] bypass key=${cacheKey}`);
                 }
 
@@ -661,6 +720,13 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
             try {
                 const repoId = decodeURIComponent(match![1]);
                 const prId = decodeURIComponent(match![2]);
+                const cacheKey = makePrSubCacheKey(repoId, prId);
+
+                const cached = prThreadsCache.get(cacheKey);
+                if (cached && cached.expiresAt > Date.now()) {
+                    console.debug(`[pr-threads-cache] hit key=${cacheKey}`);
+                    return sendJson(res, cached.data);
+                }
 
                 const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
@@ -676,7 +742,10 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 }
 
                 const threads = await prSvc.getThreads(repoId, prId);
-                sendJson(res, { threads });
+                const result = { threads };
+                prThreadsCache.set(cacheKey, { data: result, expiresAt: Date.now() + PR_THREADS_TTL_MS });
+                console.debug(`[pr-threads-cache] set key=${cacheKey}`);
+                sendJson(res, result);
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
                     send404(res, err.message);
@@ -698,6 +767,13 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
             try {
                 const repoId = decodeURIComponent(match![1]);
                 const prId = decodeURIComponent(match![2]);
+                const cacheKey = makePrSubCacheKey(repoId, prId);
+
+                const cached = prReviewersCache.get(cacheKey);
+                if (cached && cached.expiresAt > Date.now()) {
+                    console.debug(`[pr-reviewers-cache] hit key=${cacheKey}`);
+                    return sendJson(res, cached.data);
+                }
 
                 const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
@@ -713,7 +789,10 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 }
 
                 const reviewers = await prSvc.getReviewers(repoId, prId);
-                sendJson(res, { reviewers });
+                const result = { reviewers };
+                prReviewersCache.set(cacheKey, { data: result, expiresAt: Date.now() + PR_REVIEWERS_TTL_MS });
+                console.debug(`[pr-reviewers-cache] set key=${cacheKey}`);
+                sendJson(res, result);
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
                     send404(res, err.message);
@@ -735,6 +814,13 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
             try {
                 const repoId = decodeURIComponent(match![1]);
                 const prId = decodeURIComponent(match![2]);
+                const cacheKey = makePrSubCacheKey(repoId, prId);
+
+                const cached = prCommitsCache.get(cacheKey);
+                if (cached && cached.expiresAt > Date.now()) {
+                    console.debug(`[pr-commits-cache] hit key=${cacheKey}`);
+                    return sendJson(res, cached.data);
+                }
 
                 const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
@@ -754,7 +840,10 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 }
 
                 const commits = await prSvc.getCommits(repoId, prId);
-                sendJson(res, { commits });
+                const result = { commits };
+                prCommitsCache.set(cacheKey, { data: result, expiresAt: Date.now() + PR_COMMITS_TTL_MS });
+                console.debug(`[pr-commits-cache] set key=${cacheKey}`);
+                sendJson(res, result);
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
                     send404(res, err.message);
@@ -776,6 +865,13 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
             try {
                 const repoId = decodeURIComponent(match![1]);
                 const prId = decodeURIComponent(match![2]);
+                const cacheKey = makePrSubCacheKey(repoId, prId);
+
+                const cached = prChecksCache.get(cacheKey);
+                if (cached && cached.expiresAt > Date.now()) {
+                    console.debug(`[pr-checks-cache] hit key=${cacheKey}`);
+                    return sendJson(res, cached.data);
+                }
 
                 const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
@@ -795,7 +891,10 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 }
 
                 const checks = await prSvc.getChecks(repoId, prId);
-                sendJson(res, { checks });
+                const result = { checks };
+                prChecksCache.set(cacheKey, { data: result, expiresAt: Date.now() + PR_CHECKS_TTL_MS });
+                console.debug(`[pr-checks-cache] set key=${cacheKey}`);
+                sendJson(res, result);
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
                     send404(res, err.message);

@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createRouter } from '../../src/server/shared/router';
-import { registerPrRoutes, clearPrListCache, clearPrDetailCache, clearPrDiffCache } from '../../src/server/repos/pr-routes';
+import { registerPrRoutes, clearPrListCache, clearPrDetailCache, clearPrDiffCache, clearPrThreadsCache, clearPrCommitsCache, clearPrReviewersCache, clearPrChecksCache } from '../../src/server/repos/pr-routes';
 import type { Route } from '../../src/server/types';
 import type { IPullRequestsService } from '@plusplusoneplusplus/forge';
 import type { PullRequest, CommentThread, Reviewer } from '@plusplusoneplusplus/forge';
@@ -138,6 +138,10 @@ beforeEach(async () => {
     clearPrListCache();
     clearPrDetailCache();
     clearPrDiffCache();
+    clearPrThreadsCache();
+    clearPrCommitsCache();
+    clearPrReviewersCache();
+    clearPrChecksCache();
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pr-routes-test-'));
     dataDir = path.join(tmpDir, 'data');
     fs.mkdirSync(dataDir, { recursive: true });
@@ -918,6 +922,192 @@ describe('GET /api/repos/:id/pull-requests/:prId/checks', () => {
     });
 });
 
+// ── threads cache tests ───────────────────────────────────────────────────────
+
+describe('threads cache (GET /api/repos/:id/pull-requests/:prId/threads)', () => {
+    it('cache miss calls provider', async () => {
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/threads`);
+        expect(res.status).toBe(200);
+        expect(mockSvc.getThreads).toHaveBeenCalledTimes(1);
+    });
+
+    it('cache hit does not call provider', async () => {
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/threads`);
+        expect(mockSvc.getThreads).toHaveBeenCalledTimes(1);
+
+        const res2 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/threads`);
+        expect(res2.status).toBe(200);
+        const body = await res2.json() as { threads: unknown[] };
+        expect(body.threads).toHaveLength(1);
+        expect(mockSvc.getThreads).toHaveBeenCalledTimes(1);
+    });
+
+    it('expired TTL refetches from provider', async () => {
+        vi.useFakeTimers();
+        try {
+            await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/threads`);
+            expect(mockSvc.getThreads).toHaveBeenCalledTimes(1);
+
+            vi.advanceTimersByTime(11 * 60 * 1000); // 11 minutes
+
+            await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/threads`);
+            expect(mockSvc.getThreads).toHaveBeenCalledTimes(2);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('force=true on PR detail evicts threads cache', async () => {
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/threads`);
+        expect(mockSvc.getThreads).toHaveBeenCalledTimes(1);
+
+        // Force-refresh the detail endpoint
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42?force=true`);
+
+        // Next threads call must hit upstream again
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/threads`);
+        expect(mockSvc.getThreads).toHaveBeenCalledTimes(2);
+    });
+});
+
+// ── commits cache tests ───────────────────────────────────────────────────────
+
+describe('commits cache (GET /api/repos/:id/pull-requests/:prId/commits)', () => {
+    it('cache miss calls provider', async () => {
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        expect(res.status).toBe(200);
+        expect(mockSvc.getCommits).toHaveBeenCalledTimes(1);
+    });
+
+    it('cache hit does not call provider', async () => {
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        expect(mockSvc.getCommits).toHaveBeenCalledTimes(1);
+
+        const res2 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        expect(res2.status).toBe(200);
+        const body = await res2.json() as { commits: unknown[] };
+        expect(body.commits).toHaveLength(1);
+        expect(mockSvc.getCommits).toHaveBeenCalledTimes(1);
+    });
+
+    it('expired TTL refetches from provider', async () => {
+        vi.useFakeTimers();
+        try {
+            await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+            expect(mockSvc.getCommits).toHaveBeenCalledTimes(1);
+
+            vi.advanceTimersByTime(31 * 60 * 1000); // 31 minutes
+
+            await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+            expect(mockSvc.getCommits).toHaveBeenCalledTimes(2);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('force=true on PR detail evicts commits cache', async () => {
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        expect(mockSvc.getCommits).toHaveBeenCalledTimes(1);
+
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42?force=true`);
+
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        expect(mockSvc.getCommits).toHaveBeenCalledTimes(2);
+    });
+});
+
+// ── reviewers cache tests ─────────────────────────────────────────────────────
+
+describe('reviewers cache (GET /api/repos/:id/pull-requests/:prId/reviewers)', () => {
+    it('cache miss calls provider', async () => {
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/reviewers`);
+        expect(res.status).toBe(200);
+        expect(mockSvc.getReviewers).toHaveBeenCalledTimes(1);
+    });
+
+    it('cache hit does not call provider', async () => {
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/reviewers`);
+        expect(mockSvc.getReviewers).toHaveBeenCalledTimes(1);
+
+        const res2 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/reviewers`);
+        expect(res2.status).toBe(200);
+        const body = await res2.json() as { reviewers: unknown[] };
+        expect(body.reviewers).toHaveLength(1);
+        expect(mockSvc.getReviewers).toHaveBeenCalledTimes(1);
+    });
+
+    it('expired TTL refetches from provider', async () => {
+        vi.useFakeTimers();
+        try {
+            await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/reviewers`);
+            expect(mockSvc.getReviewers).toHaveBeenCalledTimes(1);
+
+            vi.advanceTimersByTime(31 * 60 * 1000); // 31 minutes
+
+            await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/reviewers`);
+            expect(mockSvc.getReviewers).toHaveBeenCalledTimes(2);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('force=true on PR detail evicts reviewers cache', async () => {
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/reviewers`);
+        expect(mockSvc.getReviewers).toHaveBeenCalledTimes(1);
+
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42?force=true`);
+
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/reviewers`);
+        expect(mockSvc.getReviewers).toHaveBeenCalledTimes(2);
+    });
+});
+
+// ── checks cache tests ────────────────────────────────────────────────────────
+
+describe('checks cache (GET /api/repos/:id/pull-requests/:prId/checks)', () => {
+    it('cache miss calls provider', async () => {
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+        expect(res.status).toBe(200);
+        expect(mockSvc.getChecks).toHaveBeenCalledTimes(1);
+    });
+
+    it('cache hit does not call provider', async () => {
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+        expect(mockSvc.getChecks).toHaveBeenCalledTimes(1);
+
+        const res2 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+        expect(res2.status).toBe(200);
+        const body = await res2.json() as { checks: unknown[] };
+        expect(body.checks).toHaveLength(1);
+        expect(mockSvc.getChecks).toHaveBeenCalledTimes(1);
+    });
+
+    it('expired TTL refetches from provider', async () => {
+        vi.useFakeTimers();
+        try {
+            await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+            expect(mockSvc.getChecks).toHaveBeenCalledTimes(1);
+
+            vi.advanceTimersByTime(11 * 60 * 1000); // 11 minutes
+
+            await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+            expect(mockSvc.getChecks).toHaveBeenCalledTimes(2);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('force=true on PR detail evicts checks cache', async () => {
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+        expect(mockSvc.getChecks).toHaveBeenCalledTimes(1);
+
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42?force=true`);
+
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+        expect(mockSvc.getChecks).toHaveBeenCalledTimes(2);
+    });
+});
+
 // ── PR detail cache tests ─────────────────────────────────────────────────────
 
 describe('PR detail cache (GET /api/repos/:id/pull-requests/:prId)', () => {
@@ -1007,6 +1197,30 @@ describe('PR detail cache (GET /api/repos/:id/pull-requests/:prId)', () => {
         clearPrDetailCache();
         await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
         expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(2);
+    });
+
+    it('clearPrDetailCache() also clears threads/commits/reviewers/checks caches', async () => {
+        // Warm all sub-endpoint caches
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/threads`);
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/reviewers`);
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+        expect(mockSvc.getThreads).toHaveBeenCalledTimes(1);
+        expect(mockSvc.getCommits).toHaveBeenCalledTimes(1);
+        expect(mockSvc.getReviewers).toHaveBeenCalledTimes(1);
+        expect(mockSvc.getChecks).toHaveBeenCalledTimes(1);
+
+        clearPrDetailCache();
+
+        // All sub-endpoint caches must be evicted
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/threads`);
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/reviewers`);
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+        expect(mockSvc.getThreads).toHaveBeenCalledTimes(2);
+        expect(mockSvc.getCommits).toHaveBeenCalledTimes(2);
+        expect(mockSvc.getReviewers).toHaveBeenCalledTimes(2);
+        expect(mockSvc.getChecks).toHaveBeenCalledTimes(2);
     });
 });
 
