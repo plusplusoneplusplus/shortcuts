@@ -23,14 +23,15 @@ function badges(map: Record<string, FileBadgeLike>): (p: string) => FileBadgeLik
 describe('computeCategoryCounts', () => {
     const FILES: FileChange[] = [
         file('a.ts'), file('b.ts'), file('c.ts'),
-        file('d.ts'), file('e.ts'),
+        file('d.ts'), file('e.ts'), file('f.ts'),
     ];
     const badge = badges({
         'a.ts': { category: 'logic', intensity: 'high' },
         'b.ts': { category: 'logic', intensity: 'low' },
         'c.ts': { category: 'test', intensity: 'low' },
         'd.ts': { category: 'mechanical', intensity: 'low' },
-        // 'e.ts' unclassified
+        'e.ts': { category: 'simple', intensity: 'low' },
+        // 'f.ts' unclassified
     });
 
     it('counts each category and the unclassified bucket', () => {
@@ -39,10 +40,11 @@ describe('computeCategoryCounts', () => {
             logic: 2,
             mechanical: 1,
             test: 1,
+            simple: 1,
             generated: 0,
             unclassified: 1,
             logicHigh: 1,
-            total: 5,
+            total: 6,
         });
     });
 
@@ -55,16 +57,17 @@ describe('computeCategoryCounts', () => {
 
     it('treats every file as unclassified when no badges exist', () => {
         const c = computeCategoryCounts(FILES, () => undefined);
-        expect(c.unclassified).toBe(5);
+        expect(c.unclassified).toBe(6);
         expect(c.logic).toBe(0);
     });
 });
 
 describe('sortFilesByPriority', () => {
-    it('orders high logic > low logic > test > mechanical > generated > unclassified', () => {
+    it('orders high logic > low logic > test > mechanical > simple > generated > unclassified', () => {
         const files = [
             file('gen.ts'),       // generated
             file('unk.ts'),       // unclassified
+            file('simple.ts'),    // simple
             file('mech.ts'),      // mechanical
             file('logicLow.ts'),  // logic low
             file('logicHi.ts'),   // logic high
@@ -72,6 +75,7 @@ describe('sortFilesByPriority', () => {
         ];
         const badge = badges({
             'gen.ts': { category: 'generated', intensity: 'low' },
+            'simple.ts': { category: 'simple', intensity: 'low' },
             'mech.ts': { category: 'mechanical', intensity: 'low' },
             'logicLow.ts': { category: 'logic', intensity: 'low' },
             'logicHi.ts': { category: 'logic', intensity: 'high' },
@@ -83,6 +87,7 @@ describe('sortFilesByPriority', () => {
             'logicLow.ts',
             'test.ts',
             'mech.ts',
+            'simple.ts',
             'gen.ts',
             'unk.ts',
         ]);

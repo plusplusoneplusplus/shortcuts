@@ -11,7 +11,7 @@ import { getLanguageFromFileName, highlightLine } from '../hooks/useSyntaxHighli
 import { DiffContextMenu } from '../../../tasks/comments/DiffContextMenu';
 import type { DiffCommentSelection, DiffComment } from '../../../../comments/diff-comment-types';
 import type { HunkCategory, HunkClassification } from '../../pull-requests/classification-types';
-import { CATEGORY_LABELS } from '../../pull-requests/classification-types';
+import { CATEGORY_LABELS, HUNK_CATEGORIES } from '../../pull-requests/classification-types';
 
 export interface UnifiedDiffViewerProps {
     diff: string;
@@ -42,8 +42,8 @@ export interface UnifiedDiffViewerProps {
      * whose category is not in activeFilters collapse into a single summary
      * row with category, intensity, reason, changed-line count, and an
      * expand control. Reviewer can expand an individual collapsed hunk
-     * without resetting filters; setting activeFilters to all four
-     * categories ("Show all") also restores all hunks.
+     * without resetting filters; setting activeFilters to all categories
+     * ("Show all") also restores all hunks.
      */
     filePath?: string;
     getHunkClassification?: (filePath: string, hunkIndex: number) => HunkClassification | undefined;
@@ -585,7 +585,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
     // any per-hunk overrides so subsequent filter changes start fresh.
     useEffect(() => {
         if (!activeFilters) return;
-        if (activeFilters.size >= 4) {
+        if (activeFilters.size >= HUNK_CATEGORIES.length) {
             setExpandedHunks(prev => (prev.size === 0 ? prev : new Set()));
         }
     }, [activeFilters]);

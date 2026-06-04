@@ -71,9 +71,10 @@ export interface UseClassificationReturn {
 // ── Category priority for badge display ───────────────────────────────
 
 const CATEGORY_PRIORITY: Record<HunkCategory, number> = {
-    logic: 3,
-    test: 2,
-    mechanical: 1,
+    logic: 4,
+    test: 3,
+    mechanical: 2,
+    simple: 1,
     generated: 0,
 };
 

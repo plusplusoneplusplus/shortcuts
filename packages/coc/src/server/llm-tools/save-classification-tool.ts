@@ -41,11 +41,13 @@ export function createSaveClassificationTool(deps: SaveClassificationDeps) {
 
     const tool = defineTool<SaveClassificationArgs>('saveClassification', {
         description:
-            'Persist the final hunk classifications for this pull request. ' +
+            'Persist the final hunk classifications for this diff. ' +
             'Call this exactly once, AFTER you have classified every `@@` hunk in the diff. ' +
             'Pass the full array of classifications (one entry per hunk). ' +
             'Each entry must include: file, hunkIndex (0-based within the file), ' +
-            'category (logic|mechanical|test|generated), intensity (high|low), and a one-sentence reason. ' +
+            'category (logic|mechanical|test|simple|generated), intensity (high|low), and a one-sentence reason. ' +
+            'Test hunks must include testFidelityComment. Logic hunks must include summaryComment. ' +
+            'Critical existing-function hunks may include critical metadata with label, impactSummary, up to 3 usages, and a callPath up to 4 frames. ' +
             'If validation fails the tool returns an error — read the message, correct the offending entries, and call the tool again.',
         parameters: {
             type: 'object',
@@ -60,7 +62,7 @@ export function createSaveClassificationTool(deps: SaveClassificationDeps) {
                             hunkIndex: { type: 'number', description: '0-based hunk index within the file.' },
                             category: {
                                 type: 'string',
-                                enum: ['logic', 'mechanical', 'test', 'generated'],
+                                enum: ['logic', 'mechanical', 'test', 'simple', 'generated'],
                                 description: 'Dominant category for this hunk.',
                             },
                             intensity: {
@@ -69,6 +71,67 @@ export function createSaveClassificationTool(deps: SaveClassificationDeps) {
                                 description: 'Reviewer-attention level.',
                             },
                             reason: { type: 'string', description: 'One-sentence justification.' },
+                            testFidelityComment: {
+                                type: 'string',
+                                description: 'Required for test hunks: high/medium/low fidelity and why.',
+                            },
+                            summaryComment: {
+                                type: 'string',
+                                description: 'Required for logic hunks: concise behavior/API/data-flow/error-handling summary.',
+                            },
+                            critical: {
+                                type: 'object',
+                                description: 'Critical existing-function metadata. Omit when the hunk is not critical.',
+                                properties: {
+                                    label: {
+                                        type: 'string',
+                                        description: 'Short criticality label, such as exported API, route handler, persistence path, or security-sensitive function.',
+                                    },
+                                    impactSummary: {
+                                        type: 'string',
+                                        description: 'One short statement of reviewer-impact.',
+                                    },
+                                    usages: {
+                                        type: 'array',
+                                        description: 'Up to 3 usage/caller evidence entries. Use [] only with usageNotDetermined: true.',
+                                        maxItems: 3,
+                                        items: {
+                                            type: 'object',
+                                            properties: {
+                                                file: { type: 'string', description: 'Repo-relative usage/caller file path.' },
+                                                symbol: { type: 'string', description: 'Optional symbol, function, route, or command name.' },
+                                                line: { type: 'number', description: 'Optional 1-based line number.' },
+                                                description: { type: 'string', description: 'Short explanation of why this usage matters.' },
+                                            },
+                                            required: ['file', 'description'],
+                                        },
+                                    },
+                                    callPath: {
+                                        type: 'array',
+                                        description: 'One representative call path, up to 4 frames. Use [] only with callStackNotDetermined: true.',
+                                        maxItems: 4,
+                                        items: {
+                                            type: 'object',
+                                            properties: {
+                                                file: { type: 'string', description: 'Repo-relative frame file path.' },
+                                                symbol: { type: 'string', description: 'Function, route, command, or task handler name.' },
+                                                line: { type: 'number', description: 'Optional 1-based line number.' },
+                                                description: { type: 'string', description: 'Optional short frame note.' },
+                                            },
+                                            required: ['file', 'symbol'],
+                                        },
+                                    },
+                                    usageNotDetermined: {
+                                        type: 'boolean',
+                                        description: 'Set true when usage evidence could not be determined.',
+                                    },
+                                    callStackNotDetermined: {
+                                        type: 'boolean',
+                                        description: 'Set true when call-stack evidence could not be determined.',
+                                    },
+                                },
+                                required: ['label', 'impactSummary', 'usages', 'callPath'],
+                            },
                         },
                         required: ['file', 'hunkIndex', 'category', 'intensity', 'reason'],
                     },

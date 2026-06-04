@@ -254,7 +254,7 @@ describe('PopOutFilePanel', () => {
         });
 
         it('shows "Show all" button only when some filters are off', () => {
-            const allOn = new Set(['logic', 'mechanical', 'test', 'generated'] as const);
+            const allOn = new Set(['logic', 'mechanical', 'test', 'simple', 'generated'] as const);
             const partial = new Set(['logic'] as const);
             const onShowAll = vi.fn();
 

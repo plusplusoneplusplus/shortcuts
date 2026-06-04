@@ -17,6 +17,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getRepoDataPath } from '../paths';
 import type {
+    CriticalCallPathFrame,
+    CriticalHunkMetadata,
+    CriticalUsageEntry,
     DiffClassificationResult,
     HunkCategory,
     HunkClassification,
@@ -54,7 +57,7 @@ export interface ClassificationPaths {
 // Path helpers
 // ============================================================================
 
-const VALID_CATEGORIES: readonly HunkCategory[] = ['logic', 'mechanical', 'test', 'generated'];
+const VALID_CATEGORIES: readonly HunkCategory[] = ['logic', 'mechanical', 'test', 'simple', 'generated'];
 const VALID_INTENSITIES: readonly HunkIntensity[] = ['high', 'low'];
 
 /** Replace filesystem-unsafe characters with `_`. */
@@ -243,22 +246,194 @@ export function validateClassificationResult(
         if (typeof e.category !== 'string' || !VALID_CATEGORIES.includes(e.category as HunkCategory)) {
             return { ok: false, error: `classifications[${i}].category must be one of: ${VALID_CATEGORIES.join(', ')}` };
         }
+        const category = e.category as HunkCategory;
         if (typeof e.intensity !== 'string' || !VALID_INTENSITIES.includes(e.intensity as HunkIntensity)) {
             return { ok: false, error: `classifications[${i}].intensity must be one of: ${VALID_INTENSITIES.join(', ')}` };
         }
         if (typeof e.reason !== 'string' || e.reason.length === 0) {
             return { ok: false, error: `classifications[${i}].reason must be a non-empty string` };
         }
-        out.push({
+
+        let testFidelityComment: string | undefined;
+        if (category === 'test') {
+            if (!isNonEmptyString(e.testFidelityComment)) {
+                return { ok: false, error: `classifications[${i}].testFidelityComment must be a non-empty string for test hunks` };
+            }
+            testFidelityComment = e.testFidelityComment;
+        } else if (e.testFidelityComment !== undefined) {
+            if (!isNonEmptyString(e.testFidelityComment)) {
+                return { ok: false, error: `classifications[${i}].testFidelityComment must be a non-empty string when provided` };
+            }
+            testFidelityComment = e.testFidelityComment;
+        }
+
+        let summaryComment: string | undefined;
+        if (category === 'logic') {
+            if (!isNonEmptyString(e.summaryComment)) {
+                return { ok: false, error: `classifications[${i}].summaryComment must be a non-empty string for logic hunks` };
+            }
+            summaryComment = e.summaryComment;
+        } else if (e.summaryComment !== undefined) {
+            if (!isNonEmptyString(e.summaryComment)) {
+                return { ok: false, error: `classifications[${i}].summaryComment must be a non-empty string when provided` };
+            }
+            summaryComment = e.summaryComment;
+        }
+
+        const criticalValidation = validateCriticalMetadata(e.critical, i);
+        if (!criticalValidation.ok) {
+            return criticalValidation;
+        }
+
+        const classification: HunkClassification = {
             file: e.file,
             hunkIndex: e.hunkIndex,
-            category: e.category as HunkCategory,
+            category,
             intensity: e.intensity as HunkIntensity,
             reason: e.reason,
-        });
+        };
+        if (testFidelityComment !== undefined) {
+            classification.testFidelityComment = testFidelityComment;
+        }
+        if (summaryComment !== undefined) {
+            classification.summaryComment = summaryComment;
+        }
+        if (criticalValidation.critical !== undefined) {
+            classification.critical = criticalValidation.critical;
+        }
+        out.push(classification);
     }
 
     return { ok: true, classifications: out };
+}
+
+function isNonEmptyString(value: unknown): value is string {
+    return typeof value === 'string' && value.trim().length > 0;
+}
+
+function validateOptionalLineNumber(value: unknown, fieldPath: string): string | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
+        return `${fieldPath} must be a positive integer when provided`;
+    }
+    return undefined;
+}
+
+type CriticalValidation =
+    | { ok: true; critical?: CriticalHunkMetadata }
+    | { ok: false; error: string };
+
+function validateCriticalMetadata(raw: unknown, classificationIndex: number): CriticalValidation {
+    if (raw === undefined) {
+        return { ok: true };
+    }
+    const prefix = `classifications[${classificationIndex}].critical`;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return { ok: false, error: `${prefix} must be an object when provided` };
+    }
+    const c = raw as Record<string, unknown>;
+    if (!isNonEmptyString(c.label)) {
+        return { ok: false, error: `${prefix}.label must be a non-empty string` };
+    }
+    if (!isNonEmptyString(c.impactSummary)) {
+        return { ok: false, error: `${prefix}.impactSummary must be a non-empty string` };
+    }
+    if (!Array.isArray(c.usages)) {
+        return { ok: false, error: `${prefix}.usages must be an array` };
+    }
+    if (c.usages.length > 3) {
+        return { ok: false, error: `${prefix}.usages must contain at most 3 entries` };
+    }
+    if (!Array.isArray(c.callPath)) {
+        return { ok: false, error: `${prefix}.callPath must be an array` };
+    }
+    if (c.callPath.length > 4) {
+        return { ok: false, error: `${prefix}.callPath must contain at most 4 frames` };
+    }
+    if (c.usageNotDetermined !== undefined && typeof c.usageNotDetermined !== 'boolean') {
+        return { ok: false, error: `${prefix}.usageNotDetermined must be a boolean when provided` };
+    }
+    if (c.callStackNotDetermined !== undefined && typeof c.callStackNotDetermined !== 'boolean') {
+        return { ok: false, error: `${prefix}.callStackNotDetermined must be a boolean when provided` };
+    }
+    if (c.usages.length === 0 && c.usageNotDetermined !== true) {
+        return { ok: false, error: `${prefix}.usages must include evidence or set usageNotDetermined to true` };
+    }
+    if (c.callPath.length === 0 && c.callStackNotDetermined !== true) {
+        return { ok: false, error: `${prefix}.callPath must include evidence or set callStackNotDetermined to true` };
+    }
+
+    const usages: CriticalUsageEntry[] = [];
+    for (let i = 0; i < c.usages.length; i++) {
+        const usage = c.usages[i];
+        const usagePath = `${prefix}.usages[${i}]`;
+        if (!usage || typeof usage !== 'object' || Array.isArray(usage)) {
+            return { ok: false, error: `${usagePath} must be an object` };
+        }
+        const u = usage as Record<string, unknown>;
+        if (!isNonEmptyString(u.file)) {
+            return { ok: false, error: `${usagePath}.file must be a non-empty string` };
+        }
+        if (u.symbol !== undefined && !isNonEmptyString(u.symbol)) {
+            return { ok: false, error: `${usagePath}.symbol must be a non-empty string when provided` };
+        }
+        const lineError = validateOptionalLineNumber(u.line, `${usagePath}.line`);
+        if (lineError) {
+            return { ok: false, error: lineError };
+        }
+        const usageLine = typeof u.line === 'number' ? u.line : undefined;
+        if (!isNonEmptyString(u.description)) {
+            return { ok: false, error: `${usagePath}.description must be a non-empty string` };
+        }
+        usages.push({
+            file: u.file,
+            ...(u.symbol !== undefined ? { symbol: u.symbol } : {}),
+            ...(usageLine !== undefined ? { line: usageLine } : {}),
+            description: u.description,
+        });
+    }
+
+    const callPath: CriticalCallPathFrame[] = [];
+    for (let i = 0; i < c.callPath.length; i++) {
+        const frame = c.callPath[i];
+        const framePath = `${prefix}.callPath[${i}]`;
+        if (!frame || typeof frame !== 'object' || Array.isArray(frame)) {
+            return { ok: false, error: `${framePath} must be an object` };
+        }
+        const f = frame as Record<string, unknown>;
+        if (!isNonEmptyString(f.file)) {
+            return { ok: false, error: `${framePath}.file must be a non-empty string` };
+        }
+        if (!isNonEmptyString(f.symbol)) {
+            return { ok: false, error: `${framePath}.symbol must be a non-empty string` };
+        }
+        const lineError = validateOptionalLineNumber(f.line, `${framePath}.line`);
+        if (lineError) {
+            return { ok: false, error: lineError };
+        }
+        const frameLine = typeof f.line === 'number' ? f.line : undefined;
+        if (f.description !== undefined && !isNonEmptyString(f.description)) {
+            return { ok: false, error: `${framePath}.description must be a non-empty string when provided` };
+        }
+        callPath.push({
+            file: f.file,
+            symbol: f.symbol,
+            ...(frameLine !== undefined ? { line: frameLine } : {}),
+            ...(f.description !== undefined ? { description: f.description } : {}),
+        });
+    }
+
+    return {
+        ok: true,
+        critical: {
+            label: c.label,
+            impactSummary: c.impactSummary,
+            usages,
+            callPath,
+            ...(c.usageNotDetermined !== undefined ? { usageNotDetermined: c.usageNotDetermined } : {}),
+            ...(c.callStackNotDetermined !== undefined ? { callStackNotDetermined: c.callStackNotDetermined } : {}),
+        },
+    };
 }
 
 // ============================================================================

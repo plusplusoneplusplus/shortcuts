@@ -5,7 +5,7 @@
  * provided, hunks whose category is not in activeFilters collapse into a
  * single compact summary row instead of disappearing. Reviewers can
  * expand an individual collapsed hunk without resetting filters, and
- * setting activeFilters back to all four categories ("Show all") restores
+ * setting activeFilters back to all categories ("Show all") restores
  * everything.
  */
 

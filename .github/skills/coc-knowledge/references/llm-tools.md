@@ -23,6 +23,7 @@ Exports: `DEFAULT_DISABLED_LLM_TOOLS`, `isLlmToolEnabled()`, `filterDisabledLlmT
 | `add-diff-comment-tool.ts` | `add_diff_comment` | Anchored review comments on commit diff lines. Pre-binds workspace/commit context. Persists via `DiffCommentsManager`, broadcasts via WebSocket. |
 | `ask-user-tool.ts` | `ask_user` | Structured questions (select, multi-select, yes/no, confirm, text). Blocks until user responds. Persists pending payload on `AIProcess.pendingAskUser`, emits SSE event. |
 | `resolve-comment-tool.ts` | `resolve_comment` | Marks inline comments as resolved. Tracks resolved IDs in per-invocation Map. |
+| `save-classification-tool.ts` | `saveClassification` | Persists complete per-hunk diff classifications for PR/commit/branch-range review. Valid categories are `logic`, `mechanical`, `test`, `simple`, and `generated`; newly saved `test` hunks require `testFidelityComment`, `logic` hunks require `summaryComment`, and critical metadata is validated instead of dropped. |
 | `search-conversations-tool.ts` | `search_conversations` | FTS5 full-text search over past conversation history. Requires SQLite-backed `ProcessStore`. |
 | `get-conversation-tool.ts` | `get_conversation` | Full transcript by processId, compacted to token budget. 5-level progressive compaction. Supports `fromTurn`/`toTurn` paging. |
 | `suggest-follow-ups-tool.ts` | `suggest_follow_ups` | Emits follow-up action suggestions after AI response. |

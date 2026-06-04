@@ -145,11 +145,51 @@ export interface PullRequestChatBindingListResponse {
 
 // ── Classification (focused-diff) ───────────────────────────────────
 
-/** The four hunk categories recognised by the classifier. */
-export type HunkCategory = 'logic' | 'mechanical' | 'test' | 'generated';
+/** The hunk categories recognised by the classifier. */
+export type HunkCategory = 'logic' | 'mechanical' | 'test' | 'simple' | 'generated';
 
 /** How important a hunk is within its category. */
 export type HunkIntensity = 'high' | 'low';
+
+/** Compact usage evidence for critical existing-function changes. */
+export interface CriticalUsageEntry {
+  /** Repo-relative file path for the usage or caller. */
+  file: string;
+  /** Optional function/symbol/route/command name at the usage site. */
+  symbol?: string;
+  /** Optional 1-based line number for the usage site. */
+  line?: number;
+  /** Short explanation of why this usage matters. */
+  description: string;
+}
+
+/** One frame in a representative call path for critical changes. */
+export interface CriticalCallPathFrame {
+  /** Repo-relative file path for this frame. */
+  file: string;
+  /** Function/symbol/route/command name for this frame. */
+  symbol: string;
+  /** Optional 1-based line number for this frame. */
+  line?: number;
+  /** Optional short frame note. */
+  description?: string;
+}
+
+/** Metadata shown for critical existing-function changes. */
+export interface CriticalHunkMetadata {
+  /** Short criticality label, e.g. "exported API" or "persistence path". */
+  label: string;
+  /** One short statement of reviewer-impact. */
+  impactSummary: string;
+  /** Up to 3 compact usage/caller entries. */
+  usages: CriticalUsageEntry[];
+  /** One representative call path, up to 4 frames. */
+  callPath: CriticalCallPathFrame[];
+  /** True when usage evidence could not be determined. */
+  usageNotDetermined?: boolean;
+  /** True when call-stack evidence could not be determined. */
+  callStackNotDetermined?: boolean;
+}
 
 /** Classification result for a single `@@` hunk. */
 export interface HunkClassification {
@@ -158,6 +198,9 @@ export interface HunkClassification {
   category: HunkCategory;
   intensity: HunkIntensity;
   reason: string;
+  testFidelityComment?: string;
+  summaryComment?: string;
+  critical?: CriticalHunkMetadata;
 }
 
 /** Full classification result for a PR diff. */

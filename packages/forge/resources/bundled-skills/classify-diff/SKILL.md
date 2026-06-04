@@ -1,6 +1,6 @@
 ---
 name: classify-diff
-description: Classify every hunk in a pull request diff by change type (logic, mechanical, test, generated) so reviewers can focus on what matters.
+description: Classify every hunk in a pull request or commit diff by change type (logic, mechanical, test, simple, generated) so reviewers can focus on what matters.
 metadata:
   author: Yiheng Tao
   version: "0.0.2"
@@ -8,20 +8,21 @@ metadata:
 
 # Classify Diff — Focused PR Review
 
-Classify each `@@` hunk in a pull request diff into one of four categories so the UI can visually de-emphasize mechanical changes and highlight logic edits.
+Classify each `@@` hunk in a pull request or commit diff into exactly one category so the UI can visually de-emphasize low-attention changes and highlight review-critical edits.
 
 ## When to Use
 
-- The user clicks "Classify" on the PR Files Changed tab.
-- The system needs to produce a per-hunk classification for a pull request diff.
+- The user clicks "Classify" on a PR or commit diff review surface.
+- The system needs to produce a per-hunk classification for a pull request, commit, or branch-range diff.
 
 ## Classification Categories
 
 | Category | Description | Examples |
 |----------|-------------|---------|
-| `logic` | Meaningful behavioral changes — new features, bug fixes, algorithm changes, API contract changes | New function, changed conditional, modified return value |
+| `logic` | Non-trivial behavior/API/data-flow/error-handling changes or high-intensity logic that reviewers should read | Changed conditional, modified return value, API contract change, persistence/error-handling behavior |
 | `mechanical` | Structural changes with no behavioral impact — renames, moves, formatting, import reordering | Variable rename, whitespace cleanup, import sort |
 | `test` | Test code — new tests, modified assertions, test fixtures, test utilities | New test case, updated assertion, mock data |
+| `simple` | Straightforward deterministic function additions/changes with no meaningful branching, persistence, I/O, validation, authorization, error handling, concurrency, external calls, or cross-file side effects | Pure format helper, direct value mapper, simple deterministic string/array transform |
 | `generated` | Auto-generated or machine-produced code — lock files, build artifacts, codegen output | `package-lock.json` changes, protobuf output, schema migrations |
 
 ## Intensity Levels
@@ -45,9 +46,38 @@ Each classification entry has this shape:
   "hunkIndex": 0,
   "category": "logic",
   "intensity": "high",
-  "reason": "Adds JWT token refresh logic with expiry check"
+  "reason": "Adds JWT token refresh logic with expiry check",
+  "summaryComment": "Refresh now rejects expired tokens before issuing a new access token.",
+  "critical": {
+    "label": "auth API",
+    "impactSummary": "Token refresh behavior affects every authenticated client.",
+    "usages": [
+      {
+        "file": "src/server/routes/auth.ts",
+        "symbol": "refreshToken",
+        "line": 42,
+        "description": "Route handler invokes the changed refresh helper."
+      }
+    ],
+    "callPath": [
+      { "file": "src/server/routes/auth.ts", "symbol": "POST /auth/refresh" },
+      { "file": "src/server/auth.ts", "symbol": "refreshToken" }
+    ]
+  }
 }
 ```
+
+Additional fields:
+
+- `testFidelityComment` is required for `test` hunks. State whether the test is high, medium, or low fidelity and why.
+- `summaryComment` is required for `logic` hunks. Keep it concise and describe the behavior/API/data-flow/error-handling effect.
+- `critical` is required when a hunk has a behavior-affecting change to an existing exported/public function, route/command/task handler, persistence/config/security/correctness-sensitive function, or a function with non-test callers. Include:
+  - `label`: short criticality label.
+  - `impactSummary`: one short impact summary.
+  - `usages`: up to 3 usage entries (`file`, optional `symbol`, optional `line`, `description`).
+  - `callPath`: one representative call path up to 4 frames (`file`, `symbol`, optional `line`, optional `description`).
+  - If usage evidence cannot be determined, set `usages: []` and `usageNotDetermined: true`.
+  - If call-stack evidence cannot be determined, set `callPath: []` and `callStackNotDetermined: true`.
 
 Do NOT print the classifications as JSON in your response — the persistence layer reads them directly from the tool call.
 
@@ -56,7 +86,7 @@ Do NOT print the classifications as JSON in your response — the persistence la
 You are classifying the hunks of a pull request diff. You have access to git and gh CLI tools to investigate the PR context.
 
 1. **Use the tools provided** to read the PR diff and understand each hunk. Do NOT rely solely on the file path — read the actual changes.
-2. **Classify every `@@` hunk** in the diff. Each hunk gets exactly one category (the dominant one if mixed).
+2. **Classify every `@@` hunk** in the diff. Every hunk must appear exactly once in the saved array, and each hunk gets exactly one category (the dominant one if mixed).
 3. **Use file path heuristics as a starting signal**, but always verify:
    - Files in `test/`, `__tests__/`, `*.test.*`, `*.spec.*` → likely `test`
    - `package-lock.json`, `*.generated.*`, `*.g.ts` → likely `generated`
@@ -66,11 +96,16 @@ You are classifying the hunks of a pull request diff. You have access to git and
    - `high` = reviewer should read this carefully
    - `low` = reviewer can skim or skip
 5. **Provide a brief reason** (one sentence) explaining why you chose that category and intensity.
-6. **Persist the result** by calling the `saveClassification` tool once with the full array.
+6. **Add required rich fields**:
+   - `testFidelityComment` for `test` hunks.
+   - `summaryComment` for `logic` hunks.
+   - `critical` metadata for critical existing-function changes.
+7. **Persist the result** by calling the `saveClassification` tool once with the full array.
 
 ## Anti-Patterns
 
 - Do NOT classify an entire file as one category — classify each hunk independently.
 - Do NOT default everything to `logic` — most PRs have significant mechanical/test/generated content.
 - Do NOT skip hunks — every `@@` hunk must appear in the output.
+- Do NOT use `simple` for changes with meaningful branching, persistence, I/O, validation, authorization, error handling, concurrency, external calls, or cross-file side effects.
 - Do NOT inject the raw diff into the prompt — use tools to read it.

@@ -70,7 +70,14 @@ let server: http.Server;
 
 const validResult: DiffClassificationResult = {
     classifications: [
-        { file: 'src/a.ts', hunkIndex: 0, category: 'logic', intensity: 'high', reason: 'new code' },
+        {
+            file: 'src/a.ts',
+            hunkIndex: 0,
+            category: 'logic',
+            intensity: 'high',
+            reason: 'new code',
+            summaryComment: 'Adds a behavior path that reviewers should inspect.',
+        },
     ],
 };
 

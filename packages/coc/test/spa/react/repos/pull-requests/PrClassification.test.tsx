@@ -184,6 +184,7 @@ describe('ClassificationFilterBar', () => {
         expect(screen.getByTestId('classification-filter-logic')).toBeInTheDocument();
         expect(screen.getByTestId('classification-filter-mechanical')).toBeInTheDocument();
         expect(screen.getByTestId('classification-filter-test')).toBeInTheDocument();
+        expect(screen.getByTestId('classification-filter-simple')).toBeInTheDocument();
         expect(screen.getByTestId('classification-filter-generated')).toBeInTheDocument();
     });
 
@@ -227,19 +228,21 @@ describe('ClassificationFilterBar', () => {
 
     it('renders color-coded labels for each category', () => {
         const mock = createMockClassification({
-            state: { status: 'ready', activeFilters: new Set(['logic', 'mechanical', 'test', 'generated']), result: mockResult },
+            state: { status: 'ready', activeFilters: new Set(['logic', 'mechanical', 'test', 'simple', 'generated']), result: mockResult },
         });
         renderWithClassification(mock);
 
         const logicLabel = screen.getByTestId('classification-filter-label-logic');
         const mechLabel = screen.getByTestId('classification-filter-label-mechanical');
         const testLabel = screen.getByTestId('classification-filter-label-test');
+        const simpleLabel = screen.getByTestId('classification-filter-label-simple');
         const genLabel = screen.getByTestId('classification-filter-label-generated');
 
         // Each label should have the category color class
         expect(logicLabel.className).toContain('text-orange-');
         expect(mechLabel.className).toContain('text-gray-');
         expect(testLabel.className).toContain('text-blue-');
+        expect(simpleLabel.className).toContain('text-sky-');
         expect(genLabel.className).toContain('text-purple-');
     });
 
@@ -301,6 +304,7 @@ describe('ClassificationFilterBar', () => {
         expect(screen.getByText(/Behavior changes/)).toBeInTheDocument();
         expect(screen.getByText(/Refactors, renames/)).toBeInTheDocument();
         expect(screen.getByText(/Test file additions/)).toBeInTheDocument();
+        expect(screen.getByText(/Straightforward deterministic functions/)).toBeInTheDocument();
         expect(screen.getByText(/Lock files, codegen/)).toBeInTheDocument();
     });
 });
@@ -353,7 +357,7 @@ describe('File dimming', () => {
         const mock = createMockClassification({
             state: {
                 status: 'ready',
-                activeFilters: new Set<HunkCategory>(['logic', 'mechanical', 'test', 'generated']),
+                activeFilters: new Set<HunkCategory>(['logic', 'mechanical', 'test', 'simple', 'generated']),
                 result: mockResult,
             },
         });
