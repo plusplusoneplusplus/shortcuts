@@ -2,10 +2,12 @@ import type { Page } from '@playwright/test';
 import type {
     CommentThread,
     PullRequest,
+    PullRequestCheck,
     PullRequestCommit,
     Reviewer,
 } from '../../../src/server/spa/client/react/features/pull-requests/pr-utils';
 import {
+    MOCK_PR_CHECKS,
     MOCK_PR_COMMITS,
     MOCK_PR_LIST,
     MOCK_PR_OPEN,
@@ -21,6 +23,8 @@ export interface PrMockOptions {
     diff?: string;
     /** Body for GET /pull-requests/:id/commits. Defaults to `MOCK_PR_COMMITS`. */
     commits?: PullRequestCommit[];
+    /** Body for GET /pull-requests/:id/checks. Defaults to `MOCK_PR_CHECKS`. */
+    checks?: PullRequestCheck[];
     unconfigured?: boolean;
     detectedProvider?: 'github' | 'ado' | null;
     remoteUrl?: string;
@@ -39,6 +43,7 @@ export async function setupPrRoutes(
         reviewers = [],
         diff = '',
         commits = MOCK_PR_COMMITS,
+        checks = MOCK_PR_CHECKS,
         unconfigured = false,
         detectedProvider = null,
         remoteUrl = '',
@@ -49,6 +54,7 @@ export async function setupPrRoutes(
     const threadsPattern   = `${base}/*/threads`;
     const reviewersPattern = `${base}/*/reviewers`;
     const commitsPattern   = `${base}/*/commits`;
+    const checksPattern    = `${base}/*/checks`;
     const diffPattern      = `${base}/*/diff`;
     const detailPattern    = `${base}/*`;
     const listPattern      = `${base}?*`;
@@ -81,6 +87,14 @@ export async function setupPrRoutes(
             return route.fulfill({ status: 401, json: unconfiguredBody });
         }
         return route.fulfill({ status: 200, json: { commits } });
+    });
+
+    // checks — JSON
+    await page.route(checksPattern, (route) => {
+        if (unconfigured) {
+            return route.fulfill({ status: 401, json: unconfiguredBody });
+        }
+        return route.fulfill({ status: 200, json: { checks } });
     });
 
     // diff — plain-text unified diff
@@ -125,6 +139,7 @@ export async function setupPrRoutes(
         await page.unroute(threadsPattern);
         await page.unroute(reviewersPattern);
         await page.unroute(commitsPattern);
+        await page.unroute(checksPattern);
         await page.unroute(diffPattern);
         await page.unroute(detailPattern);
         await page.unroute(listPattern);

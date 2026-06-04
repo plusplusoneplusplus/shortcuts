@@ -7,6 +7,7 @@ import { seedWorkspace, request } from './fixtures/seed';
 import { setupPrRoutes } from './fixtures/pr-mock';
 import {
     MOCK_PR_LIST,
+    MOCK_PR_LIST_WITH_DIFF_STATS,
     MOCK_PR_OPEN,
     createMockPrList,
     createMockPullRequest,
@@ -135,7 +136,7 @@ test.describe('Pull Requests tab — list', () => {
     test('shows file count and review minutes in each row meta line', async ({ page, serverUrl }) => {
         const { id: repoId, cleanup } = await seedPrWorkspace(serverUrl, 'ws-4', 'My Repo');
         const routeCleanup = await setupPrRoutes(page, serverUrl, repoId, {
-            pullRequests: MOCK_PR_LIST,
+            pullRequests: MOCK_PR_LIST_WITH_DIFF_STATS,
         });
         try {
             await openPrTab(page, serverUrl, repoId);
@@ -145,9 +146,11 @@ test.describe('Pull Requests tab — list', () => {
             const rows = page.locator('.pr-row');
             const count = await rows.count();
             for (let i = 0; i < count; i++) {
-                await expect(rows.nth(i).locator('.pr-meta')).toContainText(/\d+ files/, { timeout: 10000 });
+                await expect(rows.nth(i).locator('.pr-meta')).toContainText(/\d+ files?/, { timeout: 10000 });
                 await expect(rows.nth(i).locator('.pr-meta')).toContainText(/\d+ min/, { timeout: 10000 });
             }
+            await expect(rows.nth(0).locator('.pr-meta')).toContainText('2 files', { timeout: 10000 });
+            await expect(rows.nth(0).locator('.pr-meta')).toContainText('2 min', { timeout: 10000 });
         } finally {
             await routeCleanup();
             cleanup();

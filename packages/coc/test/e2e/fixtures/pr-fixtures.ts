@@ -1,5 +1,6 @@
 import type {
     PullRequest,
+    PullRequestCheck,
     PullRequestCommit,
     Reviewer,
     PrComment,
@@ -120,6 +121,21 @@ export const MOCK_PR_LIST: PullRequest[] = [
     }),
 ];
 
+export const MOCK_PR_LIST_WITH_DIFF_STATS: PullRequest[] = [
+    {
+        ...MOCK_PR_LIST[0],
+        diffStats: { additions: 20, deletions: 5, changedFiles: 2 },
+    },
+    {
+        ...MOCK_PR_LIST[1],
+        diffStats: { additions: 100, deletions: 25, changedFiles: 4 },
+    },
+    {
+        ...MOCK_PR_LIST[2],
+        diffStats: { additions: 1, deletions: 0, changedFiles: 1 },
+    },
+];
+
 /** Single open PR with reviewers, a description, and a non-zero comment count. */
 export const MOCK_PR_OPEN: PullRequest = createMockPullRequest({
     id: 42,
@@ -141,6 +157,33 @@ export const MOCK_PR_OPEN: PullRequest = createMockPullRequest({
         }),
     ],
 });
+
+export const MOCK_PR_DIFF = [
+    'diff --git a/src/foo.ts b/src/foo.ts',
+    '--- a/src/foo.ts',
+    '+++ b/src/foo.ts',
+    '@@ -1,1 +1,3 @@',
+    ' keep',
+    '+added one',
+    '+added two',
+    'diff --git a/src/bar.ts b/src/bar.ts',
+    '--- a/src/bar.ts',
+    '+++ b/src/bar.ts',
+    '@@ -1,2 +1,1 @@',
+    ' keep',
+    '-removed one',
+    '',
+].join('\n');
+
+export const MOCK_PR_CHECKS: PullRequestCheck[] = [
+    {
+        id: 'ci',
+        name: 'ci',
+        status: 'success',
+        source: 'check',
+        description: 'CI passed',
+    },
+];
 
 /** Two real commits on the open PR. */
 export const MOCK_PR_COMMITS: PullRequestCommit[] = [

@@ -6,7 +6,7 @@ import * as path from 'path';
 import { expect, test } from './fixtures/server-fixture';
 import { safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace, request } from './fixtures/seed';
-import { MOCK_PR_OPEN, MOCK_PR_THREADS } from './fixtures/pr-fixtures';
+import { MOCK_PR_CHECKS, MOCK_PR_DIFF, MOCK_PR_OPEN, MOCK_PR_THREADS } from './fixtures/pr-fixtures';
 import { setupPrRoutes } from './fixtures/pr-mock';
 
 /** Enable the Pull Requests feature flag on the running server. */
@@ -59,6 +59,8 @@ test.describe('Pull Requests — detail view', () => {
         await setupPrRoutes(page, serverUrl, repoId, {
             prDetail: MOCK_PR_OPEN,
             threads: MOCK_PR_THREADS,
+            diff: MOCK_PR_DIFF,
+            checks: MOCK_PR_CHECKS,
         });
 
         await page.goto(serverUrl);
@@ -152,9 +154,15 @@ test.describe('Pull Requests — detail view', () => {
         );
     });
 
-    test('AI review summary is rendered for the PR', async ({ page }) => {
-        await expect(page.getByTestId('pr-ai-summary')).toBeVisible({ timeout: 10000 });
-        await expect(page.getByTestId('pr-ai-metrics')).toBeVisible({ timeout: 10000 });
+    test('deterministic review summary is rendered for the PR', async ({ page }) => {
+        await expect(page.getByTestId('pr-review-summary')).toBeVisible({ timeout: 10000 });
+        await expect(page.getByTestId('pr-review-summary-copy')).toContainText(
+            MOCK_PR_OPEN.description!,
+            { timeout: 10000 },
+        );
+        await expect(page.getByTestId('pr-review-metrics')).toBeVisible({ timeout: 10000 });
+        await expect(page.getByTestId('pr-review-metrics')).toContainText('Files', { timeout: 10000 });
+        await expect(page.getByTestId('pr-review-metrics')).toContainText('+2 / -1', { timeout: 10000 });
     });
 
     test('switching to Files tab renders the AI files panel', async ({ page }) => {
