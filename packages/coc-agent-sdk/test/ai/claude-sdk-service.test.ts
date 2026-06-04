@@ -117,6 +117,16 @@ async function waitForClaudeCliSpawn(child?: MockClaudeCliChild): Promise<void> 
     }
 }
 
+function stubProcessPlatform(platform: NodeJS.Platform): () => void {
+    const original = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: platform, configurable: true });
+    return () => {
+        if (original) {
+            Object.defineProperty(process, 'platform', original);
+        }
+    };
+}
+
 // ============================================================================
 // Registry Constants
 // ============================================================================
@@ -1155,30 +1165,35 @@ describe('ClaudeSDKService.sendMessage', () => {
         }
     });
 
-    it('captures rate_limit_event messages for quota reporting', async () => {
-        queryFn.mockReturnValueOnce(makeMessages([
-            {
-                type: 'rate_limit_event',
-                rate_limit_info: {
-                    status: 'allowed_warning',
-                    rateLimitType: 'five_hour',
-                    utilization: 0.72,
-                    resetsAt: 1700000000,
-                    overageStatus: 'allowed',
+    it('captures rate_limit_event messages for non-Linux quota fallback reporting', async () => {
+        const restorePlatform = stubProcessPlatform('darwin');
+        try {
+            queryFn.mockReturnValueOnce(makeMessages([
+                {
+                    type: 'rate_limit_event',
+                    rate_limit_info: {
+                        status: 'allowed_warning',
+                        rateLimitType: 'five_hour',
+                        utilization: 0.72,
+                        resetsAt: 1700000000,
+                        overageStatus: 'allowed',
+                    },
                 },
-            },
-            { type: 'result', subtype: 'success' },
-        ]));
+                { type: 'result', subtype: 'success' },
+            ]));
 
-        const result = await svc.sendMessage({ prompt: 'test' });
-        const quota = await svc.getAccountQuota();
+            const result = await svc.sendMessage({ prompt: 'test' });
+            const quota = await svc.getAccountQuota();
 
-        expect(result.success).toBe(true);
-        expect(quota.quotaSnapshots).toHaveProperty('five_hour');
-        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(72);
-        expect(quota.quotaSnapshots.five_hour.remainingPercentage).toBeCloseTo(0.28);
-        expect(quota.quotaSnapshots.five_hour.resetDate).toBe(new Date(1700000000 * 1000).toISOString());
-        expect(quota.quotaSnapshots.five_hour.usageAllowedWithExhaustedQuota).toBe(true);
+            expect(result.success).toBe(true);
+            expect(quota.quotaSnapshots).toHaveProperty('five_hour');
+            expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(72);
+            expect(quota.quotaSnapshots.five_hour.remainingPercentage).toBeCloseTo(0.28);
+            expect(quota.quotaSnapshots.five_hour.resetDate).toBe(new Date(1700000000 * 1000).toISOString());
+            expect(quota.quotaSnapshots.five_hour.usageAllowedWithExhaustedQuota).toBe(true);
+        } finally {
+            restorePlatform();
+        }
     });
 });
 
@@ -1189,8 +1204,10 @@ describe('ClaudeSDKService.sendMessage', () => {
 describe('ClaudeSDKService.getAccountQuota', () => {
     let svc: ClaudeSDKService;
     const queryFn = vi.fn();
+    let restorePlatform: () => void;
 
     beforeEach(() => {
+        restorePlatform = stubProcessPlatform('darwin');
         svc = new ClaudeSDKService();
         mockDynamicImport.mockReset();
         queryFn.mockReset();
@@ -1202,6 +1219,7 @@ describe('ClaudeSDKService.getAccountQuota', () => {
 
     afterEach(() => {
         svc.dispose();
+        restorePlatform();
         delete process.env['CLAUDE_CREDENTIALS_FILE'];
     });
 
@@ -1384,8 +1402,10 @@ describe('ClaudeSDKService.getAccountQuota (Linux OAuth)', () => {
     const queryFn = vi.fn();
     let fetchSpy: ReturnType<typeof vi.fn>;
     let tempCredFile: string;
+    let restorePlatform: () => void;
 
     beforeEach(() => {
+        restorePlatform = stubProcessPlatform('linux');
         svc = new ClaudeSDKService();
         mockDynamicImport.mockReset();
         queryFn.mockReset();
@@ -1398,6 +1418,7 @@ describe('ClaudeSDKService.getAccountQuota (Linux OAuth)', () => {
 
     afterEach(() => {
         svc.dispose();
+        restorePlatform();
         vi.unstubAllGlobals();
         delete process.env['CLAUDE_CREDENTIALS_FILE'];
         try { fs.unlinkSync(tempCredFile); } catch { /* already removed or never created */ }
@@ -1475,14 +1496,14 @@ describe('ClaudeSDKService.getAccountQuota (Linux OAuth)', () => {
         expect(quota).toEqual({ quotaSnapshots: {} });
     });
 
-    it('prefers event-cached rate-limit data over the OAuth API', async () => {
+    it('prefers fresh OAuth API usage over cached rate-limit and accountInfo data on Linux', async () => {
         fs.writeFileSync(tempCredFile, JSON.stringify({ access_token: 'tok-123' }));
         fetchSpy.mockResolvedValueOnce({
             ok: true,
             json: async () => ({ five_hour: { utilization: 10 } }),
         });
+        const accountInfoFn = vi.fn().mockResolvedValue({ subscriptionType: 'pro' });
 
-        // Simulate a rate_limit_event being captured via sendMessage
         queryFn.mockReturnValueOnce(makeQueryHandle([
             {
                 type: 'rate_limit_event',
@@ -1493,14 +1514,15 @@ describe('ClaudeSDKService.getAccountQuota (Linux OAuth)', () => {
                 },
             },
             { type: 'result', subtype: 'success' },
-        ]));
+        ], accountInfoFn));
         await svc.sendMessage({ prompt: 'hello' });
+        await Promise.resolve();
 
         const quota = await svc.getAccountQuota();
 
-        // Rate-limit event takes priority, OAuth fetch should NOT be called
-        expect(fetchSpy).not.toHaveBeenCalled();
-        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(90);
+        expect(accountInfoFn).toHaveBeenCalled();
+        expect(fetchSpy).toHaveBeenCalledOnce();
+        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(10);
     });
 });
 

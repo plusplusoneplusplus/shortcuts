@@ -558,9 +558,9 @@ export class ClaudeSDKService implements ISDKService {
         if (this.disposed) throw new Error('ClaudeSDKService has been disposed');
         const avail = await this.isAvailable();
         if (!avail.available) throw new Error(avail.error ?? 'Claude Code SDK is not available');
+        if (process.platform === 'linux') return fetchClaudeOAuthQuota();
         if (this.lastRateLimitInfo) return mapClaudeRateLimitInfoToQuota(this.lastRateLimitInfo);
         if (this.lastAccountInfo) return mapClaudeAccountInfoToQuota(this.lastAccountInfo);
-        if (process.platform === 'linux') return fetchClaudeOAuthQuota();
         return { quotaSnapshots: {} };
     }
 
