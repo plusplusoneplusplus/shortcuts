@@ -27,10 +27,21 @@ export interface WorkItemDescriptionEditorProps {
     /** When true, shows a dirty indicator on the active mode button. */
     dirty?: boolean;
     disabled?: boolean;
+    /** Controlled view mode (lifted to parent so the toggle can live in the panel header). */
+    viewMode?: DescriptionViewMode;
+    /** Callback when the view mode changes (required when viewMode is controlled). */
+    onViewModeChange?: (mode: DescriptionViewMode) => void;
 }
 
-export function WorkItemDescriptionEditor({ value, onChange, dirty = false, disabled }: WorkItemDescriptionEditorProps) {
-    const [viewMode, setViewMode] = useState<DescriptionViewMode>('source');
+/** Expose mode options so the parent can render the toggle in the panel header. */
+export { DESCRIPTION_MODE_OPTIONS };
+export type { DescriptionViewMode };
+
+export function WorkItemDescriptionEditor({ value, onChange, dirty = false, disabled, viewMode: controlledMode, onViewModeChange }: WorkItemDescriptionEditorProps) {
+    const [internalMode, setInternalMode] = useState<DescriptionViewMode>('source');
+    const viewMode = controlledMode ?? internalMode;
+    const setViewMode = onViewModeChange ?? setInternalMode;
+
     const previewRef = useRef<HTMLDivElement>(null);
     const { html } = useMarkdownPreview({
         content: value,
@@ -39,14 +50,7 @@ export function WorkItemDescriptionEditor({ value, onChange, dirty = false, disa
     });
 
     return (
-        <div className="space-y-2" data-testid="wi-description-editor">
-            <ModeToggleToolbar
-                modes={DESCRIPTION_MODE_OPTIONS}
-                activeMode={viewMode}
-                onModeChange={setViewMode}
-                dirty={dirty}
-                testId="wi-description-mode-toggle"
-            />
+        <div>
             {viewMode === 'source' ? (
                 <SourceEditor
                     content={value}

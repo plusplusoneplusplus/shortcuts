@@ -9,8 +9,11 @@ import { Button, cn } from '../../ui';
 import { fetchApi } from '../../hooks/useApi';
 import { getSpaCocClient } from '../../api/cocClient';
 import { formatRelativeTime } from '../../utils/format';
-import { WorkItemPlanSection } from './WorkItemPlanSection';
-import { WorkItemDescriptionEditor } from './WorkItemDescriptionEditor';
+import { WorkItemPlanSection, PLAN_MODE_OPTIONS } from './WorkItemPlanSection';
+import type { PlanViewMode } from './WorkItemPlanSection';
+import { WorkItemDescriptionEditor, DESCRIPTION_MODE_OPTIONS } from './WorkItemDescriptionEditor';
+import type { DescriptionViewMode } from './WorkItemDescriptionEditor';
+import { ModeToggleToolbar } from '../../ui/ModeToggleToolbar';
 import { WorkItemExecuteDialog } from './WorkItemExecuteDialog';
 import { useWorkItems } from '../../contexts/WorkItemContext';
 import { useCommitCommentTotals } from '../git/hooks/useCommitCommentTotals';
@@ -146,6 +149,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const [showChildTypePicker, setShowChildTypePicker] = useState(false);
     /** Plan content draft, lifted from WorkItemPlanSection into the unified batch. */
     const [planDraft, setPlanDraft] = useState<string | null>(null);
+    const [descViewMode, setDescViewMode] = useState<DescriptionViewMode>('source');
+    const [planViewMode, setPlanViewMode] = useState<PlanViewMode>('preview');
 
     const [showAiComposer, setShowAiComposer] = useState(false);
     const aiAuthoringEnabled = isWorkItemsAiAuthoringEnabled();
@@ -599,21 +604,11 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     >
                         Save
                     </button>
-                    {!isContainer && (
-                        <button
-                            className="inline-flex items-center justify-center gap-[5px] min-h-7 border border-[#0969da] rounded-md bg-[#0969da] text-white px-2 text-[12px] font-semibold tracking-[0.02em] whitespace-nowrap hover:bg-[#0550ae] disabled:opacity-50"
-                            onClick={() => setShowExecuteDialog(true)}
-                            disabled={!canExecute}
-                            data-testid="work-item-execute-btn"
-                            type="button"
-                        >
-                            Run
-                        </button>
-                    )}
+                    <span />
                 </div>
 
-                {/* Meta grid */}
-                <div className="grid items-center gap-1.5" style={{ gridTemplateColumns: 'repeat(5, minmax(0, auto)) minmax(100px, 1fr)' }}>
+                {/* Meta grid + inline actions */}
+                <div className="flex items-center gap-1.5 flex-wrap">
                     <span className={cn('inline-flex items-center rounded-full text-[11px] leading-[1.25] px-[7px] py-px border whitespace-nowrap', typePillClass)}>
                         {TYPE_LABELS[effectiveType as WorkItemTypeLabel] ?? effectiveType}
                     </span>
@@ -645,87 +640,106 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     <span className="inline-flex items-center rounded-full h-6 px-2 border border-[#d0d7de] dark:border-[#555] bg-[#f6f8fa] dark:bg-transparent text-[11px] text-[#656d76] dark:text-[#999] whitespace-nowrap">
                         {d.priority}
                     </span>
-                    <span className="text-[11px] leading-[1.35] text-[#656d76] dark:text-[#999] truncate min-w-0">
+                    <span className="text-[11px] leading-[1.35] text-[#656d76] dark:text-[#999] truncate min-w-0 flex-1">
                         Updated {formatRelativeTime(item.updatedAt)}
                     </span>
-                </div>
-                {/* Action row */}
-                <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                    {isMobile && isContainer && (
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                                const childTypes = ALLOWED_CHILD_TYPES[effectiveType as WorkItemTypeLabel] ?? [];
-                                if (childTypes.length === 0) return;
-                                if (childTypes.length === 1) {
-                                    onCreateChild?.(childTypes[0] as WorkItemTypeLabel, item.id);
-                                } else {
-                                    setShowChildTypePicker(true);
+                    {/* Inline action icons — compact, right-aligned */}
+                    <div className="flex items-center gap-2 shrink-0">
+                        {!isContainer && (
+                            <button
+                                className="inline-flex items-center justify-center min-h-[22px] border border-[#0969da] rounded-[4px] bg-[#0969da] text-white px-[6px] text-[10px] font-semibold whitespace-nowrap hover:bg-[#0550ae] disabled:opacity-40"
+                                onClick={() => setShowExecuteDialog(true)}
+                                disabled={!canExecute}
+                                data-testid="work-item-execute-btn"
+                                type="button"
+                            >
+                                Run
+                            </button>
+                        )}
+                        {isMobile && isContainer && (
+                            <button
+                                className="text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#ccc] text-[11px] bg-transparent border-0 cursor-pointer p-0 whitespace-nowrap"
+                                onClick={() => {
+                                    const childTypes = ALLOWED_CHILD_TYPES[effectiveType as WorkItemTypeLabel] ?? [];
+                                    if (childTypes.length === 0) return;
+                                    if (childTypes.length === 1) {
+                                        onCreateChild?.(childTypes[0] as WorkItemTypeLabel, item.id);
+                                    } else {
+                                        setShowChildTypePicker(true);
+                                    }
+                                }}
+                                data-testid="wi-add-child-btn"
+                                type="button"
+                            >
+                                + Add Child
+                            </button>
+                        )}
+                        {!isMobile && (
+                            <button
+                                className="text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#ccc] text-[11px] bg-transparent border-0 cursor-pointer p-0 whitespace-nowrap"
+                                onClick={() => {
+                                    const childTypes = ALLOWED_CHILD_TYPES[effectiveType as WorkItemTypeLabel] ?? [];
+                                    if (childTypes.length === 0) return;
+                                    if (childTypes.length === 1) {
+                                        onCreateChild?.(childTypes[0] as WorkItemTypeLabel, item.id);
+                                    } else {
+                                        setShowChildTypePicker(true);
+                                    }
+                                }}
+                                data-testid="wi-new-child-btn"
+                                type="button"
+                            >
+                                + child
+                            </button>
+                        )}
+                        {aiAuthoringEnabled && (
+                            <button
+                                className="text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#ccc] text-[12px] bg-transparent border-0 cursor-pointer p-0 leading-none"
+                                onClick={() => setShowAiComposer(true)}
+                                data-testid="work-item-improve-with-ai-btn"
+                                title="Improve with AI"
+                                type="button"
+                            >
+                                ✨
+                            </button>
+                        )}
+                        <button className="text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#ccc] text-[12px] bg-transparent border-0 cursor-pointer p-0 leading-none" data-testid="work-item-pin-btn"
+                            title={item.pinnedAt ? 'Unpin' : 'Pin'}
+                            type="button"
+                            onClick={async () => {
+                                try {
+                                    await getSpaCocClient().workItems.pin(workspaceId, workItemId, !item.pinnedAt);
+                                    await fetchItem();
+                                } catch (err: any) {
+                                    setError(err.message || 'Failed to update pin');
                                 }
-                            }}
-                            data-testid="wi-add-child-btn"
-                        >
-                            + Add Child
-                        </Button>
-                    )}
-                    {!isMobile && (
-                        <Button variant="ghost" size="sm" onClick={() => {
-                            const childTypes = ALLOWED_CHILD_TYPES[effectiveType as WorkItemTypeLabel] ?? [];
-                            if (childTypes.length === 0) return;
-                            if (childTypes.length === 1) {
-                                onCreateChild?.(childTypes[0] as WorkItemTypeLabel, item.id);
-                            } else {
-                                setShowChildTypePicker(true);
-                            }
-                        }} data-testid="wi-new-child-btn">
-                            + New child
-                        </Button>
-                    )}
-                    {aiAuthoringEnabled && (
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setShowAiComposer(true)}
-                            data-testid="work-item-improve-with-ai-btn"
-                            title="Improve with AI"
-                        >
-                            ✨
-                        </Button>
-                    )}
-                    <Button variant="ghost" size="sm" data-testid="work-item-pin-btn"
-                        title={item.pinnedAt ? 'Unpin' : 'Pin'}
-                        onClick={async () => {
-                            try {
-                                await getSpaCocClient().workItems.pin(workspaceId, workItemId, !item.pinnedAt);
-                                await fetchItem();
-                            } catch (err: any) {
-                                setError(err.message || 'Failed to update pin');
-                            }
-                        }}>
-                        📌
-                    </Button>
-                    <Button variant="ghost" size="sm" data-testid="work-item-archive-btn"
-                        title={item.archivedAt ? 'Unarchive' : 'Archive'}
-                        onClick={async () => {
-                            try {
-                                await getSpaCocClient().workItems.archive(workspaceId, workItemId, !item.archivedAt);
-                                await fetchItem();
-                            } catch (err: any) {
-                                setError(err.message || 'Failed to update archive');
-                            }
-                        }}>
-                        🗄️
-                    </Button>
-                    <Button variant="ghost" size="sm" className="text-red-500" data-testid="work-item-delete-btn"
-                        onClick={async () => {
-                            if (confirm('Delete this work item?')) {
-                                await getSpaCocClient().workItems.delete(workspaceId, workItemId);
-                                onBack?.();
-                            }
-                        }}>
-                        🗑
-                    </Button>
+                            }}>
+                            📌
+                        </button>
+                        <button className="text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#ccc] text-[12px] bg-transparent border-0 cursor-pointer p-0 leading-none" data-testid="work-item-archive-btn"
+                            title={item.archivedAt ? 'Unarchive' : 'Archive'}
+                            type="button"
+                            onClick={async () => {
+                                try {
+                                    await getSpaCocClient().workItems.archive(workspaceId, workItemId, !item.archivedAt);
+                                    await fetchItem();
+                                } catch (err: any) {
+                                    setError(err.message || 'Failed to update archive');
+                                }
+                            }}>
+                            🗄️
+                        </button>
+                        <button className="text-[#cf222e] hover:text-[#a40e26] dark:text-red-400 dark:hover:text-red-300 text-[12px] bg-transparent border-0 cursor-pointer p-0 leading-none" data-testid="work-item-delete-btn"
+                            type="button"
+                            onClick={async () => {
+                                if (confirm('Delete this work item?')) {
+                                    await getSpaCocClient().workItems.delete(workspaceId, workItemId);
+                                    onBack?.();
+                                }
+                            }}>
+                            🗑
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -745,9 +759,16 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                 )}
 
                 {/* Description */}
-                <article className="border border-[#d0d7de] dark:border-[#474749] rounded-md overflow-hidden">
+                <article className="border border-[#d0d7de] dark:border-[#474749] rounded-md overflow-hidden" data-testid="wi-description-editor">
                     <div className="min-h-[34px] px-[10px] py-[7px] border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] flex items-center justify-between gap-2">
                         <h3 className="text-[13px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc] m-0">Description</h3>
+                        <ModeToggleToolbar
+                            modes={DESCRIPTION_MODE_OPTIONS}
+                            activeMode={descViewMode}
+                            onModeChange={setDescViewMode}
+                            dirty={!!(baseline && d.description !== baseline.description)}
+                            testId="wi-description-mode-toggle"
+                        />
                     </div>
                     <div className="p-[10px]">
                         <WorkItemDescriptionEditor
@@ -755,6 +776,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             onChange={v => updateDraft('description', v)}
                             dirty={!!(baseline && d.description !== baseline.description)}
                             disabled={saving}
+                            viewMode={descViewMode}
+                            onViewModeChange={setDescViewMode}
                         />
                     </div>
                 </article>
@@ -766,6 +789,15 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                         <h3 className="text-[13px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc] m-0">
                             Plan {item.plan ? `v${item.plan.version}` : ''}
                         </h3>
+                        {canEditPlan && (
+                            <ModeToggleToolbar
+                                modes={PLAN_MODE_OPTIONS}
+                                activeMode={planViewMode}
+                                onModeChange={setPlanViewMode}
+                                dirty={planDraft !== null && planDraft !== (item.plan?.content ?? '')}
+                                testId="work-item-plan-mode-toggle"
+                            />
+                        )}
                     </div>
                     <div className="p-[10px]">
                         <WorkItemPlanSection
@@ -778,6 +810,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             onUpdated={fetchItem}
                             onError={setError}
                             onNavigateToTasksTab={onNavigateToTasksTab}
+                            viewMode={planViewMode}
+                            onViewModeChange={setPlanViewMode}
                         />
                     </div>
                 </article>
@@ -805,105 +839,88 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
 
                 {/* Compact Metadata panel */}
                 <article className="border border-[#d0d7de] dark:border-[#474749] rounded-md overflow-hidden">
-                    <div className="min-h-[34px] px-[10px] py-[7px] border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] flex items-center justify-between gap-2">
-                        <h3 className="text-[13px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc] m-0">Compact Metadata</h3>
-                        <span className="text-[11px] text-[#656d76] dark:text-[#999]">above fold</span>
-                    </div>
-                    <div className="p-[10px]">
-                        <ul className="m-0 p-0 list-none grid">
-                            {/* Parent */}
-                            {hierarchyEnabled && effectiveType !== 'epic' ? (
-                                <li className="grid gap-0.5 py-2 border-b border-[#eaeef2] dark:border-[#3c3c3c] text-[12px] leading-[1.35]" data-testid="work-item-parent-edit">
-                                    <strong className="text-[#1f2328] dark:text-[#cccccc]">Parent</strong>
-                                    <span className="text-[#656d76] dark:text-[#999] flex items-center gap-2">
-                                        {d.parentId
-                                            ? <span className="font-mono">{d.parentId.slice(0, 12)}…</span>
-                                            : <span className="italic">No parent</span>
+                    <div className="px-[10px] py-[6px] bg-[#f6f8fa] dark:bg-[#252526] flex items-center gap-3 flex-wrap text-[11px] leading-[1.35]">
+                        {/* Parent */}
+                        {hierarchyEnabled && effectiveType !== 'epic' ? (
+                            <span className="flex items-center gap-1" data-testid="work-item-parent-edit">
+                                <strong className="text-[#1f2328] dark:text-[#cccccc]">Parent</strong>
+                                <span className="text-[#656d76] dark:text-[#999] flex items-center gap-1">
+                                    {d.parentId
+                                        ? <span className="font-mono">{d.parentId.slice(0, 8)}…</span>
+                                        : <span className="italic">—</span>
+                                    }
+                                    <button className="text-[#0969da] hover:underline bg-transparent border-0 cursor-pointer p-0 text-[11px]" onClick={() => setShowParentPicker(true)} disabled={saving} data-testid="wi-edit-parent-btn" type="button">
+                                        {d.parentId ? 'Change' : 'Set'}
+                                    </button>
+                                </span>
+                            </span>
+                        ) : item.parentId ? (
+                            <span className="flex items-center gap-1" data-testid="work-item-parent-info">
+                                <strong className="text-[#1f2328] dark:text-[#cccccc]">Parent</strong>
+                                <span className="text-[#656d76] dark:text-[#999] font-mono">{item.parentId.slice(0, 8)}…</span>
+                            </span>
+                        ) : null}
+                        {/* Priority */}
+                        <span className="flex items-center gap-1" data-testid="wi-edit-fields">
+                            <strong className="text-[#1f2328] dark:text-[#cccccc]">Pri</strong>
+                            <select
+                                className="text-[11px] px-0.5 py-0 rounded border border-[#d0d7de] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1f2328] dark:text-[#cccccc] outline-none"
+                                value={d.priority}
+                                onChange={e => updateDraft('priority', e.target.value as 'high' | 'normal' | 'low')}
+                                disabled={saving}
+                                data-testid="wi-priority-select"
+                                aria-label="Priority"
+                            >
+                                <option value="high">High</option>
+                                <option value="normal">Normal</option>
+                                <option value="low">Low</option>
+                            </select>
+                        </span>
+                        {/* Tags */}
+                        <span className="flex items-center gap-1 min-w-0">
+                            <strong className="text-[#1f2328] dark:text-[#cccccc] shrink-0">Tags</strong>
+                            <span className="flex gap-0.5 items-center flex-wrap min-w-0">
+                                {parseTags(d.tags).length > 0 ? (
+                                    parseTags(d.tags).map(tag => (
+                                        <span key={tag} className="inline-flex items-center h-[18px] px-1.5 rounded-full border border-[#d0d7de] dark:border-[#555] bg-white dark:bg-transparent text-[10px] text-[#656d76] dark:text-[#999]">{tag}</span>
+                                    ))
+                                ) : null}
+                                <input
+                                    type="text"
+                                    className="min-w-[60px] w-16 text-[11px] px-0.5 py-0 border-0 outline-none bg-transparent text-[#1f2328] dark:text-[#cccccc] placeholder-[#656d76]"
+                                    value={d.tags}
+                                    onChange={e => updateDraft('tags', e.target.value)}
+                                    disabled={saving}
+                                    placeholder="add tags"
+                                    data-testid="wi-tags-input"
+                                    aria-label="Tags"
+                                />
+                            </span>
+                        </span>
+                        {/* Auto-execute (leaf items only) */}
+                        {!isContainer && (
+                            <label className="flex items-center gap-1 cursor-pointer shrink-0" title="Auto-execute when status reaches Ready to Execute" data-testid="work-item-auto-execute-toggle">
+                                <input
+                                    type="checkbox"
+                                    checked={item.autoExecute ?? false}
+                                    onChange={async (e) => {
+                                        try {
+                                            await getSpaCocClient().workItems.update(workspaceId, workItemId, { autoExecute: e.target.checked });
+                                            await fetchItem();
+                                        } catch (err: any) {
+                                            setError(err.message || 'Failed to update');
                                         }
-                                        <button className="text-[#0969da] hover:underline text-[11px] bg-transparent border-0 cursor-pointer p-0" onClick={() => setShowParentPicker(true)} disabled={saving} data-testid="wi-edit-parent-btn" type="button">
-                                            {d.parentId ? 'Change' : 'Set'}
-                                        </button>
-                                    </span>
-                                </li>
-                            ) : item.parentId ? (
-                                <li className="grid gap-0.5 py-2 border-b border-[#eaeef2] dark:border-[#3c3c3c] text-[12px] leading-[1.35]" data-testid="work-item-parent-info">
-                                    <strong className="text-[#1f2328] dark:text-[#cccccc]">Parent</strong>
-                                    <span className="text-[#656d76] dark:text-[#999] font-mono">{item.parentId.slice(0, 12)}…</span>
-                                </li>
-                            ) : null}
-                            {/* Priority */}
-                            <li className="grid gap-0.5 py-2 border-b border-[#eaeef2] dark:border-[#3c3c3c] text-[12px] leading-[1.35]" data-testid="wi-edit-fields">
-                                <strong className="text-[#1f2328] dark:text-[#cccccc]">Priority</strong>
-                                <span>
-                                    <select
-                                        className="text-[12px] px-1 py-0 rounded border border-[#d0d7de] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1f2328] dark:text-[#cccccc] outline-none"
-                                        value={d.priority}
-                                        onChange={e => updateDraft('priority', e.target.value as 'high' | 'normal' | 'low')}
-                                        disabled={saving}
-                                        data-testid="wi-priority-select"
-                                        aria-label="Priority"
-                                    >
-                                        <option value="high">High</option>
-                                        <option value="normal">Normal</option>
-                                        <option value="low">Low</option>
-                                    </select>
-                                </span>
-                            </li>
-                            {/* Tags */}
-                            <li className="grid gap-0.5 py-2 border-b border-[#eaeef2] dark:border-[#3c3c3c] text-[12px] leading-[1.35]">
-                                <strong className="text-[#1f2328] dark:text-[#cccccc]">Tags</strong>
-                                <span className="flex gap-1 flex-wrap items-center">
-                                    {parseTags(d.tags).length > 0 ? (
-                                        parseTags(d.tags).map(tag => (
-                                            <span key={tag} className="inline-flex items-center justify-center h-6 px-2 rounded-full border border-[#d0d7de] dark:border-[#555] bg-[#f6f8fa] dark:bg-transparent text-[11px] text-[#656d76] dark:text-[#999]">{tag}</span>
-                                        ))
-                                    ) : (
-                                        <span className="text-[#656d76] dark:text-[#999] italic text-[11px]">No tags</span>
-                                    )}
-                                    <input
-                                        type="text"
-                                        className="flex-1 min-w-[100px] text-[12px] px-1 py-0 border-0 outline-none bg-transparent text-[#1f2328] dark:text-[#cccccc] placeholder-[#656d76]"
-                                        value={d.tags}
-                                        onChange={e => updateDraft('tags', e.target.value)}
-                                        disabled={saving}
-                                        placeholder="comma-separated"
-                                        data-testid="wi-tags-input"
-                                        aria-label="Tags"
-                                    />
-                                </span>
-                            </li>
-                            {/* Auto-execute toggle (leaf items only) */}
-                            {!isContainer && (
-                                <li className="grid gap-0.5 py-2 border-b border-[#eaeef2] dark:border-[#3c3c3c] text-[12px] leading-[1.35]">
-                                    <strong className="text-[#1f2328] dark:text-[#cccccc]">Execution</strong>
-                                    <span className="text-[#656d76] dark:text-[#999] flex items-center gap-2">
-                                        <label className="flex items-center gap-1 text-[11px] cursor-pointer" title="Auto-execute when status reaches Ready to Execute" data-testid="work-item-auto-execute-toggle">
-                                            <input
-                                                type="checkbox"
-                                                checked={item.autoExecute ?? false}
-                                                onChange={async (e) => {
-                                                    try {
-                                                        await getSpaCocClient().workItems.update(workspaceId, workItemId, { autoExecute: e.target.checked });
-                                                        await fetchItem();
-                                                    } catch (err: any) {
-                                                        setError(err.message || 'Failed to update');
-                                                    }
-                                                }}
-                                                className="rounded"
-                                            />
-                                            Auto-execute
-                                        </label>
-                                    </span>
-                                </li>
-                            )}
-                            {/* Source */}
-                            <li className="grid gap-0.5 py-2 text-[12px] leading-[1.35]">
-                                <strong className="text-[#1f2328] dark:text-[#cccccc]">Source</strong>
-                                <span className="text-[#656d76] dark:text-[#999]">
-                                    {item.source === 'manual' ? 'Manual' : item.source === 'chat' ? 'From chat' : 'From schedule'}
-                                </span>
-                            </li>
-                        </ul>
+                                    }}
+                                    className="rounded"
+                                />
+                                <strong className="text-[#1f2328] dark:text-[#cccccc]">Auto</strong>
+                            </label>
+                        )}
+                        {/* Source */}
+                        <span className="flex items-center gap-1 text-[#656d76] dark:text-[#999] shrink-0">
+                            <strong className="text-[#1f2328] dark:text-[#cccccc]">Src</strong>
+                            {item.source === 'manual' ? 'Manual' : item.source === 'chat' ? 'Chat' : 'Schedule'}
+                        </span>
                     </div>
                 </article>
 
