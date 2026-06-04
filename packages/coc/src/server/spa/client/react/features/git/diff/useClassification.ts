@@ -48,6 +48,8 @@ export interface FileBadge {
     category: HunkCategory;
     /** Max intensity across all hunks in this file. */
     intensity: HunkIntensity;
+    /** True when any hunk in the file is marked as a critical existing-function change. */
+    hasCritical?: boolean;
 }
 
 export interface UseClassificationReturn {
@@ -152,12 +154,16 @@ export function useClassification(
             for (const [file, hunks] of byFile) {
                 let maxPri = -1;
                 let badge: FileBadge = { category: 'mechanical', intensity: 'low' };
+                const hasCritical = hunks.some(h => h.critical !== undefined);
                 for (const h of hunks) {
                     const pri = CATEGORY_PRIORITY[h.category] * 2 + (h.intensity === 'high' ? 1 : 0);
                     if (pri > maxPri) {
                         maxPri = pri;
                         badge = { category: h.category, intensity: h.intensity };
                     }
+                }
+                if (hasCritical) {
+                    badge = { ...badge, hasCritical };
                 }
                 badges.set(file, badge);
             }

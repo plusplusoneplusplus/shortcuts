@@ -220,6 +220,7 @@ function buildCopyPathMenuItems(filePath: string, repoRoot?: string): ContextMen
 export interface FileBadgeInfo {
     category: HunkCategory;
     intensity: 'high' | 'low';
+    hasCritical?: boolean;
 }
 
 export interface FlatFileListProps {
@@ -263,6 +264,18 @@ function CategoryBadge({ badge, testId }: { badge: FileBadgeInfo; testId?: strin
             data-testid={testId}
         >
             {style.label}
+        </span>
+    );
+}
+
+function CriticalMarker({ testId }: { testId?: string }) {
+    return (
+        <span
+            className="inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-100 px-1 text-[9px] font-bold leading-none text-red-700 ring-1 ring-red-300 dark:bg-red-900/40 dark:text-red-200 dark:ring-red-500/60"
+            title="Critical existing-function change"
+            data-testid={testId}
+        >
+            !
         </span>
     );
 }
@@ -348,6 +361,9 @@ export function FlatFileList({
                                     badge={badge}
                                     testId={`flat-file-category-badge-${file.path}`}
                                 />
+                            )}
+                            {badge?.hasCritical && (
+                                <CriticalMarker testId={`flat-file-critical-marker-${file.path}`} />
                             )}
                             <ReviewStateIndicator
                                 isReviewed={isReviewed}
@@ -661,6 +677,9 @@ function FileEntry({
                         badge={badge}
                         testId={`tree-file-category-badge-${node.path}`}
                     />
+                )}
+                {badge?.hasCritical && (
+                    <CriticalMarker testId={`tree-file-critical-marker-${node.path}`} />
                 )}
                 <ReviewStateIndicator
                     isReviewed={isReviewed}
