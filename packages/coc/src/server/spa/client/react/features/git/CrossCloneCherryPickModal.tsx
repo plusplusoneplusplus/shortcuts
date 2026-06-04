@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CocApiError, type GitInfoResponse, type GitPatchApplyResponse, type WorkspaceInfo } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
-import { listWorkspaces, getWorkspaceGitInfoBatch } from '../../repos/repositoryService';
+import { listWorkspaces, getWorkspaceGitInfoBatch, listRemoteWorkspaceTargetSources } from '../../repos/repositoryService';
 import { Dialog } from '../../ui/Dialog';
 import type { GitCommitItem } from './commits/CommitList';
 import {
-    buildCrossCloneCherryPickTargetGroups,
+    buildCrossCloneCherryPickTargetGroupsFromSources,
+    LOCAL_COC_SERVER_ID,
+    LOCAL_COC_SERVER_LABEL,
     normalizeWorkspaceRemoteUrl,
     type CrossCloneCherryPickTarget,
+    type CrossCloneCherryPickWorkspaceSource,
 } from './crossCloneCherryPickTargets';
 
 interface CrossCloneCherryPickModalProps {
@@ -31,14 +34,17 @@ export function CrossCloneCherryPickModal({
 }: CrossCloneCherryPickModalProps) {
     const [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>([]);
     const [gitInfoResults, setGitInfoResults] = useState<Record<string, GitInfoResponse | null>>({});
+    const [remoteTargetSources, setRemoteTargetSources] = useState<CrossCloneCherryPickWorkspaceSource[]>([]);
+    const [remoteLoadWarnings, setRemoteLoadWarnings] = useState<string[]>([]);
     const [loadingTargets, setLoadingTargets] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
-    const [selectedTargetId, setSelectedTargetId] = useState<string>('');
+    const [selectedTargetKey, setSelectedTargetKey] = useState<string>('');
     const [crossRemoteConfirmed, setCrossRemoteConfirmed] = useState(false);
     const [stashAndContinue, setStashAndContinue] = useState(false);
     const [applying, setApplying] = useState(false);
     const [applyError, setApplyError] = useState<string | null>(null);
     const [result, setResult] = useState<GitPatchApplyResponse | null>(null);
+    const [resultServerLabel, setResultServerLabel] = useState<string | null>(null);
 
     useEffect(() => {
         if (!open) return;
@@ -47,24 +53,45 @@ export function CrossCloneCherryPickModal({
         setLoadError(null);
         setApplyError(null);
         setResult(null);
-        setSelectedTargetId('');
+        setResultServerLabel(null);
+        setSelectedTargetKey('');
         setCrossRemoteConfirmed(false);
         setStashAndContinue(false);
+        setRemoteTargetSources([]);
+        setRemoteLoadWarnings([]);
 
         listWorkspaces()
             .then(async workspaceList => {
-                const response = workspaceList.length > 0
-                    ? await getWorkspaceGitInfoBatch(workspaceList.map(workspace => workspace.id))
-                    : { results: {} };
+                const [response, remoteTargetResult] = await Promise.all([
+                    workspaceList.length > 0
+                        ? getWorkspaceGitInfoBatch(workspaceList.map(workspace => workspace.id))
+                        : Promise.resolve({ results: {} }),
+                    listRemoteWorkspaceTargetSources().catch(error => ({
+                        sources: [],
+                        warnings: [getSpaCocClientErrorMessage(error, 'Failed to load remote CoC workspaces')],
+                    })),
+                ]);
                 if (cancelled) return;
                 setWorkspaces(workspaceList);
                 setGitInfoResults(response.results ?? {});
+                setRemoteTargetSources(remoteTargetResult.sources.map(source => ({
+                    server: {
+                        id: source.server.id,
+                        label: source.server.label || source.server.id,
+                        local: false,
+                    },
+                    workspaces: source.workspaces,
+                    gitInfoResults: source.gitInfoResults,
+                })));
+                setRemoteLoadWarnings(remoteTargetResult.warnings);
             })
             .catch(error => {
                 if (cancelled) return;
                 setLoadError(getSpaCocClientErrorMessage(error, 'Failed to load registered workspaces'));
                 setWorkspaces([]);
                 setGitInfoResults({});
+                setRemoteTargetSources([]);
+                setRemoteLoadWarnings([]);
             })
             .finally(() => {
                 if (!cancelled) setLoadingTargets(false);
@@ -81,44 +108,84 @@ export function CrossCloneCherryPickModal({
     );
     const sourceGitInfo = gitInfoResults[sourceWorkspaceId] ?? null;
     const sourceRemoteUrl = normalizeWorkspaceRemoteUrl(resolvedSourceWorkspace, sourceGitInfo);
+    const targetSources = useMemo<CrossCloneCherryPickWorkspaceSource[]>(() => [
+        {
+            server: {
+                id: LOCAL_COC_SERVER_ID,
+                label: LOCAL_COC_SERVER_LABEL,
+                local: true,
+            },
+            workspaces,
+            gitInfoResults,
+        },
+        ...remoteTargetSources,
+    ], [gitInfoResults, remoteTargetSources, workspaces]);
     const targetGroups = useMemo(
-        () => buildCrossCloneCherryPickTargetGroups(sourceWorkspaceId, sourceRemoteUrl, workspaces, gitInfoResults),
-        [gitInfoResults, sourceRemoteUrl, sourceWorkspaceId, workspaces],
+        () => buildCrossCloneCherryPickTargetGroupsFromSources(
+            {
+                serverId: LOCAL_COC_SERVER_ID,
+                workspaceId: sourceWorkspaceId,
+                remoteUrl: sourceRemoteUrl,
+            },
+            targetSources,
+        ),
+        [sourceRemoteUrl, sourceWorkspaceId, targetSources],
     );
     const targets = useMemo(() => targetGroups.flatMap(group => group.targets), [targetGroups]);
-    const selectedTarget = targets.find(target => target.workspace.id === selectedTargetId) ?? null;
+    const selectedTarget = targets.find(target => target.key === selectedTargetKey) ?? null;
 
     useEffect(() => {
-        if (!open || selectedTargetId) return;
+        if (!open || selectedTargetKey) return;
         const defaultTarget = targets.find(target => target.recommended && !target.disabledReason)
             ?? targets.find(target => !target.disabledReason)
             ?? targets[0];
-        if (defaultTarget) setSelectedTargetId(defaultTarget.workspace.id);
-    }, [open, selectedTargetId, targets]);
+        if (defaultTarget) setSelectedTargetKey(defaultTarget.key);
+    }, [open, selectedTargetKey, targets]);
 
     useEffect(() => {
         setCrossRemoteConfirmed(false);
         setStashAndContinue(false);
         setApplyError(null);
         setResult(null);
-    }, [selectedTargetId]);
+        setResultServerLabel(null);
+    }, [selectedTargetKey]);
 
     const handleApply = useCallback(async () => {
         if (!commit || !selectedTarget || selectedTarget.disabledReason) return;
         setApplying(true);
         setApplyError(null);
         setResult(null);
+        setResultServerLabel(null);
         try {
-            const exported = await getSpaCocClient().git.exportCommitPatch(sourceWorkspaceId, commit.hash);
-            const response = await getSpaCocClient().git.applyCommitPatch(selectedTarget.workspace.id, {
-                patch: exported.patch,
-                stashAndContinue,
-                sourceWorkspace: exported.sourceWorkspace,
-                sourceCommit: exported.sourceCommit,
-                normalizedSourceRemoteUrl: exported.normalizedSourceRemoteUrl,
-            });
-            setResult(response);
-            onApplied?.(response);
+            if (selectedTarget.server.local) {
+                const exported = await getSpaCocClient().git.exportCommitPatch(sourceWorkspaceId, commit.hash);
+                const response = await getSpaCocClient().git.applyCommitPatch(selectedTarget.workspace.id, {
+                    patch: exported.patch,
+                    stashAndContinue,
+                    sourceWorkspace: exported.sourceWorkspace,
+                    sourceCommit: exported.sourceCommit,
+                    normalizedSourceRemoteUrl: exported.normalizedSourceRemoteUrl,
+                });
+                setResultServerLabel(selectedTarget.server.label);
+                setResult(response);
+                onApplied?.(response);
+            } else {
+                const response = await getSpaCocClient().servers.cherryPickTransfer({
+                    source: {
+                        serverId: LOCAL_COC_SERVER_ID,
+                        workspaceId: sourceWorkspaceId,
+                        commitHash: commit.hash,
+                    },
+                    target: {
+                        serverId: selectedTarget.server.id,
+                        workspaceId: selectedTarget.workspace.id,
+                        stashAndContinue,
+                    },
+                });
+                setResultServerLabel(response.target.server.label || selectedTarget.server.label);
+                setResult(response.result);
+                onApplied?.(response.result);
+            }
         } catch (error) {
             setApplyError(getApplyErrorMessage(error));
         } finally {
@@ -171,6 +238,7 @@ export function CrossCloneCherryPickModal({
                     <div className="text-xs uppercase tracking-[0.07em] text-[#616161] dark:text-[#999] mb-2">Source</div>
                     <div className="grid gap-1 text-sm">
                         <div><span className="font-medium">Workspace:</span> {sourceName}</div>
+                        <div><span className="font-medium">Server:</span> {LOCAL_COC_SERVER_LABEL}</div>
                         <div><span className="font-medium">Branch:</span> {sourceBranchLabel}</div>
                         <div><span className="font-medium">Commit:</span> {commit.shortHash} - {commit.subject}</div>
                         <div><span className="font-medium">Remote:</span> {sourceRemoteUrl || 'No remote detected'}</div>
@@ -181,12 +249,18 @@ export function CrossCloneCherryPickModal({
                     <div className="flex items-center justify-between gap-3 mb-2">
                         <div>
                             <div className="text-xs uppercase tracking-[0.07em] text-[#616161] dark:text-[#999]">Target workspace</div>
-                            <div className="text-xs text-[#616161] dark:text-[#999]">Registered workspaces on the current CoC server only.</div>
+                            <div className="text-xs text-[#616161] dark:text-[#999]">Registered workspaces on the current CoC server and online remote CoC servers.</div>
                         </div>
                     </div>
 
+                    {remoteLoadWarnings.length > 0 && (
+                        <div className="mb-2 rounded border border-[#f1d18a] dark:border-[#5a4218] bg-[#fff8e1] dark:bg-[#2a210f] p-2 text-xs text-[#5f4200] dark:text-[#ffdf91]">
+                            Some remote CoC targets were skipped: {remoteLoadWarnings.join('; ')}
+                        </div>
+                    )}
+
                     {loadingTargets ? (
-                        <div className="text-sm text-[#616161] dark:text-[#999]">Loading registered workspaces...</div>
+                        <div className="text-sm text-[#616161] dark:text-[#999]">Loading registered workspaces and remote CoC targets...</div>
                     ) : loadError ? (
                         <div className="rounded border border-[#f2c8c8] dark:border-[#5a2a2a] bg-[#fff5f5] dark:bg-[#2a1717] p-3 text-sm text-[#b00020] dark:text-[#f48771]">
                             {loadError}
@@ -205,21 +279,22 @@ export function CrossCloneCherryPickModal({
                                     </div>
                                     {group.targets.map(target => (
                                         <label
-                                            key={target.workspace.id}
+                                            key={target.key}
                                             className={`flex cursor-pointer items-start gap-3 border-b border-[#eeeeee] dark:border-[#333] px-3 py-2 last:border-b-0 ${target.disabledReason ? 'opacity-60 cursor-not-allowed' : 'hover:bg-[#f8fbff] dark:hover:bg-[#1b2733]'}`}
                                         >
                                             <input
                                                 type="radio"
                                                 className="mt-1"
                                                 name="cross-clone-cherry-pick-target"
-                                                value={target.workspace.id}
-                                                checked={selectedTargetId === target.workspace.id}
+                                                value={target.key}
+                                                checked={selectedTargetKey === target.key}
                                                 disabled={Boolean(target.disabledReason)}
-                                                onChange={() => setSelectedTargetId(target.workspace.id)}
+                                                onChange={() => setSelectedTargetKey(target.key)}
                                             />
                                             <span className="min-w-0 flex-1">
                                                 <span className="flex flex-wrap items-center gap-2">
                                                     <span className="font-medium text-[#1e1e1e] dark:text-[#ddd]">{target.workspace.name || target.workspace.id}</span>
+                                                    <span className="rounded bg-[#eeeeee] dark:bg-[#333] px-1.5 py-0.5 text-[10px] text-[#616161] dark:text-[#aaa]">{target.server.label}</span>
                                                     {target.recommended && <span className="rounded bg-[#e6f4ea] dark:bg-[#183a24] px-1.5 py-0.5 text-[10px] text-[#16825d] dark:text-[#7ee787]">Recommended</span>}
                                                     <span className={dirtyStateClass(target.gitInfo)}>
                                                         {dirtyStateLabel(target.gitInfo)}
@@ -247,6 +322,7 @@ export function CrossCloneCherryPickModal({
                     <section className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 text-sm">
                         <div className="font-medium mb-1">Selected target</div>
                         <div className="grid gap-1 text-xs text-[#616161] dark:text-[#999]">
+                            <div>Server: {selectedTarget.server.label}</div>
                             <div>Workspace: {selectedTarget.workspace.name || selectedTarget.workspace.id}</div>
                             <div>Branch: {selectedTarget.gitInfo?.branch ?? 'unknown'}</div>
                             <div>Dirty state: {dirtyStateLabel(selectedTarget.gitInfo).toLowerCase()}</div>
@@ -289,7 +365,7 @@ export function CrossCloneCherryPickModal({
 
                 {result && (
                     <div className="rounded border border-[#b7dfc4] dark:border-[#285a35] bg-[#f1fff4] dark:bg-[#122518] p-3 text-sm text-[#1a5e2b] dark:text-[#7ee787]" data-testid="cross-clone-cherry-pick-success">
-                        Applied to {result.targetWorkspace.name || result.targetWorkspace.id} on {result.targetBranch || 'unknown branch'}.
+                        Applied to {resultServerLabel ? `${resultServerLabel} / ` : ''}{result.targetWorkspace.name || result.targetWorkspace.id} on {result.targetBranch || 'unknown branch'}.
                         {result.newCommitHash || result.targetHead ? ` New commit: ${result.newCommitHash || result.targetHead}.` : ''}
                     </div>
                 )}

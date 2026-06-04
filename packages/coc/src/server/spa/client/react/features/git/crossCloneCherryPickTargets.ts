@@ -3,7 +3,24 @@ import { normalizeRemoteUrl, remoteUrlLabel } from '../../repos/repoGrouping';
 
 export type CrossCloneRemoteStatus = 'same-remote' | 'cross-remote' | 'unknown';
 
+export const LOCAL_COC_SERVER_ID = 'local';
+export const LOCAL_COC_SERVER_LABEL = 'Current CoC';
+
+export interface CrossCloneCherryPickServerRef {
+    id: string;
+    label: string;
+    local: boolean;
+}
+
+export interface CrossCloneCherryPickWorkspaceSource {
+    server: CrossCloneCherryPickServerRef;
+    workspaces: WorkspaceInfo[];
+    gitInfoResults: Record<string, GitInfoResponse | null | undefined>;
+}
+
 export interface CrossCloneCherryPickTarget {
+    key: string;
+    server: CrossCloneCherryPickServerRef;
     workspace: WorkspaceInfo;
     gitInfo: GitInfoResponse | null;
     normalizedRemoteUrl: string | null;
@@ -37,37 +54,69 @@ export function buildCrossCloneCherryPickTargetGroups(
     workspaces: WorkspaceInfo[],
     gitInfoResults: Record<string, GitInfoResponse | null | undefined>,
 ): CrossCloneCherryPickTargetGroup[] {
-    const normalizedSourceRemoteUrl = sourceRemoteUrl ? normalizeRemoteUrl(sourceRemoteUrl) || null : null;
+    return buildCrossCloneCherryPickTargetGroupsFromSources(
+        {
+            serverId: LOCAL_COC_SERVER_ID,
+            workspaceId: sourceWorkspaceId,
+            remoteUrl: sourceRemoteUrl,
+        },
+        [{
+            server: {
+                id: LOCAL_COC_SERVER_ID,
+                label: LOCAL_COC_SERVER_LABEL,
+                local: true,
+            },
+            workspaces,
+            gitInfoResults,
+        }],
+    );
+}
+
+export function buildCrossCloneCherryPickTargetGroupsFromSources(
+    source: { serverId: string; workspaceId: string; remoteUrl: string | null | undefined },
+    sources: CrossCloneCherryPickWorkspaceSource[],
+): CrossCloneCherryPickTargetGroup[] {
+    const normalizedSourceRemoteUrl = source.remoteUrl ? normalizeRemoteUrl(source.remoteUrl) || null : null;
     const groupMap = new Map<string, CrossCloneCherryPickTargetGroup>();
 
-    for (const workspace of workspaces) {
-        if (workspace.id === sourceWorkspaceId || workspace.virtual) continue;
+    for (const workspaceSource of sources) {
+        for (const workspace of workspaceSource.workspaces) {
+            if (
+                workspaceSource.server.id === source.serverId
+                && workspace.id === source.workspaceId
+            ) {
+                continue;
+            }
+            if (workspace.virtual) continue;
 
-        const gitInfo = gitInfoResults[workspace.id] ?? null;
-        const normalizedRemoteUrl = normalizeWorkspaceRemoteUrl(workspace, gitInfo);
-        const remoteStatus = getRemoteStatus(normalizedSourceRemoteUrl, normalizedRemoteUrl);
-        const remoteLabel = normalizedRemoteUrl ? remoteUrlLabel(normalizedRemoteUrl) : 'No remote detected';
-        const target: CrossCloneCherryPickTarget = {
-            workspace,
-            gitInfo,
-            normalizedRemoteUrl,
-            remoteStatus,
-            remoteLabel,
-            recommended: remoteStatus === 'same-remote',
-            disabledReason: gitInfo && gitInfo.isGitRepo === false ? 'Not a Git repository' : undefined,
-        };
-        const groupKey = normalizedRemoteUrl ?? `workspace:${workspace.id}`;
-        const existing = groupMap.get(groupKey);
-        if (existing) {
-            existing.targets.push(target);
-        } else {
-            groupMap.set(groupKey, {
-                key: groupKey,
-                label: remoteLabel,
+            const gitInfo = workspaceSource.gitInfoResults[workspace.id] ?? null;
+            const normalizedRemoteUrl = normalizeWorkspaceRemoteUrl(workspace, gitInfo);
+            const remoteStatus = getRemoteStatus(normalizedSourceRemoteUrl, normalizedRemoteUrl);
+            const remoteLabel = normalizedRemoteUrl ? remoteUrlLabel(normalizedRemoteUrl) : 'No remote detected';
+            const target: CrossCloneCherryPickTarget = {
+                key: getCrossCloneCherryPickTargetKey(workspaceSource.server.id, workspace.id),
+                server: workspaceSource.server,
+                workspace,
+                gitInfo,
                 normalizedRemoteUrl,
                 remoteStatus,
-                targets: [target],
-            });
+                remoteLabel,
+                recommended: remoteStatus === 'same-remote',
+                disabledReason: gitInfo && gitInfo.isGitRepo === false ? 'Not a Git repository' : undefined,
+            };
+            const groupKey = normalizedRemoteUrl ?? `${workspaceSource.server.id}:workspace:${workspace.id}`;
+            const existing = groupMap.get(groupKey);
+            if (existing) {
+                existing.targets.push(target);
+            } else {
+                groupMap.set(groupKey, {
+                    key: groupKey,
+                    label: remoteLabel,
+                    normalizedRemoteUrl,
+                    remoteStatus,
+                    targets: [target],
+                });
+            }
         }
     }
 
@@ -77,6 +126,10 @@ export function buildCrossCloneCherryPickTargetGroups(
             targets: [...group.targets].sort(compareTargets),
         }))
         .sort(compareGroups);
+}
+
+export function getCrossCloneCherryPickTargetKey(serverId: string, workspaceId: string): string {
+    return `${encodeURIComponent(serverId)}:${encodeURIComponent(workspaceId)}`;
 }
 
 function getRemoteStatus(
@@ -95,6 +148,8 @@ function compareGroups(a: CrossCloneCherryPickTargetGroup, b: CrossCloneCherryPi
 
 function compareTargets(a: CrossCloneCherryPickTarget, b: CrossCloneCherryPickTarget): number {
     if (a.recommended !== b.recommended) return a.recommended ? -1 : 1;
+    const byServer = a.server.label.localeCompare(b.server.label);
+    if (byServer !== 0) return byServer;
     return String(a.workspace.name || a.workspace.id).localeCompare(String(b.workspace.name || b.workspace.id));
 }
 

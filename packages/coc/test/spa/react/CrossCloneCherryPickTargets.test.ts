@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { GitInfoResponse, WorkspaceInfo } from '@plusplusoneplusplus/coc-client';
 import {
     buildCrossCloneCherryPickTargetGroups,
+    buildCrossCloneCherryPickTargetGroupsFromSources,
+    LOCAL_COC_SERVER_ID,
     normalizeWorkspaceRemoteUrl,
 } from '../../../src/server/spa/client/react/features/git/crossCloneCherryPickTargets';
 
@@ -93,5 +95,47 @@ describe('buildCrossCloneCherryPickTargetGroups', () => {
         expect(targets.find(t => t.workspace.id === 'dirty')?.disabledReason).toBeUndefined();
         expect(targets.find(t => t.workspace.id === 'dirty')?.gitInfo?.dirty).toBe(true);
         expect(targets.find(t => t.workspace.id === 'plain-folder')?.disabledReason).toBe('Not a Git repository');
+    });
+
+    it('distinguishes duplicate workspace IDs across current and remote CoC servers', () => {
+        const groups = buildCrossCloneCherryPickTargetGroupsFromSources(
+            {
+                serverId: LOCAL_COC_SERVER_ID,
+                workspaceId: 'source',
+                remoteUrl: 'https://github.com/org/repo.git',
+            },
+            [
+                {
+                    server: { id: LOCAL_COC_SERVER_ID, label: 'Current CoC', local: true },
+                    workspaces: [
+                        workspace('source', 'Repo', 'https://github.com/org/repo.git'),
+                        workspace('target', 'Repo', 'https://github.com/org/repo.git'),
+                    ],
+                    gitInfoResults: {
+                        target: gitInfo(),
+                    },
+                },
+                {
+                    server: { id: 'remote-a', label: 'Remote A', local: false },
+                    workspaces: [
+                        workspace('source', 'Repo', 'https://github.com/org/repo.git'),
+                        workspace('target', 'Repo', 'https://github.com/org/repo.git'),
+                    ],
+                    gitInfoResults: {
+                        source: gitInfo(),
+                        target: gitInfo(),
+                    },
+                },
+            ],
+        );
+
+        const targets = groups.flatMap(group => group.targets);
+        expect(targets.map(target => `${target.server.label}:${target.workspace.id}`)).toEqual([
+            'Current CoC:target',
+            'Remote A:source',
+            'Remote A:target',
+        ]);
+        expect(new Set(targets.map(target => target.key)).size).toBe(3);
+        expect(targets.every(target => target.remoteStatus === 'same-remote')).toBe(true);
     });
 });

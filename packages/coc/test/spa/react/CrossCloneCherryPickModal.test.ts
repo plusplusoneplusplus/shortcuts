@@ -24,17 +24,20 @@ describe('CrossCloneCherryPickModal', () => {
         source = fs.readFileSync(COMPONENT_PATH, 'utf-8');
     });
 
-    it('loads current-CoC registered workspaces and git-info in batch', () => {
+    it('loads current-CoC registered workspaces, remote CoC targets, and git-info in batch', () => {
         expect(source).toContain('listWorkspaces()');
         expect(source).toContain('getWorkspaceGitInfoBatch');
+        expect(source).toContain('listRemoteWorkspaceTargetSources');
+        expect(source).toContain('remoteTargetResult.sources');
     });
 
     it('uses the shared target grouping utility', () => {
-        expect(source).toContain('buildCrossCloneCherryPickTargetGroups');
+        expect(source).toContain('buildCrossCloneCherryPickTargetGroupsFromSources');
         expect(source).toContain('targetGroups.map');
     });
 
-    it('exports from the source workspace and applies to the selected target workspace', () => {
+    it('exports from the source workspace and applies directly to local target workspaces', () => {
+        expect(source).toContain('selectedTarget.server.local');
         expect(source).toContain('exportCommitPatch(sourceWorkspaceId, commit.hash)');
         expect(source).toContain('applyCommitPatch(selectedTarget.workspace.id');
         expect(source).toContain('patch: exported.patch');
@@ -44,6 +47,20 @@ describe('CrossCloneCherryPickModal', () => {
         expect(source).toContain('sourceWorkspace: exported.sourceWorkspace');
         expect(source).toContain('sourceCommit: exported.sourceCommit');
         expect(source).toContain('normalizedSourceRemoteUrl: exported.normalizedSourceRemoteUrl');
+    });
+
+    it('uses the initiating server orchestrator for remote CoC targets', () => {
+        expect(source).toContain('servers.cherryPickTransfer');
+        expect(source).toContain('serverId: LOCAL_COC_SERVER_ID');
+        expect(source).toContain('serverId: selectedTarget.server.id');
+        expect(source).toContain('setResult(response.result)');
+    });
+
+    it('uses server-aware target keys and labels so duplicate remote workspaces are distinguishable', () => {
+        expect(source).toContain('selectedTargetKey');
+        expect(source).toContain('value={target.key}');
+        expect(source).toContain('{target.server.label}');
+        expect(source).toContain('Server: {selectedTarget.server.label}');
     });
 
     it('requires explicit confirmation for cross-remote targets before applying', () => {

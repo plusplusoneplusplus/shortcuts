@@ -15,6 +15,7 @@ import {
     type ProcessSummariesResponse,
     type QueueReposResponse,
     type RegisterWorkspaceRequest,
+    type RemoteServer,
     type WorkspaceInfo,
     type WorkspaceSummaryResponse,
     type WorkspacesResponse,
@@ -98,6 +99,60 @@ export function getWorkspaceGitInfo(workspaceId: string): Promise<GitInfoRespons
 
 export function getWorkspaceGitInfoBatch(workspaceIds: string[], signal?: AbortSignal): Promise<GitInfoBatchResponse> {
     return getSpaCocClient().workspaces.gitInfoBatch(workspaceIds, { signal });
+}
+
+export interface RemoteWorkspaceTargetSource {
+    server: RemoteServer;
+    workspaces: WorkspaceInfo[];
+    gitInfoResults: Record<string, GitInfoResponse | null>;
+}
+
+export interface RemoteWorkspaceTargetSourcesResult {
+    sources: RemoteWorkspaceTargetSource[];
+    warnings: string[];
+}
+
+export async function listRemoteWorkspaceTargetSources(): Promise<RemoteWorkspaceTargetSourcesResult> {
+    const servers = await getSpaCocClient().servers.list();
+    const results = await Promise.all(servers.map(loadRemoteWorkspaceTargetSource));
+    return {
+        sources: results.flatMap(result => result.source ? [result.source] : []),
+        warnings: results.flatMap(result => result.warning ? [result.warning] : []),
+    };
+}
+
+async function loadRemoteWorkspaceTargetSource(server: RemoteServer): Promise<{ source?: RemoteWorkspaceTargetSource; warning?: string }> {
+    const serverLabel = server.label || server.id;
+    try {
+        const health = await getSpaCocClient().servers.getHealth(server.id);
+        if (health.status !== 'online' || !health.effectiveUrl) {
+            return { warning: `${serverLabel}: ${health.error || 'remote CoC is offline'}` };
+        }
+
+        const remoteClient = new CocClient({
+            baseUrl: health.effectiveUrl,
+            fetch,
+            timeoutMs: 15_000,
+        });
+        const workspaces = normalizeWorkspacesResponse(await remoteClient.workspaces.list());
+        const gitInfoResults = workspaces.length > 0
+            ? (await remoteClient.workspaces.gitInfoBatch(workspaces.map(workspace => workspace.id))).results ?? {}
+            : {};
+
+        return {
+            source: {
+                server: {
+                    ...server,
+                    effectiveUrl: health.effectiveUrl,
+                    status: 'online',
+                },
+                workspaces,
+                gitInfoResults,
+            },
+        };
+    } catch (error) {
+        return { warning: `${serverLabel}: ${getRepositoryApiErrorMessage(error, 'failed to load remote workspaces')}` };
+    }
 }
 
 export function listProcessSummaries(limit = 5000): Promise<ProcessSummariesResponse> {
