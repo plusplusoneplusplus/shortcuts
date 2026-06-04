@@ -223,6 +223,27 @@ describe('groupByRalphSession', () => {
         expect(session.phase).toBe('complete');
     });
 
+    it('session with failed Ralph phase has phase=failed', () => {
+        const failedIter = makeIterationTask('sess-failed', 1, {
+            createdAt: 2000,
+            status: 'failed',
+            payload: {
+                mode: 'ralph',
+                context: {
+                    ralph: {
+                        sessionId: 'sess-failed',
+                        phase: 'failed',
+                        currentIteration: 1,
+                    },
+                },
+            },
+        });
+
+        const result = groupByRalphSession([failedIter]);
+        const session = result[0] as RalphSession;
+        expect(session.phase).toBe('failed');
+    });
+
     it('propagates hasUnseen when session item is in unseenIds', () => {
         const grilling = makeGrillingTask('sess-1', { createdAt: 1000 });
         const iter = makeIterationTask('sess-1', 1, { createdAt: 2000 });

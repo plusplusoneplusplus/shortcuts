@@ -116,6 +116,12 @@ describe('RalphSessionRow', () => {
         expect(screen.getByLabelText('phase: executing')).toBeTruthy();
     });
 
+    it('renders failed phase status dot metadata', () => {
+        render(<RalphSessionRow session={makeSession({ phase: 'failed' })} {...defaultProps} />);
+        expect(screen.getByLabelText('phase: failed')).toBeTruthy();
+        expect(screen.getByTestId('ralph-session-body').getAttribute('data-session-phase')).toBe('failed');
+    });
+
     it('encodes phase via data-session-phase on header', () => {
         render(<RalphSessionRow session={makeSession({ phase: 'complete' })} {...defaultProps} />);
         expect(screen.getByTestId('ralph-session-body').getAttribute('data-session-phase')).toBe('complete');

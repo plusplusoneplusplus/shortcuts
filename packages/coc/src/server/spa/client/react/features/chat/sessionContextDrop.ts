@@ -27,6 +27,7 @@ const RALPH_SESSION_PHASES = new Set<RalphSessionContextPhase>([
     'grilling',
     'executing',
     'complete',
+    'failed',
 ]);
 
 const MAX_TITLE_LENGTH = 160;

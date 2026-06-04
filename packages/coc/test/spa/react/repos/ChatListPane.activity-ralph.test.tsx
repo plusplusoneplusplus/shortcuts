@@ -254,6 +254,44 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
         });
     });
 
+    it('keeps failed Ralph session groups draggable when context attachments are enabled', () => {
+        mockSessionContextAttachmentsEnabled = true;
+        const failed = {
+            ...makeRalphIteration(1),
+            id: 'ralph-failed-1',
+            status: 'failed',
+            payload: {
+                mode: 'ralph',
+                context: {
+                    ralph: {
+                        sessionId: 'ralph-failed-session',
+                        phase: 'failed',
+                        currentIteration: 1,
+                    },
+                },
+            },
+        };
+
+        renderActivity([failed], { workspaceId: 'ws-1' });
+
+        const body = screen.getByTestId('ralph-session-body');
+        expect(body.getAttribute('draggable')).toBe('true');
+        expect(body.getAttribute('data-session-phase')).toBe('failed');
+        expect(body.getAttribute('data-session-context-status')).toBe('failed');
+
+        const dataTransfer = { setData: vi.fn(), effectAllowed: 'move' as DataTransfer['effectAllowed'] };
+        fireEvent.dragStart(body, { dataTransfer });
+        const [, rawPayload] = dataTransfer.setData.mock.calls.find((call: any[]) => call[0] === RALPH_SESSION_CONTEXT_DRAG_MIME)!;
+        const payload = JSON.parse(rawPayload);
+        expect(payload).toMatchObject({
+            sourceWorkspaceId: 'ws-1',
+            sourceRalphSessionId: 'ralph-failed-session',
+            phase: 'failed',
+            status: 'failed',
+            childProcessIds: ['ralph-failed-1'],
+        });
+    });
+
     it('keeps standalone (non-ralph) chats visible alongside the session row', () => {
         const { container } = renderActivity(fixtureFiveIterPlusThreeStandalone());
         expect(container.textContent).toContain('Standalone chat 1');

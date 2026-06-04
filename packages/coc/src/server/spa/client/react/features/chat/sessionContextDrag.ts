@@ -6,7 +6,7 @@ export const RALPH_SESSION_CONTEXT_DRAG_MIME = 'application/vnd.coc.ralph-sessio
 export const RALPH_SESSION_CONTEXT_DRAG_KIND = 'coc.ralph-session-context';
 
 export type SessionContextSourceStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
-export type RalphSessionContextPhase = 'grilling' | 'executing' | 'complete';
+export type RalphSessionContextPhase = 'grilling' | 'executing' | 'complete' | 'failed';
 
 export interface SessionContextDragPayload {
     kind: typeof SESSION_CONTEXT_DRAG_KIND;
@@ -61,6 +61,7 @@ const RALPH_SESSION_PHASES = new Set<RalphSessionContextPhase>([
     'grilling',
     'executing',
     'complete',
+    'failed',
 ]);
 
 const MAX_TITLE_LENGTH = 160;
@@ -190,6 +191,7 @@ function resolveRalphStatus(source: any, children: any[]): SessionContextSourceS
     if (childStatuses.includes('running')) return 'running';
     if (childStatuses.includes('queued')) return 'queued';
     if (childStatuses.includes('cancelled')) return 'cancelled';
+    if (source?.phase === 'failed') return 'failed';
     if (source?.phase === 'complete') return 'completed';
     if (source?.phase === 'executing' || source?.phase === 'grilling') return 'running';
     return childStatuses[0] ?? null;

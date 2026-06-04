@@ -164,6 +164,26 @@ describe('sessionContextDrag', () => {
         expect(payload?.lastActivityAt).toBe('2026-01-01T13:00:00.000Z');
     });
 
+    it('builds a payload for failed Ralph session groups', () => {
+        const payload = createRalphSessionContextDragPayload({
+            sessionId: 'ralph-session-failed',
+            phase: 'failed',
+            latestTimestamp: '2026-01-01T00:00:00Z',
+            iterations: [
+                { id: 'iter-1', workspaceId: 'ws-1', status: 'failed' },
+            ],
+        }, { activeWorkspaceId: 'ws-1' });
+
+        expect(payload).toMatchObject({
+            sourceRalphSessionId: 'ralph-session-failed',
+            phase: 'failed',
+            status: 'failed',
+            childProcessIds: ['iter-1'],
+            processCount: 1,
+            iterationCount: 1,
+        });
+    });
+
     it.each([
         ['missing session id', { phase: 'executing', latestTimestamp: '2026-01-01T00:00:00Z', iterations: [{ id: 'iter-1', status: 'running' }] }],
         ['missing child process ids', { sessionId: 'ralph-session-1', phase: 'executing', latestTimestamp: '2026-01-01T00:00:00Z', iterations: [] }],

@@ -49,12 +49,14 @@ const PHASE_DOT_CLASSES: Record<RalphSession['phase'], string> = {
     grilling: 'bg-amber-500',
     executing: 'bg-[#0078d4] dark:bg-[#3794ff] animate-pulse shadow-[0_0_0_3px_rgba(0,120,212,0.22)]',
     complete: 'bg-[#bbbbbb] dark:bg-[#5c5c5c]',
+    failed: 'bg-[#e5534b] dark:bg-[#f85149]',
 };
 
 const PHASE_DOT_LABEL: Record<RalphSession['phase'], string> = {
     grilling: 'clarifying',
     executing: 'executing',
     complete: 'done',
+    failed: 'failed',
 };
 
 export function RalphSessionRow({

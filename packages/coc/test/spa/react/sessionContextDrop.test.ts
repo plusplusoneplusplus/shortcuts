@@ -131,6 +131,13 @@ describe('sessionContextDrop', () => {
         expect(readSessionContextDragPayload(dataTransfer)).toBeNull();
     });
 
+    it('reads valid failed Ralph session group drag payloads', () => {
+        const payload = makeRalphPayload({ phase: 'failed', status: 'failed' });
+        const dataTransfer = makeDataTransfer(payload, RALPH_SESSION_CONTEXT_DRAG_MIME);
+
+        expect(readSessionContextDropPayload(dataTransfer)).toEqual(payload);
+    });
+
     it('rejects malformed Ralph session group drag payloads', () => {
         expect(readSessionContextDropPayload(makeDataTransfer({
             ...makeRalphPayload(),
