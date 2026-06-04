@@ -395,6 +395,82 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
         },
     }));
 
+    // POST /api/workspaces/:id/git/patch/apply — Apply a format-patch payload to the target workspace
+    routes.push(createRoute({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/patch\/apply$/,
+        handler: async ({ match, res, req }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
+            if (!ws) return;
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+
+            const patchFormat = body.patch?.format;
+            const patchBody = typeof body.patch?.body === 'string' ? body.patch.body : undefined;
+            if (patchFormat !== 'format-patch' || !patchBody || !patchBody.trim()) {
+                return void handleAPIError(res, badRequest('Missing or invalid format-patch payload'));
+            }
+
+            const repoState = branchService.getRepoState(ws.rootPath);
+            if (repoState.operation !== 'none') {
+                sendJSON(res, 409, {
+                    error: `Target workspace already has a ${repoState.gitOperation ?? repoState.operation} operation in progress`,
+                    operation: repoState.operation,
+                    gitOperation: repoState.gitOperation,
+                    conflictFiles: repoState.conflictFiles,
+                });
+                return;
+            }
+
+            const hasUncommittedChanges = await branchService.hasUncommittedChanges(ws.rootPath);
+            const branchStatus = await branchService.getBranchStatus(ws.rootPath, hasUncommittedChanges);
+            if (!branchStatus) return void handleAPIError(res, badRequest('Target workspace is not a usable git repository'));
+            if (branchStatus.isDetached) {
+                sendJSON(res, 409, {
+                    error: 'Target workspace is in detached HEAD state',
+                    targetBranch: null,
+                    detachedHash: branchStatus.detachedHash,
+                });
+                return;
+            }
+
+            const result = await branchService.applyCommitPatch(ws.rootPath, patchBody, {
+                stashAndContinue: body.stashAndContinue === true,
+                stashMessage: 'CoC patch-transfer cherry-pick',
+            });
+            if (result.success) {
+                gitCache.invalidateMutable(ws.id);
+                getWsServer?.()?.broadcastGitChanged(ws.id, 'patch-apply');
+                return {
+                    success: true,
+                    targetWorkspace: { id: ws.id, name: ws.name },
+                    targetBranch: branchStatus.name,
+                    targetHead: result.headHash,
+                    newCommitHash: result.headHash,
+                    stashed: result.stashed === true,
+                };
+            }
+            if (result.dirty) {
+                sendJSON(res, 409, {
+                    error: result.message,
+                    dirty: true,
+                    stashed: result.stashed === true,
+                });
+                return;
+            }
+            if (result.conflicts) {
+                sendJSON(res, 409, {
+                    error: result.message,
+                    conflicts: true,
+                    stashed: result.stashed === true,
+                    gitState: result.gitState,
+                });
+                return;
+            }
+            throw badRequest('Patch apply failed: ' + result.message);
+        },
+    }));
+
     // POST /api/workspaces/:id/git/amend — Amend the HEAD commit message
     routes.push(createRoute({
         method: 'POST',

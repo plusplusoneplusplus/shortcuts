@@ -272,12 +272,29 @@ export type GitPatchExportResult =
     | ({ success: true } & GitPatchExportPayload)
     | { success: false; error: string };
 
+export interface GitPatchApplyOptions {
+    stashAndContinue?: boolean;
+    stashMessage?: string;
+}
+
+export interface GitPatchApplyResult {
+    success: boolean;
+    conflicts: boolean;
+    message: string;
+    headHash?: string;
+    dirty?: boolean;
+    stashed?: boolean;
+    gitState?: RepoState;
+}
+
 /**
  * Current state of the repository (merge/rebase/cherry-pick in progress).
  */
 export type RepoOperationType = 'none' | 'merge' | 'rebase' | 'cherry-pick';
+export type GitOperationInProgress = RepoOperationType | 'am';
 
 export interface RepoState {
     operation: RepoOperationType;
     conflictFiles: string[];
+    gitOperation?: GitOperationInProgress;
 }

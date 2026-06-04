@@ -55,6 +55,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 |--------|------|-------------|
 | POST | `/api/git/clone` | Clone an arbitrary git URL into a parent directory using the server process's git credentials; returns `clonedPath` on success and `{ error }` on clone failure |
 | POST | `/api/workspaces/:id/git/patch/export` | Export one commit from a registered workspace as a format-patch payload for cross-clone cherry-pick flows. Body `{ hash }`; response includes source workspace metadata, source commit metadata, normalized source remote URL, and `{ format: 'format-patch', body }` without source root paths or raw remote credentials |
+| POST | `/api/workspaces/:id/git/patch/apply` | Apply a format-patch payload to the target workspace with `git am --3way`. Body `{ patch: { format: 'format-patch', body }, stashAndContinue? }`; dirty targets return `409 { dirty: true }` unless `stashAndContinue` is explicitly true, conflicts return `409 { conflicts: true }`, and clean applies return the target branch plus new target HEAD/commit hash |
 
 ## Processes
 

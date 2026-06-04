@@ -24,6 +24,8 @@ import {
     BranchListOptions,
     PaginatedBranchResult,
     GitOperationResult,
+    GitPatchApplyOptions,
+    GitPatchApplyResult,
     GitPatchExportResult,
     RepoState,
 } from './types';
@@ -102,6 +104,18 @@ export class BranchService {
             },
         });
         return stdout;
+    }
+
+    private quoteShellArg(value: string): string {
+        if (process.platform === 'win32') {
+            return `"${value.replace(/"/g, '\\"')}"`;
+        }
+        return `'${value.replace(/'/g, `'\\''`)}'`;
+    }
+
+    private getResolvedGitDir(repoRoot: string): string {
+        const gitDir = this.execGitSync('git rev-parse --git-dir', { cwd: repoRoot }).trim();
+        return path.isAbsolute(gitDir) ? gitDir : path.join(repoRoot, gitDir);
     }
 
     /**
@@ -789,6 +803,89 @@ export class BranchService {
     }
 
     /**
+     * Apply a format-patch payload with git am --3way.
+     */
+    async applyCommitPatch(repoRoot: string, patchBody: string, options: GitPatchApplyOptions = {}): Promise<GitPatchApplyResult> {
+        if (!patchBody || !patchBody.trim()) {
+            return { success: false, conflicts: false, message: 'Patch body must not be empty' };
+        }
+
+        const repoState = this.getRepoState(repoRoot);
+        if (repoState.operation !== 'none') {
+            return {
+                success: false,
+                conflicts: false,
+                message: `Repository already has a ${repoState.gitOperation ?? repoState.operation} operation in progress`,
+                gitState: repoState,
+            };
+        }
+
+        let stashed = false;
+        let tmpDir: string | undefined;
+        try {
+            if (await this.hasUncommittedChanges(repoRoot)) {
+                if (!options.stashAndContinue) {
+                    return {
+                        success: false,
+                        conflicts: false,
+                        dirty: true,
+                        stashed: false,
+                        message: 'Target workspace has uncommitted changes. Choose stash and continue to proceed explicitly.',
+                    };
+                }
+                const stashMessage = options.stashMessage ?? 'CoC patch-transfer cherry-pick';
+                await this.execGit(`git stash push -u -m ${this.quoteShellArg(stashMessage)}`, { cwd: repoRoot });
+                stashed = true;
+            }
+
+            const gitDir = this.getResolvedGitDir(repoRoot);
+            tmpDir = fs.mkdtempSync(path.join(gitDir, 'tmp-patch-apply-'));
+            const patchPath = path.join(tmpDir, 'commit.patch');
+            fs.writeFileSync(patchPath, patchBody.endsWith('\n') ? patchBody : `${patchBody}\n`, 'utf-8');
+
+            await this.execGit(`git am --3way ${this.quoteShellArg(patchPath)}`, {
+                cwd: repoRoot,
+                timeout: 600000,
+                env: { GIT_EDITOR: 'true' },
+            });
+            const headHash = this.execGitSync('git rev-parse HEAD', { cwd: repoRoot }).trim();
+            return {
+                success: true,
+                conflicts: false,
+                message: 'Patch applied successfully',
+                headHash,
+                stashed,
+            };
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            const gitState = this.getRepoState(repoRoot);
+            const isConflict = gitState.gitOperation === 'am'
+                || /CONFLICT|conflict|Patch failed|patch does not apply|git am --continue|Resolve all conflicts/i.test(errorMessage);
+            if (isConflict) {
+                return {
+                    success: false,
+                    conflicts: true,
+                    message: errorMessage,
+                    stashed,
+                    gitState,
+                };
+            }
+            getLogger().error('Git', 'Failed to apply patch', error instanceof Error ? error : undefined);
+            return {
+                success: false,
+                conflicts: false,
+                message: errorMessage,
+                stashed,
+                gitState,
+            };
+        } finally {
+            if (tmpDir) {
+                try { fs.rmSync(tmpDir, { recursive: true }); } catch { /* best effort */ }
+            }
+        }
+    }
+
+    /**
      * Pop the most recent stash.
      */
     async popStash(repoRoot: string): Promise<GitOperationResult> {
@@ -846,14 +943,20 @@ export class BranchService {
      */
     getRepoState(repoRoot: string): RepoState {
         try {
-            // Resolve .git dir (handles worktrees where .git is a file pointing elsewhere)
-            const gitDir = this.execGitSync('git rev-parse --git-dir', { cwd: repoRoot }).trim();
-            const resolvedGitDir = path.isAbsolute(gitDir) ? gitDir : path.join(repoRoot, gitDir);
+            const resolvedGitDir = this.getResolvedGitDir(repoRoot);
 
             let operation: RepoState['operation'] = 'none';
-            if (fs.existsSync(path.join(resolvedGitDir, 'rebase-merge')) ||
-                fs.existsSync(path.join(resolvedGitDir, 'rebase-apply'))) {
+            let gitOperation: RepoState['gitOperation'];
+            const rebaseApplyDir = path.join(resolvedGitDir, 'rebase-apply');
+            if (fs.existsSync(path.join(resolvedGitDir, 'rebase-merge'))) {
                 operation = 'rebase';
+            } else if (fs.existsSync(rebaseApplyDir)) {
+                if (fs.existsSync(path.join(rebaseApplyDir, 'applying'))) {
+                    operation = 'cherry-pick';
+                    gitOperation = 'am';
+                } else {
+                    operation = 'rebase';
+                }
             } else if (fs.existsSync(path.join(resolvedGitDir, 'MERGE_HEAD'))) {
                 operation = 'merge';
             } else if (fs.existsSync(path.join(resolvedGitDir, 'CHERRY_PICK_HEAD'))) {
@@ -870,7 +973,7 @@ export class BranchService {
                 }
             }
 
-            return { operation, conflictFiles };
+            return gitOperation ? { operation, gitOperation, conflictFiles } : { operation, conflictFiles };
         } catch {
             return { operation: 'none', conflictFiles: [] };
         }

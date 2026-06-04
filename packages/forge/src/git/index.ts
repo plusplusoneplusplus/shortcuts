@@ -22,7 +22,10 @@ export {
     GitOperationResult,
     GitPatchExportPayload,
     GitPatchExportResult,
+    GitPatchApplyOptions,
+    GitPatchApplyResult,
     RepoOperationType,
+    GitOperationInProgress,
     RepoState,
 } from './types';
 
