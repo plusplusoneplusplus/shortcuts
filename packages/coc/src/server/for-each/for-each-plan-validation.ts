@@ -117,4 +117,3 @@ export function assertDraftInitialStatuses(items: ForEachItem[]): void {
         throw new Error(`Generated For Each item '${nonPending.id}' must have initial status 'pending'`);
     }
 }
-
