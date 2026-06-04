@@ -558,7 +558,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     return (
         <div className="flex flex-col h-full" data-testid="work-item-detail">
             {/* ── Detail header ── */}
-            <div className="border-b border-[#d0d7de] dark:border-[#474749] px-4 py-3 bg-white dark:bg-[#1e1e1e] grid gap-2 shrink-0">
+            <div className="border-b border-[#d0d7de] dark:border-[#474749] bg-white dark:bg-[#1e1e1e] grid gap-2 shrink-0" style={{ padding: '12px 16px' }}>
                 {/* Breadcrumbs */}
                 <div className="flex items-center gap-1.5 text-[12px] text-[#656d76] dark:text-[#999] min-w-0" id="crumbs">
                     {onBack && (
@@ -578,8 +578,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     )}
                 </div>
 
-                {/* Title row with Save button */}
-                <div className="grid gap-2 items-start" style={{ gridTemplateColumns: 'minmax(0, 1fr) auto' }}>
+                {/* Title row with Save + Run */}
+                <div className="grid gap-2 items-start" style={{ gridTemplateColumns: 'minmax(0, 1fr) auto auto' }}>
                     <input
                         type="text"
                         className="w-full border border-[#d0d7de] dark:border-[#555] rounded-md bg-white dark:bg-[#1e1e1e] text-[#1f2328] dark:text-[#cccccc] px-2 py-[5px] text-[18px] leading-[1.25] font-semibold tracking-[-0.01em] outline-none focus:border-[#0969da] focus:shadow-[0_0_0_3px_rgba(9,105,218,0.16)]"
@@ -599,10 +599,21 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     >
                         Save
                     </button>
+                    {!isContainer && (
+                        <button
+                            className="inline-flex items-center justify-center gap-[5px] min-h-7 border border-[#0969da] rounded-md bg-[#0969da] text-white px-2 text-[12px] font-semibold tracking-[0.02em] whitespace-nowrap hover:bg-[#0550ae] disabled:opacity-50"
+                            onClick={() => setShowExecuteDialog(true)}
+                            disabled={!canExecute}
+                            data-testid="work-item-execute-btn"
+                            type="button"
+                        >
+                            Run
+                        </button>
+                    )}
                 </div>
 
                 {/* Meta grid */}
-                <div className="flex flex-wrap items-center gap-1.5">
+                <div className="grid items-center gap-1.5" style={{ gridTemplateColumns: 'repeat(5, minmax(0, auto)) minmax(100px, 1fr)' }}>
                     <span className={cn('inline-flex items-center rounded-full text-[11px] leading-[1.25] px-[7px] py-px border whitespace-nowrap', typePillClass)}>
                         {TYPE_LABELS[effectiveType as WorkItemTypeLabel] ?? effectiveType}
                     </span>
@@ -634,23 +645,12 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     <span className="inline-flex items-center rounded-full h-6 px-2 border border-[#d0d7de] dark:border-[#555] bg-[#f6f8fa] dark:bg-transparent text-[11px] text-[#656d76] dark:text-[#999] whitespace-nowrap">
                         {d.priority}
                     </span>
-                    <span className="text-[11px] leading-[1.35] text-[#656d76] dark:text-[#999] truncate">
+                    <span className="text-[11px] leading-[1.35] text-[#656d76] dark:text-[#999] truncate min-w-0">
                         Updated {formatRelativeTime(item.updatedAt)}
                     </span>
                 </div>
                 {/* Action row */}
                 <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                    {!isContainer && (
-                        <button
-                            className="inline-flex items-center justify-center gap-[5px] min-h-7 border border-[#0969da] rounded-md bg-[#0969da] text-white px-2 text-[12px] font-semibold tracking-[0.02em] whitespace-nowrap hover:bg-[#0550ae] disabled:opacity-50"
-                            onClick={() => setShowExecuteDialog(true)}
-                            disabled={!canExecute}
-                            data-testid="work-item-execute-btn"
-                            type="button"
-                        >
-                            Run
-                        </button>
-                    )}
                     {isMobile && isContainer && (
                         <Button
                             variant="ghost"
@@ -730,8 +730,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
             </div>
 
             {/* ── Body ── */}
-            <div className="flex-1 overflow-y-auto min-h-0">
-                <div className="grid gap-3 px-4 py-3 items-start" style={{ gridTemplateColumns: 'minmax(0, 1fr)' }}>
+            <div className="flex-1 overflow-y-auto min-h-0 bg-white dark:bg-[#1e1e1e]">
+                <div className="grid gap-3 items-start" style={{ gridTemplateColumns: 'minmax(0, 1fr)', padding: '12px 16px 18px' }}>
                 {error && (
                     <div className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 rounded p-2 flex items-start justify-between gap-2">
                         <span>{error}</span>
@@ -746,10 +746,10 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
 
                 {/* Description */}
                 <article className="border border-[#d0d7de] dark:border-[#474749] rounded-md overflow-hidden">
-                    <div className="min-h-[34px] px-2.5 py-[7px] border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] flex items-center justify-between gap-2">
+                    <div className="min-h-[34px] px-[10px] py-[7px] border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] flex items-center justify-between gap-2">
                         <h3 className="text-[13px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc] m-0">Description</h3>
                     </div>
-                    <div className="p-2.5">
+                    <div className="p-[10px]">
                         <WorkItemDescriptionEditor
                             value={d.description}
                             onChange={v => updateDraft('description', v)}
@@ -762,12 +762,12 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                 {/* Plan — leaf items only */}
                 {!isContainer && (
                 <article className="border border-[#d0d7de] dark:border-[#474749] rounded-md overflow-hidden">
-                    <div className="min-h-[34px] px-2.5 py-[7px] border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] flex items-center justify-between gap-2">
+                    <div className="min-h-[34px] px-[10px] py-[7px] border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] flex items-center justify-between gap-2">
                         <h3 className="text-[13px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc] m-0">
                             Plan {item.plan ? `v${item.plan.version}` : ''}
                         </h3>
                     </div>
-                    <div className="p-2.5">
+                    <div className="p-[10px]">
                         <WorkItemPlanSection
                             workspaceId={workspaceId}
                             workItemId={workItemId}
@@ -786,10 +786,10 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                 {/* Success Criteria — goal items only */}
                 {effectiveType === 'goal' && (
                     <article className="border border-[#d0d7de] dark:border-[#474749] rounded-md overflow-hidden" data-testid="wi-success-criteria">
-                        <div className="min-h-[34px] px-2.5 py-[7px] border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] flex items-center">
+                        <div className="min-h-[34px] px-[10px] py-[7px] border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] flex items-center">
                             <h3 className="text-[13px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc] m-0">Success Criteria</h3>
                         </div>
-                        <div className="p-2.5">
+                        <div className="p-[10px]">
                             <textarea
                                 className="w-full min-h-[96px] resize-y border border-[#d0d7de] dark:border-[#555] rounded-md p-2 text-[13px] leading-[1.45] text-[#1f2328] dark:text-[#cccccc] bg-white dark:bg-[#1e1e1e] outline-none focus:border-[#0969da] focus:shadow-[0_0_0_3px_rgba(9,105,218,0.16)]"
                                 value={d.successCriteria}
@@ -805,10 +805,11 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
 
                 {/* Compact Metadata panel */}
                 <article className="border border-[#d0d7de] dark:border-[#474749] rounded-md overflow-hidden">
-                    <div className="min-h-[34px] px-2.5 py-[7px] border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] flex items-center justify-between gap-2">
+                    <div className="min-h-[34px] px-[10px] py-[7px] border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] flex items-center justify-between gap-2">
                         <h3 className="text-[13px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc] m-0">Compact Metadata</h3>
+                        <span className="text-[11px] text-[#656d76] dark:text-[#999]">above fold</span>
                     </div>
-                    <div className="p-2.5">
+                    <div className="p-[10px]">
                         <ul className="m-0 p-0 list-none grid">
                             {/* Parent */}
                             {hierarchyEnabled && effectiveType !== 'epic' ? (
@@ -1015,10 +1016,10 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                 {/* Execution history */}
                 {!isContainer && ((item.executionHistory && item.executionHistory.length > 0) || (item.changes && item.changes.some(c => !c.taskId || !item.executionHistory?.some(e => e.taskId === c.taskId)))) && (
                     <article className="border border-[#d0d7de] dark:border-[#474749] rounded-md overflow-hidden">
-                        <div className="min-h-[34px] px-2.5 py-[7px] border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] flex items-center justify-between gap-2">
+                        <div className="min-h-[34px] px-[10px] py-[7px] border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] flex items-center justify-between gap-2">
                             <h3 className="text-[13px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc] m-0">Execution History</h3>
                         </div>
-                        <div className="p-2.5 space-y-2">
+                        <div className="p-[10px] space-y-2">
                             {item.executionHistory?.map((exec, i) => {
                                 const matchingChange = item.changes?.find(c => c.taskId === exec.taskId);
                                 const commits = matchingChange?.commits ?? [];
