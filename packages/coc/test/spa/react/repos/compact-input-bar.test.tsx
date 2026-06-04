@@ -63,6 +63,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getDefaultProvider: () => 'copilot',
     getActiveProvider: () => 'copilot',
     isEffortLevelsEnabled: () => false,
+    isSessionContextAttachmentsEnabled: () => false,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useProviderEffortTiers', () => ({

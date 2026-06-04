@@ -269,7 +269,7 @@ describe('ChatDetail', () => {
         it('dismisses slash menu on send', () => {
             const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
                 USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
-                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 1800,
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 3000,
             );
             expect(sendBlock).toContain('slashCommands.dismissMenu()');
         });

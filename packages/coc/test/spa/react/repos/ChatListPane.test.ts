@@ -141,7 +141,7 @@ describe('ChatListPane pinned chats', () => {
             // the old Card-based layout used. The tooltip text is derived inside the row
             // renderer (it may be augmented when the task is awaiting user input) so the
             // test asserts both the binding and the underlying source of the text.
-            expect(source).toMatch(/title=\{(?:titleText|rowTitle)\}/);
+            expect(source).toContain('title={sessionContextPayload ? `${rowTitle} — drag to attach as session context` : rowTitle}');
             expect(source).toContain('const rowTitle = ');
             expect(source).toContain('titleText');
         });

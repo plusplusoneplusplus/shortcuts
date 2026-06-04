@@ -53,6 +53,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isLoopsEnabled: () => false,
     getDefaultProvider: () => mockDefaultProvider,
     isEffortLevelsEnabled: () => mockEffortLevelsEnabled,
+    isSessionContextAttachmentsEnabled: () => false,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -619,4 +620,3 @@ describe('NewChatArea – Effort Tier selector', () => {
         expect(lowOption.getAttribute('data-configured')).toBe('false');
     });
 });
-

@@ -51,6 +51,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isLoopsEnabled: () => false,
     getDefaultProvider: () => mockDefaultProvider,
     isEffortLevelsEnabled: () => false,
+    isSessionContextAttachmentsEnabled: () => false,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({

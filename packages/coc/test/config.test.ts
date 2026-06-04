@@ -850,6 +850,7 @@ timeout: 300
                 '  autoMemoryPromotion: true',
                 '  focusedDiff: true',
                 '  gitCrossCloneCherryPick: true',
+                '  sessionContextAttachments: true',
                 'memoryPromotion:',
                 '  batchSize: 25',
                 '  timeoutMs: 80000',
@@ -1006,6 +1007,7 @@ timeout: 300
                     "focusedDiff": true,
                     "gitCommitLookup": false,
                     "gitCrossCloneCherryPick": false,
+                    "sessionContextAttachments": false,
                   },
                   "groupSingleLineMessages": false,
                   "logging": {
@@ -1144,6 +1146,7 @@ timeout: 300
                   "features.autoMemoryPromotion": "file",
                   "features.focusedDiff": "file",
                   "features.gitCrossCloneCherryPick": "default",
+                  "features.sessionContextAttachments": "default",
                   "groupSingleLineMessages": "file",
                   "loops.enabled": "file",
                   "mcpConfig": "file",
