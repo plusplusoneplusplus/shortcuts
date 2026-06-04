@@ -336,6 +336,7 @@ Response shape: `{ kind: 'clarification', questions: string[], clarificationCoun
 | POST | `/api/servers/:id/test` | Test connection |
 | POST | `/api/servers/:id/connect` | Connect (DevTunnel) |
 | POST | `/api/servers/:id/disconnect` | Disconnect |
+| POST | `/api/servers/cherry-pick-transfer` | Orchestrate a patch-transfer cherry-pick through the initiating CoC server. Body `{ source: { serverId?, workspaceId, commitHash }, target: { serverId?, workspaceId, stashAndContinue? } }`; omitted/`local` `serverId` means the current CoC, otherwise the id must be an online registered remote server. The route composes the existing workspace git patch export/apply endpoints, propagates dirty/conflict response fields, and returns source/target server/workspace metadata without effective URLs or local paths. |
 
 ## Sync
 

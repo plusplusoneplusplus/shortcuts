@@ -147,6 +147,7 @@ export interface RegisterRoutesOptions {
     remoteServerStore?: RemoteServerStore;
     remoteServerConnector?: DevTunnelConnector;
     remoteServerSshConnector?: SshConnector;
+    getLocalBaseUrl?: () => string | undefined;
     loopStore?: LoopStore;
     loopExecutor?: LoopExecutor;
     mcpOauthManager?: McpOauthManager;
@@ -195,6 +196,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         store: opts.remoteServerStore ?? new RemoteServerStore(dataDir),
         connector: opts.remoteServerConnector ?? new DevTunnelConnector(),
         sshConnector: opts.remoteServerSshConnector,
+        getLocalBaseUrl: opts.getLocalBaseUrl,
     });
     registerProviderRoutes(routes, dataDir);
     // Provider SDK install routes (on-demand install of @openai/codex-sdk and @anthropic-ai/claude-agent-sdk).

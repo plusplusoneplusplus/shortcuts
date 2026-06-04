@@ -1,4 +1,6 @@
 import type {
+  CherryPickTransferRequest,
+  CherryPickTransferResponse,
   RemoteServer,
   RemoteServerHealth,
   RemoteServerInput,
@@ -53,5 +55,12 @@ export class ServersClient {
 
   getHealth(id: string): Promise<RemoteServerHealth> {
     return this.transport.request<RemoteServerHealth>(serverPath(id, '/health'));
+  }
+
+  cherryPickTransfer(request: CherryPickTransferRequest): Promise<CherryPickTransferResponse> {
+    return this.transport.request<CherryPickTransferResponse>('/servers/cherry-pick-transfer', {
+      method: 'POST',
+      body: { ...request },
+    });
   }
 }

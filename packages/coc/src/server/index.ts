@@ -61,6 +61,12 @@ import { registerContainerLinkRoutes } from './container-link/container-link-rou
 // Close Handler Builder
 // ============================================================================
 
+function formatLocalBaseUrl(host: string, port: number): string {
+    const hostForUrl = host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host;
+    const needsBrackets = hostForUrl.includes(':') && !hostForUrl.startsWith('[');
+    return `http://${needsBrackets ? `[${hostForUrl}]` : hostForUrl}:${port}`;
+}
+
 interface CloseHandlerDeps {
     staleDetector: { dispose(): void };
     outputPruner: { stopListening(): void };
@@ -490,6 +496,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         }));
     }
 
+    let localBaseUrl = formatLocalBaseUrl(host, port);
     const routes: Route[] = [];
     const { wikiManager, workItemGitHubPullPoller } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
@@ -506,6 +513,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         remoteServerStore,
         remoteServerConnector,
         remoteServerSshConnector,
+        getLocalBaseUrl: () => localBaseUrl,
         loopStore: loopInfra?.loopStore,
         loopExecutor: loopInfra?.loopExecutor,
         mcpOauthManager: mcpOauthInfra?.manager,
@@ -665,6 +673,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     const address = server.address();
     const actualPort = typeof address === 'object' && address ? address.port : port;
+    localBaseUrl = formatLocalBaseUrl(host, actualPort);
     const displayHost = host === '0.0.0.0' || host === '::' || host === '127.0.0.1' ? 'localhost' : host;
     const url = `http://${displayHost}:${actualPort}`;
 

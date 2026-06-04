@@ -1,3 +1,10 @@
+import type {
+  GitOpCommitMetadata,
+  GitOpServerMetadata,
+  GitOpWorkspaceMetadata,
+  GitPatchApplyResponse,
+} from './git';
+
 export type RemoteServerKind = 'url' | 'devtunnel' | 'ssh';
 export type RemoteServerRuntimeStatus = 'idle' | 'connecting' | 'online' | 'offline' | 'failed';
 
@@ -70,4 +77,35 @@ export interface RemoteServerRuntime {
   publicUrl?: string;
   lastChecked?: number;
   lastError?: string;
+}
+
+export interface CherryPickTransferEndpoint {
+  serverId?: string | null;
+  workspaceId: string;
+}
+
+export interface CherryPickTransferRequest {
+  source: CherryPickTransferEndpoint & {
+    commitHash: string;
+  };
+  target: CherryPickTransferEndpoint & {
+    stashAndContinue?: boolean;
+  };
+}
+
+export interface CherryPickTransferResponse {
+  success: true;
+  source: {
+    server: GitOpServerMetadata;
+    workspace: GitOpWorkspaceMetadata;
+    commit: GitOpCommitMetadata;
+    normalizedRemoteUrl: string | null;
+  };
+  target: {
+    server: GitOpServerMetadata;
+    workspace: GitOpWorkspaceMetadata;
+    branch: string | null;
+    head?: string;
+  };
+  result: GitPatchApplyResponse;
 }
