@@ -4,23 +4,13 @@ import { applyFollowUpToTask } from '../shared/queue-utils';
 import { processToQueuedTask } from '../shared/process-history-mapper';
 import type { Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
 import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, sdkServiceRegistry, SDK_PROVIDER_COPILOT, getLogger, LogCategory, normalizeExecutionPath, resolveModelForProvider, resolveWorkspaceExecutionContext, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
-import { decideRalphIterationActions } from '@plusplusoneplusplus/coc-workflow/ralph';
 import { BaseExecutor } from '../executors/base-executor';
 import { resolveSkillConfig } from '../executors/skill-config-resolver';
 import { TitleGenerationService } from '../executors/title-generator';
 import { ExecutorRegistry } from '../executors/executor-registry';
-import { recordRalphIteration } from '../ralph/record-iteration';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
-import {
-    buildFinalCheckTaskPayload,
-    buildFinalCheckStartRecord,
-    nextCheckIndex,
-    sessionHasFinalCheckFor,
-    wasFinalCheckEnqueued,
-    markFinalCheckEnqueued,
-} from '../ralph/enqueue-final-check';
+import { orchestrateRalphIteration } from '../ralph/orchestrate-iteration';
 import { orchestrateFinalCheck } from '../ralph/orchestrate-final-check';
-import { buildRalphIterationTask } from '../ralph/enqueue-iteration';
 import { loadConfigFile, DEFAULT_CONFIG } from '../../config';
 
 export const DEFAULT_FOLLOW_UP_SUGGESTIONS = { enabled: true, count: 3 } as const;
@@ -149,32 +139,30 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
 
     /**
      * Called by ProcessLifecycleRunner after a ralph-mode task completes.
-     * Parses RALPH_NEXT/RALPH_COMPLETE signal, writes the iteration's
-     * progress section to the per-session journal (`progress.md` +
-     * `session.json`), and either enqueues the next iteration or emits a
-     * ralph-session-complete WS event.
+     * Delegates to orchestrateRalphIteration (ralph/orchestrate-iteration.ts)
+     * which applies the portable action intents from decideRalphIterationActions.
      *
      * When the completed task is a final-check task (context.ralph.finalCheck
      * is set), routes to handleFinalCheckCompletion instead.
      */
     private async enqueueRalphNextIteration(processId: string, completedTask: QueuedTask, responseText: string): Promise<void> {
         if (!this.queueManager) return;
-        const logger = getLogger();
 
         const payload = completedTask.payload as unknown as ChatPayload;
         const ralphCtx = payload.context?.ralph;
         const workspaceId = payload.workspaceId;
         const sessionId = ralphCtx?.sessionId;
 
-        // ── Route final-check completions separately (AC-01) ────────────────
+        // ── Route final-check completions separately ─────────────────────────
         if (ralphCtx?.finalCheck) {
             await this.handleFinalCheckCompletion(processId, completedTask, responseText, ralphCtx, workspaceId, sessionId);
             return;
         }
 
-        const decision = decideRalphIterationActions({
+        const qm = this.queueManager;
+        await orchestrateRalphIteration({
             responseText,
-            taskId: completedTask.id,
+            completedTaskId: completedTask.id,
             processId,
             workspaceId,
             sessionId,
@@ -183,102 +171,22 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             maxIterations: ralphCtx?.maxIterations,
             iterationStartMs: completedTask.startedAt,
             adapterContext: getScheduleRunContext(payload.context),
+            ralphCtx: ralphCtx as Record<string, unknown> | undefined,
+            deps: {
+                dataDir: this.dataDir,
+                enqueueTask: (t) => qm.enqueue(t as any),
+                broadcastSessionComplete: (params) => this.broadcastRalphSessionComplete(
+                    params.workspaceId, params.sessionId, params.processId,
+                    params.totalIterations, params.reason,
+                ),
+                workingDirectory: payload.workingDirectory,
+                folderPath: (payload as any).folderPath,
+                provider: (payload as any).provider,
+                repoId: completedTask.repoId,
+                existingPayloadContext: payload.context as Record<string, unknown>,
+                existingTaskConfig: completedTask.config as Record<string, unknown>,
+            },
         });
-
-        for (const action of decision.actions) {
-            switch (action.type) {
-                case 'recordIteration':
-                    // Persist before enqueueing follow-on tasks so session observers see
-                    // the current iteration state; failures are logged and the loop continues.
-                    await recordRalphIteration({
-                        dataDir: this.dataDir,
-                        workspaceId: action.workspaceId,
-                        sessionId: action.sessionId,
-                        iteration: action.iteration,
-                        maxIterations: action.maxIterations,
-                        signal: action.signal,
-                        progressBody: action.progressBody,
-                        taskId: action.taskId,
-                        processId: action.processId,
-                        shouldContinue: action.shouldContinue,
-                        originalGoal: action.originalGoal,
-                        iterationStartMs: action.iterationStartMs,
-                    }).catch(err => {
-                        logger.debug(LogCategory.AI, `[Ralph] journal persist failed for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
-                    });
-                    break;
-
-                case 'enqueueNextIteration': {
-                    const effectiveSessionId = action.sessionId ?? action.continuationOfSessionId;
-                    logger.debug(LogCategory.AI, `[Ralph] Enqueuing iteration ${action.iteration}/${action.maxIterations} for session ${effectiveSessionId}`);
-                    try {
-                        const nextTask = buildRalphIterationTask({
-                            workspaceId: action.workspaceId,
-                            workingDirectory: payload.workingDirectory,
-                            folderPath: payload.folderPath,
-                            sessionId: effectiveSessionId,
-                            originalGoal: action.originalGoal,
-                            iteration: action.iteration,
-                            maxIterations: action.maxIterations,
-                            dataDir: this.dataDir,
-                            provider: payload.provider,
-                            continuationOfSessionId: action.continuationOfSessionId,
-                            displayName: action.displayName,
-                            extraContext: payload.context,
-                        });
-                        this.queueManager.enqueue({
-                            ...nextTask,
-                            repoId: completedTask.repoId,
-                            payload: {
-                                ...nextTask.payload,
-                                context: {
-                                    ...nextTask.payload.context,
-                                    ...payload.context,
-                                    ralph: {
-                                        ...(ralphCtx ?? {}),
-                                        ...nextTask.payload.context.ralph,
-                                        originalGoal: action.originalGoal,
-                                        currentIteration: action.iteration,
-                                        maxIterations: action.maxIterations,
-                                        sessionId: effectiveSessionId,
-                                        phase: 'executing' as const,
-                                    },
-                                },
-                            },
-                            config: completedTask.config ?? nextTask.config,
-                        } as any);
-                    } catch (err) {
-                        logger.warn(LogCategory.AI, `[Ralph] Failed to enqueue next iteration for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
-                    }
-                    break;
-                }
-
-                case 'surfaceTerminalReason':
-                    logger.debug(LogCategory.AI, `[Ralph] Terminal reason for ${processId}: ${action.terminalReason} (${action.completionReason})`);
-                    break;
-
-                case 'enqueueFinalCheck':
-                    // Enqueue a final-check task before broadcasting session-complete (AC-01).
-                    await this.enqueueFinalCheckAfterComplete(
-                        action.workspaceId, action.sessionId, action.sourceIteration, ralphCtx, completedTask, payload,
-                    ).catch(err => {
-                        logger.warn(LogCategory.AI, `[Ralph] enqueueFinalCheckAfterComplete failed: ${err instanceof Error ? err.message : String(err)}`);
-                        this.broadcastRalphSessionComplete(action.workspaceId, action.sessionId, processId, action.sourceIteration, 'final-check-enqueue-failed');
-                    });
-                    break;
-
-                case 'completeSession':
-                    logger.debug(LogCategory.AI, `[Ralph] Session complete for ${processId} (reason: ${action.completionReason}, iterations: ${action.totalIterations})`);
-                    this.broadcastRalphSessionComplete(
-                        action.workspaceId,
-                        action.sessionId,
-                        action.processId,
-                        action.totalIterations,
-                        action.completionReason,
-                    );
-                    break;
-            }
-        }
     }
 
     /** Broadcast a ralph-session-complete WS event. */
@@ -318,86 +226,6 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         }
     }
 
-    /**
-     * After a normal Ralph loop ends with RALPH_COMPLETE, enqueue one
-     * final-check task (AC-01). Idempotency-guarded against duplicate events.
-     */
-    private async enqueueFinalCheckAfterComplete(
-        workspaceId: string | undefined,
-        sessionId: string | undefined,
-        sourceIteration: number,
-        ralphCtx: any,
-        completedTask: QueuedTask,
-        payload: ChatPayload,
-    ): Promise<void> {
-        if (!workspaceId || !sessionId || !this.queueManager) return;
-        const logger = getLogger();
-        if (!this.dataDir) {
-            this.broadcastRalphSessionComplete(workspaceId, sessionId, completedTask.id, sourceIteration, 'signal');
-            return;
-        }
-
-        // ── In-memory idempotency guard ──────────────────────────────────────
-        if (wasFinalCheckEnqueued(sessionId, sourceIteration)) {
-            logger.debug(LogCategory.AI, `[Ralph/FinalCheck] Duplicate completion event ignored for ${sessionId}:${sourceIteration}`);
-            return;
-        }
-
-        // ── Persistent idempotency guard (survives server restart) ───────────
-        const store = new RalphSessionStore({ dataDir: this.dataDir! });
-        const session = await store.readSessionRecord(workspaceId, sessionId);
-        if (!session) {
-            logger.warn(LogCategory.AI, `[Ralph/FinalCheck] Session record missing for ${sessionId}; skipping final-check enqueue.`);
-            this.broadcastRalphSessionComplete(workspaceId, sessionId, completedTask.id, sourceIteration, 'final-check-session-missing');
-            return;
-        }
-
-        if (sessionHasFinalCheckFor(session, sourceIteration)) {
-            logger.debug(LogCategory.AI, `[Ralph/FinalCheck] Persistent duplicate: check for ${sessionId}:${sourceIteration} already exists.`);
-            return;
-        }
-
-        markFinalCheckEnqueued(sessionId, sourceIteration);
-
-        const checkIndex = nextCheckIndex(session);
-        const loopIndex = (ralphCtx?.loopIndex as number | undefined)
-            ?? (session.loops?.[session.loops.length - 1]?.loopIndex ?? 1);
-
-        const progressPath = store.getProgressPath(workspaceId, sessionId);
-
-        const taskPayload = buildFinalCheckTaskPayload({
-            workspaceId,
-            sessionId,
-            originalGoal: session.originalGoal,
-            checkIndex,
-            sourceIteration,
-            loopIndex,
-            progressPath,
-            workingDirectory: payload.workingDirectory,
-            folderPath: (payload as any).folderPath,
-            repoId: completedTask.repoId,
-            provider: (payload as any).provider,
-            extraContext: getScheduleRunContext(payload.context),
-        });
-
-        let taskId: string;
-        try {
-            taskId = this.queueManager.enqueue(taskPayload as any);
-        } catch (err) {
-            logger.warn(LogCategory.AI, `[Ralph/FinalCheck] Enqueue failed for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
-            this.broadcastRalphSessionComplete(workspaceId, sessionId, completedTask.id, sourceIteration, 'final-check-enqueue-failed');
-            return;
-        }
-
-        // Persist the running-status record immediately so the session response
-        // shows the check is in progress before the AI response arrives.
-        const startRecord = buildFinalCheckStartRecord(checkIndex, loopIndex, sourceIteration, taskId, undefined, new Date().toISOString());
-        await store.upsertFinalCheckRecord(workspaceId, sessionId, checkIndex, startRecord).catch(err => {
-            logger.debug(LogCategory.AI, `[Ralph/FinalCheck] Failed to persist start record: ${err instanceof Error ? err.message : String(err)}`);
-        });
-
-        logger.debug(LogCategory.AI, `[Ralph/FinalCheck] Enqueued final-check task ${taskId} (check ${checkIndex}) for session ${sessionId}`);
-    }
 
     /**
      * Handle completion of a final-check task.
