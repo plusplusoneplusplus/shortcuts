@@ -99,15 +99,20 @@ See `docs/spec-slices.md` for the full slice template, decision-tagging
 convention, and ready-for-Ralph checklist that the bundled `grill-me` skill
 produces.
 
-## Direct Goal-File Launch
+## Direct Goal Launch
 
 `POST /api/ralph-launch` (`packages/coc/src/server/routes/ralph-launch-routes.ts`)
 starts an execution-phase Ralph session directly from an already-written goal
-spec. The SPA `shared/RalphLaunchDialog.tsx` uses `ModalJobAiControls` so
-goal-file launches share New Chat's workspace-scoped provider defaults,
-effort-tier resolution, and legacy model/reasoning-effort controls. The route
-validates optional `provider` and `reasoningEffort` inputs and carries them,
-alongside optional `config.model`, onto the first queued Ralph execution task.
+spec. The SPA `shared/RalphLaunchDialog.tsx` is shared by goal-file launches
+from Notes and direct-goal launches from New Chat. Notes render a read-only
+preview with modal-owned `ModalJobAiControls`; New Chat renders an editable
+review dialog prefilled from the composer and passes its current
+workspace-scoped provider/model/reasoning-effort selection into the launch. The
+New Chat direct-goal path sends goal text only: attachments and images block
+confirmation, no grilling chat is enqueued, and the pasted goal is not saved as
+a note. The route validates optional `provider` and `reasoningEffort` inputs and
+carries them, alongside optional `config.model`, onto the first queued Ralph
+execution task.
 
 `POST /api/processes/:id/ralph-start`
 (`packages/coc/src/server/routes/queue-ralph-routes.ts`) starts execution from

@@ -54,6 +54,26 @@ const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCo
     mockRalphEnabled: { value: false },
 }));
 
+const OriginalFileReader = globalThis.FileReader;
+
+function mockFileReader() {
+    globalThis.FileReader = function (this: any) {
+        this.onload = null;
+        this.readAsDataURL = (file: File) => {
+            if (this.onload) {
+                const mimeType = file.type || 'application/octet-stream';
+                this.onload({ target: { result: `data:${mimeType};base64,test` } });
+            }
+        };
+    } as any;
+}
+
+function restoreFileReader() {
+    if (OriginalFileReader) {
+        globalThis.FileReader = OriginalFileReader;
+    }
+}
+
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({ state: {}, dispatch: mockQueueDispatch }),
 }));
@@ -212,6 +232,7 @@ beforeEach(() => {
 afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    restoreFileReader();
 });
 
 describe('NewChatArea', () => {
@@ -266,6 +287,8 @@ describe('NewChatArea', () => {
         expect(screen.getByTestId('mode-pill-ask')).toBeTruthy();
         expect(screen.getByTestId('mode-pill-autopilot')).toBeTruthy();
         expect(screen.queryByTestId('mode-pill-plan')).toBeNull();
+        expect(screen.queryByTestId('mode-pill-ralph')).toBeNull();
+        expect(screen.queryByTestId('new-chat-ralph-start-from-goal-btn')).toBeNull();
         expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
     });
 
@@ -835,6 +858,23 @@ describe('NewChatArea', () => {
             mockRalphEnabled.value = true;
         });
 
+        it('shows a Ralph split submit control only when Ralph mode is selected', () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+
+            expect(screen.queryByTestId('new-chat-ralph-submit-split')).toBeNull();
+            expect(screen.queryByTestId('new-chat-ralph-start-from-goal-btn')).toBeNull();
+
+            fireEvent.click(screen.getByTestId('mode-pill-ralph'));
+
+            expect(screen.getByTestId('new-chat-ralph-submit-split')).toBeTruthy();
+            expect(screen.getByTestId('new-chat-send-btn').textContent).toContain('Grill');
+            expect(screen.getByTestId('new-chat-ralph-start-from-goal-btn').textContent).toContain('Start from goal...');
+
+            fireEvent.click(screen.getByTestId('mode-pill-ask'));
+            expect(screen.queryByTestId('new-chat-ralph-start-from-goal-btn')).toBeNull();
+            expect(screen.getByTestId('new-chat-send-btn').textContent).toContain('Send');
+        });
+
         it('appends goal.md instruction when ralph mode is selected', async () => {
             mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'ralph-task-1' } });
             mockSlashCommands.parseAndExtract.mockReturnValue({ skills: [], prompt: '' });
@@ -860,6 +900,147 @@ describe('NewChatArea', () => {
             expect(body.payload.prompt).toContain('finished grilling');
             expect(body.payload.context.ralph.phase).toBe('grilling');
             expect(body.payload.context.skills).toContain('grill-me');
+        });
+
+        it('opens an editable direct-goal review dialog prefilled from the composer without mutating the draft on cancel', async () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            fireEvent.click(screen.getByTestId('mode-pill-ralph'));
+
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: '## Goal Build a thing' } });
+
+            fireEvent.click(screen.getByTestId('new-chat-ralph-start-from-goal-btn'));
+
+            const dialog = screen.getByTestId('ralph-launch-dialog');
+            const editor = within(dialog).getByTestId('ralph-goal-preview') as HTMLTextAreaElement;
+            expect(editor.value).toBe('## Goal Build a thing');
+
+            fireEvent.change(editor, { target: { value: '## Goal\nEdited in review only' } });
+            fireEvent.click(within(dialog).getByText('Cancel'));
+
+            expect(screen.queryByTestId('ralph-launch-dialog')).toBeNull();
+            expect(input.value).toBe('## Goal Build a thing');
+        });
+
+        it('posts edited direct-goal text to ralph-launch with workspace root and selected AI settings', async () => {
+            mockModelCommand.modelOverride = 'gpt-5.4';
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ processId: 'queue_direct-goal-1' }),
+            });
+
+            render(<NewChatArea workspaceId="ws-1" />);
+            fireEvent.click(screen.getByTestId('mode-pill-ralph'));
+
+            fireEvent.click(screen.getByTestId('effort-pill-trigger-btn'));
+            fireEvent.click(screen.getByTestId('effort-pill-option-high'));
+
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: '## Goal\nOriginal goal' } });
+            fireEvent.click(screen.getByTestId('new-chat-ralph-start-from-goal-btn'));
+
+            const dialog = screen.getByTestId('ralph-launch-dialog');
+            const editor = within(dialog).getByTestId('ralph-goal-preview') as HTMLTextAreaElement;
+            fireEvent.change(editor, { target: { value: '## Goal\nEdited goal' } });
+
+            await act(async () => {
+                fireEvent.click(within(dialog).getByTestId('ralph-launch-confirm-btn'));
+            });
+
+            const launchCall = mockFetch.mock.calls.find((call: any[]) => String(call[0]).endsWith('/ralph-launch'));
+            expect(launchCall).toBeTruthy();
+            const launchBody = JSON.parse(launchCall![1].body);
+            expect(launchBody).toEqual({
+                goalSpec: '## Goal\nEdited goal',
+                workspaceId: 'ws-1',
+                provider: 'copilot',
+                folderPath: '/home/user/repo',
+                workingDirectory: '/home/user/repo',
+                config: {
+                    model: 'gpt-5.4',
+                    reasoningEffort: 'high',
+                },
+            });
+
+            expect(mockEnqueueTask).not.toHaveBeenCalled();
+            expect(mockQueueDispatch).toHaveBeenCalledWith({
+                type: 'SELECT_QUEUE_TASK',
+                id: 'queue_direct-goal-1',
+                repoId: 'ws-1',
+            });
+            expect(mockAppDispatch).toHaveBeenCalledWith({
+                type: 'UPDATE_ONBOARDING',
+                payload: { hasUsedChat: true },
+            });
+            expect(mockDraftStore.clearDraft).toHaveBeenCalledWith('new-chat:ws-1');
+            expect(input.value).toBe('');
+        });
+
+        it('shows a non-blocking warning for direct-goal text without a Goal heading', () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            fireEvent.click(screen.getByTestId('mode-pill-ralph'));
+
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: 'Build a thing without markdown heading' } });
+            fireEvent.click(screen.getByTestId('new-chat-ralph-start-from-goal-btn'));
+
+            expect(screen.getByTestId('ralph-goal-heading-warning').textContent).toContain('does not contain a ## Goal heading');
+            expect((screen.getByTestId('ralph-launch-confirm-btn') as HTMLButtonElement).disabled).toBe(false);
+        });
+
+        it('keeps the direct-goal dialog open with edited text when ralph-launch fails', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: false,
+                status: 500,
+                text: async () => JSON.stringify({ error: 'launch failed' }),
+            });
+
+            render(<NewChatArea workspaceId="ws-1" />);
+            fireEvent.click(screen.getByTestId('mode-pill-ralph'));
+
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: '## Goal Original' } });
+            fireEvent.click(screen.getByTestId('new-chat-ralph-start-from-goal-btn'));
+
+            const editor = screen.getByTestId('ralph-goal-preview') as HTMLTextAreaElement;
+            fireEvent.change(editor, { target: { value: '## Goal\nEdited after review' } });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
+            });
+
+            expect(screen.getByTestId('ralph-launch-dialog')).toBeTruthy();
+            expect(screen.getByTestId('ralph-launch-error').textContent).toBe('launch failed');
+            expect((screen.getByTestId('ralph-goal-preview') as HTMLTextAreaElement).value).toBe('## Goal\nEdited after review');
+            expect(input.value).toBe('## Goal Original');
+            expect(mockQueueDispatch).not.toHaveBeenCalledWith(expect.objectContaining({ id: expect.stringContaining('direct') }));
+        });
+
+        it('blocks direct-goal confirmation while composer attachments are present', async () => {
+            mockFileReader();
+
+            render(<NewChatArea workspaceId="ws-1" />);
+            fireEvent.click(screen.getByTestId('mode-pill-ralph'));
+
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: '## Goal\nBuild with attached context' } });
+
+            const fileInput = screen.getByTestId('new-chat-file-input-hidden') as HTMLInputElement;
+            await act(async () => {
+                fireEvent.change(fileInput, {
+                    target: {
+                        files: [new File(['details'], 'details.md', { type: 'text/markdown' })],
+                    },
+                });
+            });
+
+            expect(screen.getByTestId('attachment-preview-file')).toBeTruthy();
+
+            fireEvent.click(screen.getByTestId('new-chat-ralph-start-from-goal-btn'));
+
+            expect(screen.getByTestId('ralph-launch-attachment-warning').textContent).toContain('Direct-goal launch sends goal text only');
+            expect((screen.getByTestId('ralph-launch-confirm-btn') as HTMLButtonElement).disabled).toBe(true);
+            expect(mockFetch).not.toHaveBeenCalledWith('/api/ralph-launch', expect.anything());
         });
 
         it('does not append goal.md instruction in non-ralph modes', async () => {

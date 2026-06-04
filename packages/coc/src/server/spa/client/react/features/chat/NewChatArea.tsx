@@ -43,6 +43,8 @@ import { AgentSelectorChip } from './AgentSelectorChip';
 import type { ChatProvider } from './AgentSelectorChip';
 import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
 import { deriveEffort } from '../../utils/effortUtils';
+import { RalphLaunchDialog } from '../../shared/RalphLaunchDialog';
+import type { ResolvedModalJobAiSelection } from '../../shared/ModalJobAiControls';
 
 export interface NewChatAreaProps {
     workspaceId?: string;
@@ -69,6 +71,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const [selectedProvider, setSelectedProvider] = useState<ChatProvider>(() => getDefaultProvider());
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
     const [selectedEffortTier, setSelectedEffortTier] = useState<EffortTierKey>('medium');
+    const [ralphDirectGoalDraft, setRalphDirectGoalDraft] = useState<string | null>(null);
     const richTextRef = useRef<RichTextInputHandle>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -303,6 +306,24 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         localStorage.setItem(`coc:effort-tier:${workspaceId ?? 'default'}`, tier);
     }
 
+    function getSelectedWorkspaceRoot(): string | undefined {
+        const ws = appState.workspaces?.find((w: any) => w.id === workspaceId);
+        return ws?.rootPath;
+    }
+
+    function resolveComposerAiSelection(): ResolvedModalJobAiSelection {
+        const tierPayload = useEffortTierMode ? resolveEffortTier(selectedEffortTier, effortTierMap) : null;
+        const model = tierPayload?.model ?? validModelOverride ?? undefined;
+        const reasoningEffort = tierPayload !== null
+            ? tierPayload.reasoningEffort ?? undefined
+            : effortOverride ?? undefined;
+        return {
+            provider: selectedProvider,
+            ...(model ? { model } : {}),
+            ...(reasoningEffort ? { reasoningEffort } : {}),
+        };
+    }
+
     // Inline ghost-text autocomplete (matches FollowUpInputArea + EnqueueDialog).
     const promptAutocompleteEnabled = usePromptAutocompleteEnabled();
     const autocomplete = usePromptAutocomplete({
@@ -339,7 +360,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         abortControllerRef.current = new AbortController();
 
         try {
-            const ws = appState.workspaces?.find((w: any) => w.id === workspaceId);
+            const workspaceRoot = getSelectedWorkspaceRoot();
             const attachmentPayload = toPayload();
             const { skills: extractedSkills, prompt: cleanedPrompt } = slashCommands.parseAndExtract(trimmed);
 
@@ -380,7 +401,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                     kind: 'chat',
                     mode: mode as any,
                     prompt: effectivePrompt,
-                    workingDirectory: ws?.rootPath,
+                    workingDirectory: workspaceRoot,
                     workspaceId,
                     ...(contextOverride ? { context: contextOverride } : {}),
                     ...(attachmentPayload.length > 0 ? { attachments: attachmentPayload } : {}),
@@ -412,6 +433,26 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         }
     }
 
+    function handleOpenRalphDirectGoalDialog() {
+        if (sending) return;
+        setError(null);
+        setRalphDirectGoalDraft(input);
+    }
+
+    async function handleRalphDirectGoalLaunched(processId: string) {
+        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: workspaceId });
+        if (!appState.onboardingProgress?.hasUsedChat) {
+            await updateOnboarding({ hasUsedChat: true }).catch(() => {});
+        }
+        setRalphDirectGoalDraft(null);
+        setInput('');
+        setCursorPos(0);
+        richTextRef.current?.setValue('');
+        clearAttachments();
+        promptHistory.reset();
+        clearDraft(draftKey);
+    }
+
     function handleStop() {
         abortControllerRef.current?.abort();
         setSending(false);
@@ -429,6 +470,23 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
 
     return (
         <div className="flex flex-col h-full bg-white dark:bg-[#1e1e1e]" data-testid="new-chat-area">
+            {ralphDirectGoalDraft !== null && (
+                <RalphLaunchDialog
+                    open={ralphDirectGoalDraft !== null}
+                    workspaceId={workspaceId ?? ''}
+                    sourceLabel="New Chat composer"
+                    goalSpec={ralphDirectGoalDraft}
+                    folderPath={getSelectedWorkspaceRoot()}
+                    workingDirectory={getSelectedWorkspaceRoot()}
+                    editable
+                    resolvedAiSelection={resolveComposerAiSelection()}
+                    attachmentCount={attachments.length}
+                    title="🔄 Start Ralph from Goal"
+                    confirmLabel="🔄 Start Ralph"
+                    onClose={() => setRalphDirectGoalDraft(null)}
+                    onLaunched={handleRalphDirectGoalLaunched}
+                />
+            )}
             {/* Back button — rendered when a back handler is provided (mobile new-chat flow) */}
             {onBack && (
                 <div className="flex items-center border-b border-[#e0e0e0] dark:border-[#3c3c3c] px-3 py-2">
@@ -745,6 +803,39 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                             >
                                 Stop
                             </button>
+                        ) : selectedMode === 'ralph' && isRalphEnabled() ? (
+                            <div
+                                className="shrink-0 inline-flex h-[24px] rounded-md shadow-sm"
+                                data-testid="new-chat-ralph-submit-split"
+                            >
+                                <button
+                                    type="button"
+                                    disabled={!input.trim() && attachments.length === 0}
+                                    className="inline-flex items-center gap-1 h-[24px] pl-2 pr-2 rounded-l-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    onClick={() => { void handleSend(); }}
+                                    data-testid="new-chat-send-btn"
+                                    title="Grill (Enter) · Shift+Enter for newline"
+                                >
+                                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                        <path
+                                            d="M3 4h10a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H6.5L4 13v-2H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"
+                                            stroke="currentColor"
+                                            strokeWidth="1.2"
+                                            strokeLinejoin="round"
+                                        />
+                                    </svg>
+                                    <span>Grill</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    className="inline-flex items-center h-[24px] px-2 -ml-px rounded-r-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
+                                    onClick={handleOpenRalphDirectGoalDialog}
+                                    data-testid="new-chat-ralph-start-from-goal-btn"
+                                    title="Review pasted goal text and start Ralph execution"
+                                >
+                                    Start from goal...
+                                </button>
+                            </div>
                         ) : (
                             <button
                                 type="button"
