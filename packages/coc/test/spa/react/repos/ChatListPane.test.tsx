@@ -1911,6 +1911,24 @@ describe('ChatListPane', () => {
             expect(pill).toBeDefined();
             expect(pill!.className).toContain('text-purple-600');
         });
+
+        it('ask pill uses rounded-full (circle) shape', () => {
+            const { container } = renderPane({
+                running: [makeRunningTask({ type: 'chat', payload: { mode: 'ask' } })],
+            });
+            const pill = Array.from(container.querySelectorAll('span')).find(el => el.textContent === 'A' && el.className.includes('text-amber'));
+            expect(pill).toBeDefined();
+            expect(pill!.className).toContain('rounded-full');
+        });
+
+        it('auto pill uses rounded-[3px] (rect) shape, not rounded-full', () => {
+            const { container } = renderPane({
+                running: [makeRunningTask({ type: 'chat', payload: { mode: 'autopilot' } })],
+            });
+            const pill = Array.from(container.querySelectorAll('span')).find(el => el.textContent === 'A' && el.className.includes('text-emerald'));
+            expect(pill).toBeDefined();
+            expect(pill!.className).not.toContain('rounded-full');
+        });
     });
 
     // ── Dense mode ─────────────────────────────────────────────────────

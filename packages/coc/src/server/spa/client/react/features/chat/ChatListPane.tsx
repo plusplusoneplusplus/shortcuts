@@ -1252,8 +1252,9 @@ export function ChatListPane({
         // same text color) so the parent's aggregate-mode pill remains the dominant anchor.
         const isGroupChild = !!options?.isGroupChild;
         const modeBadgeClasses = cn(
-            'inline-flex items-center justify-center rounded-[3px] border font-mono font-bold uppercase select-none',
+            'inline-flex items-center justify-center border font-mono font-bold uppercase select-none',
             'text-[9.5px] leading-none tracking-[0.06em] py-[4px] w-full',
+            modeKey === 'ask' ? 'rounded-full' : 'rounded-[3px]',
             !isGroupChild && modeKey === 'ask' && 'text-amber-600 dark:text-amber-400 border-amber-400/70 dark:border-amber-500/60 bg-amber-50/60 dark:bg-amber-500/10',
             !isGroupChild && modeKey === 'auto' && 'text-emerald-600 dark:text-emerald-400 border-emerald-500/70 dark:border-emerald-500/60 bg-emerald-50/60 dark:bg-emerald-500/10',
             !isGroupChild && modeKey === 'script' && 'text-[#1e1e1e] dark:text-[#dcdcdc] border-[#3c3c3c]/55 dark:border-[#9d9d9d]/45 bg-[#1e1e1e]/[0.06] dark:bg-[#dcdcdc]/[0.06]',
