@@ -1537,7 +1537,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             }}
                             attachedContext={attachedContext.items}
                             onRemoveAttachedContext={attachedContext.remove}
-                            onAttachSessionContext={attachedContext.addSession}
+                            onAttachSessionContext={attachedContext.addSessionContext}
                             workspaceId={workspaceId}
                             currentProcessId={processId ?? taskId}
                             sessionContextAttachmentsEnabled={sessionContextAttachmentsEnabled}
@@ -1661,7 +1661,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     }}
                     attachedContext={attachedContext.items}
                     onRemoveAttachedContext={attachedContext.remove}
-                    onAttachSessionContext={attachedContext.addSession}
+                    onAttachSessionContext={attachedContext.addSessionContext}
                     workspaceId={workspaceId}
                     currentProcessId={processId ?? taskId}
                     sessionContextAttachmentsEnabled={sessionContextAttachmentsEnabled}

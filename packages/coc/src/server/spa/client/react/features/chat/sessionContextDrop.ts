@@ -2,8 +2,13 @@ import { useEffect, useState } from 'react';
 import { getSpaCocClient } from '../../api/cocClient';
 import type { AttachedContextItem } from './hooks/useAttachedContext';
 import {
+    RALPH_SESSION_CONTEXT_DRAG_KIND,
+    RALPH_SESSION_CONTEXT_DRAG_MIME,
     SESSION_CONTEXT_DRAG_KIND,
     SESSION_CONTEXT_DRAG_MIME,
+    type RalphSessionContextDragPayload,
+    type RalphSessionContextPhase,
+    type SessionContextAttachmentDragPayload,
     type SessionContextDragPayload,
     type SessionContextSourceStatus,
 } from './sessionContextDrag';
@@ -18,6 +23,12 @@ const ATTACHABLE_STATUSES = new Set<SessionContextSourceStatus>([
     'cancelled',
 ]);
 
+const RALPH_SESSION_PHASES = new Set<RalphSessionContextPhase>([
+    'grilling',
+    'executing',
+    'complete',
+]);
+
 const MAX_TITLE_LENGTH = 160;
 
 type SessionContextDataTransfer = Pick<DataTransfer, 'getData'> & {
@@ -26,11 +37,19 @@ type SessionContextDataTransfer = Pick<DataTransfer, 'getData'> & {
 };
 
 export type SessionContextDropValidation =
-    | { ok: true; payload: SessionContextDragPayload }
+    | { ok: true; payload: SessionContextAttachmentDragPayload }
     | { ok: false; error: string };
 
-function getSessionContextItems(items: AttachedContextItem[]): Extract<AttachedContextItem, { kind: 'session' }>[] {
-    return items.filter((item): item is Extract<AttachedContextItem, { kind: 'session' }> => item.kind === 'session');
+type AttachedLogicalSessionContextItem =
+    | Extract<AttachedContextItem, { kind: 'session' }>
+    | Extract<AttachedContextItem, { kind: 'ralph-session' }>;
+
+function isLogicalSessionContextItem(item: AttachedContextItem): item is AttachedLogicalSessionContextItem {
+    return item.kind === 'session' || item.kind === 'ralph-session';
+}
+
+function getSessionContextItems(items: AttachedContextItem[]): AttachedLogicalSessionContextItem[] {
+    return items.filter(isLogicalSessionContextItem);
 }
 
 function looksLikeLocalPath(value: string): boolean {
@@ -59,6 +78,21 @@ function normalizeTimestamp(value: unknown): string | null {
 
 function normalizeString(value: unknown): string | null {
     return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function normalizeNonNegativeInteger(value: unknown): number | null {
+    return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+function normalizeChildProcessIds(value: unknown): string[] | null {
+    if (!Array.isArray(value) || value.length === 0) return null;
+    const childProcessIds: string[] = [];
+    for (const child of value) {
+        const childProcessId = normalizeString(child);
+        if (!childProcessId || looksLikeLocalPath(childProcessId)) return null;
+        childProcessIds.push(childProcessId);
+    }
+    return childProcessIds;
 }
 
 function normalizeSessionContextPayload(value: unknown): SessionContextDragPayload | null {
@@ -95,9 +129,62 @@ function normalizeSessionContextPayload(value: unknown): SessionContextDragPaylo
     };
 }
 
+function normalizeRalphSessionContextPayload(value: unknown): RalphSessionContextDragPayload | null {
+    if (!value || typeof value !== 'object') return null;
+    const record = value as Partial<RalphSessionContextDragPayload>;
+    const sourceWorkspaceId = normalizeString(record.sourceWorkspaceId);
+    const sourceRalphSessionId = normalizeString(record.sourceRalphSessionId);
+    const title = normalizeString(record.title);
+    const displayLabel = normalizeString(record.displayLabel);
+    const phase = normalizeString(record.phase);
+    const status = normalizeString(record.status);
+    const lastActivityAt = normalizeTimestamp(record.lastActivityAt);
+    const childProcessIds = normalizeChildProcessIds(record.childProcessIds);
+    const processCount = normalizeNonNegativeInteger(record.processCount);
+    const iterationCount = normalizeNonNegativeInteger(record.iterationCount);
+
+    if (
+        record.kind !== RALPH_SESSION_CONTEXT_DRAG_KIND
+        || record.version !== 1
+        || !sourceWorkspaceId
+        || !sourceRalphSessionId
+        || !title
+        || !displayLabel
+        || !phase
+        || !RALPH_SESSION_PHASES.has(phase as RalphSessionContextPhase)
+        || !status
+        || !ATTACHABLE_STATUSES.has(status as SessionContextSourceStatus)
+        || !lastActivityAt
+        || !childProcessIds
+        || processCount === null
+        || processCount !== childProcessIds.length
+        || iterationCount === null
+        || looksLikeLocalPath(sourceWorkspaceId)
+        || looksLikeLocalPath(sourceRalphSessionId)
+    ) {
+        return null;
+    }
+
+    return {
+        kind: RALPH_SESSION_CONTEXT_DRAG_KIND,
+        version: 1,
+        sourceWorkspaceId,
+        sourceRalphSessionId,
+        title: sanitizeDisplayText(title),
+        displayLabel: sanitizeDisplayText(displayLabel),
+        phase: phase as RalphSessionContextPhase,
+        status: status as SessionContextSourceStatus,
+        lastActivityAt,
+        childProcessIds,
+        processCount,
+        iterationCount,
+    };
+}
+
 export function dataTransferHasSessionContext(dataTransfer: SessionContextDataTransfer | null | undefined): boolean {
     if (!dataTransfer) return false;
-    return Array.from(dataTransfer.types ?? []).includes(SESSION_CONTEXT_DRAG_MIME);
+    const types = Array.from(dataTransfer.types ?? []);
+    return types.includes(SESSION_CONTEXT_DRAG_MIME) || types.includes(RALPH_SESSION_CONTEXT_DRAG_MIME);
 }
 
 export function readSessionContextDragPayload(dataTransfer: SessionContextDataTransfer): SessionContextDragPayload | null {
@@ -110,8 +197,45 @@ export function readSessionContextDragPayload(dataTransfer: SessionContextDataTr
     }
 }
 
+export function readRalphSessionContextDragPayload(dataTransfer: SessionContextDataTransfer): RalphSessionContextDragPayload | null {
+    const raw = dataTransfer.getData(RALPH_SESSION_CONTEXT_DRAG_MIME);
+    if (!raw) return null;
+    try {
+        return normalizeRalphSessionContextPayload(JSON.parse(raw));
+    } catch {
+        return null;
+    }
+}
+
+export function readSessionContextDropPayload(dataTransfer: SessionContextDataTransfer): SessionContextAttachmentDragPayload | null {
+    return readRalphSessionContextDragPayload(dataTransfer) ?? readSessionContextDragPayload(dataTransfer);
+}
+
+function payloadIncludesProcess(payload: SessionContextAttachmentDragPayload, processId: string | null | undefined): boolean {
+    if (!processId) return false;
+    return payload.kind === SESSION_CONTEXT_DRAG_KIND
+        ? payload.sourceProcessId === processId
+        : payload.childProcessIds.includes(processId);
+}
+
+function isDuplicatePayload(existingItems: AttachedLogicalSessionContextItem[], payload: SessionContextAttachmentDragPayload): boolean {
+    if (payload.kind === SESSION_CONTEXT_DRAG_KIND) {
+        return existingItems.some(item =>
+            item.kind === 'session'
+            && item.sourceWorkspaceId === payload.sourceWorkspaceId
+            && item.sourceProcessId === payload.sourceProcessId
+        );
+    }
+
+    return existingItems.some(item =>
+        item.kind === 'ralph-session'
+        && item.sourceWorkspaceId === payload.sourceWorkspaceId
+        && item.sourceRalphSessionId === payload.sourceRalphSessionId
+    );
+}
+
 export function validateSessionContextDrop(options: {
-    payload: SessionContextDragPayload | null;
+    payload: SessionContextAttachmentDragPayload | null;
     featureEnabled: boolean;
     activeWorkspaceId?: string | null;
     currentProcessId?: string | null;
@@ -122,7 +246,7 @@ export function validateSessionContextDrop(options: {
         return { ok: false, error: 'Session context attachments are disabled.' };
     }
     if (!options.payload) {
-        return { ok: false, error: 'Drop a CoC session from this workspace to attach it as context.' };
+        return { ok: false, error: 'Drop a CoC session or Ralph session group from this workspace to attach it as context.' };
     }
     if (!options.activeWorkspaceId) {
         return { ok: false, error: 'Open a workspace before attaching session context.' };
@@ -130,16 +254,23 @@ export function validateSessionContextDrop(options: {
     if (options.payload.sourceWorkspaceId !== options.activeWorkspaceId) {
         return { ok: false, error: 'Only sessions from the active workspace can be attached as context.' };
     }
-    if (options.currentProcessId && options.payload.sourceProcessId === options.currentProcessId) {
-        return { ok: false, error: 'A follow-up cannot attach its own current session as context.' };
+    if (payloadIncludesProcess(options.payload, options.currentProcessId)) {
+        return {
+            ok: false,
+            error: options.payload.kind === RALPH_SESSION_CONTEXT_DRAG_KIND
+                ? 'A follow-up cannot attach a Ralph session that includes the current chat.'
+                : 'A follow-up cannot attach its own current session as context.',
+        };
     }
 
     const sessionItems = getSessionContextItems(options.existingItems);
-    if (sessionItems.some(item =>
-        item.sourceWorkspaceId === options.payload!.sourceWorkspaceId
-        && item.sourceProcessId === options.payload!.sourceProcessId
-    )) {
-        return { ok: false, error: 'This session is already attached to the message.' };
+    if (isDuplicatePayload(sessionItems, options.payload)) {
+        return {
+            ok: false,
+            error: options.payload.kind === RALPH_SESSION_CONTEXT_DRAG_KIND
+                ? 'This Ralph session is already attached to the message.'
+                : 'This session is already attached to the message.',
+        };
     }
     if (sessionItems.length >= MAX_SESSION_CONTEXT_ATTACHMENTS) {
         return { ok: false, error: `You can attach up to ${MAX_SESSION_CONTEXT_ATTACHMENTS} sessions as context.` };
@@ -173,20 +304,37 @@ export function validateSessionContextAttachmentsForSend(options: {
     if (sessionItems.some(item => item.sourceWorkspaceId !== options.activeWorkspaceId)) {
         return 'Only sessions from the active workspace can be attached as context.';
     }
-    if (options.currentProcessId && sessionItems.some(item => item.sourceProcessId === options.currentProcessId)) {
-        return 'A follow-up cannot attach its own current session as context.';
+    const selfAttachedItem = sessionItems.find(item =>
+        item.kind === 'session'
+            ? item.sourceProcessId === options.currentProcessId
+            : options.currentProcessId ? item.childProcessIds.includes(options.currentProcessId) : false
+    );
+    if (selfAttachedItem) {
+        return selfAttachedItem.kind === 'ralph-session'
+            ? 'A follow-up cannot attach a Ralph session that includes the current chat.'
+            : 'A follow-up cannot attach its own current session as context.';
     }
     if (sessionItems.length > MAX_SESSION_CONTEXT_ATTACHMENTS) {
         return `You can attach up to ${MAX_SESSION_CONTEXT_ATTACHMENTS} sessions as context.`;
     }
 
-    const seen = new Set<string>();
+    const seenSessions = new Set<string>();
+    const seenRalphSessions = new Set<string>();
     for (const item of sessionItems) {
-        const key = `${item.sourceWorkspaceId}\0${item.sourceProcessId}`;
-        if (seen.has(key)) {
-            return 'This session is already attached to the message.';
+        if (item.kind === 'session') {
+            const key = `${item.sourceWorkspaceId}\0${item.sourceProcessId}`;
+            if (seenSessions.has(key)) {
+                return 'This session is already attached to the message.';
+            }
+            seenSessions.add(key);
+            continue;
         }
-        seen.add(key);
+
+        const key = `${item.sourceWorkspaceId}\0${item.sourceRalphSessionId}`;
+        if (seenRalphSessions.has(key)) {
+            return 'This Ralph session is already attached to the message.';
+        }
+        seenRalphSessions.add(key);
     }
 
     if (options.canRetrieveConversations == null) {

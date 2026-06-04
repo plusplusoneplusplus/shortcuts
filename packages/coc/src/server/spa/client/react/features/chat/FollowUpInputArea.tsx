@@ -28,10 +28,10 @@ import type { DeliveryMode } from '@plusplusoneplusplus/forge';
 import type { AttachedContextItem } from './hooks/useAttachedContext';
 import type { ChatAttachment } from '../../types/attachments';
 import { isSessionContextAttachmentsEnabled } from '../../utils/config';
-import type { SessionContextDragPayload } from './sessionContextDrag';
+import type { SessionContextAttachmentDragPayload } from './sessionContextDrag';
 import {
     dataTransferHasSessionContext,
-    readSessionContextDragPayload,
+    readSessionContextDropPayload,
     useConversationRetrievalCapability,
     validateSessionContextDrop,
 } from './sessionContextDrop';
@@ -66,7 +66,7 @@ export interface FollowUpInputAreaProps {
     } | null;
     attachedContext?: AttachedContextItem[];
     onRemoveAttachedContext?: (id: string) => void;
-    onAttachSessionContext?: (payload: SessionContextDragPayload) => void;
+    onAttachSessionContext?: (payload: SessionContextAttachmentDragPayload) => void;
     workspaceId?: string;
     currentProcessId?: string | null;
     sessionContextAttachmentsEnabled?: boolean;
@@ -405,7 +405,7 @@ export function FollowUpInputArea({
         if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
         e.preventDefault();
         const validation = validateSessionContextDrop({
-            payload: readSessionContextDragPayload(e.dataTransfer),
+            payload: readSessionContextDropPayload(e.dataTransfer),
             featureEnabled: sessionContextAttachmentsEnabled,
             activeWorkspaceId,
             currentProcessId: activeProcessId,

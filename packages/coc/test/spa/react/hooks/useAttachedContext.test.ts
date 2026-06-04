@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useAttachedContext, formatAttachedContext, parseAttachedSessionContextBlocks } from '../../../../src/server/spa/client/react/features/chat/hooks/useAttachedContext';
-import { createSessionContextDragPayload } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
+import { createSessionContextDragPayload, RALPH_SESSION_CONTEXT_DRAG_KIND } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 
 describe('useAttachedContext', () => {
     it('starts with empty items', () => {
@@ -67,6 +67,40 @@ describe('useAttachedContext', () => {
         const formatted = formatAttachedContext(result.current.items);
         expect(formatted).toContain('<title>Original prompt preview</title>');
         expect(formatted).not.toContain('Assistant turn with sensitive transcript content');
+    });
+
+    it('adds a Ralph session group context item', () => {
+        const { result } = renderHook(() => useAttachedContext());
+        act(() => {
+            result.current.addSessionContext({
+                kind: RALPH_SESSION_CONTEXT_DRAG_KIND,
+                version: 1,
+                sourceWorkspaceId: 'ws-1',
+                sourceRalphSessionId: 'ralph-session-0001',
+                title: 'Ralph source',
+                displayLabel: 'Ralph source - 2 iter',
+                phase: 'executing',
+                status: 'running',
+                lastActivityAt: '2026-01-01T00:00:00.000Z',
+                childProcessIds: ['grill-proc', 'iter-1', 'iter-2'],
+                processCount: 3,
+                iterationCount: 2,
+            });
+        });
+
+        expect(result.current.items).toHaveLength(1);
+        expect(result.current.items[0]).toMatchObject({
+            kind: 'ralph-session',
+            sourceWorkspaceId: 'ws-1',
+            sourceRalphSessionId: 'ralph-session-0001',
+            displayLabel: 'Ralph source - 2 iter',
+            childProcessIds: ['grill-proc', 'iter-1', 'iter-2'],
+            processCount: 3,
+            iterationCount: 2,
+        });
+        expect(result.current.items[0].preview).toContain('executing/running');
+        expect(result.current.items[0].preview).toContain('3 processes');
+        expect(result.current.items[0].preview).toContain('ralph-se…0001');
     });
 
     it('generates a truncated preview', () => {
@@ -203,6 +237,39 @@ describe('formatAttachedContext', () => {
         expect(result).toContain('<title>Debug &lt;source&gt; &amp; inspect</title>');
         expect(result).toContain('retrieve and read this source conversation by process ID');
         expect(result).not.toContain('transcript');
+    });
+
+    it('formats a pointer-only Ralph session context block', () => {
+        const result = formatAttachedContext([{
+            kind: 'ralph-session',
+            id: 'ctx-ralph',
+            sourceWorkspaceId: 'ws-1',
+            sourceRalphSessionId: 'ralph-session-0001',
+            title: 'Ralph <goal> & inspect',
+            displayLabel: 'Ralph <goal> & inspect - 2 iter',
+            phase: 'executing',
+            status: 'running',
+            lastActivityAt: '2026-01-01T00:00:00.000Z',
+            childProcessIds: ['grill-proc', 'iter-1', 'iter-2'],
+            processCount: 3,
+            iterationCount: 2,
+            preview: 'Ralph source',
+        }]);
+
+        expect(result).toContain('<attached_ralph_session_context version="1">');
+        expect(result).toContain('workspace_id="ws-1"');
+        expect(result).toContain('ralph_session_id="ralph-session-0001"');
+        expect(result).toContain('phase="executing"');
+        expect(result).toContain('status="running"');
+        expect(result).toContain('process_count="3"');
+        expect(result).toContain('iteration_count="2"');
+        expect(result).toContain('<title>Ralph &lt;goal&gt; &amp; inspect</title>');
+        expect(result).toContain('<display_label>Ralph &lt;goal&gt; &amp; inspect - 2 iter</display_label>');
+        expect(result).toContain('<process_id>grill-proc</process_id>');
+        expect(result).toContain('<process_id>iter-2</process_id>');
+        expect(result).toContain('retrieve and read the relevant Ralph child conversations by process ID');
+        expect(result).not.toContain('/home/');
+        expect(result).not.toContain('C:\\Users');
     });
 });
 

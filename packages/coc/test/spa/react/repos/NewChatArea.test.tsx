@@ -212,8 +212,11 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
 
 import { NewChatArea } from '../../../../src/server/spa/client/react/features/chat/NewChatArea';
 import {
+    RALPH_SESSION_CONTEXT_DRAG_KIND,
+    RALPH_SESSION_CONTEXT_DRAG_MIME,
     SESSION_CONTEXT_DRAG_KIND,
     SESSION_CONTEXT_DRAG_MIME,
+    type RalphSessionContextDragPayload,
     type SessionContextDragPayload,
 } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 
@@ -230,11 +233,29 @@ function makeSessionPayload(overrides: Partial<SessionContextDragPayload> = {}):
     };
 }
 
-function makeSessionDataTransfer(payload: unknown) {
+function makeRalphPayload(overrides: Partial<RalphSessionContextDragPayload> = {}): RalphSessionContextDragPayload {
     return {
-        types: [SESSION_CONTEXT_DRAG_MIME],
+        kind: RALPH_SESSION_CONTEXT_DRAG_KIND,
+        version: 1,
+        sourceWorkspaceId: 'ws-1',
+        sourceRalphSessionId: 'ralph-session-0001',
+        title: 'Ralph source',
+        displayLabel: 'Ralph source - 2 iter',
+        phase: 'executing',
+        status: 'running',
+        lastActivityAt: '2026-01-01T00:00:00.000Z',
+        childProcessIds: ['grill-proc', 'iter-1', 'iter-2'],
+        processCount: 3,
+        iterationCount: 2,
+        ...overrides,
+    };
+}
+
+function makeSessionDataTransfer(payload: unknown, mime = SESSION_CONTEXT_DRAG_MIME) {
+    return {
+        types: [mime],
         dropEffect: 'none',
-        getData: vi.fn((format: string) => format === SESSION_CONTEXT_DRAG_MIME ? JSON.stringify(payload) : ''),
+        getData: vi.fn((format: string) => format === mime ? JSON.stringify(payload) : ''),
     };
 }
 
@@ -542,6 +563,44 @@ describe('NewChatArea', () => {
 
             fireEvent.click(screen.getByTestId('attached-context-remove'));
             expect(screen.queryByTestId('attached-session-context-chip')).toBeNull();
+        });
+
+        it('creates a removable Ralph group chip when the feature and retrieval tool are enabled', async () => {
+            mockSessionContextAttachmentsEnabled.value = true;
+            render(<NewChatArea workspaceId="ws-1" />);
+            await waitFor(() => expect(mockGetLlmToolsConfig).toHaveBeenCalledWith('ws-1'));
+            await act(async () => {});
+
+            fireEvent.drop(screen.getByTestId('chat-input-stack'), {
+                dataTransfer: makeSessionDataTransfer(makeRalphPayload(), RALPH_SESSION_CONTEXT_DRAG_MIME),
+            });
+
+            const chip = screen.getByTestId('attached-ralph-context-chip');
+            expect(chip.textContent).toContain('RALPH');
+            expect(chip.textContent).toContain('Ralph source - 2 iter');
+            expect(chip.textContent).toContain('executing/running');
+            expect(chip.textContent).toContain('3 processes');
+            expect(chip.textContent).toContain('2 iterations');
+            expect(chip.textContent).toContain('ralph-se…0001');
+
+            fireEvent.click(screen.getByTestId('attached-context-remove'));
+            expect(screen.queryByTestId('attached-ralph-context-chip')).toBeNull();
+        });
+
+        it('shows a clear error for duplicate Ralph group drops', async () => {
+            mockSessionContextAttachmentsEnabled.value = true;
+            render(<NewChatArea workspaceId="ws-1" />);
+            await waitFor(() => expect(mockGetLlmToolsConfig).toHaveBeenCalledWith('ws-1'));
+            await act(async () => {});
+
+            const dataTransfer = makeSessionDataTransfer(makeRalphPayload(), RALPH_SESSION_CONTEXT_DRAG_MIME);
+            fireEvent.drop(screen.getByTestId('chat-input-stack'), { dataTransfer });
+            fireEvent.drop(screen.getByTestId('chat-input-stack'), { dataTransfer });
+
+            expect(screen.getByTestId('new-chat-session-context-error').textContent).toBe(
+                'This Ralph session is already attached to the message.',
+            );
+            expect(screen.getAllByTestId('attached-ralph-context-chip')).toHaveLength(1);
         });
 
         it('shows a clear error for cross-workspace session drops', () => {

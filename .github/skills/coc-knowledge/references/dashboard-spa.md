@@ -139,22 +139,27 @@ Stacked layout with:
 Focus indicator propagates mode-colored ring from contenteditable to parent card.
 
 When `features.sessionContextAttachments` is enabled, same-workspace chat/process
-rows and Ralph session group rows are copy-drag context sources, and both
-`NewChatArea` and `FollowUpInputArea` accept drag/drop session-context payloads.
-The composers validate same-workspace, duplicate, self-drop, three-session cap,
-and `get_conversation` tool availability before adding
-removable session chips through the existing `AttachedContextPreviews` surface;
-send paths re-check the same constraints before formatting already-attached
-session chips so stale feature/capability state cannot send unusable source IDs.
-The attached-context formatter emits pointer-only `<attached_session_context>`
-blocks in user-message content; it stores source workspace/process IDs, status,
-safe display title, and last activity only. Session-context drag payloads derive
-that title from custom title/title/displayName, prompt preview or prompt metadata,
-then process ID; they do not use latest-turn previews such as
-`lastMessagePreview`. `ConversationTurnBubble` parses persisted
-session-context blocks on user turns and renders them as collapsed "Attached
-session context" cards with title, status, last activity, workspace/process IDs,
-and a raw-block copy affordance while raw mode still exposes the exact persisted
+rows and Ralph session group rows are copy-drag context sources. Both
+`NewChatArea` and `FollowUpInputArea` accept drag/drop payloads for single source
+sessions and Ralph groups. The composers validate same-workspace, duplicate,
+self-drop/current-child, three-logical-attachment cap, and `get_conversation`
+tool availability before adding removable context chips through
+`AttachedContextPreviews`; single sessions render as neutral **Session** chips,
+while Ralph groups render as purple **RALPH** chips with phase/status,
+process/iteration counts, latest activity, and a shortened Ralph session ID.
+Send paths re-check the same constraints before formatting already-attached
+source IDs so stale feature/capability state cannot send unusable pointers. The
+attached-context formatter emits pointer-only `<attached_session_context>` blocks
+for single sessions and pointer-only `<attached_ralph_session_context>` blocks
+for Ralph groups; the Ralph block stores source workspace ID, Ralph session ID,
+phase/status, safe title/display label, latest activity, process/iteration
+counts, and ordered child process IDs only. Single-session drag payloads derive
+their title from custom title/title/displayName, prompt preview or prompt
+metadata, then process ID; they do not use latest-turn previews such as
+`lastMessagePreview`. `ConversationTurnBubble` parses persisted single-session
+context blocks on user turns and renders them as collapsed "Attached session
+context" cards with title, status, last activity, workspace/process IDs, and a
+raw-block copy affordance while raw mode still exposes the exact persisted
 message content.
 
 New chats use `AgentSelectorChip` to choose a per-chat provider. The initial selection comes from the workspace's `lastChatProvider` preference when that provider is enabled and available; otherwise it falls back to the configured `defaultProvider` from runtime config, and then to Copilot if the configured default provider cannot be selected. Follow-up inputs show the provider stored on the process metadata so existing chats continue using their original provider.

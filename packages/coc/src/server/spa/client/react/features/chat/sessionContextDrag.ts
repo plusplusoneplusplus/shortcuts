@@ -33,6 +33,8 @@ export interface RalphSessionContextDragPayload {
     iterationCount: number;
 }
 
+export type SessionContextAttachmentDragPayload = SessionContextDragPayload | RalphSessionContextDragPayload;
+
 export interface CreateSessionContextDragPayloadOptions {
     activeWorkspaceId?: string | null;
     idSource?: 'process' | 'queue-task';

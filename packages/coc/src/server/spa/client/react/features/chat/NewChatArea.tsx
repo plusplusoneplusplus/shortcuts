@@ -49,7 +49,7 @@ import { AttachedContextPreviews } from '../../ui/AttachedContextPreviews';
 import { formatAttachedContext, useAttachedContext } from './hooks/useAttachedContext';
 import {
     dataTransferHasSessionContext,
-    readSessionContextDragPayload,
+    readSessionContextDropPayload,
     useConversationRetrievalCapability,
     validateSessionContextAttachmentsForSend,
     validateSessionContextDrop,
@@ -498,7 +498,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
         e.preventDefault();
         const validation = validateSessionContextDrop({
-            payload: readSessionContextDragPayload(e.dataTransfer),
+            payload: readSessionContextDropPayload(e.dataTransfer),
             featureEnabled: sessionContextAttachmentsEnabled,
             activeWorkspaceId: workspaceId,
             currentProcessId: null,
@@ -509,7 +509,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             setSessionContextDropError(validation.error);
             return;
         }
-        attachedContext.addSession(validation.payload);
+        attachedContext.addSessionContext(validation.payload);
         setSessionContextDropError(null);
     }
 

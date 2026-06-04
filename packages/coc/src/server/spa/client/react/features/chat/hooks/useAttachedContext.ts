@@ -1,5 +1,12 @@
 import { useState, useCallback, useRef } from 'react';
-import type { SessionContextDragPayload, SessionContextSourceStatus } from '../sessionContextDrag';
+import {
+    RALPH_SESSION_CONTEXT_DRAG_KIND,
+    type RalphSessionContextDragPayload,
+    type RalphSessionContextPhase,
+    type SessionContextAttachmentDragPayload,
+    type SessionContextDragPayload,
+    type SessionContextSourceStatus,
+} from '../sessionContextDrag';
 
 export interface AttachedTurnContextItem {
     kind: 'turn';
@@ -21,7 +28,23 @@ export interface AttachedSessionContextItem {
     preview: string;
 }
 
-export type AttachedContextItem = AttachedTurnContextItem | AttachedSessionContextItem;
+export interface AttachedRalphSessionContextItem {
+    kind: 'ralph-session';
+    id: string;
+    sourceWorkspaceId: string;
+    sourceRalphSessionId: string;
+    title: string;
+    displayLabel: string;
+    phase: RalphSessionContextPhase;
+    status: SessionContextSourceStatus;
+    lastActivityAt: string;
+    childProcessIds: string[];
+    processCount: number;
+    iterationCount: number;
+    preview: string;
+}
+
+export type AttachedContextItem = AttachedTurnContextItem | AttachedSessionContextItem | AttachedRalphSessionContextItem;
 
 const PREVIEW_LENGTH = 100;
 const SESSION_CONTEXT_BLOCK_PATTERN = /<attached_session_context\s+version="1">\s*<source\s+([^>]*)>\s*<title>([\s\S]*?)<\/title>\s*<instruction>[\s\S]*?<\/instruction>\s*<\/source>\s*<\/attached_session_context>/g;
@@ -99,6 +122,21 @@ export function buildSessionContextPreview(source: Pick<SessionContextDragPayloa
     return `${source.title} · ${source.status} · ${source.lastActivityAt} · ${shortenSessionProcessId(source.sourceProcessId)}`;
 }
 
+function formatCount(count: number, singular: string, plural: string): string {
+    return `${count} ${count === 1 ? singular : plural}`;
+}
+
+export function buildRalphSessionContextPreview(source: Pick<RalphSessionContextDragPayload, 'displayLabel' | 'phase' | 'status' | 'lastActivityAt' | 'sourceRalphSessionId' | 'processCount' | 'iterationCount'>): string {
+    return [
+        source.displayLabel,
+        `${source.phase}/${source.status}`,
+        formatCount(source.processCount, 'process', 'processes'),
+        formatCount(source.iterationCount, 'iteration', 'iterations'),
+        source.lastActivityAt,
+        shortenSessionProcessId(source.sourceRalphSessionId),
+    ].join(' · ');
+}
+
 let nextId = 0;
 
 export function useAttachedContext() {
@@ -132,6 +170,33 @@ export function useAttachedContext() {
         setItems(prev => [...prev, item]);
     }, []);
 
+    const addRalphSession = useCallback((source: RalphSessionContextDragPayload) => {
+        const item: AttachedRalphSessionContextItem = {
+            kind: 'ralph-session',
+            id: `ctx-${++nextId}`,
+            sourceWorkspaceId: source.sourceWorkspaceId,
+            sourceRalphSessionId: source.sourceRalphSessionId,
+            title: source.title,
+            displayLabel: source.displayLabel,
+            phase: source.phase,
+            status: source.status,
+            lastActivityAt: source.lastActivityAt,
+            childProcessIds: source.childProcessIds,
+            processCount: source.processCount,
+            iterationCount: source.iterationCount,
+            preview: buildRalphSessionContextPreview(source),
+        };
+        setItems(prev => [...prev, item]);
+    }, []);
+
+    const addSessionContext = useCallback((source: SessionContextAttachmentDragPayload) => {
+        if (source.kind === RALPH_SESSION_CONTEXT_DRAG_KIND) {
+            addRalphSession(source);
+            return;
+        }
+        addSession(source);
+    }, [addRalphSession, addSession]);
+
     const remove = useCallback((id: string) => {
         setItems(prev => prev.filter(item => item.id !== id));
     }, []);
@@ -142,7 +207,7 @@ export function useAttachedContext() {
 
     const getItems = useCallback(() => itemsRef.current, []);
 
-    return { items, add, addSession, remove, clear, getItems };
+    return { items, add, addSession, addRalphSession, addSessionContext, remove, clear, getItems };
 }
 
 /**
@@ -159,6 +224,20 @@ export function formatAttachedContext(items: AttachedContextItem[]): string {
                 '<instruction>Before answering, retrieve and read this source conversation by process ID using the available conversation retrieval tool.</instruction>',
                 '</source>',
                 '</attached_session_context>',
+            ].join('\n');
+        }
+        if (item.kind === 'ralph-session') {
+            return [
+                '<attached_ralph_session_context version="1">',
+                `<source workspace_id="${escapeContextText(item.sourceWorkspaceId)}" ralph_session_id="${escapeContextText(item.sourceRalphSessionId)}" phase="${escapeContextText(item.phase)}" status="${escapeContextText(item.status)}" last_activity_at="${escapeContextText(item.lastActivityAt)}" process_count="${item.processCount}" iteration_count="${item.iterationCount}">`,
+                `<title>${escapeContextText(item.title)}</title>`,
+                `<display_label>${escapeContextText(item.displayLabel)}</display_label>`,
+                '<child_process_ids>',
+                ...item.childProcessIds.map(processId => `<process_id>${escapeContextText(processId)}</process_id>`),
+                '</child_process_ids>',
+                '<instruction>Before answering, retrieve and read the relevant Ralph child conversations by process ID using the available conversation retrieval tool. This pointer block contains only safe metadata.</instruction>',
+                '</source>',
+                '</attached_ralph_session_context>',
             ].join('\n');
         }
 
