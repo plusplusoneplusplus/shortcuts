@@ -126,6 +126,57 @@ describe('computeHunkRanges', () => {
         const ranges = computeHunkRanges(computeDiffLines(['diff --git a/x b/x']), 'x', makeGetHunkClassification());
         expect(ranges).toHaveLength(0);
     });
+
+    it('folds orphan classifications (more entries than @@ hunks) into the last real hunk by dominance', () => {
+        // Single contiguous @@ block, but the classifier emitted TWO entries —
+        // mechanical at index 0 and logic at index 1 (which has no @@ header).
+        // The orphan logic entry must fold into the only real hunk, and logic
+        // (higher priority) must win so it is never silently dropped.
+        const SINGLE_HUNK_DIFF = `diff --git a/big.cpp b/big.cpp
+index 0000000..1111111 100644
+--- a/big.cpp
++++ b/big.cpp
+@@ -0,0 +1,3 @@
++#include "a.h"
++#include "b.h"
++doDurableSubmit();`;
+        const classifications: HunkClassification[] = [
+            { file: 'big.cpp', hunkIndex: 0, category: 'mechanical', intensity: 'low', reason: 'Added includes' },
+            { file: 'big.cpp', hunkIndex: 1, category: 'logic', intensity: 'high', reason: 'Durable submit logic' },
+        ];
+        const get = (file: string, idx: number) =>
+            classifications.find(h => h.file === file && h.hunkIndex === idx);
+        const ranges = computeHunkRanges(computeDiffLines(SINGLE_HUNK_DIFF.split('\n')), 'big.cpp', get);
+        expect(ranges).toHaveLength(1);
+        expect(ranges[0].classification?.category).toBe('logic');
+        expect(ranges[0].classification?.intensity).toBe('high');
+    });
+
+    it('keeps the own-index classification when it already dominates an orphan', () => {
+        const SINGLE_HUNK_DIFF = `diff --git a/big.cpp b/big.cpp
+@@ -0,0 +1,2 @@
++real logic
++more logic`;
+        const classifications: HunkClassification[] = [
+            { file: 'big.cpp', hunkIndex: 0, category: 'logic', intensity: 'high', reason: 'Core logic' },
+            { file: 'big.cpp', hunkIndex: 1, category: 'generated', intensity: 'low', reason: 'Orphan generated' },
+        ];
+        const get = (file: string, idx: number) =>
+            classifications.find(h => h.file === file && h.hunkIndex === idx);
+        const ranges = computeHunkRanges(computeDiffLines(SINGLE_HUNK_DIFF.split('\n')), 'big.cpp', get);
+        expect(ranges).toHaveLength(1);
+        expect(ranges[0].classification?.category).toBe('logic');
+        expect(ranges[0].classification?.reason).toBe('Core logic');
+    });
+
+    it('does not fold when entry count matches @@ hunk count', () => {
+        const lines = TWO_HUNK_DIFF.split('\n');
+        const ranges = computeHunkRanges(computeDiffLines(lines), 'foo.ts', makeGetHunkClassification());
+        expect(ranges).toHaveLength(2);
+        // Each hunk keeps its own classification — no cross-contamination.
+        expect(ranges[0].classification?.category).toBe('logic');
+        expect(ranges[1].classification?.category).toBe('generated');
+    });
 });
 
 describe('UnifiedDiffViewer — AC-02 hunk collapse', () => {
@@ -185,6 +236,34 @@ describe('UnifiedDiffViewer — AC-02 hunk collapse', () => {
         // Logic hunk is now expanded; only the generated summary remains.
         expect(summaries).toHaveLength(1);
         expect(summaries[0]).toHaveTextContent('Generated');
+    });
+
+    it('does not hide a folded logic hunk when filter = logic (badge/diff consistency)', () => {
+        // Regression: single @@ block classified mechanical(0) + orphan logic(1).
+        // Folding makes the rendered hunk "logic", so under the logic filter the
+        // body must stay visible instead of collapsing as mechanical.
+        const SINGLE_HUNK_DIFF = `diff --git a/big.cpp b/big.cpp
+@@ -0,0 +1,2 @@
++#include "a.h"
++doDurableSubmit();`;
+        const classifications: HunkClassification[] = [
+            { file: 'big.cpp', hunkIndex: 0, category: 'mechanical', intensity: 'low', reason: 'Added include' },
+            { file: 'big.cpp', hunkIndex: 1, category: 'logic', intensity: 'high', reason: 'Durable submit logic' },
+        ];
+        const get = (file: string, idx: number) =>
+            classifications.find(h => h.file === file && h.hunkIndex === idx);
+        const { container } = render(
+            <UnifiedDiffViewer
+                diff={SINGLE_HUNK_DIFF}
+                fileName="big.cpp"
+                filePath="big.cpp"
+                getHunkClassification={get}
+                activeFilters={new Set<HunkCategory>(['logic'])}
+            />,
+        );
+        // Hunk stays expanded (not collapsed as mechanical), logic body visible.
+        expect(screen.queryAllByTestId('collapsed-hunk-summary')).toHaveLength(0);
+        expect(container.textContent).toContain('doDurableSubmit');
     });
 
     it('does not collapse anything when classification props are omitted', () => {

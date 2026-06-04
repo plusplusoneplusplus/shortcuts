@@ -15,6 +15,12 @@ Classify each `@@` hunk in a pull request or commit diff into exactly one catego
 - The user clicks "Classify" on a PR or commit diff review surface.
 - The system needs to produce a per-hunk classification for a pull request, commit, or branch-range diff.
 
+## What Counts as a Hunk
+
+A **hunk** is one `@@ ... @@` block in the unified diff — exactly as git emits it. The `hunkIndex` you assign is the 0-based position of that `@@` block within the file's diff (first `@@` block = 0, second = 1, ...).
+
+**Emit exactly one classification entry per physical `@@` block.** Do NOT subdivide a single `@@` block into multiple conceptual entries (e.g. "imports" vs "implementation"), and do NOT emit more entries for a file than it has `@@` blocks. A large contiguous block with no intervening context lines is still a single `@@` hunk and gets a single entry — pick the **dominant** category for it (logic outranks test outranks mechanical outranks generated). Emitting an out-of-range `hunkIndex` causes that classification to be dropped from the reviewer's diff view.
+
 ## Classification Categories
 
 | Category | Description | Examples |
@@ -86,7 +92,7 @@ Do NOT print the classifications as JSON in your response — the persistence la
 You are classifying the hunks of a pull request diff. You have access to git and gh CLI tools to investigate the PR context.
 
 1. **Use the tools provided** to read the PR diff and understand each hunk. Do NOT rely solely on the file path — read the actual changes.
-2. **Classify every `@@` hunk** in the diff. Every hunk must appear exactly once in the saved array, and each hunk gets exactly one category (the dominant one if mixed).
+2. **Classify every `@@` hunk** in the diff. Each physical `@@` block gets **exactly one** entry with the dominant category — never split one `@@` block into multiple entries, and never emit a `hunkIndex` greater than `(number of @@ blocks in the file − 1)`.
 3. **Use file path heuristics as a starting signal**, but always verify:
    - Files in `test/`, `__tests__/`, `*.test.*`, `*.spec.*` → likely `test`
    - `package-lock.json`, `*.generated.*`, `*.g.ts` → likely `generated`
@@ -104,7 +110,8 @@ You are classifying the hunks of a pull request diff. You have access to git and
 
 ## Anti-Patterns
 
-- Do NOT classify an entire file as one category — classify each hunk independently.
+- Do NOT classify an entire file as one category when it has multiple `@@` hunks — classify each `@@` hunk independently. (A file with a single `@@` hunk correctly gets a single entry.)
+- Do NOT split one `@@` hunk into multiple entries or invent extra hunk indices — emit exactly one entry per `@@` block, with the dominant category.
 - Do NOT default everything to `logic` — most PRs have significant mechanical/test/generated content.
 - Do NOT skip hunks — every `@@` hunk must appear in the output.
 - Do NOT use `simple` for changes with meaningful branching, persistence, I/O, validation, authorization, error handling, concurrency, external calls, or cross-file side effects.
