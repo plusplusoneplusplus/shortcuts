@@ -1,4 +1,4 @@
-import type { ReactNode, MouseEventHandler, TouchEventHandler } from 'react';
+import type { ReactNode, MouseEventHandler, TouchEventHandler, DragEventHandler } from 'react';
 import { cn } from './cn';
 
 export interface CardProps {
@@ -6,9 +6,12 @@ export interface CardProps {
     children?: ReactNode;
     onClick?: MouseEventHandler<HTMLDivElement>;
     onContextMenu?: MouseEventHandler<HTMLDivElement>;
+    onDragStart?: DragEventHandler<HTMLDivElement>;
     onTouchStart?: TouchEventHandler<HTMLDivElement>;
     onTouchEnd?: TouchEventHandler<HTMLDivElement>;
     onTouchMove?: TouchEventHandler<HTMLDivElement>;
+    draggable?: boolean;
+    title?: string;
     'aria-label'?: string;
     id?: string;
     'data-wiki-id'?: string;
@@ -17,7 +20,7 @@ export interface CardProps {
     [key: `data-${string}`]: string | boolean | undefined;
 }
 
-export function Card({ className, children, onClick, onContextMenu, onTouchStart, onTouchEnd, onTouchMove, 'aria-label': ariaLabel, id, 'data-wiki-id': dataWikiId, 'data-task-id': dataTaskId, 'data-testid': dataTestId, ...rest }: CardProps) {
+export function Card({ className, children, onClick, onContextMenu, onDragStart, onTouchStart, onTouchEnd, onTouchMove, draggable, title, 'aria-label': ariaLabel, id, 'data-wiki-id': dataWikiId, 'data-task-id': dataTaskId, 'data-testid': dataTestId, ...rest }: CardProps) {
     // Extract remaining data-* attributes
     const dataAttrs: Record<string, string | boolean | undefined> = {};
     for (const [key, value] of Object.entries(rest)) {
@@ -34,8 +37,11 @@ export function Card({ className, children, onClick, onContextMenu, onTouchStart
             role={onClick ? 'button' : undefined}
             tabIndex={onClick ? 0 : undefined}
             aria-label={ariaLabel}
+            title={title}
+            draggable={draggable}
             onClick={onClick}
             onContextMenu={onContextMenu}
+            onDragStart={onDragStart}
             onTouchStart={onTouchStart}
             onTouchEnd={onTouchEnd}
             onTouchMove={onTouchMove}

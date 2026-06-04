@@ -15,6 +15,8 @@ import { getSpaCocClient } from '../api/cocClient';
 import { formatDuration, statusIcon, statusLabel, typeLabel, repoName } from '../utils/format';
 import { resolveWorkspaceName, getProcessWorkspaceId, getProcessWorkspaceName } from '../utils/workspace';
 import { isQueueProcessId, toQueueProcessId } from '../utils/queue-process-id';
+import { isSessionContextAttachmentsEnabled } from '../utils/config';
+import { createSessionContextDragPayload, writeSessionContextDragData } from '../features/chat/sessionContextDrag';
 
 export interface TypeFilterOptions {
     includeTypes?: string[];
@@ -63,6 +65,8 @@ export function ProcessesSidebar() {
     const { state, dispatch } = useApp();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { queued, running, history, stats, showHistory, draining, drainQueued, drainRunning } = queueState;
+    const sessionContextDragEnabled = isSessionContextAttachmentsEnabled();
+    const activeWorkspaceId = state.workspace !== '__all' ? state.workspace : null;
     const [now, setNow] = useState(Date.now());
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
     const [isClearLoading, setIsClearLoading] = useState(false);
@@ -206,6 +210,8 @@ export function ProcessesSidebar() {
                 <SearchResultsView
                     results={state.searchResults}
                     loading={state.searchLoading}
+                    activeWorkspaceId={activeWorkspaceId}
+                    sessionContextDragEnabled={sessionContextDragEnabled}
                     onSelectProcess={(processId: string) => {
                         const nextHash = '#process/' + encodeURIComponent(processId);
                         if (location.hash !== nextHash) {
@@ -270,6 +276,8 @@ export function ProcessesSidebar() {
                                 {tasks.map((task: any) => (
                                     <QueueTaskCard key={task.id} task={task} now={now}
                                         selected={queueState.selectedTaskId === task.id}
+                                        activeWorkspaceId={activeWorkspaceId}
+                                        sessionContextDragEnabled={sessionContextDragEnabled}
                                         onClick={() => openTaskInRoute(task)} />
                                 ))}
                             </div>
@@ -293,6 +301,8 @@ export function ProcessesSidebar() {
                                 {tasks.map((task: any) => (
                                     <QueueTaskCard key={task.id} task={task} now={now}
                                         selected={queueState.selectedTaskId === task.id}
+                                        activeWorkspaceId={activeWorkspaceId}
+                                        sessionContextDragEnabled={sessionContextDragEnabled}
                                         onClick={() => openTaskInRoute(task)} />
                                 ))}
                             </div>
@@ -335,6 +345,9 @@ export function ProcessesSidebar() {
                             : previewSource;
                         const wsId = getProcessWorkspaceId(p);
                         const wsName = resolveWorkspaceName(wsId, getProcessWorkspaceName(p), state.workspaces);
+                        const sessionContextPayload = sessionContextDragEnabled
+                            ? createSessionContextDragPayload(p, { activeWorkspaceId, idSource: 'process' })
+                            : null;
 
                         return (
                             <Card
@@ -358,6 +371,11 @@ export function ProcessesSidebar() {
                                 onTouchStart={(e: React.TouchEvent) => { processLongPressIdRef.current = p.id; processLongPress.onTouchStart(e); }}
                                 onTouchEnd={processLongPress.onTouchEnd}
                                 onTouchMove={processLongPress.onTouchMove}
+                                draggable={!!sessionContextPayload}
+                                onDragStart={sessionContextPayload ? (e) => writeSessionContextDragData(e.dataTransfer, sessionContextPayload) : undefined}
+                                title={sessionContextPayload ? `${preview} — drag to attach as session context` : undefined}
+                                data-session-context-source={sessionContextPayload ? 'true' : undefined}
+                                data-session-context-status={sessionContextPayload?.status}
                                 className={cn(
                                     'p-2.5 process-item',
                                     isActive && 'ring-2 ring-[#0078d4] dark:ring-[#3794ff]'
@@ -465,6 +483,8 @@ export function ProcessesSidebar() {
                                 now={now}
                                 selected={queueState.selectedTaskId === task.id}
                                 compact
+                                activeWorkspaceId={activeWorkspaceId}
+                                sessionContextDragEnabled={sessionContextDragEnabled}
                                 onClick={() => openTaskInRoute(task)}
                             />
                         ))}
@@ -500,12 +520,14 @@ export function ProcessesSidebar() {
     );
 }
 
-function QueueTaskCard({ task, now, selected, onClick, compact = false }: {
+function QueueTaskCard({ task, now, selected, onClick, compact = false, activeWorkspaceId, sessionContextDragEnabled }: {
     task: any;
     now: number;
     selected: boolean;
     onClick: () => void;
     compact?: boolean;
+    activeWorkspaceId?: string | null;
+    sessionContextDragEnabled?: boolean;
 }) {
     const elapsed = task.status === 'running' && task.startTime
         ? formatDuration(now - new Date(task.startTime).getTime())
@@ -518,12 +540,20 @@ function QueueTaskCard({ task, now, selected, onClick, compact = false }: {
         : task.id;
 
     const repo = repoName(task.repoId) || repoName(task.workingDirectory) || repoName(task.payload?.workingDirectory);
+    const sessionContextPayload = sessionContextDragEnabled
+        ? createSessionContextDragPayload(task, { activeWorkspaceId, idSource: 'queue-task' })
+        : null;
 
     return (
         <Card
             onClick={onClick}
+            draggable={!!sessionContextPayload}
+            onDragStart={sessionContextPayload ? (e) => writeSessionContextDragData(e.dataTransfer, sessionContextPayload) : undefined}
+            title={sessionContextPayload ? `${preview} — drag to attach as session context` : undefined}
             className={cn('process-item', compact ? 'px-2 py-1.5' : 'p-2', selected && 'ring-2 ring-[#0078d4] dark:ring-[#3794ff]', task.frozen && 'task-frozen')}
             aria-label={`Task ${statusLabel(task.status, task.type).toLowerCase()}: ${preview}`}
+            data-session-context-source={sessionContextPayload ? 'true' : undefined}
+            data-session-context-status={sessionContextPayload?.status}
         >
             {compact ? (
                 <div className="flex items-center gap-1.5 min-w-0 text-[11px] leading-5">
@@ -587,6 +617,8 @@ interface GroupedSearchResult {
     processTitle?: string;
     promptPreview: string;
     processStatus: string;
+    processType: string;
+    workspaceId: string;
     startTime: string;
     turns: { turnIndex: number; role: string; snippet: string; rank: number }[];
 }
@@ -600,6 +632,8 @@ function groupSearchResults(results: any[]): GroupedSearchResult[] {
                 processTitle: r.processTitle,
                 promptPreview: r.promptPreview,
                 processStatus: r.processStatus,
+                processType: r.processType,
+                workspaceId: r.workspaceId,
                 startTime: r.startTime,
                 turns: [],
             });
@@ -614,11 +648,13 @@ function groupSearchResults(results: any[]): GroupedSearchResult[] {
     return Array.from(map.values());
 }
 
-function SearchResultsView({ results, loading, onSelectProcess, selectedId }: {
+function SearchResultsView({ results, loading, onSelectProcess, selectedId, activeWorkspaceId, sessionContextDragEnabled }: {
     results: any[];
     loading: boolean;
     onSelectProcess: (processId: string) => void;
     selectedId: string | null;
+    activeWorkspaceId?: string | null;
+    sessionContextDragEnabled?: boolean;
 }) {
     if (loading) {
         return (
@@ -651,6 +687,16 @@ function SearchResultsView({ results, loading, onSelectProcess, selectedId }: {
                             ? (group.promptPreview.length > 60 ? group.promptPreview.slice(0, 60) + '…' : group.promptPreview)
                             : group.processId
                     );
+                    const sessionContextPayload = sessionContextDragEnabled
+                        ? createSessionContextDragPayload({
+                            id: group.processId,
+                            workspaceId: group.workspaceId,
+                            status: group.processStatus,
+                            title,
+                            promptPreview: group.promptPreview,
+                            startTime: group.startTime,
+                        }, { activeWorkspaceId, idSource: 'process' })
+                        : null;
 
                     return (
                         <Card
@@ -660,6 +706,11 @@ function SearchResultsView({ results, loading, onSelectProcess, selectedId }: {
                                 'p-2 cursor-pointer',
                                 isActive && 'ring-2 ring-[#0078d4] dark:ring-[#3794ff]'
                             )}
+                            draggable={!!sessionContextPayload}
+                            onDragStart={sessionContextPayload ? (e) => writeSessionContextDragData(e.dataTransfer, sessionContextPayload) : undefined}
+                            title={sessionContextPayload ? `${title} — drag to attach as session context` : undefined}
+                            data-session-context-source={sessionContextPayload ? 'true' : undefined}
+                            data-session-context-status={sessionContextPayload?.status}
                             data-testid="search-result-card"
                         >
                             <div className="flex items-center justify-between gap-2 mb-1">

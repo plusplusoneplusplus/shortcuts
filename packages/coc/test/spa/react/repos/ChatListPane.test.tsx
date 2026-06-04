@@ -28,6 +28,7 @@ import {
     getTaskModeKey,
     getTaskModeLabel,
 } from '../../../../src/server/spa/client/react/features/chat/ChatListPane';
+import { SESSION_CONTEXT_DRAG_MIME } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 
 // ── Mocks ──────────────────────────────────────────────────────────────
 
@@ -80,6 +81,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/ChatPreferencesContext
 
 // ── Display settings ──
 let mockDisplaySettings = { taskCardDensity: 'normal' as string, showReportIntent: false };
+let mockSessionContextAttachmentsEnabled = false;
 vi.mock('../../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
     useDisplaySettings: () => mockDisplaySettings,
     invalidateDisplaySettings: vi.fn(),
@@ -125,6 +127,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '',
     isRalphEnabled: () => false,
     isLoopsEnabled: () => false,
+    isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
@@ -231,6 +234,7 @@ describe('ChatListPane', () => {
         mockPinnedChatIds = new Set();
         mockArchivedChatIds = new Set();
         mockDisplaySettings = { taskCardDensity: 'normal', showReportIntent: false };
+        mockSessionContextAttachmentsEnabled = false;
         mockGetDraft.mockReturnValue(null);
         globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
         vi.spyOn(window, 'confirm').mockReturnValue(true);
@@ -797,6 +801,85 @@ describe('ChatListPane', () => {
             expect(document.querySelector('[data-task-id="q-1"]')).toBeTruthy();
             fireEvent.click(screen.getByTestId('queued-tasks-section-toggle'));
             expect(document.querySelector('[data-task-id="q-1"]')).toBeNull();
+        });
+    });
+
+    // ── Session context drag sources ────────────────────────────────────
+    describe('Session context drag sources', () => {
+        it('does not expose session-context drag attributes while the feature flag is disabled', () => {
+            renderPane({
+                activeTab: 'chats',
+                workspaceId: 'ws-1',
+                history: [makeHistoryTask({
+                    id: 'proc-1',
+                    workspaceId: 'ws-1',
+                    title: 'Source Chat',
+                    startTime: Date.parse('2026-01-01T00:00:00Z'),
+                })],
+            });
+
+            const row = document.querySelector('[data-task-id="proc-1"]') as HTMLElement | null;
+            expect(row).toBeTruthy();
+            expect(row!.getAttribute('data-session-context-source')).toBeNull();
+            expect(row!.getAttribute('draggable')).not.toBe('true');
+        });
+
+        it('sets a pointer-only safe drag payload for same-workspace chat rows when enabled', () => {
+            mockSessionContextAttachmentsEnabled = true;
+            renderPane({
+                activeTab: 'chats',
+                workspaceId: 'ws-1',
+                history: [makeHistoryTask({
+                    id: 'proc-1',
+                    workspaceId: 'ws-1',
+                    title: undefined,
+                    customTitle: undefined,
+                    displayName: undefined,
+                    promptPreview: 'Debug /home/example/repo/src/app.ts',
+                    startTime: Date.parse('2026-01-01T00:00:00Z'),
+                })],
+            });
+
+            const row = document.querySelector('[data-task-id="proc-1"]') as HTMLElement;
+            expect(row.getAttribute('draggable')).toBe('true');
+            expect(row.getAttribute('data-session-context-source')).toBe('true');
+            expect(row.getAttribute('data-session-context-status')).toBe('completed');
+
+            const dataTransfer = { setData: vi.fn(), effectAllowed: 'move' as DataTransfer['effectAllowed'] };
+            fireEvent.dragStart(row, { dataTransfer });
+            const [, rawPayload] = dataTransfer.setData.mock.calls.find((call: any[]) => call[0] === SESSION_CONTEXT_DRAG_MIME)!;
+            const payload = JSON.parse(rawPayload);
+            expect(payload).toMatchObject({
+                sourceWorkspaceId: 'ws-1',
+                sourceProcessId: 'proc-1',
+                status: 'completed',
+                title: 'Debug [path]',
+                lastActivityAt: '2026-01-01T00:00:00.000Z',
+            });
+            expect(rawPayload).not.toContain('/home/example');
+        });
+
+        it('uses a queue process pointer for queued chat rows without a processId', () => {
+            mockSessionContextAttachmentsEnabled = true;
+            renderPane({
+                workspaceId: 'ws-1',
+                queued: [makeQueuedTask({
+                    id: 'q-source',
+                    repoId: 'ws-1',
+                    createdAt: '2026-01-01T00:00:00Z',
+                    displayName: 'Queued Source',
+                })],
+            });
+
+            const row = document.querySelector('[data-task-id="q-source"]') as HTMLElement;
+            const dataTransfer = { setData: vi.fn(), effectAllowed: 'move' as DataTransfer['effectAllowed'] };
+            fireEvent.dragStart(row, { dataTransfer });
+            const [, rawPayload] = dataTransfer.setData.mock.calls.find((call: any[]) => call[0] === SESSION_CONTEXT_DRAG_MIME)!;
+            expect(JSON.parse(rawPayload)).toMatchObject({
+                sourceWorkspaceId: 'ws-1',
+                sourceProcessId: 'queue_q-source',
+                status: 'queued',
+            });
         });
     });
 
@@ -2069,6 +2152,7 @@ describe('ChatListPane', () => {
                 id: 'sr-1',
                 type: 'chat',
                 status: 'completed',
+                workspaceId: 'ws-1',
                 displayName: 'Search Result Task',
                 title: 'Search Result Task',
                 promptPreview: 'some prompt',

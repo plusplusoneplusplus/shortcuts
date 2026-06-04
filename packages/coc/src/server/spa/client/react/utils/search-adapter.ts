@@ -9,6 +9,7 @@ export interface SearchResultTask {
     id: string;
     type: string;
     status: string;
+    workspaceId: string;
     displayName: string;
     title: string;
     promptPreview: string;
@@ -40,6 +41,7 @@ export function adaptSearchResultToTask(result: ProcessSearchResult): SearchResu
         id: result.processId,
         type: result.processType,
         status: result.processStatus,
+        workspaceId: result.workspaceId,
         displayName: result.processTitle || result.processId,
         title: result.processTitle || result.processId,
         promptPreview: result.promptPreview,

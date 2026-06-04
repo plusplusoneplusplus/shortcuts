@@ -29,13 +29,14 @@ import { groupHistoryByPlanFile, type HistoryGroup } from '../git/history-groupi
 import { HistoryGroupHeader, computeAggregateMode } from '../git/commits/HistoryGroupHeader';
 import { groupByRalphSession, type RalphHistoryEntry, type RalphSession } from './ralph-session-grouping';
 import { RalphSessionRow } from './RalphSessionRow';
-import { isRalphEnabled, isLoopsEnabled } from '../../utils/config';
+import { isRalphEnabled, isLoopsEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
 import { getListModeConfig } from './list-mode-config';
 import { useAllLoops, type ProcessLoopState } from './hooks/useAllLoops';
 import { LoopIcon } from './icons/LoopIcon';
 import { isRalphTask } from '../../../../../tasks/task-types';
 import { getProviderDotClasses, getTaskChatProvider } from './ProviderBadge';
 import { normalizeChatMode } from '../../repos/modeConfig';
+import { createSessionContextDragPayload, writeSessionContextDragData } from './sessionContextDrag';
 
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {
@@ -387,6 +388,7 @@ export function ChatListPane({
     // Fetch all loops server-wide for inline indicators and the "Loops" scope tab.
     const { loopStateByProcess, processIdsWithLoops, loopProcessCount } = useAllLoops();
     const loopsEnabled = isLoopsEnabled();
+    const sessionContextDragEnabled = isSessionContextAttachmentsEnabled();
 
     const [searchQuery, setSearchQueryRaw] = useState('');
     const [searchVisible, setSearchVisible] = useState(false);
@@ -1277,6 +1279,12 @@ export function ChatListPane({
         const contextMenuKind: 'running' | 'queued' | 'completed' = taskStatus;
         const defaultTestid = isRunning ? 'running-task-row' : isQueued ? 'queued-task-row' : 'history-task-row';
         const rowTitle = isAwaitingInput ? `${titleText} — waiting for your input` : titleText;
+        const sessionContextPayload = sessionContextDragEnabled
+            ? createSessionContextDragPayload(task, {
+                activeWorkspaceId: workspaceId,
+                idSource: task.processId || (!isRunning && !isQueued) ? 'process' : 'queue-task',
+            })
+            : null;
 
         return (
             <SwipeableHistoryItem
@@ -1313,6 +1321,8 @@ export function ChatListPane({
                         handleHistoryItemClick(e, task, listForRange);
                     }}
                     onContextMenu={(e) => handleTaskContextMenu(e, task.id, contextMenuKind)}
+                    draggable={!!sessionContextPayload}
+                    onDragStart={sessionContextPayload ? (e) => writeSessionContextDragData(e.dataTransfer, sessionContextPayload) : undefined}
                     onTouchStart={(e) => {
                         historyLongPressTaskRef.current = task.id;
                         historyLongPress.onTouchStart(e);
@@ -1327,7 +1337,9 @@ export function ChatListPane({
                     data-archived={isArchived ? 'true' : undefined}
                     data-group-child={isGroupChild ? 'true' : undefined}
                     data-awaiting-input={isAwaitingInput ? 'true' : undefined}
-                    title={rowTitle}
+                    data-session-context-source={sessionContextPayload ? 'true' : undefined}
+                    data-session-context-status={sessionContextPayload?.status}
+                    title={sessionContextPayload ? `${rowTitle} — drag to attach as session context` : rowTitle}
                 >
                     <span className={dotClasses} aria-label={`status: ${isAwaitingInput ? 'awaiting input' : isRunning ? 'running' : isFailed ? 'failed' : isQueued ? 'queued' : 'done'}`} />
                     <span className={modeBadgeClasses} title={modeTitle}>{modeLabel}</span>
@@ -1474,8 +1486,10 @@ export function ChatListPane({
         onUnpinChat,
         loopStateByProcess,
         loopsEnabled,
+        sessionContextDragEnabled,
         onSelectTask,
         historyLongPress,
+        workspaceId,
     ]);
 
     // When a server-side search is active, always render the main body so FTS5 results

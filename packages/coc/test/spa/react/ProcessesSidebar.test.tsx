@@ -10,6 +10,7 @@ import { AppProvider, useApp } from '../../../src/server/spa/client/react/contex
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/contexts/QueueContext';
 import { ProcessesSidebar } from '../../../src/server/spa/client/react/processes/ProcessesSidebar';
 import { resetSpaCocClientForTests } from '../../../src/server/spa/client/react/api/cocClient';
+import { SESSION_CONTEXT_DRAG_MIME } from '../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 
 // Portal passthrough so ContextMenu and RenameDialog render inline
 vi.mock('react-dom', async (importOriginal) => {
@@ -54,15 +55,17 @@ vi.mock('../../../src/server/spa/client/react/hooks/ui/useLongPress', () => ({
 // Stub workspace utils
 vi.mock('../../../src/server/spa/client/react/utils/workspace', () => ({
     resolveWorkspaceName: (id: string) => id,
-    getProcessWorkspaceId: () => undefined,
-    getProcessWorkspaceName: () => undefined,
+    getProcessWorkspaceId: (process: any) => process?.workspaceId ?? process?.metadata?.workspaceId,
+    getProcessWorkspaceName: (process: any) => process?.workspaceName ?? process?.metadata?.workspaceName,
 }));
 
 // Stub config
+let mockSessionContextAttachmentsEnabled = false;
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '',
     isRalphEnabled: () => false,
+    isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled,
 }));
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -102,17 +105,29 @@ function ProcessSeeder({ processes }: { processes: any[] }) {
     return null;
 }
 
-function Wrap({ children, stats, queued, running, history, processes }: {
+function AppStateSeeder({ workspace, searchResults }: { workspace?: string; searchResults?: any[] | null }) {
+    const { dispatch } = useApp();
+    useEffect(() => {
+        if (workspace) dispatch({ type: 'SET_WORKSPACE_FILTER', value: workspace });
+        if (searchResults !== undefined) dispatch({ type: 'SET_SEARCH_RESULTS', results: searchResults });
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    return null;
+}
+
+function Wrap({ children, stats, queued, running, history, processes, workspace, searchResults }: {
     children: ReactNode;
     stats?: ReturnType<typeof makeStats>;
     queued?: any[];
     running?: any[];
     history?: any[];
     processes?: any[];
+    workspace?: string;
+    searchResults?: any[] | null;
 }) {
     return (
         <AppProvider>
             <QueueProvider>
+                <AppStateSeeder workspace={workspace} searchResults={searchResults} />
                 {stats && <QueueSeeder stats={stats} queued={queued} running={running} history={history} />}
                 {processes && <ProcessSeeder processes={processes} />}
                 {children}
@@ -127,6 +142,7 @@ let fetchSpy: ReturnType<typeof vi.fn>;
 let confirmSpy: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
+    mockSessionContextAttachmentsEnabled = false;
     fetchSpy = vi.fn().mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({
@@ -523,6 +539,102 @@ describe('ProcessesSidebar — AI title display for legacy processes', () => {
         await waitFor(() => {
             const truncated = screen.getByText('x'.repeat(80) + '…');
             expect(truncated).toBeDefined();
+        });
+    });
+});
+
+describe('ProcessesSidebar — session context drag sources', () => {
+    it('does not expose session-context drag attributes while the feature flag is disabled', async () => {
+        const process = {
+            id: 'proc-drag-disabled',
+            status: 'completed',
+            title: 'Drag Disabled',
+            workspaceId: 'ws-1',
+            startTime: '2026-01-01T00:00:00Z',
+        };
+        render(
+            <Wrap processes={[process]} workspace="ws-1">
+                <ProcessesSidebar />
+            </Wrap>
+        );
+
+        await waitFor(() => expect(screen.getByText('Drag Disabled')).toBeDefined());
+        const card = screen.getByText('Drag Disabled').closest('.process-item') as HTMLElement;
+        expect(card.getAttribute('data-session-context-source')).toBeNull();
+        expect(card.getAttribute('draggable')).not.toBe('true');
+    });
+
+    it('sets a pointer-only safe drag payload for same-workspace process cards when enabled', async () => {
+        mockSessionContextAttachmentsEnabled = true;
+        const process = {
+            id: 'proc-drag-enabled',
+            status: 'failed',
+            title: 'Debug /home/example/repo/src/app.ts',
+            workspaceId: 'ws-1',
+            startTime: '2026-01-01T00:00:00Z',
+        };
+        render(
+            <Wrap processes={[process]} workspace="ws-1">
+                <ProcessesSidebar />
+            </Wrap>
+        );
+
+        await waitFor(() => expect(screen.getByText('Debug /home/example/repo/src/app.ts')).toBeDefined());
+        const card = screen.getByText('Debug /home/example/repo/src/app.ts').closest('.process-item') as HTMLElement;
+        expect(card.getAttribute('draggable')).toBe('true');
+        expect(card.getAttribute('data-session-context-source')).toBe('true');
+        expect(card.getAttribute('data-session-context-status')).toBe('failed');
+
+        const dataTransfer = { setData: vi.fn(), effectAllowed: 'move' as DataTransfer['effectAllowed'] };
+        fireEvent.dragStart(card, { dataTransfer });
+        const [, rawPayload] = dataTransfer.setData.mock.calls.find((call: any[]) => call[0] === SESSION_CONTEXT_DRAG_MIME)!;
+        expect(JSON.parse(rawPayload)).toMatchObject({
+            sourceWorkspaceId: 'ws-1',
+            sourceProcessId: 'proc-drag-enabled',
+            title: 'Debug [path]',
+            status: 'failed',
+            lastActivityAt: '2026-01-01T00:00:00.000Z',
+        });
+        expect(rawPayload).not.toContain('/home/example');
+    });
+
+    it('sets session-context drag payloads on process search result cards', async () => {
+        mockSessionContextAttachmentsEnabled = true;
+        render(
+            <Wrap
+                workspace="ws-1"
+                searchResults={[{
+                    processId: 'proc-search-source',
+                    processTitle: 'Search Source',
+                    promptPreview: 'search prompt',
+                    processStatus: 'cancelled',
+                    processType: 'chat',
+                    workspaceId: 'ws-1',
+                    startTime: '2026-01-02T00:00:00Z',
+                    turnIndex: 0,
+                    role: 'user',
+                    snippet: 'matching turn',
+                    rank: 1,
+                }]}
+            >
+                <ProcessesSidebar />
+            </Wrap>
+        );
+
+        await waitFor(() => expect(screen.getByTestId('search-result-card')).toBeDefined());
+        const card = screen.getByTestId('search-result-card') as HTMLElement;
+        expect(card.getAttribute('draggable')).toBe('true');
+        expect(card.getAttribute('data-session-context-status')).toBe('cancelled');
+
+        const dataTransfer = { setData: vi.fn(), effectAllowed: 'move' as DataTransfer['effectAllowed'] };
+        fireEvent.dragStart(card, { dataTransfer });
+        const [, rawPayload] = dataTransfer.setData.mock.calls.find((call: any[]) => call[0] === SESSION_CONTEXT_DRAG_MIME)!;
+        expect(JSON.parse(rawPayload)).toMatchObject({
+            sourceWorkspaceId: 'ws-1',
+            sourceProcessId: 'proc-search-source',
+            title: 'Search Source',
+            status: 'cancelled',
+            lastActivityAt: '2026-01-02T00:00:00.000Z',
         });
     });
 });
