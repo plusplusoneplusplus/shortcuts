@@ -849,6 +849,7 @@ timeout: 300
                 'features:',
                 '  autoMemoryPromotion: true',
                 '  focusedDiff: true',
+                '  gitCrossCloneCherryPick: true',
                 'memoryPromotion:',
                 '  batchSize: 25',
                 '  timeoutMs: 80000',
@@ -1004,6 +1005,7 @@ timeout: 300
                     "autoMemoryPromotion": true,
                     "focusedDiff": true,
                     "gitCommitLookup": false,
+                    "gitCrossCloneCherryPick": false,
                   },
                   "groupSingleLineMessages": false,
                   "logging": {
@@ -1141,6 +1143,7 @@ timeout: 300
                   "excalidraw.enabled": "default",
                   "features.autoMemoryPromotion": "file",
                   "features.focusedDiff": "file",
+                  "features.gitCrossCloneCherryPick": "default",
                   "groupSingleLineMessages": "file",
                   "loops.enabled": "file",
                   "mcpConfig": "file",

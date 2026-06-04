@@ -34,7 +34,7 @@ function createMockRuntimeConfigService(overrides: Partial<ResolvedCLIConfig> = 
         loops: { enabled: false },
         excalidraw: { enabled: false },
         mcpOauth: { enabled: false },
-        features: { focusedDiff: false, autoMemoryPromotion: false },
+        features: { focusedDiff: false, autoMemoryPromotion: false, gitCommitLookup: false, gitCrossCloneCherryPick: false },
         memoryPromotion: { enabled: false },
         defaultModels: {},
         ...overrides,
@@ -75,6 +75,7 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.excalidrawEnabled).toBe(false);
         expect(result.features.mcpOauthEnabled).toBe(false);
         expect(result.features.focusedDiffEnabled).toBe(false);
+        expect(result.features.gitCrossCloneCherryPickEnabled).toBe(false);
         expect(result.features.codexEnabled).toBe(false);
         expect(result.features.defaultProvider).toBe('copilot');
         expect(result.features.workItemsSyncEnabled).toBe(false);
@@ -378,14 +379,17 @@ describe('AC-08: live-classified route registration', () => {
         expect(routesSrc).not.toMatch(/ctx\.excalidrawEnabled/);
     });
 
-    it('excalidraw.enabled and features.focusedDiff are classified as live in admin config fields', async () => {
+    it('excalidraw.enabled and git feature flags are classified as live in admin config fields', async () => {
         const { ADMIN_CONFIG_FIELDS } = await import('../../../src/server/admin/admin-config-fields');
         const excalidrawField = ADMIN_CONFIG_FIELDS.find(f => f.key === 'excalidraw.enabled');
         const focusedDiffField = ADMIN_CONFIG_FIELDS.find(f => f.key === 'features.focusedDiff');
+        const crossCloneField = ADMIN_CONFIG_FIELDS.find(f => f.key === 'features.gitCrossCloneCherryPick');
         expect(excalidrawField).toBeDefined();
         expect(excalidrawField!.runtime).toBe('live');
         expect(focusedDiffField).toBeDefined();
         expect(focusedDiffField!.runtime).toBe('live');
+        expect(crossCloneField).toBeDefined();
+        expect(crossCloneField!.runtime).toBe('live');
     });
 
     it('terminal.enabled and loops.enabled are classified as restartRequired', async () => {

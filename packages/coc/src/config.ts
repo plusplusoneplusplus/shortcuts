@@ -186,6 +186,8 @@ export interface CLIConfig {
         focusedDiff?: boolean;
         /** Direct commit SHA lookup in the Git tab. Disabled by default. */
         gitCommitLookup?: boolean;
+        /** Cross-clone cherry-pick transfer UI in the Git tab. Disabled by default. */
+        gitCrossCloneCherryPick?: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion?: {
@@ -415,6 +417,8 @@ export interface ResolvedCLIConfig {
         focusedDiff: boolean;
         /** Direct commit SHA lookup in the Git tab. Disabled by default. */
         gitCommitLookup: boolean;
+        /** Cross-clone cherry-pick transfer UI in the Git tab. Disabled by default. */
+        gitCrossCloneCherryPick: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion: {
@@ -582,6 +586,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         autoMemoryPromotion: false,
         focusedDiff: false,
         gitCommitLookup: false,
+        gitCrossCloneCherryPick: false,
     },
     memoryPromotion: {
         batchSize: 50,

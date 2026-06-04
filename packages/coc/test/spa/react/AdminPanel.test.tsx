@@ -1150,6 +1150,51 @@ describe('AdminPanel', () => {
             expect(capturedBody!['features.focusedDiff']).toBe(true);
         });
 
+        it('cross-clone cherry-pick toggle saves features.gitCrossCloneCherryPick', async () => {
+            let capturedBody: Record<string, unknown> | null = null;
+            mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+                if (url.includes('/preferences')) {
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+                }
+                if (opts?.method === 'PUT' && url.includes('/admin/config')) {
+                    capturedBody = JSON.parse(opts.body as string);
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+                }
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            resolved: {
+                                terminal: { enabled: false }, notes: { enabled: false },
+                                myWork: { enabled: false }, myLife: { enabled: false },
+                                features: { focusedDiff: false, gitCrossCloneCherryPick: false },
+                            },
+                            sources: {},
+                        }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+
+            await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('features');
+            await waitFor(() => expect(screen.getByTestId('toggle-git-cross-clone-cherry-pick-enabled')).toBeDefined());
+
+            const toggle = screen.getByTestId('toggle-git-cross-clone-cherry-pick-enabled') as HTMLInputElement;
+            expect(toggle.checked).toBe(false);
+
+            await act(async () => {
+                fireEvent.click(toggle);
+            });
+            expect((screen.getByTestId('settings-features-save') as HTMLButtonElement).disabled).toBe(false);
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('settings-features-save'));
+            });
+            await waitFor(() => expect(capturedBody).not.toBeNull());
+            expect(capturedBody!['features.gitCrossCloneCherryPick']).toBe(true);
+        });
+
         it('Advanced card shows read-only diagnostics without Save button', async () => {
             mockFullConfig();
             await act(async () => { renderWithProviders(); });

@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 describe('loadRuntimeConfig', () => {
     let loadRuntimeConfig: () => Promise<void>;
     let isRalphEnabled: () => boolean;
+    let isGitCrossCloneCherryPickEnabled: () => boolean;
     let isContainerMode: () => boolean;
     let setCurrentAgentId: (id: string | null) => void;
     let _resetRuntimeConfig: () => void;
@@ -18,6 +19,7 @@ describe('loadRuntimeConfig', () => {
         const mod = await import('../../../../src/server/spa/client/react/utils/config');
         loadRuntimeConfig = mod.loadRuntimeConfig;
         isRalphEnabled = mod.isRalphEnabled;
+        isGitCrossCloneCherryPickEnabled = mod.isGitCrossCloneCherryPickEnabled;
         isContainerMode = mod.isContainerMode;
         setCurrentAgentId = mod.setCurrentAgentId;
         _resetRuntimeConfig = mod._resetRuntimeConfig;
@@ -34,6 +36,7 @@ describe('loadRuntimeConfig', () => {
     it('updates feature flags from API response', async () => {
         (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', ralphEnabled: false };
         expect(isRalphEnabled()).toBe(false);
+        expect(isGitCrossCloneCherryPickEnabled()).toBe(false);
 
         vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
             ok: true,
@@ -55,6 +58,7 @@ describe('loadRuntimeConfig', () => {
                     excalidrawEnabled: false,
                     mcpOauthEnabled: false,
                     focusedDiffEnabled: false,
+                    gitCrossCloneCherryPickEnabled: true,
                 },
                 hostname: 'test-host',
                 bindAddress: '127.0.0.1',
@@ -63,6 +67,7 @@ describe('loadRuntimeConfig', () => {
 
         await loadRuntimeConfig();
         expect(isRalphEnabled()).toBe(true);
+        expect(isGitCrossCloneCherryPickEnabled()).toBe(true);
     });
 
     it('falls back to bootstrap config on fetch failure', async () => {

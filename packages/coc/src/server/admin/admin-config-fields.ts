@@ -253,6 +253,10 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         if (!cfg.features) { cfg.features = {}; }
         cfg.features.focusedDiff = v;
     }),
+    bool('features.gitCrossCloneCherryPick', (cfg, v) => {
+        if (!cfg.features) { cfg.features = {}; }
+        cfg.features.gitCrossCloneCherryPick = v;
+    }),
 
     bool('workItems.hierarchy.enabled', (cfg, v) => {
         if (!cfg.workItems) { cfg.workItems = {}; }

@@ -13,6 +13,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { fetchApi } from '../../hooks/useApi';
+import type { GitPatchApplyResponse } from '@plusplusoneplusplus/coc-client';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { getSpaCocClient } from '../../api/cocClient';
@@ -32,6 +33,7 @@ import { WorkingTreeAllComments } from './working-tree/WorkingTreeAllComments';
 import { BranchRangeAllComments } from './branches/BranchRangeAllComments';
 import { BranchPickerModal } from './branches/BranchPickerModal';
 import { AmendMessageModal } from './working-tree/AmendMessageModal';
+import { CrossCloneCherryPickModal } from './CrossCloneCherryPickModal';
 import { SkillContextDialog } from '../chat/SkillContextDialog';
 import { clearCacheForHash } from './hooks/useCommitDiffCache';
 import { getBranchRangeCache, setBranchRangeCache, clearBranchRangeCache } from './hooks/useBranchRangeCache';
@@ -44,7 +46,7 @@ import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextM
 import type { BranchRangeInfo } from './branches/BranchChanges';
 import { buildFixupGroups } from './fixup-utils';
 import { rankSkillsByRecency, MRU_SKILL_LIMIT } from './skill-menu-ranking';
-import { isGitCommitLookupEnabled } from '../../utils/config';
+import { isGitCommitLookupEnabled, isGitCrossCloneCherryPickEnabled } from '../../utils/config';
 import type { ResolvedModalJobAiSelection } from '../../shared/ModalJobAiControls';
 import { useCommitClassificationStatus } from './hooks/useCommitClassificationStatus';
 
@@ -196,6 +198,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [branchPickerOpen, setBranchPickerOpen] = useState(false);
     const [amendingCommit, setAmendingCommit] = useState<GitCommitItem | null>(null);
     const [rewordingCommit, setRewordingCommit] = useState<GitCommitItem | null>(null);
+    const [crossCloneCherryPickCommit, setCrossCloneCherryPickCommit] = useState<GitCommitItem | null>(null);
     const [isMobileSelecting, setIsMobileSelecting] = useState(false);
     const [mobileAnchorHash, setMobileAnchorHash] = useState<string | null>(null);
 
@@ -830,10 +833,14 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         return new Set();
     }, [rightPanelView]);
 
+    const sourceWorkspace = useMemo(
+        () => state.workspaces.find((w: any) => w.id === workspaceId),
+        [state.workspaces, workspaceId],
+    );
+
     const repoRoot = useMemo(() => {
-        const ws = state.workspaces.find((w: any) => w.id === workspaceId);
-        return ws?.rootPath as string | undefined;
-    }, [state.workspaces, workspaceId]);
+        return sourceWorkspace?.rootPath as string | undefined;
+    }, [sourceWorkspace]);
 
     const handleFileSelect = useCallback((filePath: string) => {
         setHunkTarget(undefined);
@@ -934,6 +941,19 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             setActionError(err.message || 'Cherry-pick failed');
         }
     }, [closeContextMenu, workspaceId, refreshAll]);
+
+    const handleOpenCrossCloneCherryPick = useCallback((commit: GitCommitItem) => {
+        closeContextMenu();
+        setCrossCloneCherryPickCommit(commit);
+    }, [closeContextMenu]);
+
+    const handleCrossCloneCherryPickApplied = useCallback((response: GitPatchApplyResponse) => {
+        refreshAll();
+        const target = response.targetWorkspace.name || response.targetWorkspace.id;
+        const commitHash = response.newCommitHash || response.targetHead;
+        setEnqueueToast(`Cherry-picked to ${target}${commitHash ? ` (${commitHash.slice(0, 7)})` : ''}`);
+        setTimeout(() => setEnqueueToast(null), 3000);
+    }, [refreshAll]);
 
     const handleAmendConfirm = useCallback(async (title: string, body: string) => {
         if (!amendingCommit) return;
@@ -1342,6 +1362,13 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 icon: '🍒',
                 onClick: () => handleCherryPick(commit),
             });
+            if (isGitCrossCloneCherryPickEnabled()) {
+                items.push({
+                    label: 'Cherry-pick to another clone...',
+                    icon: '🍒',
+                    onClick: () => handleOpenCrossCloneCherryPick(commit),
+                });
+            }
             items.push({ label: '', separator: true, onClick: () => {} });
             items.push({
                 label: 'Ask AI',
@@ -1481,7 +1508,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
 
         return items;
-    }, [contextMenu, skills, commitSkillUsageMap, handleEnqueueSkill, handleSquashCommits, handleBranchAskAI, handleSelect, handleOpenAsPopup, handleHardReset, handleCherryPick, commits, closeContextMenu, queueDispatch, workspaceId, fixupGroupsForMenu, handleRebaseAutosquash, handlePushToCommit, unpushedCount, isMobileSelecting, mobileAnchorHash, handleMultiSelect]);
+    }, [contextMenu, skills, commitSkillUsageMap, handleEnqueueSkill, handleSquashCommits, handleBranchAskAI, handleSelect, handleOpenAsPopup, handleHardReset, handleCherryPick, handleOpenCrossCloneCherryPick, commits, closeContextMenu, queueDispatch, workspaceId, fixupGroupsForMenu, handleRebaseAutosquash, handlePushToCommit, unpushedCount, isMobileSelecting, mobileAnchorHash, handleMultiSelect]);
 
     // Keyboard shortcuts:
     //   - R: refresh
@@ -1994,6 +2021,15 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 onCancel={() => setRewordingCommit(null)}
             />
         )}
+        <CrossCloneCherryPickModal
+            open={crossCloneCherryPickCommit !== null}
+            sourceWorkspaceId={workspaceId}
+            sourceWorkspace={sourceWorkspace}
+            sourceBranch={branchName || undefined}
+            commit={crossCloneCherryPickCommit}
+            onClose={() => setCrossCloneCherryPickCommit(null)}
+            onApplied={handleCrossCloneCherryPickApplied}
+        />
         </>
     );
 }

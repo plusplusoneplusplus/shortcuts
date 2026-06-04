@@ -75,6 +75,12 @@ export interface AdminResolvedConfig {
       enabled?: boolean;
     };
   };
+  features?: {
+    autoMemoryPromotion?: boolean;
+    focusedDiff?: boolean;
+    gitCommitLookup?: boolean;
+    gitCrossCloneCherryPick?: boolean;
+  };
   workItems?: { hierarchy?: { enabled?: boolean }; sync?: { enabled?: boolean }; aiAuthoring?: { enabled?: boolean } };
   effortLevels?: { enabled?: boolean };
   [key: string]: unknown;
@@ -135,6 +141,7 @@ export interface AdminConfigUpdate {
   'workItems.hierarchy.enabled'?: boolean;
   'workItems.sync.enabled'?: boolean;
   'workItems.aiAuthoring.enabled'?: boolean;
+  'features.gitCrossCloneCherryPick'?: boolean;
   'effortLevels.enabled'?: boolean;
   [key: string]: unknown;
 }
@@ -171,6 +178,7 @@ export interface RuntimeDashboardConfig {
     workItemsSyncEnabled: boolean;
     workItemsAiAuthoringEnabled: boolean;
     gitCommitLookupEnabled: boolean;
+    gitCrossCloneCherryPickEnabled: boolean;
     effortLevelsEnabled: boolean;
   };
   hostname?: string;
