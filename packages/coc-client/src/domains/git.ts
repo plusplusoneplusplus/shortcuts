@@ -19,6 +19,9 @@ import type {
   GitDiffCommentsResponse,
   GitDiffCommentTotalsResponse,
   GitFileContentResponse,
+  GitPatchApplyRequest,
+  GitPatchApplyResponse,
+  GitPatchExportResponse,
   GitOpJob,
   GitOperationResult,
   GitRepoState,
@@ -341,6 +344,14 @@ export class GitClient {
 
   cherryPick(workspaceId: string, hash: string): Promise<GitOperationResult> {
     return this.transport.request<GitOperationResult>(workspaceGitPath(workspaceId, '/cherry-pick'), jsonRequest('POST', { hash }));
+  }
+
+  exportCommitPatch(workspaceId: string, hash: string): Promise<GitPatchExportResponse> {
+    return this.transport.request<GitPatchExportResponse>(workspaceGitPath(workspaceId, '/patch/export'), jsonRequest('POST', { hash }));
+  }
+
+  applyCommitPatch(workspaceId: string, request: GitPatchApplyRequest): Promise<GitPatchApplyResponse> {
+    return this.transport.request<GitPatchApplyResponse>(workspaceGitPath(workspaceId, '/patch/apply'), jsonRequest('POST', { ...request }));
   }
 
   amend(workspaceId: string, title: string, body?: string): Promise<GitAmendResponse> {

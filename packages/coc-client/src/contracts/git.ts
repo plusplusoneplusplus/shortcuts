@@ -170,6 +170,37 @@ export interface GitPatchTransferOperationMetadata {
 
 export type GitOpMetadata = GitPatchTransferOperationMetadata;
 
+export interface GitFormatPatchPayload {
+  format: 'format-patch';
+  body: string;
+}
+
+export interface GitPatchExportResponse {
+  sourceWorkspace: GitOpWorkspaceMetadata;
+  sourceCommit: GitOpCommitMetadata;
+  normalizedSourceRemoteUrl: string | null;
+  patch: GitFormatPatchPayload;
+}
+
+export interface GitPatchApplyRequest {
+  patch: GitFormatPatchPayload;
+  stashAndContinue?: boolean;
+  sourceServer?: GitOpServerMetadata;
+  sourceWorkspace?: GitOpWorkspaceMetadata;
+  sourceCommit?: GitOpCommitMetadata;
+  normalizedSourceRemoteUrl?: string | null;
+}
+
+export interface GitPatchApplyResponse {
+  success: true;
+  targetWorkspace: GitOpWorkspaceMetadata;
+  targetBranch: string | null;
+  targetHead?: string;
+  newCommitHash?: string;
+  stashed: boolean;
+  operation: GitOpJob;
+}
+
 export interface GitOperationResult {
   success: boolean;
   error?: string;

@@ -95,6 +95,14 @@ describe('GitClient', () => {
     await client.rebaseAutosquash('repo/a');
     await client.reset('repo/a', 'abc123', 'hard');
     await client.cherryPick('repo/a', 'def456');
+    await client.exportCommitPatch('repo/a', 'def456');
+    await client.applyCommitPatch('repo/a', {
+      patch: { format: 'format-patch', body: 'From abc123 Mon Sep 17 00:00:00 2001\n' },
+      stashAndContinue: true,
+      sourceWorkspace: { id: 'source/ws', name: 'Source Repo' },
+      sourceCommit: { hash: 'def456', subject: 'Fix app' },
+      normalizedSourceRemoteUrl: 'https://example.com/org/repo.git',
+    });
     await client.amend('repo/a', 'new title', 'body');
     await client.reword('repo/a', 'abc123', 'new title');
     await client.rebaseContinue('repo/a');
@@ -119,6 +127,8 @@ describe('GitClient', () => {
       '/workspaces/repo%2Fa/git/rebase-autosquash',
       '/workspaces/repo%2Fa/git/reset',
       '/workspaces/repo%2Fa/git/cherry-pick',
+      '/workspaces/repo%2Fa/git/patch/export',
+      '/workspaces/repo%2Fa/git/patch/apply',
       '/workspaces/repo%2Fa/git/amend',
       '/workspaces/repo%2Fa/git/reword',
       '/workspaces/repo%2Fa/git/rebase-continue',
@@ -136,8 +146,19 @@ describe('GitClient', () => {
     expect(adapter.calls[3].options).toMatchObject({ method: 'POST', body: { remote: 'origin' } });
     expect(adapter.calls[4].options).toMatchObject({ method: 'POST', body: { rebase: true } });
     expect(adapter.calls[8].options).toMatchObject({ method: 'POST', body: { hash: 'abc123', mode: 'hard' } });
-    expect(adapter.calls[19].options).toMatchObject({ method: 'DELETE', body: { filePath: 'src/a.ts' } });
-    expect(adapter.calls[20].options).toMatchObject({ method: 'POST', body: { filePaths: ['src/a.ts', 'src/b.ts'] } });
+    expect(adapter.calls[10].options).toMatchObject({ method: 'POST', body: { hash: 'def456' } });
+    expect(adapter.calls[11].options).toMatchObject({
+      method: 'POST',
+      body: {
+        patch: { format: 'format-patch', body: 'From abc123 Mon Sep 17 00:00:00 2001\n' },
+        stashAndContinue: true,
+        sourceWorkspace: { id: 'source/ws', name: 'Source Repo' },
+        sourceCommit: { hash: 'def456', subject: 'Fix app' },
+        normalizedSourceRemoteUrl: 'https://example.com/org/repo.git',
+      },
+    });
+    expect(adapter.calls[21].options).toMatchObject({ method: 'DELETE', body: { filePath: 'src/a.ts' } });
+    expect(adapter.calls[22].options).toMatchObject({ method: 'POST', body: { filePaths: ['src/a.ts', 'src/b.ts'] } });
   });
 
   it('calls diff-comment and commit-chat routes with encoded identifiers', async () => {
