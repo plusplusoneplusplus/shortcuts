@@ -138,10 +138,11 @@ Stacked layout with:
 
 Focus indicator propagates mode-colored ring from contenteditable to parent card.
 
-When `features.sessionContextAttachments` is enabled, both `NewChatArea` and
-`FollowUpInputArea` accept drag/drop session-context payloads from same-workspace
-chat/process rows. The composers validate same-workspace, duplicate, self-drop,
-three-session cap, and `get_conversation` tool availability before adding
+When `features.sessionContextAttachments` is enabled, same-workspace chat/process
+rows and Ralph session group rows are copy-drag context sources, and both
+`NewChatArea` and `FollowUpInputArea` accept drag/drop session-context payloads.
+The composers validate same-workspace, duplicate, self-drop, three-session cap,
+and `get_conversation` tool availability before adding
 removable session chips through the existing `AttachedContextPreviews` surface;
 send paths re-check the same constraints before formatting already-attached
 session chips so stale feature/capability state cannot send unusable source IDs.
@@ -221,7 +222,7 @@ The top-level `#memory` route is embedded in the Admin shell's Knowledge group a
 
 ## Feature Flags
 
-`featureFlags.ts` defines compile-time flags (e.g., `SHOW_WELCOME_TUTORIAL`). Runtime feature flags are exposed through `GET /api/config/runtime` and SPA helpers in `utils/config.ts`; `workItems.sync.enabled` only reports usable sync UI when both it and `workItems.hierarchy.enabled` are true. Features gated by flags are disabled by default. The Git tab's cross-clone cherry-pick UI is gated by `features.gitCrossCloneCherryPick` / `gitCrossCloneCherryPickEnabled`. Chat composer drag/drop session-context attachments are gated by `features.sessionContextAttachments` / `sessionContextAttachmentsEnabled`; when enabled, same-workspace chat rows, process cards, queue/history process rows, and process search result cards become copy-drag sources using a custom session-context MIME payload that contains only workspace ID, process ID, title/preview, status, and last-activity metadata.
+`featureFlags.ts` defines compile-time flags (e.g., `SHOW_WELCOME_TUTORIAL`). Runtime feature flags are exposed through `GET /api/config/runtime` and SPA helpers in `utils/config.ts`; `workItems.sync.enabled` only reports usable sync UI when both it and `workItems.hierarchy.enabled` are true. Features gated by flags are disabled by default. The Git tab's cross-clone cherry-pick UI is gated by `features.gitCrossCloneCherryPick` / `gitCrossCloneCherryPickEnabled`. Chat composer drag/drop session-context attachments are gated by `features.sessionContextAttachments` / `sessionContextAttachmentsEnabled`; when enabled, same-workspace chat rows, process cards, queue/history process rows, process search result cards, and Ralph session group rows become copy-drag sources using custom pointer-only MIME payloads. Single-session payloads contain workspace ID, process ID, title/preview, status, and last-activity metadata; Ralph group payloads contain workspace ID, Ralph session ID, phase/status, title/display label, last activity, and ordered child process IDs.
 
 ## Work Items
 

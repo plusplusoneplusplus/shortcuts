@@ -2,8 +2,11 @@ import { ensureQueueProcessId } from '../../utils/queue-process-id';
 
 export const SESSION_CONTEXT_DRAG_MIME = 'application/vnd.coc.session-context+json';
 export const SESSION_CONTEXT_DRAG_KIND = 'coc.session-context';
+export const RALPH_SESSION_CONTEXT_DRAG_MIME = 'application/vnd.coc.ralph-session-context+json';
+export const RALPH_SESSION_CONTEXT_DRAG_KIND = 'coc.ralph-session-context';
 
 export type SessionContextSourceStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type RalphSessionContextPhase = 'grilling' | 'executing' | 'complete';
 
 export interface SessionContextDragPayload {
     kind: typeof SESSION_CONTEXT_DRAG_KIND;
@@ -15,9 +18,28 @@ export interface SessionContextDragPayload {
     lastActivityAt: string;
 }
 
+export interface RalphSessionContextDragPayload {
+    kind: typeof RALPH_SESSION_CONTEXT_DRAG_KIND;
+    version: 1;
+    sourceWorkspaceId: string;
+    sourceRalphSessionId: string;
+    title: string;
+    displayLabel: string;
+    phase: RalphSessionContextPhase;
+    status: SessionContextSourceStatus;
+    lastActivityAt: string;
+    childProcessIds: string[];
+    processCount: number;
+    iterationCount: number;
+}
+
 export interface CreateSessionContextDragPayloadOptions {
     activeWorkspaceId?: string | null;
     idSource?: 'process' | 'queue-task';
+}
+
+export interface CreateRalphSessionContextDragPayloadOptions {
+    activeWorkspaceId?: string | null;
 }
 
 type DragDataTransfer = {
@@ -31,6 +53,12 @@ const ATTACHABLE_STATUSES = new Set<SessionContextSourceStatus>([
     'completed',
     'failed',
     'cancelled',
+]);
+
+const RALPH_SESSION_PHASES = new Set<RalphSessionContextPhase>([
+    'grilling',
+    'executing',
+    'complete',
 ]);
 
 const MAX_TITLE_LENGTH = 160;
@@ -103,6 +131,92 @@ function timestampFrom(source: any): string | null {
     return null;
 }
 
+function getRalphSessionChildren(source: any): any[] {
+    const children: any[] = [];
+    if (source?.grillingProcess && typeof source.grillingProcess === 'object') {
+        children.push(source.grillingProcess);
+    }
+    if (Array.isArray(source?.iterations)) {
+        children.push(...source.iterations.filter((item: any) => item && typeof item === 'object'));
+    }
+    return children;
+}
+
+function resolveRalphWorkspaceId(source: any, children: any[], activeWorkspaceId?: string | null): string | null {
+    const workspaceIds: string[] = [];
+    const sourceWorkspaceId = resolveWorkspaceId(source, activeWorkspaceId);
+    if (sourceWorkspaceId) workspaceIds.push(sourceWorkspaceId);
+
+    for (const child of children) {
+        const childWorkspaceId = resolveWorkspaceId(child, activeWorkspaceId);
+        if (!childWorkspaceId) return null;
+        workspaceIds.push(childWorkspaceId);
+    }
+
+    const unique = new Set(workspaceIds);
+    return unique.size === 1 ? workspaceIds[0] : null;
+}
+
+function resolveRalphChildProcessId(source: any): string | null {
+    const explicitProcessId = stringFrom(source, [
+        ['processId'],
+        ['payload', 'processId'],
+    ]);
+    if (explicitProcessId) return explicitProcessId;
+
+    const id = stringFrom(source, [['id']]);
+    if (!id) return null;
+    return source?.status === 'queued' ? ensureQueueProcessId(id) : id;
+}
+
+function resolveRalphChildProcessIds(children: any[]): string[] | null {
+    const childProcessIds: string[] = [];
+    for (const child of children) {
+        const childProcessId = resolveRalphChildProcessId(child);
+        if (!childProcessId || looksLikeLocalPath(childProcessId)) return null;
+        childProcessIds.push(childProcessId);
+    }
+    return childProcessIds.length > 0 ? childProcessIds : null;
+}
+
+function resolveRalphStatus(source: any, children: any[]): SessionContextSourceStatus | null {
+    const childStatuses = children
+        .map(child => typeof child?.status === 'string' ? child.status : '')
+        .filter((status): status is SessionContextSourceStatus => ATTACHABLE_STATUSES.has(status as SessionContextSourceStatus));
+
+    if (childStatuses.includes('failed')) return 'failed';
+    if (childStatuses.includes('running')) return 'running';
+    if (childStatuses.includes('queued')) return 'queued';
+    if (childStatuses.includes('cancelled')) return 'cancelled';
+    if (source?.phase === 'complete') return 'completed';
+    if (source?.phase === 'executing' || source?.phase === 'grilling') return 'running';
+    return childStatuses[0] ?? null;
+}
+
+function resolveRalphTitle(source: any, children: any[]): string {
+    const sources = [source, ...children];
+    for (const item of sources) {
+        const rawTitle = stringFrom(item, [
+            ['customTitle'],
+            ['title'],
+            ['displayName'],
+            ['promptPreview'],
+            ['prompt'],
+            ['payload', 'promptContent'],
+            ['payload', 'prompt'],
+        ]);
+        const sanitized = rawTitle ? sanitizeDisplayText(rawTitle) : '';
+        if (sanitized) return sanitized;
+    }
+    return 'Ralph Session';
+}
+
+function buildRalphDisplayLabel(source: any, title: string, childProcessIds: string[]): string {
+    const iterationCount = Array.isArray(source?.iterations) ? source.iterations.length : Math.max(0, childProcessIds.length - (source?.grillingProcess ? 1 : 0));
+    const suffix = source?.phase === 'grilling' ? 'Clarifying' : `${iterationCount} iter`;
+    return sanitizeDisplayText(`${title} - ${suffix}`);
+}
+
 function resolveWorkspaceId(source: any, activeWorkspaceId?: string | null): string | null {
     const explicit = stringFrom(source, [
         ['workspaceId'],
@@ -169,8 +283,67 @@ export function createSessionContextDragPayload(
     };
 }
 
+export function createRalphSessionContextDragPayload(
+    source: unknown,
+    options: CreateRalphSessionContextDragPayloadOptions = {},
+): RalphSessionContextDragPayload | null {
+    if (!source || typeof source !== 'object') return null;
+    const record = source as any;
+    const sessionId = stringFrom(record, [
+        ['sessionId'],
+        ['ralph', 'sessionId'],
+        ['payload', 'context', 'ralph', 'sessionId'],
+    ]);
+    const phase = typeof record.phase === 'string' && RALPH_SESSION_PHASES.has(record.phase as RalphSessionContextPhase)
+        ? record.phase as RalphSessionContextPhase
+        : null;
+    const children = getRalphSessionChildren(record);
+    const workspaceId = resolveRalphWorkspaceId(record, children, options.activeWorkspaceId);
+    const childProcessIds = resolveRalphChildProcessIds(children);
+    const lastActivityAt = normalizeTimestamp(record.latestTimestamp) ?? timestampFrom(record);
+    const status = resolveRalphStatus(record, children);
+
+    if (
+        !sessionId
+        || !phase
+        || !workspaceId
+        || !childProcessIds
+        || !lastActivityAt
+        || !status
+        || looksLikeLocalPath(sessionId)
+        || looksLikeLocalPath(workspaceId)
+    ) {
+        return null;
+    }
+
+    const title = resolveRalphTitle(record, children);
+    const displayLabel = buildRalphDisplayLabel(record, title, childProcessIds);
+    const iterationCount = Array.isArray(record.iterations) ? record.iterations.length : Math.max(0, childProcessIds.length - (record.grillingProcess ? 1 : 0));
+
+    return {
+        kind: RALPH_SESSION_CONTEXT_DRAG_KIND,
+        version: 1,
+        sourceWorkspaceId: workspaceId,
+        sourceRalphSessionId: sessionId,
+        title,
+        displayLabel,
+        phase,
+        status,
+        lastActivityAt,
+        childProcessIds,
+        processCount: childProcessIds.length,
+        iterationCount,
+    };
+}
+
 export function writeSessionContextDragData(dataTransfer: DragDataTransfer, payload: SessionContextDragPayload): void {
     dataTransfer.effectAllowed = 'copy';
     dataTransfer.setData(SESSION_CONTEXT_DRAG_MIME, JSON.stringify(payload));
     dataTransfer.setData('text/plain', `CoC session context: ${payload.title} [${payload.status}] ${payload.sourceProcessId}`);
+}
+
+export function writeRalphSessionContextDragData(dataTransfer: DragDataTransfer, payload: RalphSessionContextDragPayload): void {
+    dataTransfer.effectAllowed = 'copy';
+    dataTransfer.setData(RALPH_SESSION_CONTEXT_DRAG_MIME, JSON.stringify(payload));
+    dataTransfer.setData('text/plain', `CoC Ralph session context: ${payload.displayLabel} [${payload.phase}/${payload.status}] ${payload.sourceRalphSessionId}`);
 }

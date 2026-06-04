@@ -15,6 +15,7 @@ import { cn } from '../../ui/cn';
 import { formatRelativeTime } from '../../utils/format';
 import type { RalphSession } from './ralph-session-grouping';
 import { RALPH_MULTI_LOOP } from '../../featureFlags';
+import { type RalphSessionContextDragPayload, writeRalphSessionContextDragData } from './sessionContextDrag';
 
 interface RalphSessionRowProps {
     session: RalphSession;
@@ -32,6 +33,8 @@ interface RalphSessionRowProps {
     onSelectSession?: (sessionId: string) => void;
     /** Right-click handler for the group row (context menu). */
     onContextMenu?: (e: React.MouseEvent) => void;
+    /** Optional pointer-only context payload used when session-context dragging is enabled. */
+    sessionContextPayload?: RalphSessionContextDragPayload | null;
     /** Render a single child task row. Mirrors `renderChatListRow`'s options
      *  object so we can request the muted, group-child variant. */
     renderTaskCard: (
@@ -63,6 +66,7 @@ export function RalphSessionRow({
     onSelectTask: _onSelectTask,
     onSelectSession,
     onContextMenu,
+    sessionContextPayload,
     renderTaskCard,
 }: RalphSessionRowProps) {
     const [expanded, setExpanded] = useState(false);
@@ -124,9 +128,15 @@ export function RalphSessionRow({
                     else toggle();
                 }}
                 onContextMenu={onContextMenu}
+                draggable={!!sessionContextPayload}
+                onDragStart={sessionContextPayload ? (e) => writeRalphSessionContextDragData(e.dataTransfer, sessionContextPayload) : undefined}
                 data-testid="ralph-session-body"
                 data-session-phase={session.phase}
+                data-session-context-source={sessionContextPayload ? 'true' : undefined}
+                data-session-context-kind={sessionContextPayload ? 'ralph-session' : undefined}
+                data-session-context-status={sessionContextPayload?.status}
                 data-expanded={expanded ? 'true' : 'false'}
+                title={sessionContextPayload ? `${sessionContextPayload.displayLabel} - drag to attach as Ralph session context` : undefined}
                 aria-expanded={expanded}
             >
                 <span

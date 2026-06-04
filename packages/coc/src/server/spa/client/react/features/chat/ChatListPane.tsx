@@ -36,7 +36,7 @@ import { LoopIcon } from './icons/LoopIcon';
 import { isRalphTask } from '../../../../../tasks/task-types';
 import { getProviderDotClasses, getTaskChatProvider } from './ProviderBadge';
 import { normalizeChatMode } from '../../repos/modeConfig';
-import { createSessionContextDragPayload, writeSessionContextDragData } from './sessionContextDrag';
+import { createRalphSessionContextDragPayload, createSessionContextDragPayload, writeSessionContextDragData } from './sessionContextDrag';
 
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {
@@ -1714,32 +1714,38 @@ export function ChatListPane({
                                                         section.variant === 'running' ? 'text-[#0078d4] dark:text-[#3794ff] font-semibold' : 'text-[#848484] dark:text-[#a0a0a0]',
                                                     )}>{section.items.length}</span>
                                                 </div>
-                                                {section.items.map((entry: RalphHistoryEntry) =>
-                                                    entry.kind === 'ralph-session' ? (
-                                                        <RalphSessionRow
-                                                            key={`${workspaceId ?? '__all'}:${entry.sessionId}`}
-                                                            session={entry as RalphSession}
-                                                            selectedTaskId={selectedTaskId}
-                                                            selectedSessionId={selectedRalphSessionId}
-                                                            now={now}
-                                                            unseenProcessIds={unseenProcessIds}
-                                                            onSelectTask={onSelectTask}
-                                                            onSelectSession={onSelectRalphSession}
-                                                            onContextMenu={e => {
-                                                                if (e.shiftKey) return;
-                                                                e.preventDefault();
-                                                                e.stopPropagation();
-                                                                const rs = entry as RalphSession;
-                                                                const ids = [rs.grillingProcess?.id, ...rs.iterations.map((i: any) => i.id)].filter(Boolean) as string[];
-                                                                setSelectedHistoryIds(new Set(ids));
-                                                                setContextMenu({ x: e.clientX, y: e.clientY, taskId: ids[0], taskStatus: 'completed', bulkIds: ids, ralphSession: rs });
-                                                            }}
-                                                            renderTaskCard={(task) => renderChatListRow(task, chatGroups!.flatVisible, { isGroupChild: true })}
-                                                        />
-                                                    ) : (
-                                                        renderChatListRow(entry, chatGroups.flatVisible)
-                                                    )
-                                                )}
+                                                {section.items.map((entry: RalphHistoryEntry) => {
+                                                    if (entry.kind === 'ralph-session') {
+                                                        const ralphSession = entry as RalphSession;
+                                                        const ralphSessionContextPayload = sessionContextDragEnabled
+                                                            ? createRalphSessionContextDragPayload(ralphSession, { activeWorkspaceId: workspaceId })
+                                                            : null;
+                                                        return (
+                                                            <RalphSessionRow
+                                                                key={`${workspaceId ?? '__all'}:${entry.sessionId}`}
+                                                                session={ralphSession}
+                                                                selectedTaskId={selectedTaskId}
+                                                                selectedSessionId={selectedRalphSessionId}
+                                                                now={now}
+                                                                unseenProcessIds={unseenProcessIds}
+                                                                onSelectTask={onSelectTask}
+                                                                onSelectSession={onSelectRalphSession}
+                                                                sessionContextPayload={ralphSessionContextPayload}
+                                                                onContextMenu={e => {
+                                                                    if (e.shiftKey) return;
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                    const rs = entry as RalphSession;
+                                                                    const ids = [rs.grillingProcess?.id, ...rs.iterations.map((i: any) => i.id)].filter(Boolean) as string[];
+                                                                    setSelectedHistoryIds(new Set(ids));
+                                                                    setContextMenu({ x: e.clientX, y: e.clientY, taskId: ids[0], taskStatus: 'completed', bulkIds: ids, ralphSession: rs });
+                                                                }}
+                                                                renderTaskCard={(task) => renderChatListRow(task, chatGroups!.flatVisible, { isGroupChild: true })}
+                                                            />
+                                                        );
+                                                    }
+                                                    return renderChatListRow(entry, chatGroups.flatVisible);
+                                                })}
                                             </div>
                                         ));
                                 })()}
@@ -2314,6 +2320,9 @@ export function ChatListPane({
                                     const renderEntry = (entry: any) => {
                                         if (entry.kind === 'ralph-session') {
                                             const session = entry as RalphSession;
+                                            const ralphSessionContextPayload = sessionContextDragEnabled
+                                                ? createRalphSessionContextDragPayload(session, { activeWorkspaceId: workspaceId })
+                                                : null;
                                             return (
                                                 <RalphSessionRow
                                                     key={`${workspaceId ?? '__all'}:${session.sessionId}`}
@@ -2324,6 +2333,7 @@ export function ChatListPane({
                                                     unseenProcessIds={unseenProcessIds}
                                                     onSelectTask={onSelectTask}
                                                     onSelectSession={onSelectRalphSession}
+                                                    sessionContextPayload={ralphSessionContextPayload}
                                                     onContextMenu={e => {
                                                         if (e.shiftKey) return;
                                                         e.preventDefault();

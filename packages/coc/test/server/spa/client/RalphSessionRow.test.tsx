@@ -32,6 +32,11 @@ vi.mock('../../../../src/server/spa/client/react/featureFlags', () => ({
 
 import { RalphSessionRow } from '../../../../src/server/spa/client/react/features/chat/RalphSessionRow';
 import type { RalphSession } from '../../../../src/server/spa/client/react/features/chat/ralph-session-grouping';
+import {
+    RALPH_SESSION_CONTEXT_DRAG_KIND,
+    RALPH_SESSION_CONTEXT_DRAG_MIME,
+    type RalphSessionContextDragPayload,
+} from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -65,6 +70,24 @@ const defaultProps = {
     renderTaskCard: mockRenderTaskCard,
 };
 
+function makeRalphDragPayload(overrides: Partial<RalphSessionContextDragPayload> = {}): RalphSessionContextDragPayload {
+    return {
+        kind: RALPH_SESSION_CONTEXT_DRAG_KIND,
+        version: 1,
+        sourceWorkspaceId: 'ws-1',
+        sourceRalphSessionId: 'sess-1',
+        title: 'Ralph Session',
+        displayLabel: 'Ralph Session - 2 iter',
+        phase: 'executing',
+        status: 'running',
+        lastActivityAt: '2026-01-01T00:00:00.000Z',
+        childProcessIds: ['grilling-1', 'iter-1'],
+        processCount: 2,
+        iterationCount: 1,
+        ...overrides,
+    };
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -77,9 +100,10 @@ describe('RalphSessionRow', () => {
         expect(screen.getByTestId('ralph-session-body')).toBeTruthy();
     });
 
-    it('shows the RALPH mode pill', () => {
+    it('shows the compact RALPH mode pill', () => {
         render(<RalphSessionRow session={makeSession()} {...defaultProps} />);
-        expect(screen.getByText('RALPH')).toBeTruthy();
+        expect(screen.getByText('R')).toBeTruthy();
+        expect(screen.getByTitle('Ralph · iterative goal-driven session')).toBeTruthy();
     });
 
     it('shows the title "Ralph Session"', () => {
@@ -292,6 +316,30 @@ describe('RalphSessionRow', () => {
         render(<RalphSessionRow session={makeSession()} {...defaultProps} />);
         // Should not throw
         fireEvent.contextMenu(screen.getByTestId('ralph-session-body'));
+    });
+
+    it('is not a session-context drag source without a Ralph payload', () => {
+        render(<RalphSessionRow session={makeSession()} {...defaultProps} />);
+        const body = screen.getByTestId('ralph-session-body');
+        expect(body.getAttribute('draggable')).not.toBe('true');
+        expect(body.getAttribute('data-session-context-source')).toBeNull();
+    });
+
+    it('writes Ralph session drag data with copy behavior when a payload is provided', () => {
+        const payload = makeRalphDragPayload();
+        render(<RalphSessionRow session={makeSession({ phase: 'executing' })} {...defaultProps} sessionContextPayload={payload} />);
+        const body = screen.getByTestId('ralph-session-body');
+        const dataTransfer = { setData: vi.fn(), effectAllowed: 'move' as DataTransfer['effectAllowed'] };
+
+        expect(body.getAttribute('draggable')).toBe('true');
+        expect(body.getAttribute('data-session-context-source')).toBe('true');
+        expect(body.getAttribute('data-session-context-kind')).toBe('ralph-session');
+        expect(body.getAttribute('data-session-context-status')).toBe('running');
+
+        fireEvent.dragStart(body, { dataTransfer });
+
+        expect(dataTransfer.effectAllowed).toBe('copy');
+        expect(dataTransfer.setData).toHaveBeenCalledWith(RALPH_SESSION_CONTEXT_DRAG_MIME, JSON.stringify(payload));
     });
 
     it('shows plain "{N} iter" sub-label when RALPH_MULTI_LOOP is false, even with loopCount > 1', () => {
