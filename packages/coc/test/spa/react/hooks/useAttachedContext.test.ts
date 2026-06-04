@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useAttachedContext, formatAttachedContext, parseAttachedSessionContextBlocks } from '../../../../src/server/spa/client/react/features/chat/hooks/useAttachedContext';
+import { createSessionContextDragPayload } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 
 describe('useAttachedContext', () => {
     it('starts with empty items', () => {
@@ -43,6 +44,29 @@ describe('useAttachedContext', () => {
             lastActivityAt: '2026-01-01T00:00:00.000Z',
         });
         expect(result.current.items[0].preview).toContain('source-p…3456');
+    });
+
+    it('does not persist last message preview content from session drag sources', () => {
+        const payload = createSessionContextDragPayload({
+            id: 'source-process-123456',
+            workspaceId: 'ws-1',
+            status: 'completed',
+            lastMessagePreview: 'Assistant turn with sensitive transcript content',
+            promptPreview: 'Original prompt preview',
+            startTime: '2026-01-01T00:00:00Z',
+        }, { activeWorkspaceId: 'ws-1', idSource: 'process' });
+        const { result } = renderHook(() => useAttachedContext());
+
+        expect(payload).not.toBeNull();
+        if (!payload) throw new Error('Expected safe session context drag payload');
+
+        act(() => {
+            result.current.addSession(payload);
+        });
+
+        const formatted = formatAttachedContext(result.current.items);
+        expect(formatted).toContain('<title>Original prompt preview</title>');
+        expect(formatted).not.toContain('Assistant turn with sensitive transcript content');
     });
 
     it('generates a truncated preview', () => {

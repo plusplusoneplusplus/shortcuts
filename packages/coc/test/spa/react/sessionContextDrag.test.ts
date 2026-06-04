@@ -40,6 +40,33 @@ describe('sessionContextDrag', () => {
         expect(payload?.lastActivityAt).toBe('2026-01-01T13:00:00.000Z');
     });
 
+    it('never uses last message preview content as payload display metadata', () => {
+        const payload = createSessionContextDragPayload({
+            id: 'proc-1',
+            workspaceId: 'ws-1',
+            status: 'completed',
+            lastMessagePreview: 'Assistant turn with sensitive transcript content',
+            promptPreview: 'Original prompt preview',
+            startTime: '2026-01-01T00:00:00Z',
+        }, { activeWorkspaceId: 'ws-1', idSource: 'process' });
+
+        expect(payload?.title).toBe('Original prompt preview');
+        expect(JSON.stringify(payload)).not.toContain('Assistant turn with sensitive transcript content');
+    });
+
+    it('falls back to process ID instead of last message preview when no safe title metadata exists', () => {
+        const payload = createSessionContextDragPayload({
+            id: 'proc-1',
+            workspaceId: 'ws-1',
+            status: 'completed',
+            lastMessagePreview: 'Assistant turn with sensitive transcript content',
+            startTime: '2026-01-01T00:00:00Z',
+        }, { activeWorkspaceId: 'ws-1', idSource: 'process' });
+
+        expect(payload?.title).toBe('proc-1');
+        expect(JSON.stringify(payload)).not.toContain('Assistant turn with sensitive transcript content');
+    });
+
     it('blocks cross-workspace sources', () => {
         expect(createSessionContextDragPayload({
             id: 'proc-1',

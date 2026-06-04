@@ -134,7 +134,6 @@ function resolveTitle(source: any, processId: string): string {
         ['customTitle'],
         ['title'],
         ['displayName'],
-        ['lastMessagePreview'],
         ['promptPreview'],
         ['prompt'],
         ['payload', 'promptContent'],

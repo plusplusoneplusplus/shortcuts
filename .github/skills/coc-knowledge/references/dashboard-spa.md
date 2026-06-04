@@ -142,7 +142,10 @@ send paths re-check the same constraints before formatting already-attached
 session chips so stale feature/capability state cannot send unusable source IDs.
 The attached-context formatter emits pointer-only `<attached_session_context>`
 blocks in user-message content; it stores source workspace/process IDs, status,
-title, and last activity only. `ConversationTurnBubble` parses persisted
+safe display title, and last activity only. Session-context drag payloads derive
+that title from custom title/title/displayName, prompt preview or prompt metadata,
+then process ID; they do not use latest-turn previews such as
+`lastMessagePreview`. `ConversationTurnBubble` parses persisted
 session-context blocks on user turns and renders them as collapsed "Attached
 session context" cards with title, status, last activity, workspace/process IDs,
 and a raw-block copy affordance while raw mode still exposes the exact persisted
