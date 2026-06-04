@@ -239,12 +239,13 @@ describe('GitOpsStore', () => {
 
     // --- All op types ---
 
-    it('should accept all GitOpType values including reword', async () => {
+    it('should accept all GitOpType values including cherry-pick-transfer', async () => {
         const store = new GitOpsStore({ dataDir: tmpDir });
         const opTypes = [
             'pull', 'push', 'fetch',
             'rebase-autosquash', 'rebase-continue', 'rebase-abort',
             'merge-continue', 'merge-abort', 'rebase-reorder', 'reword',
+            'cherry-pick-transfer',
         ] as const;
 
         for (const op of opTypes) {
@@ -266,6 +267,48 @@ describe('GitOpsStore', () => {
         const latest = await store.getLatest('ws-ops', 'reword');
         expect(latest).toBeDefined();
         expect(latest!.op).toBe('reword');
+    });
+
+    it('should persist patch-transfer operation metadata', async () => {
+        const store = new GitOpsStore({ dataDir: tmpDir });
+        await store.create(makeJob({
+            id: 'transfer-1',
+            workspaceId: 'ws-target',
+            op: 'cherry-pick-transfer',
+            status: 'success',
+            metadata: {
+                kind: 'patch-transfer',
+                sourceServer: { id: 'local', label: 'Local CoC' },
+                sourceWorkspace: { id: 'ws-source', name: 'Source Clone' },
+                sourceCommit: {
+                    hash: 'abcdef1234567890abcdef1234567890abcdef12',
+                    subject: 'Move change across clones',
+                    author: { name: 'Patch Author', email: 'patch-author@example.test', date: '2026-06-04T04:01:00+00:00' },
+                },
+                normalizedSourceRemoteUrl: 'example.test/org/repo',
+                targetWorkspace: { id: 'ws-target', name: 'Target Clone' },
+                targetBranch: 'main',
+                targetHead: 'fedcba9876543210fedcba9876543210fedcba98',
+                newCommitHash: 'fedcba9876543210fedcba9876543210fedcba98',
+                stashed: false,
+            },
+        }));
+
+        const latest = await store.getLatest('ws-target', 'cherry-pick-transfer');
+        expect(latest).toMatchObject({
+            id: 'transfer-1',
+            workspaceId: 'ws-target',
+            op: 'cherry-pick-transfer',
+            status: 'success',
+            metadata: {
+                kind: 'patch-transfer',
+                sourceWorkspace: { id: 'ws-source', name: 'Source Clone' },
+                sourceCommit: { hash: 'abcdef1234567890abcdef1234567890abcdef12' },
+                normalizedSourceRemoteUrl: 'example.test/org/repo',
+                targetWorkspace: { id: 'ws-target', name: 'Target Clone' },
+                newCommitHash: 'fedcba9876543210fedcba9876543210fedcba98',
+            },
+        });
     });
 
     // --- Persistence across instances ---

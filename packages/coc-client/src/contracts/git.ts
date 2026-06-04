@@ -115,6 +115,7 @@ export type GitOpType =
   | 'merge-abort'
   | 'rebase-reorder'
   | 'reword'
+  | 'cherry-pick-transfer'
   | string;
 
 export type GitOpStatus = 'running' | 'success' | 'failed' | 'interrupted' | string;
@@ -129,7 +130,45 @@ export interface GitOpJob {
   output?: string;
   error?: string;
   pid?: number;
+  metadata?: GitOpMetadata;
 }
+
+export interface GitOpWorkspaceMetadata {
+  id: string;
+  name?: string;
+}
+
+export interface GitOpServerMetadata {
+  id: string;
+  label?: string;
+}
+
+export interface GitOpCommitAuthorMetadata {
+  name?: string;
+  email?: string;
+  date?: string;
+}
+
+export interface GitOpCommitMetadata {
+  hash: string;
+  subject?: string;
+  author?: GitOpCommitAuthorMetadata;
+}
+
+export interface GitPatchTransferOperationMetadata {
+  kind: 'patch-transfer';
+  sourceServer?: GitOpServerMetadata;
+  sourceWorkspace?: GitOpWorkspaceMetadata;
+  sourceCommit?: GitOpCommitMetadata;
+  normalizedSourceRemoteUrl?: string | null;
+  targetWorkspace: GitOpWorkspaceMetadata;
+  targetBranch?: string | null;
+  targetHead?: string;
+  newCommitHash?: string;
+  stashed?: boolean;
+}
+
+export type GitOpMetadata = GitPatchTransferOperationMetadata;
 
 export interface GitOperationResult {
   success: boolean;

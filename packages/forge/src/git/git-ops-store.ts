@@ -1,7 +1,7 @@
 /**
  * Git Ops Store — file-based persistence for background git operations.
  *
- * Tracks running / completed / failed git operations (pull, push, fetch, rebase-autosquash) per workspace
+ * Tracks running / completed / failed git operations per workspace
  * so that the UI can recover status after a page refresh or server restart.
  *
  * Storage layout: `<dataDir>/repos/<workspaceId>/git-ops.json` — one file per workspace
@@ -23,8 +23,45 @@ import { getRepoDataPath } from '../paths';
 // Types
 // ============================================================================
 
-export type GitOpType = 'pull' | 'push' | 'fetch' | 'rebase-autosquash' | 'rebase-continue' | 'rebase-abort' | 'merge-continue' | 'merge-abort' | 'rebase-reorder' | 'reword';
+export type GitOpType = 'pull' | 'push' | 'fetch' | 'rebase-autosquash' | 'rebase-continue' | 'rebase-abort' | 'merge-continue' | 'merge-abort' | 'rebase-reorder' | 'reword' | 'cherry-pick-transfer';
 export type GitOpStatus = 'running' | 'success' | 'failed' | 'interrupted';
+
+export interface GitOpWorkspaceMetadata {
+    id: string;
+    name?: string;
+}
+
+export interface GitOpServerMetadata {
+    id: string;
+    label?: string;
+}
+
+export interface GitOpCommitAuthorMetadata {
+    name?: string;
+    email?: string;
+    date?: string;
+}
+
+export interface GitOpCommitMetadata {
+    hash: string;
+    subject?: string;
+    author?: GitOpCommitAuthorMetadata;
+}
+
+export interface GitPatchTransferOperationMetadata {
+    kind: 'patch-transfer';
+    sourceServer?: GitOpServerMetadata;
+    sourceWorkspace?: GitOpWorkspaceMetadata;
+    sourceCommit?: GitOpCommitMetadata;
+    normalizedSourceRemoteUrl?: string | null;
+    targetWorkspace: GitOpWorkspaceMetadata;
+    targetBranch?: string | null;
+    targetHead?: string;
+    newCommitHash?: string;
+    stashed?: boolean;
+}
+
+export type GitOpMetadata = GitPatchTransferOperationMetadata;
 
 export interface GitOpJob {
     id: string;
@@ -36,6 +73,7 @@ export interface GitOpJob {
     output?: string;
     error?: string;
     pid?: number;            // for stale-job detection on restart
+    metadata?: GitOpMetadata;
 }
 
 export interface GitOpsStoreOptions {

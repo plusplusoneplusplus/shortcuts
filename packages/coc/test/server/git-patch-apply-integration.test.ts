@@ -155,15 +155,15 @@ describe('git patch apply API integration', () => {
             body: JSON.stringify({ hash: sourceHash }),
         });
         expect(exportRes.status).toBe(200);
-        return exportRes.json().patch;
+        return exportRes.json();
     }
 
     it('applies a patch from one registered local clone to another and preserves source author/message', async () => {
-        const patch = await exportSourcePatch();
+        const exportBody = await exportSourcePatch();
 
         const applyRes = await request(`${base()}/api/workspaces/${TARGET_WS}/git/patch/apply`, {
             method: 'POST',
-            body: JSON.stringify({ patch }),
+            body: JSON.stringify(exportBody),
         });
 
         expect(applyRes.status, applyRes.body).toBe(200);
@@ -172,16 +172,56 @@ describe('git patch apply API integration', () => {
         expect(applyBody.targetBranch).toBe('main');
         expect(applyBody.newCommitHash).toMatch(/^[a-f0-9]{40}$/);
         expect(applyBody.targetHead).toBe(applyBody.newCommitHash);
+        expect(applyBody.operation).toMatchObject({
+            workspaceId: TARGET_WS,
+            op: 'cherry-pick-transfer',
+            status: 'success',
+            metadata: {
+                kind: 'patch-transfer',
+                sourceWorkspace: { id: SOURCE_WS, name: 'Source Clone' },
+                sourceCommit: {
+                    hash: exportBody.sourceCommit.hash,
+                    subject: 'Apply transferred patch',
+                    author: {
+                        name: 'Patch Author',
+                        email: 'patch-author@example.test',
+                    },
+                },
+                normalizedSourceRemoteUrl: 'example.test/org/repo',
+                targetWorkspace: { id: TARGET_WS, name: 'Target Clone' },
+                targetBranch: 'main',
+                newCommitHash: applyBody.newCommitHash,
+            },
+        });
 
         const [subject, authorName, authorEmail] = git(targetRoot, ['log', '-1', '--format=%s%x00%an%x00%ae']).split('\0');
         expect(subject).toBe('Apply transferred patch');
         expect(authorName).toBe('Patch Author');
         expect(authorEmail).toBe('patch-author@example.test');
         expect(broadcastGitChanged).toHaveBeenCalledWith(TARGET_WS, 'patch-apply');
+
+        const latestRes = await request(`${base()}/api/workspaces/${TARGET_WS}/git/ops/latest?op=cherry-pick-transfer`);
+        expect(latestRes.status, latestRes.body).toBe(200);
+        const latest = latestRes.json();
+        expect(latest.id).toBe(applyBody.operation.id);
+        expect(latest).toMatchObject({
+            workspaceId: TARGET_WS,
+            op: 'cherry-pick-transfer',
+            status: 'success',
+            metadata: {
+                sourceWorkspace: { id: SOURCE_WS, name: 'Source Clone' },
+                sourceCommit: { hash: exportBody.sourceCommit.hash },
+                targetWorkspace: { id: TARGET_WS, name: 'Target Clone' },
+                targetBranch: 'main',
+                newCommitHash: applyBody.newCommitHash,
+            },
+        });
+        expect(JSON.stringify(latest)).not.toContain(sourceRoot);
+        expect(JSON.stringify(latest)).not.toContain(targetRoot);
     });
 
     it('blocks dirty targets by default and applies after explicit stashAndContinue', async () => {
-        const patch = await exportSourcePatch();
+        const { patch } = await exportSourcePatch();
         const originalHead = git(targetRoot, ['rev-parse', 'HEAD']);
         await writeRepoFile(targetRoot, 'local-notes.txt', 'local dirty work\n');
 
@@ -204,7 +244,7 @@ describe('git patch apply API integration', () => {
     });
 
     it('returns conflict-style 409 and leaves git am state in progress on patch conflicts', async () => {
-        const patch = await exportSourcePatch();
+        const { patch } = await exportSourcePatch();
         await writeRepoFile(targetRoot, 'shared.txt', 'target change\n');
         git(targetRoot, ['add', 'shared.txt']);
         git(targetRoot, ['commit', '-m', 'Target conflicting change']);

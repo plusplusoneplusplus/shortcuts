@@ -7,7 +7,7 @@
  */
 
 import { BranchService, detectRemoteUrl, normalizeRemoteUrl } from '@plusplusoneplusplus/forge';
-import type { GitOpJob, ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
+import type { GitOpJob, GitOpMetadata, ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody, execGitArgsSync } from '../core/api-handler';
 import { handleAPIError, missingFields, notFound, badRequest, conflict } from '../errors';
 import { gitCache } from '../git/git-cache';
@@ -434,11 +434,23 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
                 return;
             }
 
+            const operationStartedAt = new Date().toISOString();
             const result = await branchService.applyCommitPatch(ws.rootPath, patchBody, {
                 stashAndContinue: body.stashAndContinue === true,
                 stashMessage: 'CoC patch-transfer cherry-pick',
             });
             if (result.success) {
+                const operation: GitOpJob = {
+                    id: `cherry-pick-transfer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    workspaceId: ws.id,
+                    op: 'cherry-pick-transfer',
+                    status: 'success',
+                    startedAt: operationStartedAt,
+                    finishedAt: new Date().toISOString(),
+                    pid: process.pid,
+                    metadata: buildPatchTransferMetadata(body, ws, branchStatus.name, result.headHash, result.stashed === true),
+                };
+                await gitOpsStore.create(operation);
                 gitCache.invalidateMutable(ws.id);
                 getWsServer?.()?.broadcastGitChanged(ws.id, 'patch-apply');
                 return {
@@ -448,6 +460,7 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
                     targetHead: result.headHash,
                     newCommitHash: result.headHash,
                     stashed: result.stashed === true,
+                    operation,
                 };
             }
             if (result.dirty) {
@@ -776,4 +789,112 @@ State clearly one of:
 - Always end with the repository in a clean state (no REBASE_HEAD, no staged conflict markers).
 - If \`git rebase --abort\` was run, confirm with \`git status\` that the working tree is clean.
 - Do NOT push any changes — only local commit reordering.`;
+}
+
+function buildPatchTransferMetadata(
+    body: Record<string, unknown>,
+    targetWorkspace: WorkspaceInfo,
+    targetBranch: string,
+    targetHead: string | undefined,
+    stashed: boolean,
+): GitOpMetadata {
+    const metadata: GitOpMetadata = {
+        kind: 'patch-transfer',
+        targetWorkspace: sanitizeTargetWorkspace(targetWorkspace),
+        targetBranch: sanitizeMetadataString(targetBranch) ?? null,
+        stashed,
+    };
+    const safeTargetHead = sanitizeHash(targetHead);
+    if (safeTargetHead) {
+        metadata.targetHead = safeTargetHead;
+        metadata.newCommitHash = safeTargetHead;
+    }
+    const sourceServer = sanitizeServerMetadata(body.sourceServer);
+    if (sourceServer) metadata.sourceServer = sourceServer;
+    const sourceWorkspace = sanitizeWorkspaceMetadata(body.sourceWorkspace);
+    if (sourceWorkspace) metadata.sourceWorkspace = sourceWorkspace;
+    const sourceCommit = sanitizeCommitMetadata(body.sourceCommit);
+    if (sourceCommit) metadata.sourceCommit = sourceCommit;
+    if (body.normalizedSourceRemoteUrl === null) {
+        metadata.normalizedSourceRemoteUrl = null;
+    } else {
+        const normalizedSourceRemoteUrl = sanitizeNormalizedRemoteUrl(body.normalizedSourceRemoteUrl);
+        if (normalizedSourceRemoteUrl) metadata.normalizedSourceRemoteUrl = normalizedSourceRemoteUrl;
+    }
+    return metadata;
+}
+
+function sanitizeTargetWorkspace(ws: WorkspaceInfo): { id: string; name?: string } {
+    const name = sanitizeMetadataString(ws.name);
+    return name ? { id: ws.id, name } : { id: ws.id };
+}
+
+function sanitizeWorkspaceMetadata(value: unknown): { id: string; name?: string } | undefined {
+    if (!isRecord(value)) return undefined;
+    const id = sanitizeMetadataString(value.id);
+    if (!id) return undefined;
+    const name = sanitizeMetadataString(value.name);
+    return name ? { id, name } : { id };
+}
+
+function sanitizeServerMetadata(value: unknown): { id: string; label?: string } | undefined {
+    if (!isRecord(value)) return undefined;
+    const id = sanitizeMetadataString(value.id);
+    if (!id) return undefined;
+    const label = sanitizeMetadataString(value.label);
+    return label ? { id, label } : { id };
+}
+
+function sanitizeCommitMetadata(value: unknown): { hash: string; subject?: string; author?: { name?: string; email?: string; date?: string } } | undefined {
+    if (!isRecord(value)) return undefined;
+    const hash = sanitizeHash(value.hash);
+    if (!hash) return undefined;
+    const subject = sanitizeMetadataString(value.subject, 500);
+    const author = sanitizeAuthorMetadata(value.author);
+    return {
+        hash,
+        ...(subject ? { subject } : {}),
+        ...(author ? { author } : {}),
+    };
+}
+
+function sanitizeAuthorMetadata(value: unknown): { name?: string; email?: string; date?: string } | undefined {
+    if (!isRecord(value)) return undefined;
+    const name = sanitizeMetadataString(value.name);
+    const email = sanitizeMetadataString(value.email);
+    const date = sanitizeMetadataString(value.date);
+    if (!name && !email && !date) return undefined;
+    return {
+        ...(name ? { name } : {}),
+        ...(email ? { email } : {}),
+        ...(date ? { date } : {}),
+    };
+}
+
+function sanitizeNormalizedRemoteUrl(value: unknown): string | undefined {
+    const raw = typeof value === 'string' ? value.trim() : '';
+    if (!raw || looksLikeLocalAbsolutePath(raw)) return undefined;
+    const normalized = normalizeRemoteUrl(raw).trim();
+    if (!normalized || looksLikeLocalAbsolutePath(normalized)) return undefined;
+    return normalized.slice(0, 500);
+}
+
+function sanitizeHash(value: unknown): string | undefined {
+    const hash = sanitizeMetadataString(value, 40);
+    return hash && /^[a-fA-F0-9]{4,40}$/.test(hash) ? hash.toLowerCase() : undefined;
+}
+
+function sanitizeMetadataString(value: unknown, maxLength = 200): string | undefined {
+    if (typeof value !== 'string') return undefined;
+    const trimmed = value.trim().replace(/[\r\n\t]+/g, ' ');
+    if (!trimmed || looksLikeLocalAbsolutePath(trimmed)) return undefined;
+    return trimmed.slice(0, maxLength);
+}
+
+function looksLikeLocalAbsolutePath(value: string): boolean {
+    return value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value) || value.startsWith('\\\\');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

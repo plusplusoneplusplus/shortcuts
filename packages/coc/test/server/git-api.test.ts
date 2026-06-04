@@ -14,6 +14,9 @@
 
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest';
 import * as http from 'http';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import * as os from 'os';
 import { createRouter } from '../../src/server/shared/router';
 import { registerApiRoutes } from '../../src/server/core/api-handler';
 import type { Route } from '../../src/server/types';
@@ -111,18 +114,20 @@ describe('Git API endpoints', () => {
     let server: http.Server;
     let port: number;
     let store: MockProcessStore;
+    let tmpDir: string;
 
     const WORKSPACE_ID = 'ws-git-test';
     const WORKSPACE_ROOT = '/test/repo';
 
     beforeAll(async () => {
+        tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'git-api-test-'));
         store = createMockProcessStore();
         (store.getWorkspaces as any).mockResolvedValue([
             { id: WORKSPACE_ID, name: 'Test Repo', rootPath: WORKSPACE_ROOT, remoteUrl: 'https://token@example.com/org/repo.git' },
         ]);
 
         const routes: Route[] = [];
-        registerApiRoutes(routes, store, undefined, undefined, () => ({ broadcastGitChanged: mockBroadcastGitChanged }) as any);
+        registerApiRoutes(routes, store, undefined, tmpDir, () => ({ broadcastGitChanged: mockBroadcastGitChanged }) as any);
         const handleRequest = createRouter({ routes, spaHtml: '<html></html>' });
         server = http.createServer(handleRequest);
         await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -131,6 +136,7 @@ describe('Git API endpoints', () => {
 
     afterAll(async () => {
         await new Promise<void>((resolve) => server.close(() => resolve()));
+        await fs.rm(tmpDir, { recursive: true, force: true });
     });
 
     beforeEach(() => {
@@ -511,24 +517,81 @@ describe('Git API endpoints', () => {
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/patch/apply`, {
                 method: 'POST',
-                body: JSON.stringify({ patch }),
+                body: JSON.stringify({
+                    patch,
+                    sourceServer: { id: 'local', label: 'Local CoC', url: '/Users/source/private' },
+                    sourceWorkspace: { id: 'ws-source', name: 'Source Repo', rootPath: '/Users/source/private/repo' },
+                    sourceCommit: {
+                        hash: 'abcdef1234567890abcdef1234567890abcdef12',
+                        subject: 'Add portable patch apply',
+                        author: {
+                            name: 'Patch Author',
+                            email: 'patch-author@example.test',
+                            date: '2026-06-04T04:01:00+00:00',
+                        },
+                    },
+                    normalizedSourceRemoteUrl: 'https://token@example.com/org/repo.git',
+                }),
             });
 
             expect(res.status).toBe(200);
-            expect(res.json()).toEqual({
+            const body = res.json();
+            expect(body).toMatchObject({
                 success: true,
                 targetWorkspace: { id: WORKSPACE_ID, name: 'Test Repo' },
                 targetBranch: 'main',
                 targetHead: 'fedcba9876543210fedcba9876543210fedcba98',
                 newCommitHash: 'fedcba9876543210fedcba9876543210fedcba98',
                 stashed: false,
+                operation: {
+                    workspaceId: WORKSPACE_ID,
+                    op: 'cherry-pick-transfer',
+                    status: 'success',
+                    metadata: {
+                        kind: 'patch-transfer',
+                        sourceServer: { id: 'local', label: 'Local CoC' },
+                        sourceWorkspace: { id: 'ws-source', name: 'Source Repo' },
+                        sourceCommit: {
+                            hash: 'abcdef1234567890abcdef1234567890abcdef12',
+                            subject: 'Add portable patch apply',
+                            author: {
+                                name: 'Patch Author',
+                                email: 'patch-author@example.test',
+                                date: '2026-06-04T04:01:00+00:00',
+                            },
+                        },
+                        normalizedSourceRemoteUrl: 'example.com/org/repo',
+                        targetWorkspace: { id: WORKSPACE_ID, name: 'Test Repo' },
+                        targetBranch: 'main',
+                        targetHead: 'fedcba9876543210fedcba9876543210fedcba98',
+                        newCommitHash: 'fedcba9876543210fedcba9876543210fedcba98',
+                        stashed: false,
+                    },
+                },
             });
+            expect(body.operation.id).toMatch(/^cherry-pick-transfer-/);
+            expect(body.operation.startedAt).toEqual(expect.any(String));
+            expect(body.operation.finishedAt).toEqual(expect.any(String));
+            expect(JSON.stringify(body.operation)).not.toContain('/Users/source/private');
+            expect(JSON.stringify(body.operation)).not.toContain('token');
             expect(mockApplyCommitPatch).toHaveBeenCalledWith(
                 WORKSPACE_ROOT,
                 patch.body,
                 { stashAndContinue: false, stashMessage: 'CoC patch-transfer cherry-pick' },
             );
             expect(mockBroadcastGitChanged).toHaveBeenCalledWith(WORKSPACE_ID, 'patch-apply');
+
+            const latestRes = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/ops/latest?op=cherry-pick-transfer`);
+            expect(latestRes.status).toBe(200);
+            expect(latestRes.json()).toMatchObject({
+                id: body.operation.id,
+                op: 'cherry-pick-transfer',
+                metadata: {
+                    sourceCommit: { hash: 'abcdef1234567890abcdef1234567890abcdef12' },
+                    normalizedSourceRemoteUrl: 'example.com/org/repo',
+                    newCommitHash: 'fedcba9876543210fedcba9876543210fedcba98',
+                },
+            });
         });
 
         it('passes explicit stashAndContinue to the service and reports stashed success', async () => {
