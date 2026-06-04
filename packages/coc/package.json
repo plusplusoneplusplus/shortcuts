@@ -23,16 +23,16 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.150",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.162",
     "@excalidraw/excalidraw": "^0.18.1",
     "@github/copilot-sdk": "^0.3.0",
     "@monaco-editor/react": "^4.7.0",
     "@octokit/rest": "^22.0.1",
     "@openai/codex-sdk": "^0.133.0",
     "@plusplusoneplusplus/coc-agent-sdk": "^0.1.0",
+    "@plusplusoneplusplus/coc-client": "^0.1.0",
     "@plusplusoneplusplus/coc-memory": "^0.1.0",
     "@plusplusoneplusplus/coc-workflow": "^0.1.0",
-    "@plusplusoneplusplus/coc-client": "^0.1.0",
     "@plusplusoneplusplus/forge": "^1.2.0",
     "@plusplusoneplusplus/teams-bot": "^0.1.0",
     "@tanstack/react-table": "^8.21.3",

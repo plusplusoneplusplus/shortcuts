@@ -83,15 +83,50 @@ export function normaliseSceneElements(elements: any[]): any[] {
     }
 
     try {
-        const restored = restoreElements(next as any, null, { repairBindings: true });
+        const restored = restoreElements(next as any, null, { repairBindings: true, refreshDimensions: true });
         if (Array.isArray(restored) && restored.length > 0) {
-            return restored as any[];
+            next = restored as any[];
         }
     } catch {
         // Fall through and return whatever `next` is.
     }
 
-    return next;
+    return recenterBoundText(next);
+}
+
+/**
+ * Recenter bound text elements within their container rectangles.
+ *
+ * LLM-generated diagrams specify explicit x/y/width for text elements
+ * that often don't align with the container's geometry after Excalidraw
+ * recalculates font metrics. For text with `containerId` set, we
+ * recompute x/y so the text is centered within the container, matching
+ * what Excalidraw's editor would produce.
+ */
+function recenterBoundText(elements: any[]): any[] {
+    const byId = new Map<string, any>();
+    for (const el of elements) {
+        if (el && el.id) byId.set(el.id, el);
+    }
+
+    return elements.map(el => {
+        if (el?.type !== 'text' || !el.containerId) return el;
+        const container = byId.get(el.containerId);
+        if (!container) return el;
+
+        const containerX: number = container.x ?? 0;
+        const containerY: number = container.y ?? 0;
+        const containerW: number = container.width ?? 0;
+        const containerH: number = container.height ?? 0;
+        const textW: number = el.width ?? 0;
+        const textH: number = el.height ?? 0;
+
+        const centeredX = containerX + (containerW - textW) / 2;
+        const centeredY = containerY + (containerH - textH) / 2;
+
+        if (el.x === centeredX && el.y === centeredY) return el;
+        return { ...el, x: centeredX, y: centeredY };
+    });
 }
 
 /**
