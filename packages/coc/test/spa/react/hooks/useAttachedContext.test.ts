@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useAttachedContext, formatAttachedContext } from '../../../../src/server/spa/client/react/features/chat/hooks/useAttachedContext';
+import { useAttachedContext, formatAttachedContext, parseAttachedSessionContextBlocks } from '../../../../src/server/spa/client/react/features/chat/hooks/useAttachedContext';
 
 describe('useAttachedContext', () => {
     it('starts with empty items', () => {
@@ -179,5 +179,41 @@ describe('formatAttachedContext', () => {
         expect(result).toContain('<title>Debug &lt;source&gt; &amp; inspect</title>');
         expect(result).toContain('retrieve and read this source conversation by process ID');
         expect(result).not.toContain('transcript');
+    });
+});
+
+describe('parseAttachedSessionContextBlocks', () => {
+    it('extracts session context blocks and returns the remaining message', () => {
+        const content = [
+            '<attached_session_context version="1">',
+            '<source workspace_id="ws-1" process_id="source-process-123456" status="failed" last_activity_at="2026-01-01T00:00:00.000Z">',
+            '<title>Debug &lt;source&gt; &amp; inspect</title>',
+            '<instruction>Before answering, retrieve and read this source conversation by process ID using the available conversation retrieval tool.</instruction>',
+            '</source>',
+            '</attached_session_context>',
+            '',
+            'Continue debugging.',
+        ].join('\n');
+
+        const result = parseAttachedSessionContextBlocks(content);
+
+        expect(result.sessionContexts).toHaveLength(1);
+        expect(result.sessionContexts[0]).toMatchObject({
+            sourceWorkspaceId: 'ws-1',
+            sourceProcessId: 'source-process-123456',
+            status: 'failed',
+            lastActivityAt: '2026-01-01T00:00:00.000Z',
+            title: 'Debug <source> & inspect',
+        });
+        expect(result.sessionContexts[0].rawBlock).toContain('<attached_session_context version="1">');
+        expect(result.remainingContent).toBe('Continue debugging.');
+    });
+
+    it('leaves ordinary messages unchanged', () => {
+        const content = 'No attached session context here.';
+        expect(parseAttachedSessionContextBlocks(content)).toEqual({
+            sessionContexts: [],
+            remainingContent: content,
+        });
     });
 });

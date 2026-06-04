@@ -140,7 +140,11 @@ three-session cap, and `get_conversation` tool availability before adding
 removable session chips through the existing `AttachedContextPreviews` surface.
 The attached-context formatter emits pointer-only `<attached_session_context>`
 blocks in user-message content; it stores source workspace/process IDs, status,
-title, and last activity only.
+title, and last activity only. `ConversationTurnBubble` parses persisted
+session-context blocks on user turns and renders them as collapsed "Attached
+session context" cards with title, status, last activity, workspace/process IDs,
+and a raw-block copy affordance while raw mode still exposes the exact persisted
+message content.
 
 New chats use `AgentSelectorChip` to choose a per-chat provider. The initial selection comes from the workspace's `lastChatProvider` preference when that provider is enabled and available; otherwise it falls back to the configured `defaultProvider` from runtime config, and then to Copilot if the configured default provider cannot be selected. Follow-up inputs show the provider stored on the process metadata so existing chats continue using their original provider.
 

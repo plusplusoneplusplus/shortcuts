@@ -24,6 +24,7 @@ export interface AttachedSessionContextItem {
 export type AttachedContextItem = AttachedTurnContextItem | AttachedSessionContextItem;
 
 const PREVIEW_LENGTH = 100;
+const SESSION_CONTEXT_BLOCK_PATTERN = /<attached_session_context\s+version="1">\s*<source\s+([^>]*)>\s*<title>([\s\S]*?)<\/title>\s*<instruction>[\s\S]*?<\/instruction>\s*<\/source>\s*<\/attached_session_context>/g;
 
 function truncatePreview(text: string): string {
     const oneLine = text.replace(/\n/g, ' ').trim();
@@ -42,6 +43,56 @@ function escapeContextText(value: string): string {
 export function shortenSessionProcessId(processId: string): string {
     if (processId.length <= 14) return processId;
     return `${processId.slice(0, 8)}…${processId.slice(-4)}`;
+}
+
+function unescapeContextText(value: string): string {
+    return value
+        .replace(/&quot;/g, '"')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&');
+}
+
+function parseSourceAttributes(rawAttributes: string): Record<string, string> {
+    const attrs: Record<string, string> = {};
+    for (const match of rawAttributes.matchAll(/([a-z_]+)="([^"]*)"/g)) {
+        attrs[match[1]] = unescapeContextText(match[2]);
+    }
+    return attrs;
+}
+
+export interface ParsedSessionContextBlock {
+    sourceWorkspaceId: string;
+    sourceProcessId: string;
+    status: string;
+    lastActivityAt: string;
+    title: string;
+    rawBlock: string;
+}
+
+export interface ParsedAttachedSessionContextContent {
+    sessionContexts: ParsedSessionContextBlock[];
+    remainingContent: string;
+}
+
+export function parseAttachedSessionContextBlocks(content: string): ParsedAttachedSessionContextContent {
+    const sessionContexts: ParsedSessionContextBlock[] = [];
+    const remainingContent = content
+        .replace(SESSION_CONTEXT_BLOCK_PATTERN, (rawBlock, rawAttributes: string, rawTitle: string) => {
+            const attrs = parseSourceAttributes(rawAttributes);
+            sessionContexts.push({
+                sourceWorkspaceId: attrs.workspace_id || 'unknown-workspace',
+                sourceProcessId: attrs.process_id || 'unknown-process',
+                status: attrs.status || 'unknown',
+                lastActivityAt: attrs.last_activity_at || 'unknown',
+                title: unescapeContextText(rawTitle).trim() || attrs.process_id || 'Untitled source session',
+                rawBlock,
+            });
+            return '';
+        })
+        .replace(/^(?:[ \t]*\r?\n)+/, '');
+
+    return { sessionContexts, remainingContent };
 }
 
 export function buildSessionContextPreview(source: Pick<SessionContextDragPayload, 'title' | 'status' | 'lastActivityAt' | 'sourceProcessId'>): string {

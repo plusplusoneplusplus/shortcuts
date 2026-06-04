@@ -249,6 +249,87 @@ describe('ConversationTurnBubble — whitespace-only content suppression', () =>
     });
 });
 
+describe('ConversationTurnBubble — attached session context blocks', () => {
+    function makeSessionContextContent(message = 'Continue debugging from this source.'): string {
+        return [
+            '<attached_session_context version="1">',
+            '<source workspace_id="ws-1" process_id="process-1234567890" status="failed" last_activity_at="2026-01-01T00:00:00.000Z">',
+            '<title>Debug &lt;source&gt; &amp; inspect</title>',
+            '<instruction>Before answering, retrieve and read this source conversation by process ID using the available conversation retrieval tool.</instruction>',
+            '</source>',
+            '</attached_session_context>',
+            '',
+            message,
+        ].join('\n');
+    }
+
+    beforeEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('renders persisted session context blocks as collapsed cards instead of noisy raw text', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({ role: 'user', content: makeSessionContextContent() })}
+            />
+        );
+
+        const card = screen.getByTestId('attached-session-context-block') as HTMLDetailsElement;
+        expect(card.open).toBe(false);
+        expect(screen.getByTestId('attached-session-context-summary').textContent).toContain('Debug <source> & inspect');
+        expect(card.textContent).toContain('failed');
+        expect(screen.getByTestId('attached-session-context-last-activity').textContent).toBe('2026-01-01T00:00:00.000Z');
+        expect(card.textContent).toContain('process-…7890');
+        expect(screen.getByTestId('user-plain-text')?.textContent).toBe('Continue debugging from this source.');
+        expect(screen.getByTestId('user-plain-text')?.textContent).not.toContain('attached_session_context');
+    });
+
+    it('keeps the source pointer visible when the collapsed card is expanded', () => {
+        render(
+            <ConversationTurnBubble
+                turn={makeTurn({ role: 'user', content: makeSessionContextContent('') })}
+            />
+        );
+
+        fireEvent.click(screen.getByText('Attached session context'));
+
+        expect(screen.getByTestId('attached-session-context-process-id').textContent).toBe('process-1234567890');
+        expect(screen.getByText('ws-1')).toBeTruthy();
+        expect(screen.getByTestId('attached-session-context-raw-block').textContent).toContain('<attached_session_context version="1">');
+    });
+
+    it('copies the raw session context block from the expanded card', async () => {
+        const spy = vi.spyOn(formatUtils, 'copyToClipboard').mockResolvedValue(undefined);
+        render(
+            <ConversationTurnBubble
+                turn={makeTurn({ role: 'user', content: makeSessionContextContent('Use this source.') })}
+            />
+        );
+
+        fireEvent.click(screen.getByText('Attached session context'));
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('attached-session-context-copy-raw'));
+        });
+
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(spy.mock.calls[0][0]).toContain('<attached_session_context version="1">');
+        expect(spy.mock.calls[0][0]).toContain('process_id="process-1234567890"');
+    });
+
+    it('shows raw persisted content unchanged in raw mode', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({ role: 'user', content: makeSessionContextContent('Use this source.') })}
+            />
+        );
+
+        fireEvent.click(container.querySelector('.bubble-raw-btn') as HTMLButtonElement);
+
+        expect(container.querySelector('.raw-content-view')?.textContent).toContain('<attached_session_context version="1">');
+        expect(container.querySelector('[data-testid="attached-session-context-block"]')).toBeNull();
+    });
+});
+
 describe('ConversationTurnBubble — task boundary inference', () => {
     it('keeps tool calls after task-complete at root level without timestamps', () => {
         const { container } = render(
