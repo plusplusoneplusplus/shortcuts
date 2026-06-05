@@ -1756,8 +1756,8 @@ export function AdminPanel() {
                                         <AdminToggle checked={workItemsHierarchyEnabled} onChange={setWorkItemsHierarchyEnabled} data-testid="toggle-work-items-hierarchy-enabled" />
                                     </AdminRow>
                                     <AdminRow
-                                        name={<>Work Items GitHub Sync <span className="ar-badge ar-badge-accent">Preview</span></>}
-                                        hint="Manual GitHub Issues import/export/sync controls for hierarchy mode. Requires the hierarchy board and never stores provider tokens."
+                                        name={<>Remote Work Items <span className="ar-badge ar-badge-accent">Preview</span></>}
+                                        hint="Enables remote provider integration for hierarchy mode: provider status, imports, save-to-provider updates, and background polling. Requires the hierarchy board and never stores provider tokens."
                                     >
                                         <SourceBadge source={sources['workItems.sync.enabled']} />
                                         <AdminToggle checked={workItemsSyncEnabled} onChange={setWorkItemsSyncEnabled} data-testid="toggle-work-items-sync-enabled" />
