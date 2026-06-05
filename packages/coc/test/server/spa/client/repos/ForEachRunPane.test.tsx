@@ -145,6 +145,31 @@ describe('ForEachRunPane', () => {
         expect(screen.getByTestId('for-each-child-link-pending-item').textContent).toContain('Open child chat');
     });
 
+    it('continues a running run without navigating away from the parent pane', async () => {
+        mocks.get.mockResolvedValueOnce(makeRun({ status: 'running', items: [makeRun().items[0]] }));
+        mocks.continueRun.mockResolvedValueOnce(makeRun({
+            status: 'running',
+            items: [{
+                ...makeRun().items[0],
+                status: 'running',
+                childProcessId: 'queue_child-continued',
+                childTaskId: 'child-continued',
+            }],
+        }));
+
+        render(<ForEachRunPane workspaceId="ws-1" runId="for-each-run-1" />);
+        await waitFor(() => expect(screen.getByTestId('for-each-continue-btn')).toBeEnabled());
+        expect(screen.getByTestId('for-each-continue-btn').textContent).toContain('Continue');
+
+        fireEvent.click(screen.getByTestId('for-each-continue-btn'));
+
+        await waitFor(() => expect(mocks.continueRun).toHaveBeenCalledWith('ws-1', 'for-each-run-1'));
+        expect(mocks.start).not.toHaveBeenCalled();
+        await waitFor(() => expect(screen.getByTestId('for-each-run-pane')).toBeTruthy());
+        expect(screen.getByTestId('for-each-run-status').textContent).toContain('running');
+        expect(screen.getByTestId('for-each-child-link-pending-item').textContent).toContain('Open child chat');
+    });
+
     it('retries failed items, skips pending items, and cancels remaining work', async () => {
         render(<ForEachRunPane workspaceId="ws-1" runId="for-each-run-1" />);
         await waitFor(() => expect(screen.getByTestId('for-each-run-pane')).toBeTruthy());
