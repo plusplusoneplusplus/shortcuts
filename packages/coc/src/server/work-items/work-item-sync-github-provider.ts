@@ -3,6 +3,7 @@ import * as crypto from 'crypto';
 import { promisify } from 'util';
 import type { WorkItemSyncProviderStatus } from '@plusplusoneplusplus/coc-client';
 import {
+    buildGitHubWorkItemIssueUpdate,
     buildGitHubWorkItemLabels,
     buildGitHubWorkItemSyncMetadata,
     parseGitHubWorkItemIssue,
@@ -25,6 +26,7 @@ import type {
 } from './types';
 import {
     getEffectiveType,
+    isTerminalStatus,
     isValidParentChildTypes,
 } from './types';
 import {
@@ -121,6 +123,26 @@ export interface CreateGitHubIssueForLocalEpicRootOptions {
     transport: GitHubWorkItemIssueTransport;
     item: WorkItem;
     now?: () => string;
+}
+
+export interface UpdateGitHubIssueForLocalMirrorOptions {
+    repo: AvailableGitHubWorkItemSyncRepo;
+    transport: GitHubWorkItemIssueTransport;
+    item: WorkItem;
+    issueNumber: number;
+    /** Current remote issue snapshot, used to preserve non-CoC labels and prose. */
+    existingIssue?: GitHubWorkItemIssue;
+    /**
+     * Provider-native parent reference to encode in the issue metadata.
+     * `null` clears the parent (root Epic), `undefined` derives it from the item's parentId.
+     */
+    parent?: WorkItemSyncParentReference | null;
+    now?: () => string;
+}
+
+export interface UpdateGitHubIssueForLocalMirrorResult {
+    issue: GitHubWorkItemIssue;
+    githubMirror: NonNullable<WorkItem['githubMirror']>;
 }
 
 export interface ConvertGitHubEpicTreeTrackerResult {
@@ -373,7 +395,7 @@ function labelsForNewGitHubMirrorIssue(item: WorkItem): string[] {
     }).filter(label => !label.toLowerCase().startsWith('coc:status:'));
 }
 
-function parentReferenceForGitHubMirrorChild(
+export function parentReferenceForGitHubMirrorChild(
     parent: WorkItem,
     repo: AvailableGitHubWorkItemSyncRepo,
 ): WorkItemSyncParentReference {
@@ -456,6 +478,54 @@ export async function createGitHubIssueForLocalEpicRoot(
         body: bodyForNewGitHubMirrorIssue(options.item, options.repo, null, syncedAt, created),
         labels,
         state: 'open',
+    });
+    return {
+        issue: updated,
+        githubMirror: githubMirrorForIssue(updated, syncedAt),
+    };
+}
+
+/** Map a CoC work-item status to a GitHub issue open/closed state. */
+function githubStateForStatus(status: WorkItem['status']): 'open' | 'closed' {
+    return isTerminalStatus(status) ? 'closed' : 'open';
+}
+
+/**
+ * Push provider-owned local edits of an already-mirrored item to its backing
+ * GitHub issue, then return the refreshed mirror metadata. This is the GitHub
+ * equivalent of {@link updateAzureBoardsWorkItemForLocalMirror}: provider-native
+ * fields (title, body, status/state, priority, tags, parent) are written via the
+ * existing issue update/metadata helpers so labels and the hidden
+ * `coc-work-item-sync` block stay canonical.
+ */
+export async function updateGitHubIssueForLocalMirror(
+    options: UpdateGitHubIssueForLocalMirrorOptions,
+): Promise<UpdateGitHubIssueForLocalMirrorResult> {
+    const syncedAt = (options.now ?? (() => new Date().toISOString()))();
+    // Preserve the remote identity and non-CoC labels from the current issue, but
+    // drive the body prose from the local (provider-owned) description so a CoC
+    // save overwrites the backing issue body rather than retaining stale remote text.
+    const existingIssueForUpdate: GitHubWorkItemIssueSnapshot | undefined = options.existingIssue
+        ? { ...options.existingIssue, body: undefined }
+        : undefined;
+    const update = buildGitHubWorkItemIssueUpdate({
+        workItem: options.item,
+        remote: {
+            owner: options.repo.owner,
+            repo: options.repo.repo,
+            issueId: options.item.githubMirror?.issueId,
+            issueNumber: options.issueNumber,
+            issueUrl: options.item.githubMirror?.issueUrl,
+        },
+        lastSyncedAt: syncedAt,
+        parent: options.parent,
+        existingIssue: existingIssueForUpdate,
+    });
+    const updated = await options.transport.updateIssue(options.repo, options.issueNumber, {
+        title: options.item.title,
+        body: update.body,
+        labels: update.labels,
+        state: githubStateForStatus(options.item.status),
     });
     return {
         issue: updated,

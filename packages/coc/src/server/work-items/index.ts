@@ -73,6 +73,8 @@ export {
     deleteGitHubEpicMirrorTree,
     detachGitHubEpicTreeToLocalOnly,
     importGitHubEpicTreeAsWorkItems,
+    parentReferenceForGitHubMirrorChild,
+    updateGitHubIssueForLocalMirror,
     type ConvertGitHubEpicTreeTrackerResult,
     type CreateGitHubIssueForLocalChildOptions,
     type CreateGitHubIssueForLocalChildResult,
@@ -83,6 +85,8 @@ export {
     type GitHubWorkItemIssueTransport,
     type ImportGitHubEpicTreeOptions,
     type ImportGitHubEpicTreeResult,
+    type UpdateGitHubIssueForLocalMirrorOptions,
+    type UpdateGitHubIssueForLocalMirrorResult,
 } from './work-item-sync-github-provider';
 export {
     AzureBoardsRestWorkItemTransport,
