@@ -43,6 +43,12 @@ describe('skills config', () => {
         expect(config.skills.defaultSkills).toContain('classify-diff');
     });
 
+    it('includes humanize-doc in default bundled skills', () => {
+        const config = resolveConfig(undefined, undefined);
+        expect(DEFAULT_BUNDLED_SKILLS).toContain('humanize-doc');
+        expect(config.skills.defaultSkills).toContain('humanize-doc');
+    });
+
     it('can be disabled via override', () => {
         const config = mergeConfig(DEFAULT_CONFIG, { skills: { autoUpdate: false } });
         expect(config.skills.autoUpdate).toBe(false);

@@ -104,4 +104,9 @@ export const BUNDLED_SKILLS_REGISTRY: readonly BundledSkill[] = [
         description: 'Core instruction sets for Ralph autonomous coding loop phases — grill (clarification), synthesis (goal extraction), execution (iteration), iteration (user prompt), and final-check (read-only validation)',
         relativePath: 'ultra-ralph',
     },
+    {
+        name: 'humanize-doc',
+        description: 'Review a design doc draft for AI-generated writing patterns and rewrite only the problematic parts in direct engineering language. Use only when user explicitly asks',
+        relativePath: 'humanize-doc',
+    },
 ];

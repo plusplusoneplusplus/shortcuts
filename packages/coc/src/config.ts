@@ -510,6 +510,7 @@ export const DEFAULT_BUNDLED_SKILLS: readonly string[] = [
     'loop',
     'ultra-ralph',
     'classify-diff',
+    'humanize-doc',
 ];
 
 /** Default configuration values */
