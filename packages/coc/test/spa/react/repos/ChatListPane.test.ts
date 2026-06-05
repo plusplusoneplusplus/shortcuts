@@ -25,6 +25,18 @@ describe('ChatListPane pinned chats', () => {
         source = fs.readFileSync(ACTIVITY_LIST_PATH, 'utf-8');
     });
 
+    function getSourceBlock(startNeedle: string, endNeedle: string): string {
+        const start = source.indexOf(startNeedle);
+        expect(start).toBeGreaterThan(-1);
+        const end = source.indexOf(endNeedle, start + startNeedle.length);
+        expect(end).toBeGreaterThan(start);
+        return source.substring(start, end);
+    }
+
+    function getBulkContextMenuBlock(): string {
+        return getSourceBlock('if (contextMenu.bulkIds)', "if (taskStatus === 'running')");
+    }
+
     describe('props interface', () => {
         it('obtains pinnedChatIds from useChatPrefs', () => {
             expect(source).toContain('useChatPrefs()');
@@ -75,10 +87,8 @@ describe('ChatListPane pinned chats', () => {
         });
 
         it('uses visibleFilteredUnpinned for the completed tasks section', () => {
-            const historySection = source.substring(
-                source.indexOf('Completed Tasks'),
-                source.indexOf('Completed Tasks') + 200,
-            );
+            const historySection = getSourceBlock('data-section="completed"', 'data-section={`completed-${section.id}`}');
+            expect(historySection).toContain('activityCompletedEntries');
             expect(historySection).toContain('visibleFilteredUnpinned');
         });
     });
@@ -321,11 +331,11 @@ describe('ChatListPane pinned chats', () => {
         });
 
         it('pinned section visible when only running tasks are pinned', () => {
-            expect(source).toContain('visibleFilteredPinned.length > 0 || pinnedRunningCount > 0');
+            expect(source).toContain('pinnedActivityEntries.length > 0 || pinnedRunningCount > 0');
         });
 
         it('pinned section count includes pinnedRunningCount', () => {
-            expect(source).toContain('visibleFilteredPinned.length + pinnedRunningCount');
+            expect(source).toContain('pinnedActivityEntries.length + pinnedRunningCount');
         });
     });
 
@@ -390,10 +400,7 @@ describe('ChatListPane pinned chats', () => {
         });
 
         it('bulk context menu uses singular label for single chat', () => {
-            const bulkBlock = source.substring(
-                source.indexOf('contextMenu.bulkIds'),
-                source.indexOf('contextMenu.bulkIds') + 3000,
-            );
+            const bulkBlock = getBulkContextMenuBlock();
             expect(bulkBlock).toContain("ids.length === 1 ? 'Summarize chat'");
         });
 
@@ -406,55 +413,37 @@ describe('ChatListPane pinned chats', () => {
         });
 
         it('bulk context menu shows Mark as Read when any unseen', () => {
-            const bulkBlock = source.substring(
-                source.indexOf('contextMenu.bulkIds'),
-                source.indexOf('contextMenu.bulkIds') + 1500,
-            );
+            const bulkBlock = getBulkContextMenuBlock();
             expect(bulkBlock).toContain("'Mark as Read'");
             expect(bulkBlock).toContain('anyUnseen');
         });
 
         it('bulk context menu shows Mark as Unread when any seen', () => {
-            const bulkBlock = source.substring(
-                source.indexOf('contextMenu.bulkIds'),
-                source.indexOf('contextMenu.bulkIds') + 2500,
-            );
+            const bulkBlock = getBulkContextMenuBlock();
             expect(bulkBlock).toContain("'Mark as Unread'");
             expect(bulkBlock).toContain('anySeen');
         });
 
         it('bulk context menu shows Pin to top when any unpinned', () => {
-            const bulkBlock = source.substring(
-                source.indexOf('contextMenu.bulkIds'),
-                source.indexOf('contextMenu.bulkIds') + 2500,
-            );
+            const bulkBlock = getBulkContextMenuBlock();
             expect(bulkBlock).toContain("'Pin to top'");
             expect(bulkBlock).toContain('anyUnpinned');
         });
 
         it('bulk context menu shows Unpin when any pinned', () => {
-            const bulkBlock = source.substring(
-                source.indexOf('contextMenu.bulkIds'),
-                source.indexOf('contextMenu.bulkIds') + 2500,
-            );
+            const bulkBlock = getBulkContextMenuBlock();
             expect(bulkBlock).toContain("'Unpin'");
             expect(bulkBlock).toContain('anyPinned');
         });
 
         it('bulk context menu shows Archive when any unarchived', () => {
-            const bulkBlock = source.substring(
-                source.indexOf('contextMenu.bulkIds'),
-                source.indexOf('contextMenu.bulkIds') + 2500,
-            );
+            const bulkBlock = getBulkContextMenuBlock();
             expect(bulkBlock).toContain("'Archive'");
             expect(bulkBlock).toContain('anyUnarchived');
         });
 
         it('bulk context menu shows Unarchive when any archived', () => {
-            const bulkBlock = source.substring(
-                source.indexOf('contextMenu.bulkIds'),
-                source.indexOf('contextMenu.bulkIds') + 2500,
-            );
+            const bulkBlock = getBulkContextMenuBlock();
             expect(bulkBlock).toContain("'Unarchive'");
             expect(bulkBlock).toContain('anyArchived');
         });
@@ -508,10 +497,7 @@ describe('ChatListPane pinned chats', () => {
 
         describe('summarize chats bulk action', () => {
             it('bulk context menu shows Summarize N chats item', () => {
-                const bulkBlock = source.substring(
-                    source.indexOf('contextMenu.bulkIds'),
-                    source.indexOf('contextMenu.bulkIds') + 3000,
-                );
+                const bulkBlock = getBulkContextMenuBlock();
                 expect(bulkBlock).toContain('Summarize');
                 expect(bulkBlock).toContain("'Summarize chat'");
                 expect(bulkBlock).toContain('`Summarize ${ids.length} chats`');
@@ -533,18 +519,12 @@ describe('ChatListPane pinned chats', () => {
             });
 
             it('summarize is capped at 20 items', () => {
-                const bulkBlock = source.substring(
-                    source.indexOf('contextMenu.bulkIds'),
-                    source.indexOf('contextMenu.bulkIds') + 3000,
-                );
+                const bulkBlock = getBulkContextMenuBlock();
                 expect(bulkBlock).toContain('ids.length <= 20');
             });
 
             it('summarize uses 📝 icon', () => {
-                const bulkBlock = source.substring(
-                    source.indexOf('contextMenu.bulkIds'),
-                    source.indexOf('contextMenu.bulkIds') + 3000,
-                );
+                const bulkBlock = getBulkContextMenuBlock();
                 expect(bulkBlock).toContain('📝');
             });
 
