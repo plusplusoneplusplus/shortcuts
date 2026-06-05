@@ -399,6 +399,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             const workspaceRoot = getSelectedWorkspaceRoot();
             const attachmentPayload = toPayload();
             const { skills: extractedSkills, prompt: cleanedPrompt } = slashCommands.parseAndExtract(trimmed);
+            const promptAfterSkillExtraction = extractedSkills.length > 0 ? cleanedPrompt : trimmed;
 
             let mode: string = selectedMode;
             let contextOverride: Record<string, unknown> | undefined;
@@ -424,7 +425,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         workspaceId,
                         generationId: `for-each-gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                         childMode: 'ask',
-                        originalRequest: trimmed,
+                        originalRequest: promptAfterSkillExtraction,
                         status: 'draft',
                     },
                 };
@@ -432,7 +433,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                 contextOverride = { skills: extractedSkills };
             }
 
-            let basePrompt = extractedSkills.length > 0 ? cleanedPrompt : trimmed;
+            let basePrompt = promptAfterSkillExtraction;
 
             if (selectedMode === 'ralph') {
                 basePrompt += '\n\nWhen you\'ve finished grilling me and have a clear understanding of the goal, write the final goal specification to a `.goal.md` file (e.g. `feature-name.goal.md`).';
