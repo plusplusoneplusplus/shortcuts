@@ -335,20 +335,47 @@ describe('GitHub-backed work item edits', () => {
         expect(stored?.githubMirror?.updatedAt).toBe(NOW);
     });
 
-    it('rejects stale local saves when the GitHub issue changed remotely', async () => {
+    it('rejects stale local saves with a typed per-field conflict when the GitHub issue changed remotely', async () => {
         await store.addWorkItem(githubBackedRoot());
-        const mock = makeMockTransport([mirroredIssue(10, { title: 'Remote changed title', updatedAt: LATER })]);
+        const mock = makeMockTransport([mirroredIssue(10, {
+            title: 'Remote changed title',
+            body: 'Remote body prose',
+            labels: ['coc:type:epic', 'coc:status:executing', 'coc:priority:high', 'urgent'],
+            updatedAt: LATER,
+        })]);
         await startServer(mock);
 
         const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/epic-1`, {
             title: 'Stale local title',
+            status: 'planning',
         });
 
         expect(res.status).toBe(409);
-        expect(res.body.code).toBe('WORK_ITEM_GITHUB_CONFLICT');
+        expect(res.body.code).toBe('WORK_ITEM_SYNC_CONFLICT');
         expect(mock.calls.updateIssue).toHaveLength(0);
+
+        const details = res.body.details;
+        expect(details).toMatchObject({
+            kind: 'work-item-sync-conflict',
+            provider: 'github',
+            providerLabel: 'GitHub',
+            workItemId: 'epic-1',
+            issueNumber: 10,
+            localUpdatedAt: NOW,
+            remoteUpdatedAt: LATER,
+        });
+        const byField = Object.fromEntries(details.fields.map((f: any) => [f.field, f]));
+        expect(byField.title).toEqual({ field: 'title', draft: 'Stale local title', base: 'GitHub Epic', remote: 'Remote changed title' });
+        expect(byField.status).toEqual({ field: 'status', draft: 'planning', base: 'created', remote: 'executing' });
+        expect(byField.priority).toEqual({ field: 'priority', draft: 'normal', base: 'normal', remote: 'high' });
+        expect(byField.description).toEqual({ field: 'description', draft: null, base: null, remote: 'Remote body prose' });
+        expect(byField.tags).toEqual({ field: 'tags', draft: null, base: null, remote: 'urgent' });
+        // Parent did not diverge (both remote and base are the Epic root), so it is omitted.
+        expect(byField.parent).toBeUndefined();
+
         const stored = await store.getWorkItem('epic-1', REPO_ID);
         expect(stored?.title).toBe('GitHub Epic');
+        expect(stored?.status).toBe('created');
         expect(stored?.githubMirror?.updatedAt).toBe(NOW);
     });
 

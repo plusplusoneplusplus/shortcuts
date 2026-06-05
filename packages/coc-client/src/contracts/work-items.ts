@@ -295,6 +295,67 @@ export interface WorkItemSyncWarning extends JsonObject {
   remoteUpdatedAt?: string;
 }
 
+/**
+ * Error `code` returned by the work-item PATCH route when a remote-backed save is
+ * blocked because the provider item changed since CoC last synced its mirror.
+ * The error body carries a typed {@link WorkItemSyncConflictDetails} in `details`.
+ */
+export const WORK_ITEM_SYNC_CONFLICT_CODE = 'WORK_ITEM_SYNC_CONFLICT';
+
+/** Provider-owned fields that can diverge and produce a save conflict. */
+export type WorkItemSyncConflictField =
+  | 'title'
+  | 'description'
+  | 'status'
+  | 'priority'
+  | 'tags'
+  | 'parent';
+
+/**
+ * A single provider-owned field whose current provider value diverged from the
+ * local mirror base. Values are normalized strings (or `null` when unset/empty)
+ * so the inline merge UI can render side-by-side cards uniformly.
+ */
+export interface WorkItemSyncConflictFieldDetail {
+  field: WorkItemSyncConflictField;
+  /** The local draft value the user is attempting to save. */
+  draft: string | null;
+  /** The local mirror/base value last synced from the provider. */
+  base: string | null;
+  /** The current value on the provider. */
+  remote: string | null;
+}
+
+/**
+ * Structured, provider-agnostic conflict payload returned from the work-item
+ * PATCH route when a stale remote-backed save is blocked. Shared by the GitHub
+ * (`updatedAt`) and Azure Boards (`revision`) staleness paths so the SPA can show
+ * one inline per-field merge panel regardless of provider.
+ */
+export interface WorkItemSyncConflictDetails extends JsonObject {
+  /** Discriminant so clients can detect the typed conflict from an error body. */
+  kind: 'work-item-sync-conflict';
+  provider: WorkItemSyncProvider;
+  /** Friendly provider name for UI labels, e.g. "GitHub" or "Azure Boards". */
+  providerLabel: string;
+  /** Local work item under edit. */
+  workItemId: string;
+  /** GitHub backing issue number (when provider === 'github'). */
+  issueNumber?: number;
+  /** Azure Boards backing work item id (when provider === 'azure-boards'). */
+  remoteWorkItemId?: number;
+  /** Local mirror timestamp known to CoC before the save (GitHub). */
+  localUpdatedAt?: string;
+  /** Local mirror revision known to CoC before the save (Azure Boards). */
+  localRevision?: number;
+  /** Current provider timestamp at conflict detection (GitHub). */
+  remoteUpdatedAt?: string;
+  /** Current provider revision at conflict detection (Azure Boards). */
+  remoteRevision?: number;
+  /** Provider-owned fields whose current provider value diverged from the local base. */
+  fields: WorkItemSyncConflictFieldDetail[];
+}
+
 export interface ConvertWorkItemTrackerResponse extends JsonObject {
   root: WorkItem;
   items: WorkItem[];

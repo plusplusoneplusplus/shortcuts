@@ -416,7 +416,7 @@ describe('Azure Boards-backed work item edits', () => {
         expect(stored?.azureBoardsMirror?.revision).toBe(1);
     });
 
-    it('rejects stale local saves when the Azure revision changed remotely', async () => {
+    it('rejects stale local saves with a typed per-field conflict when the Azure revision changed remotely', async () => {
         await store.addWorkItem(makeWorkItem({
             id: 'epic-1',
             title: 'Azure Epic',
@@ -429,16 +429,48 @@ describe('Azure Boards-backed work item edits', () => {
             azureBoardsMirror: { workItemId: 100, workItemUrl: htmlUrl(100), revision: 3, workItemType: 'Epic', state: 'Active', updatedAt: NOW, lastPulledAt: NOW },
         }));
         const transport = new FakeAzureBoardsTransport();
-        transport.set([{ id: 100, revision: 4, title: 'Remote changed title', state: 'Active', workItemType: 'Epic', updatedAt: NOW, url: htmlUrl(100) }]);
+        transport.set([{
+            id: 100,
+            revision: 4,
+            title: 'Remote changed title',
+            description: 'Remote description',
+            state: 'Active',
+            workItemType: 'Epic',
+            priority: 1,
+            tags: 'alpha; beta',
+            updatedAt: NOW,
+            url: htmlUrl(100),
+        }]);
         await startServer(transport);
 
         const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/epic-1`, {
             title: 'Stale local title',
+            priority: 'low',
         });
 
         expect(res.status).toBe(409);
-        expect(res.body.code).toBe('WORK_ITEM_AZURE_BOARDS_CONFLICT');
+        expect(res.body.code).toBe('WORK_ITEM_SYNC_CONFLICT');
         expect(transport.calls.update).toHaveLength(0);
+
+        const details = res.body.details;
+        expect(details).toMatchObject({
+            kind: 'work-item-sync-conflict',
+            provider: 'azure-boards',
+            providerLabel: 'Azure Boards',
+            workItemId: 'epic-1',
+            remoteWorkItemId: 100,
+            localRevision: 3,
+            remoteRevision: 4,
+        });
+        const byField = Object.fromEntries(details.fields.map((f: any) => [f.field, f]));
+        expect(byField.title).toEqual({ field: 'title', draft: 'Stale local title', base: 'Azure Epic', remote: 'Remote changed title' });
+        expect(byField.priority).toEqual({ field: 'priority', draft: 'low', base: 'normal', remote: 'high' });
+        expect(byField.status).toEqual({ field: 'status', draft: 'created', base: 'created', remote: 'executing' });
+        expect(byField.description).toEqual({ field: 'description', draft: null, base: null, remote: 'Remote description' });
+        expect(byField.tags).toEqual({ field: 'tags', draft: null, base: null, remote: 'alpha, beta' });
+        // Remote item has no parent relation, so parent matches the local Epic root and is omitted.
+        expect(byField.parent).toBeUndefined();
+
         const stored = await store.getWorkItem('epic-1', REPO_ID);
         expect(stored?.title).toBe('Azure Epic');
         expect(stored?.azureBoardsMirror?.revision).toBe(3);

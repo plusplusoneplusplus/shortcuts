@@ -141,6 +141,13 @@ export {
     type WorkItemGitHubPullWorkspaceResult,
 } from './work-item-github-pull-poller';
 export {
+    WORK_ITEM_SYNC_CONFLICT_CODE,
+    buildAzureBoardsWorkItemSyncConflict,
+    buildGitHubWorkItemSyncConflict,
+    type BuildAzureBoardsWorkItemSyncConflictOptions,
+    type BuildGitHubWorkItemSyncConflictOptions,
+} from './work-item-sync-conflict';
+export {
     executeWorkItem,
     handleWorkItemTaskComplete,
     buildExecutionPrompt,

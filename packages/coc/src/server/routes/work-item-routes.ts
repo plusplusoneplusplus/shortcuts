@@ -47,6 +47,7 @@ import {
 } from '../work-items/work-item-sync-github-provider';
 import {
     AzureBoardsRestWorkItemTransport,
+    azureBoardsParentWorkItemId,
     azureBoardsProjectFromStatus,
     azureBoardsRemoteWorkItemIdForLocalItem,
     createAzureBoardsWorkItemForLocalChild,
@@ -56,6 +57,11 @@ import {
     type AzureBoardsWorkItemTransport,
     type AvailableAzureBoardsWorkItemSyncProject,
 } from '../work-items/work-item-sync-azure-boards-provider';
+import {
+    WORK_ITEM_SYNC_CONFLICT_CODE,
+    buildAzureBoardsWorkItemSyncConflict,
+    buildGitHubWorkItemSyncConflict,
+} from '../work-items/work-item-sync-conflict';
 import {
     unavailableWorkItemSyncProviderStatus,
     type WorkItemSyncProviderAdapter,
@@ -307,6 +313,23 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
         return current;
     }
 
+    /**
+     * Map a stale Azure Boards work item's remote parent back to a local mirror id
+     * for the structured conflict payload. Returns `null` when the remote item has
+     * no parent (Epic root), or `undefined` when the remote parent is not mirrored
+     * locally (so the parent row is omitted from the conflict).
+     */
+    async function azureBoardsRemoteParentLocalId(
+        remote: AzureBoardsWorkItem,
+        repoId: string,
+    ): Promise<string | null | undefined> {
+        const parentRemoteId = azureBoardsParentWorkItemId(remote);
+        if (parentRemoteId === undefined) return null;
+        const entries = (await workItemStore.listWorkItems({ repoId })).items;
+        const match = entries.find(entry => entry.azureBoardsMirror?.workItemId === parentRemoteId);
+        return match?.id;
+    }
+
     async function resolveAvailableGitHubRepo(repoId: string): Promise<Extract<GitHubWorkItemSyncRepo, { available: true }>> {
         if (!ctx.dataDir) {
             throw new APIError(
@@ -530,25 +553,25 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 'WORK_ITEM_GITHUB_ITEM_NOT_FOUND',
             );
         }
-        if (githubMirrorIsStale(current, remote)) {
-            throw githubProviderError(
-                `GitHub issue #${issueNumber} changed remotely; refresh before saving local edits.`,
-                'WORK_ITEM_GITHUB_CONFLICT',
-                {
-                    provider: 'github',
-                    issueNumber,
-                    localUpdatedAt: current.githubMirror?.updatedAt,
-                    remoteUpdatedAt: remote.updatedAt,
-                },
-            );
-        }
-
-        const parent = await githubParentReferenceForUpdate(current, root, repo, parentChanged, newParent, repoId);
         const itemForRemote: WorkItem = {
             ...current,
             ...updates,
             parentId: parentChanged ? newParent?.id : current.parentId,
         };
+        if (githubMirrorIsStale(current, remote)) {
+            throw githubProviderError(
+                `GitHub issue #${issueNumber} changed remotely; resolve the conflict before saving local edits.`,
+                WORK_ITEM_SYNC_CONFLICT_CODE,
+                buildGitHubWorkItemSyncConflict({
+                    current,
+                    draft: itemForRemote,
+                    remote,
+                    issueNumber,
+                }),
+            );
+        }
+
+        const parent = await githubParentReferenceForUpdate(current, root, repo, parentChanged, newParent, repoId);
 
         let result;
         try {
@@ -620,27 +643,29 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 'WORK_ITEM_AZURE_BOARDS_ITEM_NOT_FOUND',
             );
         }
+        const itemForRemote: WorkItem = {
+            ...current,
+            ...updates,
+            parentId: parentChanged ? newParent?.id : current.parentId,
+        };
         if (azureBoardsMirrorIsStale(current, remote)) {
+            const remoteParentLocalId = await azureBoardsRemoteParentLocalId(remote, repoId);
             throw azureBoardsProviderError(
-                `Azure Boards work item ${remoteWorkItemId} changed remotely; refresh before saving local edits.`,
-                'WORK_ITEM_AZURE_BOARDS_CONFLICT',
-                {
-                    provider: 'azure-boards',
-                    workItemId: remoteWorkItemId,
-                    localRevision: current.azureBoardsMirror?.revision,
-                    remoteRevision: remote.revision,
-                },
+                `Azure Boards work item ${remoteWorkItemId} changed remotely; resolve the conflict before saving local edits.`,
+                WORK_ITEM_SYNC_CONFLICT_CODE,
+                buildAzureBoardsWorkItemSyncConflict({
+                    current,
+                    draft: itemForRemote,
+                    remote,
+                    remoteWorkItemId,
+                    remoteParentLocalId,
+                }),
             );
         }
 
         const parentWorkItemId = parentChanged
             ? await azureBoardsParentWorkItemIdForUpdate(current, root, newParent, repoId)
             : undefined;
-        const itemForRemote: WorkItem = {
-            ...current,
-            ...updates,
-            parentId: parentChanged ? newParent?.id : current.parentId,
-        };
 
         const updateOptions: Parameters<typeof updateAzureBoardsWorkItemForLocalMirror>[0] = {
             project,
