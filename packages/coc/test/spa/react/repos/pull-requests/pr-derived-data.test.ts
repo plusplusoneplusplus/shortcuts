@@ -7,17 +7,21 @@ import {
     buildCheckRowsFromChecks,
     buildCommitRowsFromPrCommits,
     buildMergeReadinessFromData,
+    buildQueueFilterCounts,
     buildThreadGroupsFromThreads,
     buildTimelineFromRealData,
     checkStatusClass,
     deriveThreadSeverity,
     findingTagClass,
     getQueueFilterDefinitions,
+    matchesFilter,
     queueDotClass,
     queueRiskClass,
+    scopeForFilter,
 } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-derived-data';
 import type {
     CommentThread,
+    PullRequest,
     PullRequestCheck,
     PullRequestCommit,
     Reviewer,
@@ -327,10 +331,25 @@ describe('buildMergeReadinessFromData', () => {
 });
 
 describe('queue helpers', () => {
-    it('lists the four canonical queue filters in display order', () => {
+    const makeQueuePr = (overrides: Partial<PullRequest> = {}): PullRequest => ({
+        id: 1,
+        number: 1,
+        title: 'Queue PR',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        status: 'open',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        author: { id: 'author-1', displayName: 'Author One' },
+        reviewers: [],
+        ...overrides,
+    });
+
+    it('lists the canonical queue filters in display order', () => {
         expect(getQueueFilterDefinitions().map(filter => filter.id)).toEqual([
             'all',
             'mine',
+            'team',
             'blocked',
             'ready',
         ]);
@@ -340,6 +359,7 @@ describe('queue helpers', () => {
         expect(getQueueFilterDefinitions({ suggestionsEnabled: true }).map(f => f.id)).toEqual([
             'all',
             'mine',
+            'team',
             'blocked',
             'ready',
             'foryou',
@@ -355,6 +375,60 @@ describe('queue helpers', () => {
     it('excludes "foryou" filter by default', () => {
         const ids = getQueueFilterDefinitions().map(f => f.id);
         expect(ids).not.toContain('foryou');
+    });
+
+    it('maps Team and For You filters to the all-PR server scope', () => {
+        expect(scopeForFilter('mine')).toBe('mine');
+        expect(scopeForFilter('blocked')).toBe('mine');
+        expect(scopeForFilter('ready')).toBe('mine');
+        expect(scopeForFilter('all')).toBe('all');
+        expect(scopeForFilter('team')).toBe('all');
+        expect(scopeForFilter('foryou')).toBe('all');
+    });
+
+    it('matches Team PRs by coworker roster union', () => {
+        const teamPr = makeQueuePr({ author: { id: 'github-123', displayName: 'Teammate' } });
+        const fallbackPr = makeQueuePr({ author: { displayName: 'ADO Teammate' } });
+        const strangerPr = makeQueuePr({ author: { id: 'someone-else', displayName: 'Someone Else' } });
+
+        expect(matchesFilter(teamPr, 'team', {
+            coworkerRoster: [{ id: 'github-123', displayName: 'Different Display' }],
+        })).toBe(true);
+        expect(matchesFilter(fallbackPr, 'team', {
+            coworkerRoster: [{ id: '', displayName: 'ado teammate' }],
+        })).toBe(true);
+        expect(matchesFilter(strangerPr, 'team', {
+            coworkerRoster: [{ id: 'github-123', displayName: 'Teammate' }],
+        })).toBe(false);
+    });
+
+    it('counts Team matches from the loaded PR set', () => {
+        const counts = buildQueueFilterCounts([
+            makeQueuePr({ id: 1, number: 1, author: { id: 'u1', displayName: 'One' } }),
+            makeQueuePr({ id: 2, number: 2, author: { id: 'u2', displayName: 'Two' } }),
+            makeQueuePr({
+                id: 3,
+                number: 3,
+                author: { id: 'u3', displayName: 'Three' },
+                reviewers: [{ identity: { displayName: 'Reviewer' }, vote: 'waitingForAuthor' }],
+            }),
+        ], {
+            effectiveScope: 'all',
+            suggestedPrNumbers: new Set([2]),
+            coworkerRoster: [
+                { id: 'u1', displayName: 'One' },
+                { id: '', displayName: 'two' },
+            ],
+        });
+
+        expect(counts).toMatchObject({
+            all: 3,
+            mine: 0,
+            team: 2,
+            blocked: 1,
+            ready: 2,
+            foryou: 1,
+        });
     });
 });
 

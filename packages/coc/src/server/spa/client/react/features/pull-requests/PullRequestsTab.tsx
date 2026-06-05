@@ -3,7 +3,8 @@
  * command queue" left rail plus the PR detail / batch panel right pane.
  *
  * The queue is grouped into two sections (Needs review / Ready after
- * checks) and filtered via four pills (All / Mine / Blocked / Ready).
+ * checks) and filtered via pills (All / Mine / Team / Blocked / Ready,
+ * plus optional For You suggestions).
  * Real PR data drives the list plus queue row file count, review minutes,
  * and deterministic risk badges.
  *
@@ -13,7 +14,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
-import type { PrSuggestion, RecentOpenedPullRequestEntry } from '@plusplusoneplusplus/coc-client';
+import type { PullRequestCoworkerRosterEntry, PrSuggestion, RecentOpenedPullRequestEntry } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useApp } from '../../contexts/AppContext';
 import { cn } from '../../ui';
@@ -31,10 +32,9 @@ import {
     QUEUE_SECTION_CONFIGS,
     classifyPr,
     classifyQueueSection,
-    mapAttentionToQueueSection,
-    AttentionGroup,
     type QueueSection,
 } from './pr-attention-groups';
+import { buildQueueFilterCounts, matchesFilter, scopeForFilter } from './pr-derived-data';
 import type { QueueFilter, QueueFilterCounts } from './pr-derived-data';
 import type { PullRequest, PrStatus } from './pr-utils';
 import { matchWorkspaceForPrUrl, parsePrInput, type WorkspaceLike } from './pr-open-utils';
@@ -86,11 +86,6 @@ function persistQueueCollapsed(value: boolean): void {
     } catch { /* ignore */ }
 }
 
-/** Map a queue filter pill to the server scope it requires. */
-function scopeForFilter(filter: QueueFilter): 'mine' | 'all' {
-    return (filter === 'all' || filter === 'foryou') ? 'all' : 'mine';
-}
-
 class PullRequestOpenError extends Error {
     readonly status: number | undefined;
 
@@ -135,20 +130,6 @@ function buildRecentOpenedRecord(pr: unknown, prNumber: number): { number: numbe
     };
 }
 
-/** Filter pills that classify a PR by attention/queue section. */
-function matchesFilter(pr: PullRequest, filter: QueueFilter, suggestedPrNumbers?: Set<number>): boolean {
-    if (filter === 'all' || filter === 'mine') return true;
-    if (filter === 'foryou') {
-        return suggestedPrNumbers != null && suggestedPrNumbers.has(pr.number ?? 0);
-    }
-    const group = classifyPr(pr);
-    if (filter === 'blocked') {
-        return group === AttentionGroup.RerunNeeded || group === AttentionGroup.ManualUpdateNeeded;
-    }
-    // 'ready'
-    return mapAttentionToQueueSection(group) === 'ready';
-}
-
 export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     const { state, dispatch } = useApp();
     const [prs, setPrs] = useState<PullRequest[]>([]);
@@ -178,6 +159,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     const [openPrError, setOpenPrError] = useState<string | null>(null);
     const [openPrLoading, setOpenPrLoading] = useState(false);
     const [recentOpenedPrs, setRecentOpenedPrs] = useState<RecentOpenedPullRequestEntry[]>([]);
+    const [coworkerRoster, setCoworkerRoster] = useState<PullRequestCoworkerRosterEntry[]>([]);
 
     // ── PR suggestions state ─────────────────────────────────────
     const suggestionsEnabled = isPullRequestsSuggestionsEnabled();
@@ -325,6 +307,23 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         return () => { cancelled = true; };
     }, [repoId, workspaceId]);
 
+    useEffect(() => {
+        let cancelled = false;
+        setCoworkerRoster([]);
+        getSpaCocClient().pullRequests.listCoworkerRoster(repoId, workspaceId)
+            .then(data => {
+                if (!cancelled) {
+                    setCoworkerRoster(data.entries ?? []);
+                }
+            })
+            .catch(err => {
+                if (!cancelled) {
+                    console.warn('Failed to load pull request Team roster', err);
+                }
+            });
+        return () => { cancelled = true; };
+    }, [repoId, workspaceId]);
+
     // Fetch cached suggestions on mount when feature is enabled.
     useEffect(() => {
         if (!suggestionsEnabled) return;
@@ -376,8 +375,8 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     }, [prs, searchText]);
 
     const filteredByPill = useMemo(
-        () => filteredBySearch.filter(pr => matchesFilter(pr, activeFilter, suggestedPrNumbers)),
-        [filteredBySearch, activeFilter, suggestedPrNumbers],
+        () => filteredBySearch.filter(pr => matchesFilter(pr, activeFilter, { suggestedPrNumbers, coworkerRoster })),
+        [filteredBySearch, activeFilter, suggestedPrNumbers, coworkerRoster],
     );
 
     const groupedPrs = useMemo(() => {
@@ -393,25 +392,8 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     }, [filteredByPill]);
 
     const filterCounts: QueueFilterCounts = useMemo(() => {
-        const counts: QueueFilterCounts = { all: 0, mine: 0, blocked: 0, ready: 0, foryou: 0 };
-        // 'all' / 'mine' counts represent the size of the currently fetched
-        // scope; 'blocked' / 'ready' are derived per-PR via the classifier.
-        counts.all = filteredBySearch.length;
-        counts.mine = effectiveScope === 'mine' ? filteredBySearch.length : 0;
-        for (const pr of filteredBySearch) {
-            const group = classifyPr(pr);
-            if (group === AttentionGroup.RerunNeeded || group === AttentionGroup.ManualUpdateNeeded) {
-                counts.blocked += 1;
-            }
-            if (mapAttentionToQueueSection(group) === 'ready') {
-                counts.ready += 1;
-            }
-            if (suggestedPrNumbers.has(pr.number ?? 0)) {
-                counts.foryou += 1;
-            }
-        }
-        return counts;
-    }, [filteredBySearch, effectiveScope, suggestedPrNumbers]);
+        return buildQueueFilterCounts(filteredBySearch, { effectiveScope, suggestedPrNumbers, coworkerRoster });
+    }, [filteredBySearch, effectiveScope, suggestedPrNumbers, coworkerRoster]);
 
     const selectedPrs = useMemo(
         () => prs.filter(pr => selectedPrIds.has(getPrSelectionId(pr))),

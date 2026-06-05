@@ -5,8 +5,10 @@
  * It does not call an LLM and does not expose fixture-backed PR judgments.
  */
 
+import { AttentionGroup, classifyPr, mapAttentionToQueueSection } from './pr-attention-groups';
+import { pullRequestMatchesCoworkerRoster } from './pr-utils';
 import type { PullRequestCommit, CommentThread, QueueRiskBadge } from './pr-utils';
-import type { PullRequestCheck, PullRequestCheckStatus, Reviewer } from './pr-utils';
+import type { PullRequest, PullRequestCheck, PullRequestCheckStatus, PrCoworkerRosterEntry, Reviewer } from './pr-utils';
 import type { PrCommitRow } from './PrCommitTable';
 
 export type FindingTag = 'good' | 'risk' | 'note';
@@ -331,7 +333,7 @@ export function buildMergeReadinessFromData(params: {
     return items;
 }
 
-export type QueueFilter = 'all' | 'mine' | 'blocked' | 'ready' | 'foryou';
+export type QueueFilter = 'all' | 'mine' | 'team' | 'blocked' | 'ready' | 'foryou';
 export type QueueDotState = 'open' | 'draft' | 'blocked' | 'ready';
 
 export function queueRiskClass(risk: QueueRiskBadge): string {
@@ -359,17 +361,19 @@ export function queueDotClass(state: QueueDotState): string {
 export interface QueueFilterCounts {
     all: number;
     mine: number;
+    team: number;
     blocked: number;
     ready: number;
     foryou: number;
 }
 
-const ALL_FILTERS: QueueFilter[] = ['all', 'mine', 'blocked', 'ready', 'foryou'];
+const ALL_FILTERS: QueueFilter[] = ['all', 'mine', 'team', 'blocked', 'ready', 'foryou'];
 
 export function getQueueFilterDefinitions(options?: { suggestionsEnabled?: boolean }): Array<{ id: QueueFilter; label: string }> {
     const filters: Array<{ id: QueueFilter; label: string }> = [
         { id: 'all',     label: 'All' },
         { id: 'mine',    label: 'Mine' },
+        { id: 'team',    label: 'Team' },
         { id: 'blocked', label: 'Blocked' },
         { id: 'ready',   label: 'Ready' },
     ];
@@ -380,6 +384,63 @@ export function getQueueFilterDefinitions(options?: { suggestionsEnabled?: boole
 }
 
 export { ALL_FILTERS as QUEUE_FILTERS };
+
+/** Map a queue filter pill to the server scope it requires. */
+export function scopeForFilter(filter: QueueFilter): 'mine' | 'all' {
+    return (filter === 'all' || filter === 'team' || filter === 'foryou') ? 'all' : 'mine';
+}
+
+export interface QueueFilterMatchOptions {
+    suggestedPrNumbers?: ReadonlySet<number>;
+    coworkerRoster?: readonly Pick<PrCoworkerRosterEntry, 'id' | 'displayName'>[];
+}
+
+/** Filter pills that classify a PR by attention/queue section or Team roster membership. */
+export function matchesFilter(
+    pr: PullRequest,
+    filter: QueueFilter,
+    options: QueueFilterMatchOptions = {},
+): boolean {
+    if (filter === 'all' || filter === 'mine') return true;
+    if (filter === 'team') {
+        return pullRequestMatchesCoworkerRoster(pr, options.coworkerRoster ?? []);
+    }
+    if (filter === 'foryou') {
+        return options.suggestedPrNumbers != null && options.suggestedPrNumbers.has(pr.number ?? 0);
+    }
+    const group = classifyPr(pr);
+    if (filter === 'blocked') {
+        return group === AttentionGroup.RerunNeeded || group === AttentionGroup.ManualUpdateNeeded;
+    }
+    return mapAttentionToQueueSection(group) === 'ready';
+}
+
+export function buildQueueFilterCounts(
+    pullRequests: readonly PullRequest[],
+    options: QueueFilterMatchOptions & { effectiveScope: 'mine' | 'all' },
+): QueueFilterCounts {
+    const counts: QueueFilterCounts = { all: 0, mine: 0, team: 0, blocked: 0, ready: 0, foryou: 0 };
+    // 'all' / 'mine' counts represent the size of the currently fetched
+    // scope; 'blocked' / 'ready' / 'team' are derived client-side.
+    counts.all = pullRequests.length;
+    counts.mine = options.effectiveScope === 'mine' ? pullRequests.length : 0;
+    for (const pr of pullRequests) {
+        const group = classifyPr(pr);
+        if (pullRequestMatchesCoworkerRoster(pr, options.coworkerRoster ?? [])) {
+            counts.team += 1;
+        }
+        if (group === AttentionGroup.RerunNeeded || group === AttentionGroup.ManualUpdateNeeded) {
+            counts.blocked += 1;
+        }
+        if (mapAttentionToQueueSection(group) === 'ready') {
+            counts.ready += 1;
+        }
+        if (options.suggestedPrNumbers?.has(pr.number ?? 0)) {
+            counts.foryou += 1;
+        }
+    }
+    return counts;
+}
 
 export interface ThreadGroupSummary {
     id: ThreadGroupSeverity;

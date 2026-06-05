@@ -1,6 +1,6 @@
 /**
  * Unit tests for the chrome of the redesigned PR review command queue:
- *  - PrQueueFilters (4 filter pills with counts and active state)
+ *  - PrQueueFilters (filter pills with counts and active state)
  *  - PrQueueGroupSection (labeled section wrapper)
 
  */
@@ -12,17 +12,18 @@ import { PrQueueGroupSection } from '../../../../../src/server/spa/client/react/
 
 
 describe('PrQueueFilters', () => {
-    it('renders all four pills with their counts', () => {
+    it('renders all queue pills with their counts', () => {
         render(
             <PrQueueFilters
                 active="all"
-                counts={{ all: 18, mine: 7, blocked: 3, ready: 5 }}
+                counts={{ all: 18, mine: 7, team: 2, blocked: 3, ready: 5, foryou: 0 }}
                 onChange={vi.fn()}
             />,
         );
         expect(screen.getByTestId('pr-queue-filter-all').textContent).toContain('All');
         expect(screen.getByTestId('pr-queue-filter-all').textContent).toContain('18');
         expect(screen.getByTestId('pr-queue-filter-mine').textContent).toContain('7');
+        expect(screen.getByTestId('pr-queue-filter-team').textContent).toContain('2');
         expect(screen.getByTestId('pr-queue-filter-blocked').textContent).toContain('3');
         expect(screen.getByTestId('pr-queue-filter-ready').textContent).toContain('5');
     });
@@ -31,7 +32,7 @@ describe('PrQueueFilters', () => {
         render(
             <PrQueueFilters
                 active="blocked"
-                counts={{ all: 1, mine: 1, blocked: 1, ready: 0 }}
+                counts={{ all: 1, mine: 1, team: 0, blocked: 1, ready: 0, foryou: 0 }}
                 onChange={vi.fn()}
             />,
         );
@@ -46,7 +47,7 @@ describe('PrQueueFilters', () => {
         render(
             <PrQueueFilters
                 active="mine"
-                counts={{ all: 0, mine: 0, blocked: 0, ready: 0 }}
+                counts={{ all: 0, mine: 0, team: 0, blocked: 0, ready: 0, foryou: 0 }}
                 onChange={onChange}
             />,
         );
@@ -97,5 +98,4 @@ describe('PrQueueGroupSection', () => {
         ]);
     });
 });
-
 
