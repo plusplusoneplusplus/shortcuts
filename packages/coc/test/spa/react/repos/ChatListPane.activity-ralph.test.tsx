@@ -47,6 +47,7 @@ vi.mock('../../../../src/server/spa/client/react/tasks/comments/ContextMenu', ()
 let mockPinnedChatIds = new Set<string>();
 let mockArchivedChatIds = new Set<string>();
 let mockSessionContextAttachmentsEnabled = false;
+let mockForEachEnabled = false;
 vi.mock('../../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
     ChatPrefsSync: () => null,
     useChatPrefs: () => ({
@@ -97,7 +98,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isLoopsEnabled: () => false,
     isForEachEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled,
-    isForEachEnabled: () => false,
+    isForEachEnabled: () => mockForEachEnabled,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
@@ -172,6 +173,38 @@ function makeOrderedRalphIteration(iter: number, ageMs: number): any {
     };
 }
 
+function makeForEachRunSummary(runId = 'run-1'): any {
+    return {
+        runId,
+        workspaceId: 'ws-1',
+        status: 'completed',
+        originalRequest: 'Split pinned parent work',
+        childMode: 'ask',
+        createdAt: new Date(NOW - 7000).toISOString(),
+        updatedAt: new Date(NOW - 7000).toISOString(),
+        itemCount: 1,
+        itemStatusCounts: {
+            pending: 0,
+            running: 0,
+            completed: 1,
+            failed: 0,
+            skipped: 0,
+        },
+    };
+}
+
+function makeForEachChild(runId = 'run-1'): any {
+    return {
+        ...makeStandaloneChat(`child-${runId}`, 'For Each child'),
+        forEach: {
+            kind: 'child',
+            workspaceId: 'ws-1',
+            runId,
+            itemId: 'item-1',
+        },
+    };
+}
+
 function defaultProps(history: any[], overrides: Record<string, any> = {}) {
     return {
         running: [],
@@ -206,6 +239,7 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
         mockPinnedChatIds = new Set();
         mockArchivedChatIds = new Set();
         mockSessionContextAttachmentsEnabled = false;
+        mockForEachEnabled = false;
         mockDisplaySettings = { taskCardDensity: 'normal', showReportIntent: false, historyGrouping: true };
         try { window.localStorage.removeItem('coc-activity-scope'); } catch { /* ignore */ }
     });
@@ -521,6 +555,74 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
         expect(todaySection?.querySelector('.tabular-nums')?.textContent?.trim()).toBe('3');
     });
 
+    it('renders a pinned Ralph session group in Pinned and removes it from Today', () => {
+        const standalone = makeStandaloneChat('standalone', 'Standalone chat');
+        const { container } = renderActivity([makeRalphIteration(1), makeRalphIteration(2), standalone], {
+            groupPins: [{
+                type: 'ralph-session',
+                groupId: SESSION_ID,
+                pinnedAt: new Date(NOW).toISOString(),
+            }],
+        });
+
+        const pinnedSection = container.querySelector('[data-section="pinned"]') as HTMLElement;
+        const todaySection = container.querySelector('[data-section="completed-today"]') as HTMLElement;
+
+        expect(pinnedSection).toBeTruthy();
+        expect(within(pinnedSection).getByTestId('ralph-session-row')).toBeTruthy();
+        expect(todaySection).toBeTruthy();
+        expect(todaySection.querySelector('[data-testid="ralph-session-row"]')).toBeNull();
+        expect(todaySection.textContent).toContain('Standalone chat');
+    });
+
+    it('interleaves pinned chats and pinned Ralph groups by pin time', () => {
+        mockPinnedChatIds = new Set(['older-chat', 'newer-chat']);
+        const olderChat = makeStandaloneChat('older-chat', 'Older pinned chat');
+        olderChat.pinnedAt = '2026-01-01T00:01:00.000Z';
+        const newerChat = makeStandaloneChat('newer-chat', 'Newer pinned chat');
+        newerChat.pinnedAt = '2026-01-01T00:03:00.000Z';
+
+        const { container } = renderActivity([makeRalphIteration(1), olderChat, newerChat], {
+            groupPins: [{
+                type: 'ralph-session',
+                groupId: SESSION_ID,
+                pinnedAt: '2026-01-01T00:02:00.000Z',
+            }],
+        });
+
+        const pinnedSection = container.querySelector('[data-section="pinned"]') as HTMLElement;
+        const rows = Array.from(pinnedSection.querySelectorAll('[data-task-id], [data-testid="ralph-session-row"]'));
+
+        expect(rows.map(row => row.getAttribute('data-task-id') ?? row.getAttribute('data-session-id'))).toEqual([
+            'newer-chat',
+            SESSION_ID,
+            'older-chat',
+        ]);
+    });
+
+    it('renders a pinned For Each run group in Pinned and removes it from Today', () => {
+        mockForEachEnabled = true;
+        const standalone = makeStandaloneChat('standalone-fe', 'Standalone chat');
+        const { container } = renderActivity([makeForEachChild('run-1'), standalone], {
+            forEachRuns: [makeForEachRunSummary('run-1')],
+            groupPins: [{
+                type: 'for-each-run',
+                groupId: 'run-1',
+                pinnedAt: new Date(NOW).toISOString(),
+            }],
+        });
+
+        const pinnedSection = container.querySelector('[data-section="pinned"]') as HTMLElement;
+        const todaySection = container.querySelector('[data-section="completed-today"]') as HTMLElement;
+
+        expect(pinnedSection).toBeTruthy();
+        expect(within(pinnedSection).getByTestId('for-each-run-row')).toBeTruthy();
+        expect(todaySection).toBeTruthy();
+        expect(todaySection.querySelector('[data-testid="for-each-run-row"]')).toBeNull();
+        expect(todaySection.querySelector('[data-task-id="child-run-1"]')).toBeNull();
+        expect(todaySection.textContent).toContain('Standalone chat');
+    });
+
     it('regression: completed ralph session does not pin to top above newer standalone chats', () => {
         // Ralph session ended 8h ago; a standalone chat completed "just now".
         // Before the fix, ChatListPane concatenated [...ralphSessions, ...planned]
@@ -654,6 +756,7 @@ describe('ChatListPane Activity tab — ralph session context menu', () => {
         mockPinnedChatIds = new Set();
         mockArchivedChatIds = new Set();
         mockSessionContextAttachmentsEnabled = false;
+        mockForEachEnabled = false;
         mockDisplaySettings = { taskCardDensity: 'normal', showReportIntent: false, historyGrouping: true };
         try { window.localStorage.removeItem('coc-activity-scope'); } catch { /* ignore */ }
     });
