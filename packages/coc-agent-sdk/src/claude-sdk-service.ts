@@ -1455,6 +1455,31 @@ export function mapOAuthUsageToQuota(data: Record<string, unknown>): IAccountQuo
 }
 
 /**
+ * Extracts the OAuth access token from a parsed Claude credentials object.
+ *
+ * Two on-disk formats exist:
+ * - The Claude Code CLI writes `{ "claudeAiOauth": { "accessToken": "…" } }`.
+ * - The lower-level `@anthropic-ai/sdk` user-oauth store writes a flat
+ *   `{ "access_token": "…" }`.
+ *
+ * The nested Claude Code shape is preferred (it is what `claude login`
+ * produces); the flat shape is accepted as a fallback. Returns `undefined`
+ * when no non-empty token is present in either location.
+ */
+export function extractClaudeAccessToken(credentials: Record<string, unknown>): string | undefined {
+    const nested = credentials['claudeAiOauth'];
+    if (nested && typeof nested === 'object') {
+        const nestedToken = (nested as Record<string, unknown>)['accessToken'];
+        if (typeof nestedToken === 'string' && nestedToken) return nestedToken;
+    }
+
+    const flatToken = credentials['access_token'];
+    if (typeof flatToken === 'string' && flatToken) return flatToken;
+
+    return undefined;
+}
+
+/**
  * Reads the Claude OAuth credentials from disk and calls the Anthropic OAuth
  * usage endpoint. Linux-only; returns empty snapshots on any I/O or network
  * error so callers never need to handle rejections.
@@ -1479,8 +1504,8 @@ async function fetchClaudeOAuthQuota(): Promise<IAccountQuotaResult> {
         }
 
         if (!credentials || typeof credentials !== 'object') return { quotaSnapshots: {} };
-        const accessToken = (credentials as Record<string, unknown>)['access_token'];
-        if (typeof accessToken !== 'string' || !accessToken) return { quotaSnapshots: {} };
+        const accessToken = extractClaudeAccessToken(credentials as Record<string, unknown>);
+        if (!accessToken) return { quotaSnapshots: {} };
 
         let response: Response;
         try {

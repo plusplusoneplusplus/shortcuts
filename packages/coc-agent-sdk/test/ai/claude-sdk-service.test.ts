@@ -20,6 +20,7 @@ import * as path from 'path';
 import { PassThrough, Writable } from 'stream';
 import {
     ClaudeSDKService,
+    extractClaudeAccessToken,
     mapClaudeAccountInfoToQuota,
     mapClaudeRateLimitInfoToQuota,
     mapOAuthUsageToQuota,
@@ -1394,6 +1395,44 @@ describe('mapOAuthUsageToQuota', () => {
 });
 
 // ============================================================================
+// extractClaudeAccessToken
+// ============================================================================
+
+describe('extractClaudeAccessToken', () => {
+    it('reads the Claude Code nested claudeAiOauth.accessToken shape', () => {
+        expect(extractClaudeAccessToken({
+            claudeAiOauth: { accessToken: 'nested-tok', refreshToken: 'r' },
+        })).toBe('nested-tok');
+    });
+
+    it('reads the flat access_token shape', () => {
+        expect(extractClaudeAccessToken({ access_token: 'flat-tok' })).toBe('flat-tok');
+    });
+
+    it('prefers the nested token over a flat token', () => {
+        expect(extractClaudeAccessToken({
+            claudeAiOauth: { accessToken: 'nested-tok' },
+            access_token: 'flat-tok',
+        })).toBe('nested-tok');
+    });
+
+    it('falls back to the flat token when the nested token is empty', () => {
+        expect(extractClaudeAccessToken({
+            claudeAiOauth: { accessToken: '' },
+            access_token: 'flat-tok',
+        })).toBe('flat-tok');
+    });
+
+    it('returns undefined when no token is present', () => {
+        expect(extractClaudeAccessToken({})).toBeUndefined();
+        expect(extractClaudeAccessToken({ claudeAiOauth: {} })).toBeUndefined();
+        expect(extractClaudeAccessToken({ claudeAiOauth: { accessToken: 123 } })).toBeUndefined();
+        expect(extractClaudeAccessToken({ access_token: '' })).toBeUndefined();
+        expect(extractClaudeAccessToken({ claudeAiOauth: null })).toBeUndefined();
+    });
+});
+
+// ============================================================================
 // getAccountQuota — Linux OAuth integration
 // ============================================================================
 
@@ -1444,6 +1483,38 @@ describe('ClaudeSDKService.getAccountQuota (Linux OAuth)', () => {
         expect(quota.quotaSnapshots).toHaveProperty('seven_day');
         expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(72);
         expect(quota.quotaSnapshots.seven_day.usedRequests).toBe(45);
+    });
+
+    it('fetches quota using the Claude Code nested claudeAiOauth.accessToken credential shape', async () => {
+        // Regression: `claude login` writes credentials as
+        // { claudeAiOauth: { accessToken, refreshToken, ... } }, not a flat
+        // { access_token }. The quota lookup must read the nested token.
+        fs.writeFileSync(tempCredFile, JSON.stringify({
+            claudeAiOauth: {
+                accessToken: 'nested-tok-456',
+                refreshToken: 'refresh-789',
+                expiresAt: 9999999999999,
+                scopes: ['user:inference'],
+                subscriptionType: 'max',
+                rateLimitTier: 'default',
+            },
+        }));
+        fetchSpy.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                five_hour: { utilization: 30, resets_at: '2026-06-04T12:00:00.000Z' },
+                seven_day: { utilization: 12, resets_at: '2026-06-11T00:00:00.000Z' },
+            }),
+        });
+
+        const quota = await svc.getAccountQuota();
+
+        expect(fetchSpy).toHaveBeenCalledWith(
+            'https://api.anthropic.com/api/oauth/usage',
+            expect.objectContaining({ headers: expect.objectContaining({ 'Authorization': 'Bearer nested-tok-456' }) })
+        );
+        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(30);
+        expect(quota.quotaSnapshots.seven_day.usedRequests).toBe(12);
     });
 
     it('returns empty snapshots when the credentials file is missing', async () => {
