@@ -12,6 +12,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
+import { CocApiError, WORK_ITEM_SYNC_CONFLICT_CODE, type WorkItemSyncConflictDetails } from '@plusplusoneplusplus/coc-client';
 
 
 // --- Mock the CoC client ---
@@ -96,6 +97,42 @@ const baseItem = {
     updatedAt: new Date().toISOString(),
 };
 
+function makeSyncConflict(overrides: Partial<WorkItemSyncConflictDetails> = {}): WorkItemSyncConflictDetails {
+    return {
+        kind: 'work-item-sync-conflict',
+        provider: 'github',
+        providerLabel: 'GitHub',
+        workItemId: 'wi-1',
+        issueNumber: 42,
+        localUpdatedAt: '2026-06-05T10:00:00.000Z',
+        remoteUpdatedAt: '2026-06-05T10:05:00.000Z',
+        fields: [
+            { field: 'title', draft: 'Edited title', base: 'Original title', remote: 'Remote title' },
+            { field: 'description', draft: 'Edited description', base: 'Original description', remote: 'Remote description' },
+            { field: 'tags', draft: 'alpha, local', base: 'alpha', remote: 'alpha, remote' },
+        ],
+        ...overrides,
+    };
+}
+
+function makeConflictError(details = makeSyncConflict()) {
+    return new CocApiError({
+        status: 409,
+        statusText: 'Conflict',
+        url: '/api/workspaces/ws-1/work-items/wi-1',
+        message: 'Resolve the conflict before saving local edits.',
+        code: WORK_ITEM_SYNC_CONFLICT_CODE,
+        details,
+        body: {
+            error: {
+                code: WORK_ITEM_SYNC_CONFLICT_CODE,
+                message: 'Resolve the conflict before saving local edits.',
+                details,
+            },
+        },
+    });
+}
+
 function renderDetail() {
     return render(
         <WorkItemDetail workItemId="wi-1" workspaceId="ws-1" onBack={vi.fn()} />
@@ -177,6 +214,62 @@ describe('WorkItemDetail inline editing (render)', () => {
         // Value preserved for retry, still dirty.
         expect((screen.getByTestId('wi-title-input') as HTMLInputElement).value).toBe('Edited title');
         expect(screen.getByTestId('wi-dirty-indicator')).toBeTruthy();
+    });
+
+    it('AC-02 conflict UI: renders provider-owned fields and cancel dismisses without changing the draft', async () => {
+        mockUpdate.mockRejectedValueOnce(makeConflictError());
+        renderDetail();
+        const title = await screen.findByTestId('wi-title-input');
+        fireEvent.change(title, { target: { value: 'Edited title' } });
+        const descEditor = within(screen.getByTestId('wi-description-editor')).getByRole('textbox');
+        fireEvent.change(descEditor, { target: { value: 'Edited description' } });
+
+        fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+
+        const panel = await screen.findByTestId('wi-sync-conflict-panel');
+        expect(panel.textContent).toContain('Remote changes found on GitHub');
+        expect(within(panel).getByTestId('wi-sync-conflict-field-title').textContent).toContain('Remote title');
+        expect(within(panel).getByTestId('wi-sync-conflict-field-description').textContent).toContain('Remote description');
+        expect(within(panel).getByTestId('wi-sync-conflict-field-tags').textContent).toContain('alpha, remote');
+
+        fireEvent.click(within(panel).getByTestId('wi-sync-conflict-cancel'));
+
+        expect(screen.queryByTestId('wi-sync-conflict-panel')).toBeNull();
+        expect((screen.getByTestId('wi-title-input') as HTMLInputElement).value).toBe('Edited title');
+        expect((within(screen.getByTestId('wi-description-editor')).getByRole('textbox') as HTMLTextAreaElement).value).toBe('Edited description');
+        expect(mockUpdate).toHaveBeenCalledTimes(1);
+    });
+
+    it('AC-02 conflict UI: applies per-field choices and retries through the normal PATCH save', async () => {
+        mockUpdate
+            .mockRejectedValueOnce(makeConflictError())
+            .mockImplementationOnce(async (_ws: string, _id: string, updates: any) => ({ ...baseItem, ...updates, title: updates.title ?? baseItem.title }));
+        renderDetail();
+        const title = await screen.findByTestId('wi-title-input');
+        fireEvent.change(title, { target: { value: 'Edited title' } });
+        const descEditor = within(screen.getByTestId('wi-description-editor')).getByRole('textbox');
+        fireEvent.change(descEditor, { target: { value: 'Edited description' } });
+        fireEvent.change(screen.getByTestId('wi-tags-input'), { target: { value: 'alpha, local' } });
+
+        fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+
+        const panel = await screen.findByTestId('wi-sync-conflict-panel');
+        fireEvent.click(within(panel).getByText('Remote title'));
+        fireEvent.click(within(panel).getByText('alpha, remote'));
+        fireEvent.click(within(panel).getByTestId('wi-sync-conflict-apply'));
+
+        await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(2));
+        const [, , retryUpdates] = mockUpdate.mock.calls[1];
+        expect(retryUpdates).toMatchObject({
+            title: 'Remote title',
+            description: 'Edited description',
+            tags: ['alpha', 'remote'],
+            syncConflictResolution: {
+                provider: 'github',
+                acknowledgedRemoteUpdatedAt: '2026-06-05T10:05:00.000Z',
+            },
+        });
+        expect(screen.queryByTestId('wi-sync-conflict-panel')).toBeNull();
     });
 
     it('AC-03: editing the plan marks dirty and Ctrl+S includes plan in the single PATCH', async () => {

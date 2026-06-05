@@ -21,7 +21,16 @@ import type { DiffComment } from '../../../comments/diff-comment-types';
 import { computeStorageKey, patchDiffComment } from '../../utils/diffCommentApi';
 import { isWorkItemsHierarchyEnabled } from '../../utils/config';
 import { WorkItemParentPicker } from './WorkItemParentPicker';
-import { ALLOWED_CHILD_TYPES, type UpdateWorkItemRequest, type WorkItemAzureBoardsMirrorMetadata, type WorkItemGitHubMirrorMetadata } from '@plusplusoneplusplus/coc-client';
+import {
+    ALLOWED_CHILD_TYPES,
+    WORK_ITEM_SYNC_CONFLICT_CODE,
+    type UpdateWorkItemRequest,
+    type WorkItemAzureBoardsMirrorMetadata,
+    type WorkItemGitHubMirrorMetadata,
+    type WorkItemSyncConflictDetails,
+    type WorkItemSyncConflictField,
+    type WorkItemSyncConflictResolution,
+} from '@plusplusoneplusplus/coc-client';
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
 import { TYPE_LABELS } from './WorkItemHierarchyNode';
 import { WorkItemAiComposer } from './WorkItemAiComposer';
@@ -107,9 +116,12 @@ interface WorkItemDraft {
     priority: 'high' | 'normal' | 'low';
     tags: string;
     status: string;
-    parentId?: string;
+    parentId?: string | null;
     successCriteria: string;
 }
+
+type ConflictChoice = 'draft' | 'remote';
+type ConflictChoices = Partial<Record<WorkItemSyncConflictField, ConflictChoice>>;
 
 /** Build the editable draft baseline from a loaded work item. */
 function draftFromItem(item: WorkItemFull): WorkItemDraft {
@@ -119,7 +131,7 @@ function draftFromItem(item: WorkItemFull): WorkItemDraft {
         priority: (item.priority ?? 'normal') as 'high' | 'normal' | 'low',
         tags: (item.tags ?? []).join(', '),
         status: item.status,
-        parentId: item.parentId,
+        parentId: item.parentId ?? null,
         successCriteria: item.successCriteria ?? '',
     };
 }
@@ -127,6 +139,89 @@ function draftFromItem(item: WorkItemFull): WorkItemDraft {
 /** Normalize a comma-separated tag string to unique, trimmed, non-empty tags. */
 function parseTags(tags: string): string[] {
     return [...new Set(tags.split(',').map(t => t.trim()).filter(Boolean))];
+}
+
+function isSyncConflictDetails(value: unknown): value is WorkItemSyncConflictDetails {
+    if (!value || typeof value !== 'object') return false;
+    const details = value as WorkItemSyncConflictDetails;
+    return details.kind === 'work-item-sync-conflict' && Array.isArray(details.fields);
+}
+
+function getSyncConflictDetails(error: unknown): WorkItemSyncConflictDetails | null {
+    const maybeError = error as { code?: unknown; details?: unknown; body?: unknown } | null;
+    if (maybeError?.code === WORK_ITEM_SYNC_CONFLICT_CODE && isSyncConflictDetails(maybeError.details)) {
+        return maybeError.details;
+    }
+    const body = maybeError?.body;
+    if (body && typeof body === 'object') {
+        const record = body as Record<string, unknown>;
+        const nested = record.error && typeof record.error === 'object'
+            ? record.error as Record<string, unknown>
+            : undefined;
+        const details = nested?.details ?? record.details;
+        if ((nested?.code ?? record.code) === WORK_ITEM_SYNC_CONFLICT_CODE && isSyncConflictDetails(details)) {
+            return details;
+        }
+    }
+    return null;
+}
+
+function buildInitialConflictChoices(conflict: WorkItemSyncConflictDetails): ConflictChoices {
+    return Object.fromEntries(conflict.fields.map(field => [field.field, 'draft'])) as ConflictChoices;
+}
+
+function applyConflictChoices(draft: WorkItemDraft, conflict: WorkItemSyncConflictDetails, choices: ConflictChoices): WorkItemDraft {
+    const next = { ...draft };
+    for (const field of conflict.fields) {
+        if (choices[field.field] !== 'remote') continue;
+        const value = field.remote ?? '';
+        if (field.field === 'title') next.title = value;
+        if (field.field === 'description') next.description = value;
+        if (field.field === 'status' && value) next.status = value;
+        if (field.field === 'priority' && ['high', 'normal', 'low'].includes(value)) {
+            next.priority = value as WorkItemDraft['priority'];
+        }
+        if (field.field === 'tags') next.tags = value;
+        if (field.field === 'parent') next.parentId = field.remote;
+    }
+    return next;
+}
+
+function conflictResolutionFor(conflict: WorkItemSyncConflictDetails): WorkItemSyncConflictResolution {
+    return {
+        provider: conflict.provider,
+        ...(conflict.remoteUpdatedAt ? { acknowledgedRemoteUpdatedAt: conflict.remoteUpdatedAt } : {}),
+        ...(conflict.remoteRevision !== undefined ? { acknowledgedRemoteRevision: conflict.remoteRevision } : {}),
+    };
+}
+
+function conflictFieldLabel(field: WorkItemSyncConflictField): string {
+    if (field === 'description') return 'Description';
+    if (field === 'status') return 'Status';
+    if (field === 'priority') return 'Priority';
+    if (field === 'tags') return 'Tags';
+    if (field === 'parent') return 'Parent';
+    return 'Title';
+}
+
+function ConflictValueCard({ label, value, selected, onSelect }: { label: string; value: string | null; selected: boolean; onSelect: () => void }) {
+    return (
+        <button
+            type="button"
+            onClick={onSelect}
+            className={cn(
+                'text-left rounded-md border p-2 min-h-[64px] bg-white dark:bg-[#1e1e1e]',
+                selected
+                    ? 'border-amber-500 shadow-[0_0_0_2px_rgba(245,158,11,0.22)]'
+                    : 'border-[#d0d7de] dark:border-[#555] hover:border-amber-300',
+            )}
+        >
+            <span className="block text-[10px] uppercase tracking-wide text-[#656d76] dark:text-[#999] mb-1">{label}</span>
+            <span className="block text-[12px] leading-[1.4] text-[#1f2328] dark:text-[#cccccc] whitespace-pre-wrap break-words">
+                {value && value.trim() ? value : <span className="italic text-[#656d76] dark:text-[#999]">empty</span>}
+            </span>
+        </button>
+    );
 }
 
 export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, onViewTask, onViewCommit, onNavigateToTasksTab, isMobile = false, onCreateChild }: WorkItemDetailProps) {
@@ -144,6 +239,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const [draft, setDraft] = useState<WorkItemDraft | null>(null);
     const [editError, setEditError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
+    const [syncConflict, setSyncConflict] = useState<WorkItemSyncConflictDetails | null>(null);
+    const [syncConflictChoices, setSyncConflictChoices] = useState<ConflictChoices>({});
     const [showParentPicker, setShowParentPicker] = useState(false);
     // ── Mobile add-child type picker state ──
     const [showChildTypePicker, setShowChildTypePicker] = useState(false);
@@ -220,7 +317,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         draft.priority !== baseline.priority ||
         draft.tags !== baseline.tags ||
         draft.status !== baseline.status ||
-        (draft.parentId ?? undefined) !== (baseline.parentId ?? undefined) ||
+        (draft.parentId ?? null) !== (baseline.parentId ?? null) ||
         draft.successCriteria !== baseline.successCriteria
     ));
     const isPlanDirty = planDraft !== null && planDraft !== planBaseline;
@@ -231,6 +328,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         setDraft(null);
         setPlanDraft(null);
         setEditError(null);
+        setSyncConflict(null);
+        setSyncConflictChoices({});
     }, [workItemId]);
 
     // Initialize drafts once the item loads.
@@ -394,9 +493,9 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         }
     };
 
-    const handleSave = useCallback(async () => {
-        if (!item || !draft) return;
-        const trimmedTitle = draft.title.trim();
+    const saveDraft = useCallback(async (draftToSave: WorkItemDraft, resolution?: WorkItemSyncConflictResolution) => {
+        if (!item) return;
+        const trimmedTitle = draftToSave.title.trim();
         if (!trimmedTitle) {
             setEditError('Title is required');
             return;
@@ -408,15 +507,15 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         try {
             const updates: UpdateWorkItemRequest = {};
             if (trimmedTitle !== base.title) updates.title = trimmedTitle;
-            if (draft.description !== base.description) updates.description = draft.description;
-            if (draft.priority !== base.priority) updates.priority = draft.priority;
-            if (draft.tags !== base.tags) updates.tags = parseTags(draft.tags);
-            if (draft.status !== base.status) updates.status = draft.status;
-            if ((draft.parentId ?? undefined) !== (base.parentId ?? undefined) && draft.parentId !== undefined) {
-                updates.parentId = draft.parentId;
+            if (draftToSave.description !== base.description) updates.description = draftToSave.description;
+            if (draftToSave.priority !== base.priority) updates.priority = draftToSave.priority;
+            if (draftToSave.tags !== base.tags) updates.tags = parseTags(draftToSave.tags);
+            if (draftToSave.status !== base.status) updates.status = draftToSave.status;
+            if ((draftToSave.parentId ?? null) !== (base.parentId ?? null)) {
+                updates.parentId = draftToSave.parentId ?? null;
             }
-            if (type === 'goal' && draft.successCriteria !== base.successCriteria) {
-                updates.successCriteria = draft.successCriteria;
+            if (type === 'goal' && draftToSave.successCriteria !== base.successCriteria) {
+                updates.successCriteria = draftToSave.successCriteria;
             }
             const planChanged = planDraft !== null && planDraft !== (item.plan?.content ?? '');
             if (planChanged) {
@@ -426,19 +525,49 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     summary: 'Updated from inline editing',
                 };
             }
+            if (resolution) {
+                updates.syncConflictResolution = resolution;
+            }
 
             let updated: WorkItemFull = item;
             if (Object.keys(updates).length > 0) {
                 updated = await getSpaCocClient().workItems.update(workspaceId, workItemId, updates) as any;
             }
+            setDraft(draftToSave);
+            setSyncConflict(null);
+            setSyncConflictChoices({});
             dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item: updated as any });
             await fetchItem();
         } catch (err: any) {
+            const conflict = getSyncConflictDetails(err);
+            if (conflict) {
+                setSyncConflict(conflict);
+                setSyncConflictChoices(buildInitialConflictChoices(conflict));
+                setEditError(null);
+                return;
+            }
             setEditError(err.message || 'Failed to save changes');
         } finally {
             setSaving(false);
         }
-    }, [item, draft, planDraft, workspaceId, workItemId, dispatch, fetchItem]);
+    }, [item, planDraft, workspaceId, workItemId, dispatch, fetchItem]);
+
+    const handleSave = useCallback(async () => {
+        if (!draft) return;
+        await saveDraft(draft);
+    }, [draft, saveDraft]);
+
+    const handleApplyConflictResolution = useCallback(async () => {
+        if (!draft || !syncConflict) return;
+        const resolvedDraft = applyConflictChoices(draft, syncConflict, syncConflictChoices);
+        setDraft(resolvedDraft);
+        await saveDraft(resolvedDraft, conflictResolutionFor(syncConflict));
+    }, [draft, saveDraft, syncConflict, syncConflictChoices]);
+
+    const handleDismissConflict = useCallback(() => {
+        setSyncConflict(null);
+        setSyncConflictChoices({});
+    }, []);
 
     // Ctrl+S / Cmd+S saves the unified dirty batch.
     const handleSaveRef = useRef(handleSave);
@@ -756,6 +885,77 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     <div className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 rounded p-2" data-testid="wi-edit-error">
                         {editError}
                     </div>
+                )}
+                {syncConflict && (
+                    <section
+                        className="rounded-md border border-amber-300 bg-amber-50 p-3 text-[12px] text-[#1f2328] shadow-sm dark:border-amber-700/70 dark:bg-amber-900/20 dark:text-[#cccccc]"
+                        data-testid="wi-sync-conflict-panel"
+                    >
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <h3 className="m-0 text-[13px] font-semibold text-amber-900 dark:text-amber-200">
+                                    Remote changes found on {syncConflict.providerLabel}
+                                </h3>
+                                <p className="m-0 mt-1 text-[12px] leading-[1.45] text-amber-800 dark:text-amber-100/90">
+                                    Choose the value to keep for each provider-owned field, then retry the normal Save.
+                                </p>
+                            </div>
+                            <span className="shrink-0 rounded-full border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:border-amber-700 dark:bg-[#1e1e1e] dark:text-amber-200">
+                                {syncConflict.provider === 'github' ? 'GitHub' : 'Azure Boards'}
+                            </span>
+                        </div>
+                        <div className="mt-3 grid gap-2">
+                            {syncConflict.fields.map(field => {
+                                const choice = syncConflictChoices[field.field] ?? 'draft';
+                                return (
+                                    <div key={field.field} className="rounded-md border border-amber-200 bg-white/70 p-2 dark:border-amber-800/70 dark:bg-[#1e1e1e]/60" data-testid={`wi-sync-conflict-field-${field.field}`}>
+                                        <div className="mb-2 flex items-center justify-between gap-2">
+                                            <strong className="text-[12px] text-[#1f2328] dark:text-[#cccccc]">{conflictFieldLabel(field.field)}</strong>
+                                            {field.base !== null && (
+                                                <span className="truncate text-[11px] text-[#656d76] dark:text-[#999]" title={field.base}>
+                                                    Base: {field.base}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="grid gap-2 sm:grid-cols-2">
+                                            <ConflictValueCard
+                                                label="Your draft"
+                                                value={field.draft}
+                                                selected={choice === 'draft'}
+                                                onSelect={() => setSyncConflictChoices(prev => ({ ...prev, [field.field]: 'draft' }))}
+                                            />
+                                            <ConflictValueCard
+                                                label={syncConflict.providerLabel}
+                                                value={field.remote}
+                                                selected={choice === 'remote'}
+                                                onSelect={() => setSyncConflictChoices(prev => ({ ...prev, [field.field]: 'remote' }))}
+                                            />
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        <div className="mt-3 flex flex-wrap justify-end gap-2">
+                            <button
+                                type="button"
+                                className="rounded-md border border-amber-300 bg-white px-2.5 py-1 text-[12px] font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:bg-transparent dark:text-amber-200"
+                                onClick={handleDismissConflict}
+                                disabled={saving}
+                                data-testid="wi-sync-conflict-cancel"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                className="rounded-md border border-amber-700 bg-amber-600 px-2.5 py-1 text-[12px] font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                                onClick={handleApplyConflictResolution}
+                                disabled={saving}
+                                data-testid="wi-sync-conflict-apply"
+                            >
+                                Apply resolution &amp; Save
+                            </button>
+                        </div>
+                    </section>
                 )}
 
                 {/* Description */}
@@ -1256,9 +1456,9 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     workspaceId={workspaceId}
                     workItemId={workItemId}
                     workItemType={effectiveType as any}
-                    currentParentId={d.parentId}
+                    currentParentId={d.parentId ?? undefined}
                     onlyPick={true}
-                    onParentChanged={(newParentId) => updateDraft('parentId', newParentId ?? undefined)}
+                    onParentChanged={(newParentId) => updateDraft('parentId', newParentId)}
                     onClose={() => setShowParentPicker(false)}
                 />
             )}
