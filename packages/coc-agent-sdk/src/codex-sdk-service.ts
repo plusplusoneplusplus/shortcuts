@@ -859,7 +859,7 @@ export class CodexSDKService implements ISDKService {
             ...(additionalDirectories.length ? { additionalDirectories } : {}),
             ...(options.reasoningEffort ? { reasoningLevel: options.reasoningEffort } : {}),
             skipGitRepoCheck: true,
-            ...this.resolveCodexModeOptions(options.mode),
+            ...this.resolveCodexModeOptions(),
         };
     }
 
@@ -889,25 +889,14 @@ export class CodexSDKService implements ISDKService {
         return dirs;
     }
 
-    private resolveCodexModeOptions(
-        mode: SendMessageOptions['mode'],
-    ): Pick<CodexStartThreadOptions, 'approvalPolicy' | 'sandboxMode' | 'networkAccessEnabled'> {
-        if (mode === 'plan' || mode === 'autopilot') {
-            return {
-                approvalPolicy: 'never',
-                sandboxMode: 'danger-full-access',
-                networkAccessEnabled: true,
-            };
-        }
-        // Interactive (ask) mode is constrained at the prompt level by
-        // READ_ONLY_SYSTEM_MESSAGE, which permits writing only the plan file,
-        // the attached note file, and .goal.md specs. Use `workspace-write` so
-        // those permitted writes (within the workspace and additionalDirectories
-        // such as ~/.coc) succeed, while network access stays disabled.
+    private resolveCodexModeOptions(): Pick<CodexStartThreadOptions, 'approvalPolicy' | 'sandboxMode' | 'networkAccessEnabled'> {
+        // Ask-mode constraints are enforced by READ_ONLY_SYSTEM_MESSAGE. Codex
+        // still needs a full-access sandbox so skill file reads work on hosts
+        // that block workspace-write sandbox initialization.
         return {
             approvalPolicy: 'never',
-            sandboxMode: 'workspace-write',
-            networkAccessEnabled: false,
+            sandboxMode: 'danger-full-access',
+            networkAccessEnabled: true,
         };
     }
 

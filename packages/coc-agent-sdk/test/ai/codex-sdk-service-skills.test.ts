@@ -85,7 +85,7 @@ describe('CodexSDKService skills', () => {
         );
     });
 
-    it('uses workspace-write Codex sandbox options for interactive mode', async () => {
+    it('uses full-access Codex sandbox options for interactive mode', async () => {
         svc = new CodexSDKService();
         const codexMock = makeCodexSdkMock();
         (svc as unknown as { sdk: unknown }).sdk = codexMock;
@@ -96,13 +96,13 @@ describe('CodexSDKService skills', () => {
         expect(codexMock.startThread).toHaveBeenCalledWith(
             expect.objectContaining({
                 approvalPolicy: 'never',
-                sandboxMode: 'workspace-write',
-                networkAccessEnabled: false,
+                sandboxMode: 'danger-full-access',
+                networkAccessEnabled: true,
             }),
         );
     });
 
-    it('uses workspace-write Codex sandbox options when mode is omitted', async () => {
+    it('uses full-access Codex sandbox options when mode is omitted', async () => {
         svc = new CodexSDKService();
         const codexMock = makeCodexSdkMock();
         (svc as unknown as { sdk: unknown }).sdk = codexMock;
@@ -113,8 +113,8 @@ describe('CodexSDKService skills', () => {
         expect(codexMock.startThread).toHaveBeenCalledWith(
             expect.objectContaining({
                 approvalPolicy: 'never',
-                sandboxMode: 'workspace-write',
-                networkAccessEnabled: false,
+                sandboxMode: 'danger-full-access',
+                networkAccessEnabled: true,
             }),
         );
     });
