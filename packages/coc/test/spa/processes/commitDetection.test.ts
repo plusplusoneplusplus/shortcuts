@@ -302,6 +302,34 @@ describe('detectCommitsInToolGroup', () => {
             expect(commits[0].isFixup).toBe(false);
         });
 
+        it('detects compact oneline output emitted after a commit-creating bash command', () => {
+            const toolCalls = [
+                {
+                    id: 't1',
+                    toolName: 'bash',
+                    args: {
+                        command: [
+                            'git add packages/coc/src/server/work-items/work-item-sync-conflict.ts',
+                            'git commit --quiet -m "feat(work-items): shared typed per-field stale-save conflict (AC-02 server)"',
+                            'git log --oneline -1',
+                        ].join(' && '),
+                        description: 'Commit source changes',
+                    },
+                    result: '33bd35b38 feat(work-items): shared typed per-field stale-save conflict (AC-02 server)',
+                    status: 'completed',
+                },
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(1);
+            expect(commits[0]).toEqual<DetectedCommit>({
+                shortHash: '33bd35b38',
+                subject: 'feat(work-items): shared typed per-field stale-save conflict (AC-02 server)',
+                toolCallId: 't1',
+                isFixup: false,
+            });
+        });
+
         it('bash tool: ignores read-only git commands', () => {
             const toolCalls = [
                 { id: 't1', toolName: 'bash', args: { command: 'git log --oneline' }, result: '[main abc1234] Some old commit', status: 'completed' },

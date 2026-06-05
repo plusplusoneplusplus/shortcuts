@@ -39,6 +39,13 @@ const AGENT_TOOL_NAMES = new Set(['task', 'general-purpose']);
 const GIT_COMMIT_RE = /\[(\S+?)(?:\s+\(root-commit\))?\s+([0-9a-f]{7,12})\]\s+(.+)/;
 
 /**
+ * Compact one-line commit output, usually emitted by `git log --oneline -1`
+ * after a commit command has already succeeded:
+ *   shortHash subject line
+ */
+const GIT_ONELINE_COMMIT_RE = /^([0-9a-f]{7,40})\s+(.+)$/;
+
+/**
  * Diffstat line pattern:
  *   N file(s) changed, M insertion(s)(+), K deletion(s)(-)
  * Any of the three parts may be absent.
@@ -86,6 +93,13 @@ function isReadOnlyGitCommand(command: string): boolean {
     return READ_ONLY_GIT_PATTERNS.some(re => re.test(command));
 }
 
+function normalizeCommitHash(hash: string): Pick<DetectedCommit, 'shortHash' | 'fullHash'> {
+    if (hash.length === 40) {
+        return { shortHash: hash.slice(0, 12), fullHash: hash };
+    }
+    return { shortHash: hash };
+}
+
 /**
  * Scans tool calls in a tool group for git commit output and returns
  * structured commit metadata for each detected commit.
@@ -108,24 +122,42 @@ export function detectCommitsInToolGroup(toolCalls: ToolCallLike[]): DetectedCom
 
         if (!isShell && !isAgent) continue;
 
+        let allowCompactOneline = false;
         if (isShell) {
             const command = getCommandString(tc.args);
+            const createsCommit = isCommitCreatingCommand(command);
 
-            // Skip read-only git commands even if their output happens to match
-            if (isReadOnlyGitCommand(command)) continue;
+            // Skip read-only-only git commands even if their output happens to match.
+            // Commit commands often chain read-only verification such as
+            // `git log --oneline -1`, so those are still eligible.
+            if (isReadOnlyGitCommand(command) && !createsCommit) continue;
 
             // Only scan results from commit-creating commands, or when
             // we can't determine the command (e.g. missing args)
-            if (command && !isCommitCreatingCommand(command)) continue;
+            if (command && !createsCommit) continue;
+
+            allowCompactOneline = createsCommit;
         }
         // Agent tools: scan result directly — no command to inspect
 
         const lines = tc.result.split(/\r?\n/);
         for (let i = 0; i < lines.length; i++) {
             const match = GIT_COMMIT_RE.exec(lines[i]);
-            if (!match) continue;
 
-            const [, branch, shortHash, subject] = match;
+            let branch: string | undefined;
+            let hash: string;
+            let subject: string;
+            if (match) {
+                [, branch, hash, subject] = match;
+            } else if (allowCompactOneline) {
+                const onelineMatch = GIT_ONELINE_COMMIT_RE.exec(lines[i].trim());
+                if (!onelineMatch) continue;
+                [, hash, subject] = onelineMatch;
+            } else {
+                continue;
+            }
+
+            const { shortHash, fullHash } = normalizeCommitHash(hash);
             if (seenHashes.has(shortHash)) continue;
             seenHashes.add(shortHash);
 
@@ -135,10 +167,11 @@ export function detectCommitsInToolGroup(toolCalls: ToolCallLike[]): DetectedCom
             const commit: DetectedCommit = {
                 shortHash,
                 subject: trimmedSubject,
-                branch,
                 toolCallId: tc.id,
                 isFixup,
             };
+            if (branch) commit.branch = branch;
+            if (fullHash) commit.fullHash = fullHash;
 
             // Look for diffstat on subsequent lines
             for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
