@@ -43,6 +43,7 @@ describe('RuntimeConfigService', () => {
             expect(svc.config.servers.enabled).toBe(true);
             expect(svc.config.ralph.enabled).toBe(false);
             expect(svc.config.forEach.enabled).toBe(false);
+            expect(svc.config.features.gitCrossCloneCherryPick).toBe(true);
             expect(svc.revision).toBe(0);
         });
 

@@ -342,7 +342,7 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
                     autoMemoryPromotion: override?.features?.autoMemoryPromotion ?? base.features?.autoMemoryPromotion ?? false,
                     focusedDiff: override?.features?.focusedDiff ?? base.features?.focusedDiff ?? false,
                     gitCommitLookup: override?.features?.gitCommitLookup ?? base.features?.gitCommitLookup ?? false,
-                    gitCrossCloneCherryPick: override?.features?.gitCrossCloneCherryPick ?? base.features?.gitCrossCloneCherryPick ?? false,
+                    gitCrossCloneCherryPick: override?.features?.gitCrossCloneCherryPick ?? base.features?.gitCrossCloneCherryPick ?? true,
                     sessionContextAttachments: override?.features?.sessionContextAttachments ?? base.features?.sessionContextAttachments ?? false,
                 },
             }),

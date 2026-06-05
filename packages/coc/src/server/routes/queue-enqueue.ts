@@ -2,6 +2,7 @@
  * Queue enqueue routes.
  *
  * POST /api/queue — Enqueue new task
+ * POST /api/queue/:id/retry — Re-run a failed/cancelled task as a fresh copy
  * POST /api/queue/bulk — Bulk enqueue
  * POST /api/queue/summarize — Summarize conversations
  * GET  /api/queue/models — List available AI models
@@ -10,13 +11,14 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { getActiveModels, modelMetadataStore, ensureQueueProcessId, SqliteProcessStore, sdkServiceRegistry, mergeEffortTiersWithDefaults } from '@plusplusoneplusplus/forge';
-import type { CreateTaskInput } from '@plusplusoneplusplus/forge';
+import { getActiveModels, modelMetadataStore, ensureQueueProcessId, toQueueProcessId, isQueueProcessId, toTaskId, SqliteProcessStore, sdkServiceRegistry, mergeEffortTiersWithDefaults } from '@plusplusoneplusplus/forge';
+import type { CreateTaskInput, QueuedTask } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
 import {
     isWireAttachmentArray,
     processMessageAttachments,
 } from '../core/attachment-utils';
+import { processToTaskDetail } from '../shared/process-history-mapper';
 import type { Route } from '../types';
 import {
     serializeTask,
@@ -151,6 +153,94 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
         }
     };
     routes.push({ method: 'POST', pattern: '/api/queue', handler: enqueueHandler });
+
+    // ------------------------------------------------------------------
+    // POST /api/queue/:id/retry — Re-run a failed/cancelled task
+    //
+    // Recovery affordance for the case where the *very first* message of a
+    // chat task failed before any resumable session existed. Re-enqueues a
+    // brand-new task from the original's preserved payload/config rather than
+    // resuming, so it starts a fresh conversation.
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/queue\/([^/]+)\/retry$/,
+        handler: async (_req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            // The route id may arrive as either a bare task id or the
+            // `queue_<taskId>` process id (activity-tab links use the latter).
+            const bareId = isQueueProcessId(id) ? toTaskId(id) : id;
+
+            // Resolve the original task: prefer the in-memory record (full
+            // payload/config preserved), then fall back to the persisted
+            // process (survives server restarts).
+            let source: Partial<QueuedTask> | undefined = bridge.findManagerForTask(bareId)?.getTask(bareId);
+            if (!source && store) {
+                const proc = (await store.getProcess(toQueueProcessId(bareId)))
+                    ?? (await store.getProcess(bareId));
+                if (proc) source = processToTaskDetail(proc);
+            }
+            if (!source) {
+                return sendError(res, 404, 'Task not found');
+            }
+
+            // Only terminal failed/cancelled tasks can be retried — a running
+            // or queued task is still live and must not be duplicated.
+            if (source.status !== 'failed' && source.status !== 'cancelled') {
+                return sendError(
+                    res,
+                    409,
+                    `Cannot retry task in status '${source.status}'; only failed or cancelled tasks can be retried`,
+                );
+            }
+
+            // Build a fresh task spec from the original. Strip:
+            //  - processId: so the retry starts a NEW conversation instead of
+            //    being treated as a follow-up to the failed process.
+            //  - imageTempDir / attachments / fileAttachmentMeta: these point at
+            //    temp files from the original enqueue that may have been cleaned
+            //    up. payload.images (self-contained data URLs) and payload.prompt
+            //    (already includes any text-file content) are preserved.
+            const payload: Record<string, unknown> = { ...((source.payload as Record<string, unknown>) ?? {}) };
+            delete payload.processId;
+            delete payload.imageTempDir;
+            delete payload.attachments;
+            delete payload.fileAttachmentMeta;
+
+            const taskSpec: Record<string, unknown> = {
+                type: source.type,
+                priority: source.priority ?? 'normal',
+                payload,
+                config: { ...((source.config as Record<string, unknown>) ?? {}) },
+                displayName: source.displayName,
+            };
+            if (source.repoId) taskSpec.repoId = source.repoId;
+            if (source.folderPath) taskSpec.folderPath = source.folderPath;
+
+            const validation = validateAndParseTask(taskSpec);
+            if (!validation.valid) {
+                return sendError(res, 400, validation.error!);
+            }
+
+            try {
+                resolveEffortTierConfig(validation.input!, ctx);
+            } catch (err) {
+                const message = err instanceof Error ? err.message : 'Failed to resolve effort tier';
+                return sendError(res, 500, message);
+            }
+
+            try {
+                const taskId = await enqueueViaBridge(validation.input!, bridge, state, globalWorkspaceRootPath, store);
+                const task = bridge.findManagerForTask(taskId)?.getTask(taskId);
+                process.stderr.write(`[Queue] retry source=${bareId} task=${taskId}\n`);
+                maybeBindNoteChat(validation.input!, taskId);
+                sendJSON(res, 201, { task: task ? serializeTask(task) : { id: taskId } });
+            } catch (err) {
+                const message = err instanceof Error ? err.message : 'Failed to enqueue retry task';
+                return sendError(res, 400, message);
+            }
+        },
+    });
 
     // ------------------------------------------------------------------
     // POST /api/queue/bulk — Enqueue multiple tasks atomically

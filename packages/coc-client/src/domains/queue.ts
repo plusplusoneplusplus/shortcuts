@@ -107,6 +107,15 @@ export class QueueClient {
     return this.transport.request<EnqueueTaskResponse>('/queue', { method: 'POST', body: { ...request } });
   }
 
+  /**
+   * Re-run a failed or cancelled task by enqueueing a fresh copy from its
+   * preserved payload/config. Used to recover when the first message of a chat
+   * failed before any resumable session existed.
+   */
+  retry(taskId: string): Promise<EnqueueTaskResponse> {
+    return this.transport.request<EnqueueTaskResponse>(`/queue/${encodePathSegment(taskId)}/retry`, { method: 'POST' });
+  }
+
   pause(scope?: QueueScope, options?: QueuePauseOptions): Promise<QueueStatsResponse & { paused: boolean; pausedUntil?: number; workspace?: string; repoId?: string }> {
     return this.transport.request('/queue/pause', { method: 'POST', query: serializeQueueScope(scope), body: options });
   }

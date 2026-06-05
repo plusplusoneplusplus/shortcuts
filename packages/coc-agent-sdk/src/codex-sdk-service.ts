@@ -58,6 +58,20 @@ function isGlobalInstall(): boolean {
  */
 const runtimeRequire = createRequire(__filename);
 
+/**
+ * Per-server MCP tool-call timeout (seconds) for the CoC LLM-tools bridge under Codex.
+ *
+ * CoC exposes deliberately long-blocking tools (notably `ask_user`) whose bridge HTTP
+ * transport sets no client-side timeout — it waits indefinitely for the human/SPA reply
+ * (matching Claude Code, whose MCP client also waits forever). Codex CLI, however,
+ * applies its own default `tool_timeout_sec` to MCP tool calls, so a slow human answer
+ * gets aborted as "user cancelled MCP tool call". We therefore pin an effectively
+ * unbounded timeout (365 days) on the `coc_llm_tools` server entry. A large finite value
+ * is used instead of `0`/omission because codex's config does not document those as
+ * "infinite". Verified against codex 0.133.0 (config key `tool_timeout_sec`).
+ */
+const CODEX_LLM_TOOLS_TIMEOUT_SEC = 31_536_000;
+
 // ============================================================================
 // Auth checker injection (AC-08)
 // ============================================================================
@@ -351,6 +365,7 @@ export class CodexSDKService implements ISDKService {
             command: mcpConfig.command,
             args: mcpConfig.args,
             env: mcpConfig.env,
+            tool_timeout_sec: CODEX_LLM_TOOLS_TIMEOUT_SEC,
             ...(mcpConfig.enabled_tools ? { enabled_tools: mcpConfig.enabled_tools } : {}),
         };
         const client = new this.codexCtor({

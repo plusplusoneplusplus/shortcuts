@@ -1736,7 +1736,7 @@ export function AdminPanel() {
                                     </AdminRow>
                                     <AdminRow
                                         name={<>Cross-clone cherry-pick <span className="ar-badge ar-badge-accent">Experimental</span></>}
-                                        hint="Adds a Git commit context-menu action that transfers one commit to another registered clone using patch export/apply. Disabled by default."
+                                        hint="Adds a Git commit context-menu action that transfers one commit to another registered clone using patch export/apply. Enabled by default."
                                     >
                                         <SourceBadge source={sources['features.gitCrossCloneCherryPick']} />
                                         <AdminToggle checked={gitCrossCloneCherryPickEnabled} onChange={setGitCrossCloneCherryPickEnabled} data-testid="toggle-git-cross-clone-cherry-pick-enabled" />

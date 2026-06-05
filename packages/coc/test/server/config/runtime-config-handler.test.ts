@@ -35,7 +35,7 @@ function createMockRuntimeConfigService(overrides: Partial<ResolvedCLIConfig> = 
         loops: { enabled: false },
         excalidraw: { enabled: false },
         mcpOauth: { enabled: false },
-        features: { focusedDiff: false, autoMemoryPromotion: false, gitCommitLookup: false, gitCrossCloneCherryPick: false, sessionContextAttachments: false },
+        features: { focusedDiff: false, autoMemoryPromotion: false, gitCommitLookup: false, gitCrossCloneCherryPick: true, sessionContextAttachments: false },
         memoryPromotion: { enabled: false },
         defaultModels: {},
         ...overrides,
@@ -77,7 +77,7 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.excalidrawEnabled).toBe(false);
         expect(result.features.mcpOauthEnabled).toBe(false);
         expect(result.features.focusedDiffEnabled).toBe(false);
-        expect(result.features.gitCrossCloneCherryPickEnabled).toBe(false);
+        expect(result.features.gitCrossCloneCherryPickEnabled).toBe(true);
         expect(result.features.sessionContextAttachmentsEnabled).toBe(false);
         expect(result.features.codexEnabled).toBe(false);
         expect(result.features.defaultProvider).toBe('copilot');

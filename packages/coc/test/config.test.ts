@@ -62,6 +62,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.scratchpad).toEqual({ enabled: true, layout: 'vertical' });
             expect(DEFAULT_CONFIG.workflows).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.forEach).toEqual({ enabled: false });
+            expect(DEFAULT_CONFIG.features.gitCrossCloneCherryPick).toBe(true);
             expect(DEFAULT_CONFIG.workItems.sync.enabled).toBe(false);
         });
 
@@ -1011,7 +1012,7 @@ timeout: 300
                     "autoMemoryPromotion": true,
                     "focusedDiff": true,
                     "gitCommitLookup": false,
-                    "gitCrossCloneCherryPick": false,
+                    "gitCrossCloneCherryPick": true,
                     "sessionContextAttachments": false,
                   },
                   "forEach": {

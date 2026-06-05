@@ -2052,6 +2052,82 @@ describe('Queue Handler', () => {
         });
     });
 
+    describe('POST /api/queue/:id/retry — Retry failed/cancelled task', () => {
+        it('returns 404 for a non-existent task', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue/does-not-exist/retry`, {});
+            expect(res.status).toBe(404);
+        });
+
+        it('rejects retry of a queued (live) task with 409', async () => {
+            const srv = await startServer();
+
+            // Pause to keep the task queued (not terminal).
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            const createRes = await postJSON(`${srv.url}/api/queue`, makeTask());
+            const taskId = JSON.parse(createRes.body).task.id;
+
+            const res = await postJSON(`${srv.url}/api/queue/${taskId}/retry`, {});
+            expect(res.status).toBe(409);
+        });
+
+        it('re-enqueues a fresh copy of a cancelled task with a new id', async () => {
+            const srv = await startServer();
+
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            const createRes = await postJSON(`${srv.url}/api/queue`, makeTask({
+                displayName: 'Retry me',
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'original prompt' },
+            }));
+            const taskId = JSON.parse(createRes.body).task.id;
+
+            // Cancel → terminal 'cancelled' status (retryable).
+            await request(`${srv.url}/api/queue/${taskId}`, { method: 'DELETE' });
+
+            const res = await postJSON(`${srv.url}/api/queue/${taskId}/retry`, {});
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task).toBeDefined();
+            expect(body.task.id).toBeDefined();
+            // A brand-new task — must not reuse the original id.
+            expect(body.task.id).not.toBe(taskId);
+            expect(body.task.status).toBe('queued');
+            expect(body.task.displayName).toBe('Retry me');
+            expect(body.task.payload.prompt).toBe('original prompt');
+        });
+
+        it('strips processId from the payload so the retry starts a new conversation', async () => {
+            const srv = await startServer();
+
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            const createRes = await postJSON(`${srv.url}/api/queue`, makeTask({
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'p', processId: 'queue_stale-process' },
+            }));
+            const taskId = JSON.parse(createRes.body).task.id;
+            await request(`${srv.url}/api/queue/${taskId}`, { method: 'DELETE' });
+
+            const res = await postJSON(`${srv.url}/api/queue/${taskId}/retry`, {});
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.payload.processId).toBeUndefined();
+        });
+
+        it('accepts a queue_-prefixed process id', async () => {
+            const srv = await startServer();
+
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            const createRes = await postJSON(`${srv.url}/api/queue`, makeTask());
+            const taskId = JSON.parse(createRes.body).task.id;
+            await request(`${srv.url}/api/queue/${taskId}`, { method: 'DELETE' });
+
+            const res = await postJSON(`${srv.url}/api/queue/queue_${taskId}/retry`, {});
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.id).not.toBe(taskId);
+        });
+    });
+
     // ========================================================================
     // Lifecycle
     // ========================================================================
