@@ -186,6 +186,68 @@ describe('ForEachPlanReviewCard', () => {
         expect(mocks.approve).not.toHaveBeenCalled();
     });
 
+    it('applies valid Advanced JSON edits back to the structured editor', async () => {
+        renderCard();
+        await waitFor(() => expect(screen.getByTestId('for-each-plan-json-toggle')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('for-each-plan-json-toggle'));
+        fireEvent.change(screen.getByTestId('for-each-plan-json'), {
+            target: {
+                value: JSON.stringify({
+                    childMode: 'autopilot',
+                    sharedInstructions: 'Run these in order.',
+                    items: [
+                        { id: 'json-item', title: 'JSON item', prompt: 'Do JSON work', status: 'pending' },
+                    ],
+                }, null, 2),
+            },
+        });
+
+        expect(screen.queryByTestId('for-each-plan-json-error')).toBeNull();
+        expect((screen.getByTestId('for-each-plan-item-title-0') as HTMLInputElement).value).toBe('JSON item');
+        expect((screen.getByTestId('for-each-shared-instructions-editor') as HTMLTextAreaElement).value).toBe('Run these in order.');
+        expect(screen.getByTestId('for-each-plan-validation-ok').textContent).toContain('ready for approval');
+    });
+
+    it('blocks approval when structured dependency edits are invalid', async () => {
+        renderCard();
+        await waitFor(() => expect(screen.getByTestId('for-each-plan-approve-btn')).toBeEnabled());
+
+        fireEvent.change(screen.getByTestId('for-each-plan-item-deps-0'), { target: { value: 'missing-item' } });
+
+        expect(screen.getByTestId('for-each-plan-validation-error').textContent).toContain("depends on unknown item 'missing-item'");
+        expect(screen.getByTestId('for-each-plan-approve-btn')).toBeDisabled();
+        expect(mocks.create).not.toHaveBeenCalled();
+        expect(mocks.approve).not.toHaveBeenCalled();
+
+        fireEvent.change(screen.getByTestId('for-each-plan-item-deps-0'), { target: { value: '' } });
+
+        expect(screen.getByTestId('for-each-plan-validation-ok').textContent).toContain('ready for approval');
+        expect(screen.getByTestId('for-each-plan-approve-btn')).toBeEnabled();
+    });
+
+    it('approves structured child mode, shared instructions, and removed-item edits', async () => {
+        renderCard();
+        await waitFor(() => expect(screen.getByTestId('for-each-plan-approve-btn')).toBeEnabled());
+
+        fireEvent.change(screen.getByTestId('for-each-shared-instructions-editor'), { target: { value: 'Keep each child small.' } });
+        fireEvent.click(screen.getByTestId('for-each-plan-child-mode-autopilot'));
+        fireEvent.click(screen.getByTestId('for-each-plan-item-remove-1'));
+        fireEvent.click(screen.getByTestId('for-each-plan-approve-btn'));
+
+        await waitFor(() => expect(mocks.create).toHaveBeenCalledOnce());
+        expect(mocks.create).toHaveBeenCalledWith('ws-1', expect.objectContaining({
+            childMode: 'autopilot',
+            sharedInstructions: 'Keep each child small.',
+            items: [
+                expect.objectContaining({ id: 'item-1', title: 'First item', prompt: 'Do first', status: 'pending' }),
+            ],
+        }));
+        expect(mocks.approve).toHaveBeenCalledWith('ws-1', 'for-each-run-1');
+        expect(mocks.start).not.toHaveBeenCalled();
+        expect(mocks.continueRun).not.toHaveBeenCalled();
+    });
+
     it('approves the reviewed plan without starting children and links generation metadata', async () => {
         const onApprovedRun = vi.fn();
         render(
