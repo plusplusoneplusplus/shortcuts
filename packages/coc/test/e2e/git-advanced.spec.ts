@@ -456,3 +456,56 @@ test.describe('Git advanced — Branch large diff Show All', () => {
         await expect(page.getByTestId('file-diff-content')).toBeVisible({ timeout: 5_000 });
     });
 });
+
+// ================================================================
+// Commit context menu — Copy Row
+// ================================================================
+
+test.describe('Git advanced — Copy Row context menu item', () => {
+    test('right-clicking a commit row shows Copy Row item and it copies hash, subject, and author', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-git-cr-'));
+        try {
+            const repoDir = createMultiCommitRepo(tmpDir);
+            await navigateToGitTab(page, serverUrl, 'ws-cr-1', 'cr-repo', repoDir);
+
+            await expect(page.getByTestId('commit-list-loading')).toBeHidden({ timeout: 10_000 });
+
+            // Mock clipboard to capture writeText calls without permission
+            await page.evaluate(() => {
+                (window as unknown as Record<string, unknown>).__clipboardContent = '';
+                Object.defineProperty(navigator, 'clipboard', {
+                    configurable: true,
+                    value: {
+                        writeText: (text: string) => {
+                            (window as unknown as Record<string, unknown>).__clipboardContent = text;
+                            return Promise.resolve();
+                        },
+                    },
+                });
+            });
+
+            // Right-click the first (HEAD) commit row
+            const headRow = page.locator('[data-testid^="commit-row-"]').first();
+            await expect(headRow).toBeVisible({ timeout: 10_000 });
+            await headRow.click({ button: 'right' });
+
+            const menu = page.locator('[data-testid="context-menu"]');
+            await expect(menu).toBeVisible({ timeout: 5_000 });
+
+            // "Copy Row" item should be present
+            await expect(menu.getByRole('menuitem', { name: /Copy Row/ })).toBeVisible();
+
+            // Click Copy Row
+            await menu.getByRole('menuitem', { name: /Copy Row/ }).click();
+
+            // Clipboard should contain: shortHash — subject — author
+            const clipboardContent = await page.evaluate(
+                () => (window as unknown as Record<string, unknown>).__clipboardContent as string,
+            );
+            // The HEAD commit is "fix: update index" with author "test"
+            expect(clipboardContent).toMatch(/^[0-9a-f]+ — fix: update index — test$/);
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+});

@@ -1306,6 +1306,11 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 onClick: () => { navigator.clipboard.writeText(commit.hash); },
             });
             items.push({
+                label: 'Copy Row',
+                icon: '📋',
+                onClick: () => { navigator.clipboard.writeText(`${commit.shortHash} — ${commit.subject} — ${commit.author}`); },
+            });
+            items.push({
                 label: 'View Diff',
                 icon: '🔍',
                 onClick: () => { handleSelect(commit); },
