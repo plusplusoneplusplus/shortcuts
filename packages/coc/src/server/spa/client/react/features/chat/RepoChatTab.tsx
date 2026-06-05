@@ -25,7 +25,7 @@ import { ChatPreferencesProvider, ChatPrefsSync } from '../../contexts/ChatPrefe
 import { useNotifications } from '../../contexts/NotificationContext';
 import { useProcessSearch } from '../../processes/hooks/useProcessSearch';
 import { adaptSearchResults } from '../../utils/search-adapter';
-import type { ForEachRunSummary, ProcessGroupPin, ProcessHistoryItem } from '@plusplusoneplusplus/coc-client';
+import type { ForEachRunSummary, ProcessGroupPin, ProcessGroupPinType, ProcessHistoryItem } from '@plusplusoneplusplus/coc-client';
 import { TaskDefs } from '../../../../../tasks/task-types';
 import { isQueueProcessId, toQueueProcessId, toTaskId } from '../../utils/queue-process-id';
 import { parseForEachRunDeepLink, parseRalphSessionDeepLink } from '../../layout/Router';
@@ -559,6 +559,24 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         }
     }, [isRefreshing, fetchQueue]);
 
+    const handleSetGroupPin = useCallback(async (type: ProcessGroupPinType, groupId: string, pinned: boolean) => {
+        const previousPins = groupPins;
+        const nextPinnedAt = new Date().toISOString();
+        setGroupPins(prev => {
+            const remaining = prev.filter(pin => !(pin.type === type && pin.groupId === groupId));
+            return pinned ? [{ type, groupId, pinnedAt: nextPinnedAt }, ...remaining] : remaining;
+        });
+        try {
+            const result = await getSpaCocClient().processes.pinGroup(workspaceId, type, groupId, pinned);
+            setGroupPins(prev => {
+                const remaining = prev.filter(pin => !(pin.type === type && pin.groupId === groupId));
+                return result.pin ? [result.pin, ...remaining] : remaining;
+            });
+        } catch {
+            setGroupPins(previousPins);
+        }
+    }, [groupPins, workspaceId]);
+
     const [selectedRalphSessionId, setSelectedRalphSessionId] = useState<string | null>(null);
     const [selectedRalphFileName, setSelectedRalphFileName] = useState<string | null>(null);
     const [selectedForEachRunId, setSelectedForEachRunId] = useState<string | null>(null);
@@ -742,6 +760,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             onSelectRalphSession={handleSelectRalphSession}
             forEachRuns={forEachRuns}
             groupPins={groupPins}
+            onSetGroupPin={handleSetGroupPin}
             selectedForEachRunId={selectedForEachRunId}
             onSelectForEachRun={handleOpenForEachRun}
             cursorTaskId={cursorTaskId}

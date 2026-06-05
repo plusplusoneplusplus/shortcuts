@@ -46,6 +46,8 @@ vi.mock('../../../../src/server/spa/client/react/tasks/comments/ContextMenu', ()
 
 let mockPinnedChatIds = new Set<string>();
 let mockArchivedChatIds = new Set<string>();
+const mockPinChat = vi.fn();
+const mockUnpinChat = vi.fn();
 let mockSessionContextAttachmentsEnabled = false;
 let mockForEachEnabled = false;
 vi.mock('../../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
@@ -53,7 +55,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/ChatPreferencesContext
     useChatPrefs: () => ({
         pinnedChatIds: mockPinnedChatIds,
         archivedChatIds: mockArchivedChatIds,
-        pinChat: vi.fn(), unpinChat: vi.fn(),
+        pinChat: mockPinChat, unpinChat: mockUnpinChat,
         archiveChat: vi.fn(), unarchiveChat: vi.fn(),
         archiveChats: vi.fn(), unarchiveChats: vi.fn(),
     }),
@@ -570,6 +572,7 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
 
         expect(pinnedSection).toBeTruthy();
         expect(within(pinnedSection).getByTestId('ralph-session-row')).toBeTruthy();
+        expect(within(pinnedSection).getByTestId('ralph-session-body').getAttribute('data-pinned')).toBe('true');
         expect(todaySection).toBeTruthy();
         expect(todaySection.querySelector('[data-testid="ralph-session-row"]')).toBeNull();
         expect(todaySection.textContent).toContain('Standalone chat');
@@ -617,10 +620,51 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
 
         expect(pinnedSection).toBeTruthy();
         expect(within(pinnedSection).getByTestId('for-each-run-row')).toBeTruthy();
+        expect(within(pinnedSection).getByTestId('for-each-run-body').getAttribute('data-pinned')).toBe('true');
         expect(todaySection).toBeTruthy();
         expect(todaySection.querySelector('[data-testid="for-each-run-row"]')).toBeNull();
         expect(todaySection.querySelector('[data-task-id="child-run-1"]')).toBeNull();
         expect(todaySection.textContent).toContain('Standalone chat');
+    });
+
+    it('Ralph group pin button toggles only the parent group and does not select or expand', () => {
+        const onSetGroupPin = vi.fn();
+        const onSelectRalphSession = vi.fn();
+        renderActivity([makeRalphIteration(1), makeRalphIteration(2)], {
+            onSetGroupPin,
+            onSelectRalphSession,
+        });
+
+        const body = screen.getByTestId('ralph-session-body');
+        expect(body.getAttribute('aria-expanded')).toBe('false');
+
+        fireEvent.click(screen.getByTestId('ralph-session-pin'));
+
+        expect(onSetGroupPin).toHaveBeenCalledWith('ralph-session', SESSION_ID, true);
+        expect(onSelectRalphSession).not.toHaveBeenCalled();
+        expect(body.getAttribute('aria-expanded')).toBe('false');
+        expect(mockPinChat).not.toHaveBeenCalled();
+    });
+
+    it('For Each group pin button toggles only the parent group and does not select or expand', () => {
+        mockForEachEnabled = true;
+        const onSetGroupPin = vi.fn();
+        const onSelectForEachRun = vi.fn();
+        renderActivity([makeForEachChild('run-1')], {
+            forEachRuns: [makeForEachRunSummary('run-1')],
+            onSetGroupPin,
+            onSelectForEachRun,
+        });
+
+        const body = screen.getByTestId('for-each-run-body');
+        expect(body.getAttribute('aria-expanded')).toBe('false');
+
+        fireEvent.click(screen.getByTestId('for-each-run-pin'));
+
+        expect(onSetGroupPin).toHaveBeenCalledWith('for-each-run', 'run-1', true);
+        expect(onSelectForEachRun).not.toHaveBeenCalled();
+        expect(body.getAttribute('aria-expanded')).toBe('false');
+        expect(mockPinChat).not.toHaveBeenCalled();
     });
 
     it('regression: completed ralph session does not pin to top above newer standalone chats', () => {
@@ -841,5 +885,49 @@ describe('ChatListPane Activity tab — ralph session context menu', () => {
         const menu = screen.getByTestId('context-menu');
         // The header should show "3 tasks selected" (1 grilling + 2 iterations).
         expect(menu.textContent).toContain('3 tasks selected');
+    });
+
+    it('context menu Pin to top toggles the Ralph parent group, not child chat pins', () => {
+        const onSetGroupPin = vi.fn();
+        renderActivity(fixtureWithGrilling(), { onSetGroupPin });
+
+        fireEvent.contextMenu(screen.getByTestId('ralph-session-body'), { clientX: 100, clientY: 200 });
+        fireEvent.click(screen.getByTestId('ctx-item-Pin-to-top'));
+
+        expect(onSetGroupPin).toHaveBeenCalledWith('ralph-session', SESSION_ID, true);
+        expect(mockPinChat).not.toHaveBeenCalled();
+    });
+
+    it('context menu Unpin toggles a pinned Ralph parent group', () => {
+        const onSetGroupPin = vi.fn();
+        renderActivity(fixtureWithGrilling(), {
+            onSetGroupPin,
+            groupPins: [{
+                type: 'ralph-session',
+                groupId: SESSION_ID,
+                pinnedAt: new Date(NOW).toISOString(),
+            }],
+        });
+
+        fireEvent.contextMenu(screen.getByTestId('ralph-session-body'), { clientX: 100, clientY: 200 });
+        fireEvent.click(screen.getByTestId('ctx-item-Unpin'));
+
+        expect(onSetGroupPin).toHaveBeenCalledWith('ralph-session', SESSION_ID, false);
+        expect(mockUnpinChat).not.toHaveBeenCalled();
+    });
+
+    it('context menu Pin to top toggles the For Each parent group', () => {
+        mockForEachEnabled = true;
+        const onSetGroupPin = vi.fn();
+        renderActivity([makeForEachChild('run-1')], {
+            forEachRuns: [makeForEachRunSummary('run-1')],
+            onSetGroupPin,
+        });
+
+        fireEvent.contextMenu(screen.getByTestId('for-each-run-body'), { clientX: 100, clientY: 200 });
+        fireEvent.click(screen.getByTestId('ctx-item-Pin-to-top'));
+
+        expect(onSetGroupPin).toHaveBeenCalledWith('for-each-run', 'run-1', true);
+        expect(mockPinChat).not.toHaveBeenCalled();
     });
 });

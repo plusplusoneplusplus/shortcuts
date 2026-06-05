@@ -38,6 +38,14 @@ interface RalphSessionRowProps {
     onSelectSession?: (sessionId: string) => void;
     /** Right-click handler for the group row (context menu). */
     onContextMenu?: (e: React.MouseEvent) => void;
+    /** Mobile long-press handlers supplied by the list pane. */
+    onTouchStart?: (e: React.TouchEvent) => void;
+    onTouchEnd?: (e: React.TouchEvent) => void;
+    onTouchMove?: (e: React.TouchEvent) => void;
+    /** Parent-row pin state and actions. This is independent from child chat pins. */
+    isPinned?: boolean;
+    onTogglePin?: () => void;
+    onMoreActions?: (e: React.MouseEvent<HTMLButtonElement>) => void;
     /** Optional pointer-only context payload used when session-context dragging is enabled. */
     sessionContextPayload?: RalphSessionContextDragPayload | null;
     /** Render a single child task row. Mirrors `renderChatListRow`'s options
@@ -76,6 +84,12 @@ export function RalphSessionRow({
     onSelectTask: _onSelectTask,
     onSelectSession,
     onContextMenu,
+    onTouchStart,
+    onTouchEnd,
+    onTouchMove,
+    isPinned,
+    onTogglePin,
+    onMoreActions,
     sessionContextPayload,
     renderTaskCard,
 }: RalphSessionRowProps) {
@@ -130,6 +144,7 @@ export function RalphSessionRow({
                 expanded && 'bg-[#f7f7f8] dark:bg-[#1f1f20]/80',
                 isSelected && 'ring-1 ring-[#0078d4]/40',
             )}
+            data-pinned={isPinned ? 'true' : undefined}
         >
             <div
                 className={cn(
@@ -139,16 +154,21 @@ export function RalphSessionRow({
                     'text-[12.5px] h-[26px]',
                     'border-b border-[#e0e0e0]/60 dark:border-[#3c3c3c]/60',
                     'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2b]',
+                    isPinned && 'border-l-2 border-l-amber-400 dark:border-l-amber-500',
                 )}
                 onClick={() => {
                     if (onSelectSession) onSelectSession(session.sessionId);
                     else toggle();
                 }}
                 onContextMenu={onContextMenu}
+                onTouchStart={onTouchStart}
+                onTouchEnd={onTouchEnd}
+                onTouchMove={onTouchMove}
                 draggable={!!sessionContextPayload}
                 onDragStart={sessionContextPayload ? (e) => writeRalphSessionContextDragData(e.dataTransfer, sessionContextPayload) : undefined}
                 data-testid="ralph-session-body"
                 data-session-phase={session.phase}
+                data-pinned={isPinned ? 'true' : undefined}
                 data-session-context-source={sessionContextPayload ? 'true' : undefined}
                 data-session-context-kind={sessionContextPayload ? 'ralph-session' : undefined}
                 data-session-context-status={sessionContextPayload?.status}
@@ -207,9 +227,43 @@ export function RalphSessionRow({
                     )}
                 </span>
                 <span className="flex items-center gap-1 text-[#848484] dark:text-[#999]">
-                    <span className="text-[10.5px] font-mono tabular-nums whitespace-nowrap">
+                    <span className="chat-row-when text-[10.5px] font-mono tabular-nums whitespace-nowrap group-hover:hidden">
                         {timestamp}
                     </span>
+                    {(onTogglePin || onMoreActions) && (
+                        <span className="chat-row-actions hidden group-hover:flex items-center gap-0">
+                            {onTogglePin && (
+                                <button
+                                    type="button"
+                                    className="h-5 w-5 grid place-items-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#ececec] dark:hover:bg-[#2f2f30]"
+                                    title={isPinned ? 'Unpin' : 'Pin'}
+                                    aria-label={isPinned ? 'Unpin Ralph session group' : 'Pin Ralph session group'}
+                                    data-testid="ralph-session-pin"
+                                    onClick={e => { e.stopPropagation(); onTogglePin(); }}
+                                >
+                                    <svg width="12" height="12" viewBox="0 0 14 14" fill={isPinned ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
+                                        <path d="M9 1.5l3.5 3.5-2 1-1.5 4-2-2-3 3-.5-.5 3-3-2-2 4-1.5 1-1z"/>
+                                    </svg>
+                                </button>
+                            )}
+                            {onMoreActions && (
+                                <button
+                                    type="button"
+                                    className="h-5 w-5 grid place-items-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#ececec] dark:hover:bg-[#2f2f30]"
+                                    title="More"
+                                    aria-label="More Ralph session group actions"
+                                    data-testid="ralph-session-more"
+                                    onClick={e => { e.stopPropagation(); onMoreActions(e); }}
+                                >
+                                    <svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+                                        <circle cx="3.5" cy="7" r="1"/>
+                                        <circle cx="7" cy="7" r="1"/>
+                                        <circle cx="10.5" cy="7" r="1"/>
+                                    </svg>
+                                </button>
+                            )}
+                        </span>
+                    )}
                 </span>
             </div>
 

@@ -222,6 +222,11 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
         },
         processes: {
             get: (processId: string) => mockFetchApi(`/processes/${encodeURIComponent(processId)}`),
+            listGroupPins: (workspaceId: string) => mockFetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/group-pins`),
+            pinGroup: (workspaceId: string, type: string, groupId: string, pinned: boolean) => mockFetchApi(
+                `/workspaces/${encodeURIComponent(workspaceId)}/group-pins/${encodeURIComponent(type)}/${encodeURIComponent(groupId)}`,
+                { method: 'PATCH', body: { pinned } },
+            ),
         },
     }),
 }));
@@ -249,11 +254,25 @@ function setupFetchMock(opts: {
     queued?: any[];
     history?: any[];
     stats?: any;
+    groupPins?: any[];
 } = {}) {
-    const { running = [], queued = [], history = [], stats = { isPaused: false } } = opts;
+    const { running = [], queued = [], history = [], stats = { isPaused: false }, groupPins = [] } = opts;
     mockFetchApi.mockImplementation(async (url: string, init?: any) => {
+        if (url.includes('/group-pins') && init?.method === 'PATCH') {
+            const parts = url.split('/group-pins/')[1]?.split('/') ?? [];
+            const type = decodeURIComponent(parts[0] ?? '');
+            const groupId = decodeURIComponent(parts[1] ?? '');
+            return {
+                pin: init.body?.pinned
+                    ? { type, groupId, pinnedAt: '2026-01-01T00:00:00.000Z' }
+                    : null,
+            };
+        }
         if (init?.method === 'POST') {
             return {};
+        }
+        if (url.includes('/group-pins')) {
+            return { pins: groupPins };
         }
         if (url.includes('/workspaces/') && url.includes('/history')) {
             return { history };
@@ -452,6 +471,16 @@ describe('RepoChatTab: data fetching', () => {
         await renderTab();
         const lastProps = mockListPane.mock.calls.at(-1)?.[0];
         expect(lastProps?.history).toEqual([h1]);
+    });
+
+    it('fetches workspace group pins and passes them to list pane', async () => {
+        const groupPins = [{ type: 'ralph-session', groupId: 'ralph-1', pinnedAt: '2026-01-01T00:00:00.000Z' }];
+        setupFetchMock({ groupPins });
+        await renderTab();
+
+        expect(mockFetchApi).toHaveBeenCalledWith('/workspaces/ws-1/group-pins');
+        const lastProps = mockListPane.mock.calls.at(-1)?.[0];
+        expect(lastProps?.groupPins).toEqual(groupPins);
     });
 
     it('handles fetch error gracefully (empty lists)', async () => {
@@ -1141,6 +1170,25 @@ describe('RepoChatTab: props wiring to children', () => {
         await renderTab();
         const lastProps = mockListPane.mock.calls.at(-1)?.[0];
         expect(typeof lastProps?.fetchQueue).toBe('function');
+    });
+
+    it('persists group pin toggles through the workspace-scoped processes client', async () => {
+        await renderTab('ws-1');
+        const lastProps = mockListPane.mock.calls.at(-1)?.[0];
+
+        await act(async () => {
+            await lastProps.onSetGroupPin('ralph-session', 'ralph-1', true);
+        });
+
+        expect(mockFetchApi).toHaveBeenCalledWith(
+            '/workspaces/ws-1/group-pins/ralph-session/ralph-1',
+            { method: 'PATCH', body: { pinned: true } },
+        );
+        await waitFor(() => {
+            expect(mockListPane.mock.calls.at(-1)?.[0]?.groupPins).toEqual([
+                { type: 'ralph-session', groupId: 'ralph-1', pinnedAt: '2026-01-01T00:00:00.000Z' },
+            ]);
+        });
     });
 });
 

@@ -31,7 +31,7 @@ import { groupByRalphSession, type RalphHistoryEntry, type RalphSession } from '
 import { RalphSessionRow } from './RalphSessionRow';
 import { groupByForEachRun, getForEachEntryTimestamp, getForEachRunId, type ForEachRunGroup, type ForEachRunHistoryEntry } from './for-each-run-grouping';
 import { ForEachRunRow } from './ForEachRunRow';
-import { isPinnedGroupEntry, mergePinnedEntries, partitionPinnedGroups, type PinnedGroupEntry, type PinnedListEntry } from './group-pinning';
+import { getGroupPinKey, isPinnedGroupEntry, mergePinnedEntries, partitionPinnedGroups, type PinnedGroupEntry, type PinnedListEntry } from './group-pinning';
 import { isRalphEnabled, isLoopsEnabled, isSessionContextAttachmentsEnabled, isForEachEnabled } from '../../utils/config';
 import { getListModeConfig } from './list-mode-config';
 import { useAllLoops, type ProcessLoopState } from './hooks/useAllLoops';
@@ -40,7 +40,7 @@ import { isRalphTask } from '../../../../../tasks/task-types';
 import { getProviderDotClasses, getTaskChatProvider } from './ProviderBadge';
 import { normalizeChatMode } from '../../repos/modeConfig';
 import { createRalphSessionContextDragPayload, createSessionContextDragPayload, writeSessionContextDragData } from './sessionContextDrag';
-import type { ForEachRunSummary, ProcessGroupPin } from '@plusplusoneplusplus/coc-client';
+import type { ForEachRunSummary, ProcessGroupPin, ProcessGroupPinType } from '@plusplusoneplusplus/coc-client';
 
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {
@@ -60,6 +60,12 @@ export type ActivityTabMode = 'chats' | 'tasks';
 
 type QueuePauseOptions = { durationHours?: 1 | 2 | 3 | 4 | 8; until?: number | string };
 type PauseMenuScope = 'all' | 'autopilot';
+type GroupPinMenuTarget = {
+    type: ProcessGroupPinType;
+    groupId: string;
+    isPinned: boolean;
+    label: string;
+};
 const PAUSE_HOUR_PRESETS = [1, 2, 3, 4, 8] as const;
 const EMPTY_GROUP_PINS: ProcessGroupPin[] = [];
 
@@ -441,6 +447,8 @@ export interface ChatListPaneProps {
     forEachRuns?: ForEachRunSummary[];
     /** Workspace-scoped parent-row group pins for Ralph sessions and For Each runs. */
     groupPins?: ProcessGroupPin[];
+    /** Toggle a workspace-scoped parent-row group pin without mutating child process pins. */
+    onSetGroupPin?: (type: ProcessGroupPinType, groupId: string, pinned: boolean) => void;
     /** When set, the matching For Each run row is highlighted as selected. */
     selectedForEachRunId?: string | null;
     /** Called when the user clicks a For Each run row body (right-pane switch). */
@@ -560,6 +568,7 @@ export function ChatListPane({
     onSelectRalphSession,
     forEachRuns = [],
     groupPins = EMPTY_GROUP_PINS,
+    onSetGroupPin,
     selectedForEachRunId,
     onSelectForEachRun,
     cursorTaskId,
@@ -623,7 +632,16 @@ export function ChatListPane({
     }, [onSearchQueryChange]);
 
     const isServerSearchActive = searchResults != null;
-    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; taskId: string; taskStatus: 'running' | 'queued' | 'completed'; bulkIds?: string[]; ralphSession?: RalphSession } | null>(null);
+    const [contextMenu, setContextMenu] = useState<{
+        x: number;
+        y: number;
+        taskId: string;
+        taskStatus: 'running' | 'queued' | 'completed';
+        bulkIds?: string[];
+        ralphSession?: RalphSession;
+        forEachRun?: ForEachRunGroup;
+        groupPin?: GroupPinMenuTarget;
+    } | null>(null);
     const [insertingPauseAt, setInsertingPauseAt] = useState<number | null>(null);
     const [selectedHistoryIds, setSelectedHistoryIds] = useState<Set<string>>(new Set());
     const [anchorHistoryId, setAnchorHistoryId] = useState<string | null>(null);
@@ -663,6 +681,17 @@ export function ChatListPane({
     const { pinnedChatIds, archivedChatIds, pinChat: onPinChat, unpinChat: onUnpinChat, archiveChat: onArchiveChat, unarchiveChat: onUnarchiveChat, archiveChats: onArchiveChats, unarchiveChats: onUnarchiveChats } = useChatPrefs();
     const { taskCardDensity, historyGrouping } = useDisplaySettings();
     const isDense = taskCardDensity === 'dense';
+    const groupPinKeys = useMemo(
+        () => new Set(groupPins.map(pin => getGroupPinKey(pin.type, pin.groupId))),
+        [groupPins],
+    );
+    const isGroupPinned = useCallback(
+        (type: ProcessGroupPinType, groupId: string) => groupPinKeys.has(getGroupPinKey(type, groupId)),
+        [groupPinKeys],
+    );
+    const setGroupPinned = useCallback((type: ProcessGroupPinType, groupId: string, pinned: boolean) => {
+        onSetGroupPin?.(type, groupId, pinned);
+    }, [onSetGroupPin]);
 
     useEffect(() => {
         setSearchQueryRaw('');
@@ -1342,6 +1371,31 @@ export function ChatListPane({
             setContextMenu({ x, y, taskId, taskStatus: 'completed', bulkIds });
         },
     );
+    const groupLongPressTargetRef = useRef<{
+        taskId: string;
+        bulkIds?: string[];
+        ralphSession?: RalphSession;
+        forEachRun?: ForEachRunGroup;
+        groupPin: GroupPinMenuTarget;
+    } | null>(null);
+    const groupLongPress = useLongPress(
+        (x: number, y: number) => {
+            const target = groupLongPressTargetRef.current;
+            if (!target) return;
+            if (target.bulkIds) setSelectedHistoryIds(new Set(target.bulkIds));
+            else setSelectedHistoryIds(new Set());
+            setContextMenu({
+                x,
+                y,
+                taskId: target.taskId,
+                taskStatus: 'completed',
+                bulkIds: target.bulkIds,
+                ralphSession: target.ralphSession,
+                forEachRun: target.forEachRun,
+                groupPin: target.groupPin,
+            });
+        },
+    );
 
     // Clean up stale selection when the filtered list changes
     useEffect(() => {
@@ -1415,6 +1469,39 @@ export function ChatListPane({
     const contextMenuItems = useMemo<ContextMenuItem[]>(() => {
         if (!contextMenu) return [];
         const { taskId, taskStatus } = contextMenu;
+        const groupPinAction = contextMenu.groupPin && onSetGroupPin
+            ? {
+                label: contextMenu.groupPin.isPinned ? 'Unpin' : 'Pin to top',
+                icon: '📌',
+                onClick: () => {
+                    setGroupPinned(contextMenu.groupPin!.type, contextMenu.groupPin!.groupId, !contextMenu.groupPin!.isPinned);
+                    closeContextMenu();
+                },
+            }
+            : null;
+
+        if (contextMenu.groupPin && !contextMenu.bulkIds) {
+            return [
+                ...(groupPinAction ? [groupPinAction] : []),
+                ...(contextMenu.forEachRun ? [{
+                    label: 'Copy run info',
+                    icon: '📎',
+                    onClick: () => {
+                        const group = contextMenu.forEachRun!;
+                        const lines = [
+                            `For Each run ${group.runId}`,
+                            `Status: ${group.run.status}`,
+                            `Items: ${group.run.itemCount}`,
+                            `Updated: ${group.run.updatedAt ?? group.run.completedAt ?? group.run.createdAt}`,
+                            'Processes:',
+                            ...group.children.map(child => `  - ${child.id}`),
+                        ];
+                        void copyToClipboard(lines.join('\n'));
+                        closeContextMenu();
+                    },
+                }] : []),
+            ];
+        }
 
         // Bulk context menu for multi-selected completed tasks
         if (contextMenu.bulkIds) {
@@ -1430,8 +1517,9 @@ export function ChatListPane({
                 { label: '', icon: '', separator: true, onClick: () => {} },
                 ...(anyUnseen && onMarkRead    ? [{ label: 'Mark as Read',   icon: '✓', onClick: () => { ids.forEach(id => onMarkRead!(id));   closeContextMenu(); } }] : []),
                 ...(anySeen && onMarkUnread    ? [{ label: 'Mark as Unread', icon: '●', onClick: () => { ids.forEach(id => onMarkUnread!(id)); closeContextMenu(); } }] : []),
-                ...(anyPinned && onUnpinChat   ? [{ label: 'Unpin',          icon: '📌', onClick: () => { ids.forEach(id => onUnpinChat!(id)); closeContextMenu(); } }] : []),
-                ...(anyUnpinned && onPinChat   ? [{ label: 'Pin to top',     icon: '📌', onClick: () => { ids.forEach(id => onPinChat!(id));   closeContextMenu(); } }] : []),
+                ...(groupPinAction ? [groupPinAction] : []),
+                ...(!groupPinAction && anyPinned && onUnpinChat   ? [{ label: 'Unpin',          icon: '📌', onClick: () => { ids.forEach(id => onUnpinChat!(id)); closeContextMenu(); } }] : []),
+                ...(!groupPinAction && anyUnpinned && onPinChat   ? [{ label: 'Pin to top',     icon: '📌', onClick: () => { ids.forEach(id => onPinChat!(id));   closeContextMenu(); } }] : []),
                 ...(anyUnarchived && onArchiveChats  ? [{ label: 'Archive',   icon: '📦', onClick: () => { onArchiveChats!(ids);   closeContextMenu(); } }] : []),
                 ...(anyArchived  && onUnarchiveChats ? [{ label: 'Unarchive', icon: '📤', onClick: () => { onUnarchiveChats!(ids); closeContextMenu(); } }] : []),
                 ...(ids.length <= 20 ? [{
@@ -1546,7 +1634,7 @@ export function ChatListPane({
                 : { label: 'Freeze', icon: '❄', onClick: () => handleFreeze(taskId) },
             { label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) },
         ];
-    }, [contextMenu, queued, running, history, unseenProcessIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat, onArchiveChats, onUnarchiveChats, closeContextMenu, deleteChatDirect, workspaceId, onSelectTask, fetchQueue, isAutopilotPaused]);
+    }, [contextMenu, queued, running, history, unseenProcessIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat, onArchiveChats, onUnarchiveChats, onSetGroupPin, setGroupPinned, closeContextMenu, deleteChatDirect, workspaceId, onSelectTask, fetchQueue, isAutopilotPaused]);
 
     /** Render a single history card (shared between flat and grouped layouts). */
     /**
@@ -1901,9 +1989,29 @@ export function ChatListPane({
     const renderRalphSessionGroup = useCallback((session: RalphSession, listForRange: HistoryRangeInput[]) => {
         const ralphSubIds = getRalphSessionSubIds(session);
         const isRalphRangeSelected = ralphSubIds.length > 0 && ralphSubIds.every(id => selectedHistoryIds.has(id));
+        const isPinned = isPinnedGroupEntry(session) || isGroupPinned('ralph-session', session.sessionId);
+        const groupPin: GroupPinMenuTarget = {
+            type: 'ralph-session',
+            groupId: session.sessionId,
+            isPinned,
+            label: 'Ralph session',
+        };
         const ralphSessionContextPayload = sessionContextDragEnabled
             ? createRalphSessionContextDragPayload(session, { activeWorkspaceId: workspaceId })
             : null;
+        const openContextMenu = (x: number, y: number) => {
+            const ids = [session.grillingProcess?.id, ...session.iterations.map((i: any) => i.id)].filter(Boolean) as string[];
+            setSelectedHistoryIds(new Set(ids));
+            setContextMenu({
+                x,
+                y,
+                taskId: ids[0] ?? session.sessionId,
+                taskStatus: 'completed',
+                bulkIds: ids,
+                ralphSession: session,
+                groupPin,
+            });
+        };
         return (
             <RalphSessionRow
                 key={`${workspaceId ?? '__all'}:${session.sessionId}`}
@@ -1917,21 +2025,36 @@ export function ChatListPane({
                 unseenProcessIds={unseenProcessIds}
                 onSelectTask={onSelectTask}
                 onSelectSession={onSelectRalphSession}
+                isPinned={isPinned}
+                onTogglePin={onSetGroupPin ? () => setGroupPinned('ralph-session', session.sessionId, !isPinned) : undefined}
+                onMoreActions={onSetGroupPin ? e => openContextMenu(e.clientX, e.clientY) : undefined}
                 sessionContextPayload={ralphSessionContextPayload}
                 onContextMenu={e => {
                     if (e.shiftKey) return;
                     e.preventDefault();
                     e.stopPropagation();
-                    const ids = [session.grillingProcess?.id, ...session.iterations.map((i: any) => i.id)].filter(Boolean) as string[];
-                    setSelectedHistoryIds(new Set(ids));
-                    setContextMenu({ x: e.clientX, y: e.clientY, taskId: ids[0], taskStatus: 'completed', bulkIds: ids, ralphSession: session });
+                    openContextMenu(e.clientX, e.clientY);
                 }}
+                onTouchStart={e => {
+                    groupLongPressTargetRef.current = {
+                        taskId: ralphSubIds[0] ?? session.sessionId,
+                        bulkIds: ralphSubIds,
+                        ralphSession: session,
+                        groupPin,
+                    };
+                    groupLongPress.onTouchStart(e);
+                }}
+                onTouchEnd={groupLongPress.onTouchEnd}
+                onTouchMove={groupLongPress.onTouchMove}
                 renderTaskCard={(task) => renderChatListRow(task, listForRange, { isGroupChild: true })}
             />
         );
     }, [
         expandedRalphSessionIds,
+        groupLongPress,
+        isGroupPinned,
         now,
+        onSetGroupPin,
         onSelectRalphSession,
         onSelectTask,
         renderChatListRow,
@@ -1942,21 +2065,54 @@ export function ChatListPane({
         toggleRalphSession,
         unseenProcessIds,
         workspaceId,
+        setGroupPinned,
     ]);
 
-    const renderForEachRunGroup = useCallback((group: ForEachRunGroup, listForRange: HistoryRangeInput[]) => (
-        <ForEachRunRow
-            key={`${workspaceId ?? '__all'}:for-each:${group.runId}`}
-            group={group}
-            selectedRunId={selectedForEachRunId}
-            now={now}
-            onSelectRun={onSelectForEachRun}
-            renderTaskCard={(task) => renderChatListRow(task, listForRange, {
-                taskStatus: getGroupedChildTaskStatus(task),
-                isGroupChild: true,
-            })}
-        />
-    ), [getGroupedChildTaskStatus, now, onSelectForEachRun, renderChatListRow, selectedForEachRunId, workspaceId]);
+    const renderForEachRunGroup = useCallback((group: ForEachRunGroup, listForRange: HistoryRangeInput[]) => {
+        const isPinned = isPinnedGroupEntry(group) || isGroupPinned('for-each-run', group.runId);
+        const groupPin: GroupPinMenuTarget = {
+            type: 'for-each-run',
+            groupId: group.runId,
+            isPinned,
+            label: 'For Each run',
+        };
+        const openContextMenu = (x: number, y: number) => {
+            setSelectedHistoryIds(new Set());
+            setContextMenu({ x, y, taskId: group.runId, taskStatus: 'completed', forEachRun: group, groupPin });
+        };
+        return (
+            <ForEachRunRow
+                key={`${workspaceId ?? '__all'}:for-each:${group.runId}`}
+                group={group}
+                selectedRunId={selectedForEachRunId}
+                now={now}
+                onSelectRun={onSelectForEachRun}
+                isPinned={isPinned}
+                onTogglePin={onSetGroupPin ? () => setGroupPinned('for-each-run', group.runId, !isPinned) : undefined}
+                onMoreActions={onSetGroupPin ? e => openContextMenu(e.clientX, e.clientY) : undefined}
+                onContextMenu={e => {
+                    if (e.shiftKey) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openContextMenu(e.clientX, e.clientY);
+                }}
+                onTouchStart={e => {
+                    groupLongPressTargetRef.current = {
+                        taskId: group.runId,
+                        forEachRun: group,
+                        groupPin,
+                    };
+                    groupLongPress.onTouchStart(e);
+                }}
+                onTouchEnd={groupLongPress.onTouchEnd}
+                onTouchMove={groupLongPress.onTouchMove}
+                renderTaskCard={(task) => renderChatListRow(task, listForRange, {
+                    taskStatus: getGroupedChildTaskStatus(task),
+                    isGroupChild: true,
+                })}
+            />
+        );
+    }, [getGroupedChildTaskStatus, groupLongPress, isGroupPinned, now, onSelectForEachRun, onSetGroupPin, renderChatListRow, selectedForEachRunId, setGroupPinned, workspaceId]);
 
     const renderPinnedActivityEntry = useCallback((entry: PinnedListEntry) => {
         if (isPinnedGroupEntry(entry) && entry.kind === 'for-each-run') {

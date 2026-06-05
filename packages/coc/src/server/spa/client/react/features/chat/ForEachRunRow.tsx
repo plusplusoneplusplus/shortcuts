@@ -10,6 +10,14 @@ interface ForEachRunRowProps {
     selectedRunId?: string | null;
     now: number;
     onSelectRun?: (runId: string) => void;
+    onContextMenu?: (e: React.MouseEvent) => void;
+    onTouchStart?: (e: React.TouchEvent) => void;
+    onTouchEnd?: (e: React.TouchEvent) => void;
+    onTouchMove?: (e: React.TouchEvent) => void;
+    /** Parent-row pin state and actions. This is independent from child chat pins. */
+    isPinned?: boolean;
+    onTogglePin?: () => void;
+    onMoreActions?: (e: React.MouseEvent<HTMLButtonElement>) => void;
     renderTaskCard: (task: any) => React.ReactNode;
 }
 
@@ -49,7 +57,20 @@ function titlePreview(text: string): string {
     return flat.length > 80 ? flat.slice(0, 77) + '...' : flat;
 }
 
-export function ForEachRunRow({ group, selectedRunId, now: _now, onSelectRun, renderTaskCard }: ForEachRunRowProps) {
+export function ForEachRunRow({
+    group,
+    selectedRunId,
+    now: _now,
+    onSelectRun,
+    onContextMenu,
+    onTouchStart,
+    onTouchEnd,
+    onTouchMove,
+    isPinned,
+    onTogglePin,
+    onMoreActions,
+    renderTaskCard,
+}: ForEachRunRowProps) {
     const [expanded, setExpanded] = useState(false);
     const isSelected = selectedRunId === group.runId;
     const childCount = group.children.length;
@@ -68,6 +89,7 @@ export function ForEachRunRow({ group, selectedRunId, now: _now, onSelectRun, re
                 expanded && 'bg-[#f7f7f8] dark:bg-[#1f1f20]/80',
                 isSelected && 'ring-1 ring-sky-500/45',
             )}
+            data-pinned={isPinned ? 'true' : undefined}
         >
             <div
                 className={cn(
@@ -77,14 +99,20 @@ export function ForEachRunRow({ group, selectedRunId, now: _now, onSelectRun, re
                     'text-[12.5px] h-[26px]',
                     'border-b border-[#e0e0e0]/60 dark:border-[#3c3c3c]/60',
                     'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2b]',
+                    isPinned && 'border-l-2 border-l-amber-400 dark:border-l-amber-500',
                 )}
                 onClick={() => {
                     if (onSelectRun) onSelectRun(group.runId);
                     else toggle();
                 }}
+                onContextMenu={onContextMenu}
+                onTouchStart={onTouchStart}
+                onTouchEnd={onTouchEnd}
+                onTouchMove={onTouchMove}
                 data-testid="for-each-run-body"
                 data-run-status={group.run.status}
                 data-expanded={expanded ? 'true' : 'false'}
+                data-pinned={isPinned ? 'true' : undefined}
                 aria-expanded={expanded}
             >
                 <span
@@ -149,9 +177,43 @@ export function ForEachRunRow({ group, selectedRunId, now: _now, onSelectRun, re
                     )}
                 </span>
                 <span className="flex items-center gap-1 text-[#848484] dark:text-[#999]">
-                    <span className="text-[10.5px] font-mono tabular-nums whitespace-nowrap">
+                    <span className="chat-row-when text-[10.5px] font-mono tabular-nums whitespace-nowrap group-hover:hidden">
                         {timestamp}
                     </span>
+                    {(onTogglePin || onMoreActions) && (
+                        <span className="chat-row-actions hidden group-hover:flex items-center gap-0">
+                            {onTogglePin && (
+                                <button
+                                    type="button"
+                                    className="h-5 w-5 grid place-items-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#ececec] dark:hover:bg-[#2f2f30]"
+                                    title={isPinned ? 'Unpin' : 'Pin'}
+                                    aria-label={isPinned ? 'Unpin For Each run group' : 'Pin For Each run group'}
+                                    data-testid="for-each-run-pin"
+                                    onClick={e => { e.stopPropagation(); onTogglePin(); }}
+                                >
+                                    <svg width="12" height="12" viewBox="0 0 14 14" fill={isPinned ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
+                                        <path d="M9 1.5l3.5 3.5-2 1-1.5 4-2-2-3 3-.5-.5 3-3-2-2 4-1.5 1-1z"/>
+                                    </svg>
+                                </button>
+                            )}
+                            {onMoreActions && (
+                                <button
+                                    type="button"
+                                    className="h-5 w-5 grid place-items-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#ececec] dark:hover:bg-[#2f2f30]"
+                                    title="More"
+                                    aria-label="More For Each run group actions"
+                                    data-testid="for-each-run-more"
+                                    onClick={e => { e.stopPropagation(); onMoreActions(e); }}
+                                >
+                                    <svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+                                        <circle cx="3.5" cy="7" r="1"/>
+                                        <circle cx="7" cy="7" r="1"/>
+                                        <circle cx="10.5" cy="7" r="1"/>
+                                    </svg>
+                                </button>
+                            )}
+                        </span>
+                    )}
                 </span>
             </div>
 

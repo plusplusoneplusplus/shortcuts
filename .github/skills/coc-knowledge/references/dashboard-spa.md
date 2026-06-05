@@ -46,6 +46,9 @@ visibility affordances for unread children. Workspace-scoped group pins from
 For Each run groups as parent rows in the existing Pinned section, interleaved
 with individually pinned chats by pin time; pinned parent rows are removed from
 their normal recency bucket without mutating child process pin/archive state.
+Parent rows expose the same hover pin affordance and context-menu
+Pin to top/Unpin actions as individual chat rows, but those actions call the
+workspace group-pin API instead of changing child process `pinnedAt`.
 The chat-list multi-select range model follows the rendered Ralph rows:
 collapsed sessions count as one row and expand to all child process IDs when
 selected, while expanded sessions range over individual child rows. For Each run
