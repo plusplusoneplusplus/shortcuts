@@ -1,8 +1,10 @@
 import type {
   ClassificationStatusResponse,
+  AddPullRequestCoworkerRosterEntryRequest,
   ClassifyDiffRequest,
   ClassifyDiffResponse,
   ProviderConfigRequest,
+  PullRequestCoworkerRosterResponse,
   PrReviewHistoryResponse,
   PrSuggestionsResponse,
   PullRequestChatBinding,
@@ -98,6 +100,48 @@ export class PullRequestsClient {
   ): Promise<RecentOpenedPullRequestsResponse> {
     return this.transport.request<RecentOpenedPullRequestsResponse>(
       `/repos/${encodePathSegment(repoId)}/pull-requests/recent-opened/${encodePathSegment(String(prNumber))}`,
+      {
+        method: 'DELETE',
+        query: { workspaceId },
+        signal: options?.signal,
+      },
+    );
+  }
+
+  listCoworkerRoster(repoId: string, workspaceId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestCoworkerRosterResponse> {
+    return this.transport.request<PullRequestCoworkerRosterResponse>(
+      `/repos/${encodePathSegment(repoId)}/pull-requests/coworker-roster`,
+      {
+        query: { workspaceId },
+        signal: options?.signal,
+      },
+    );
+  }
+
+  addCoworkerToRoster(
+    repoId: string,
+    workspaceId: string,
+    entry: AddPullRequestCoworkerRosterEntryRequest,
+    options?: Pick<CocRequestOptions, 'signal'>,
+  ): Promise<PullRequestCoworkerRosterResponse> {
+    return this.transport.request<PullRequestCoworkerRosterResponse>(
+      `/repos/${encodePathSegment(repoId)}/pull-requests/coworker-roster`,
+      {
+        method: 'POST',
+        body: { workspaceId, ...entry },
+        signal: options?.signal,
+      },
+    );
+  }
+
+  removeCoworkerFromRoster(
+    repoId: string,
+    workspaceId: string,
+    coworkerKey: string,
+    options?: Pick<CocRequestOptions, 'signal'>,
+  ): Promise<PullRequestCoworkerRosterResponse> {
+    return this.transport.request<PullRequestCoworkerRosterResponse>(
+      `/repos/${encodePathSegment(repoId)}/pull-requests/coworker-roster/${encodePathSegment(coworkerKey)}`,
       {
         method: 'DELETE',
         query: { workspaceId },

@@ -193,6 +193,7 @@ Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT.
 
 **Per-repo (`~/.coc/repos/<workspaceId>/`):**
 - `queues.json`, `schedules.json`, `git-ops.json`, `preferences.json`
+- `pr-coworker-roster/<repoId>.json` — Pull Requests tab Team roster entries for the workspace/repo
 - `tasks/` — task and plan files
 - `outputs/` — AI conversation output markdown
 - `memory/MEMORY.md` — per-repo bounded memory

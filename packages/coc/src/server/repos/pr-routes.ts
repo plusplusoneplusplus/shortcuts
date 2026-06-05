@@ -15,6 +15,9 @@
  * GET  /api/repos/:repoId/pull-requests/recent-opened    — list recently opened PRs
  * POST /api/repos/:repoId/pull-requests/recent-opened    — record a recently opened PR
  * DELETE /api/repos/:repoId/pull-requests/recent-opened/:prNumber — remove stale recent PR
+ * GET  /api/repos/:repoId/pull-requests/coworker-roster  — list Team roster coworkers
+ * POST /api/repos/:repoId/pull-requests/coworker-roster  — add/update a Team roster coworker
+ * DELETE /api/repos/:repoId/pull-requests/coworker-roster/:coworkerKey — remove a Team roster coworker
  * GET  /api/repos/:repoId/pull-requests/:prId/review-progress — get reviewer progress (AC-04)
  * PUT  /api/repos/:repoId/pull-requests/:prId/review-progress — save reviewer progress (AC-04)
  *
@@ -38,6 +41,12 @@ import {
     removeRecentOpenedPullRequest,
     validateRecentOpenedPullRequestInput,
 } from './recent-opened-pr-store';
+import {
+    addPullRequestCoworkerToRoster,
+    listPullRequestCoworkerRoster,
+    removePullRequestCoworkerFromRoster,
+    validatePullRequestCoworkerRosterInput,
+} from './pr-coworker-roster-store';
 import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
@@ -780,6 +789,83 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
 
                 const workspaceId = parseWorkspaceId(req, undefined, repoId);
                 const entries = removeRecentOpenedPullRequest(dataDir, workspaceId, repoId, prNumber);
+                return sendJson(res, { entries });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    // -- List Team roster coworkers -------------------------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/coworker-roster$/,
+        handler: async (req, res, match) => {
+            try {
+                const repoId = decodeURIComponent(match![1]);
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+
+                const workspaceId = parseWorkspaceId(req, undefined, repoId);
+                const entries = listPullRequestCoworkerRoster(dataDir, workspaceId, repoId);
+                return sendJson(res, { entries });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    // -- Add/update Team roster coworker ---------------------------------------
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/coworker-roster$/,
+        handler: async (req, res, match) => {
+            try {
+                const repoId = decodeURIComponent(match![1]);
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+
+                let raw: unknown;
+                try {
+                    raw = await readJsonBody<unknown>(req);
+                } catch {
+                    return send400(res, 'Invalid JSON body');
+                }
+
+                const validation = validatePullRequestCoworkerRosterInput(raw);
+                if (!validation.ok) {
+                    return send400(res, validation.error);
+                }
+
+                const workspaceId = parseWorkspaceId(req, raw, repoId);
+                const entries = addPullRequestCoworkerToRoster(dataDir, workspaceId, repoId, validation.entry);
+                return sendJson(res, { entries });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    // -- Remove Team roster coworker ------------------------------------------
+
+    routes.push({
+        method: 'DELETE',
+        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/coworker-roster\/([^/]+)$/,
+        handler: async (req, res, match) => {
+            try {
+                const repoId = decodeURIComponent(match![1]);
+                const coworkerKey = decodeURIComponent(match![2]).trim();
+                if (!coworkerKey) {
+                    return send400(res, 'coworkerKey must be a non-empty string');
+                }
+
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+
+                const workspaceId = parseWorkspaceId(req, undefined, repoId);
+                const entries = removePullRequestCoworkerFromRoster(dataDir, workspaceId, repoId, coworkerKey);
                 return sendJson(res, { entries });
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));

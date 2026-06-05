@@ -105,6 +105,60 @@ describe('PullRequestsClient', () => {
     ]);
   });
 
+  it('lists, adds, and removes Team coworker roster entries with workspace scope', async () => {
+    const adapter = createMockAdapter({ entries: [] });
+    const client = new PullRequestsClient(adapter);
+    const controller = new AbortController();
+
+    await client.listCoworkerRoster('repo/a', 'ws/a', { signal: controller.signal });
+    await client.addCoworkerToRoster('repo/a', 'ws/a', {
+      id: '123',
+      displayName: 'Mona Dev',
+      email: 'mona@example.invalid',
+      avatarUrl: 'https://avatars.example.invalid/u/123',
+    }, { signal: controller.signal });
+    await client.removeCoworkerFromRoster('repo/a', 'ws/a', '123', { signal: controller.signal });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/repos/repo%2Fa/pull-requests/coworker-roster',
+        options: { query: { workspaceId: 'ws/a' }, signal: controller.signal },
+      },
+      {
+        path: '/repos/repo%2Fa/pull-requests/coworker-roster',
+        options: {
+          method: 'POST',
+          body: {
+            workspaceId: 'ws/a',
+            id: '123',
+            displayName: 'Mona Dev',
+            email: 'mona@example.invalid',
+            avatarUrl: 'https://avatars.example.invalid/u/123',
+          },
+          signal: controller.signal,
+        },
+      },
+      {
+        path: '/repos/repo%2Fa/pull-requests/coworker-roster/123',
+        options: { method: 'DELETE', query: { workspaceId: 'ws/a' }, signal: controller.signal },
+      },
+    ]);
+  });
+
+  it('encodes displayName fallback keys when removing Team roster entries', async () => {
+    const adapter = createMockAdapter({ entries: [] });
+    const client = new PullRequestsClient(adapter);
+
+    await client.removeCoworkerFromRoster('repo/a', 'ws/a', 'Pat Dev');
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/repos/repo%2Fa/pull-requests/coworker-roster/Pat%20Dev',
+        options: { method: 'DELETE', query: { workspaceId: 'ws/a' }, signal: undefined },
+      },
+    ]);
+  });
+
   it('omits force query param when not true', async () => {
     const adapter = createMockAdapter({});
     const client = new PullRequestsClient(adapter);

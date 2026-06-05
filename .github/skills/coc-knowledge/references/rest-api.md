@@ -225,6 +225,9 @@ Users can add up to **10** additional notes roots per workspace — subfolders i
 | GET | `/api/repos/:repoId/pull-requests/recent-opened` | List recently opened PR entries for a workspace/repo (`workspaceId` query, defaults to `repoId`) |
 | POST | `/api/repos/:repoId/pull-requests/recent-opened` | Record a recently opened PR entry after successful validation/open; body includes `workspaceId`, `number`, `title`, optional `webUrl` |
 | DELETE | `/api/repos/:repoId/pull-requests/recent-opened/:prNumber` | Remove a stale recently opened PR entry for a workspace/repo (`workspaceId` query, defaults to `repoId`) |
+| GET | `/api/repos/:repoId/pull-requests/coworker-roster` | List persisted Team roster coworkers for a workspace/repo (`workspaceId` query, defaults to `repoId`) |
+| POST | `/api/repos/:repoId/pull-requests/coworker-roster` | Add or update a Team roster coworker for a workspace/repo; body includes `workspaceId`, `displayName`, optional `id`, `email`, `avatarUrl` |
+| DELETE | `/api/repos/:repoId/pull-requests/coworker-roster/:coworkerKey` | Remove a Team roster coworker by provider id or displayName fallback key (`workspaceId` query, defaults to `repoId`) |
 | GET | `/api/repos/:repoId/pull-requests/review-history` | Read cached PR review history |
 | POST | `/api/repos/:repoId/pull-requests/review-history/refresh` | Fetch and cache PR review history |
 | GET | `/api/repos/:repoId/pull-requests/suggestions` | Read cached AI-ranked PR suggestions |
