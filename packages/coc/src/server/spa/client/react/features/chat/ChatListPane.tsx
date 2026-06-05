@@ -223,6 +223,14 @@ function taskIdentityMatches(task: any, ids: Set<string>): boolean {
     return ids.has(task.id) || (typeof task.processId === 'string' && ids.has(task.processId));
 }
 
+function isRunningForEachRunGroup(group: ForEachRunGroup, runningIds?: Set<string>): boolean {
+    return group.run.status === 'running'
+        || group.children.some((child: any) => (
+            child.status === 'running'
+            || (runningIds ? taskIdentityMatches(child, runningIds) : false)
+        ));
+}
+
 export const RALPH_SESSION_RANGE_ID_PREFIX = 'ralph-session:';
 
 export type HistoryRangeRow =
@@ -834,8 +842,13 @@ export function ChatListPane({
         pinnedGroups: pinnedForEachRunGroups,
         unpinnedGroups: unpinnedForEachRunGroups,
     } = useMemo(
-        () => partitionPinnedGroups(forEachRunGroups, groupPins),
+        () => partitionPinnedGroups(forEachRunGroups.filter(group => !isRunningForEachRunGroup(group)), groupPins),
         [forEachRunGroups, groupPins],
+    );
+
+    const activityRunningForEachRunGroups = useMemo(
+        () => forEachRunGroups.filter(isRunningForEachRunGroup),
+        [forEachRunGroups],
     );
 
     const forEachGroupedTaskIds = useMemo(() => {
@@ -1143,19 +1156,15 @@ export function ChatListPane({
         const pinnedChats = chatAllItems.pinned.filter(t => !isRunningTask(t) && passesFilter(t));
         const recentNonRunning = chatAllItems.unpinned.filter(t => !isRunningTask(t) && passesFilter(t));
         const archivedChats = chatAllItems.archived.filter(passesFilter);
-        const isRunningForEachGroup = (group: ForEachRunGroup): boolean => {
-            if (group.run.status === 'running') return true;
-            return group.children.some(child => isRunningTask(child));
-        };
         const passesForEachFilter = (group: ForEachRunGroup): boolean => {
             if (chatFilter === 'all') return true;
-            if (chatFilter === 'running') return isRunningForEachGroup(group);
+            if (chatFilter === 'running') return isRunningForEachRunGroup(group, runningIdSet);
             if (chatFilter === 'failed') return group.run.status === 'failed';
             return true;
         };
         const filteredForEachGroups = forEachRunGroups.filter(passesForEachFilter);
-        const runningForEachGroups = filteredForEachGroups.filter(isRunningForEachGroup);
-        const nonRunningForEachGroups = filteredForEachGroups.filter(group => !isRunningForEachGroup(group));
+        const runningForEachGroups = filteredForEachGroups.filter(group => isRunningForEachRunGroup(group, runningIdSet));
+        const nonRunningForEachGroups = filteredForEachGroups.filter(group => !isRunningForEachRunGroup(group, runningIdSet));
         const {
             pinnedGroups: pinnedNonRunningForEachGroups,
             unpinnedGroups: unpinnedNonRunningForEachGroups,
@@ -1189,7 +1198,7 @@ export function ChatListPane({
 
         const counts = {
             all: allActive.length + forEachRunGroups.length,
-            running: allActive.filter(isRunningTask).length + forEachRunGroups.filter(isRunningForEachGroup).length,
+            running: allActive.filter(isRunningTask).length + forEachRunGroups.filter(group => isRunningForEachRunGroup(group, runningIdSet)).length,
             failed: allActive.filter(t => t.status === 'failed').length + forEachRunGroups.filter(group => group.run.status === 'failed').length,
         };
 
@@ -2124,6 +2133,11 @@ export function ChatListPane({
         return renderChatListRow(entry, pinnedActivityEntries, { taskStatus: 'completed' });
     }, [pinnedActivityEntries, renderChatListRow, renderForEachRunGroup, renderRalphSessionGroup]);
 
+    const activityRunningEntries = useMemo<Array<any | ForEachRunGroup>>(
+        () => [...visibleTabFilteredRunning, ...activityRunningForEachRunGroups],
+        [visibleTabFilteredRunning, activityRunningForEachRunGroups],
+    );
+
     // When a server-side search is active, always render the main body so FTS5 results
     // can be displayed even when the locally-loaded history page is empty.
     if (running.length === 0 && queued.length === 0 && history.length === 0 && forEachRunGroups.length === 0 && !isServerSearchActive) {
@@ -2685,7 +2699,7 @@ export function ChatListPane({
                             <span className="text-[#848484] tabular-nums text-[10px]">
                                 {isServerSearchActive
                                     ? searchTotal ?? 0
-                                    : visibleTabFilteredRunning.length
+                                    : activityRunningEntries.length
                                         + visibleTabFilteredQueued.filter((t: any) => t.kind !== 'pause-marker').length
                                         + pinnedActivityEntries.length
                                         + activityCompletedEntries.length
@@ -2703,7 +2717,7 @@ export function ChatListPane({
                 </div>
                 </div>
 
-                {visibleTabFilteredRunning.length > 0 && (
+                {activityRunningEntries.length > 0 && (
                     <div data-section="running" className="-mx-2 md:-mx-4">
                         <button
                             type="button"
@@ -2717,11 +2731,13 @@ export function ChatListPane({
                                 <span className="w-[5px] h-[5px] rounded-full bg-[#0078d4] dark:bg-[#3794ff] animate-pulse" aria-hidden="true" />
                                 Running Tasks
                             </span>
-                            <span className="text-[10px] leading-none font-mono tabular-nums text-[#0078d4] dark:text-[#3794ff] font-semibold">{visibleTabFilteredRunning.length}</span>
+                            <span className="text-[10px] leading-none font-mono tabular-nums text-[#0078d4] dark:text-[#3794ff] font-semibold">{activityRunningEntries.length}</span>
                         </button>
                         {showRunning && (
                             <div className="flex flex-col">
-                                {visibleTabFilteredRunning.map(task => renderChatListRow(task, visibleTabFilteredRunning, { taskStatus: 'running' }))}
+                                {activityRunningEntries.map(entry => entry.kind === 'for-each-run'
+                                    ? renderForEachRunGroup(entry, activityRunningEntries)
+                                    : renderChatListRow(entry, activityRunningEntries, { taskStatus: 'running' }))}
                             </div>
                         )}
                     </div>

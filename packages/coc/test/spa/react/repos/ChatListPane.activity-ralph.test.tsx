@@ -627,6 +627,52 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
         expect(todaySection.textContent).toContain('Standalone chat');
     });
 
+    it('keeps a pinned running For Each run group in Running instead of Pinned or Today', () => {
+        mockForEachEnabled = true;
+        const runningChild = {
+            ...makeForEachChild('run-1'),
+            status: 'running',
+            startedAt: new Date(NOW - 1000).toISOString(),
+            completedAt: undefined,
+            lastActivityAt: NOW - 1000,
+        };
+        const runningRun = {
+            ...makeForEachRunSummary('run-1'),
+            status: 'running',
+            updatedAt: new Date(NOW - 1000).toISOString(),
+            itemStatusCounts: {
+                pending: 0,
+                running: 1,
+                completed: 0,
+                failed: 0,
+                skipped: 0,
+            },
+        };
+        const standalone = makeStandaloneChat('standalone-running-fe', 'Standalone chat');
+
+        const { container } = renderActivity([standalone], {
+            running: [runningChild],
+            forEachRuns: [runningRun],
+            groupPins: [{
+                type: 'for-each-run',
+                groupId: 'run-1',
+                pinnedAt: new Date(NOW).toISOString(),
+            }],
+        });
+
+        const runningSection = container.querySelector('[data-section="running"]') as HTMLElement;
+        const pinnedSection = container.querySelector('[data-section="pinned"]');
+        const todaySection = container.querySelector('[data-section="completed-today"]') as HTMLElement;
+
+        expect(runningSection).toBeTruthy();
+        expect(within(runningSection).getByTestId('for-each-run-row')).toBeTruthy();
+        expect(within(runningSection).getByTestId('for-each-run-body').getAttribute('data-pinned')).toBe('true');
+        expect(runningSection.querySelector('[data-task-id="child-run-1"]')).toBeNull();
+        expect(pinnedSection).toBeNull();
+        expect(todaySection.querySelector('[data-testid="for-each-run-row"]')).toBeNull();
+        expect(todaySection.textContent).toContain('Standalone chat');
+    });
+
     it('Ralph group pin button toggles only the parent group and does not select or expand', () => {
         const onSetGroupPin = vi.fn();
         const onSelectRalphSession = vi.fn();

@@ -42,11 +42,13 @@ local to the mounted view. Ralph session groups, For Each run groups, and
 plan-file/history groups render collapsed by default on mount or workspace
 switch; unread dots/count badges and Mark all read controls remain the
 visibility affordances for unread children. Workspace-scoped group pins from
-`client.processes.listGroupPins(workspaceId)` render Ralph session groups and
-For Each run groups as parent rows in the existing Pinned section, interleaved
-with individually pinned chats by pin time; pinned parent rows are removed from
-their normal recency bucket without mutating child process pin/archive state.
-Parent rows expose the same hover pin affordance and context-menu
+`client.processes.listGroupPins(workspaceId)` render non-running Ralph session
+groups and For Each run groups as parent rows in the existing Pinned section,
+interleaved with individually pinned chats by pin time; pinned parent rows are
+removed from their normal recency bucket without mutating child process
+pin/archive state. Running For Each parent rows stay in the Running section even
+when pinned, while retaining the pinned affordance. Parent rows expose the same
+hover pin affordance and context-menu
 Pin to top/Unpin actions as individual chat rows, but those actions call the
 workspace group-pin API instead of changing child process `pinnedAt`.
 The chat-list multi-select range model follows the rendered Ralph rows:
