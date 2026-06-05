@@ -294,7 +294,7 @@ describe('AIProviderPage', () => {
         expect(allMatches.length).toBeGreaterThanOrEqual(1);
     });
 
-    it('renders every finite quota window with labels, percentages, and bars', () => {
+    it('renders every finite quota window as one compact row without per-window status badges', () => {
         renderPage({
             quotaData: {
                 providers: [
@@ -322,12 +322,20 @@ describe('AIProviderPage', () => {
         });
 
         const codexRow = screen.getByTestId('provider-row-codex');
+        // Exactly one compact row per quota window.
+        expect(codexRow.querySelectorAll('.aip-quota-row').length).toBe(2);
         expect(within(codexRow).getByText('5h')).toBeDefined();
         expect(within(codexRow).getByText('42% remaining')).toBeDefined();
+        expect(within(codexRow).getByText('58 / 100 used')).toBeDefined();
         expect(within(codexRow).getByLabelText('5h quota remaining')).toBeDefined();
         expect(within(codexRow).getByText('Weekly')).toBeDefined();
         expect(within(codexRow).getByText('87% remaining')).toBeDefined();
+        expect(within(codexRow).getByText('13 / 100 used')).toBeDefined();
         expect(within(codexRow).getByLabelText('Weekly quota remaining')).toBeDefined();
+        // Per-window OK / Watch / Risk badges are removed from quota rows.
+        expect(within(codexRow).queryByText('OK')).toBeNull();
+        expect(within(codexRow).queryByText('Watch')).toBeNull();
+        expect(within(codexRow).queryByText('Risk')).toBeNull();
     });
 
     it('renders simultaneous Claude five-hour and weekly quota windows as separate rows', () => {
@@ -358,6 +366,8 @@ describe('AIProviderPage', () => {
         });
 
         const claudeRow = screen.getByTestId('provider-row-claude');
+        // One compact row per quota window, no duplicate per-window status badges.
+        expect(claudeRow.querySelectorAll('.aip-quota-row').length).toBe(2);
         expect(within(claudeRow).getByText('5h')).toBeDefined();
         expect(within(claudeRow).getByText('24% remaining')).toBeDefined();
         expect(within(claudeRow).getByText('76 / 100 used')).toBeDefined();
@@ -366,6 +376,10 @@ describe('AIProviderPage', () => {
         expect(within(claudeRow).getByText('68% remaining')).toBeDefined();
         expect(within(claudeRow).getByText('32 / 100 used')).toBeDefined();
         expect(within(claudeRow).getByLabelText('Weekly quota remaining')).toBeDefined();
+        // Per-window OK / Watch / Risk badges are removed from quota rows.
+        expect(within(claudeRow).queryByText('OK')).toBeNull();
+        expect(within(claudeRow).queryByText('Watch')).toBeNull();
+        expect(within(claudeRow).queryByText('Risk')).toBeNull();
     });
 
     it('keeps Copilot finite quota display on the tightest quota row', () => {

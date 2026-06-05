@@ -176,13 +176,12 @@ function QuotaCell({ providerId, quotaData }: { providerId: Provider; quotaData:
                 {finiteTypes.map((quotaType, index) => {
                     const label = formatQuotaTypeLabel(quotaType.type);
                     const pct = getQuotaPercent(quotaType.remainingPercentage);
-                    const { barClass, badgeClass, badgeLabel } = getQuotaRiskClasses(pct);
+                    const { barClass } = getQuotaRiskClasses(pct);
                     return (
                         <div className="aip-quota-row" key={`${quotaType.type}-${quotaType.resetDate ?? index}`}>
                             <div className="aip-quota-top">
                                 <span className="aip-quota-label">{label}</span>
                                 <strong className="aip-quota-value">{pct}% remaining</strong>
-                                <span className={`ar-badge ${badgeClass}`}>{badgeLabel}</span>
                             </div>
                             <div className="aip-quota-caption">
                                 {quotaType.usedRequests} / {quotaType.entitlementRequests} used
