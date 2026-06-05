@@ -100,6 +100,7 @@ describe('Process History REST API', () => {
             startTime?: string;
             endTime?: string;
             workspaceId?: string;
+            metadata?: Record<string, unknown>;
         } = {}
     ) {
         await store.addProcess({
@@ -114,6 +115,7 @@ describe('Process History REST API', () => {
             metadata: {
                 type: (opts.type ?? 'pipeline-execution') as any,
                 workspaceId: opts.workspaceId ?? wsId,
+                ...opts.metadata,
             },
         });
     }
@@ -297,6 +299,43 @@ describe('Process History REST API', () => {
         expect(typeof item.endTime).toBe('number');
         expect(typeof item.turnCount).toBe('number');
         expect(item.workspaceId).toBe(wsId);
+    });
+
+    it('returns persisted For Each child metadata in ProcessHistoryItem shape', async () => {
+        await addProcess('p-for-each-child', {
+            status: 'completed',
+            title: 'For Each child',
+            type: 'chat',
+            endTime: '2024-06-01T10:05:00Z',
+            metadata: {
+                mode: 'ask',
+                forEach: {
+                    kind: 'child',
+                    workspaceId: wsId,
+                    runId: 'for-each-run-1',
+                    itemId: 'item-2',
+                    childMode: 'ask',
+                },
+            },
+        });
+
+        const res = await getJSON(historyUrl());
+        const body = JSON.parse(res.body);
+        const item = body.history.find((h: any) => h.id === 'p-for-each-child');
+
+        expect(item).toMatchObject({
+            id: 'p-for-each-child',
+            type: 'chat',
+            mode: 'ask',
+            workspaceId: wsId,
+            forEach: {
+                kind: 'child',
+                workspaceId: wsId,
+                runId: 'for-each-run-1',
+                itemId: 'item-2',
+                childMode: 'ask',
+            },
+        });
     });
 
     it('handles URL-encoded workspace ID', async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CocClient, normalizeForEachPlanItems, scanForEachPlanArtifacts, validateForEachDraftPlan } from '../src';
-import type { ForEachRun } from '../src';
+import type { ForEachRun, ProcessHistoryItem } from '../src';
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -191,5 +191,65 @@ describe('For Each item-plan validation', () => {
       turnIndex: 3,
       message: 'Assistant output did not include an Advanced JSON item plan',
     });
+  });
+});
+
+describe('For Each process history contract', () => {
+  it('accepts child and generation metadata on ProcessHistoryItem', () => {
+    const childHistoryItem: ProcessHistoryItem = {
+      id: 'queue_child-1',
+      type: 'chat',
+      status: 'completed',
+      title: 'Child item',
+      startTime: 1,
+      mode: 'ask',
+      workspaceId: 'ws-1',
+      turnCount: 2,
+      forEach: {
+        kind: 'child',
+        workspaceId: 'ws-1',
+        runId: 'run-1',
+        itemId: 'item-1',
+        childMode: 'ask',
+      },
+    };
+
+    const generationHistoryItem: ProcessHistoryItem = {
+      id: 'queue_generation-1',
+      type: 'chat',
+      status: 'completed',
+      title: 'Generate For Each plan',
+      startTime: 2,
+      mode: 'ask',
+      workspaceId: 'ws-1',
+      turnCount: 4,
+      forEach: {
+        kind: 'generation',
+        workspaceId: 'ws-1',
+        generationId: 'for-each-gen-1',
+        runId: 'run-1',
+        childMode: 'autopilot',
+        originalRequest: 'Split this work',
+        status: 'approved',
+        latestItemCount: 1,
+        latestPlanTurnIndex: 3,
+        latestPlan: {
+          turnIndex: 3,
+          childMode: 'autopilot',
+          sharedInstructions: 'Keep changes focused',
+          items: [
+            {
+              id: 'item-1',
+              title: 'First item',
+              prompt: 'Do item one',
+              status: 'pending',
+            },
+          ],
+        },
+      },
+    };
+
+    expect(childHistoryItem.forEach?.runId).toBe('run-1');
+    expect(generationHistoryItem.forEach?.kind).toBe('generation');
   });
 });
