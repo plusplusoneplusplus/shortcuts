@@ -114,8 +114,9 @@ tool/tool-group. This keeps a rich answer visible even when a hidden
 Chat commit strips are detected from real shell output on `powershell`, `shell`,
 and `bash` tool calls. The detector only treats commit-creating commands
 (`git commit`, `git merge`, `git cherry-pick`, `git revert`) with native git
-output such as `[branch abc1234] subject` as commits; assistant prose and
-read-only git command output are ignored.
+output such as `[branch abc1234] subject`, or compact verification output such
+as `abc1234 subject` from the same commit-creating command, as commits;
+assistant prose and read-only git command output are ignored.
 
 Completed `ask_user` tool calls render as read-only historical question cards via
 `AskUserHistoryCard` inside `ConversationTurnBubble`. Live unanswered questions
