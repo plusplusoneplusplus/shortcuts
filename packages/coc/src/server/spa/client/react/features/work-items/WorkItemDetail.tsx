@@ -9,8 +9,11 @@ import { Button, cn } from '../../ui';
 import { fetchApi } from '../../hooks/useApi';
 import { getSpaCocClient } from '../../api/cocClient';
 import { formatRelativeTime } from '../../utils/format';
-import { WorkItemPlanSection } from './WorkItemPlanSection';
-import { WorkItemDescriptionEditor } from './WorkItemDescriptionEditor';
+import { WorkItemPlanSection, PLAN_MODE_OPTIONS } from './WorkItemPlanSection';
+import type { PlanViewMode } from './WorkItemPlanSection';
+import { WorkItemDescriptionEditor, DESCRIPTION_MODE_OPTIONS } from './WorkItemDescriptionEditor';
+import type { DescriptionViewMode } from './WorkItemDescriptionEditor';
+import { ModeToggleToolbar } from '../../ui/ModeToggleToolbar';
 import { WorkItemExecuteDialog } from './WorkItemExecuteDialog';
 import { useWorkItems } from '../../contexts/WorkItemContext';
 import { useCommitCommentTotals } from '../git/hooks/useCommitCommentTotals';
@@ -146,6 +149,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const [showChildTypePicker, setShowChildTypePicker] = useState(false);
     /** Plan content draft, lifted from WorkItemPlanSection into the unified batch. */
     const [planDraft, setPlanDraft] = useState<string | null>(null);
+    const [descViewMode, setDescViewMode] = useState<DescriptionViewMode>('source');
+    const [planViewMode, setPlanViewMode] = useState<PlanViewMode>('preview');
 
     const [showAiComposer, setShowAiComposer] = useState(false);
     const aiAuthoringEnabled = isWorkItemsAiAuthoringEnabled();
@@ -558,64 +563,60 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     return (
         <div className="flex flex-col h-full" data-testid="work-item-detail">
             {/* ── Detail header ── */}
-            <div className="border-b border-[#d0d7de] dark:border-[#474749] px-5 py-4 bg-white dark:bg-[#1e1e1e] grid gap-3 shrink-0">
+            <div className="border-b border-[#d0d7de] dark:border-[#474749] bg-white dark:bg-[#1e1e1e] grid gap-2 shrink-0" style={{ padding: '12px 16px' }}>
                 {/* Breadcrumbs */}
-                <div className="flex items-center gap-1.5 text-[12px] text-[#656d76] dark:text-[#999] min-w-0 flex-wrap" id="crumbs">
+                <div className="flex items-center gap-1.5 text-[12px] text-[#656d76] dark:text-[#999] min-w-0" id="crumbs">
                     {onBack && (
                         <button onClick={guardedBack} className="text-[#656d76] hover:text-[#1f2328] dark:hover:text-[#ccc] shrink-0" data-testid="work-item-back-btn" aria-label="Back">
                             ←
                         </button>
                     )}
-                    {item.parentId && (
-                        <>
-                            <span className="font-mono text-[#656d76]">{item.parentId.slice(0, 8)}…</span>
-                            <span>/</span>
-                        </>
-                    )}
                     {item.workItemNumber != null && (
-                        <strong className="text-[#1f2328] dark:text-[#cccccc] font-semibold" data-testid="work-item-detail-number">
+                        <span className="font-mono text-[#656d76] dark:text-[#999]" data-testid="work-item-detail-number">
                             {typePrefix}-{item.workItemNumber}
-                        </strong>
+                        </span>
+                    )}
+                    {isDirty && (
+                        <span className="inline-flex items-center rounded-full px-2 py-px text-[11px] leading-[1.4] border border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-400 whitespace-nowrap" data-testid="wi-dirty-indicator">
+                            unsaved
+                        </span>
                     )}
                 </div>
 
-                {/* Title row */}
-                <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0 max-w-[820px] flex-1">
-                        <input
-                            type="text"
-                            className="text-[20px] font-semibold tracking-[-0.01em] w-full rounded border border-[#d0d7de] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1f2328] dark:text-[#cccccc] px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#0969da]"
-                            value={d.title}
-                            onChange={e => updateDraft('title', e.target.value)}
-                            disabled={saving}
-                            data-testid="wi-title-input"
-                            aria-label="Title"
-                        />
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={() => {
-                        const childTypes = ALLOWED_CHILD_TYPES[effectiveType as WorkItemTypeLabel] ?? [];
-                        if (childTypes.length === 0) return;
-                        if (childTypes.length === 1) {
-                            onCreateChild?.(childTypes[0] as WorkItemTypeLabel, item.id);
-                        } else {
-                            setShowChildTypePicker(true);
-                        }
-                    }} data-testid="wi-new-child-btn">
-                        + New child
-                    </Button>
+                {/* Title row with Save + Run */}
+                <div className="grid gap-2 items-start" style={{ gridTemplateColumns: 'minmax(0, 1fr) auto auto' }}>
+                    <input
+                        type="text"
+                        className="w-full border border-[#d0d7de] dark:border-[#555] rounded-md bg-white dark:bg-[#1e1e1e] text-[#1f2328] dark:text-[#cccccc] px-2 py-[5px] text-[18px] leading-[1.25] font-semibold tracking-[-0.01em] outline-none focus:border-[#0969da] focus:shadow-[0_0_0_3px_rgba(9,105,218,0.16)]"
+                        value={d.title}
+                        onChange={e => updateDraft('title', e.target.value)}
+                        disabled={saving}
+                        data-testid="wi-title-input"
+                        aria-label="Title"
+                    />
+                    <button
+                        className="inline-flex items-center justify-center gap-[5px] min-h-7 border border-[rgba(31,35,40,0.15)] rounded-md bg-[#1f883d] text-white px-2 text-[12px] font-semibold tracking-[0.02em] whitespace-nowrap hover:bg-[#1a7f37] disabled:opacity-50 dark:bg-[#238636] dark:hover:bg-[#2ea043]"
+                        onClick={handleSave}
+                        disabled={!isDirty || saving}
+                        data-testid="wi-save-btn"
+                        title="Save changes (Ctrl+S)"
+                        type="button"
+                    >
+                        Save
+                    </button>
+                    <span />
                 </div>
 
-                {/* Meta row */}
-                <div className="flex flex-wrap items-center gap-2">
+                {/* Meta grid + inline actions */}
+                <div className="flex items-center gap-1.5 flex-wrap">
                     <span className={cn('inline-flex items-center rounded-full text-[11px] leading-[1.25] px-[7px] py-px border whitespace-nowrap', typePillClass)}>
                         {TYPE_LABELS[effectiveType as WorkItemTypeLabel] ?? effectiveType}
                     </span>
-                    {/* Status dropdown styled as pill — feeds the unified dirty batch */}
                     <select
                         value={d.status}
                         onChange={e => updateDraft('status', e.target.value)}
                         className={cn(
-                            'inline-flex items-center rounded-full text-[11px] leading-[1.25] px-[7px] py-px border cursor-pointer appearance-none',
+                            'h-[26px] rounded-full border px-2 text-[11px] font-semibold cursor-pointer appearance-none outline-none',
                             statusPillClass,
                         )}
                         data-testid="work-item-status-select"
@@ -625,51 +626,280 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             <option key={s} value={s}>{STATUS_LABELS[s]?.label ?? s}</option>
                         ))}
                     </select>
-                    {item.plan && (
-                        <span className="inline-flex items-center gap-1 border border-[#d0d7de] dark:border-[#555] rounded-full px-2 py-px text-[12px] leading-[1.4] text-[#656d76] dark:text-[#999] whitespace-nowrap bg-white dark:bg-transparent">
-                            Plan v{item.plan.version}
-                        </span>
-                    )}
                     <WorkItemRemoteMirrorBadge
                         githubMirror={item.githubMirror}
                         azureBoardsMirror={item.azureBoardsMirror}
                         asLink
                         data-testid={item.githubMirror ? 'work-item-github-mirror-badge' : 'work-item-azure-boards-mirror-badge'}
                     />
-                    <span className="text-[12px] leading-[1.4] text-[#656d76] dark:text-[#999]">Updated {formatRelativeTime(item.updatedAt)}</span>
-                    {isDirty && (
-                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-px text-[11px] leading-[1.4] border border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-400 whitespace-nowrap" data-testid="wi-dirty-indicator">
-                            ● Unsaved changes
+                    {item.plan && (
+                        <span className="inline-flex items-center rounded-full h-6 px-2 border border-[#d0d7de] dark:border-[#555] bg-[#f6f8fa] dark:bg-transparent text-[11px] text-[#656d76] dark:text-[#999] whitespace-nowrap">
+                            Plan v{item.plan.version}
                         </span>
                     )}
-                </div>
-
-                {/* Action buttons */}
-                <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                    <Button variant="primary" size="sm" onClick={handleSave} disabled={!isDirty || saving} loading={saving} data-testid="wi-save-btn" title="Save changes (Ctrl+S)">
-                        Save
-                    </Button>
-                    {isMobile && isContainer && (
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                                const childTypes = ALLOWED_CHILD_TYPES[effectiveType as WorkItemTypeLabel] ?? [];
-                                if (childTypes.length === 0) return;
-                                if (childTypes.length === 1) {
-                                    onCreateChild?.(childTypes[0] as WorkItemTypeLabel, item.id);
-                                } else {
-                                    setShowChildTypePicker(true);
+                    <span className="inline-flex items-center rounded-full h-6 px-2 border border-[#d0d7de] dark:border-[#555] bg-[#f6f8fa] dark:bg-transparent text-[11px] text-[#656d76] dark:text-[#999] whitespace-nowrap">
+                        {d.priority}
+                    </span>
+                    <span className="text-[11px] leading-[1.35] text-[#656d76] dark:text-[#999] truncate min-w-0 flex-1">
+                        Updated {formatRelativeTime(item.updatedAt)}
+                    </span>
+                    {/* Inline action icons — compact, right-aligned */}
+                    <div className="flex items-center gap-2 shrink-0">
+                        {!isContainer && (
+                            <button
+                                className="inline-flex items-center justify-center min-h-[22px] border border-[#0969da] rounded-[4px] bg-[#0969da] text-white px-[6px] text-[10px] font-semibold whitespace-nowrap hover:bg-[#0550ae] disabled:opacity-40"
+                                onClick={() => setShowExecuteDialog(true)}
+                                disabled={!canExecute}
+                                data-testid="work-item-execute-btn"
+                                type="button"
+                            >
+                                Run
+                            </button>
+                        )}
+                        {isMobile && isContainer && (
+                            <button
+                                className="text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#ccc] text-[11px] bg-transparent border-0 cursor-pointer p-0 whitespace-nowrap"
+                                onClick={() => {
+                                    const childTypes = ALLOWED_CHILD_TYPES[effectiveType as WorkItemTypeLabel] ?? [];
+                                    if (childTypes.length === 0) return;
+                                    if (childTypes.length === 1) {
+                                        onCreateChild?.(childTypes[0] as WorkItemTypeLabel, item.id);
+                                    } else {
+                                        setShowChildTypePicker(true);
+                                    }
+                                }}
+                                data-testid="wi-add-child-btn"
+                                type="button"
+                            >
+                                + Add Child
+                            </button>
+                        )}
+                        {!isMobile && (
+                            <button
+                                className="text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#ccc] text-[11px] bg-transparent border-0 cursor-pointer p-0 whitespace-nowrap"
+                                onClick={() => {
+                                    const childTypes = ALLOWED_CHILD_TYPES[effectiveType as WorkItemTypeLabel] ?? [];
+                                    if (childTypes.length === 0) return;
+                                    if (childTypes.length === 1) {
+                                        onCreateChild?.(childTypes[0] as WorkItemTypeLabel, item.id);
+                                    } else {
+                                        setShowChildTypePicker(true);
+                                    }
+                                }}
+                                data-testid="wi-new-child-btn"
+                                type="button"
+                            >
+                                + child
+                            </button>
+                        )}
+                        {aiAuthoringEnabled && (
+                            <button
+                                className="text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#ccc] text-[12px] bg-transparent border-0 cursor-pointer p-0 leading-none"
+                                onClick={() => setShowAiComposer(true)}
+                                data-testid="work-item-improve-with-ai-btn"
+                                title="Improve with AI"
+                                type="button"
+                            >
+                                ✨
+                            </button>
+                        )}
+                        <button className="text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#ccc] text-[12px] bg-transparent border-0 cursor-pointer p-0 leading-none" data-testid="work-item-pin-btn"
+                            title={item.pinnedAt ? 'Unpin' : 'Pin'}
+                            type="button"
+                            onClick={async () => {
+                                try {
+                                    await getSpaCocClient().workItems.pin(workspaceId, workItemId, !item.pinnedAt);
+                                    await fetchItem();
+                                } catch (err: any) {
+                                    setError(err.message || 'Failed to update pin');
                                 }
-                            }}
-                            data-testid="wi-add-child-btn"
-                        >
-                            + Add Child
-                        </Button>
-                    )}
-                    {!isContainer && (
-                        <>
-                            <label className="flex items-center gap-1 text-[10px] cursor-pointer" title="Auto-execute when status reaches Ready to Execute" data-testid="work-item-auto-execute-toggle">
+                            }}>
+                            📌
+                        </button>
+                        <button className="text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#ccc] text-[12px] bg-transparent border-0 cursor-pointer p-0 leading-none" data-testid="work-item-archive-btn"
+                            title={item.archivedAt ? 'Unarchive' : 'Archive'}
+                            type="button"
+                            onClick={async () => {
+                                try {
+                                    await getSpaCocClient().workItems.archive(workspaceId, workItemId, !item.archivedAt);
+                                    await fetchItem();
+                                } catch (err: any) {
+                                    setError(err.message || 'Failed to update archive');
+                                }
+                            }}>
+                            🗄️
+                        </button>
+                        <button className="text-[#cf222e] hover:text-[#a40e26] dark:text-red-400 dark:hover:text-red-300 text-[12px] bg-transparent border-0 cursor-pointer p-0 leading-none" data-testid="work-item-delete-btn"
+                            type="button"
+                            onClick={async () => {
+                                if (confirm('Delete this work item?')) {
+                                    await getSpaCocClient().workItems.delete(workspaceId, workItemId);
+                                    onBack?.();
+                                }
+                            }}>
+                            🗑
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* ── Body ── */}
+            <div className="flex-1 overflow-y-auto min-h-0 bg-white dark:bg-[#1e1e1e]">
+                <div className="grid gap-3 items-start" style={{ gridTemplateColumns: 'minmax(0, 1fr)', padding: '12px 16px 18px' }}>
+                {error && (
+                    <div className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 rounded p-2 flex items-start justify-between gap-2">
+                        <span>{error}</span>
+                        <button className="text-[10px] shrink-0" onClick={() => setError(null)}>✕</button>
+                    </div>
+                )}
+                {editError && (
+                    <div className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 rounded p-2" data-testid="wi-edit-error">
+                        {editError}
+                    </div>
+                )}
+
+                {/* Description */}
+                <article className="border border-[#d0d7de] dark:border-[#474749] rounded-md overflow-hidden" data-testid="wi-description-editor">
+                    <div className="min-h-[34px] px-[10px] py-[7px] border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] flex items-center justify-between gap-2">
+                        <h3 className="text-[13px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc] m-0">Description</h3>
+                        <ModeToggleToolbar
+                            modes={DESCRIPTION_MODE_OPTIONS}
+                            activeMode={descViewMode}
+                            onModeChange={setDescViewMode}
+                            dirty={!!(baseline && d.description !== baseline.description)}
+                            testId="wi-description-mode-toggle"
+                        />
+                    </div>
+                    <div className="p-[10px]">
+                        <WorkItemDescriptionEditor
+                            value={d.description}
+                            onChange={v => updateDraft('description', v)}
+                            dirty={!!(baseline && d.description !== baseline.description)}
+                            disabled={saving}
+                            viewMode={descViewMode}
+                            onViewModeChange={setDescViewMode}
+                        />
+                    </div>
+                </article>
+
+                {/* Plan — leaf items only */}
+                {!isContainer && (
+                <article className="border border-[#d0d7de] dark:border-[#474749] rounded-md overflow-hidden">
+                    <div className="min-h-[34px] px-[10px] py-[7px] border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] flex items-center justify-between gap-2">
+                        <h3 className="text-[13px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc] m-0">
+                            Plan {item.plan ? `v${item.plan.version}` : ''}
+                        </h3>
+                        {canEditPlan && (
+                            <ModeToggleToolbar
+                                modes={PLAN_MODE_OPTIONS}
+                                activeMode={planViewMode}
+                                onModeChange={setPlanViewMode}
+                                dirty={planDraft !== null && planDraft !== (item.plan?.content ?? '')}
+                                testId="work-item-plan-mode-toggle"
+                            />
+                        )}
+                    </div>
+                    <div className="p-[10px]">
+                        <WorkItemPlanSection
+                            workspaceId={workspaceId}
+                            workItemId={workItemId}
+                            plan={item.plan}
+                            canEdit={canEditPlan}
+                            draftContent={planDraft}
+                            onDraftChange={setPlanDraft}
+                            onUpdated={fetchItem}
+                            onError={setError}
+                            onNavigateToTasksTab={onNavigateToTasksTab}
+                            viewMode={planViewMode}
+                            onViewModeChange={setPlanViewMode}
+                        />
+                    </div>
+                </article>
+                )}
+
+                {/* Success Criteria — goal items only */}
+                {effectiveType === 'goal' && (
+                    <article className="border border-[#d0d7de] dark:border-[#474749] rounded-md overflow-hidden" data-testid="wi-success-criteria">
+                        <div className="min-h-[34px] px-[10px] py-[7px] border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] flex items-center">
+                            <h3 className="text-[13px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc] m-0">Success Criteria</h3>
+                        </div>
+                        <div className="p-[10px]">
+                            <textarea
+                                className="w-full min-h-[96px] resize-y border border-[#d0d7de] dark:border-[#555] rounded-md p-2 text-[13px] leading-[1.45] text-[#1f2328] dark:text-[#cccccc] bg-white dark:bg-[#1e1e1e] outline-none focus:border-[#0969da] focus:shadow-[0_0_0_3px_rgba(9,105,218,0.16)]"
+                                value={d.successCriteria}
+                                onChange={e => updateDraft('successCriteria', e.target.value)}
+                                disabled={saving}
+                                placeholder="What defines this goal as achieved?"
+                                data-testid="wi-success-criteria-input"
+                                aria-label="Success criteria"
+                            />
+                        </div>
+                    </article>
+                )}
+
+                {/* Compact Metadata panel */}
+                <article className="border border-[#d0d7de] dark:border-[#474749] rounded-md overflow-hidden">
+                    <div className="px-[10px] py-[6px] bg-[#f6f8fa] dark:bg-[#252526] flex items-center gap-3 flex-wrap text-[11px] leading-[1.35]">
+                        {/* Parent */}
+                        {hierarchyEnabled && effectiveType !== 'epic' ? (
+                            <span className="flex items-center gap-1" data-testid="work-item-parent-edit">
+                                <strong className="text-[#1f2328] dark:text-[#cccccc]">Parent</strong>
+                                <span className="text-[#656d76] dark:text-[#999] flex items-center gap-1">
+                                    {d.parentId
+                                        ? <span className="font-mono">{d.parentId.slice(0, 8)}…</span>
+                                        : <span className="italic">—</span>
+                                    }
+                                    <button className="text-[#0969da] hover:underline bg-transparent border-0 cursor-pointer p-0 text-[11px]" onClick={() => setShowParentPicker(true)} disabled={saving} data-testid="wi-edit-parent-btn" type="button">
+                                        {d.parentId ? 'Change' : 'Set'}
+                                    </button>
+                                </span>
+                            </span>
+                        ) : item.parentId ? (
+                            <span className="flex items-center gap-1" data-testid="work-item-parent-info">
+                                <strong className="text-[#1f2328] dark:text-[#cccccc]">Parent</strong>
+                                <span className="text-[#656d76] dark:text-[#999] font-mono">{item.parentId.slice(0, 8)}…</span>
+                            </span>
+                        ) : null}
+                        {/* Priority */}
+                        <span className="flex items-center gap-1" data-testid="wi-edit-fields">
+                            <strong className="text-[#1f2328] dark:text-[#cccccc]">Pri</strong>
+                            <select
+                                className="text-[11px] px-0.5 py-0 rounded border border-[#d0d7de] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1f2328] dark:text-[#cccccc] outline-none"
+                                value={d.priority}
+                                onChange={e => updateDraft('priority', e.target.value as 'high' | 'normal' | 'low')}
+                                disabled={saving}
+                                data-testid="wi-priority-select"
+                                aria-label="Priority"
+                            >
+                                <option value="high">High</option>
+                                <option value="normal">Normal</option>
+                                <option value="low">Low</option>
+                            </select>
+                        </span>
+                        {/* Tags */}
+                        <span className="flex items-center gap-1 min-w-0">
+                            <strong className="text-[#1f2328] dark:text-[#cccccc] shrink-0">Tags</strong>
+                            <span className="flex gap-0.5 items-center flex-wrap min-w-0">
+                                {parseTags(d.tags).length > 0 ? (
+                                    parseTags(d.tags).map(tag => (
+                                        <span key={tag} className="inline-flex items-center h-[18px] px-1.5 rounded-full border border-[#d0d7de] dark:border-[#555] bg-white dark:bg-transparent text-[10px] text-[#656d76] dark:text-[#999]">{tag}</span>
+                                    ))
+                                ) : null}
+                                <input
+                                    type="text"
+                                    className="min-w-[60px] w-16 text-[11px] px-0.5 py-0 border-0 outline-none bg-transparent text-[#1f2328] dark:text-[#cccccc] placeholder-[#656d76]"
+                                    value={d.tags}
+                                    onChange={e => updateDraft('tags', e.target.value)}
+                                    disabled={saving}
+                                    placeholder="add tags"
+                                    data-testid="wi-tags-input"
+                                    aria-label="Tags"
+                                />
+                            </span>
+                        </span>
+                        {/* Auto-execute (leaf items only) */}
+                        {!isContainer && (
+                            <label className="flex items-center gap-1 cursor-pointer shrink-0" title="Auto-execute when status reaches Ready to Execute" data-testid="work-item-auto-execute-toggle">
                                 <input
                                     type="checkbox"
                                     checked={item.autoExecute ?? false}
@@ -683,110 +913,20 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                     }}
                                     className="rounded"
                                 />
-                                Auto
+                                <strong className="text-[#1f2328] dark:text-[#cccccc]">Auto</strong>
                             </label>
-                            <Button
-                                variant="primary" size="sm"
-                                onClick={() => setShowExecuteDialog(true)}
-                                disabled={!canExecute}
-                                data-testid="work-item-execute-btn"
-                            >
-                                ⚡ Start Implementing
-                            </Button>
-                        </>
-                    )}
-                    {aiAuthoringEnabled && (
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setShowAiComposer(true)}
-                            data-testid="work-item-improve-with-ai-btn"
-                            title="Improve with AI"
-                        >
-                            ✨
-                        </Button>
-                    )}
-                    <Button variant="ghost" size="sm" data-testid="work-item-pin-btn"
-                        title={item.pinnedAt ? 'Unpin' : 'Pin'}
-                        onClick={async () => {
-                            try {
-                                await getSpaCocClient().workItems.pin(workspaceId, workItemId, !item.pinnedAt);
-                                await fetchItem();
-                            } catch (err: any) {
-                                setError(err.message || 'Failed to update pin');
-                            }
-                        }}>
-                        {item.pinnedAt ? '📌' : '📌'}
-                    </Button>
-                    <Button variant="ghost" size="sm" data-testid="work-item-archive-btn"
-                        title={item.archivedAt ? 'Unarchive' : 'Archive'}
-                        onClick={async () => {
-                            try {
-                                await getSpaCocClient().workItems.archive(workspaceId, workItemId, !item.archivedAt);
-                                await fetchItem();
-                            } catch (err: any) {
-                                setError(err.message || 'Failed to update archive');
-                            }
-                        }}>
-                        {item.archivedAt ? '📂' : '🗄️'}
-                    </Button>
-                    <Button variant="ghost" size="sm" className="text-red-500" data-testid="work-item-delete-btn"
-                        onClick={async () => {
-                            if (confirm('Delete this work item?')) {
-                                await getSpaCocClient().workItems.delete(workspaceId, workItemId);
-                                onBack?.();
-                            }
-                        }}>
-                        🗑
-                    </Button>
-                </div>
-            </div>
-
-            {/* ── Body ── */}
-            <div className="flex-1 overflow-y-auto">
-                <div className="grid gap-4 px-5 py-4">
-                {error && (
-                    <div className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 rounded p-2 flex items-start justify-between gap-2">
-                        <span>{error}</span>
-                        <button className="text-[10px] shrink-0" onClick={() => setError(null)}>✕</button>
+                        )}
+                        {/* Source */}
+                        <span className="flex items-center gap-1 text-[#656d76] dark:text-[#999] shrink-0">
+                            <strong className="text-[#1f2328] dark:text-[#cccccc]">Src</strong>
+                            {item.source === 'manual' ? 'Manual' : item.source === 'chat' ? 'Chat' : 'Schedule'}
+                        </span>
                     </div>
-                )}
-                {editError && (
-                    <div className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 rounded p-2" data-testid="wi-edit-error">
-                        {editError}
-                    </div>
-                )}
+                </article>
 
-                {/* Parent info row — editable when hierarchy is enabled (epics have no parent) */}
-                {hierarchyEnabled && effectiveType !== 'epic' ? (
-                    <section data-testid="work-item-parent-edit">
-                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Parent</h3>
-                        <div className="flex items-center gap-2">
-                            <span className="text-xs text-[#3c3c3c] dark:text-[#cccccc] flex-1">
-                                {d.parentId
-                                    ? <span className="font-mono text-[#848484]">{d.parentId}</span>
-                                    : <span className="italic text-[#848484]">No parent</span>
-                                }
-                            </span>
-                            <Button variant="ghost" size="sm" onClick={() => setShowParentPicker(true)} disabled={saving} data-testid="wi-edit-parent-btn">
-                                {d.parentId ? 'Change Parent' : 'Set Parent'}
-                            </Button>
-                        </div>
-                    </section>
-                ) : item.parentId ? (
-                    <section data-testid="work-item-parent-info">
-                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Part Of</h3>
-                        <div className="text-xs text-[#3c3c3c] dark:text-[#cccccc]">
-                            <span className="font-mono text-[#848484]">{item.parentId}</span>
-                        </div>
-                    </section>
-                ) : null}
-
-                {item.githubMirror || item.azureBoardsMirror ? (
-                    <section data-testid={item.githubMirror ? 'work-item-github-mirror' : 'work-item-azure-boards-mirror'}>
-                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">
-                            {item.githubMirror ? 'GitHub mirror' : 'Azure Boards mirror'}
-                        </h3>
+                {/* Remote mirror section */}
+                {(item.githubMirror || item.azureBoardsMirror) && (
+                    <section className="text-[12px]" data-testid={item.githubMirror ? 'work-item-github-mirror' : 'work-item-azure-boards-mirror'}>
                         <div className="flex flex-wrap gap-2">
                             <WorkItemRemoteMirrorBadge
                                 githubMirror={item.githubMirror}
@@ -796,92 +936,6 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             />
                         </div>
                     </section>
-                ) : null}
-
-                {/* Description */}
-                <article className="border border-[color-mix(in_srgb,#0969da_18%,#d0d7de)] dark:border-[#474749] rounded-md overflow-hidden">
-                    <div className="min-h-[44px] px-3 py-2.5 border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] flex items-center justify-between gap-2">
-                        <h3 className="text-[13px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc]">Description</h3>
-                    </div>
-                    <div className="p-4">
-                    <WorkItemDescriptionEditor
-                        value={d.description}
-                        onChange={v => updateDraft('description', v)}
-                        dirty={!!(baseline && d.description !== baseline.description)}
-                        disabled={saving}
-                    />
-                    </div>
-                </article>
-
-                {/* Success Criteria — goal items only (always editable) */}
-                {effectiveType === 'goal' && (
-                    <section data-testid="wi-success-criteria">
-                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Success Criteria</h3>
-                        <textarea
-                            className="w-full min-h-[80px] text-sm p-2 rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] resize-y focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
-                            value={d.successCriteria}
-                            onChange={e => updateDraft('successCriteria', e.target.value)}
-                            disabled={saving}
-                            placeholder="What defines this goal as achieved?"
-                            data-testid="wi-success-criteria-input"
-                            aria-label="Success criteria"
-                        />
-                    </section>
-                )}
-                {/* Priority + Tags — always editable for every type */}
-                <section className="space-y-3" data-testid="wi-edit-fields">
-                    <div>
-                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Priority</h3>
-                        <select
-                            className="text-sm px-2 py-1 rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
-                            value={d.priority}
-                            onChange={e => updateDraft('priority', e.target.value as 'high' | 'normal' | 'low')}
-                            disabled={saving}
-                            data-testid="wi-priority-select"
-                            aria-label="Priority"
-                        >
-                            <option value="high">High</option>
-                            <option value="normal">Normal</option>
-                            <option value="low">Low</option>
-                        </select>
-                    </div>
-                    <div>
-                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Tags (comma-separated)</h3>
-                        <input
-                            type="text"
-                            className="w-full text-sm px-2 py-1 rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
-                            value={d.tags}
-                            onChange={e => updateDraft('tags', e.target.value)}
-                            disabled={saving}
-                            placeholder="e.g. frontend, critical"
-                            data-testid="wi-tags-input"
-                            aria-label="Tags"
-                        />
-                    </div>
-                </section>
-
-                {/* Plan — leaf items only */}
-                {!isContainer && (
-                <article className="border border-[#d0d7de] dark:border-[#474749] rounded-md overflow-hidden">
-                    <div className="min-h-[44px] px-3 py-2.5 border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] flex items-center justify-between gap-2">
-                        <h3 className="text-[13px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc]">
-                            Plan preview {item.plan ? <span className="text-[#656d76] font-normal">(v{item.plan.version})</span> : ''}
-                        </h3>
-                    </div>
-                    <div className="p-3">
-                        <WorkItemPlanSection
-                            workspaceId={workspaceId}
-                            workItemId={workItemId}
-                            plan={item.plan}
-                            canEdit={canEditPlan}
-                            draftContent={planDraft}
-                            onDraftChange={setPlanDraft}
-                            onUpdated={fetchItem}
-                            onError={setError}
-                            onNavigateToTasksTab={onNavigateToTasksTab}
-                        />
-                    </div>
-                </article>
                 )}
 
                 {/* AI Review section (aiDone only) */}
@@ -978,8 +1032,11 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
 
                 {/* Execution history */}
                 {!isContainer && ((item.executionHistory && item.executionHistory.length > 0) || (item.changes && item.changes.some(c => !c.taskId || !item.executionHistory?.some(e => e.taskId === c.taskId)))) && (
-                    <section>
-                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Execution History</h3><div className="space-y-2">
+                    <article className="border border-[#d0d7de] dark:border-[#474749] rounded-md overflow-hidden">
+                        <div className="min-h-[34px] px-[10px] py-[7px] border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] flex items-center justify-between gap-2">
+                            <h3 className="text-[13px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc] m-0">Execution History</h3>
+                        </div>
+                        <div className="p-[10px] space-y-2">
                             {item.executionHistory?.map((exec, i) => {
                                 const matchingChange = item.changes?.find(c => c.taskId === exec.taskId);
                                 const commits = matchingChange?.commits ?? [];
@@ -1164,26 +1221,9 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                 </div>
                             ))}
                         </div>
-                    </section>
+                    </article>
                 )}
 
-                {/* Source + Tags */}
-                <section>
-                    <div className="flex flex-wrap gap-3 text-[10px] text-[#848484]">
-                        <span>
-                            {item.source === 'manual' ? '✍️ Manual' :
-                             item.source === 'chat' ? '💬 From chat' :
-                             '📅 From schedule'}
-                        </span>
-                        {item.tags && item.tags.length > 0 && (
-                            <div className="flex gap-1 flex-wrap">
-                                {item.tags.map(tag => (
-                                    <span key={tag} className="px-1.5 py-0.5 rounded bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#606060] dark:text-[#aaa]">{tag}</span>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </section>
                 </div>
             </div>
 

@@ -58,12 +58,12 @@ describe('WorkItemHierarchyNode — type system', () => {
     });
 
     it('has distinct CSS classes for each type pill', () => {
-        expect(src).toContain('bg-purple-100');   // epic
-        expect(src).toContain('bg-blue-100');      // feature
-        expect(src).toContain('bg-cyan-100');      // pbi
-        expect(src).toContain('bg-gray-100');      // work-item
-        expect(src).toContain('bg-red-100');       // bug
-        expect(src).toContain('bg-orange-100');    // goal
+        expect(src).toContain('#8250df');    // epic
+        expect(src).toContain('#0969da');    // feature
+        expect(src).toContain('#0a7280');    // pbi
+        expect(src).toContain('#656d76');    // work-item
+        expect(src).toContain('#cf222e');    // bug
+        expect(src).toContain('#9a6700');    // goal
     });
 
     it('renders a collapse toggle button', () => {

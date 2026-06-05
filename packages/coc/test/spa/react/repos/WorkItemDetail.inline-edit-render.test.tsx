@@ -62,6 +62,10 @@ vi.mock(`../../../../src/server/spa/client/react/features/work-items/WorkItemPla
             onChange={(e) => onDraftChange(e.target.value)}
         />
     ),
+    PLAN_MODE_OPTIONS: Object.freeze([
+        { value: 'preview', label: 'Preview' },
+        { value: 'source', label: 'Source', testId: 'work-item-plan-mode-source' },
+    ]),
 }));
 vi.mock(`../../../../src/server/spa/client/react/features/work-items/WorkItemExecuteDialog`, () => ({
     WorkItemExecuteDialog: () => null,

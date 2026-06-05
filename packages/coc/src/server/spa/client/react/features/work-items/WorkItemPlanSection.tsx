@@ -68,11 +68,15 @@ interface WorkItemPlanSectionProps {
     onError: (msg: string) => void;
     /** Called when a batch-resolve task is enqueued so the parent can navigate. */
     onNavigateToTasksTab?: (taskId: string) => void;
+    /** Controlled view mode (lifted to parent so the toggle can live in the panel header). */
+    viewMode?: PlanViewMode;
+    /** Callback when the view mode changes. */
+    onViewModeChange?: (mode: PlanViewMode) => void;
 }
 
-type PlanViewMode = 'preview' | 'source';
+export type PlanViewMode = 'preview' | 'source';
 
-const PLAN_MODE_OPTIONS: readonly ModeOption<PlanViewMode>[] = [
+export const PLAN_MODE_OPTIONS: readonly ModeOption<PlanViewMode>[] = [
     { value: 'preview', label: 'Preview' },
     { value: 'source', label: 'Source', testId: 'work-item-plan-mode-source' },
 ] as const;
@@ -102,13 +106,16 @@ function buildPlanAnchor(
 
 export function WorkItemPlanSection({
     workspaceId, workItemId, plan, canEdit, draftContent, onDraftChange, onUpdated, onError, onNavigateToTasksTab,
+    viewMode: controlledMode, onViewModeChange,
 }: WorkItemPlanSectionProps) {
     // ── Plan version state ──────────────────────────────────────────────────
     const [versions, setVersions] = useState<PlanVersionMeta[]>([]);
     const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
     const [selectedContent, setSelectedContent] = useState<string | null>(null);
     const [loadingVersion, setLoadingVersion] = useState(false);
-    const [viewMode, setViewMode] = useState<PlanViewMode>('preview');
+    const [internalMode, setInternalMode] = useState<PlanViewMode>('preview');
+    const viewMode = controlledMode ?? internalMode;
+    const setViewMode = onViewModeChange ?? setInternalMode;
     const [resolving, setResolving] = useState(false);
 
     const currentVersion = plan?.version ?? null;
@@ -383,13 +390,6 @@ export function WorkItemPlanSection({
             <div className="space-y-2" data-testid="work-item-plan-section">
                 {canEdit ? (
                     <>
-                        <ModeToggleToolbar
-                            modes={PLAN_MODE_OPTIONS}
-                            activeMode={viewMode}
-                            onModeChange={setViewMode}
-                            dirty={isPlanDirty}
-                            testId="work-item-plan-mode-toggle"
-                        />
                         {viewMode === 'source' ? (
                             <SourceEditor
                                 content={currentDraft}
@@ -451,17 +451,6 @@ export function WorkItemPlanSection({
                         </span>
                     )}
                 </div>
-            )}
-
-            {/* Mode toggle — only the current version is editable. */}
-            {canEditNow && (
-                <ModeToggleToolbar
-                    modes={PLAN_MODE_OPTIONS}
-                    activeMode={viewMode}
-                    onModeChange={setViewMode}
-                    dirty={isPlanDirty}
-                    testId="work-item-plan-mode-toggle"
-                />
             )}
 
             {/* Plan content — always-editable source or inline-review preview */}
