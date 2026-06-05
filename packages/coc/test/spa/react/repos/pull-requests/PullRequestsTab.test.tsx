@@ -3,7 +3,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
 
 const configMock = vi.hoisted(() => ({
     pullRequestsSuggestionsEnabled: false,
@@ -289,6 +289,106 @@ describe('queue filter pills', () => {
         expect(screen.getByText('Cara PR')).toBeInTheDocument();
         expect(screen.queryByText('Stranger PR')).not.toBeInTheDocument();
         expect(screen.getByTestId('pr-queue-filter-team')).toHaveTextContent('2');
+    });
+
+    it('manages the Team roster inline with add, toggle, and remove controls', async () => {
+        let roster = [
+            makeCoworkerEntry({ id: 'github-123', displayName: 'Bob Dev' }),
+        ];
+        const allPrs = [
+            makePr({ id: 2, number: 2, title: 'Bob PR', author: { id: 'github-123', displayName: 'Bob Dev' } }),
+            makePr({ id: 3, number: 3, title: 'Bob Follow-up PR', author: { id: 'github-123', displayName: 'Robert Dev' } }),
+            makePr({ id: 4, number: 4, title: 'Cara PR', author: { displayName: 'Cara Dev' } }),
+            makePr({ id: 5, number: 5, title: 'Stranger PR', author: { id: 'stranger', displayName: 'Stranger Dev' } }),
+        ];
+        const entryKey = (entry: { id?: string; displayName: string }) => (entry.id || entry.displayName).trim().toLowerCase();
+        const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? 'GET';
+
+            if (url.includes('/coworker-roster')) {
+                if (method === 'POST') {
+                    const body = JSON.parse(init?.body as string) as { id?: string; displayName: string; email?: string; avatarUrl?: string };
+                    const nextEntry = makeCoworkerEntry({
+                        id: body.id ?? '',
+                        displayName: body.displayName,
+                        ...(body.email ? { email: body.email } : {}),
+                        ...(body.avatarUrl ? { avatarUrl: body.avatarUrl } : {}),
+                    });
+                    roster = [...roster.filter(entry => entryKey(entry) !== entryKey(nextEntry)), nextEntry];
+                    return Promise.resolve(jsonResponse({ entries: roster }));
+                }
+                if (method === 'DELETE') {
+                    const rawKey = decodeURIComponent(url.split('/coworker-roster/')[1].split('?')[0]).toLowerCase();
+                    roster = roster.filter(entry => entryKey(entry) !== rawKey);
+                    return Promise.resolve(jsonResponse({ entries: roster }));
+                }
+                return Promise.resolve(jsonResponse({ entries: roster }));
+            }
+
+            if (url.includes('/recent-opened')) {
+                return Promise.resolve(jsonResponse({ entries: [] }));
+            }
+
+            if (url.includes('scope=all')) {
+                return Promise.resolve(jsonResponse({ pullRequests: allPrs }));
+            }
+
+            return Promise.resolve(jsonResponse({
+                pullRequests: [makePr({ id: 1, number: 1, title: 'Mine PR', author: { id: 'me', displayName: 'Me' } })],
+            }));
+        });
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(fetchMock.mock.calls.some(call => String(call[0]).includes('/coworker-roster'))).toBe(true));
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('pr-queue-filter-team'));
+        });
+
+        await waitFor(() => expect(screen.getByTestId('team-roster-toolbar')).toBeInTheDocument());
+        await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(2));
+        expect(screen.getByText('Bob PR')).toBeInTheDocument();
+        expect(screen.getByText('Bob Follow-up PR')).toBeInTheDocument();
+
+        const picker = screen.getByTestId('team-coworker-picker') as HTMLSelectElement;
+        expect(within(picker).getAllByRole('option').map(option => option.textContent)).toEqual([
+            'Add coworker...',
+            'Cara Dev',
+            'Stranger Dev',
+        ]);
+
+        fireEvent.change(picker, { target: { value: 'cara dev' } });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('team-coworker-add'));
+        });
+
+        await waitFor(() => expect(screen.getAllByTestId('team-coworker-chip')).toHaveLength(2));
+        expect(fetchMock.mock.calls.some(call =>
+            String(call[0]).includes('/coworker-roster') &&
+            call[1]?.method === 'POST' &&
+            JSON.parse(call[1]?.body as string).displayName === 'Cara Dev' &&
+            JSON.parse(call[1]?.body as string).id === ''
+        )).toBe(true);
+        await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(3));
+        expect(screen.getByText('Cara PR')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Hide Bob Dev in Team filter' }));
+        await waitFor(() => expect(screen.queryByText('Bob PR')).not.toBeInTheDocument());
+        expect(screen.getByText('Cara PR')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-queue-filter-team')).toHaveTextContent('1');
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: 'Remove Cara Dev from Team roster' }));
+        });
+
+        await waitFor(() => expect(screen.getAllByTestId('team-coworker-chip')).toHaveLength(1));
+        expect(fetchMock.mock.calls.some(call =>
+            String(call[0]).includes('/coworker-roster/cara%20dev') &&
+            call[1]?.method === 'DELETE'
+        )).toBe(true);
+        await waitFor(() => expect(screen.getByTestId('no-results')).toHaveTextContent('Choose at least one Team coworker chip'));
     });
 
     it('"Mine" stays on scope=mine and does not refetch when re-clicked', async () => {

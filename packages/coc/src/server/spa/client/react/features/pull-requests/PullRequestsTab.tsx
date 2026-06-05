@@ -36,7 +36,12 @@ import {
 } from './pr-attention-groups';
 import { buildQueueFilterCounts, matchesFilter, scopeForFilter } from './pr-derived-data';
 import type { QueueFilter, QueueFilterCounts } from './pr-derived-data';
-import type { PullRequest, PrStatus } from './pr-utils';
+import {
+    buildCoworkerRosterCandidates,
+    getCoworkerRosterIdentityKey,
+    type PullRequest,
+    type PrStatus,
+} from './pr-utils';
 import { matchWorkspaceForPrUrl, parsePrInput, type WorkspaceLike } from './pr-open-utils';
 
 export interface PullRequestsTabProps {
@@ -160,6 +165,10 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     const [openPrLoading, setOpenPrLoading] = useState(false);
     const [recentOpenedPrs, setRecentOpenedPrs] = useState<RecentOpenedPullRequestEntry[]>([]);
     const [coworkerRoster, setCoworkerRoster] = useState<PullRequestCoworkerRosterEntry[]>([]);
+    const [inactiveCoworkerKeys, setInactiveCoworkerKeys] = useState<Set<string>>(new Set());
+    const [coworkerPickerKey, setCoworkerPickerKey] = useState('');
+    const [coworkerRosterError, setCoworkerRosterError] = useState<string | null>(null);
+    const [coworkerRosterSavingKey, setCoworkerRosterSavingKey] = useState<string | null>(null);
 
     // ── PR suggestions state ─────────────────────────────────────
     const suggestionsEnabled = isPullRequestsSuggestionsEnabled();
@@ -310,6 +319,9 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     useEffect(() => {
         let cancelled = false;
         setCoworkerRoster([]);
+        setInactiveCoworkerKeys(new Set());
+        setCoworkerPickerKey('');
+        setCoworkerRosterError(null);
         getSpaCocClient().pullRequests.listCoworkerRoster(repoId, workspaceId)
             .then(data => {
                 if (!cancelled) {
@@ -323,6 +335,22 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
             });
         return () => { cancelled = true; };
     }, [repoId, workspaceId]);
+
+    useEffect(() => {
+        const rosterKeys = new Set(coworkerRoster.map(getCoworkerRosterIdentityKey));
+        setInactiveCoworkerKeys(prev => {
+            let changed = false;
+            const next = new Set<string>();
+            for (const key of prev) {
+                if (rosterKeys.has(key)) {
+                    next.add(key);
+                } else {
+                    changed = true;
+                }
+            }
+            return changed ? next : prev;
+        });
+    }, [coworkerRoster]);
 
     // Fetch cached suggestions on mount when feature is enabled.
     useEffect(() => {
@@ -374,9 +402,37 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         return prs.filter(pr => pr.title.toLowerCase().includes(query));
     }, [prs, searchText]);
 
+    const activeCoworkerRoster = useMemo(
+        () => coworkerRoster.filter(entry => !inactiveCoworkerKeys.has(getCoworkerRosterIdentityKey(entry))),
+        [coworkerRoster, inactiveCoworkerKeys],
+    );
+
+    const coworkerFilterRoster = activeFilter === 'team' ? activeCoworkerRoster : coworkerRoster;
+
+    const coworkerRosterKeys = useMemo(
+        () => new Set(coworkerRoster.map(getCoworkerRosterIdentityKey)),
+        [coworkerRoster],
+    );
+
+    const coworkerCandidates = useMemo(
+        () => buildCoworkerRosterCandidates(prs),
+        [prs],
+    );
+
+    const addableCoworkerCandidates = useMemo(
+        () => coworkerCandidates.filter(candidate => !coworkerRosterKeys.has(getCoworkerRosterIdentityKey(candidate))),
+        [coworkerCandidates, coworkerRosterKeys],
+    );
+
+    useEffect(() => {
+        if (!coworkerPickerKey) return;
+        if (addableCoworkerCandidates.some(candidate => getCoworkerRosterIdentityKey(candidate) === coworkerPickerKey)) return;
+        setCoworkerPickerKey('');
+    }, [addableCoworkerCandidates, coworkerPickerKey]);
+
     const filteredByPill = useMemo(
-        () => filteredBySearch.filter(pr => matchesFilter(pr, activeFilter, { suggestedPrNumbers, coworkerRoster })),
-        [filteredBySearch, activeFilter, suggestedPrNumbers, coworkerRoster],
+        () => filteredBySearch.filter(pr => matchesFilter(pr, activeFilter, { suggestedPrNumbers, coworkerRoster: coworkerFilterRoster })),
+        [filteredBySearch, activeFilter, suggestedPrNumbers, coworkerFilterRoster],
     );
 
     const groupedPrs = useMemo(() => {
@@ -392,8 +448,8 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     }, [filteredByPill]);
 
     const filterCounts: QueueFilterCounts = useMemo(() => {
-        return buildQueueFilterCounts(filteredBySearch, { effectiveScope, suggestedPrNumbers, coworkerRoster });
-    }, [filteredBySearch, effectiveScope, suggestedPrNumbers, coworkerRoster]);
+        return buildQueueFilterCounts(filteredBySearch, { effectiveScope, suggestedPrNumbers, coworkerRoster: coworkerFilterRoster });
+    }, [filteredBySearch, effectiveScope, suggestedPrNumbers, coworkerFilterRoster]);
 
     const selectedPrs = useMemo(
         () => prs.filter(pr => selectedPrIds.has(getPrSelectionId(pr))),
@@ -421,6 +477,76 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     function handleFilterChange(next: QueueFilter) {
         setActiveFilter(next);
     }
+
+    function handleToggleCoworker(entry: Pick<PullRequestCoworkerRosterEntry, 'id' | 'displayName'>) {
+        const key = getCoworkerRosterIdentityKey(entry);
+        if (!key) return;
+        setInactiveCoworkerKeys(prev => {
+            const next = new Set(prev);
+            if (next.has(key)) {
+                next.delete(key);
+            } else {
+                next.add(key);
+            }
+            return next;
+        });
+    }
+
+    const handleAddCoworker = useCallback(async () => {
+        if (!coworkerPickerKey) {
+            setCoworkerRosterError('Select a coworker from loaded pull request authors.');
+            return;
+        }
+
+        const candidate = addableCoworkerCandidates.find(item => getCoworkerRosterIdentityKey(item) === coworkerPickerKey);
+        if (!candidate) {
+            setCoworkerRosterError('That coworker is no longer available in the loaded pull requests.');
+            setCoworkerPickerKey('');
+            return;
+        }
+
+        setCoworkerRosterSavingKey('add');
+        setCoworkerRosterError(null);
+        try {
+            const data = await getSpaCocClient().pullRequests.addCoworkerToRoster(repoId, workspaceId, {
+                id: candidate.id,
+                displayName: candidate.displayName,
+                ...(candidate.email ? { email: candidate.email } : {}),
+                ...(candidate.avatarUrl ? { avatarUrl: candidate.avatarUrl } : {}),
+            });
+            setCoworkerRoster(data.entries ?? []);
+            setCoworkerPickerKey('');
+        } catch (err) {
+            setCoworkerRosterError(getSpaCocClientErrorMessage(err, 'Failed to add coworker to Team roster.'));
+        } finally {
+            setCoworkerRosterSavingKey(null);
+        }
+    }, [addableCoworkerCandidates, coworkerPickerKey, repoId, workspaceId]);
+
+    const handleRemoveCoworker = useCallback(async (entry: Pick<PullRequestCoworkerRosterEntry, 'id' | 'displayName'>) => {
+        const key = getCoworkerRosterIdentityKey(entry);
+        if (!key) {
+            setCoworkerRosterError('Cannot remove a coworker without an identity key.');
+            return;
+        }
+
+        setCoworkerRosterSavingKey(`remove:${key}`);
+        setCoworkerRosterError(null);
+        try {
+            const data = await getSpaCocClient().pullRequests.removeCoworkerFromRoster(repoId, workspaceId, key);
+            setCoworkerRoster(data.entries ?? []);
+            setInactiveCoworkerKeys(prev => {
+                if (!prev.has(key)) return prev;
+                const next = new Set(prev);
+                next.delete(key);
+                return next;
+            });
+        } catch (err) {
+            setCoworkerRosterError(getSpaCocClientErrorMessage(err, 'Failed to remove coworker from Team roster.'));
+        } finally {
+            setCoworkerRosterSavingKey(null);
+        }
+    }, [repoId, workspaceId]);
 
     function handleToggleBatchMode() {
         setBatchMode(prev => {
@@ -752,6 +878,118 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                     />
                 )}
 
+                {!queueCollapsed && activeFilter === 'team' && (
+                    <div
+                        className="flex shrink-0 flex-col gap-1.5 border-b border-blue-100 bg-blue-50/70 px-2.5 py-2 text-[11px] text-blue-900 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-100"
+                        data-testid="team-roster-toolbar"
+                    >
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                                <span className="font-semibold">Team roster</span>
+                                <span className="ml-1 text-blue-700/80 dark:text-blue-200/80">
+                                    {activeCoworkerRoster.length} of {coworkerRoster.length} active
+                                </span>
+                            </div>
+                        </div>
+
+                        {coworkerRoster.length === 0 ? (
+                            <div className="rounded-md border border-dashed border-blue-200 bg-white/70 px-2 py-1 text-blue-800 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-100" data-testid="team-roster-empty">
+                                Add coworkers from loaded PR authors to build your Team filter.
+                            </div>
+                        ) : (
+                            <div className="flex flex-wrap gap-1" data-testid="team-coworker-chips">
+                                {coworkerRoster.map(entry => {
+                                    const key = getCoworkerRosterIdentityKey(entry);
+                                    const isActive = !inactiveCoworkerKeys.has(key);
+                                    const isRemoving = coworkerRosterSavingKey === `remove:${key}`;
+                                    return (
+                                        <span
+                                            key={key}
+                                            className={cn(
+                                                'inline-flex max-w-full items-center overflow-hidden rounded-full border text-[11px] font-semibold',
+                                                isActive
+                                                    ? 'border-blue-300 bg-white text-blue-800 dark:border-blue-700 dark:bg-blue-950/60 dark:text-blue-100'
+                                                    : 'border-gray-300 bg-white/70 text-gray-500 opacity-75 dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-400',
+                                            )}
+                                            data-testid="team-coworker-chip"
+                                            data-active={isActive}
+                                        >
+                                            <button
+                                                type="button"
+                                                onClick={() => handleToggleCoworker(entry)}
+                                                aria-pressed={isActive}
+                                                aria-label={`${isActive ? 'Hide' : 'Show'} ${entry.displayName} in Team filter`}
+                                                className="inline-flex min-w-0 items-center gap-1 px-2 py-0.5"
+                                                disabled={isRemoving}
+                                            >
+                                                {entry.avatarUrl && (
+                                                    <img
+                                                        src={entry.avatarUrl}
+                                                        alt=""
+                                                        className="h-4 w-4 rounded-full"
+                                                    />
+                                                )}
+                                                <span className="truncate">{entry.displayName}</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => { void handleRemoveCoworker(entry); }}
+                                                disabled={isRemoving}
+                                                aria-label={`Remove ${entry.displayName} from Team roster`}
+                                                className="border-l border-current/20 px-1.5 py-0.5 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-blue-900/40"
+                                                data-testid="team-coworker-remove"
+                                            >
+                                                {isRemoving ? '...' : 'x'}
+                                            </button>
+                                        </span>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        <div className="flex items-center gap-1.5">
+                            <select
+                                value={coworkerPickerKey}
+                                onChange={e => {
+                                    setCoworkerPickerKey(e.target.value);
+                                    if (coworkerRosterError) setCoworkerRosterError(null);
+                                }}
+                                disabled={addableCoworkerCandidates.length === 0 || coworkerRosterSavingKey != null}
+                                aria-label="Add coworker from loaded pull request authors"
+                                className="min-w-0 flex-1 rounded-md border border-blue-200 bg-white px-1.5 py-0.5 text-[11px] text-blue-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-blue-800 dark:bg-blue-950/60 dark:text-blue-100"
+                                data-testid="team-coworker-picker"
+                            >
+                                <option value="">
+                                    {addableCoworkerCandidates.length > 0 ? 'Add coworker...' : 'No loaded authors to add'}
+                                </option>
+                                {addableCoworkerCandidates.map(candidate => {
+                                    const key = getCoworkerRosterIdentityKey(candidate);
+                                    return (
+                                        <option key={key} value={key}>
+                                            {candidate.displayName}{candidate.prCount > 1 ? ` (${candidate.prCount})` : ''}
+                                        </option>
+                                    );
+                                })}
+                            </select>
+                            <button
+                                type="button"
+                                onClick={() => { void handleAddCoworker(); }}
+                                disabled={!coworkerPickerKey || coworkerRosterSavingKey != null}
+                                className="inline-flex h-[24px] shrink-0 items-center rounded-md border border-blue-300 bg-white px-2 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-100 dark:hover:bg-blue-900/50"
+                                data-testid="team-coworker-add"
+                            >
+                                {coworkerRosterSavingKey === 'add' ? 'Adding...' : 'Add'}
+                            </button>
+                        </div>
+
+                        {coworkerRosterError && (
+                            <div className="text-[11px] text-red-700 dark:text-red-300" role="alert" data-testid="team-roster-error">
+                                {coworkerRosterError}
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {!queueCollapsed && suggestionsEnabled && activeFilter === 'foryou' && (
                     <div
                         className="flex items-center justify-between gap-2 border-b border-yellow-100 bg-yellow-50 px-2.5 py-1 text-[11px] text-yellow-800 dark:border-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200"
@@ -877,7 +1115,13 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                     )}
                     {!queueCollapsed && !loading && !error && !unconfigured && !(suggestionsEnabled && activeFilter === 'foryou' && suggestions.length === 0) && prs.length > 0 && filteredByPill.length === 0 && (
                         <div className="px-4 py-6 text-center text-sm text-gray-500" data-testid="no-results">
-                            No pull requests match your filters.
+                            {activeFilter === 'team'
+                                ? coworkerRoster.length === 0
+                                    ? 'Add coworkers from loaded PR authors to build your Team filter.'
+                                    : activeCoworkerRoster.length === 0
+                                        ? 'Choose at least one Team coworker chip to show matching pull requests.'
+                                        : 'No loaded pull requests are authored by the active Team roster.'
+                                : 'No pull requests match your filters.'}
                         </div>
                     )}
                     {!queueCollapsed && !loading && !error && !unconfigured && prs.length === 0 && (

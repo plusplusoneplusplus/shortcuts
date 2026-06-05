@@ -23,6 +23,14 @@ export interface PrCoworkerRosterEntry {
     addedAt: string;
 }
 
+export interface PrCoworkerRosterCandidate {
+    id: string;
+    displayName: string;
+    email?: string;
+    avatarUrl?: string;
+    prCount: number;
+}
+
 export interface Reviewer {
     identity: PrIdentity;
     vote?: string;
@@ -132,13 +140,69 @@ export interface PullRequest {
     diffStats?: PullRequestDiffStats;
 }
 
-function normalizeIdentityId(id: string | number | undefined): string {
+function stringifyIdentityId(id: string | number | undefined): string {
     if (id === undefined || id === null) return '';
-    return String(id).trim().toLowerCase();
+    return String(id).trim();
+}
+
+function normalizeIdentityId(id: string | number | undefined): string {
+    return stringifyIdentityId(id).toLowerCase();
 }
 
 function normalizeDisplayName(displayName: string | undefined): string {
     return (displayName ?? '').trim().toLowerCase();
+}
+
+function normalizeOptionalIdentityField(value: string | undefined): string | undefined {
+    const trimmed = value?.trim();
+    return trimmed ? trimmed : undefined;
+}
+
+export function getCoworkerRosterIdentityKey(identity: Pick<PrIdentity, 'id' | 'displayName'>): string {
+    return normalizeIdentityId(identity.id) || normalizeDisplayName(identity.displayName);
+}
+
+export function buildCoworkerRosterCandidates(
+    pullRequests: readonly Pick<PullRequest, 'author'>[],
+): PrCoworkerRosterCandidate[] {
+    const byKey = new Map<string, PrCoworkerRosterCandidate>();
+
+    for (const pr of pullRequests) {
+        const author = pr.author;
+        const displayName = author?.displayName?.trim();
+        if (!author || !displayName) continue;
+
+        const key = getCoworkerRosterIdentityKey(author);
+        if (!key) continue;
+
+        const existing = byKey.get(key);
+        if (existing) {
+            existing.prCount += 1;
+            existing.email ??= normalizeOptionalIdentityField(author.email);
+            existing.avatarUrl ??= normalizeOptionalIdentityField(author.avatarUrl);
+            continue;
+        }
+
+        const email = normalizeOptionalIdentityField(author.email);
+        const avatarUrl = normalizeOptionalIdentityField(author.avatarUrl);
+        byKey.set(key, {
+            id: stringifyIdentityId(author.id),
+            displayName,
+            ...(email ? { email } : {}),
+            ...(avatarUrl ? { avatarUrl } : {}),
+            prCount: 1,
+        });
+    }
+
+    return [...byKey.values()].sort((a, b) => {
+        const leftName = a.displayName.toLowerCase();
+        const rightName = b.displayName.toLowerCase();
+        if (leftName < rightName) return -1;
+        if (leftName > rightName) return 1;
+        if (a.id < b.id) return -1;
+        if (a.id > b.id) return 1;
+        return 0;
+    });
 }
 
 export function authorMatchesCoworkerRosterEntry(

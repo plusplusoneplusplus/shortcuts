@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { AttentionGroup } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-attention-groups';
 import {
     authorMatchesCoworkerRosterEntry,
+    buildCoworkerRosterCandidates,
     deriveQueueRisk,
     filterPullRequestsByCoworkerRoster,
     formatRelativeTime,
@@ -243,5 +244,37 @@ describe('coworker roster author matching', () => {
         expect(pullRequestMatchesCoworkerRoster(pullRequests[0], roster)).toBe(true);
         expect(pullRequestMatchesCoworkerRoster(pullRequests[1], roster)).toBe(false);
         expect(filterPullRequestsByCoworkerRoster(pullRequests, roster).map(item => item.number)).toEqual([1, 3]);
+    });
+
+    it('dedupes add-picker author candidates by provider id first and displayName fallback', () => {
+        const candidates = buildCoworkerRosterCandidates([
+            pr({
+                number: 1,
+                author: { id: 12345, displayName: 'Bob Dev', email: 'bob@example.invalid' },
+            }),
+            pr({
+                number: 2,
+                author: { id: '12345', displayName: 'Robert Dev', avatarUrl: 'https://avatars.example.invalid/bob' },
+            }),
+            pr({ number: 3, author: { displayName: '  Casey Dev  ' } }),
+            pr({ number: 4, author: { displayName: 'casey dev' } }),
+            pr({ number: 5, author: { id: '', displayName: '   ' } }),
+            pr({ number: 6, author: undefined }),
+        ]);
+
+        expect(candidates).toEqual([
+            {
+                id: '12345',
+                displayName: 'Bob Dev',
+                email: 'bob@example.invalid',
+                avatarUrl: 'https://avatars.example.invalid/bob',
+                prCount: 2,
+            },
+            {
+                id: '',
+                displayName: 'Casey Dev',
+                prCount: 2,
+            },
+        ]);
     });
 });
