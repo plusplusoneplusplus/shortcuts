@@ -2,8 +2,8 @@
  * RalphSessionRow — collapsible group row for a Ralph session.
  *
  * Visually mirrors `HistoryGroupHeader` (plan-file groups): a compact one-line
- * row in the same `[10px_36px_minmax(0,1fr)_auto]` grid with a status dot,
- * `RALPH` mode pill, chevron toggle, title, child-count badge, and relative
+ * row in the same `[10px_30px_minmax(0,1fr)_auto]` grid with a status dot,
+ * compact `R` mode pill, chevron toggle, title, child-count badge, and relative
  * time. Phase is signaled entirely via the status-dot color (no separate
  * phase badge). Children are rendered inline (no decorative wrapper) by
  * delegating to the caller's `renderTaskCard` with `{ isGroupChild: true }`.

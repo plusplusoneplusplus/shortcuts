@@ -48,6 +48,9 @@ function makeBridge(): any {
         createAggregateQueueFacade: vi.fn(),
         registerRepoId: vi.fn(),
         dispatchToRepo: vi.fn(),
+        registry: {
+            on: vi.fn(),
+        },
         on: vi.fn(),
     };
 }

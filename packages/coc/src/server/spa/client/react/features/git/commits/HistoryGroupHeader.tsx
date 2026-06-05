@@ -2,8 +2,8 @@
  * HistoryGroupHeader — collapsible header for plan-file task groups.
  *
  * Renders as a compact one-line row matching the activity-compact reference's
- * `.row.has-children` style: status dot + mode pill + title (with rotating
- * chevron) + relative time, in the same `[10px_36px_minmax(0,1fr)_auto]`
+ * `.row.has-children` style: status dot + compact mode pill + title (with rotating
+ * chevron) + relative time, in the same `[10px_30px_minmax(0,1fr)_auto]`
  * grid as `renderChatListRow`. The mode pill collapses children's modes:
  * if every child shares the same mode the parent shows that mode
  * (ASK/AUTO/SCRP); when they differ a neutral "MIX" pill is shown with the
