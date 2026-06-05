@@ -14,6 +14,7 @@ import {
 } from './work-item-sync-azure-boards-mapping';
 
 export { WORK_ITEM_SYNC_CONFLICT_CODE } from '@plusplusoneplusplus/coc-client';
+export type { WorkItemSyncConflictResolution } from '@plusplusoneplusplus/coc-client';
 
 /**
  * Provider-owned field values for a work item, normalized to display strings (or

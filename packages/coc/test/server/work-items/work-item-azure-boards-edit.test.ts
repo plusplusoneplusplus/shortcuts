@@ -475,4 +475,61 @@ describe('Azure Boards-backed work item edits', () => {
         expect(stored?.title).toBe('Azure Epic');
         expect(stored?.azureBoardsMirror?.revision).toBe(3);
     });
+
+    it('allows a reviewed stale Azure Boards save when the acknowledged revision still matches', async () => {
+        await store.addWorkItem(makeWorkItem({
+            id: 'epic-1',
+            title: 'Azure Epic',
+            type: 'epic',
+            tracker: {
+                kind: 'azure-boards-backed',
+                provider: 'azure-boards',
+                azureBoards: { workItemId: 100, workItemUrl: htmlUrl(100), revision: 3, updatedAt: NOW, lastPulledAt: NOW },
+            },
+            azureBoardsMirror: { workItemId: 100, workItemUrl: htmlUrl(100), revision: 3, workItemType: 'Epic', state: 'Active', updatedAt: NOW, lastPulledAt: NOW },
+        }));
+        const transport = new FakeAzureBoardsTransport();
+        transport.set([{
+            id: 100,
+            revision: 4,
+            title: 'Remote changed title',
+            description: '',
+            state: 'Active',
+            workItemType: 'Epic',
+            priority: 2,
+            updatedAt: NOW,
+            url: htmlUrl(100),
+        }]);
+        await startServer(transport);
+
+        const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/epic-1`, {
+            title: 'Resolved local title',
+            syncConflictResolution: {
+                provider: 'azure-boards',
+                acknowledgedRemoteRevision: 4,
+            },
+        });
+
+        expect(res.status).toBe(200);
+        expect(transport.calls.update).toEqual([{
+            workItemId: 100,
+            input: {
+                workItemType: 'Epic',
+                title: 'Resolved local title',
+                description: '',
+                state: 'New',
+                priority: 2,
+                tags: undefined,
+                expectedRevision: 4,
+            },
+        }]);
+        expect(res.body).toMatchObject({
+            id: 'epic-1',
+            title: 'Resolved local title',
+            azureBoardsMirror: { workItemId: 100, revision: 5 },
+        });
+        const stored = await store.getWorkItem('epic-1', REPO_ID);
+        expect(stored?.title).toBe('Resolved local title');
+        expect(stored?.azureBoardsMirror?.revision).toBe(5);
+    });
 });

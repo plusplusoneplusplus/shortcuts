@@ -61,6 +61,7 @@ import {
     WORK_ITEM_SYNC_CONFLICT_CODE,
     buildAzureBoardsWorkItemSyncConflict,
     buildGitHubWorkItemSyncConflict,
+    type WorkItemSyncConflictResolution,
 } from '../work-items/work-item-sync-conflict';
 import {
     unavailableWorkItemSyncProviderStatus,
@@ -101,6 +102,30 @@ export interface WorkItemRouteContext {
 
 function isObject(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseWorkItemSyncConflictResolution(value: unknown): WorkItemSyncConflictResolution | undefined {
+    if (value === undefined) return undefined;
+    if (!isObject(value)) {
+        throw new Error('syncConflictResolution must be an object');
+    }
+    if (value.provider !== 'github' && value.provider !== 'azure-boards') {
+        throw new Error('syncConflictResolution.provider must be github or azure-boards');
+    }
+    const resolution: WorkItemSyncConflictResolution = { provider: value.provider };
+    if (value.acknowledgedRemoteUpdatedAt !== undefined) {
+        if (typeof value.acknowledgedRemoteUpdatedAt !== 'string') {
+            throw new Error('syncConflictResolution.acknowledgedRemoteUpdatedAt must be a string');
+        }
+        resolution.acknowledgedRemoteUpdatedAt = value.acknowledgedRemoteUpdatedAt;
+    }
+    if (value.acknowledgedRemoteRevision !== undefined) {
+        if (typeof value.acknowledgedRemoteRevision !== 'number' || !Number.isFinite(value.acknowledgedRemoteRevision)) {
+            throw new Error('syncConflictResolution.acknowledgedRemoteRevision must be a finite number');
+        }
+        resolution.acknowledgedRemoteRevision = value.acknowledgedRemoteRevision;
+    }
+    return resolution;
 }
 
 function assertAllowedKeys(
@@ -522,6 +547,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
         repoId: string,
         parentChanged: boolean,
         newParent: WorkItem | undefined,
+        resolution: WorkItemSyncConflictResolution | undefined,
     ): Promise<Partial<WorkItem>> {
         const hasGitHubWritableChange = updates.title !== undefined
             || updates.description !== undefined
@@ -559,16 +585,23 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             parentId: parentChanged ? newParent?.id : current.parentId,
         };
         if (githubMirrorIsStale(current, remote)) {
-            throw githubProviderError(
-                `GitHub issue #${issueNumber} changed remotely; resolve the conflict before saving local edits.`,
-                WORK_ITEM_SYNC_CONFLICT_CODE,
-                buildGitHubWorkItemSyncConflict({
-                    current,
-                    draft: itemForRemote,
-                    remote,
-                    issueNumber,
-                }),
-            );
+            const acknowledged = resolution?.provider === 'github'
+                && resolution.acknowledgedRemoteUpdatedAt !== undefined
+                && resolution.acknowledgedRemoteUpdatedAt === remote.updatedAt;
+            if (!acknowledged) {
+                throw githubProviderError(
+                    `GitHub issue #${issueNumber} changed remotely; resolve the conflict before saving local edits.`,
+                    WORK_ITEM_SYNC_CONFLICT_CODE,
+                    buildGitHubWorkItemSyncConflict({
+                        current,
+                        draft: itemForRemote,
+                        remote,
+                        issueNumber,
+                    }),
+                );
+            }
+            // User reviewed exactly this remote snapshot in the inline merge UI and
+            // chose the per-field values now present in `itemForRemote`; proceed.
         }
 
         const parent = await githubParentReferenceForUpdate(current, root, repo, parentChanged, newParent, repoId);
@@ -612,6 +645,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
         repoId: string,
         parentChanged: boolean,
         newParent: WorkItem | undefined,
+        resolution: WorkItemSyncConflictResolution | undefined,
     ): Promise<Partial<WorkItem>> {
         const hasAzureWritableChange = updates.title !== undefined
             || updates.description !== undefined
@@ -648,19 +682,29 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             ...updates,
             parentId: parentChanged ? newParent?.id : current.parentId,
         };
+        let expectedRevisionOverride: number | undefined;
         if (azureBoardsMirrorIsStale(current, remote)) {
-            const remoteParentLocalId = await azureBoardsRemoteParentLocalId(remote, repoId);
-            throw azureBoardsProviderError(
-                `Azure Boards work item ${remoteWorkItemId} changed remotely; resolve the conflict before saving local edits.`,
-                WORK_ITEM_SYNC_CONFLICT_CODE,
-                buildAzureBoardsWorkItemSyncConflict({
-                    current,
-                    draft: itemForRemote,
-                    remote,
-                    remoteWorkItemId,
-                    remoteParentLocalId,
-                }),
-            );
+            const acknowledged = resolution?.provider === 'azure-boards'
+                && resolution.acknowledgedRemoteRevision !== undefined
+                && resolution.acknowledgedRemoteRevision === remote.revision;
+            if (!acknowledged) {
+                const remoteParentLocalId = await azureBoardsRemoteParentLocalId(remote, repoId);
+                throw azureBoardsProviderError(
+                    `Azure Boards work item ${remoteWorkItemId} changed remotely; resolve the conflict before saving local edits.`,
+                    WORK_ITEM_SYNC_CONFLICT_CODE,
+                    buildAzureBoardsWorkItemSyncConflict({
+                        current,
+                        draft: itemForRemote,
+                        remote,
+                        remoteWorkItemId,
+                        remoteParentLocalId,
+                    }),
+                );
+            }
+            // User reviewed exactly this remote revision in the inline merge UI;
+            // re-base the optimistic concurrency check to the reviewed revision so
+            // the provider `test /rev` op matches the current remote.
+            expectedRevisionOverride = remote.revision;
         }
 
         const parentWorkItemId = parentChanged
@@ -672,7 +716,8 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             transport,
             item: itemForRemote,
             remoteWorkItemId,
-            expectedRevision: current.azureBoardsMirror?.revision
+            expectedRevision: expectedRevisionOverride
+                ?? current.azureBoardsMirror?.revision
                 ?? (current.tracker?.kind === 'azure-boards-backed' ? current.tracker.azureBoards.revision : undefined),
         };
         if (parentChanged) {
@@ -979,6 +1024,13 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 return handleAPIError(res, notFound('Work item'));
             }
 
+            let syncConflictResolution: WorkItemSyncConflictResolution | undefined;
+            try {
+                syncConflictResolution = parseWorkItemSyncConflictResolution(body.syncConflictResolution);
+            } catch (err) {
+                return handleAPIError(res, badRequest(err instanceof Error ? err.message : 'Invalid syncConflictResolution'));
+            }
+
             // Validate status transition if status is being changed
             if (body.status) {
                 if (!WORK_ITEM_STATUSES.includes(body.status)) {
@@ -1092,6 +1144,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                     repoId,
                     parentChanged,
                     newParentForRemote,
+                    syncConflictResolution,
                 );
                 remoteReadyUpdates = await pushGitHubBackedUpdateIfNeeded(
                     current,
@@ -1099,6 +1152,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                     repoId,
                     parentChanged,
                     newParentForRemote,
+                    syncConflictResolution,
                 );
             } catch (err) {
                 return handleAPIError(res, err);

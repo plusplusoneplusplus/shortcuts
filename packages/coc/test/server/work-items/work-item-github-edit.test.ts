@@ -379,6 +379,39 @@ describe('GitHub-backed work item edits', () => {
         expect(stored?.githubMirror?.updatedAt).toBe(NOW);
     });
 
+    it('allows a reviewed stale GitHub save when the acknowledged remote timestamp still matches', async () => {
+        await store.addWorkItem(githubBackedRoot());
+        const mock = makeMockTransport([mirroredIssue(10, {
+            title: 'Remote changed title',
+            labels: ['coc:type:epic', 'coc:status:created', 'coc:priority:normal'],
+            updatedAt: LATER,
+        })]);
+        await startServer(mock);
+
+        const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/epic-1`, {
+            title: 'Resolved local title',
+            syncConflictResolution: {
+                provider: 'github',
+                acknowledgedRemoteUpdatedAt: LATER,
+            },
+        });
+
+        expect(res.status).toBe(200);
+        expect(mock.calls.updateIssue).toHaveLength(1);
+        expect(mock.calls.updateIssue[0]).toMatchObject({
+            issueNumber: 10,
+            title: 'Resolved local title',
+        });
+        expect(res.body).toMatchObject({
+            id: 'epic-1',
+            title: 'Resolved local title',
+            githubMirror: { issueNumber: 10, updatedAt: LATER },
+        });
+        const stored = await store.getWorkItem('epic-1', REPO_ID);
+        expect(stored?.title).toBe('Resolved local title');
+        expect(stored?.githubMirror?.updatedAt).toBe(LATER);
+    });
+
     it('does not call GitHub for edits to a local-only tree', async () => {
         await store.addWorkItem(makeWorkItem({
             id: 'local-epic',

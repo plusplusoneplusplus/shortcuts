@@ -356,6 +356,24 @@ export interface WorkItemSyncConflictDetails extends JsonObject {
   fields: WorkItemSyncConflictFieldDetail[];
 }
 
+/**
+ * Acknowledgement that the user has reviewed a {@link WorkItemSyncConflictDetails}
+ * and resolved it in the inline merge UI. Sent on the retry PATCH so the
+ * remote-first save can proceed against a stale-but-reviewed provider revision.
+ *
+ * The save still re-checks the live provider state: it only proceeds when the
+ * acknowledged revision/timestamp still matches the current provider value, so a
+ * provider change that lands between review and retry produces a fresh conflict
+ * rather than silently overwriting newer remote data.
+ */
+export interface WorkItemSyncConflictResolution extends JsonObject {
+  provider: WorkItemSyncProvider;
+  /** The provider `updatedAt` the user reviewed (GitHub). */
+  acknowledgedRemoteUpdatedAt?: string;
+  /** The provider `revision` the user reviewed (Azure Boards). */
+  acknowledgedRemoteRevision?: number;
+}
+
 export interface ConvertWorkItemTrackerResponse extends JsonObject {
   root: WorkItem;
   items: WorkItem[];
@@ -388,6 +406,12 @@ export interface UpdateWorkItemRequest extends Partial<Pick<WorkItem, 'title' | 
   grillSessionId?: string;
   /** Update parent link (hierarchy). Only accepted when hierarchy flag is enabled. */
   parentId?: string | null;
+  /**
+   * Acknowledge a reviewed remote-sync conflict so a stale-but-reviewed
+   * remote-first save may proceed. Sent by the inline merge UI when retrying the
+   * normal Save after the user resolves each provider-owned field.
+   */
+  syncConflictResolution?: WorkItemSyncConflictResolution;
 }
 
 export interface ExecuteWorkItemRequest extends JsonObject {
