@@ -14,7 +14,7 @@
 
 import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { fireEvent, screen, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { renderWithProviders } from '../test-utils';
 import { ChatListPane } from '../../../../src/server/spa/client/react/features/chat/ChatListPane';
 import { RALPH_SESSION_CONTEXT_DRAG_MIME } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
@@ -50,6 +50,8 @@ const mockPinChat = vi.fn();
 const mockUnpinChat = vi.fn();
 let mockSessionContextAttachmentsEnabled = false;
 let mockForEachEnabled = false;
+let mockLoopsEnabled = false;
+const mockListAllLoops = vi.fn().mockResolvedValue([]);
 vi.mock('../../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
     ChatPrefsSync: () => null,
     useChatPrefs: () => ({
@@ -97,10 +99,18 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '',
     isRalphEnabled: () => true,
-    isLoopsEnabled: () => false,
-    isForEachEnabled: () => false,
+    isLoopsEnabled: () => mockLoopsEnabled,
     isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled,
     isForEachEnabled: () => mockForEachEnabled,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        loops: { listAll: mockListAllLoops },
+        queue: {
+            summarize: vi.fn().mockResolvedValue({ taskId: null }),
+        },
+    }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
@@ -242,6 +252,8 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
         mockArchivedChatIds = new Set();
         mockSessionContextAttachmentsEnabled = false;
         mockForEachEnabled = false;
+        mockLoopsEnabled = false;
+        mockListAllLoops.mockResolvedValue([]);
         mockDisplaySettings = { taskCardDensity: 'normal', showReportIntent: false, historyGrouping: true };
         try { window.localStorage.removeItem('coc-activity-scope'); } catch { /* ignore */ }
     });
@@ -671,6 +683,72 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
         expect(pinnedSection).toBeNull();
         expect(todaySection.querySelector('[data-testid="for-each-run-row"]')).toBeNull();
         expect(todaySection.textContent).toContain('Standalone chat');
+    });
+
+    it('hides For Each parent groups from Activity Automations while keeping them in Chats and All', () => {
+        mockForEachEnabled = true;
+        const automation = {
+            id: 'script-1',
+            type: 'run-script',
+            status: 'completed',
+            displayName: 'Script automation',
+            customTitle: 'Script automation',
+            title: 'Script automation',
+            completedAt: new Date(NOW - 3000).toISOString(),
+            lastActivityAt: NOW - 3000,
+            payload: {},
+        };
+        renderActivity([makeForEachChild('run-1'), automation], {
+            forEachRuns: [makeForEachRunSummary('run-1')],
+        });
+
+        expect(screen.getByTestId('activity-scope-tab-all').getAttribute('data-active')).toBe('true');
+        expect(screen.getByTestId('for-each-run-row')).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('activity-scope-tab-auto'));
+
+        expect(screen.queryByTestId('for-each-run-row')).toBeNull();
+        expect(screen.queryByText('For Each child')).toBeNull();
+        expect(screen.getByText('Script automation')).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('activity-scope-tab-chat'));
+
+        expect(screen.getByTestId('for-each-run-row')).toBeTruthy();
+    });
+
+    it('hides For Each parent groups from Activity Loops without hiding loop-linked child chats', async () => {
+        mockForEachEnabled = true;
+        mockLoopsEnabled = true;
+        mockListAllLoops.mockResolvedValue([
+            {
+                id: 'loop-1',
+                processId: 'child-run-1',
+                status: 'active',
+                description: '',
+                intervalMs: 60000,
+                createdAt: new Date(NOW).toISOString(),
+                lastTickAt: null,
+                nextTickAt: null,
+                tickCount: 0,
+                consecutiveFailures: 0,
+                expiresAt: new Date(NOW + 60000).toISOString(),
+                pausedReason: null,
+                prompt: '',
+                model: null,
+            },
+        ]);
+
+        renderActivity([makeForEachChild('run-1')], {
+            forEachRuns: [makeForEachRunSummary('run-1')],
+        });
+
+        expect(screen.getByTestId('for-each-run-row')).toBeTruthy();
+        await waitFor(() => expect(screen.getByTestId('activity-scope-count-loops').textContent).toBe('1'));
+
+        fireEvent.click(screen.getByTestId('activity-scope-tab-loops'));
+
+        expect(screen.queryByTestId('for-each-run-row')).toBeNull();
+        expect(screen.getByText('For Each child')).toBeTruthy();
     });
 
     it('Ralph group pin button toggles only the parent group and does not select or expand', () => {

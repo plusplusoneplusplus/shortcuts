@@ -812,6 +812,7 @@ export function ChatListPane({
     }, [activeTab, filteredHistory, isTaskItem, passesScope]);
 
     const forEachFeatureEnabled = isForEachEnabled();
+    const showForEachRunGroups = activeTab === 'chats' || (!activeTab && (activeScope === 'chat' || activeScope === 'all'));
     const visibleForEachRuns = useMemo(() => {
         if (!forEachFeatureEnabled) return [];
         if (!searchQuery) return forEachRuns;
@@ -824,14 +825,14 @@ export function ChatListPane({
     }, [forEachFeatureEnabled, forEachRuns, searchQuery, filteredRunning, filteredQueued, filteredHistory]);
 
     const forEachGroupedEntries = useMemo<ForEachRunHistoryEntry[]>(() => {
-        if (!forEachFeatureEnabled || visibleForEachRuns.length === 0 || activeTab === 'tasks') return [];
+        if (!forEachFeatureEnabled || !showForEachRunGroups || visibleForEachRuns.length === 0 || activeTab === 'tasks') return [];
         const queueTasks = tabFilteredQueued.filter((task: any) => task.kind !== 'pause-marker');
         return groupByForEachRun(
             [...tabFilteredRunning, ...queueTasks, ...tabFilteredHistory],
             visibleForEachRuns,
             unseenProcessIds,
         );
-    }, [activeTab, forEachFeatureEnabled, tabFilteredRunning, tabFilteredQueued, tabFilteredHistory, visibleForEachRuns, unseenProcessIds]);
+    }, [activeTab, forEachFeatureEnabled, showForEachRunGroups, tabFilteredRunning, tabFilteredQueued, tabFilteredHistory, visibleForEachRuns, unseenProcessIds]);
 
     const forEachRunGroups = useMemo(
         () => forEachGroupedEntries.filter((entry): entry is ForEachRunGroup => entry.kind === 'for-each-run'),
@@ -877,13 +878,16 @@ export function ChatListPane({
      *  of which scope the user is currently viewing. */
     const scopeCounts = useMemo(() => {
         const liveQueue = queued.filter((t: any) => t.kind !== 'pause-marker');
-        const all = [...running, ...liveQueue, ...history].filter((task: any) => !taskIdentityMatches(task, forEachGroupedTaskIds));
+        const allRaw = [...running, ...liveQueue, ...history];
+        const all = allRaw.filter((task: any) => !taskIdentityMatches(task, forEachGroupedTaskIds));
         let chat = forEachRunGroups.length;
         let auto = 0;
         let loops = 0;
         for (const t of all) {
             if (isChat(t)) chat++;
             else if (isAutomation(t)) auto++;
+        }
+        for (const t of allRaw) {
             if (processIdsWithLoops.has(t.id) || processIdsWithLoops.has(t.processId)) loops++;
         }
         return { chat, auto, loops, all: all.length + forEachRunGroups.length };

@@ -233,9 +233,12 @@ Each tool's internal sub-tab/hash scheme (e.g. `#skills/installed`,
 ## Activity Tab
 
 - Action bar: New chat + refresh + ALL/AP split pause pill
-- 3-column scope segmented control: Chats / Automations / All
+- Scope segmented control: Chats / Loops (when `loops.enabled`) / Automations / All
 - Search box
 - Selection persists in `localStorage['coc-activity-scope']`
+- For Each parent run group rows render in Activity Chats and All, but not in
+  Activity Automations or Loops; loop-linked child chats can still appear in
+  Loops independently of the hidden parent group row.
 
 Ralph activity deep-links mount `RalphWorkflowPane`, which shows the iteration timeline alongside a read-only session file browser. The file browser lists the raw files returned by the Ralph session API, selects the first file by default, renders Markdown files through the shared markdown renderer, and formats JSON files as plain indented text. The pane accepts an optional selected filename from the router and reports file selections back to the host so URL hash wiring can deep-link individual session files with `#repos/{workspaceId}/activity/ralph/{sessionId}/{filename}`; bare and trailing-slash session hashes have no pre-selected file and fall back to the first file.
 
