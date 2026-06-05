@@ -177,6 +177,27 @@ export function getTaskPromptPreview(task: any): string {
     return text.length > 60 ? text.substring(0, 57) + '…' : text;
 }
 
+function getForEachGenerationContext(task: any): any | undefined {
+    const context = task?.forEach ?? task?.payload?.context?.forEach;
+    return context?.kind === 'generation' ? context : undefined;
+}
+
+function getForEachGenerationPreview(task: any): string | undefined {
+    const context = getForEachGenerationContext(task);
+    if (!context) return undefined;
+    const status = context.status === 'approved' ? 'approved' : 'draft';
+    const itemCount = typeof context.latestItemCount === 'number' && Number.isFinite(context.latestItemCount) && context.latestItemCount > 0
+        ? Math.floor(context.latestItemCount)
+        : undefined;
+    if (itemCount !== undefined) {
+        return `${itemCount} proposed item${itemCount === 1 ? '' : 's'} - ${status}`;
+    }
+    if (context.lastPlanError) {
+        return `Plan needs review - ${status}`;
+    }
+    return `Proposed plan - ${status}`;
+}
+
 export interface ChatListPaneProps {
     running: any[];
     queued: any[];
@@ -1214,6 +1235,7 @@ export function ChatListPane({
             || askUserCountOnTask > 0
         );
         const taskProvider = getTaskChatProvider(task);
+        const forEachGenerationPreview = getForEachGenerationPreview(task);
 
         const modeKey = getTaskModeKey(task);
         const modeLabel = getTaskModeLabel(task);
@@ -1367,6 +1389,24 @@ export function ChatListPane({
                         >
                             {titleText}
                         </span>
+                        {forEachGenerationPreview && (
+                            <>
+                                <span
+                                    className="shrink-0 rounded-full border border-sky-400/60 dark:border-sky-400/50 bg-sky-50/80 dark:bg-sky-400/10 px-1.5 py-[1px] text-[9.5px] font-semibold leading-none text-sky-700 dark:text-sky-300"
+                                    title="For Each generation chat"
+                                    data-testid="for-each-generation-badge"
+                                >
+                                    For Each
+                                </span>
+                                <span
+                                    className="shrink min-w-0 max-w-[150px] truncate text-[10px] font-medium leading-none text-sky-700 dark:text-sky-300"
+                                    title={forEachGenerationPreview}
+                                    data-testid="for-each-generation-preview"
+                                >
+                                    {forEachGenerationPreview}
+                                </span>
+                            </>
+                        )}
                         {isHeld && (
                             <span className="shrink-0 text-[10px] text-amber-600 dark:text-amber-400 font-medium" data-testid="held-badge">[held]</span>
                         )}
