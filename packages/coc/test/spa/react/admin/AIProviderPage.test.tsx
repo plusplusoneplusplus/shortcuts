@@ -368,6 +368,43 @@ describe('AIProviderPage', () => {
         expect(within(claudeRow).getByLabelText('Weekly quota remaining')).toBeDefined();
     });
 
+    it('keeps Copilot finite quota display on the tightest quota row', () => {
+        renderPage({
+            quotaData: {
+                providers: [
+                    {
+                        id: 'copilot',
+                        quotaTypes: [
+                            quotaType({
+                                type: 'five_hour',
+                                remainingPercentage: 0.72,
+                                usedRequests: 28,
+                                entitlementRequests: 100,
+                                resetDate: '2026-06-05T20:00:00Z',
+                            }),
+                            quotaType({
+                                type: 'seven_day',
+                                remainingPercentage: 0.18,
+                                usedRequests: 82,
+                                entitlementRequests: 100,
+                                resetDate: '2026-06-12T20:00:00Z',
+                            }),
+                        ],
+                    },
+                ],
+            },
+        });
+
+        const copilotRow = screen.getByTestId('provider-row-copilot');
+        expect(within(copilotRow).getByText('18% remaining')).toBeDefined();
+        expect(within(copilotRow).getByText('82 / 100 used')).toBeDefined();
+        expect(within(copilotRow).getByText('Risk')).toBeDefined();
+        expect(within(copilotRow).queryByText('5h')).toBeNull();
+        expect(within(copilotRow).queryByText('Weekly')).toBeNull();
+        expect(within(copilotRow).queryByText('72% remaining')).toBeNull();
+        expect(within(copilotRow).queryByLabelText('Weekly quota remaining')).toBeNull();
+    });
+
     it('falls back to a readable label for unknown quota types', () => {
         renderPage({
             quotaData: {

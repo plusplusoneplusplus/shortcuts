@@ -61,6 +61,14 @@ function getQuotaPercent(remainingPercentage: number | undefined): number {
     return Math.max(0, Math.min(100, Math.round((remainingPercentage ?? 1) * 100)));
 }
 
+function getQuotaRiskClasses(pct: number): { barClass: string; badgeClass: string; badgeLabel: string } {
+    return {
+        barClass: pct < 25 ? 'aip-bar-danger' : pct < 50 ? 'aip-bar-warning' : '',
+        badgeClass: pct < 25 ? 'ar-badge-danger' : pct < 50 ? 'ar-badge-warning' : 'ar-badge-success',
+        badgeLabel: pct < 25 ? 'Risk' : pct < 50 ? 'Watch' : 'OK',
+    };
+}
+
 function CopilotIcon() {
     return (
         <svg viewBox="0 0 256 208" width="18" height="14" fill="currentColor" aria-hidden="true">
@@ -162,15 +170,13 @@ function QuotaCell({ providerId, quotaData }: { providerId: Provider; quotaData:
     const unlimitedTypes = providerData.quotaTypes.filter(q => q.isUnlimitedEntitlement);
     const finiteTypes = providerData.quotaTypes.filter(q => !q.isUnlimitedEntitlement);
 
-    if (finiteTypes.length > 0) {
+    if (finiteTypes.length > 0 && (providerId === 'codex' || providerId === 'claude')) {
         return (
             <div className="aip-quota-cell aip-quota-list">
                 {finiteTypes.map((quotaType, index) => {
                     const label = formatQuotaTypeLabel(quotaType.type);
                     const pct = getQuotaPercent(quotaType.remainingPercentage);
-                    const barClass = pct < 25 ? 'aip-bar-danger' : pct < 50 ? 'aip-bar-warning' : '';
-                    const badgeClass = pct < 25 ? 'ar-badge-danger' : pct < 50 ? 'ar-badge-warning' : 'ar-badge-success';
-                    const badgeLabel = pct < 25 ? 'Risk' : pct < 50 ? 'Watch' : 'OK';
+                    const { barClass, badgeClass, badgeLabel } = getQuotaRiskClasses(pct);
                     return (
                         <div className="aip-quota-row" key={`${quotaType.type}-${quotaType.resetDate ?? index}`}>
                             <div className="aip-quota-top">
@@ -187,6 +193,30 @@ function QuotaCell({ providerId, quotaData }: { providerId: Provider; quotaData:
                         </div>
                     );
                 })}
+            </div>
+        );
+    }
+
+    if (finiteTypes.length > 0) {
+        const tightest = finiteTypes.reduce((best, qt) => {
+            const pct = getQuotaPercent(qt.remainingPercentage);
+            const bestPct = getQuotaPercent(best.remainingPercentage);
+            return pct < bestPct ? qt : best;
+        }, finiteTypes[0]);
+        const pct = getQuotaPercent(tightest.remainingPercentage);
+        const { barClass, badgeClass, badgeLabel } = getQuotaRiskClasses(pct);
+        return (
+            <div className="aip-quota-cell">
+                <div className="aip-quota-top">
+                    <strong className="aip-quota-value">{pct}% remaining</strong>
+                    <span className={`ar-badge ${badgeClass}`}>{badgeLabel}</span>
+                </div>
+                <div className="aip-quota-caption">
+                    {tightest.usedRequests} / {tightest.entitlementRequests} used
+                </div>
+                <div className={`aip-bar ${barClass}`}>
+                    <span style={{ width: `${pct}%` }} />
+                </div>
             </div>
         );
     }
