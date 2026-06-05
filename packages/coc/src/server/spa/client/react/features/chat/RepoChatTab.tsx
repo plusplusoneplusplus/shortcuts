@@ -51,6 +51,16 @@ function buildRalphSessionHash(
     return fileName ? base + '/' + encodeURIComponent(fileName) : base;
 }
 
+function buildForEachRunHash(
+    workspaceId: string,
+    mode: RepoChatTabProps['mode'],
+    runId: string,
+): string {
+    return '#repos/' + encodeURIComponent(workspaceId)
+        + '/' + getActivityTabSegment(mode)
+        + '/for-each/' + encodeURIComponent(runId);
+}
+
 type QueuePauseOptions = { durationHours?: 1 | 2 | 3 | 4 | 8; until?: number | string };
 
 function isQueuePauseOptions(value: unknown): value is QueuePauseOptions {
@@ -622,6 +632,20 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         selectTask(processId);
     }, [selectTask]);
 
+    const handleOpenForEachRun = useCallback((runId: string) => {
+        if (selectedTaskId) {
+            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
+            setSelectedTask(null);
+            selectedTaskRef.current = null;
+        }
+        setSelectedRalphSessionId(null);
+        setSelectedRalphFileName(null);
+        setSelectedForEachRunId(runId);
+        const next = buildForEachRunHash(workspaceId, mode, runId);
+        if (location.hash !== next) location.hash = next;
+        if (isMobile) setMobileShowDetail(true);
+    }, [isMobile, mode, queueDispatch, selectedTaskId, workspaceId]);
+
     const { focusedPane, cursorTaskId } = useChatPaneNavigation({
         listContainerRef,
         detailContainerRef,
@@ -749,10 +773,11 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                                 <ChatDetailPane
                                     selectedTaskId={selectedTaskId}
                                     selectedTask={selectedTask}
-                                    onBack={() => setMobileShowDetail(false)}
-                                    workspaceId={workspaceId}
-                                    readOnly={mode === 'tasks'}
-                                />
+                                     onBack={() => setMobileShowDetail(false)}
+                                     workspaceId={workspaceId}
+                                     readOnly={mode === 'tasks'}
+                                     onOpenForEachRun={handleOpenForEachRun}
+                                 />
                             )}
                         </div>
                     ) : (
@@ -848,6 +873,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                         selectedTask={selectedTask}
                         workspaceId={workspaceId}
                         readOnly={mode === 'tasks'}
+                        onOpenForEachRun={handleOpenForEachRun}
                     />
                 )}
             </div>

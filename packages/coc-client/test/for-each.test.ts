@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CocClient } from '../src';
+import { CocClient, normalizeForEachPlanItems, validateForEachDraftPlan } from '../src';
 import type { ForEachRun } from '../src';
 
 function jsonResponse(body: unknown): Response {
@@ -31,6 +31,37 @@ function makeRun(overrides: Partial<ForEachRun> = {}): ForEachRun {
 }
 
 describe('ForEachClient', () => {
+  it('creates a reviewed For Each run without invoking the generation endpoint', async () => {
+    const fetch = vi.fn().mockResolvedValue(jsonResponse({ run: makeRun({ runId: 'reviewed-run', generationProcessId: 'queue_gen-1' }) }));
+    const client = new CocClient({ baseUrl: 'http://localhost:4000', fetch });
+
+    const run = await client.forEach.create('ws/one', {
+      originalRequest: 'Split this',
+      sharedInstructions: 'Keep changes small',
+      childMode: 'ask',
+      provider: 'copilot',
+      config: { model: 'gpt-5.4', reasoningEffort: 'medium' },
+      generationProcessId: 'queue_gen-1',
+      generationId: 'for-each-gen-1',
+      items: makeRun().items,
+    });
+
+    expect(run.runId).toBe('reviewed-run');
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(fetch.mock.calls[0][0]).toBe('http://localhost:4000/api/workspaces/ws%2Fone/for-each-runs');
+    expect(fetch.mock.calls[0][1]).toMatchObject({ method: 'POST' });
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toEqual({
+      originalRequest: 'Split this',
+      sharedInstructions: 'Keep changes small',
+      childMode: 'ask',
+      provider: 'copilot',
+      config: { model: 'gpt-5.4', reasoningEffort: 'medium' },
+      generationProcessId: 'queue_gen-1',
+      generationId: 'for-each-gen-1',
+      items: makeRun().items,
+    });
+  });
+
   it('generates a For Each run through the workspace-scoped route', async () => {
     const fetch = vi.fn().mockResolvedValue(jsonResponse({ run: makeRun({ runId: 'generated-run' }) }));
     const client = new CocClient({ baseUrl: 'http://localhost:4000', fetch });
@@ -84,5 +115,34 @@ describe('ForEachClient', () => {
     for (const call of fetch.mock.calls.slice(2)) {
       expect(call[1]).toMatchObject({ method: 'POST' });
     }
+  });
+});
+
+describe('For Each item-plan validation', () => {
+  it('normalizes items and validates dependencies', () => {
+    const items = normalizeForEachPlanItems([
+      { id: ' item-1 ', title: ' First ', prompt: ' Do first ', status: 'pending' },
+      { id: 'item-2', title: 'Second', prompt: 'Do second', status: 'pending', dependsOn: [' item-1 '] },
+    ]);
+
+    expect(items).toEqual([
+      { id: 'item-1', title: 'First', prompt: 'Do first', status: 'pending' },
+      { id: 'item-2', title: 'Second', prompt: 'Do second', status: 'pending', dependsOn: ['item-1'] },
+    ]);
+  });
+
+  it('reports dependency, duplicate id, and non-pending draft-status errors', () => {
+    expect(validateForEachDraftPlan([
+      { id: 'item-1', title: 'First', prompt: 'Do first', status: 'pending', dependsOn: ['missing'] },
+    ])).toMatchObject({ items: null, error: "Item 'item-1' depends on unknown item 'missing'" });
+
+    expect(validateForEachDraftPlan([
+      { id: 'item-1', title: 'First', prompt: 'Do first', status: 'pending' },
+      { id: 'item-1', title: 'Duplicate', prompt: 'Do duplicate', status: 'pending' },
+    ])).toMatchObject({ items: null, error: 'Duplicate For Each item id: item-1' });
+
+    expect(validateForEachDraftPlan([
+      { id: 'item-1', title: 'First', prompt: 'Do first', status: 'running' },
+    ])).toMatchObject({ items: null, error: "Generated For Each item 'item-1' must have initial status 'pending'" });
   });
 });

@@ -46,6 +46,10 @@ export interface ForEachRunMetadata {
   approvedAt?: string;
   cancelledAt?: string;
   completedAt?: string;
+  /** Visible generation chat process that produced the reviewed plan, when applicable. */
+  generationProcessId?: string;
+  /** Generation-context id stored on the visible For Each generation chat. */
+  generationId?: string;
 }
 
 export interface ForEachRun extends ForEachRunMetadata {
@@ -68,6 +72,17 @@ export interface GenerateForEachRunRequest {
   childMode: ForEachChildMode;
   provider?: ChatProvider;
   config?: ForEachAiConfig;
+}
+
+export interface CreateForEachRunRequest {
+  originalRequest: string;
+  sharedInstructions?: string;
+  childMode: ForEachChildMode;
+  provider?: ChatProvider;
+  config?: ForEachAiConfig;
+  generationProcessId?: string;
+  generationId?: string;
+  items: ForEachItem[];
 }
 
 export interface UpdateForEachPlanRequest {

@@ -27,9 +27,11 @@ export interface ChatDetailPaneProps {
     readOnly?: boolean;
     /** When true, hides the ask/autopilot mode selector in the follow-up input. */
     hideModeSelector?: boolean;
+    /** Opens the existing For Each run pane. */
+    onOpenForEachRun?: (runId: string) => void;
 }
 
-export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, readOnly, hideModeSelector }: ChatDetailPaneProps) {
+export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, readOnly, hideModeSelector, onOpenForEachRun }: ChatDetailPaneProps) {
     const { poppedOutTasks, markRestored } = usePopOut();
     const { floatingChats, unfloatChat } = useFloatingChats();
 
@@ -83,5 +85,5 @@ export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, readOnly, 
         );
     }
 
-    return <ChatDetail key={selectedTaskId} taskId={selectedTaskId} onBack={onBack} workspaceId={workspaceId} readOnly={readOnly} hideModeSelector={hideModeSelector} />;
+    return <ChatDetail key={selectedTaskId} taskId={selectedTaskId} onBack={onBack} workspaceId={workspaceId} readOnly={readOnly} hideModeSelector={hideModeSelector} onOpenForEachRun={onOpenForEachRun} />;
 }

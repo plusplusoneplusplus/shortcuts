@@ -46,6 +46,8 @@ export interface ForEachRunMetadata {
     approvedAt?: string;
     cancelledAt?: string;
     completedAt?: string;
+    generationProcessId?: string;
+    generationId?: string;
 }
 
 export interface ForEachRun extends ForEachRunMetadata {
@@ -65,6 +67,8 @@ export interface CreateForEachRunInput {
     provider?: ChatProvider;
     model?: string;
     reasoningEffort?: ReasoningEffort;
+    generationProcessId?: string;
+    generationId?: string;
     items: ForEachItem[];
 }
 

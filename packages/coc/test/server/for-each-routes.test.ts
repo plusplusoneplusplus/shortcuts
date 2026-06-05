@@ -159,6 +159,39 @@ describe('For Each routes', () => {
         expect(loaded?.items[0].title).toBe('Generated task');
     });
 
+    it('creates a reviewed draft run without invoking AI generation', async () => {
+        forEachEnabled = true;
+
+        const res = await request('POST', `/api/workspaces/${WORKSPACE_ID}/for-each-runs`, {
+            originalRequest: 'Split this reviewed request',
+            sharedInstructions: 'Use the reviewed shared instructions.',
+            childMode: 'ask',
+            provider: 'copilot',
+            config: { model: 'gpt-5.4', reasoningEffort: 'medium' },
+            generationProcessId: 'queue_for-each-gen-1',
+            generationId: 'for-each-gen-1',
+            items: [
+                { id: 'item-1', title: 'Reviewed item', prompt: 'Do reviewed work.', status: 'pending' },
+            ],
+        });
+
+        expect(res.status).toBe(201);
+        expect(generateItemPlan).not.toHaveBeenCalled();
+        expect(res.body.run).toMatchObject({
+            workspaceId: WORKSPACE_ID,
+            status: 'draft',
+            originalRequest: 'Split this reviewed request',
+            sharedInstructions: 'Use the reviewed shared instructions.',
+            childMode: 'ask',
+            provider: 'copilot',
+            model: 'gpt-5.4',
+            reasoningEffort: 'medium',
+            generationProcessId: 'queue_for-each-gen-1',
+            generationId: 'for-each-gen-1',
+        });
+        expect(res.body.run.items[0].title).toBe('Reviewed item');
+    });
+
     it('allows review edits before approval and blocks edits after approval', async () => {
         forEachEnabled = true;
         const created = await request('POST', `/api/workspaces/${WORKSPACE_ID}/for-each-runs/generate`, {

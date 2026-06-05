@@ -102,11 +102,12 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 
 ## For Each Runs
 
-All For Each routes are workspace-scoped and gated by `forEach.enabled` (default `false`); disabled routes return unavailable/not-found behavior. Parent run state is stored under `~/.coc/repos/<workspaceId>/for-each-runs/<runId>/` as `run.json` plus `items.json`, never as a Ralph session. `@plusplusoneplusplus/coc-client` exposes these routes through `client.forEach`, and the dashboard uses that domain for reviewed parent-run persistence, approval, and For Each detail pane actions. Visible item-plan generation chats are normal queue/process records whose metadata links to the eventual parent run.
+All For Each routes are workspace-scoped and gated by `forEach.enabled` (default `false`); disabled routes return unavailable/not-found behavior. Parent run state is stored under `~/.coc/repos/<workspaceId>/for-each-runs/<runId>/` as `run.json` plus `items.json`, never as a Ralph session. `@plusplusoneplusplus/coc-client` exposes these routes through `client.forEach`, and the dashboard uses that domain for reviewed parent-run persistence, approval, and For Each detail pane actions. Visible item-plan generation chats are normal queue/process records whose metadata links to the eventual parent run; reviewed chat-backed plans use the non-AI create endpoint so approval persists exactly what the user reviewed.
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/workspaces/:id/for-each-runs` | List For Each runs for a workspace with item status counts |
+| POST | `/api/workspaces/:id/for-each-runs` | Create a draft For Each run from an already-reviewed item plan without invoking AI generation. Body requires `originalRequest`, `childMode`, and `items`, and accepts `sharedInstructions`, `provider`, `config.model` / `config.reasoningEffort`, `generationProcessId`, and `generationId` |
 | POST | `/api/workspaces/:id/for-each-runs/generate` | Generate a structured JSON draft item plan and persist a draft run. Body requires `prompt` and `childMode` (`ask` or `autopilot`) and accepts `sharedInstructions`, `provider`, and `config.model` / `config.reasoningEffort` |
 | GET | `/api/workspaces/:id/for-each-runs/:runId` | Read a For Each run with reviewed item plan/state |
 | PUT | `/api/workspaces/:id/for-each-runs/:runId/plan` | Replace the reviewed draft item plan and optional shared instructions / child mode before approval |
