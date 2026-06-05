@@ -97,6 +97,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isLoopsEnabled: () => false,
     isForEachEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled,
+    isForEachEnabled: () => false,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
@@ -151,6 +152,23 @@ function makeStandaloneChat(id: string, label: string): any {
         completedAt: new Date(NOW - 5000).toISOString(),
         lastActivityAt: NOW - 5000,
         payload: { mode: 'ask' },
+    };
+}
+
+function makeOrderedStandaloneChat(id: string, label: string, ageMs: number): any {
+    return {
+        ...makeStandaloneChat(id, label),
+        completedAt: new Date(NOW - ageMs).toISOString(),
+        lastActivityAt: NOW - ageMs,
+    };
+}
+
+function makeOrderedRalphIteration(iter: number, ageMs: number): any {
+    return {
+        ...makeRalphIteration(iter, ageMs),
+        endTime: new Date(NOW - ageMs).toISOString(),
+        completedAt: new Date(NOW - ageMs).toISOString(),
+        lastActivityAt: NOW - ageMs,
     };
 }
 
@@ -555,6 +573,73 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
         const pos = ralphRow!.compareDocumentPosition(freshRow!);
         // eslint-disable-next-line no-bitwise
         expect(pos & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    });
+
+    describe('shift-click range selection across Ralph groups', () => {
+        function rangeFixture() {
+            return [
+                makeOrderedStandaloneChat('regular-above', 'Regular above', 1000),
+                makeOrderedRalphIteration(1, 2000),
+                makeOrderedRalphIteration(2, 2100),
+                makeOrderedStandaloneChat('regular-below', 'Regular below', 3000),
+            ];
+        }
+
+        it('treats a collapsed Ralph session as one range row and selects every child process', () => {
+            renderActivity(rangeFixture(), { activeTab: 'chats' });
+
+            expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('false');
+            fireEvent.click(document.querySelector('[data-task-id="regular-above"]')!);
+            fireEvent.click(document.querySelector('[data-task-id="regular-below"]')!, { shiftKey: true });
+
+            expect(screen.getByTestId('ralph-session-row').getAttribute('data-selected')).toBe('true');
+            expect((document.querySelector('[data-task-id="regular-above"]') as HTMLElement).getAttribute('data-selected')).toBe('true');
+            expect((document.querySelector('[data-task-id="regular-below"]') as HTMLElement).getAttribute('data-selected')).toBe('true');
+            fireEvent.contextMenu(document.querySelector('[data-task-id="regular-above"]')!);
+            expect(screen.getByText(/4 tasks selected/)).toBeTruthy();
+        });
+
+        it('uses individual Ralph child rows when the session is expanded', () => {
+            renderActivity(rangeFixture(), { activeTab: 'chats' });
+
+            fireEvent.click(screen.getByTestId('ralph-session-chevron'));
+            expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('true');
+
+            fireEvent.click(document.querySelector('[data-task-id="regular-above"]')!);
+            fireEvent.click(document.querySelector('[data-task-id="regular-below"]')!, { shiftKey: true });
+
+            expect((document.querySelector(`[data-task-id="ralph-${SESSION_ID}-1"]`) as HTMLElement).getAttribute('data-selected')).toBe('true');
+            expect((document.querySelector(`[data-task-id="ralph-${SESSION_ID}-2"]`) as HTMLElement).getAttribute('data-selected')).toBe('true');
+            fireEvent.contextMenu(document.querySelector('[data-task-id="regular-above"]')!);
+            expect(screen.getByText(/4 tasks selected/)).toBeTruthy();
+        });
+
+        it('normalizes a sub-session anchor to the Ralph group boundary', () => {
+            renderActivity(rangeFixture(), { activeTab: 'chats' });
+
+            fireEvent.click(screen.getByTestId('ralph-session-chevron'));
+            fireEvent.click(document.querySelector(`[data-task-id="ralph-${SESSION_ID}-2"]`)!);
+            fireEvent.click(document.querySelector('[data-task-id="regular-below"]')!, { shiftKey: true });
+
+            expect((document.querySelector(`[data-task-id="ralph-${SESSION_ID}-1"]`) as HTMLElement).getAttribute('data-selected')).toBe('true');
+            expect((document.querySelector(`[data-task-id="ralph-${SESSION_ID}-2"]`) as HTMLElement).getAttribute('data-selected')).toBe('true');
+            expect((document.querySelector('[data-task-id="regular-below"]') as HTMLElement).getAttribute('data-selected')).toBe('true');
+            fireEvent.contextMenu(document.querySelector('[data-task-id="regular-below"]')!);
+            expect(screen.getByText(/3 tasks selected/)).toBeTruthy();
+        });
+
+        it('preserves ctrl-click toggling for expanded Ralph child rows', () => {
+            renderActivity(rangeFixture(), { activeTab: 'chats' });
+
+            fireEvent.click(screen.getByTestId('ralph-session-chevron'));
+            fireEvent.click(document.querySelector(`[data-task-id="ralph-${SESSION_ID}-1"]`)!, { ctrlKey: true });
+            fireEvent.click(document.querySelector(`[data-task-id="ralph-${SESSION_ID}-2"]`)!, { ctrlKey: true });
+
+            expect((document.querySelector(`[data-task-id="ralph-${SESSION_ID}-1"]`) as HTMLElement).getAttribute('data-selected')).toBe('true');
+            expect((document.querySelector(`[data-task-id="ralph-${SESSION_ID}-2"]`) as HTMLElement).getAttribute('data-selected')).toBe('true');
+            fireEvent.contextMenu(document.querySelector(`[data-task-id="ralph-${SESSION_ID}-1"]`)!);
+            expect(screen.getByText(/2 tasks selected/)).toBeTruthy();
+        });
     });
 });
 

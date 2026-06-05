@@ -22,6 +22,11 @@ interface RalphSessionRowProps {
     selectedTaskId: string | null;
     /** When this session is the right-pane selection. Highlights the row. */
     selectedSessionId?: string | null;
+    /** When every child process is selected by history multi-select. */
+    isRangeSelected?: boolean;
+    /** Controlled expansion state supplied by ChatListPane so range selection can mirror rendered rows. */
+    expanded?: boolean;
+    onToggleExpanded?: () => void;
     now: number;
     unseenProcessIds?: Set<string>;
     onSelectTask: (id: string, task?: any) => void;
@@ -63,6 +68,9 @@ export function RalphSessionRow({
     session,
     selectedTaskId: _selectedTaskId,
     selectedSessionId,
+    isRangeSelected,
+    expanded: controlledExpanded,
+    onToggleExpanded,
     now: _now,
     unseenProcessIds: _unseenProcessIds,
     onSelectTask: _onSelectTask,
@@ -71,8 +79,9 @@ export function RalphSessionRow({
     sessionContextPayload,
     renderTaskCard,
 }: RalphSessionRowProps) {
-    const [expanded, setExpanded] = useState(false);
-    const isSelected = selectedSessionId === session.sessionId;
+    const [internalExpanded, setInternalExpanded] = useState(false);
+    const expanded = controlledExpanded ?? internalExpanded;
+    const isSelected = selectedSessionId === session.sessionId || !!isRangeSelected;
 
     const iterCount = session.iterations.length;
     const subCount = (session.grillingProcess ? 1 : 0) + iterCount;
@@ -104,7 +113,13 @@ export function RalphSessionRow({
         'bg-purple-50/60 dark:bg-purple-500/10',
     );
 
-    const toggle = () => setExpanded(e => !e);
+    const toggle = () => {
+        if (onToggleExpanded) {
+            onToggleExpanded();
+            return;
+        }
+        setInternalExpanded(e => !e);
+    };
 
     return (
         <div

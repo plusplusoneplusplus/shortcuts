@@ -215,6 +215,123 @@ function taskIdentityMatches(task: any, ids: Set<string>): boolean {
     return ids.has(task.id) || (typeof task.processId === 'string' && ids.has(task.processId));
 }
 
+export const RALPH_SESSION_RANGE_ID_PREFIX = 'ralph-session:';
+
+export type HistoryRangeRow =
+    | { kind: 'task'; id: string; ralphSessionId?: string; ralphSessionSubIds?: string[] }
+    | { kind: 'ralph-session'; id: string; sessionId: string; subIds: string[] };
+
+type HistoryRangeInput = HistoryRangeRow | any;
+
+function isRalphSessionEntry(entry: any): entry is RalphSession {
+    return entry?.kind === 'ralph-session'
+        && typeof entry.sessionId === 'string'
+        && Array.isArray(entry.iterations);
+}
+
+function isHistoryRangeRow(entry: any): entry is HistoryRangeRow {
+    return (entry?.kind === 'task' && typeof entry.id === 'string')
+        || (entry?.kind === 'ralph-session' && typeof entry.id === 'string' && Array.isArray(entry.subIds));
+}
+
+export function getRalphSessionRangeId(sessionId: string): string {
+    return `${RALPH_SESSION_RANGE_ID_PREFIX}${sessionId}`;
+}
+
+export function getRalphSessionSubIds(session: RalphSession): string[] {
+    return [session.grillingProcess?.id, ...session.iterations.map((iteration: any) => iteration?.id)]
+        .filter((id): id is string => typeof id === 'string' && id.length > 0);
+}
+
+export function buildHistoryRangeRows(
+    entries: HistoryRangeInput[],
+    expandedRalphSessionIds: ReadonlySet<string>,
+): HistoryRangeRow[] {
+    const rows: HistoryRangeRow[] = [];
+    for (const entry of entries) {
+        if (isRalphSessionEntry(entry)) {
+            const subIds = getRalphSessionSubIds(entry);
+            if (subIds.length === 0) continue;
+            if (expandedRalphSessionIds.has(entry.sessionId)) {
+                for (const id of subIds) {
+                    rows.push({ kind: 'task', id, ralphSessionId: entry.sessionId, ralphSessionSubIds: subIds });
+                }
+            } else {
+                rows.push({
+                    kind: 'ralph-session',
+                    id: getRalphSessionRangeId(entry.sessionId),
+                    sessionId: entry.sessionId,
+                    subIds,
+                });
+            }
+            continue;
+        }
+        if (isHistoryRangeRow(entry)) {
+            rows.push(entry);
+            continue;
+        }
+        if (typeof entry?.id === 'string' && entry.id.length > 0) {
+            rows.push({ kind: 'task', id: entry.id });
+        }
+    }
+    return rows;
+}
+
+function normalizeHistoryRangeRows(entries: HistoryRangeInput[]): HistoryRangeRow[] {
+    return buildHistoryRangeRows(entries, new Set());
+}
+
+export function resolveHistoryRangeSelection(
+    entries: HistoryRangeInput[],
+    anchorId: string,
+    targetId: string,
+): Set<string> | null {
+    const rows = normalizeHistoryRangeRows(entries);
+    let anchorIndex = rows.findIndex(row =>
+        row.id === anchorId
+        || (row.kind === 'ralph-session' && row.subIds.includes(anchorId))
+    );
+    const targetIndex = rows.findIndex(row =>
+        row.id === targetId
+        || (row.kind === 'ralph-session' && row.subIds.includes(targetId))
+    );
+    if (anchorIndex === -1 || targetIndex === -1) return null;
+
+    const anchorRalphRow = rows.find(row =>
+        row.kind === 'ralph-session'
+            ? row.subIds.includes(anchorId)
+            : row.ralphSessionSubIds?.includes(anchorId)
+    );
+    const anchorRalphSessionId = anchorRalphRow?.kind === 'ralph-session'
+        ? anchorRalphRow.sessionId
+        : anchorRalphRow?.ralphSessionId;
+    if (anchorRalphSessionId) {
+        const boundaryIndex = rows.findIndex(row =>
+            row.kind === 'ralph-session'
+                ? row.sessionId === anchorRalphSessionId
+                : row.ralphSessionId === anchorRalphSessionId
+        );
+        if (boundaryIndex !== -1) anchorIndex = boundaryIndex;
+    }
+
+    const [lo, hi] = anchorIndex < targetIndex ? [anchorIndex, targetIndex] : [targetIndex, anchorIndex];
+    const selected = new Set<string>();
+    for (const row of rows.slice(lo, hi + 1)) {
+        if (row.kind === 'ralph-session') {
+            row.subIds.forEach(id => selected.add(id));
+        } else {
+            selected.add(row.id);
+        }
+    }
+    if (anchorRalphRow) {
+        const subIds = anchorRalphRow.kind === 'ralph-session'
+            ? anchorRalphRow.subIds
+            : anchorRalphRow.ralphSessionSubIds ?? [];
+        subIds.forEach(id => selected.add(id));
+    }
+    return selected;
+}
+
 function resolveListEntryTimestamp(entry: any): number {
     if (entry.kind === 'for-each-run') return getForEachEntryTimestamp(entry);
     if (entry.kind === 'group' || entry.kind === 'ralph-session') return entry.latestTimestamp;
@@ -984,6 +1101,45 @@ export function ChatListPane({
         [chatGroups, applyRalphGrouping],
     );
 
+    const [expandedRalphSessionState, setExpandedRalphSessionState] = useState<{ workspaceId?: string; sessions: Set<string> }>({
+        workspaceId,
+        sessions: new Set(),
+    });
+    const expandedRalphSessionIds = useMemo(
+        () => expandedRalphSessionState.workspaceId === workspaceId ? expandedRalphSessionState.sessions : new Set<string>(),
+        [expandedRalphSessionState, workspaceId],
+    );
+    const toggleRalphSession = useCallback((sessionId: string) => {
+        setExpandedRalphSessionState(prev => {
+            const sessions = new Set(prev.workspaceId === workspaceId ? prev.sessions : []);
+            sessions.has(sessionId) ? sessions.delete(sessionId) : sessions.add(sessionId);
+            return { workspaceId, sessions };
+        });
+    }, [workspaceId]);
+
+    useEffect(() => {
+        setExpandedRalphSessionState(prev => {
+            if (prev.workspaceId === workspaceId && prev.sessions.size === 0) return prev;
+            return { workspaceId, sessions: new Set() };
+        });
+    }, [workspaceId]);
+
+    const chatRangeRows = useMemo(
+        () => chatGroups
+            ? buildHistoryRangeRows(
+                [
+                    ...chatGroups.runningChats,
+                    ...chatGroups.pinnedChats,
+                    ...todayGrouped,
+                    ...weekGrouped,
+                    ...olderGrouped,
+                ],
+                expandedRalphSessionIds,
+            )
+            : [],
+        [chatGroups, todayGrouped, weekGrouped, olderGrouped, expandedRalphSessionIds],
+    );
+
     const handleCancel = async (taskId: string) => {
         await getSpaCocClient().queue.cancel(taskId);
         fetchQueue();
@@ -1100,16 +1256,13 @@ export function ChatListPane({
     }, [visibleFilteredUnpinned, visibleFilteredPinned]);
 
     const handleHistoryItemClick = useCallback(
-        (e: React.MouseEvent, task: any, taskList: any[]) => {
+        (e: React.MouseEvent, task: any, listForRange: HistoryRangeInput[]) => {
             const id = task.id as string;
 
             if (e.shiftKey && anchorHistoryId) {
-                const ids = taskList.map((t: any) => t.id as string);
-                const aIdx = ids.indexOf(anchorHistoryId);
-                const bIdx = ids.indexOf(id);
-                if (aIdx !== -1 && bIdx !== -1) {
-                    const [lo, hi] = aIdx < bIdx ? [aIdx, bIdx] : [bIdx, aIdx];
-                    setSelectedHistoryIds(new Set(ids.slice(lo, hi + 1)));
+                const selection = resolveHistoryRangeSelection(listForRange, anchorHistoryId, id);
+                if (selection) {
+                    setSelectedHistoryIds(selection);
                     return;
                 }
             }
@@ -1308,7 +1461,7 @@ export function ChatListPane({
      * - On hover the timestamp swaps to inline pin/archive/more buttons.
      * - Queue states (held / scheduled / frozen) are surfaced via inline indicator badges.
      */
-    const renderChatListRow = useCallback((task: any, listForRange: any[], options?: {
+    const renderChatListRow = useCallback((task: any, listForRange: HistoryRangeInput[], options?: {
         dataTestid?: string;
         /** Override status derivation when caller knows the section the row is rendered in. */
         taskStatus?: 'running' | 'queued' | 'completed';
@@ -1647,7 +1800,7 @@ export function ChatListPane({
         return 'completed';
     }, [tabFilteredRunning, tabFilteredQueued]);
 
-    const renderForEachRunGroup = useCallback((group: ForEachRunGroup, listForRange: any[]) => (
+    const renderForEachRunGroup = useCallback((group: ForEachRunGroup, listForRange: HistoryRangeInput[]) => (
         <ForEachRunRow
             key={`${workspaceId ?? '__all'}:for-each:${group.runId}`}
             group={group}
@@ -1884,19 +2037,24 @@ export function ChatListPane({
                                                  </div>
                                                  {section.items.map((entry: RalphHistoryEntry | ForEachRunGroup) => {
                                                      if (entry.kind === 'for-each-run') {
-                                                         return renderForEachRunGroup(entry, chatGroups.flatVisible);
+                                                         return renderForEachRunGroup(entry, chatRangeRows);
                                                      }
                                                      if (entry.kind === 'ralph-session') {
                                                          const ralphSession = entry as RalphSession;
+                                                         const ralphSubIds = getRalphSessionSubIds(ralphSession);
+                                                         const isRalphRangeSelected = ralphSubIds.length > 0 && ralphSubIds.every(id => selectedHistoryIds.has(id));
                                                          const ralphSessionContextPayload = sessionContextDragEnabled
-                                                            ? createRalphSessionContextDragPayload(ralphSession, { activeWorkspaceId: workspaceId })
-                                                            : null;
+                                                             ? createRalphSessionContextDragPayload(ralphSession, { activeWorkspaceId: workspaceId })
+                                                             : null;
                                                         return (
                                                             <RalphSessionRow
                                                                 key={`${workspaceId ?? '__all'}:${entry.sessionId}`}
                                                                 session={ralphSession}
                                                                 selectedTaskId={selectedTaskId}
                                                                 selectedSessionId={selectedRalphSessionId}
+                                                                isRangeSelected={isRalphRangeSelected}
+                                                                expanded={expandedRalphSessionIds.has(ralphSession.sessionId)}
+                                                                onToggleExpanded={() => toggleRalphSession(ralphSession.sessionId)}
                                                                 now={now}
                                                                 unseenProcessIds={unseenProcessIds}
                                                                 onSelectTask={onSelectTask}
@@ -1911,12 +2069,12 @@ export function ChatListPane({
                                                                     setSelectedHistoryIds(new Set(ids));
                                                                     setContextMenu({ x: e.clientX, y: e.clientY, taskId: ids[0], taskStatus: 'completed', bulkIds: ids, ralphSession: rs });
                                                                 }}
-                                                                renderTaskCard={(task) => renderChatListRow(task, chatGroups!.flatVisible, { isGroupChild: true })}
+                                                                renderTaskCard={(task) => renderChatListRow(task, chatRangeRows, { isGroupChild: true })}
                                                             />
                                                         );
-                                                    }
-                                                    return renderChatListRow(entry, chatGroups.flatVisible);
-                                                })}
+                                                     }
+                                                     return renderChatListRow(entry, chatRangeRows);
+                                                 })}
                                             </div>
                                         ));
                                 })()}
@@ -2499,6 +2657,8 @@ export function ChatListPane({
                                         }
                                         if (entry.kind === 'ralph-session') {
                                             const session = entry as RalphSession;
+                                            const ralphSubIds = getRalphSessionSubIds(session);
+                                            const isRalphRangeSelected = ralphSubIds.length > 0 && ralphSubIds.every(id => selectedHistoryIds.has(id));
                                             const ralphSessionContextPayload = sessionContextDragEnabled
                                                 ? createRalphSessionContextDragPayload(session, { activeWorkspaceId: workspaceId })
                                                 : null;
@@ -2508,6 +2668,9 @@ export function ChatListPane({
                                                     session={session}
                                                     selectedTaskId={selectedTaskId}
                                                     selectedSessionId={selectedRalphSessionId}
+                                                    isRangeSelected={isRalphRangeSelected}
+                                                    expanded={expandedRalphSessionIds.has(session.sessionId)}
+                                                    onToggleExpanded={() => toggleRalphSession(session.sessionId)}
                                                     now={now}
                                                     unseenProcessIds={unseenProcessIds}
                                                     onSelectTask={onSelectTask}

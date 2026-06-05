@@ -21,6 +21,9 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { renderWithProviders } from '../test-utils';
 import {
     ChatListPane,
+    buildHistoryRangeRows,
+    getRalphSessionRangeId,
+    resolveHistoryRangeSelection,
     taskMatchesFilter,
     taskMatchesSearch,
     getTaskTypeIcon,
@@ -129,6 +132,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isLoopsEnabled: () => false,
     isForEachEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled,
+    isForEachEnabled: () => false,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
@@ -2378,6 +2382,81 @@ describe('ChatListPane', () => {
             expect(screen.queryByText(/Search Results/)).toBeNull();
             expect(document.querySelector('[data-task-id="h-normal"]')).toBeTruthy();
         });
+    });
+});
+
+describe('ChatListPane history range helpers', () => {
+    const ralphSession: any = {
+        kind: 'ralph-session',
+        sessionId: 'rs-1',
+        grillingProcess: { id: 'rs-1-grill' },
+        iterations: [{ id: 'rs-1-iter-1' }, { id: 'rs-1-iter-2' }],
+        latestTimestamp: 3,
+        hasUnseen: false,
+        phase: 'complete',
+        loopCount: 1,
+    };
+
+    it('expands a collapsed Ralph session sentinel into its child process ids', () => {
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, ralphSession, { id: 'regular-b' }],
+            new Set(),
+        );
+
+        expect(rows.map(row => row.id)).toEqual([
+            'regular-a',
+            getRalphSessionRangeId('rs-1'),
+            'regular-b',
+        ]);
+        expect(Array.from(resolveHistoryRangeSelection(rows, 'regular-a', 'regular-b')!)).toEqual([
+            'regular-a',
+            'rs-1-grill',
+            'rs-1-iter-1',
+            'rs-1-iter-2',
+            'regular-b',
+        ]);
+    });
+
+    it('uses individual Ralph child rows when the session is expanded', () => {
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, ralphSession, { id: 'regular-b' }],
+            new Set(['rs-1']),
+        );
+
+        expect(rows.map(row => row.id)).toEqual([
+            'regular-a',
+            'rs-1-grill',
+            'rs-1-iter-1',
+            'rs-1-iter-2',
+            'regular-b',
+        ]);
+        expect(Array.from(resolveHistoryRangeSelection(rows, 'regular-a', 'regular-b')!)).toEqual([
+            'regular-a',
+            'rs-1-grill',
+            'rs-1-iter-1',
+            'rs-1-iter-2',
+            'regular-b',
+        ]);
+    });
+
+    it('normalizes a Ralph child anchor to the group boundary when selecting outside the group', () => {
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, ralphSession, { id: 'regular-b' }],
+            new Set(['rs-1']),
+        );
+
+        expect(Array.from(resolveHistoryRangeSelection(rows, 'rs-1-iter-2', 'regular-b')!)).toEqual([
+            'rs-1-grill',
+            'rs-1-iter-1',
+            'rs-1-iter-2',
+            'regular-b',
+        ]);
+        expect(Array.from(resolveHistoryRangeSelection(rows, 'rs-1-iter-2', 'regular-a')!)).toEqual([
+            'regular-a',
+            'rs-1-grill',
+            'rs-1-iter-1',
+            'rs-1-iter-2',
+        ]);
     });
 });
 

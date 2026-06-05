@@ -41,7 +41,10 @@ spa/client/react/
 local to the mounted view. Ralph session groups, For Each run groups, and
 plan-file/history groups render collapsed by default on mount or workspace
 switch; unread dots/count badges and Mark all read controls remain the
-visibility affordances for unread children. For Each run groups are backed by
+visibility affordances for unread children. The chat-list multi-select range
+model follows the rendered Ralph rows: collapsed sessions count as one row and
+expand to all child process IDs when selected, while expanded sessions range
+over individual child rows. For Each run groups are backed by
 workspace-scoped `client.forEach.list(workspaceId)` summaries and nest linked
 generation/child chats by `payload.context.forEach`, persisted `forEach`
 metadata, or `generationProcessId` so child chats do not duplicate as standalone
