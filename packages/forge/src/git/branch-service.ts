@@ -775,7 +775,8 @@ export class BranchService {
         }
 
         try {
-            const commitHash = (await this.execGit(`git rev-parse --verify ${trimmedHash}^{commit}`, { cwd: repoRoot })).trim();
+            const commitish = this.quoteShellArg(`${trimmedHash}^{commit}`);
+            const commitHash = (await this.execGit(`git rev-parse --verify ${commitish}`, { cwd: repoRoot })).trim();
             const metadata = await this.execGit(`git show -s --format=%H%x00%s%x00%an%x00%ae%x00%aI ${commitHash}`, { cwd: repoRoot });
             const [fullHash, subject, authorName, authorEmail, authorDate] = metadata.replace(/\n$/, '').split('\0');
             if (!fullHash || !subject || !authorName || !authorEmail || !authorDate) {

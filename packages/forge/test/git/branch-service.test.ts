@@ -988,13 +988,43 @@ describe('BranchService.exportCommitPatch', () => {
             patch,
         });
         expect(mockedExecAsync).toHaveBeenCalledWith(
-            'git rev-parse --verify abcdef1^{commit}',
+            expect.stringMatching(/^git rev-parse --verify ['"]abcdef1\^\{commit\}['"]$/),
             expect.objectContaining({ cwd: '/repo' })
         );
         expect(mockedExecAsync).toHaveBeenCalledWith(
             `git format-patch -1 --stdout --no-stat ${fullHash}`,
             expect.objectContaining({ cwd: '/repo', timeout: 600000 })
         );
+    });
+
+    it('quotes the commit-ish so cmd.exe preserves ^{commit} on Windows', async () => {
+        const originalPlatform = process.platform;
+        Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+        try {
+            const fullHash = 'abcdef1234567890abcdef1234567890abcdef12';
+            const metadata = [
+                fullHash,
+                'Add thing',
+                'Ada Dev',
+                'ada@example.test',
+                '2026-06-04T04:00:00+00:00',
+            ].join('\0') + '\n';
+            mockedExecAsync
+                .mockResolvedValueOnce({ stdout: `${fullHash}\n`, stderr: '' })
+                .mockResolvedValueOnce({ stdout: metadata, stderr: '' })
+                .mockResolvedValueOnce({ stdout: 'patch', stderr: '' });
+
+            const result = await service.exportCommitPatch('C:\\repo', 'abcdef1');
+
+            expect(result.success).toBe(true);
+            expect(mockedExecAsync).toHaveBeenNthCalledWith(
+                1,
+                'git rev-parse --verify "abcdef1^{commit}"',
+                expect.objectContaining({ cwd: 'C:\\repo', shell: 'cmd.exe' }),
+            );
+        } finally {
+            Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+        }
     });
 
     it('rejects invalid commit hashes before invoking git', async () => {
