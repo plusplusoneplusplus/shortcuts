@@ -330,6 +330,44 @@ describe('AIProviderPage', () => {
         expect(within(codexRow).getByLabelText('Weekly quota remaining')).toBeDefined();
     });
 
+    it('renders simultaneous Claude five-hour and weekly quota windows as separate rows', () => {
+        renderPage({
+            quotaData: {
+                providers: [
+                    {
+                        id: 'claude',
+                        quotaTypes: [
+                            quotaType({
+                                type: 'five_hour',
+                                remainingPercentage: 0.24,
+                                usedRequests: 76,
+                                entitlementRequests: 100,
+                                resetDate: '2026-06-05T20:00:00Z',
+                            }),
+                            quotaType({
+                                type: 'seven_day',
+                                remainingPercentage: 0.68,
+                                usedRequests: 32,
+                                entitlementRequests: 100,
+                                resetDate: '2026-06-12T20:00:00Z',
+                            }),
+                        ],
+                    },
+                ],
+            },
+        });
+
+        const claudeRow = screen.getByTestId('provider-row-claude');
+        expect(within(claudeRow).getByText('5h')).toBeDefined();
+        expect(within(claudeRow).getByText('24% remaining')).toBeDefined();
+        expect(within(claudeRow).getByText('76 / 100 used')).toBeDefined();
+        expect(within(claudeRow).getByLabelText('5h quota remaining')).toBeDefined();
+        expect(within(claudeRow).getByText('Weekly')).toBeDefined();
+        expect(within(claudeRow).getByText('68% remaining')).toBeDefined();
+        expect(within(claudeRow).getByText('32 / 100 used')).toBeDefined();
+        expect(within(claudeRow).getByLabelText('Weekly quota remaining')).toBeDefined();
+    });
+
     it('falls back to a readable label for unknown quota types', () => {
         renderPage({
             quotaData: {
