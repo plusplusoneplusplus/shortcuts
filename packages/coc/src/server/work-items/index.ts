@@ -141,6 +141,14 @@ export {
     type WorkItemGitHubPullWorkspaceResult,
 } from './work-item-github-pull-poller';
 export {
+    DEFAULT_WORK_ITEM_AZURE_BOARDS_PULL_INTERVAL_MINUTES,
+    WorkItemAzureBoardsPullPoller,
+    type WorkItemAzureBoardsPullPollerOptions,
+    type WorkItemAzureBoardsPullPollerTimerApi,
+    type WorkItemAzureBoardsPullPollError,
+    type WorkItemAzureBoardsPullWorkspaceResult,
+} from './work-item-azure-boards-pull-poller';
+export {
     WORK_ITEM_SYNC_CONFLICT_CODE,
     buildAzureBoardsWorkItemSyncConflict,
     buildGitHubWorkItemSyncConflict,

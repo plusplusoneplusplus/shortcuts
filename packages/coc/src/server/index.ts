@@ -91,6 +91,7 @@ interface CloseHandlerDeps {
     mcpOauthDispose?: () => void;
     syncEngines?: Map<string, SyncEngine>;
     workItemGitHubPullPoller?: { dispose(): void };
+    workItemAzureBoardsPullPoller?: { dispose(): void };
     containerLink?: { stop(): void };
     activeSockets: Set<import('net').Socket>;
     server: http.Server;
@@ -116,6 +117,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.mcpOauthDispose?.();
         deps.syncEngines?.forEach(e => e.stop());
         deps.workItemGitHubPullPoller?.dispose();
+        deps.workItemAzureBoardsPullPoller?.dispose();
         deps.containerLink?.stop();
         gitInfoCache.dispose();
         deps.notesGitTimerManager.dispose();
@@ -498,7 +500,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     let localBaseUrl = formatLocalBaseUrl(host, port);
     const routes: Route[] = [];
-    const { wikiManager, workItemGitHubPullPoller } = registerAllRoutes(routes, {
+    const { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
         dataDir, configPath: options.configPath,
@@ -673,6 +675,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         const message = error instanceof Error ? error.message : String(error);
         process.stderr.write(`[work-items/github-poll] Failed to start background polling: ${message}\n`);
     });
+    workItemAzureBoardsPullPoller.start().catch(error => {
+        const message = error instanceof Error ? error.message : String(error);
+        process.stderr.write(`[work-items/azure-boards-poll] Failed to start background polling: ${message}\n`);
+    });
 
     const address = server.address();
     const actualPort = typeof address === 'object' && address ? address.port : port;
@@ -713,6 +719,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             mcpOauthDispose: mcpOauthInfra?.dispose,
             syncEngines,
             workItemGitHubPullPoller,
+            workItemAzureBoardsPullPoller,
             containerLink,
             activeSockets, server,
         }),

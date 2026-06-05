@@ -55,6 +55,8 @@ export interface WorkItemSyncRouteContext {
     azureBoardsTransport?: AzureBoardsWorkItemTransport;
     /** Notify background poll infrastructure that this workspace's GitHub-backed roots changed. */
     onGitHubBackedEpicTreeChanged?: (workspaceId: string) => void | Promise<void>;
+    /** Notify background poll infrastructure that this workspace's Azure Boards-backed roots changed. */
+    onAzureBoardsBackedEpicTreeChanged?: (workspaceId: string) => void | Promise<void>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -150,6 +152,14 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
         Promise.resolve(ctx.onGitHubBackedEpicTreeChanged(workspaceId)).catch(error => {
             const message = error instanceof Error ? error.message : String(error);
             process.stderr.write(`[work-items/github-poll] Failed to reconfigure workspace '${workspaceId}': ${message}\n`);
+        });
+    }
+
+    function notifyAzureBoardsBackedEpicTreeChanged(workspaceId: string): void {
+        if (!ctx.onAzureBoardsBackedEpicTreeChanged) return;
+        Promise.resolve(ctx.onAzureBoardsBackedEpicTreeChanged(workspaceId)).catch(error => {
+            const message = error instanceof Error ? error.message : String(error);
+            process.stderr.write(`[work-items/azure-boards-poll] Failed to reconfigure workspace '${workspaceId}': ${message}\n`);
         });
     }
 
@@ -412,6 +422,7 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                     rootWorkItem,
                     tree,
                 );
+                notifyAzureBoardsBackedEpicTreeChanged(workspaceId);
 
                 return sendJSON(res, 201, result.root);
             } catch (error) {

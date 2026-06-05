@@ -70,6 +70,10 @@ export interface PerRepoPreferences {
       azureBoards?: {
         /** Azure Boards project name for this workspace. Organization URL is global provider config. */
         project?: string;
+        /** Whether background Azure Boards→local polling is active for imported Azure Boards-backed Epics. Defaults to true. */
+        pollingEnabled?: boolean;
+        /** Background Azure Boards→local polling cadence in minutes. Defaults to 5. */
+        pollIntervalMinutes?: number;
       };
     };
   };

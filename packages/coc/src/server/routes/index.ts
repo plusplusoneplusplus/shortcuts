@@ -70,6 +70,7 @@ import { createWorkItemAiGenerators } from '../work-items/work-item-ai-generator
 import { FileWorkItemStore } from '../work-items/work-item-store';
 import { createAzureBoardsWorkItemSyncProviderAdapter } from '../work-items/work-item-sync-azure-boards-provider';
 import { createGitHubWorkItemSyncProviderAdapter } from '../work-items/work-item-sync-github-provider';
+import { WorkItemAzureBoardsPullPoller } from '../work-items/work-item-azure-boards-pull-poller';
 import { WorkItemGitHubPullPoller } from '../work-items/work-item-github-pull-poller';
 import { handleWorkItemTaskComplete, autoVersionPlanFromResolvedComments } from '../work-items/work-item-executor';
 import type { EnqueueFunction } from '../work-items/work-item-executor';
@@ -164,7 +165,7 @@ export interface RegisterRoutesOptions {
     syncEngines?: Map<string, SyncEngine>;
 }
 
-export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller } {
+export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller } {
     const {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
@@ -173,6 +174,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         aiInvoker,
     } = opts;
     let workItemGitHubPullPoller: WorkItemGitHubPullPoller | undefined;
+    let workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller | undefined;
 
     // excalidrawEnabled uses a live getter via runtimeConfigService so admin
     // changes take effect without restart. loopsEnabled stays startup-captured
@@ -286,7 +288,12 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         routes,
         dataDir,
         (workspaceId) => opts.syncEngines?.get(workspaceId),
-        (workspaceId) => workItemGitHubPullPoller?.configureWorkspace(workspaceId),
+        async (workspaceId) => {
+            await Promise.all([
+                workItemGitHubPullPoller?.configureWorkspace(workspaceId),
+                workItemAzureBoardsPullPoller?.configureWorkspace(workspaceId),
+            ]);
+        },
     );
     registerSeenStateRoutes(routes, store as any);
     registerPromptSuggestionRoutes(routes, store as any, dataDir, resolvedAiService);
@@ -497,6 +504,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         processStore: store,
         workItemStore,
     });
+    workItemAzureBoardsPullPoller = new WorkItemAzureBoardsPullPoller({
+        dataDir,
+        processStore: store,
+        workItemStore,
+    });
     const enqueueForWorkItems = bridge.enqueue.bind(bridge) as EnqueueFunction;
     const getWorkItemsHierarchyEnabled = opts.runtimeConfigService
         ? () => opts.runtimeConfigService!.config.workItems?.hierarchy?.enabled ?? false
@@ -531,6 +543,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             createAzureBoardsWorkItemSyncProviderAdapter({ dataDir }),
         ],
         onGitHubBackedEpicTreeChanged: (workspaceId) => workItemGitHubPullPoller?.configureWorkspace(workspaceId),
+        onAzureBoardsBackedEpicTreeChanged: (workspaceId) => workItemAzureBoardsPullPoller?.configureWorkspace(workspaceId),
     });
     registerWorkItemRoutes({
         routes,
@@ -674,5 +687,5 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
     );
 
-    return { wikiManager, workItemGitHubPullPoller };
+    return { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller };
 }

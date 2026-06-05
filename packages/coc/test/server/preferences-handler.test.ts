@@ -2658,7 +2658,7 @@ describe('registerPreferencesRoutes — sync engine wiring', () => {
         }));
     });
 
-    it('PATCH workItems Azure Boards project prefs preserves GitHub prefs and triggers live callback', async () => {
+    it('PATCH workItems Azure Boards polling prefs preserves GitHub prefs and triggers live callback', async () => {
         writeRepoPreferences(tmpDir, 'my_work', {
             workItems: {
                 sync: {
@@ -2668,6 +2668,8 @@ describe('registerPreferencesRoutes — sync engine wiring', () => {
                     },
                     azureBoards: {
                         project: 'Project Alpha',
+                        pollingEnabled: true,
+                        pollIntervalMinutes: 5,
                     },
                 },
             },
@@ -2685,6 +2687,8 @@ describe('registerPreferencesRoutes — sync engine wiring', () => {
                 sync: {
                     azureBoards: {
                         project: 'Project Beta',
+                        pollingEnabled: false,
+                        pollIntervalMinutes: 10,
                     },
                 },
             },
@@ -2698,6 +2702,8 @@ describe('registerPreferencesRoutes — sync engine wiring', () => {
             },
             azureBoards: {
                 project: 'Project Beta',
+                pollingEnabled: false,
+                pollIntervalMinutes: 10,
             },
         });
         expect(onRepoPreferencesChanged).toHaveBeenCalledWith('my_work', expect.objectContaining({
@@ -2709,6 +2715,8 @@ describe('registerPreferencesRoutes — sync engine wiring', () => {
                     },
                     azureBoards: {
                         project: 'Project Beta',
+                        pollingEnabled: false,
+                        pollIntervalMinutes: 10,
                     },
                 },
             },

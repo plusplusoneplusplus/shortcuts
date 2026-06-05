@@ -7,7 +7,11 @@
  * - the function is a pure composition with no side-effects beyond registration
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Readable } from 'stream';
+import * as fs from 'fs/promises';
+import * as os from 'os';
+import * as path from 'path';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import type { Route } from '../../src/server/types';
 import { registerAllRoutes } from '../../src/server/routes/index';
 import type { RegisterRoutesOptions } from '../../src/server/routes/index';
@@ -90,6 +94,48 @@ function makeWsServer(): any {
     };
 }
 
+function fakeJsonReq(method: string, body: unknown): any {
+    const buf = Buffer.from(JSON.stringify(body));
+    const req = new Readable({ read() {} }) as any;
+    req.push(buf);
+    req.push(null);
+    req.method = method;
+    req.headers = { 'content-type': 'application/json', 'content-length': String(buf.length) };
+    return req;
+}
+
+function fakeRes(): any {
+    const res: any = {
+        statusCode: 200,
+        headers: {} as Record<string, string>,
+        body: '',
+        setHeader(name: string, value: string) {
+            res.headers[name] = value;
+        },
+        writeHead(statusCode: number, headers?: Record<string, string>) {
+            res.statusCode = statusCode;
+            if (headers) Object.assign(res.headers, headers);
+        },
+        end(chunk?: string) {
+            if (chunk) res.body += chunk;
+        },
+    };
+    return res;
+}
+
+function findRoute(routes: Route[], method: string, url: string): { route: Route; match?: RegExpMatchArray } | undefined {
+    for (const route of routes) {
+        if (route.method !== method) continue;
+        if (typeof route.pattern === 'string') {
+            if (route.pattern === url) return { route };
+        } else {
+            const match = url.match(route.pattern);
+            if (match) return { route, match };
+        }
+    }
+    return undefined;
+}
+
 function makeOpts(overrides: Partial<RegisterRoutesOptions> = {}): RegisterRoutesOptions {
     const wsServer = makeWsServer();
     return {
@@ -118,6 +164,16 @@ function makeOpts(overrides: Partial<RegisterRoutesOptions> = {}): RegisterRoute
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('registerAllRoutes', () => {
+    let tmpDir: string;
+
+    beforeEach(async () => {
+        tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'routes-index-test-'));
+    });
+
+    afterEach(async () => {
+        await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
     it('populates the routes array with a large set of routes', () => {
         const routes: Route[] = [];
         registerAllRoutes(routes, makeOpts());
@@ -131,6 +187,37 @@ describe('registerAllRoutes', () => {
         expect(result).toHaveProperty('wikiManager');
         // Wiki routes are always registered (safe even with no wikis)
         expect(result.wikiManager).toBeDefined();
+    });
+
+    it('returns GitHub and Azure Boards work-item pollers', () => {
+        const routes: Route[] = [];
+        const result = registerAllRoutes(routes, makeOpts({ dataDir: tmpDir }));
+
+        expect(result.workItemGitHubPullPoller).toBeDefined();
+        expect(result.workItemAzureBoardsPullPoller).toBeDefined();
+    });
+
+    it('reconfigures both work-item provider pollers when work-item preferences change', async () => {
+        const routes: Route[] = [];
+        const result = registerAllRoutes(routes, makeOpts({ dataDir: tmpDir }));
+        const githubConfigure = vi.spyOn(result.workItemGitHubPullPoller, 'configureWorkspace').mockResolvedValue(undefined);
+        const azureConfigure = vi.spyOn(result.workItemAzureBoardsPullPoller, 'configureWorkspace').mockResolvedValue(undefined);
+        const found = findRoute(routes, 'PATCH', '/api/workspaces/workspace-1/preferences');
+        expect(found).toBeDefined();
+
+        const res = fakeRes();
+        await found!.route.handler(fakeJsonReq('PATCH', {
+            workItems: {
+                sync: {
+                    github: { pollingEnabled: false },
+                    azureBoards: { pollingEnabled: false },
+                },
+            },
+        }), res, found!.match);
+
+        expect(res.statusCode).toBe(200);
+        expect(githubConfigure).toHaveBeenCalledWith('workspace-1');
+        expect(azureConfigure).toHaveBeenCalledWith('workspace-1');
     });
 
     it('includes at minimum one route for each core area', () => {
