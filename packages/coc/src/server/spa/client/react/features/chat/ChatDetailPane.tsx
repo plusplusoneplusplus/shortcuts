@@ -27,11 +27,9 @@ export interface ChatDetailPaneProps {
     readOnly?: boolean;
     /** When true, hides the ask/autopilot mode selector in the follow-up input. */
     hideModeSelector?: boolean;
-    /** Selects a For Each parent run in the host Activity pane after launch. */
-    onForEachRunSelected?: (runId: string) => void;
 }
 
-export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, readOnly, hideModeSelector, onForEachRunSelected }: ChatDetailPaneProps) {
+export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, readOnly, hideModeSelector }: ChatDetailPaneProps) {
     const { poppedOutTasks, markRestored } = usePopOut();
     const { floatingChats, unfloatChat } = useFloatingChats();
 
@@ -46,7 +44,7 @@ export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, readOnly, 
                 </div>
             );
         }
-        return <NewChatArea workspaceId={workspaceId} onBack={onBack} onForEachRunSelected={onForEachRunSelected} />;
+        return <NewChatArea workspaceId={workspaceId} onBack={onBack} />;
     }
 
     if (poppedOutTasks.has(selectedTaskId)) {

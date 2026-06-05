@@ -190,6 +190,19 @@ export interface ProcessHistoryItem {
     phase?: 'grilling' | 'executing' | 'complete';
     currentIteration?: number;
   };
+  forEach?: {
+    kind?: 'child' | 'generation';
+    workspaceId: string;
+    runId?: string;
+    itemId?: string;
+    generationId?: string;
+    childMode?: 'ask' | 'autopilot';
+    originalRequest?: string;
+    status?: 'draft' | 'approved';
+    latestItemCount?: number;
+    latestPlanTurnIndex?: number;
+    lastPlanError?: string;
+  };
 }
 
 export interface ProcessHistoryResponse {

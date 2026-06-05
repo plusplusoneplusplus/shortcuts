@@ -104,17 +104,6 @@ vi.mock('../../../../../src/server/spa/client/react/shared/RichTextInput', () =>
     )),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/shared/ForEachLaunchDialog', () => ({
-    ForEachLaunchDialog: ({ open, request, onApproved }: any) => open ? (
-        <div data-testid="for-each-launch-dialog">
-            <div data-testid="for-each-launch-request">{request}</div>
-            <button type="button" data-testid="for-each-dialog-approve" onClick={() => onApproved({ runId: 'for-each-run-1' })}>
-                Approve
-            </button>
-        </div>
-    ) : null,
-}));
-
 vi.mock('../../../../../src/server/spa/client/react/ui/AttachmentPreviews', () => ({
     AttachmentPreviews: () => null,
 }));
@@ -492,21 +481,47 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         expect(body.payload.model).toBe('shared-model');
     });
 
-    it('opens the For Each launch dialog instead of enqueueing generic chat when enabled', async () => {
+    it('creates and selects a persisted For Each generation chat when enabled', async () => {
         mockForEachEnabled = true;
-        const onForEachRunSelected = vi.fn();
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'for-each-generation-task' } });
 
-        render(<NewChatArea workspaceId="ws-1" onForEachRunSelected={onForEachRunSelected} />);
+        render(<NewChatArea workspaceId="ws-1" />);
         fireEvent.click(screen.getByTestId('mode-pill-for-each'));
         typeInInput('Split this work into items');
         await clickSend();
 
-        expect(screen.getByTestId('for-each-launch-dialog')).toBeTruthy();
-        expect(screen.getByTestId('for-each-launch-request').textContent).toBe('Split this work into items');
-        expect(mockEnqueueTask).not.toHaveBeenCalled();
-
-        fireEvent.click(screen.getByTestId('for-each-dialog-approve'));
-        await waitFor(() => expect(onForEachRunSelected).toHaveBeenCalledWith('for-each-run-1'));
+        await waitFor(() => {
+            expect(mockEnqueueTask).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: 'chat',
+                    priority: 'normal',
+                    payload: expect.objectContaining({
+                        kind: 'chat',
+                        mode: 'ask',
+                        prompt: 'Split this work into items',
+                        workspaceId: 'ws-1',
+                        provider: 'copilot',
+                        context: expect.objectContaining({
+                            forEach: expect.objectContaining({
+                                kind: 'generation',
+                                workspaceId: 'ws-1',
+                                childMode: 'ask',
+                                originalRequest: 'Split this work into items',
+                                status: 'draft',
+                            }),
+                        }),
+                    }),
+                }),
+            );
+        });
+        const forEachContext = mockEnqueueTask.mock.calls[0][0].payload.context.forEach;
+        expect(forEachContext.generationId).toMatch(/^for-each-gen-\d+-[a-z0-9]+$/);
+        expect(screen.queryByTestId('for-each-launch-dialog')).toBeNull();
+        expect(mockQueueDispatch).toHaveBeenCalledWith({
+            type: 'SELECT_QUEUE_TASK',
+            id: 'queue_for-each-generation-task',
+            repoId: 'ws-1',
+        });
     });
 });
 

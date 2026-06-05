@@ -146,6 +146,30 @@ describe('ask mode system message — initial chat', () => {
         expect(callArgs.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
     });
 
+    it('should include For Each generation guidance without changing the visible user prompt', async () => {
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task = chatTask('ask', 'Split this work into three tasks');
+        (task.payload as any).workspaceId = 'ws-1';
+        (task.payload as any).context = {
+            forEach: {
+                kind: 'generation',
+                workspaceId: 'ws-1',
+                generationId: 'for-each-gen-1',
+                childMode: 'ask',
+                originalRequest: 'Split this work into three tasks',
+                status: 'draft',
+            },
+        };
+
+        await executor.execute(task);
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
+        const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(callArgs.prompt).toBe('Split this work into three tasks');
+        expect(callArgs.systemMessage?.content).toContain('visible CoC For Each item-plan generation chat');
+        expect(callArgs.systemMessage?.content).toContain('Advanced JSON');
+    });
+
     it('should NOT include read-only systemMessage when chat starts in autopilot mode', async () => {
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
         const task = chatTask('autopilot');
@@ -229,6 +253,33 @@ describe('ask mode system message — follow-up transitions', () => {
         // Should include read-only system message for ask mode
         expect(callArgs.systemMessage).toBeDefined();
         expect(callArgs.systemMessage.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+    });
+
+    it('should keep For Each generation guidance on refinement follow-ups', async () => {
+        const proc = createProcessWithMode('proc-1', 'sess-1', 'ask');
+        proc.metadata = {
+            ...proc.metadata,
+            forEach: {
+                kind: 'generation',
+                workspaceId: 'ws-1',
+                generationId: 'for-each-gen-1',
+                childMode: 'ask',
+                originalRequest: 'Split this work into items',
+                status: 'draft',
+            },
+        };
+        await store.addProcess(proc);
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task = followUpTask('proc-1', 'split item 2 into two items', 'ask');
+
+        await executor.execute(task);
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
+        const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(callArgs.prompt).toBe('split item 2 into two items');
+        expect(callArgs.systemMessage?.content).toContain('visible CoC For Each item-plan generation chat');
+        expect(callArgs.systemMessage?.content).toContain('return the complete latest proposed plan');
     });
 
     it('should NOT destroy session when follow-up stays in ask mode', async () => {

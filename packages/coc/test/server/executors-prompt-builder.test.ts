@@ -66,6 +66,7 @@ vi.mock('../../src/server/llm-tools/create-bug-tool', () => ({
 }));
 
 import {
+    buildForEachGenerationSystemMessage,
     buildModeSystemMessage,
     appendAutoFolderBlock,
     withRepoInstructions,
@@ -123,6 +124,25 @@ describe('buildModeSystemMessage', () => {
         expect(realMsg).toContain('read-only');
         // Must not grant blanket write access
         expect(realMsg).not.toMatch(/you may (create|write|modify) any file/i);
+    });
+});
+
+describe('buildForEachGenerationSystemMessage', () => {
+    it('describes a visible For Each generation chat with readable output and Advanced JSON', () => {
+        const result = buildForEachGenerationSystemMessage({
+            kind: 'generation',
+            workspaceId: 'ws-1',
+            generationId: 'for-each-gen-1',
+            childMode: 'ask',
+            originalRequest: 'Split this work into tasks',
+            status: 'draft',
+        });
+
+        expect(result?.mode).toBe('append');
+        expect(result?.content).toContain('visible CoC For Each item-plan generation chat');
+        expect(result?.content).toContain('Advanced JSON');
+        expect(result?.content).toContain('Child chat mode for proposed items: ask');
+        expect(result?.content).toContain('do not start child chats');
     });
 });
 

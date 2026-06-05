@@ -24,7 +24,7 @@ import type {
     TurnSource,
 } from '@plusplusoneplusplus/forge';
 import type { ChatMode, ChatProvider } from '../tasks/task-types';
-import { normalizeChatModeOrDefault } from '../tasks/task-types';
+import { getForEachContext, isForEachGenerationContext, normalizeChatModeOrDefault } from '../tasks/task-types';
 import {
     approveAllPermissions,
     getLogger,
@@ -34,6 +34,7 @@ import {
     resolveReasoningSelection,
 } from '@plusplusoneplusplus/forge';
 import {
+    buildForEachGenerationSystemMessage,
     buildModeSystemMessage,
     buildConversationHistoryContext,
     prependSelectedSkillsDirective,
@@ -193,6 +194,10 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             );
         }
         const notePath = process.metadata?.notePath as string | undefined;
+        const forEachGeneration = (() => {
+            const context = getForEachContext({ metadata: process.metadata });
+            return isForEachGenerationContext(context) ? context : null;
+        })();
 
         // Capture pre-edit note content for snapshot (note-chat follow-ups only)
         let preEditContent: string | undefined;
@@ -281,6 +286,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             // turn.
             const systemMessage = await systemMessageBuilder()
                 .append(buildModeSystemMessage(currentMode)?.content)
+                .append(buildForEachGenerationSystemMessage(forEachGeneration)?.content)
                 .withRepoInstructions(workingDirectory, currentMode)
                 .appendMemoryV2(chatCtx.memoryV2)
                 .appendToolGuidance(chatCtx.toolGuidance)

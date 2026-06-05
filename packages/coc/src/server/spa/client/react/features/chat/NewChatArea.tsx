@@ -44,7 +44,6 @@ import type { ChatProvider } from './AgentSelectorChip';
 import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
 import { deriveEffort } from '../../utils/effortUtils';
 import { RalphLaunchDialog } from '../../shared/RalphLaunchDialog';
-import { ForEachLaunchDialog } from '../../shared/ForEachLaunchDialog';
 import type { ResolvedModalJobAiSelection } from '../../shared/ModalJobAiControls';
 import { AttachedContextPreviews } from '../../ui/AttachedContextPreviews';
 import { formatAttachedContext, useAttachedContext } from './hooks/useAttachedContext';
@@ -59,7 +58,6 @@ import {
 export interface NewChatAreaProps {
     workspaceId?: string;
     onBack?: () => void;
-    onForEachRunSelected?: (runId: string) => void;
 }
 
 function isChatProvider(value: unknown): value is ChatProvider {
@@ -72,7 +70,7 @@ function isSelectableProvider(provider: ChatProvider, providers: Array<{ id: str
     return status?.enabled === true && status?.available === true;
 }
 
-export function NewChatArea({ workspaceId, onBack, onForEachRunSelected }: NewChatAreaProps) {
+export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const [input, setInput] = useState('');
     const [cursorPos, setCursorPos] = useState(0);
     const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
@@ -84,7 +82,6 @@ export function NewChatArea({ workspaceId, onBack, onForEachRunSelected }: NewCh
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
     const [selectedEffortTier, setSelectedEffortTier] = useState<EffortTierKey>('medium');
     const [ralphDirectGoalDraft, setRalphDirectGoalDraft] = useState<string | null>(null);
-    const [forEachRequestDraft, setForEachRequestDraft] = useState<string | null>(null);
     const richTextRef = useRef<RichTextInputHandle>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -379,27 +376,6 @@ export function NewChatArea({ workspaceId, onBack, onForEachRunSelected }: NewCh
                 setSessionContextDropError(null);
                 return;
             }
-            if (attachments.length > 0) {
-                setError(`Remove ${attachments.length} file attachment${attachments.length === 1 ? '' : 's'} before starting For Each. For Each v1 sends request text only.`);
-                setSessionContextDropError(null);
-                return;
-            }
-            const sessionContextSendError = validateSessionContextAttachmentsForSend({
-                featureEnabled: sessionContextAttachmentsEnabled,
-                activeWorkspaceId: workspaceId,
-                currentProcessId: null,
-                items: contextItems,
-                canRetrieveConversations,
-            });
-            if (sessionContextSendError) {
-                setError(null);
-                setSessionContextDropError(sessionContextSendError);
-                return;
-            }
-            setError(null);
-            setSessionContextDropError(null);
-            setForEachRequestDraft(formatAttachedContext(contextItems) + trimmed);
-            return;
         }
         const sessionContextSendError = validateSessionContextAttachmentsForSend({
             featureEnabled: sessionContextAttachmentsEnabled,
@@ -437,6 +413,19 @@ export function NewChatArea({ workspaceId, onBack, onForEachRunSelected }: NewCh
                     ralph: {
                         phase: 'grilling',
                         sessionId: `ralph-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    },
+                };
+            } else if (selectedMode === 'for-each') {
+                mode = 'ask';
+                contextOverride = {
+                    ...(extractedSkills.length > 0 ? { skills: extractedSkills } : {}),
+                    forEach: {
+                        kind: 'generation',
+                        workspaceId,
+                        generationId: `for-each-gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                        childMode: 'ask',
+                        originalRequest: trimmed,
+                        status: 'draft',
                     },
                 };
             } else if (extractedSkills.length > 0) {
@@ -516,21 +505,6 @@ export function NewChatArea({ workspaceId, onBack, onForEachRunSelected }: NewCh
         clearDraft(draftKey);
     }
 
-    async function handleForEachRunApproved(run: { runId: string }) {
-        onForEachRunSelected?.(run.runId);
-        if (!appState.onboardingProgress?.hasUsedChat) {
-            await updateOnboarding({ hasUsedChat: true }).catch(() => {});
-        }
-        setForEachRequestDraft(null);
-        setInput('');
-        setCursorPos(0);
-        richTextRef.current?.setValue('');
-        clearAttachments();
-        attachedContext.clear();
-        promptHistory.reset();
-        clearDraft(draftKey);
-    }
-
     function handleStop() {
         abortControllerRef.current?.abort();
         setSending(false);
@@ -588,17 +562,6 @@ export function NewChatArea({ workspaceId, onBack, onForEachRunSelected }: NewCh
                     confirmLabel="🔄 Start Ralph"
                     onClose={() => setRalphDirectGoalDraft(null)}
                     onLaunched={handleRalphDirectGoalLaunched}
-                />
-            )}
-            {forEachRequestDraft !== null && (
-                <ForEachLaunchDialog
-                    open={forEachRequestDraft !== null}
-                    workspaceId={workspaceId ?? ''}
-                    request={forEachRequestDraft}
-                    resolvedAiSelection={resolveComposerAiSelection()}
-                    attachmentCount={attachments.length}
-                    onClose={() => setForEachRequestDraft(null)}
-                    onApproved={handleForEachRunApproved}
                 />
             )}
             {/* Back button — rendered when a back handler is provided (mobile new-chat flow) */}

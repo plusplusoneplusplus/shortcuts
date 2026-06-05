@@ -231,7 +231,7 @@ export interface ChatContext {
     scheduleParams?: Record<string, string>;
     /** Ralph-mode orchestration metadata. */
     ralph?: RalphContext;
-    /** For Each parent run linkage for child chats. */
+    /** For Each generation or parent-run linkage. */
     forEach?: ForEachContext;
     /** PR diff classification context — dispatches to ClassificationExecutor. */
     classifyDiff?: {
@@ -241,13 +241,33 @@ export interface ChatContext {
     };
 }
 
+export type ForEachChildMode = 'ask' | 'autopilot';
+
 /** For Each child chat linkage (mirrored verbatim into AIProcess.metadata.forEach). */
-export interface ForEachContext {
+export interface ForEachChildContext {
+    /** Legacy child contexts omitted kind; keep that shape valid. */
+    kind?: 'child';
     workspaceId: string;
     runId: string;
     itemId: string;
-    childMode: 'ask' | 'autopilot';
+    childMode: ForEachChildMode;
 }
+
+/** Visible For Each item-plan generation chat metadata. */
+export interface ForEachGenerationContext {
+    kind: 'generation';
+    workspaceId: string;
+    generationId: string;
+    childMode: ForEachChildMode;
+    originalRequest: string;
+    status: 'draft' | 'approved';
+    runId?: string;
+    latestItemCount?: number;
+    latestPlanTurnIndex?: number;
+    lastPlanError?: string;
+}
+
+export type ForEachContext = ForEachChildContext | ForEachGenerationContext;
 
 /** Ralph-mode orchestration context (mirrored verbatim into AIProcess.metadata.ralph). */
 export interface RalphContext {
@@ -495,6 +515,27 @@ export function isRalphTask(
     source: { payload?: unknown; metadata?: unknown } | null | undefined,
 ): boolean {
     return getRalphContext(source) !== null;
+}
+
+export function getForEachContext(
+    source: { payload?: unknown; metadata?: unknown } | null | undefined,
+): ForEachContext | null {
+    if (!source) return null;
+    const payload = source.payload as { context?: { forEach?: unknown } } | undefined;
+    const fromPayload = payload?.context?.forEach;
+    if (fromPayload && typeof fromPayload === 'object') {
+        return fromPayload as ForEachContext;
+    }
+    const metadata = source.metadata as { forEach?: unknown } | undefined;
+    const fromMetadata = metadata?.forEach;
+    if (fromMetadata && typeof fromMetadata === 'object') {
+        return fromMetadata as ForEachContext;
+    }
+    return null;
+}
+
+export function isForEachGenerationContext(context: ForEachContext | null | undefined): context is ForEachGenerationContext {
+    return context?.kind === 'generation';
 }
 
 /**
