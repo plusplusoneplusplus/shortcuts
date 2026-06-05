@@ -216,7 +216,6 @@ export function WorkItemHierarchyTree({
     const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => loadCollapsed(workspaceId));
     const [showArchived, setShowArchived] = useState(false);
     const [showDone, setShowDone] = useState(false);
-    const [syncNotice, setSyncNotice] = useState<{ tone: 'success' | 'warning'; message: string } | null>(null);
     const [remoteStatus, setRemoteStatus] = useState<RemoteSyncStatusState>({ loading: false });
     const requestedTrackerKinds = useMemo(
         () => trackerKinds ? [...trackerKinds] : (trackerKind ? [trackerKind] : []),
@@ -457,47 +456,6 @@ export function WorkItemHierarchyTree({
                     },
                 });
             }
-        }
-
-        // Remote provider sync
-        if (node.item.tracker?.kind === 'github-backed') {
-            items.push({
-                label: 'Sync from GitHub',
-                icon: '↻',
-                separator: childTypes.length > 0 || effectiveType !== 'epic',
-                onClick: async () => {
-                    try {
-                        await getSpaCocClient().workItems.syncGitHubEpic(workspaceId, node.item.id);
-                        setSyncNotice({ tone: 'success', message: 'Synced latest GitHub state into this Epic tree.' });
-                        fetchTree();
-                    } catch (err: any) {
-                        alert(err.message ?? 'Failed to sync from GitHub');
-                    }
-                },
-            });
-        }
-        if (node.item.tracker?.kind === 'azure-boards-backed') {
-            items.push({
-                label: 'Sync from Azure Boards',
-                icon: '↻',
-                separator: childTypes.length > 0 || effectiveType !== 'epic',
-                onClick: async () => {
-                    try {
-                        const result = await getSpaCocClient().workItems.syncAzureBoardsEpic(workspaceId, node.item.id);
-                        if (result.warnings.length > 0) {
-                            setSyncNotice({
-                                tone: 'warning',
-                                message: `${result.warnings.length} local Azure-owned edit${result.warnings.length === 1 ? '' : 's'} overwritten by newer Azure Boards state.`,
-                            });
-                        } else {
-                            setSyncNotice({ tone: 'success', message: 'Synced latest Azure Boards state into this Epic tree.' });
-                        }
-                        fetchTree();
-                    } catch (err: any) {
-                        alert(err.message ?? 'Failed to sync from Azure Boards');
-                    }
-                },
-            });
         }
 
         // Pin/archive/delete
@@ -745,21 +703,6 @@ export function WorkItemHierarchyTree({
                     data-status-tone={remoteStatusNotice.tone}
                 >
                     {remoteStatusNotice.message}
-                </div>
-            )}
-
-            {syncNotice && (
-                <div
-                    className={cn(
-                        'mx-2 mt-2 rounded-md border px-3 py-2 text-[12px] leading-[1.4] flex items-start justify-between gap-2',
-                        syncNotice.tone === 'warning'
-                            ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
-                            : 'border-green-300 bg-green-50 text-green-800 dark:border-green-700 dark:bg-green-900/20 dark:text-green-300',
-                    )}
-                    data-testid={syncNotice.tone === 'warning' ? 'hierarchy-sync-warning' : 'hierarchy-sync-success'}
-                >
-                    <span>{syncNotice.message}</span>
-                    <button className="text-[10px] shrink-0" onClick={() => setSyncNotice(null)} type="button">x</button>
                 </div>
             )}
 

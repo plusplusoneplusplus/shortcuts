@@ -11,6 +11,7 @@ import { registerWorkItemSyncRoutes } from '../../../src/server/routes/work-item
 import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
 import {
     createAzureBoardsWorkItemSyncProviderAdapter,
+    importAzureBoardsEpicTreeAsWorkItems,
     type AzureBoardsWorkItem,
     type AzureBoardsWorkItemTransport,
     type AvailableAzureBoardsWorkItemSyncProject,
@@ -651,10 +652,15 @@ describe('Work Item Sync Routes', () => {
             },
         ]);
 
-        const synced = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${root.id}/sync-from-azure-boards`);
+        const synced = await importAzureBoardsEpicTreeAsWorkItems(
+            { workspaceId: REPO_ID, workItemStore: store },
+            azureTransport.items.get(100)!,
+            [...azureTransport.items.values()],
+            undefined,
+            { pruneMissing: true },
+        );
 
-        expect(synced.status).toBe(200);
-        expect(synced.body).toMatchObject({
+        expect(synced).toMatchObject({
             created: 1,
             updated: 2,
             deleted: 1,
@@ -671,7 +677,7 @@ describe('Work Item Sync Routes', () => {
                 },
             ],
         });
-        expect(synced.body.root).toMatchObject({
+        expect(synced.root).toMatchObject({
             id: root.id,
             title: 'Remote Epic Updated',
             status: 'done',
@@ -717,5 +723,15 @@ describe('Work Item Sync Routes', () => {
 
         expect(preview.status).toBe(404);
         expect(apply.status).toBe(404);
+    });
+
+    it('does not register manual per-Epic pull endpoints', async () => {
+        await startServer([makeFakeProvider(), makeAzureProvider()]);
+
+        const github = await request('POST', `/api/workspaces/${REPO_ID}/work-items/root-1/sync-from-github`);
+        const azure = await request('POST', `/api/workspaces/${REPO_ID}/work-items/root-1/sync-from-azure-boards`);
+
+        expect(github.status).toBe(404);
+        expect(azure.status).toBe(404);
     });
 });

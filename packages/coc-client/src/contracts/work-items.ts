@@ -261,25 +261,6 @@ export interface ImportFromAzureBoardsRequest extends JsonObject {
   workItemId?: number;
 }
 
-export interface SyncGitHubEpicResponse extends JsonObject {
-  root: WorkItem;
-  items: WorkItem[];
-  created: number;
-  updated: number;
-  deleted: number;
-  deletedItemIds: string[];
-}
-
-export interface SyncAzureBoardsEpicResponse extends JsonObject {
-  root: WorkItem;
-  items: WorkItem[];
-  created: number;
-  updated: number;
-  deleted: number;
-  deletedItemIds: string[];
-  warnings: WorkItemSyncWarning[];
-}
-
 export interface WorkItemSyncWarning extends JsonObject {
   provider: WorkItemSyncProvider;
   code: 'remote-wins-conflict' | string;

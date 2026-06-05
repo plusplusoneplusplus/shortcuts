@@ -26,7 +26,6 @@ import {
     AzureBoardsRestWorkItemTransport,
     azureBoardsProjectFromStatus,
     azureBoardsWorkItemIdFromUrl,
-    deleteAzureBoardsEpicMirrorTree,
     importAzureBoardsEpicTreeAsWorkItems,
     type AvailableAzureBoardsWorkItemSyncProject,
     type AzureBoardsWorkItemTransport,
@@ -34,7 +33,6 @@ import {
 import {
     GhCliGitHubWorkItemIssueTransport,
     convertLocalEpicTreeToGitHubBacked,
-    deleteGitHubEpicMirrorTree,
     detachGitHubEpicTreeToLocalOnly,
     importGitHubEpicTreeAsWorkItems,
     type AvailableGitHubWorkItemSyncRepo,
@@ -476,112 +474,4 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
         },
     });
 
-    // POST /api/workspaces/:id/work-items/:workItemId/sync-from-github
-    ctx.routes.push({
-        method: 'POST',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/sync-from-github$/,
-        handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            try {
-                const workspaceId = decodeURIComponent(match![1]);
-                const workItemId = decodeURIComponent(match![2]);
-                const root = await loadRootEpic(workspaceId, workItemId, 'GitHub-backed tree sync');
-                if (root.tracker?.kind !== 'github-backed' || root.tracker.provider !== 'github') {
-                    throw badRequest('Work item is not a GitHub-backed Epic root.');
-                }
-                const issueNumber = root.tracker.github.issueNumber ?? root.githubMirror?.issueNumber;
-                if (issueNumber === undefined) {
-                    throw badRequest('GitHub-backed Epic root is missing a GitHub issue number.');
-                }
-
-                const { repo } = await resolveAvailableGitHubRepo(workspaceId);
-                const transport = ctx.githubTransport ?? new GhCliGitHubWorkItemIssueTransport();
-                const issue = await transport.getIssue(repo, issueNumber);
-                if (!issue) {
-                    const deleteResult = await deleteGitHubEpicMirrorTree(
-                        { workspaceId, workItemStore: ctx.workItemStore },
-                        root.id,
-                    );
-                    notifyGitHubBackedEpicTreeChanged(workspaceId);
-                    return sendJSON(res, 200, {
-                        root,
-                        items: [],
-                        created: 0,
-                        updated: 0,
-                        ...deleteResult,
-                    });
-                }
-
-                const rootType = parseGitHubWorkItemIssue(issue).type ?? 'epic';
-                if (rootType !== 'epic') {
-                    throw badRequest('A GitHub-backed tree must sync from a GitHub issue marked as coc:type:epic or with no CoC type metadata.');
-                }
-
-                const candidateIssues = await transport.listIssues(repo, { limit: WORK_ITEM_SYNC_MAX_ITEMS });
-                const result = await importGitHubEpicTreeAsWorkItems(
-                    { workspaceId, workItemStore: ctx.workItemStore },
-                    repo,
-                    issue,
-                    candidateIssues,
-                    undefined,
-                    { pruneMissing: true },
-                );
-                notifyGitHubBackedEpicTreeChanged(workspaceId);
-
-                return sendJSON(res, 200, result);
-            } catch (error) {
-                return handleAPIError(res, error);
-            }
-        },
-    });
-
-    // POST /api/workspaces/:id/work-items/:workItemId/sync-from-azure-boards
-    ctx.routes.push({
-        method: 'POST',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/sync-from-azure-boards$/,
-        handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            try {
-                const workspaceId = decodeURIComponent(match![1]);
-                const workItemId = decodeURIComponent(match![2]);
-                const root = await loadRootEpic(workspaceId, workItemId, 'Azure Boards-backed tree sync');
-                if (root.tracker?.kind !== 'azure-boards-backed' || root.tracker.provider !== 'azure-boards') {
-                    throw badRequest('Work item is not an Azure Boards-backed Epic root.');
-                }
-                const azureWorkItemId = root.tracker.azureBoards.workItemId ?? root.azureBoardsMirror?.workItemId;
-                if (azureWorkItemId === undefined) {
-                    throw badRequest('Azure Boards-backed Epic root is missing an Azure Boards work item ID.');
-                }
-
-                const { project } = await resolveAvailableAzureBoardsProject(workspaceId);
-                const transport = ctx.azureBoardsTransport ?? new AzureBoardsRestWorkItemTransport();
-                const tree = await transport.listWorkItemTree(project, azureWorkItemId, WORK_ITEM_SYNC_MAX_ITEMS);
-                const rootWorkItem = tree.find(item => item.id === azureWorkItemId);
-                if (!rootWorkItem) {
-                    const deleteResult = await deleteAzureBoardsEpicMirrorTree(
-                        { workspaceId, workItemStore: ctx.workItemStore },
-                        root.id,
-                    );
-                    return sendJSON(res, 200, {
-                        root,
-                        items: [],
-                        created: 0,
-                        updated: 0,
-                        ...deleteResult,
-                        warnings: [],
-                    });
-                }
-
-                const result = await importAzureBoardsEpicTreeAsWorkItems(
-                    { workspaceId, workItemStore: ctx.workItemStore },
-                    rootWorkItem,
-                    tree,
-                    undefined,
-                    { pruneMissing: true },
-                );
-
-                return sendJSON(res, 200, result);
-            } catch (error) {
-                return handleAPIError(res, error);
-            }
-        },
-    });
 }

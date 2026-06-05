@@ -38,7 +38,7 @@ interface DashboardConfig {
     defaultProvider?: 'copilot' | 'codex' | 'claude';
     /** Whether the Work Items hierarchy board is enabled (feature flag). */
     workItemsHierarchyEnabled?: boolean;
-    /** Whether manual Work Items external sync is enabled (requires hierarchy). */
+    /** Whether remote Work Items provider integration is enabled (requires hierarchy). */
     workItemsSyncEnabled?: boolean;
     /** Whether the AI-assisted work item authoring composer is enabled (feature flag). */
     workItemsAiAuthoringEnabled?: boolean;
@@ -278,7 +278,7 @@ export function isWorkItemsHierarchyEnabled(): boolean {
     return getConfig().workItemsHierarchyEnabled === true;
 }
 
-/** Returns true when manual Work Items external sync is enabled and hierarchy mode is enabled. */
+/** Returns true when remote Work Items provider integration is enabled and hierarchy mode is enabled. */
 export function isWorkItemsSyncEnabled(): boolean {
     const config = getConfig();
     return config.workItemsHierarchyEnabled === true && config.workItemsSyncEnabled === true;

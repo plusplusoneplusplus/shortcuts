@@ -47,7 +47,7 @@ export interface DashboardOptions {
     sessionContextAttachmentsEnabled?: boolean;
     /** Whether the Work Items hierarchy board is enabled in server config. */
     workItemsHierarchyEnabled?: boolean;
-    /** Whether manual Work Items external sync is enabled in server config. */
+    /** Whether remote Work Items provider integration is enabled in server config. */
     workItemsSyncEnabled?: boolean;
     /** Whether AI-assisted Work Items authoring is enabled in server config. */
     workItemsAiAuthoringEnabled?: boolean;
