@@ -189,7 +189,7 @@ describe('Import from remote work item placement', () => {
         expect(mocks.syncStatus).not.toHaveBeenCalled();
     });
 
-    it('shows Azure Boards sync status loading and success states', async () => {
+    it('hides Azure Boards sync status once the provider is available', async () => {
         mocks.isWorkItemsSyncEnabled.mockReturnValue(true);
         let resolveStatus: (value: any) => void = () => undefined;
         mocks.syncStatus.mockReturnValue(new Promise(resolve => {
@@ -244,9 +244,8 @@ describe('Import from remote work item placement', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByTestId('remote-sync-status-message')).toHaveTextContent('Azure Boards ready for Payments.');
+            expect(screen.queryByTestId('remote-sync-status-message')).toBeNull();
         });
-        expect(screen.getByTestId('remote-sync-status-message').dataset.statusTone).toBe('success');
         expect(screen.getByTestId('remote-provider-filter-azure-boards')).toBeTruthy();
         expect(screen.queryByTestId('remote-provider-filter-all')).toBeNull();
         expect(screen.queryByTestId('remote-provider-filter-github')).toBeNull();
