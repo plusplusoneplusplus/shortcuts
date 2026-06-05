@@ -48,6 +48,7 @@ import { ChatBaseExecutor } from './chat-base-executor';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import type { ChatTurnContext } from './chat-turn-context-builder';
+import { updateForEachGenerationMetadataFromAssistantTurn } from '../for-each/for-each-generation-metadata';
 // ============================================================================
 // Types
 // ============================================================================
@@ -405,21 +406,25 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             const pendingSuggestions = this.sessions.get(processId)?.pendingSuggestions;
             let assistantTurn: ConversationTurn;
             let allTurns: ConversationTurn[];
+            let assistantTurnIndex = process.conversationTurns?.length ?? 0;
 
             const appendResult = await this.store.appendConversationTurn(
                 processId,
-                (turnIndex) => ({
-                    role: 'assistant' as const,
-                    content: result.response || '(No text response)',
-                    timestamp: new Date(),
-                    turnIndex,
-                    toolCalls: result.toolCalls || undefined,
-                    timeline: followUpTimeline,
-                    suggestions: pendingSuggestions,
-                    tokenUsage: result.tokenUsage,
-                    ...(result.effectiveModel ? { model: result.effectiveModel } : {}),
-                    ...(turnSource ? { turnSource } : {}),
-                }),
+                (turnIndex) => {
+                    assistantTurnIndex = turnIndex;
+                    return {
+                        role: 'assistant' as const,
+                        content: result.response || '(No text response)',
+                        timestamp: new Date(),
+                        turnIndex,
+                        toolCalls: result.toolCalls || undefined,
+                        timeline: followUpTimeline,
+                        suggestions: pendingSuggestions,
+                        tokenUsage: result.tokenUsage,
+                        ...(result.effectiveModel ? { model: result.effectiveModel } : {}),
+                        ...(turnSource ? { turnSource } : {}),
+                    };
+                },
                 {
                     filterStreaming: true,
                     additionalUpdates: (current) => {
@@ -443,15 +448,22 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                                 ? (prevCumulative?.duration ?? 0) + result.tokenUsage.duration
                                 : prevCumulative?.duration,
                         } : prevCumulative;
+                        const assistantContent = result.response || '(No text response)';
+                        const baseMetadata = {
+                            ...(current.metadata ?? {}),
+                            type: current.metadata?.type ?? 'chat',
+                            model: result.effectiveModel,
+                        };
+                        const metadata = updateForEachGenerationMetadataFromAssistantTurn(
+                            baseMetadata,
+                            assistantContent,
+                            assistantTurnIndex,
+                        ) ?? baseMetadata;
                         return {
                             status: 'completed' as const,
                             endTime: new Date(),
                             result: result.response || undefined,
-                            metadata: {
-                                ...(current.metadata ?? {}),
-                                type: current.metadata?.type ?? 'chat',
-                                model: result.effectiveModel,
-                            },
+                            metadata,
                             ...(tokenLimit !== undefined ? { tokenLimit } : {}),
                             ...(currentTokens !== undefined ? { currentTokens } : {}),
                             ...(systemTokens !== undefined ? { systemTokens } : {}),

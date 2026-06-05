@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CocClient, normalizeForEachPlanItems, validateForEachDraftPlan } from '../src';
+import { CocClient, normalizeForEachPlanItems, scanForEachPlanArtifacts, validateForEachDraftPlan } from '../src';
 import type { ForEachRun } from '../src';
 
 function jsonResponse(body: unknown): Response {
@@ -144,5 +144,52 @@ describe('For Each item-plan validation', () => {
     expect(validateForEachDraftPlan([
       { id: 'item-1', title: 'First', prompt: 'Do first', status: 'running' },
     ])).toMatchObject({ items: null, error: "Generated For Each item 'item-1' must have initial status 'pending'" });
+  });
+
+  it('extracts the newest valid Advanced JSON plan and reports invalid latest output without clobbering it', () => {
+    const firstItems = makeRun().items;
+    const refinedItems = [
+      { id: 'item-1', title: 'Refined item', prompt: 'Do refined work', status: 'pending' as const },
+    ];
+
+    expect(scanForEachPlanArtifacts([
+      {
+        role: 'assistant',
+        turnIndex: 1,
+        content: `Readable plan\n\n\`\`\`json\n${JSON.stringify({ items: firstItems }, null, 2)}\n\`\`\``,
+      },
+      {
+        role: 'assistant',
+        turnIndex: 3,
+        content: `Refined plan\n\n\`\`\`json\n${JSON.stringify({ childMode: 'autopilot', sharedInstructions: 'Be safe', items: refinedItems }, null, 2)}\n\`\`\``,
+      },
+    ])).toMatchObject({
+      plan: {
+        turnIndex: 3,
+        childMode: 'autopilot',
+        sharedInstructions: 'Be safe',
+        items: refinedItems,
+      },
+      error: null,
+    });
+
+    const invalidLatest = scanForEachPlanArtifacts([
+      {
+        role: 'assistant',
+        turnIndex: 1,
+        content: `Readable plan\n\n\`\`\`json\n${JSON.stringify({ items: firstItems }, null, 2)}\n\`\`\``,
+      },
+      {
+        role: 'assistant',
+        turnIndex: 3,
+        content: 'I cannot produce a valid plan yet.',
+      },
+    ]);
+
+    expect(invalidLatest.plan?.items).toEqual(firstItems);
+    expect(invalidLatest.error).toMatchObject({
+      turnIndex: 3,
+      message: 'Assistant output did not include an Advanced JSON item plan',
+    });
   });
 });

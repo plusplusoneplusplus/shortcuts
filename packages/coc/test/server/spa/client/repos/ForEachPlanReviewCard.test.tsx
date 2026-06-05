@@ -136,6 +136,43 @@ describe('ForEachPlanReviewCard', () => {
         expect((screen.getByTestId('for-each-plan-item-title-0') as HTMLInputElement).value).toBe('First item');
     });
 
+    it('renders a persisted latest plan from metadata when the transcript has no parseable JSON', () => {
+        renderCard([
+            { role: 'assistant', turnIndex: 1, timeline: [], content: 'Readable summary without JSON.' },
+        ], {
+            latestItemCount: 2,
+            latestPlanTurnIndex: 1,
+            latestPlan: {
+                turnIndex: 1,
+                childMode: 'ask',
+                items: makeRun().items,
+                rawJson: JSON.stringify({ items: makeRun().items }),
+            },
+        });
+
+        expect(screen.getByTestId('for-each-plan-review-card')).toBeTruthy();
+        expect((screen.getByTestId('for-each-plan-item-title-0') as HTMLInputElement).value).toBe('First item');
+        expect(screen.queryByTestId('for-each-plan-scan-error')).toBeNull();
+    });
+
+    it('shows persisted latest-plan errors while keeping the previous persisted valid plan', () => {
+        renderCard([], {
+            latestItemCount: 2,
+            latestPlanTurnIndex: 1,
+            latestPlan: {
+                turnIndex: 1,
+                childMode: 'ask',
+                items: makeRun().items,
+                rawJson: JSON.stringify({ items: makeRun().items }),
+            },
+            lastPlanError: 'Assistant output did not include an Advanced JSON item plan',
+            lastPlanErrorTurnIndex: 3,
+        });
+
+        expect(screen.getByTestId('for-each-plan-scan-error').textContent).toContain('Keeping the previous valid plan');
+        expect((screen.getByTestId('for-each-plan-item-title-0') as HTMLInputElement).value).toBe('First item');
+    });
+
     it('shows Advanced JSON errors inline and blocks approval', async () => {
         renderCard();
         await waitFor(() => expect(screen.getByTestId('for-each-plan-json-toggle')).toBeTruthy());

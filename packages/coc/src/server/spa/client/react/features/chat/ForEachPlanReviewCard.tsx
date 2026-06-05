@@ -3,12 +3,15 @@ import type {
     AIProcess,
     ForEachChildMode,
     ForEachItem,
+    ForEachPlanArtifact,
+    ForEachPlanScanResult,
     ForEachRun,
 } from '@plusplusoneplusplus/coc-client';
 import {
     normalizeForEachPlanItems,
     assertForEachDraftStatuses,
     validateForEachDraftPlan,
+    scanForEachPlanArtifacts,
 } from '@plusplusoneplusplus/coc-client';
 import type { ClientConversationTurn } from '../../types/dashboard';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
@@ -24,20 +27,16 @@ export interface ForEachGenerationMetadata {
     runId?: string;
     latestItemCount?: number;
     latestPlanTurnIndex?: number;
+    latestPlan?: {
+        turnIndex: number;
+        items: ForEachItem[];
+        childMode: ForEachChildMode;
+        sharedInstructions?: string;
+        rawJson?: string;
+        updatedAt?: string;
+    };
     lastPlanError?: string;
-}
-
-interface ExtractedForEachPlan {
-    turnIndex: number;
-    items: ForEachItem[];
-    rawJson: string;
-    sharedInstructions?: string;
-    childMode?: ForEachChildMode;
-}
-
-interface ForEachPlanScanResult {
-    plan: ExtractedForEachPlan | null;
-    error: { turnIndex: number; message: string } | null;
+    lastPlanErrorTurnIndex?: number;
 }
 
 interface DraftPlan {
@@ -58,69 +57,8 @@ export interface ForEachPlanReviewCardProps {
     onApprovedRun?: (runId: string) => void;
 }
 
-function parseJsonPlan(jsonText: string, turnIndex: number): ExtractedForEachPlan {
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(jsonText);
-    } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        throw new Error(`Advanced JSON is invalid: ${message}`);
-    }
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        throw new Error('Advanced JSON must be an object with an items array');
-    }
-    const record = parsed as { items?: unknown; sharedInstructions?: unknown; childMode?: unknown };
-    const items = normalizeForEachPlanItems(record.items);
-    assertForEachDraftStatuses(items);
-    const sharedInstructions = typeof record.sharedInstructions === 'string' ? record.sharedInstructions : undefined;
-    const childMode = record.childMode === 'ask' || record.childMode === 'autopilot' ? record.childMode : undefined;
-    return { turnIndex, items, rawJson: jsonText.trim(), sharedInstructions, childMode };
-}
-
-function extractJsonCandidates(content: string): string[] {
-    const candidates: string[] = [];
-    const fencePattern = /```(?:json)?\s*([\s\S]*?)```/gi;
-    for (let match = fencePattern.exec(content); match; match = fencePattern.exec(content)) {
-        if (match[1]?.trim()) candidates.push(match[1].trim());
-    }
-    const trimmed = content.trim();
-    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-        candidates.push(trimmed);
-    }
-    return candidates;
-}
-
 export function scanForEachPlans(turns: ClientConversationTurn[]): ForEachPlanScanResult {
-    let latestPlan: ExtractedForEachPlan | null = null;
-    let latestError: { turnIndex: number; message: string } | null = null;
-
-    for (const turn of turns) {
-        if (turn.role !== 'assistant' || turn.streaming) continue;
-        const turnIndex = turn.turnIndex ?? 0;
-        const candidates = extractJsonCandidates(turn.content);
-        if (candidates.length === 0) continue;
-
-        let parsedPlan: ExtractedForEachPlan | null = null;
-        let parseError: string | null = null;
-        for (let i = candidates.length - 1; i >= 0; i--) {
-            try {
-                parsedPlan = parseJsonPlan(candidates[i], turnIndex);
-                parseError = null;
-                break;
-            } catch (err) {
-                parseError = err instanceof Error ? err.message : String(err);
-            }
-        }
-
-        if (parsedPlan) {
-            latestPlan = parsedPlan;
-            latestError = null;
-        } else if (parseError) {
-            latestError = { turnIndex, message: parseError };
-        }
-    }
-
-    return { plan: latestPlan, error: latestError };
+    return scanForEachPlanArtifacts(turns);
 }
 
 function formatDraftJson(draft: DraftPlan): string {
@@ -183,6 +121,64 @@ function isForEachGenerationMetadata(value: unknown): value is ForEachGeneration
         && (value as { kind?: unknown }).kind === 'generation';
 }
 
+function planJson(plan: Pick<DraftPlan, 'childMode' | 'sharedInstructions' | 'items'>): string {
+    return JSON.stringify({
+        childMode: plan.childMode,
+        sharedInstructions: plan.sharedInstructions || undefined,
+        items: plan.items,
+    }, null, 2);
+}
+
+function getPersistedPlanState(forEach: ForEachGenerationMetadata): ForEachPlanScanResult {
+    const latestPlan = forEach.latestPlan;
+    let plan: ForEachPlanArtifact | null = null;
+    let error: { turnIndex: number; message: string } | null = null;
+
+    if (latestPlan) {
+        try {
+            const items = normalizeForEachPlanItems(latestPlan.items);
+            assertForEachDraftStatuses(items);
+            const childMode = latestPlan.childMode === 'ask' || latestPlan.childMode === 'autopilot'
+                ? latestPlan.childMode
+                : undefined;
+            const sharedInstructions = typeof latestPlan.sharedInstructions === 'string'
+                ? latestPlan.sharedInstructions
+                : undefined;
+            plan = {
+                turnIndex: latestPlan.turnIndex,
+                items,
+                rawJson: typeof latestPlan.rawJson === 'string'
+                    ? latestPlan.rawJson
+                    : planJson({
+                        childMode: latestPlan.childMode,
+                        sharedInstructions: sharedInstructions ?? '',
+                        items,
+                    }),
+                ...(childMode ? { childMode } : {}),
+                ...(sharedInstructions !== undefined ? { sharedInstructions } : {}),
+            };
+        } catch (err) {
+            error = {
+                turnIndex: latestPlan.turnIndex,
+                message: err instanceof Error ? err.message : String(err),
+            };
+        }
+    }
+
+    if (forEach.lastPlanError) {
+        error = {
+            turnIndex: forEach.lastPlanErrorTurnIndex ?? forEach.latestPlanTurnIndex ?? plan?.turnIndex ?? 0,
+            message: forEach.lastPlanError,
+        };
+    }
+
+    return { plan, error };
+}
+
+function latestScanTurn(scan: ForEachPlanScanResult): number {
+    return Math.max(scan.plan?.turnIndex ?? -1, scan.error?.turnIndex ?? -1);
+}
+
 export function ForEachPlanReviewCard({
     workspaceId,
     processId,
@@ -194,7 +190,13 @@ export function ForEachPlanReviewCard({
     reasoningEffort,
     onApprovedRun,
 }: ForEachPlanReviewCardProps) {
-    const scan = useMemo(() => scanForEachPlans(turns), [turns]);
+    const transcriptScan = useMemo(() => scanForEachPlans(turns), [turns]);
+    const persistedScan = useMemo(() => getPersistedPlanState(forEach), [forEach]);
+    const scan = latestScanTurn(transcriptScan) > latestScanTurn(persistedScan)
+        ? transcriptScan
+        : persistedScan.plan || persistedScan.error
+            ? persistedScan
+            : transcriptScan;
     const generatedKey = scan.plan ? `${scan.plan.turnIndex}:${scan.plan.rawJson}` : 'none';
     const [loadedKey, setLoadedKey] = useState('');
     const [baselineJson, setBaselineJson] = useState('');
@@ -312,7 +314,17 @@ export function ForEachPlanReviewCard({
                 runId: approved.runId,
                 latestItemCount: approved.items.length,
                 latestPlanTurnIndex: scan.plan?.turnIndex,
+                latestPlan: {
+                    turnIndex: scan.plan?.turnIndex ?? currentForEach.latestPlan?.turnIndex ?? 0,
+                    childMode: draft.childMode,
+                    sharedInstructions: draft.sharedInstructions || undefined,
+                    items: checked.items,
+                    rawJson: formatDraftJson({ ...draft, items: checked.items }),
+                    updatedAt: new Date().toISOString(),
+                },
             };
+            delete nextForEach.lastPlanError;
+            delete nextForEach.lastPlanErrorTurnIndex;
             await client.processes.update(processId, {
                 metadata: {
                     ...currentMetadata,

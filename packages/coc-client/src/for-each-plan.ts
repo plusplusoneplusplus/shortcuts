@@ -1,4 +1,4 @@
-import type { ForEachItem, ForEachItemStatus } from './contracts/for-each';
+import type { ForEachChildMode, ForEachItem, ForEachItemStatus } from './contracts/for-each';
 
 export const FOR_EACH_ITEM_STATUSES: readonly ForEachItemStatus[] = [
   'pending',
@@ -133,4 +133,121 @@ export function validateForEachDraftPlan(rawItems: unknown): { items: ForEachIte
   } catch (err) {
     return { items: null, error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+export interface ForEachPlanArtifact {
+  turnIndex: number;
+  items: ForEachItem[];
+  rawJson: string;
+  sharedInstructions?: string;
+  childMode?: ForEachChildMode;
+}
+
+export interface ForEachPlanScanTurn {
+  role: string;
+  content: string;
+  turnIndex?: number;
+  streaming?: boolean;
+}
+
+export interface ForEachPlanScanError {
+  turnIndex: number;
+  message: string;
+}
+
+export interface ForEachPlanScanResult {
+  plan: ForEachPlanArtifact | null;
+  error: ForEachPlanScanError | null;
+}
+
+function extractJsonCandidates(content: string): string[] {
+  const candidates: string[] = [];
+  const fencePattern = /```(?:json)?\s*([\s\S]*?)```/gi;
+  for (let match = fencePattern.exec(content); match; match = fencePattern.exec(content)) {
+    if (match[1]?.trim()) candidates.push(match[1].trim());
+  }
+  const trimmed = content.trim();
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    candidates.push(trimmed);
+  }
+  return candidates;
+}
+
+export function parseForEachPlanArtifactJson(jsonText: string, turnIndex: number): ForEachPlanArtifact {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Advanced JSON is invalid: ${message}`);
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Advanced JSON must be an object with an items array');
+  }
+  const record = parsed as { items?: unknown; sharedInstructions?: unknown; childMode?: unknown };
+  const items = normalizeForEachPlanItems(record.items);
+  assertForEachDraftStatuses(items);
+  const sharedInstructions = typeof record.sharedInstructions === 'string'
+    ? record.sharedInstructions
+    : undefined;
+  const childMode = record.childMode === 'ask' || record.childMode === 'autopilot'
+    ? record.childMode
+    : undefined;
+  return {
+    turnIndex,
+    items,
+    rawJson: jsonText.trim(),
+    ...(sharedInstructions !== undefined ? { sharedInstructions } : {}),
+    ...(childMode !== undefined ? { childMode } : {}),
+  };
+}
+
+export function extractForEachPlanArtifactFromText(content: string, turnIndex: number): ForEachPlanScanResult {
+  const candidates = extractJsonCandidates(content);
+  if (candidates.length === 0) {
+    return {
+      plan: null,
+      error: {
+        turnIndex,
+        message: 'Assistant output did not include an Advanced JSON item plan',
+      },
+    };
+  }
+
+  let parseError: string | null = null;
+  for (let i = candidates.length - 1; i >= 0; i--) {
+    try {
+      return { plan: parseForEachPlanArtifactJson(candidates[i], turnIndex), error: null };
+    } catch (err) {
+      parseError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  return {
+    plan: null,
+    error: {
+      turnIndex,
+      message: parseError ?? 'Assistant output did not include a valid For Each item plan',
+    },
+  };
+}
+
+export function scanForEachPlanArtifacts(turns: ForEachPlanScanTurn[]): ForEachPlanScanResult {
+  let latestPlan: ForEachPlanArtifact | null = null;
+  let latestError: ForEachPlanScanError | null = null;
+
+  for (const turn of turns) {
+    if (turn.role !== 'assistant' || turn.streaming) continue;
+    const turnIndex = turn.turnIndex ?? 0;
+    const result = extractForEachPlanArtifactFromText(turn.content, turnIndex);
+
+    if (result.plan) {
+      latestPlan = result.plan;
+      latestError = null;
+    } else if (result.error) {
+      latestError = result.error;
+    }
+  }
+
+  return { plan: latestPlan, error: latestError };
 }

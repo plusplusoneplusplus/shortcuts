@@ -21,6 +21,7 @@
  */
 
 import type { Attachment, MCPServerConfig } from '@plusplusoneplusplus/forge';
+import type { ForEachItem } from '@plusplusoneplusplus/coc-client';
 
 // ============================================================================
 // Target Type
@@ -243,6 +244,15 @@ export interface ChatContext {
 
 export type ForEachChildMode = 'ask' | 'autopilot';
 
+export interface ForEachGenerationLatestPlan {
+    turnIndex: number;
+    items: ForEachItem[];
+    childMode: ForEachChildMode;
+    sharedInstructions?: string;
+    rawJson?: string;
+    updatedAt?: string;
+}
+
 /** For Each child chat linkage (mirrored verbatim into AIProcess.metadata.forEach). */
 export interface ForEachChildContext {
     /** Legacy child contexts omitted kind; keep that shape valid. */
@@ -264,7 +274,9 @@ export interface ForEachGenerationContext {
     runId?: string;
     latestItemCount?: number;
     latestPlanTurnIndex?: number;
+    latestPlan?: ForEachGenerationLatestPlan;
     lastPlanError?: string;
+    lastPlanErrorTurnIndex?: number;
 }
 
 export type ForEachContext = ForEachChildContext | ForEachGenerationContext;
