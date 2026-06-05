@@ -204,6 +204,11 @@ export function ForEachRunPane({ workspaceId, runId, onClose, onSelectGeneration
                     </div>
                 )}
 
+                <section className="mb-3 rounded border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900/40" data-testid="for-each-original-request">
+                    <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">Original request</h3>
+                    <p className="whitespace-pre-wrap text-xs text-zinc-700 dark:text-zinc-200">{run.originalRequest}</p>
+                </section>
+
                 {run.sharedInstructions?.trim() && (
                     <section className="mb-3 rounded border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900/40" data-testid="for-each-shared-instructions-preview">
                         <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">Shared instructions</h3>

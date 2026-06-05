@@ -615,8 +615,16 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     useEffect(() => {
         const apply = () => {
             const parsed = parseForEachRunDeepLink(location.hash);
-            if (parsed && parsed.workspaceId === workspaceId) {
+            if (parsed && parsed.workspaceId === workspaceId && isForEachEnabled()) {
+                if (selectedTaskId) {
+                    queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
+                }
+                setSelectedTask(null);
+                selectedTaskRef.current = null;
+                setSelectedRalphSessionId((prev) => (prev === null ? prev : null));
+                setSelectedRalphFileName((prev) => (prev === null ? prev : null));
                 setSelectedForEachRunId((prev) => (prev === parsed.runId ? prev : parsed.runId));
+                if (isMobile) setMobileShowDetail(true);
             } else {
                 setSelectedForEachRunId((prev) => (prev === null ? prev : null));
             }
@@ -624,7 +632,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         apply();
         window.addEventListener('hashchange', apply);
         return () => window.removeEventListener('hashchange', apply);
-    }, [workspaceId]);
+    }, [workspaceId, selectedTaskId, queueDispatch, isMobile]);
 
     const handleSelectRalphIteration = useCallback((processId: string) => {
         // Switching to an iteration's chat detail clears the workflow pane.
@@ -646,6 +654,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     }, [selectTask]);
 
     const handleOpenForEachRun = useCallback((runId: string) => {
+        if (!isForEachEnabled()) return;
         if (selectedTaskId) {
             queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
             setSelectedTask(null);

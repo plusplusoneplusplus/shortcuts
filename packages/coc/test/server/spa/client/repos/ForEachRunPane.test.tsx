@@ -99,6 +99,7 @@ describe('ForEachRunPane', () => {
         await waitFor(() => expect(screen.getByTestId('for-each-run-pane')).toBeTruthy());
         expect(screen.getByTestId('for-each-run-status').textContent).toContain('approved');
         expect(screen.getByTestId('for-each-run-counts').textContent).toContain('1 pending');
+        expect(screen.getByTestId('for-each-original-request').textContent).toContain('Split the work');
         expect(screen.getByTestId('for-each-shared-instructions-preview').textContent).toContain('Keep each item isolated');
         expect(screen.getByTestId('for-each-item-prompt-pending-item').textContent).toContain('Do pending work');
 
@@ -119,6 +120,29 @@ describe('ForEachRunPane', () => {
 
         await waitFor(() => expect(mocks.start).toHaveBeenCalledWith('ws-1', 'for-each-run-1'));
         expect(mocks.continueRun).not.toHaveBeenCalled();
+    });
+
+    it('keeps the parent pane open and shows the linked running child after start', async () => {
+        mocks.get.mockResolvedValueOnce(makeRun({ status: 'approved', items: [makeRun().items[0]] }));
+        mocks.start.mockResolvedValueOnce(makeRun({
+            status: 'running',
+            items: [{
+                ...makeRun().items[0],
+                status: 'running',
+                childProcessId: 'queue_child-running',
+                childTaskId: 'child-running',
+            }],
+        }));
+
+        render(<ForEachRunPane workspaceId="ws-1" runId="for-each-run-1" />);
+        await waitFor(() => expect(screen.getByTestId('for-each-continue-btn')).toBeEnabled());
+
+        fireEvent.click(screen.getByTestId('for-each-continue-btn'));
+
+        await waitFor(() => expect(mocks.start).toHaveBeenCalledWith('ws-1', 'for-each-run-1'));
+        await waitFor(() => expect(screen.getByTestId('for-each-run-pane')).toBeTruthy());
+        expect(screen.getByTestId('for-each-run-status').textContent).toContain('running');
+        expect(screen.getByTestId('for-each-child-link-pending-item').textContent).toContain('Open child chat');
     });
 
     it('retries failed items, skips pending items, and cancels remaining work', async () => {
