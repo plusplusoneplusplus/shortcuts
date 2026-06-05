@@ -251,17 +251,47 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
 
     const [showAiComposer, setShowAiComposer] = useState(false);
     const aiAuthoringEnabled = isWorkItemsAiAuthoringEnabled();
+    const currentSelectionRef = useRef({ workspaceId, workItemId });
+    const previousSelectionRef = useRef({ workspaceId, workItemId });
+    const fetchRequestSeqRef = useRef(0);
+    currentSelectionRef.current = { workspaceId, workItemId };
 
     const fetchItem = useCallback(async () => {
+        const requestSeq = ++fetchRequestSeqRef.current;
+        const requestedWorkspaceId = workspaceId;
+        const requestedWorkItemId = workItemId;
         setLoading(true);
         setError(null);
         try {
-            const data = await getSpaCocClient().workItems.get(workspaceId, workItemId);
+            const data = await getSpaCocClient().workItems.get(requestedWorkspaceId, requestedWorkItemId);
+            const current = currentSelectionRef.current;
+            if (
+                requestSeq !== fetchRequestSeqRef.current ||
+                current.workspaceId !== requestedWorkspaceId ||
+                current.workItemId !== requestedWorkItemId
+            ) {
+                return;
+            }
             setItem(data);
         } catch (err: any) {
+            const current = currentSelectionRef.current;
+            if (
+                requestSeq !== fetchRequestSeqRef.current ||
+                current.workspaceId !== requestedWorkspaceId ||
+                current.workItemId !== requestedWorkItemId
+            ) {
+                return;
+            }
             setError(err.message || 'Failed to load work item');
         } finally {
-            setLoading(false);
+            const current = currentSelectionRef.current;
+            if (
+                requestSeq === fetchRequestSeqRef.current &&
+                current.workspaceId === requestedWorkspaceId &&
+                current.workItemId === requestedWorkItemId
+            ) {
+                setLoading(false);
+            }
         }
     }, [workspaceId, workItemId]);
 
@@ -325,25 +355,29 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
 
     // Reset drafts when navigating to a different work item.
     useEffect(() => {
+        const previous = previousSelectionRef.current;
+        if (previous.workspaceId === workspaceId && previous.workItemId === workItemId) return;
+        previousSelectionRef.current = { workspaceId, workItemId };
+        setItem(null);
         setDraft(null);
         setPlanDraft(null);
         setEditError(null);
         setSyncConflict(null);
         setSyncConflictChoices({});
-    }, [workItemId]);
+    }, [workspaceId, workItemId]);
 
     // Initialize drafts once the item loads.
     useEffect(() => {
-        if (!item) return;
+        if (!item || item.id !== workItemId) return;
         if (draft === null) {
             setDraft(draftFromItem(item));
             setPlanDraft(item.plan?.content ?? '');
         }
-    }, [item, draft]);
+    }, [item, draft, workItemId]);
 
     // Resync drafts from external updates only when there are no unsaved edits.
     useEffect(() => {
-        if (!item || draft === null) return;
+        if (!item || item.id !== workItemId || draft === null) return;
         if (!isDirty) {
             setDraft(draftFromItem(item));
             setPlanDraft(item.plan?.content ?? '');
@@ -355,10 +389,10 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
 
     const updateDraft = useCallback(<K extends keyof WorkItemDraft>(key: K, value: WorkItemDraft[K]) => {
         setDraft(prev => {
-            const base = prev ?? (item ? draftFromItem(item) : null);
+            const base = prev ?? (item && item.id === workItemId ? draftFromItem(item) : null);
             return base ? { ...base, [key]: value } : prev;
         });
-    }, [item]);
+    }, [item, workItemId]);
 
     const handleExecuteDialogDone = useCallback(async () => {
         setShowExecuteDialog(false);
@@ -494,7 +528,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     };
 
     const saveDraft = useCallback(async (draftToSave: WorkItemDraft, resolution?: WorkItemSyncConflictResolution) => {
-        if (!item) return;
+        if (!item || item.id !== workItemId) return;
         const trimmedTitle = draftToSave.title.trim();
         if (!trimmedTitle) {
             setEditError('Title is required');
@@ -657,7 +691,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         );
     }
 
-    if (!item) return null;
+    if (!item || item.id !== workItemId) return null;
 
     const d: WorkItemDraft = draft ?? draftFromItem(item);
 

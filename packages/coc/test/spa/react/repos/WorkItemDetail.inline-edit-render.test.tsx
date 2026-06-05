@@ -97,6 +97,21 @@ const baseItem = {
     updatedAt: new Date().toISOString(),
 };
 
+function makeItem(overrides: Record<string, any> & { id: string; title: string }) {
+    return {
+        ...baseItem,
+        ...overrides,
+    };
+}
+
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((res) => {
+        resolve = res;
+    });
+    return { promise, resolve };
+}
+
 function makeSyncConflict(overrides: Partial<WorkItemSyncConflictDetails> = {}): WorkItemSyncConflictDetails {
     return {
         kind: 'work-item-sync-conflict',
@@ -325,6 +340,63 @@ describe('WorkItemDetail inline editing (render)', () => {
         await Promise.resolve();
         expect(mockUpdate).not.toHaveBeenCalled();
         expect(mockUpdatePlan).not.toHaveBeenCalled();
+    });
+
+    it('AC-02 regression: switching from a loaded Epic to a Feature initializes and saves the Feature draft only', async () => {
+        const featureDetail = deferred<any>();
+        const epic = makeItem({
+            id: 'epic-1',
+            title: 'Epic title',
+            description: 'Epic description',
+            status: 'created',
+            type: 'epic',
+            priority: 'high',
+            tags: ['epic-tag'],
+        });
+        const feature = makeItem({
+            id: 'feature-1',
+            title: 'Feature title',
+            description: 'Feature description',
+            status: 'planning',
+            type: 'feature',
+            parentId: 'epic-1',
+            priority: 'low',
+            tags: ['feature-tag'],
+        });
+        mockGet.mockImplementation((_ws: string, id: string) => {
+            if (id === 'epic-1') return Promise.resolve(epic);
+            if (id === 'feature-1') return featureDetail.promise;
+            return Promise.resolve({ ...baseItem, id });
+        });
+        mockUpdate.mockImplementation(async (_ws: string, id: string, updates: any) => ({ ...feature, id, ...updates }));
+
+        const { rerender } = render(
+            <WorkItemDetail workItemId="epic-1" workspaceId="ws-1" onBack={vi.fn()} />
+        );
+        expect((await screen.findByTestId('wi-title-input') as HTMLInputElement).value).toBe('Epic title');
+
+        rerender(<WorkItemDetail workItemId="feature-1" workspaceId="ws-1" onBack={vi.fn()} />);
+        featureDetail.resolve(feature);
+
+        await waitFor(() => {
+            expect((screen.getByTestId('wi-title-input') as HTMLInputElement).value).toBe('Feature title');
+        });
+        expect((within(screen.getByTestId('wi-description-editor')).getByRole('textbox') as HTMLTextAreaElement).value).toBe('Feature description');
+        expect((screen.getByTestId('wi-priority-select') as HTMLSelectElement).value).toBe('low');
+        expect((screen.getByTestId('work-item-status-select') as HTMLSelectElement).value).toBe('planning');
+        expect(screen.getByTestId('work-item-parent-info').textContent).toContain('epic-1');
+        expect((screen.getByTestId('wi-tags-input') as HTMLInputElement).value).toBe('feature-tag');
+        expect(screen.queryByTestId('wi-dirty-indicator')).toBeNull();
+        expect(screen.getByTestId('wi-save-btn').hasAttribute('disabled')).toBe(true);
+
+        fireEvent.change(screen.getByTestId('wi-title-input'), { target: { value: 'Edited feature title' } });
+        expect(screen.getByTestId('wi-dirty-indicator')).toBeTruthy();
+        fireEvent.click(screen.getByTestId('wi-save-btn'));
+
+        await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+        expect(mockUpdate.mock.calls[0][0]).toBe('ws-1');
+        expect(mockUpdate.mock.calls[0][1]).toBe('feature-1');
+        expect(mockUpdate.mock.calls[0][2]).toEqual({ title: 'Edited feature title' });
     });
 
     it('AC-04: blocks programmatic hash route changes when dirty and the user cancels', async () => {
