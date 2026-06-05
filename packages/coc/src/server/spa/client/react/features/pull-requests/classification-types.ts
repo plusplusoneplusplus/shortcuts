@@ -105,6 +105,7 @@ export const CATEGORY_LABELS: Record<HunkCategory, string> = {
 export const CATEGORY_PRIORITY: Record<HunkCategory, number> = {
     logic: 3,
     test: 2,
+    simple: 1,
     mechanical: 1,
     generated: 0,
 };
