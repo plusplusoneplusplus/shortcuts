@@ -391,6 +391,140 @@ describe('queue filter pills', () => {
         await waitFor(() => expect(screen.getByTestId('no-results')).toHaveTextContent('Choose at least one Team coworker chip'));
     });
 
+    it('shows an empty Team roster CTA with addable loaded authors', async () => {
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const allPrs = [
+            makePr({ id: 2, number: 2, title: 'Alice PR', author: { id: 'alice-1', displayName: 'Alice Dev' } }),
+            makePr({ id: 3, number: 3, title: 'Casey PR', author: { displayName: 'Casey Dev' } }),
+        ];
+        const fetchMock = vi.fn((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('/coworker-roster')) {
+                return Promise.resolve(jsonResponse({ entries: [] }));
+            }
+            if (url.includes('/recent-opened')) {
+                return Promise.resolve(jsonResponse({ entries: [] }));
+            }
+            if (url.includes('scope=all')) {
+                return Promise.resolve(jsonResponse({ pullRequests: allPrs }));
+            }
+            return Promise.resolve(jsonResponse({
+                pullRequests: [makePr({ id: 1, number: 1, title: 'Mine PR', author: { id: 'me', displayName: 'Me' } })],
+            }));
+        });
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('pr-queue-filter-team')).toBeInTheDocument());
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('pr-queue-filter-team'));
+        });
+
+        await waitFor(() => expect(screen.getByTestId('team-roster-empty')).toBeInTheDocument());
+        expect(screen.getByTestId('team-roster-empty')).toHaveTextContent('Add coworkers from loaded PR authors');
+        expect(screen.getByTestId('no-results')).toHaveTextContent('Add coworkers from loaded PR authors to build your Team filter.');
+        expect(within(screen.getByTestId('team-coworker-picker')).getAllByRole('option').map(option => option.textContent)).toEqual([
+            'Add coworker...',
+            'Alice Dev',
+            'Casey Dev',
+        ]);
+        expect(consoleError).not.toHaveBeenCalled();
+        consoleError.mockRestore();
+    });
+
+    it('shows the zero-match Team message when active roster authors are not in the loaded set', async () => {
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const fetchMock = vi.fn((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('/coworker-roster')) {
+                return Promise.resolve(jsonResponse({
+                    entries: [makeCoworkerEntry({ id: 'bob-1', displayName: 'Bob Dev' })],
+                }));
+            }
+            if (url.includes('/recent-opened')) {
+                return Promise.resolve(jsonResponse({ entries: [] }));
+            }
+            if (url.includes('scope=all')) {
+                return Promise.resolve(jsonResponse({
+                    pullRequests: [
+                        makePr({ id: 2, number: 2, title: 'Alice PR', author: { id: 'alice-1', displayName: 'Alice Dev' } }),
+                        makePr({ id: 3, number: 3, title: 'Casey PR', author: { displayName: 'Casey Dev' } }),
+                    ],
+                }));
+            }
+            return Promise.resolve(jsonResponse({
+                pullRequests: [makePr({ id: 1, number: 1, title: 'Mine PR', author: { id: 'me', displayName: 'Me' } })],
+            }));
+        });
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('pr-queue-filter-team')).toBeInTheDocument());
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('pr-queue-filter-team'));
+        });
+
+        await waitFor(() => expect(screen.getByTestId('no-results')).toHaveTextContent('No loaded pull requests are authored by the active Team roster.'));
+        expect(screen.getByTestId('pr-queue-filter-team')).toHaveTextContent('0');
+        expect(consoleError).not.toHaveBeenCalled();
+        consoleError.mockRestore();
+    });
+
+    it('returns to the empty Team roster state after removing the last coworker', async () => {
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+        let roster = [makeCoworkerEntry({ id: 'bob-1', displayName: 'Bob Dev' })];
+        const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? 'GET';
+            if (url.includes('/coworker-roster')) {
+                if (method === 'DELETE') {
+                    roster = [];
+                }
+                return Promise.resolve(jsonResponse({ entries: roster }));
+            }
+            if (url.includes('/recent-opened')) {
+                return Promise.resolve(jsonResponse({ entries: [] }));
+            }
+            if (url.includes('scope=all')) {
+                return Promise.resolve(jsonResponse({
+                    pullRequests: [
+                        makePr({ id: 2, number: 2, title: 'Bob PR', author: { id: 'bob-1', displayName: 'Bob Dev' } }),
+                        makePr({ id: 3, number: 3, title: 'Alice PR', author: { id: 'alice-1', displayName: 'Alice Dev' } }),
+                    ],
+                }));
+            }
+            return Promise.resolve(jsonResponse({
+                pullRequests: [makePr({ id: 1, number: 1, title: 'Mine PR', author: { id: 'me', displayName: 'Me' } })],
+            }));
+        });
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('pr-queue-filter-team')).toBeInTheDocument());
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('pr-queue-filter-team'));
+        });
+
+        await waitFor(() => expect(screen.getByText('Bob PR')).toBeInTheDocument());
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: 'Remove Bob Dev from Team roster' }));
+        });
+
+        await waitFor(() => expect(screen.getByTestId('team-roster-empty')).toBeInTheDocument());
+        expect(screen.queryByTestId('team-coworker-chip')).not.toBeInTheDocument();
+        expect(screen.getByTestId('no-results')).toHaveTextContent('Add coworkers from loaded PR authors to build your Team filter.');
+        expect(fetchMock.mock.calls.some(call =>
+            String(call[0]).includes('/coworker-roster/bob-1') &&
+            call[1]?.method === 'DELETE'
+        )).toBe(true);
+        expect(consoleError).not.toHaveBeenCalled();
+        consoleError.mockRestore();
+    });
+
     it('"Mine" stays on scope=mine and does not refetch when re-clicked', async () => {
         mockFetchOk([makePr()]);
         await act(async () => { await renderTab(); });
