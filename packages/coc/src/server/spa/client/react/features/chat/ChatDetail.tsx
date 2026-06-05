@@ -515,6 +515,23 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         }
     }, [availableModels, sessionModel, sessionTokenLimit]);
 
+    // Seed session token state from a freshly-fetched process record so the
+    // ContextWindowIndicator shows real usage immediately on cold load —
+    // including completed / non-running chats that never open the SSE stream
+    // (the only other source of this data; `useChatSSE` gates on
+    // `task.status === 'running'`). Each setter is guarded by a numeric type
+    // check, mirroring the `conversation-snapshot` SSE handler, so absent
+    // fields never clobber existing/SSE values with `undefined`. The persisted
+    // AIProcess fields map to the `session*` aliases the indicator consumes.
+    const seedSessionTokensFromProcess = useCallback((loadedProcess: any) => {
+        if (!loadedProcess) return;
+        if (typeof loadedProcess.tokenLimit === 'number') setSessionTokenLimit(loadedProcess.tokenLimit);
+        if (typeof loadedProcess.currentTokens === 'number') setSessionCurrentTokens(loadedProcess.currentTokens);
+        if (typeof loadedProcess.systemTokens === 'number') setSessionSystemTokens(loadedProcess.systemTokens);
+        if (typeof loadedProcess.toolDefinitionsTokens === 'number') setSessionToolTokens(loadedProcess.toolDefinitionsTokens);
+        if (typeof loadedProcess.conversationTokens === 'number') setSessionConversationTokens(loadedProcess.conversationTokens);
+    }, []);
+
     // Derive effort picker options from the effective model (override or session model).
     // `chatEffectiveModelInfo` drives both option-set and disabled state so that
     // switching model mid-conversation updates the pill immediately.
@@ -884,6 +901,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             const turns = getConversationTurns(processData);
                             setTurnsAndRef(turns);
                             setProcessDetails(loadedProcess);
+                            seedSessionTokensFromProcess(loadedProcess);
                         }).catch(() => { /* best-effort revalidation */ });
                         return;
                     }
@@ -908,6 +926,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         const turns = getConversationTurns(processData);
                         setTurnsAndRef(turns);
                         setProcessDetails(loadedProcess);
+                        seedSessionTokensFromProcess(loadedProcess);
                         setLoading(false);
                         return;
                     }
@@ -941,6 +960,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     getSpaCocClient().processes.get(pid)
                         .then((data: any) => {
                             setProcessDetails(data?.process || null);
+                            seedSessionTokensFromProcess(data?.process);
                             // Merge customTitle/title/lastMessagePreview into task so
                             // the chat header reflects the persisted custom name even
                             // on cached loads where loadedTask lacked these fields.
@@ -985,6 +1005,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
 
                     setTask(effectiveTask);
                     setProcessDetails(procData?.process || null);
+                    seedSessionTokensFromProcess(procData?.process);
                     const loadedTurns = getConversationTurns(procData, effectiveTask);
                     if (effectiveTask?.status === 'running') {
                         const lastTurn = loadedTurns[loadedTurns.length - 1];
