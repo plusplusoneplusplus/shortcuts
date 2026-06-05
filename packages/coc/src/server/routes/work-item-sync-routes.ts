@@ -492,7 +492,7 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                     const urlWorkItemId = azureBoardsWorkItemIdFromUrl(workItemUrl, project);
                     if (urlWorkItemId === undefined) {
                         throw badRequest(
-                            'workItemUrl must be a valid Azure Boards work item URL in the workspace-configured organization and project.',
+                            'workItemUrl must be a valid Azure Boards work item URL for this workspace Azure Boards organization and project.',
                         );
                     }
                     if (workItemId !== undefined && workItemId !== urlWorkItemId) {

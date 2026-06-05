@@ -100,9 +100,11 @@ export {
 } from './work-item-sync-github-provider';
 export {
     AzureBoardsRestWorkItemTransport,
+    azureBoardsProjectFromRemoteUrl,
     azureBoardsProjectFromStatus,
     azureBoardsRemoteWorkItemIdForLocalItem,
     azureBoardsWorkItemIdFromUrl,
+    azureBoardsWorkItemReferenceFromUrl,
     createAzureBoardsWorkItemForLocalChild,
     createAzureBoardsWorkItemSyncProviderAdapter,
     deleteAzureBoardsEpicMirrorTree,
@@ -117,6 +119,7 @@ export {
     type AzureBoardsWorkItemRelation,
     type AzureBoardsWorkItemTransport,
     type AzureBoardsWorkItemUpdateInput,
+    type AzureBoardsWorkItemUrlReference,
     type CreateAzureBoardsWorkItemSyncProviderOptions,
     type CreateAzureBoardsWorkItemForLocalChildOptions,
     type CreateAzureBoardsWorkItemForLocalChildResult,
