@@ -124,42 +124,37 @@ test.describe('Metadata popover — log link', () => {
 
         const { wsId, taskId, cleanup } = await setup(serverUrl, 'meta2', { prompt: 'Test alignment' });
         try {
-        await waitForTaskStatus(serverUrl, taskId, ['completed', 'failed']);
-        await gotoConversation(page, serverUrl, wsId, taskId);
-        await openMetadataPopover(page);
+            await waitForTaskStatus(serverUrl, taskId, ['completed', 'failed']);
+            await gotoConversation(page, serverUrl, wsId, taskId);
+            await openMetadataPopover(page);
 
-        // Every .contents row inside the metadata popover grid should have
-        // exactly 2 direct children (label in col 1, value/wrapper in col 2).
-        // The bug caused 3 children when a link was present, breaking
-        // subsequent rows. Scope the query to the popover grid (children of
-        // the `.grid.grid-cols-...` container) so unrelated `display:contents`
-        // wrappers elsewhere in the DOM don't pollute the assertion.
-        const childCounts = await page.evaluate(() => {
-            const grids = Array.from(document.querySelectorAll('div.grid'))
-                .filter(grid => /grid-cols-\[130px/.test(grid.className));
-            const rows: Element[] = [];
-            for (const grid of grids) {
-                for (const child of Array.from(grid.children)) {
-                    if (child.classList.contains('contents')) rows.push(child);
-                }
+            // Every .contents row inside the metadata popover grid should have
+            // exactly 2 direct children (label in col 1, value/wrapper in col 2).
+            // Scope the query from the log link to avoid coupling to the grid's
+            // exact responsive column widths.
+            const childCounts = await page.evaluate(() => {
+                const link = document.querySelector('a[title="View logs for this session"]');
+                const grid = link?.closest('div.grid');
+                if (!grid) return [];
+                return Array.from(grid.children)
+                    .filter((child) => child.classList.contains('contents'))
+                    .map((row) => row.children.length);
+            });
+
+            expect(childCounts.length).toBeGreaterThan(0);
+            for (const count of childCounts) {
+                expect(count).toBe(2);
             }
-            return rows.map((row) => row.children.length);
-        });
 
-        expect(childCounts.length).toBeGreaterThan(0);
-        for (const count of childCounts) {
-            expect(count).toBe(2);
-        }
-
-        // Verify the Session ID row specifically has the link inside col 2 wrapper
-        const sessionLinkInsideWrapper = await page.evaluate(() => {
-            const link = document.querySelector('a[title="View logs for this session"]');
-            if (!link) return false;
-            // Link should be inside a flex wrapper div, not a direct child of .contents
-            const parent = link.parentElement;
-            return parent?.tagName === 'DIV' && parent?.classList.contains('flex');
-        });
-        expect(sessionLinkInsideWrapper).toBe(true);
+            // Verify the Session ID row specifically has the link inside col 2 wrapper
+            const sessionLinkInsideWrapper = await page.evaluate(() => {
+                const link = document.querySelector('a[title="View logs for this session"]');
+                if (!link) return false;
+                // Link should be inside a flex wrapper div, not a direct child of .contents
+                const parent = link.parentElement;
+                return parent?.tagName === 'DIV' && parent?.classList.contains('flex');
+            });
+            expect(sessionLinkInsideWrapper).toBe(true);
         } finally {
             cleanup();
         }

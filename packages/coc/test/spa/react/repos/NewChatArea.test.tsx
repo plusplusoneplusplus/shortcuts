@@ -89,6 +89,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '/api',
     getConfig: () => ({ apiBasePath: '/api' }),
     isRalphEnabled: () => mockRalphEnabled.value,
+    isForEachEnabled: () => false,
     isLoopsEnabled: () => false,
     getDefaultProvider: () => 'copilot' as const,
     isEffortLevelsEnabled: () => false,
