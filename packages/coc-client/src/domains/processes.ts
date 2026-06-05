@@ -14,6 +14,9 @@ import type {
   ProcessMessageResponse,
   ProcessOutputQuery,
   ProcessOutputResponse,
+  ProcessGroupPinResponse,
+  ProcessGroupPinsResponse,
+  ProcessGroupPinType,
   ProcessResumeCliResponse,
   ProcessSearchQuery,
   ProcessSearchResponse,
@@ -180,6 +183,20 @@ export class ProcessesClient {
 
   pinnedTurns(processId: string): Promise<PinnedTurnsResponse> {
     return this.transport.request<PinnedTurnsResponse>(`/processes/${encodePathSegment(processId)}/turns/pinned`);
+  }
+
+  listGroupPins(workspaceId: string): Promise<ProcessGroupPinsResponse> {
+    return this.transport.request<ProcessGroupPinsResponse>(`/workspaces/${encodePathSegment(workspaceId)}/group-pins`);
+  }
+
+  pinGroup(workspaceId: string, type: ProcessGroupPinType, groupId: string, pinned: boolean): Promise<ProcessGroupPinResponse> {
+    return this.transport.request<ProcessGroupPinResponse>(
+      `/workspaces/${encodePathSegment(workspaceId)}/group-pins/${encodePathSegment(type)}/${encodePathSegment(groupId)}`,
+      {
+        method: 'PATCH',
+        body: { pinned },
+      },
+    );
   }
 
   resumeCli(processId: string): Promise<ProcessResumeCliResponse> {

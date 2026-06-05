@@ -465,6 +465,40 @@ describe('ProcessesClient mock server contract', () => {
     await client.processes.unarchiveBatch(['id-3']);
     expectJsonRequest(mock.requests[1], 'POST', '/api/processes/unarchive', { ids: ['id-3'] });
   });
+
+  it('lists, pins, and unpins process groups with workspace-scoped encoded paths', async () => {
+    mock = await startMockServer();
+    const pins = {
+      pins: [
+        { type: 'ralph-session' as const, groupId: 'ralph/1', pinnedAt: '2026-06-01T00:00:00.000Z' },
+        { type: 'for-each-run' as const, groupId: 'run-1', pinnedAt: '2026-06-01T00:01:00.000Z' },
+      ],
+    };
+    mock.on('GET', '/api/workspaces/repo%2F1/group-pins', { body: pins });
+    mock.on('PATCH', '/api/workspaces/repo%2F1/group-pins/ralph-session/ralph%2F1', request => ({
+      body: (request.body as { pinned: boolean }).pinned
+        ? { pin: pins.pins[0] }
+        : { pin: null },
+    }));
+    mock.on('PATCH', '/api/workspaces/repo%2F1/group-pins/for-each-run/run%2F1', request => ({
+      body: (request.body as { pinned: boolean }).pinned
+        ? { pin: pins.pins[1] }
+        : { pin: null },
+    }));
+    const client = createClient(mock);
+
+    await expect(client.processes.listGroupPins('repo/1')).resolves.toEqual(pins);
+    await expect(client.processes.pinGroup('repo/1', 'ralph-session', 'ralph/1', true)).resolves.toEqual({ pin: pins.pins[0] });
+    await expect(client.processes.pinGroup('repo/1', 'ralph-session', 'ralph/1', false)).resolves.toEqual({ pin: null });
+    await expect(client.processes.pinGroup('repo/1', 'for-each-run', 'run/1', true)).resolves.toEqual({ pin: pins.pins[1] });
+    await expect(client.processes.pinGroup('repo/1', 'for-each-run', 'run/1', false)).resolves.toEqual({ pin: null });
+
+    expectGetRequest(mock.requests[0], '/api/workspaces/repo%2F1/group-pins');
+    expectJsonRequest(mock.requests[1], 'PATCH', '/api/workspaces/repo%2F1/group-pins/ralph-session/ralph%2F1', { pinned: true });
+    expectJsonRequest(mock.requests[2], 'PATCH', '/api/workspaces/repo%2F1/group-pins/ralph-session/ralph%2F1', { pinned: false });
+    expectJsonRequest(mock.requests[3], 'PATCH', '/api/workspaces/repo%2F1/group-pins/for-each-run/run%2F1', { pinned: true });
+    expectJsonRequest(mock.requests[4], 'PATCH', '/api/workspaces/repo%2F1/group-pins/for-each-run/run%2F1', { pinned: false });
+  });
 });
 
 function createClient(mock: MockServer): CocClient {

@@ -176,6 +176,22 @@ export interface PinnedTurnsResponse {
   turns: ConversationTurn[];
 }
 
+export type ProcessGroupPinType = 'ralph-session' | 'for-each-run';
+
+export interface ProcessGroupPin {
+  type: ProcessGroupPinType;
+  groupId: string;
+  pinnedAt: string;
+}
+
+export interface ProcessGroupPinsResponse {
+  pins: ProcessGroupPin[];
+}
+
+export interface ProcessGroupPinResponse {
+  pin: ProcessGroupPin | null;
+}
+
 export interface ProcessForkResponse {
   process: AIProcess;
 }
