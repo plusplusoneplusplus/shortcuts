@@ -118,6 +118,26 @@ describe('ImportFromGitHubDialog', () => {
         });
     });
 
+    it('surfaces Azure Boards import setup errors from the server', async () => {
+        importFromAzureBoards.mockRejectedValue(new Error(
+            'Azure Boards import requires either an Azure DevOps repo remote or configured ADO organization URL and workspace Azure Boards project.',
+        ));
+        renderDialog();
+
+        fireEvent.click(screen.getByTestId('import-provider-azure-boards'));
+        fireEvent.change(screen.getByTestId('import-azure-boards-work-item-input'), {
+            target: { value: '12345' },
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByText('Import'));
+        });
+
+        expect(await screen.findByTestId('import-azure-boards-error')).toHaveTextContent(
+            'Azure Boards import requires either an Azure DevOps repo remote or configured ADO organization URL and workspace Azure Boards project.',
+        );
+        expect(importFromAzureBoards).toHaveBeenCalledWith('workspace-1', { workItemId: 12345 });
+    });
+
     it('hides provider selection and imports with the only allowed GitHub provider', async () => {
         renderDialog({ initialProvider: 'github', providerOptions: ['github'] });
 

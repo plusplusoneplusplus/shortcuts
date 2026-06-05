@@ -18,8 +18,8 @@ import {
     type AvailableAzureBoardsWorkItemSyncProject,
     type WorkItemSyncProviderAdapter,
 } from '../../../src/server/work-items';
-import { writeRepoPreferences } from '../../../src/server/preferences-handler';
-import { writeProvidersConfig } from '../../../src/server/providers/providers-config';
+import { readRepoPreferences, writeRepoPreferences } from '../../../src/server/preferences-handler';
+import { readProvidersConfig, writeProvidersConfig } from '../../../src/server/providers/providers-config';
 
 const REPO_ID = 'sync-test-repo';
 const SECOND_REPO_ID = 'sync-test-repo-2';
@@ -437,6 +437,83 @@ describe('Work Item Sync Routes', () => {
             projectId: 'Project Alpha',
             source: 'workspaceRemote',
         });
+        await expect(readProvidersConfig(tmpDir)).resolves.toEqual({ providers: {} });
+        expect(readRepoPreferences(tmpDir, REPO_ID)).toEqual({});
+    });
+
+    it('blocks Azure Boards import when saved config conflicts with the workspace remote without overwriting settings', async () => {
+        const savedProviders = {
+            providers: {
+                ado: { orgUrl: 'https://dev.azure.com/other-org' },
+            },
+        };
+        const savedPreferences = {
+            workItems: {
+                sync: {
+                    azureBoards: { project: 'Other Project' },
+                },
+            },
+        };
+        await writeProvidersConfig(savedProviders, tmpDir);
+        writeRepoPreferences(tmpDir, REPO_ID, savedPreferences);
+        const azureTransport = new FakeAzureBoardsTransport();
+        await startServer([makeAzureProvider()], {
+            azureBoardsTransport: azureTransport,
+            workspaces: [{
+                id: REPO_ID,
+                name: 'Sync Test',
+                rootPath: tmpDir,
+                remoteUrl: 'https://dev.azure.com/octo-org/Project%20Alpha/_git/octo-repo',
+            }],
+        });
+
+        const imported = await request('POST', `/api/workspaces/${REPO_ID}/work-items/import-from-azure-boards`, {
+            workItemId: 100,
+        });
+
+        expect(imported.status).toBe(409);
+        expect(imported.body).toMatchObject({
+            code: 'WORK_ITEM_SYNC_PROVIDER_UNAVAILABLE',
+            details: {
+                provider: {
+                    provider: 'azure-boards',
+                    available: false,
+                    reason: 'mismatched-remote',
+                    repository: {
+                        organizationUrl: 'https://dev.azure.com/octo-org',
+                        project: 'Project Alpha',
+                        source: 'workspaceRemote',
+                    },
+                },
+            },
+        });
+        expect(imported.body.error).toContain('does not match this workspace repository remote');
+        expect(JSON.stringify(imported.body)).not.toMatch(/token|bearer|authorization|secret/i);
+        expect(azureTransport.projects).toEqual([]);
+        await expect(readProvidersConfig(tmpDir)).resolves.toEqual(savedProviders);
+        expect(readRepoPreferences(tmpDir, REPO_ID)).toEqual(savedPreferences);
+    });
+
+    it('rejects pasted Azure Boards work item URLs from a different org or project than the workspace remote', async () => {
+        const azureTransport = new FakeAzureBoardsTransport();
+        await startServer([makeAzureProvider()], {
+            azureBoardsTransport: azureTransport,
+            workspaces: [{
+                id: REPO_ID,
+                name: 'Sync Test',
+                rootPath: tmpDir,
+                remoteUrl: 'git@ssh.dev.azure.com:v3/octo-org/Project%20Alpha/octo-repo',
+            }],
+        });
+
+        const imported = await request('POST', `/api/workspaces/${REPO_ID}/work-items/import-from-azure-boards`, {
+            workItemUrl: 'https://dev.azure.com/other-org/Other%20Project/_workitems/edit/100',
+        });
+
+        expect(imported.status).toBe(400);
+        expect(imported.body.error).toContain("belongs to organization 'https://dev.azure.com/other-org' and project 'Other Project'");
+        expect(imported.body.error).toContain("current workspace repository remote resolves to organization 'https://dev.azure.com/octo-org' and project 'Project Alpha'");
+        expect(azureTransport.projects).toEqual([]);
     });
 
     it('does not fall back to provider configuration for unsupported remotes', async () => {

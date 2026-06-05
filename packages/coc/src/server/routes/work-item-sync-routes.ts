@@ -26,6 +26,7 @@ import {
     AzureBoardsRestWorkItemTransport,
     azureBoardsProjectFromStatus,
     azureBoardsWorkItemIdFromUrl,
+    azureBoardsWorkItemReferenceFromUrl,
     importAzureBoardsEpicTreeAsWorkItems,
     type AvailableAzureBoardsWorkItemSyncProject,
     type AzureBoardsWorkItemTransport,
@@ -339,6 +340,21 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
         return { context: providerContext, project };
     }
 
+    function azureBoardsWorkItemUrlErrorMessage(
+        workItemUrlValue: string,
+        project: AvailableAzureBoardsWorkItemSyncProject,
+    ): string {
+        const reference = azureBoardsWorkItemReferenceFromUrl(workItemUrlValue);
+        if (!reference) {
+            return 'workItemUrl must be a valid Azure Boards work item URL: https://dev.azure.com/<org>/<project>/_workitems/edit/<id>';
+        }
+
+        const contextLabel = project.source === 'workspaceRemote'
+            ? 'current workspace repository remote'
+            : 'workspace Azure Boards configuration';
+        return `Azure Boards work item URL belongs to organization '${reference.organizationUrl}' and project '${reference.project}', but the ${contextLabel} resolves to organization '${project.organizationUrl}' and project '${project.project}'. Paste a work item URL from the current workspace Azure Boards project.`;
+    }
+
     // GET /api/origins/:originId/work-items/sync/status?workspaceId=:workspaceId
     ctx.routes.push({
         method: 'GET',
@@ -491,9 +507,7 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                 if (workItemUrl) {
                     const urlWorkItemId = azureBoardsWorkItemIdFromUrl(workItemUrl, project);
                     if (urlWorkItemId === undefined) {
-                        throw badRequest(
-                            'workItemUrl must be a valid Azure Boards work item URL for this workspace Azure Boards organization and project.',
-                        );
+                        throw badRequest(azureBoardsWorkItemUrlErrorMessage(workItemUrl, project));
                     }
                     if (workItemId !== undefined && workItemId !== urlWorkItemId) {
                         throw badRequest('workItemId must match the work item ID in workItemUrl');
