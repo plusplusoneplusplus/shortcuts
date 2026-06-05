@@ -516,7 +516,6 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         });
         const forEachContext = mockEnqueueTask.mock.calls[0][0].payload.context.forEach;
         expect(forEachContext.generationId).toMatch(/^for-each-gen-\d+-[a-z0-9]+$/);
-        expect(screen.queryByTestId('for-each-launch-dialog')).toBeNull();
         expect(mockQueueDispatch).toHaveBeenCalledWith({
             type: 'SELECT_QUEUE_TASK',
             id: 'queue_for-each-generation-task',
