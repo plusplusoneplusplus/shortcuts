@@ -50,6 +50,7 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '',
     isRalphEnabled: () => false,
+    isSessionContextAttachmentsEnabled: () => false,
 }));
 
 // ── State helpers ──────────────────────────────────────────────────────

@@ -24,6 +24,7 @@ import {
     type CategoryCounts,
 } from './prPopoutPriority';
 import type { HunkCategory } from '../../pull-requests/classification-types';
+import { HUNK_CATEGORIES } from '../../pull-requests/classification-types';
 
 export interface PopOutFilePanelProps {
     workspaceId: string;
@@ -59,7 +60,7 @@ export interface PopOutFilePanelProps {
 
 const PANEL_STORAGE_KEY = 'coc.popoutFilePanel.width';
 const COLLAPSED_STORAGE_KEY = 'coc.popoutFilePanel.collapsed';
-const ALL_CATEGORIES: HunkCategory[] = ['logic', 'mechanical', 'test', 'generated'];
+const ALL_CATEGORIES: readonly HunkCategory[] = HUNK_CATEGORIES;
 
 function loadCollapsed(): boolean {
     try {
@@ -189,6 +190,7 @@ export function PopOutFilePanel({
                             <span data-testid="popout-file-panel-count-logic">Logic {counts.logic}</span>
                             <span data-testid="popout-file-panel-count-mechanical">Mech {counts.mechanical}</span>
                             <span data-testid="popout-file-panel-count-test">Test {counts.test}</span>
+                            <span data-testid="popout-file-panel-count-simple">Simple {counts.simple}</span>
                             <span data-testid="popout-file-panel-count-generated">Gen {counts.generated}</span>
                             {counts.unclassified > 0 && (
                                 <span data-testid="popout-file-panel-count-unclassified">? {counts.unclassified}</span>

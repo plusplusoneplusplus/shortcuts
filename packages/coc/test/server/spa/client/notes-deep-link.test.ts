@@ -3,7 +3,9 @@ import {
     parseNoteDeepLink,
     buildNoteHash,
     parseActivityDeepLink,
+    parseForEachRunDeepLink,
     parseGitCommitDeepLink,
+    parseTasksDeepLink,
 } from '../../../../src/server/spa/client/react/layout/Router';
 
 describe('parseNoteDeepLink', () => {
@@ -94,4 +96,43 @@ describe('parseNoteDeepLink + buildNoteHash round-trip', () => {
             expect(parsed).toBe(notePath);
         });
     }
+});
+
+describe('parseForEachRunDeepLink', () => {
+    it('parses activity, chats, and tasks For Each run links', () => {
+        expect(parseForEachRunDeepLink('#repos/ws-1/activity/for-each/run-1')).toEqual({
+            workspaceId: 'ws-1',
+            runId: 'run-1',
+        });
+        expect(parseForEachRunDeepLink('#repos/ws-1/chats/for-each/run-2')).toEqual({
+            workspaceId: 'ws-1',
+            runId: 'run-2',
+        });
+        expect(parseForEachRunDeepLink('#repos/ws-1/tasks/for-each/run-3')).toEqual({
+            workspaceId: 'ws-1',
+            runId: 'run-3',
+        });
+    });
+
+    it('decodes workspace and run identifiers', () => {
+        expect(parseForEachRunDeepLink('#repos/ws%201/activity/for-each/run%2Fencoded')).toEqual({
+            workspaceId: 'ws 1',
+            runId: 'run/encoded',
+        });
+    });
+
+    it('rejects non-For Each links', () => {
+        expect(parseForEachRunDeepLink('#repos/ws-1/activity/ralph/session-1')).toBeNull();
+        expect(parseForEachRunDeepLink('#repos/ws-1/activity/for-each')).toBeNull();
+        expect(parseForEachRunDeepLink('#repos/ws-1/git/for-each/run-1')).toBeNull();
+    });
+});
+
+describe('activity and task deep-link reserved parent-run segments', () => {
+    it('does not treat Ralph or For Each subroutes as process ids', () => {
+        expect(parseActivityDeepLink('#repos/ws-1/activity/ralph/session-1')).toBeNull();
+        expect(parseActivityDeepLink('#repos/ws-1/activity/for-each/run-1')).toBeNull();
+        expect(parseTasksDeepLink('#repos/ws-1/tasks/ralph/session-1')).toBeNull();
+        expect(parseTasksDeepLink('#repos/ws-1/tasks/for-each/run-1')).toBeNull();
+    });
 });

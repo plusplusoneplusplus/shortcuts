@@ -132,7 +132,7 @@ describe('CommitDetail — classification toolbar (AC-05)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockClassificationStatus = 'idle';
-        mockActiveFilters = new Set(['logic', 'mechanical', 'test', 'generated']);
+        mockActiveFilters = new Set(['logic', 'mechanical', 'test', 'simple', 'generated']);
     });
 
     it('renders the classification toolbar (commit-classify-bar)', async () => {
@@ -170,7 +170,7 @@ describe('CommitDetail — classification filter bar (AC-05)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockClassificationStatus = 'idle';
-        mockActiveFilters = new Set(['logic', 'mechanical', 'test', 'generated']);
+        mockActiveFilters = new Set(['logic', 'mechanical', 'test', 'simple', 'generated']);
     });
 
     it('does NOT render filter bar when classification is idle', async () => {
@@ -190,6 +190,7 @@ describe('CommitDetail — classification filter bar (AC-05)', () => {
         expect(screen.getByTestId('commit-filter-logic')).toBeTruthy();
         expect(screen.getByTestId('commit-filter-mechanical')).toBeTruthy();
         expect(screen.getByTestId('commit-filter-test')).toBeTruthy();
+        expect(screen.getByTestId('commit-filter-simple')).toBeTruthy();
         expect(screen.getByTestId('commit-filter-generated')).toBeTruthy();
     });
 });
@@ -198,7 +199,7 @@ describe('CommitDetail — priority navigation buttons (AC-05)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockClassificationStatus = 'idle';
-        mockActiveFilters = new Set(['logic', 'mechanical', 'test', 'generated']);
+        mockActiveFilters = new Set(['logic', 'mechanical', 'test', 'simple', 'generated']);
     });
 
     it('does NOT render prev/next buttons when classification is idle', async () => {
@@ -219,7 +220,7 @@ describe('CommitDetail — reviewed count (AC-05)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockClassificationStatus = 'idle';
-        mockActiveFilters = new Set(['logic', 'mechanical', 'test', 'generated']);
+        mockActiveFilters = new Set(['logic', 'mechanical', 'test', 'simple', 'generated']);
     });
 
     it('shows reviewed count once file list is available', async () => {

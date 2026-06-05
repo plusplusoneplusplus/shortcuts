@@ -16,12 +16,13 @@ export interface RalphSession {
     /** Whether any process in this session is unseen */
     hasUnseen: boolean;
     /** Overall session phase */
-    phase: 'grilling' | 'executing' | 'complete';
+    phase: RalphSessionPhase;
     /** Number of goal-loops that have occurred in this session (≥ 1). */
     loopCount: number;
 }
 
 export type RalphHistoryEntry = RalphSession | (any & { kind?: undefined });
+export type RalphSessionPhase = 'grilling' | 'executing' | 'complete' | 'failed';
 
 /** Extract ralph.sessionId from a process/task.
  *
@@ -34,7 +35,7 @@ export function getRalphSessionId(task: any): string | undefined {
 }
 
 /** Extract ralph.phase from a process/task. Same fallback rule as above. */
-export function getRalphPhase(task: any): 'grilling' | 'executing' | 'complete' | undefined {
+export function getRalphPhase(task: any): RalphSessionPhase | undefined {
     return (task.payload?.context?.ralph?.phase ?? task.ralph?.phase) as any;
 }
 
@@ -62,7 +63,13 @@ export function isRalphTask(task: any): boolean {
 function computeSessionPhase(
     grillingProcess: any | undefined,
     iterations: any[],
-): 'grilling' | 'executing' | 'complete' {
+): RalphSessionPhase {
+    if (iterations.some(t => getRalphPhase(t) === 'failed' || t?.status === 'failed')) {
+        return 'failed';
+    }
+    if (grillingProcess && (getRalphPhase(grillingProcess) === 'failed' || grillingProcess.status === 'failed')) {
+        return 'failed';
+    }
     // If any iteration signals complete
     if (iterations.some(t => getRalphPhase(t) === 'complete')) {
         // Check if it's actually done
@@ -151,7 +158,7 @@ export function groupByRalphSession(
             return typeof ts === 'number' ? ts : +new Date(ts);
         }
         const sessionPhase = computeSessionPhase(grillingProcess, iterations);
-        const tsPicker = sessionPhase === 'complete' ? getEndTs : getTs;
+        const tsPicker = sessionPhase === 'complete' || sessionPhase === 'failed' ? getEndTs : getTs;
         const latestTimestamp = Math.max(...sessionItems.map(tsPicker));
 
         const hasUnseen = unseenIds

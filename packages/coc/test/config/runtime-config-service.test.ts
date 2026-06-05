@@ -42,14 +42,16 @@ describe('RuntimeConfigService', () => {
             expect(svc.config.pullRequests.enabled).toBe(true);
             expect(svc.config.servers.enabled).toBe(true);
             expect(svc.config.ralph.enabled).toBe(false);
+            expect(svc.config.forEach.enabled).toBe(false);
             expect(svc.revision).toBe(0);
         });
 
         it('should load config from file at construction', () => {
-            writeConfig({ parallel: 10, ralph: { enabled: true } });
+            writeConfig({ parallel: 10, ralph: { enabled: true }, forEach: { enabled: true } });
             const svc = new RuntimeConfigService({ configPath });
             expect(svc.config.parallel).toBe(10);
             expect(svc.config.ralph.enabled).toBe(true);
+            expect(svc.config.forEach.enabled).toBe(true);
             expect(svc.revision).toBe(0);
         });
 
@@ -57,6 +59,7 @@ describe('RuntimeConfigService', () => {
             writeConfig({ ralph: { enabled: true } });
             const svc = new RuntimeConfigService({ configPath });
             expect(svc.sources['ralph.enabled']).toBe('file');
+            expect(svc.sources['forEach.enabled']).toBe('default');
             // parallel is not in file, should be default
             expect(svc.sources['parallel']).toBe('default');
         });
@@ -155,11 +158,12 @@ describe('RuntimeConfigService', () => {
             const result = await svc.updateConfig({
                 'ralph.enabled': true,
                 'loops.enabled': true,
+                'forEach.enabled': true,
             });
 
-            expect(result.effects).toHaveLength(2);
+            expect(result.effects).toHaveLength(3);
             const fieldNames = result.effects.map(e => e.field).sort();
-            expect(fieldNames).toEqual(['loops.enabled', 'ralph.enabled']);
+            expect(fieldNames).toEqual(['forEach.enabled', 'loops.enabled', 'ralph.enabled']);
         });
 
         it('should update source metadata after write', async () => {
@@ -201,8 +205,12 @@ describe('RuntimeConfigService', () => {
             await svc.updateConfig({ 'loops.enabled': true });
             expect(svc.revision).toBe(2);
 
+            await svc.updateConfig({ 'forEach.enabled': true });
+            expect(svc.revision).toBe(3);
+
             expect(svc.config.ralph.enabled).toBe(true);
             expect(svc.config.loops.enabled).toBe(true);
+            expect(svc.config.forEach.enabled).toBe(true);
         });
 
         it('should serialize concurrent updates', async () => {

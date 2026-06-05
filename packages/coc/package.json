@@ -20,7 +20,7 @@
     "coverage": "vitest run --coverage",
     "coverage:diff": "bash ../../scripts/coverage-diff.sh",
     "test:e2e": "npx playwright test --config test/e2e/playwright.config.ts",
-    "lint": "eslint src"
+    "lint": "eslint src --ext .ts,.tsx --no-inline-config"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.162",

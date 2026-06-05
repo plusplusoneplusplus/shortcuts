@@ -8,7 +8,7 @@ import React from 'react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled } = vi.hoisted(() => ({
+const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig } = vi.hoisted(() => ({
     mockQueueDispatch: vi.fn(),
     mockAppState: {
         workspaces: [{ id: 'ws-1', rootPath: '/home/user/repo' }],
@@ -52,7 +52,29 @@ const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCo
         effectiveModelName: undefined as string | undefined,
     },
     mockRalphEnabled: { value: false },
+    mockSessionContextAttachmentsEnabled: { value: false },
+    mockGetLlmToolsConfig: vi.fn(),
 }));
+
+const OriginalFileReader = globalThis.FileReader;
+
+function mockFileReader() {
+    globalThis.FileReader = function (this: any) {
+        this.onload = null;
+        this.readAsDataURL = (file: File) => {
+            if (this.onload) {
+                const mimeType = file.type || 'application/octet-stream';
+                this.onload({ target: { result: `data:${mimeType};base64,test` } });
+            }
+        };
+    } as any;
+}
+
+function restoreFileReader() {
+    if (OriginalFileReader) {
+        globalThis.FileReader = OriginalFileReader;
+    }
+}
 
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({ state: {}, dispatch: mockQueueDispatch }),
@@ -67,9 +89,11 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '/api',
     getConfig: () => ({ apiBasePath: '/api' }),
     isRalphEnabled: () => mockRalphEnabled.value,
+    isForEachEnabled: () => false,
     isLoopsEnabled: () => false,
     getDefaultProvider: () => 'copilot' as const,
     isEffortLevelsEnabled: () => false,
+    isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled.value,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -79,6 +103,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
             patchGlobal: vi.fn().mockResolvedValue({}),
             getRepo: vi.fn().mockResolvedValue({}),
             patchRepo: vi.fn().mockResolvedValue({}),
+            getLlmToolsConfig: mockGetLlmToolsConfig,
         },
         skills: { listAllWorkspace: vi.fn().mockResolvedValue({ merged: [] }) },
         agentProviders: { list: vi.fn().mockResolvedValue({ providers: [
@@ -187,6 +212,53 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
 });
 
 import { NewChatArea } from '../../../../src/server/spa/client/react/features/chat/NewChatArea';
+import {
+    RALPH_SESSION_CONTEXT_DRAG_KIND,
+    RALPH_SESSION_CONTEXT_DRAG_MIME,
+    SESSION_CONTEXT_DRAG_KIND,
+    SESSION_CONTEXT_DRAG_MIME,
+    type RalphSessionContextDragPayload,
+    type SessionContextDragPayload,
+} from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
+
+function makeSessionPayload(overrides: Partial<SessionContextDragPayload> = {}): SessionContextDragPayload {
+    return {
+        kind: SESSION_CONTEXT_DRAG_KIND,
+        version: 1,
+        sourceWorkspaceId: 'ws-1',
+        sourceProcessId: 'source-process-123456',
+        title: 'Source chat',
+        status: 'completed',
+        lastActivityAt: '2026-01-01T00:00:00.000Z',
+        ...overrides,
+    };
+}
+
+function makeRalphPayload(overrides: Partial<RalphSessionContextDragPayload> = {}): RalphSessionContextDragPayload {
+    return {
+        kind: RALPH_SESSION_CONTEXT_DRAG_KIND,
+        version: 1,
+        sourceWorkspaceId: 'ws-1',
+        sourceRalphSessionId: 'ralph-session-0001',
+        title: 'Ralph source',
+        displayLabel: 'Ralph source - 2 iter',
+        phase: 'executing',
+        status: 'running',
+        lastActivityAt: '2026-01-01T00:00:00.000Z',
+        childProcessIds: ['grill-proc', 'iter-1', 'iter-2'],
+        processCount: 3,
+        iterationCount: 2,
+        ...overrides,
+    };
+}
+
+function makeSessionDataTransfer(payload: unknown, mime = SESSION_CONTEXT_DRAG_MIME) {
+    return {
+        types: [mime],
+        dropEffect: 'none',
+        getData: vi.fn((format: string) => format === mime ? JSON.stringify(payload) : ''),
+    };
+}
 
 beforeEach(() => {
     vi.clearAllMocks();
@@ -204,6 +276,12 @@ beforeEach(() => {
     mockHistory.reset = vi.fn();
     mockDraftStore.getDraft.mockReturnValue(null);
     mockRalphEnabled.value = false;
+    mockSessionContextAttachmentsEnabled.value = false;
+    mockGetLlmToolsConfig.mockResolvedValue({
+        tools: [{ name: 'get_conversation', label: 'Get Conversation', description: '', enabledByDefault: true }],
+        disabledLlmTools: [],
+        conversationRetrievalAvailable: true,
+    });
     // Stub fetch for non-queue uses (e.g. useOnboardingPreferences → patchGlobalPreferences)
     globalThis.fetch = mockFetch;
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({}) });
@@ -212,6 +290,7 @@ beforeEach(() => {
 afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    restoreFileReader();
 });
 
 describe('NewChatArea', () => {
@@ -266,6 +345,8 @@ describe('NewChatArea', () => {
         expect(screen.getByTestId('mode-pill-ask')).toBeTruthy();
         expect(screen.getByTestId('mode-pill-autopilot')).toBeTruthy();
         expect(screen.queryByTestId('mode-pill-plan')).toBeNull();
+        expect(screen.queryByTestId('mode-pill-ralph')).toBeNull();
+        expect(screen.queryByTestId('new-chat-ralph-start-from-goal-btn')).toBeNull();
         expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
     });
 
@@ -463,6 +544,124 @@ describe('NewChatArea', () => {
         });
 
         expect(mockAppDispatch).not.toHaveBeenCalled();
+    });
+
+    describe('session context drops', () => {
+        it('creates a removable session chip when the feature and retrieval tool are enabled', async () => {
+            mockSessionContextAttachmentsEnabled.value = true;
+            render(<NewChatArea workspaceId="ws-1" />);
+            await waitFor(() => expect(mockGetLlmToolsConfig).toHaveBeenCalledWith('ws-1'));
+            await act(async () => {});
+
+            fireEvent.drop(screen.getByTestId('chat-input-stack'), {
+                dataTransfer: makeSessionDataTransfer(makeSessionPayload()),
+            });
+
+            const chip = screen.getByTestId('attached-session-context-chip');
+            expect(chip.textContent).toContain('Source chat');
+            expect(chip.textContent).toContain('completed');
+            expect(chip.textContent).toContain('source-p…3456');
+
+            fireEvent.click(screen.getByTestId('attached-context-remove'));
+            expect(screen.queryByTestId('attached-session-context-chip')).toBeNull();
+        });
+
+        it('creates a removable Ralph group chip when the feature and retrieval tool are enabled', async () => {
+            mockSessionContextAttachmentsEnabled.value = true;
+            render(<NewChatArea workspaceId="ws-1" />);
+            await waitFor(() => expect(mockGetLlmToolsConfig).toHaveBeenCalledWith('ws-1'));
+            await act(async () => {});
+
+            fireEvent.drop(screen.getByTestId('chat-input-stack'), {
+                dataTransfer: makeSessionDataTransfer(makeRalphPayload(), RALPH_SESSION_CONTEXT_DRAG_MIME),
+            });
+
+            const chip = screen.getByTestId('attached-ralph-context-chip');
+            expect(chip.textContent).toContain('RALPH');
+            expect(chip.textContent).toContain('Ralph source - 2 iter');
+            expect(chip.textContent).toContain('executing/running');
+            expect(chip.textContent).toContain('3 processes');
+            expect(chip.textContent).toContain('2 iterations');
+            expect(chip.textContent).toContain('ralph-se…0001');
+
+            fireEvent.click(screen.getByTestId('attached-context-remove'));
+            expect(screen.queryByTestId('attached-ralph-context-chip')).toBeNull();
+        });
+
+        it('shows a clear error for duplicate Ralph group drops', async () => {
+            mockSessionContextAttachmentsEnabled.value = true;
+            render(<NewChatArea workspaceId="ws-1" />);
+            await waitFor(() => expect(mockGetLlmToolsConfig).toHaveBeenCalledWith('ws-1'));
+            await act(async () => {});
+
+            const dataTransfer = makeSessionDataTransfer(makeRalphPayload(), RALPH_SESSION_CONTEXT_DRAG_MIME);
+            fireEvent.drop(screen.getByTestId('chat-input-stack'), { dataTransfer });
+            fireEvent.drop(screen.getByTestId('chat-input-stack'), { dataTransfer });
+
+            expect(screen.getByTestId('new-chat-session-context-error').textContent).toBe(
+                'This Ralph session is already attached to the message.',
+            );
+            expect(screen.getAllByTestId('attached-ralph-context-chip')).toHaveLength(1);
+        });
+
+        it('shows a clear error for cross-workspace session drops', () => {
+            mockSessionContextAttachmentsEnabled.value = true;
+            render(<NewChatArea workspaceId="ws-1" />);
+
+            fireEvent.drop(screen.getByTestId('chat-input-stack'), {
+                dataTransfer: makeSessionDataTransfer(makeSessionPayload({ sourceWorkspaceId: 'ws-other' })),
+            });
+
+            expect(screen.getByTestId('new-chat-session-context-error').textContent).toBe(
+                'Only sessions from the active workspace can be attached as context.',
+            );
+            expect(screen.queryByTestId('attached-session-context-chip')).toBeNull();
+        });
+
+        it('shows a clear error when conversation retrieval is disabled', async () => {
+            mockSessionContextAttachmentsEnabled.value = true;
+            mockGetLlmToolsConfig.mockResolvedValueOnce({
+                tools: [{ name: 'get_conversation', label: 'Get Conversation', description: '', enabledByDefault: true }],
+                disabledLlmTools: ['get_conversation'],
+                conversationRetrievalAvailable: true,
+            });
+            render(<NewChatArea workspaceId="ws-1" />);
+            await waitFor(() => expect(mockGetLlmToolsConfig).toHaveBeenCalledWith('ws-1'));
+            await act(async () => {});
+
+            fireEvent.drop(screen.getByTestId('chat-input-stack'), {
+                dataTransfer: makeSessionDataTransfer(makeSessionPayload()),
+            });
+
+            expect(screen.getByTestId('new-chat-session-context-error').textContent).toBe(
+                'Conversation retrieval is not available for this chat.',
+            );
+        });
+
+        it('blocks sending a previously attached session when the feature is disabled before submit', async () => {
+            mockSessionContextAttachmentsEnabled.value = true;
+            const { rerender } = render(<NewChatArea workspaceId="ws-1" />);
+            await waitFor(() => expect(mockGetLlmToolsConfig).toHaveBeenCalledWith('ws-1'));
+            await act(async () => {});
+
+            fireEvent.drop(screen.getByTestId('chat-input-stack'), {
+                dataTransfer: makeSessionDataTransfer(makeSessionPayload()),
+            });
+            expect(screen.getByTestId('attached-session-context-chip')).toBeTruthy();
+
+            mockSessionContextAttachmentsEnabled.value = false;
+            rerender(<NewChatArea workspaceId="ws-1" />);
+            fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'Use this context' } });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            });
+
+            expect(mockEnqueueTask).not.toHaveBeenCalled();
+            expect(screen.getByTestId('new-chat-session-context-error').textContent).toBe(
+                'Session context attachments are disabled.',
+            );
+        });
     });
 
     describe('model command in new chat', () => {
@@ -835,6 +1034,23 @@ describe('NewChatArea', () => {
             mockRalphEnabled.value = true;
         });
 
+        it('shows a Ralph split submit control only when Ralph mode is selected', () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+
+            expect(screen.queryByTestId('new-chat-ralph-submit-split')).toBeNull();
+            expect(screen.queryByTestId('new-chat-ralph-start-from-goal-btn')).toBeNull();
+
+            fireEvent.click(screen.getByTestId('mode-pill-ralph'));
+
+            expect(screen.getByTestId('new-chat-ralph-submit-split')).toBeTruthy();
+            expect(screen.getByTestId('new-chat-send-btn').textContent).toContain('Grill');
+            expect(screen.getByTestId('new-chat-ralph-start-from-goal-btn').textContent).toContain('Start from goal...');
+
+            fireEvent.click(screen.getByTestId('mode-pill-ask'));
+            expect(screen.queryByTestId('new-chat-ralph-start-from-goal-btn')).toBeNull();
+            expect(screen.getByTestId('new-chat-send-btn').textContent).toContain('Send');
+        });
+
         it('appends goal.md instruction when ralph mode is selected', async () => {
             mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'ralph-task-1' } });
             mockSlashCommands.parseAndExtract.mockReturnValue({ skills: [], prompt: '' });
@@ -860,6 +1076,147 @@ describe('NewChatArea', () => {
             expect(body.payload.prompt).toContain('finished grilling');
             expect(body.payload.context.ralph.phase).toBe('grilling');
             expect(body.payload.context.skills).toContain('grill-me');
+        });
+
+        it('opens an editable direct-goal review dialog prefilled from the composer without mutating the draft on cancel', async () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            fireEvent.click(screen.getByTestId('mode-pill-ralph'));
+
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: '## Goal Build a thing' } });
+
+            fireEvent.click(screen.getByTestId('new-chat-ralph-start-from-goal-btn'));
+
+            const dialog = screen.getByTestId('ralph-launch-dialog');
+            const editor = within(dialog).getByTestId('ralph-goal-preview') as HTMLTextAreaElement;
+            expect(editor.value).toBe('## Goal Build a thing');
+
+            fireEvent.change(editor, { target: { value: '## Goal\nEdited in review only' } });
+            fireEvent.click(within(dialog).getByText('Cancel'));
+
+            expect(screen.queryByTestId('ralph-launch-dialog')).toBeNull();
+            expect(input.value).toBe('## Goal Build a thing');
+        });
+
+        it('posts edited direct-goal text to ralph-launch with workspace root and selected AI settings', async () => {
+            mockModelCommand.modelOverride = 'gpt-5.4';
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ processId: 'queue_direct-goal-1' }),
+            });
+
+            render(<NewChatArea workspaceId="ws-1" />);
+            fireEvent.click(screen.getByTestId('mode-pill-ralph'));
+
+            fireEvent.click(screen.getByTestId('effort-pill-trigger-btn'));
+            fireEvent.click(screen.getByTestId('effort-pill-option-high'));
+
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: '## Goal\nOriginal goal' } });
+            fireEvent.click(screen.getByTestId('new-chat-ralph-start-from-goal-btn'));
+
+            const dialog = screen.getByTestId('ralph-launch-dialog');
+            const editor = within(dialog).getByTestId('ralph-goal-preview') as HTMLTextAreaElement;
+            fireEvent.change(editor, { target: { value: '## Goal\nEdited goal' } });
+
+            await act(async () => {
+                fireEvent.click(within(dialog).getByTestId('ralph-launch-confirm-btn'));
+            });
+
+            const launchCall = mockFetch.mock.calls.find((call: any[]) => String(call[0]).endsWith('/ralph-launch'));
+            expect(launchCall).toBeTruthy();
+            const launchBody = JSON.parse(launchCall![1].body);
+            expect(launchBody).toEqual({
+                goalSpec: '## Goal\nEdited goal',
+                workspaceId: 'ws-1',
+                provider: 'copilot',
+                folderPath: '/home/user/repo',
+                workingDirectory: '/home/user/repo',
+                config: {
+                    model: 'gpt-5.4',
+                    reasoningEffort: 'high',
+                },
+            });
+
+            expect(mockEnqueueTask).not.toHaveBeenCalled();
+            expect(mockQueueDispatch).toHaveBeenCalledWith({
+                type: 'SELECT_QUEUE_TASK',
+                id: 'queue_direct-goal-1',
+                repoId: 'ws-1',
+            });
+            expect(mockAppDispatch).toHaveBeenCalledWith({
+                type: 'UPDATE_ONBOARDING',
+                payload: { hasUsedChat: true },
+            });
+            expect(mockDraftStore.clearDraft).toHaveBeenCalledWith('new-chat:ws-1');
+            expect(input.value).toBe('');
+        });
+
+        it('shows a non-blocking warning for direct-goal text without a Goal heading', () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            fireEvent.click(screen.getByTestId('mode-pill-ralph'));
+
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: 'Build a thing without markdown heading' } });
+            fireEvent.click(screen.getByTestId('new-chat-ralph-start-from-goal-btn'));
+
+            expect(screen.getByTestId('ralph-goal-heading-warning').textContent).toContain('does not contain a ## Goal heading');
+            expect((screen.getByTestId('ralph-launch-confirm-btn') as HTMLButtonElement).disabled).toBe(false);
+        });
+
+        it('keeps the direct-goal dialog open with edited text when ralph-launch fails', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: false,
+                status: 500,
+                text: async () => JSON.stringify({ error: 'launch failed' }),
+            });
+
+            render(<NewChatArea workspaceId="ws-1" />);
+            fireEvent.click(screen.getByTestId('mode-pill-ralph'));
+
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: '## Goal Original' } });
+            fireEvent.click(screen.getByTestId('new-chat-ralph-start-from-goal-btn'));
+
+            const editor = screen.getByTestId('ralph-goal-preview') as HTMLTextAreaElement;
+            fireEvent.change(editor, { target: { value: '## Goal\nEdited after review' } });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
+            });
+
+            expect(screen.getByTestId('ralph-launch-dialog')).toBeTruthy();
+            expect(screen.getByTestId('ralph-launch-error').textContent).toBe('launch failed');
+            expect((screen.getByTestId('ralph-goal-preview') as HTMLTextAreaElement).value).toBe('## Goal\nEdited after review');
+            expect(input.value).toBe('## Goal Original');
+            expect(mockQueueDispatch).not.toHaveBeenCalledWith(expect.objectContaining({ id: expect.stringContaining('direct') }));
+        });
+
+        it('blocks direct-goal confirmation while composer attachments are present', async () => {
+            mockFileReader();
+
+            render(<NewChatArea workspaceId="ws-1" />);
+            fireEvent.click(screen.getByTestId('mode-pill-ralph'));
+
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: '## Goal\nBuild with attached context' } });
+
+            const fileInput = screen.getByTestId('new-chat-file-input-hidden') as HTMLInputElement;
+            await act(async () => {
+                fireEvent.change(fileInput, {
+                    target: {
+                        files: [new File(['details'], 'details.md', { type: 'text/markdown' })],
+                    },
+                });
+            });
+
+            expect(screen.getByTestId('attachment-preview-file')).toBeTruthy();
+
+            fireEvent.click(screen.getByTestId('new-chat-ralph-start-from-goal-btn'));
+
+            expect(screen.getByTestId('ralph-launch-attachment-warning').textContent).toContain('Direct-goal launch sends goal text only');
+            expect((screen.getByTestId('ralph-launch-confirm-btn') as HTMLButtonElement).disabled).toBe(true);
+            expect(mockFetch).not.toHaveBeenCalledWith('/api/ralph-launch', expect.anything());
         });
 
         it('does not append goal.md instruction in non-ralph modes', async () => {

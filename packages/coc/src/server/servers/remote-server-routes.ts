@@ -1,4 +1,13 @@
 import type { Route } from '../types';
+import { CocApiError, CocClient } from '@plusplusoneplusplus/coc-client';
+import type {
+    CherryPickTransferRequest,
+    CherryPickTransferResponse,
+    GitOpServerMetadata,
+    GitPatchApplyRequest,
+    GitPatchApplyResponse,
+    GitPatchExportResponse,
+} from '@plusplusoneplusplus/coc-client';
 import { readJsonBody, send400, send404, send500, sendError, sendJson } from '../shared/router';
 import type { DevTunnelConnector } from './devtunnel-connector';
 import type { SshConnector, SshConnectionState } from './ssh-connector';
@@ -17,6 +26,34 @@ export interface RegisterRemoteServerRoutesOptions {
     store: RemoteServerStore;
     connector: DevTunnelConnector;
     sshConnector?: SshConnector;
+    getLocalBaseUrl?: () => string | undefined;
+    requestTimeoutMs?: number;
+}
+
+const LOCAL_SERVER_METADATA: GitOpServerMetadata = { id: 'local', label: 'Current CoC' };
+
+interface ParsedTransferEndpoint {
+    serverId?: string;
+    workspaceId: string;
+}
+
+interface ParsedTransferRequest {
+    source: ParsedTransferEndpoint & { commitHash: string };
+    target: ParsedTransferEndpoint & { stashAndContinue: boolean };
+}
+
+interface ResolvedTransferEndpoint {
+    client: CocClient;
+    server: GitOpServerMetadata;
+}
+
+class TransferHttpError extends Error {
+    constructor(
+        readonly statusCode: number,
+        readonly body: Record<string, unknown>,
+    ) {
+        super(String(body.error ?? 'Cherry-pick transfer failed'));
+    }
 }
 
 function toRuntime(server: RemoteServer, connector: DevTunnelConnector, sshConnector?: SshConnector): RemoteServerRuntime {
@@ -66,6 +103,179 @@ function decorate(server: RemoteServer, connector: DevTunnelConnector, sshConnec
         lastChecked: runtime.lastChecked,
         lastError: runtime.lastError,
     } as RemoteServerWithRuntime;
+}
+
+function transferError(statusCode: number, body: Record<string, unknown>): never {
+    throw new TransferHttpError(statusCode, body);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+    if (typeof value !== 'string') return undefined;
+    const trimmed = value.trim();
+    return trimmed || undefined;
+}
+
+function parseTransferEndpoint(value: unknown, label: 'source' | 'target'): ParsedTransferEndpoint {
+    if (!isRecord(value)) {
+        transferError(400, { error: `${label} must be an object` });
+    }
+    const workspaceId = nonEmptyString(value.workspaceId);
+    if (!workspaceId) {
+        transferError(400, { error: `${label}.workspaceId is required` });
+    }
+    const rawServerId = nonEmptyString(value.serverId);
+    const serverId = rawServerId && rawServerId !== LOCAL_SERVER_METADATA.id ? rawServerId : undefined;
+    return { serverId, workspaceId };
+}
+
+function parseTransferRequest(value: unknown): ParsedTransferRequest {
+    if (!isRecord(value)) {
+        transferError(400, { error: 'Request body must be a JSON object' });
+    }
+    const source = parseTransferEndpoint(value.source, 'source');
+    const target = parseTransferEndpoint(value.target, 'target');
+    if (!isRecord(value.source)) {
+        transferError(400, { error: 'source must be an object' });
+    }
+    const commitHash = nonEmptyString(value.source.commitHash);
+    if (!commitHash || !/^[a-fA-F0-9]{4,40}$/.test(commitHash)) {
+        transferError(400, { error: 'source.commitHash is required and must be a git commit hash' });
+    }
+    const stashAndContinue = isRecord(value.target) && value.target.stashAndContinue === true;
+    return {
+        source: { ...source, commitHash },
+        target: { ...target, stashAndContinue },
+    };
+}
+
+function endpointLabel(endpoint: ResolvedTransferEndpoint): string {
+    return endpoint.server.label ? `${endpoint.server.label} (${endpoint.server.id})` : endpoint.server.id;
+}
+
+function remoteErrorBody(error: CocApiError, phase: 'export' | 'apply', endpoint: ResolvedTransferEndpoint): Record<string, unknown> {
+    const body: Record<string, unknown> = isRecord(error.body) ? { ...error.body } : { error: error.message };
+    if (typeof body.error !== 'string' || !body.error) {
+        body.error = error.message;
+    }
+    body.phase = phase;
+    body.server = endpoint.server;
+    return body;
+}
+
+async function callEndpoint<T>(
+    endpoint: ResolvedTransferEndpoint,
+    phase: 'export' | 'apply',
+    action: () => Promise<T>,
+): Promise<T> {
+    try {
+        return await action();
+    } catch (error) {
+        if (error instanceof CocApiError) {
+            transferError(error.status || 502, remoteErrorBody(error, phase, endpoint));
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        transferError(502, {
+            error: `Failed to ${phase} commit patch via ${endpointLabel(endpoint)}: ${message}`,
+            phase,
+            server: endpoint.server,
+        });
+    }
+}
+
+async function resolveTransferEndpoint(
+    ref: ParsedTransferEndpoint,
+    options: RegisterRemoteServerRoutesOptions,
+): Promise<ResolvedTransferEndpoint> {
+    const timeoutMs = options.requestTimeoutMs ?? 30_000;
+    if (!ref.serverId) {
+        const localBaseUrl = options.getLocalBaseUrl?.();
+        if (!localBaseUrl) {
+            transferError(503, {
+                error: 'Current CoC server is not available for local cherry-pick transfer',
+                server: LOCAL_SERVER_METADATA,
+                status: 'offline',
+            });
+        }
+        return {
+            client: new CocClient({ baseUrl: localBaseUrl, timeoutMs }),
+            server: LOCAL_SERVER_METADATA,
+        };
+    }
+
+    const server = options.store.get(ref.serverId);
+    if (!server) {
+        transferError(404, { error: `Remote server not found: ${ref.serverId}` });
+    }
+    const health = await healthForServer(server, options.connector, options.sshConnector);
+    const metadata: GitOpServerMetadata = { id: server.id, label: server.label };
+    if (health.status !== 'online' || !health.effectiveUrl) {
+        transferError(503, {
+            error: `Remote server "${server.label}" is not online${health.error ? `: ${health.error}` : ''}`,
+            server: metadata,
+            status: health.status,
+            lastError: health.error,
+        });
+    }
+    return {
+        client: new CocClient({ baseUrl: health.effectiveUrl, timeoutMs }),
+        server: metadata,
+    };
+}
+
+async function runCherryPickTransfer(
+    request: ParsedTransferRequest,
+    options: RegisterRemoteServerRoutesOptions,
+): Promise<CherryPickTransferResponse> {
+    const sourceEndpoint = await resolveTransferEndpoint(request.source, options);
+    const targetEndpoint = await resolveTransferEndpoint(request.target, options);
+
+    const exported = await callEndpoint<GitPatchExportResponse>(
+        sourceEndpoint,
+        'export',
+        () => sourceEndpoint.client.git.exportCommitPatch(request.source.workspaceId, request.source.commitHash),
+    );
+    const applyRequest: GitPatchApplyRequest = {
+        patch: exported.patch,
+        stashAndContinue: request.target.stashAndContinue,
+        sourceServer: sourceEndpoint.server,
+        sourceWorkspace: exported.sourceWorkspace,
+        sourceCommit: exported.sourceCommit,
+        normalizedSourceRemoteUrl: exported.normalizedSourceRemoteUrl,
+    };
+    const applied = await callEndpoint<GitPatchApplyResponse>(
+        targetEndpoint,
+        'apply',
+        () => targetEndpoint.client.git.applyCommitPatch(request.target.workspaceId, applyRequest),
+    );
+
+    return {
+        success: true,
+        source: {
+            server: sourceEndpoint.server,
+            workspace: exported.sourceWorkspace,
+            commit: exported.sourceCommit,
+            normalizedRemoteUrl: exported.normalizedSourceRemoteUrl,
+        },
+        target: {
+            server: targetEndpoint.server,
+            workspace: applied.targetWorkspace,
+            branch: applied.targetBranch,
+            head: applied.targetHead ?? applied.newCommitHash,
+        },
+        result: applied,
+    };
+}
+
+function sendTransferFailure(res: import('http').ServerResponse, error: unknown): void {
+    if (error instanceof TransferHttpError) {
+        sendJson(res, error.body, error.statusCode);
+        return;
+    }
+    send500(res, error instanceof Error ? error.message : String(error));
 }
 
 async function connectIfDevTunnel(server: RemoteServer, connector: DevTunnelConnector): Promise<void> {
@@ -236,6 +446,19 @@ export function registerRemoteServerRoutes(
                 sendJson(res, await healthForServer(server, connector, sshConnector));
             } catch (error) {
                 send400(res, error instanceof Error ? error.message : String(error));
+            }
+        },
+    });
+
+    routes.push({
+        method: 'POST',
+        pattern: '/api/servers/cherry-pick-transfer',
+        handler: async (req, res) => {
+            try {
+                const body = await readJsonBody<CherryPickTransferRequest>(req);
+                sendJson(res, await runCherryPickTransfer(parseTransferRequest(body), options));
+            } catch (error) {
+                sendTransferFailure(res, error);
             }
         },
     });

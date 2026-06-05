@@ -37,6 +37,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | PATCH | `/api/workspaces/:id/preferences` | Update per-repo preferences |
 | GET | `/api/workspaces/:id/instructions` | List custom instruction files for active modes: base, Ask, and Autopilot |
 | GET/PUT/DELETE | `/api/workspaces/:id/instructions/:mode` | Read, update, or delete one custom instruction file. Active modes are `base`, `ask`, and `autopilot`; legacy `plan` route inputs are accepted as an Ask alias. |
+| GET/PUT | `/api/workspaces/:id/llm-tools-config` | List/update per-workspace disabled LLM tools. Response includes `conversationRetrievalAvailable`, derived from the active process store's conversation search support. |
 | GET | `/api/workspaces/:id/summary` | Aggregated workspace summary |
 | GET | `/api/workspaces/:id/endev/status` | Cached EnDev xDPU eligibility status; `?refresh=true` revalidates |
 | POST | `/api/workspaces/:id/endev/revalidate` | Force EnDev xDPU eligibility revalidation |
@@ -54,6 +55,8 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/git/clone` | Clone an arbitrary git URL into a parent directory using the server process's git credentials; returns `clonedPath` on success and `{ error }` on clone failure |
+| POST | `/api/workspaces/:id/git/patch/export` | Export one commit from a registered workspace as a format-patch payload for cross-clone cherry-pick flows. Body `{ hash }`; response includes source workspace metadata, source commit metadata, normalized source remote URL, and `{ format: 'format-patch', body }` without source root paths or raw remote credentials |
+| POST | `/api/workspaces/:id/git/patch/apply` | Apply a format-patch payload to the target workspace with `git am --3way`. Body `{ patch: { format: 'format-patch', body }, stashAndContinue?, sourceServer?, sourceWorkspace?, sourceCommit?, normalizedSourceRemoteUrl? }`; dirty targets return `409 { dirty: true }` unless `stashAndContinue` is explicitly true, conflicts return `409 { conflicts: true }`, and clean applies return the target branch, new target HEAD/commit hash, and a target-scoped `cherry-pick-transfer` git-op record with sanitized source/target metadata |
 
 ## Processes
 
@@ -80,7 +83,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | GET | `/api/queue` | List queue tasks |
 | GET | `/api/queue/models` | List model IDs for the configured default provider |
 | GET | `/api/queue/:id` | Get a single queue task, falling back to reconstructed process history for completed/historical chat tasks when available |
-| POST | `/api/queue` | Enqueue a task. Chat payloads use `mode='ask'`, `mode='autopilot'`, or internal Ralph routing; legacy `mode='plan'` is accepted and normalized to Ask. Body `config.effortTier` accepts `very-low`, `low`, `medium`, or `high`; the server resolves it to `config.model` and `config.reasoningEffort` from the active provider's stored/default tier map, while explicit `config.model` and `config.reasoningEffort` take precedence and `effortTier` is not stored. |
+| POST | `/api/queue` | Enqueue a task. Chat payloads use `mode='ask'`, `mode='autopilot'`, or internal Ralph routing; legacy `mode='plan'` is accepted and normalized to Ask. Unsupported chat modes, including the UI-only `for-each` value, are rejected by the generic queue path. Body `config.effortTier` accepts `very-low`, `low`, `medium`, or `high`; the server resolves it to `config.model` and `config.reasoningEffort` from the active provider's stored/default tier map, while explicit `config.model` and `config.reasoningEffort` take precedence and `effortTier` is not stored. |
 | POST | `/api/workspaces/:id/queue/generate` | Enqueue a Generate Plan chat task using Ask semantics. Body accepts optional `provider`, `model`, and `reasoningEffort` overrides, which are validated through the shared chat queue validation path. |
 | DELETE | `/api/queue/:id` | Cancel a queued or running task |
 | PATCH | `/api/queue/pause` | Pause/resume queue |
@@ -95,6 +98,23 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/continue` | Extend completed session (CAP_REACHED or NO_SIGNAL) by N iterations |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/new-loop` | New goal loop after RALPH_COMPLETE |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/resume` | Resume stuck executing session (no in-flight task) |
+
+## For Each Runs
+
+All For Each routes are workspace-scoped and gated by `forEach.enabled` (default `false`); disabled routes return unavailable/not-found behavior. Parent run state is stored under `~/.coc/repos/<workspaceId>/for-each-runs/<runId>/` as `run.json` plus `items.json`, never as a Ralph session. `@plusplusoneplusplus/coc-client` exposes these routes through `client.forEach`, and the dashboard uses that domain for New Chat plan generation/review plus the For Each detail pane actions.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/workspaces/:id/for-each-runs` | List For Each runs for a workspace with item status counts |
+| POST | `/api/workspaces/:id/for-each-runs/generate` | Generate a structured JSON draft item plan and persist a draft run. Body requires `prompt` and `childMode` (`ask` or `autopilot`) and accepts `sharedInstructions`, `provider`, and `config.model` / `config.reasoningEffort` |
+| GET | `/api/workspaces/:id/for-each-runs/:runId` | Read a For Each run with reviewed item plan/state |
+| PUT | `/api/workspaces/:id/for-each-runs/:runId/plan` | Replace the reviewed draft item plan and optional shared instructions / child mode before approval |
+| POST | `/api/workspaces/:id/for-each-runs/:runId/approve` | Mark a reviewed draft plan approved. Approval does not enqueue child chats; child execution routes are separate from the draft/review API |
+| POST | `/api/workspaces/:id/for-each-runs/:runId/start` | Start an approved run by enqueueing the next runnable item as a normal Ask/Autopilot child chat |
+| POST | `/api/workspaces/:id/for-each-runs/:runId/continue` | Explicitly resume/continue pending work without auto-resuming on server startup |
+| POST | `/api/workspaces/:id/for-each-runs/:runId/items/:itemId/retry` | Retry a failed item as a new child chat and overwrite that item's active child task/process link |
+| POST | `/api/workspaces/:id/for-each-runs/:runId/items/:itemId/skip` | Mark a failed or pending item skipped and continue with the next runnable item |
+| POST | `/api/workspaces/:id/for-each-runs/:runId/cancel` | Cancel remaining work, mark pending/running items skipped, and cancel the active child task when available |
 
 ## Schedules
 
@@ -197,6 +217,9 @@ Users can add up to **10** additional notes roots per workspace — subfolders i
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/repos/:repoId/pull-requests` | List pull requests; rows are enriched with `diffStats` (`additions`, `deletions`, `changedFiles`) when the provider exposes PR diffs |
+| GET | `/api/repos/:repoId/pull-requests/:prId` | Fetch and cache PR detail, including provider SHA fields (`baseSha`, `headSha`) when available |
+| GET | `/api/repos/:repoId/pull-requests/:prId/diff` | Fetch and cache the provider unified diff for a PR |
+| GET | `/api/repos/:repoId/pull-requests/:prId/diff/files/:path` | Return the hunk diff for one PR file; with `fullContext=true`, the server uses cached or freshly fetched PR detail and attempts to fetch missing PR commits into the requested repo checkout before falling back to the hunk diff with `fullContextUnavailable: true` |
 | GET | `/api/repos/:repoId/pull-requests/recent-opened` | List recently opened PR entries for a workspace/repo (`workspaceId` query, defaults to `repoId`) |
 | POST | `/api/repos/:repoId/pull-requests/recent-opened` | Record a recently opened PR entry after successful validation/open; body includes `workspaceId`, `number`, `title`, optional `webUrl` |
 | DELETE | `/api/repos/:repoId/pull-requests/recent-opened/:prNumber` | Remove a stale recently opened PR entry for a workspace/repo (`workspaceId` query, defaults to `repoId`) |
@@ -334,6 +357,7 @@ Response shape: `{ kind: 'clarification', questions: string[], clarificationCoun
 | POST | `/api/servers/:id/test` | Test connection |
 | POST | `/api/servers/:id/connect` | Connect (DevTunnel) |
 | POST | `/api/servers/:id/disconnect` | Disconnect |
+| POST | `/api/servers/cherry-pick-transfer` | Orchestrate a patch-transfer cherry-pick through the initiating CoC server. Body `{ source: { serverId?, workspaceId, commitHash }, target: { serverId?, workspaceId, stashAndContinue? } }`; omitted/`local` `serverId` means the current CoC, otherwise the id must be an online registered remote server. The route composes the existing workspace git patch export/apply endpoints, propagates dirty/conflict response fields, and returns source/target server/workspace metadata without effective URLs or local paths. |
 
 ## Sync
 

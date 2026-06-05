@@ -22,12 +22,14 @@ interface DashboardConfig {
     pullRequestsSuggestionsEnabled?: boolean;
     serversEnabled?: boolean;
     ralphEnabled?: boolean;
+    forEachEnabled?: boolean;
     vimNavigationEnabled?: boolean;
     containerMode?: boolean;
     loopsEnabled?: boolean;
     excalidrawEnabled?: boolean;
     mcpOauthEnabled?: boolean;
     focusedDiffEnabled?: boolean;
+    sessionContextAttachmentsEnabled?: boolean;
     containerDefaultAgentEnabled?: boolean;
     bindAddress?: string;
     /** Whether the Codex SDK provider is enabled (feature flag). */
@@ -42,6 +44,8 @@ interface DashboardConfig {
     workItemsAiAuthoringEnabled?: boolean;
     /** Whether direct commit SHA lookup in the Git tab is enabled (feature flag). */
     gitCommitLookupEnabled?: boolean;
+    /** Whether cross-clone cherry-pick transfer in the Git tab is enabled (feature flag). */
+    gitCrossCloneCherryPickEnabled?: boolean;
     /** Whether the Effort Tiers selector (Low/Medium/High) is enabled in the composer. Disabled by default. */
     effortLevelsEnabled?: boolean;
 }
@@ -104,11 +108,13 @@ async function _fetchAndApplyRuntimeConfig(apiBase: string): Promise<void> {
             pullRequestsSuggestionsEnabled: data.features.pullRequestsSuggestionsEnabled,
             serversEnabled: data.features.serversEnabled,
             ralphEnabled: data.features.ralphEnabled,
+            forEachEnabled: data.features.forEachEnabled,
             vimNavigationEnabled: data.features.vimNavigationEnabled,
             loopsEnabled: data.features.loopsEnabled,
             excalidrawEnabled: data.features.excalidrawEnabled,
             mcpOauthEnabled: data.features.mcpOauthEnabled,
             focusedDiffEnabled: data.features.focusedDiffEnabled,
+            sessionContextAttachmentsEnabled: data.features.sessionContextAttachmentsEnabled,
             containerDefaultAgentEnabled: data.features.containerDefaultAgentEnabled,
             codexEnabled: data.features.codexEnabled,
             defaultProvider: data.features.defaultProvider,
@@ -116,6 +122,7 @@ async function _fetchAndApplyRuntimeConfig(apiBase: string): Promise<void> {
             workItemsSyncEnabled: data.features.workItemsSyncEnabled,
             workItemsAiAuthoringEnabled: data.features.workItemsAiAuthoringEnabled,
             gitCommitLookupEnabled: data.features.gitCommitLookupEnabled,
+            gitCrossCloneCherryPickEnabled: data.features.gitCrossCloneCherryPickEnabled,
             effortLevelsEnabled: data.features.effortLevelsEnabled,
             hostname: data.hostname ?? bootstrap.hostname,
             bindAddress: data.bindAddress ?? bootstrap.bindAddress,
@@ -224,6 +231,10 @@ export function isRalphEnabled(): boolean {
     return getConfig().ralphEnabled === true;
 }
 
+export function isForEachEnabled(): boolean {
+    return getConfig().forEachEnabled === true;
+}
+
 export function isVimNavigationEnabled(): boolean {
     return getConfig().vimNavigationEnabled === true;
 }
@@ -246,6 +257,11 @@ export function isMcpOauthEnabled(): boolean {
 
 export function isFocusedDiffEnabled(): boolean {
     return getConfig().focusedDiffEnabled === true;
+}
+
+/** Returns true when drag/drop session-context attachments are enabled. */
+export function isSessionContextAttachmentsEnabled(): boolean {
+    return getConfig().sessionContextAttachmentsEnabled === true;
 }
 
 export function isContainerDefaultAgentEnabled(): boolean {
@@ -276,6 +292,11 @@ export function isWorkItemsAiAuthoringEnabled(): boolean {
 /** Returns true when direct commit SHA lookup in the Git tab is enabled. */
 export function isGitCommitLookupEnabled(): boolean {
     return getConfig().gitCommitLookupEnabled === true;
+}
+
+/** Returns true when cross-clone cherry-pick transfer in the Git tab is enabled. */
+export function isGitCrossCloneCherryPickEnabled(): boolean {
+    return getConfig().gitCrossCloneCherryPickEnabled === true;
 }
 
 /** Returns true when the Effort Tiers selector is enabled (replaces model picker + effort pill). */

@@ -140,6 +140,10 @@ export interface CLIConfig {
             maxGapFixLoops?: number;
         };
     };
+    /** Dedicated For Each mode configuration. Disabled by default. */
+    forEach?: {
+        enabled?: boolean;
+    };
     /** Loops/recurring follow-up subsystem configuration. Disabled by default. */
     loops?: {
         enabled?: boolean;
@@ -186,6 +190,10 @@ export interface CLIConfig {
         focusedDiff?: boolean;
         /** Direct commit SHA lookup in the Git tab. Disabled by default. */
         gitCommitLookup?: boolean;
+        /** Cross-clone cherry-pick transfer UI in the Git tab. Disabled by default. */
+        gitCrossCloneCherryPick?: boolean;
+        /** Drag/drop session-context attachments in chat composers. Disabled by default. */
+        sessionContextAttachments?: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion?: {
@@ -373,6 +381,10 @@ export interface ResolvedCLIConfig {
             maxGapFixLoops: number;
         };
     };
+    /** Dedicated For Each mode configuration. */
+    forEach: {
+        enabled: boolean;
+    };
     /** Loops/recurring follow-up subsystem configuration. */
     loops: {
         enabled: boolean;
@@ -415,6 +427,10 @@ export interface ResolvedCLIConfig {
         focusedDiff: boolean;
         /** Direct commit SHA lookup in the Git tab. Disabled by default. */
         gitCommitLookup: boolean;
+        /** Cross-clone cherry-pick transfer UI in the Git tab. Disabled by default. */
+        gitCrossCloneCherryPick: boolean;
+        /** Drag/drop session-context attachments in chat composers. Disabled by default. */
+        sessionContextAttachments: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion: {
@@ -553,6 +569,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
             maxGapFixLoops: 3,
         },
     },
+    forEach: {
+        enabled: false,
+    },
     loops: {
         enabled: true,
     },
@@ -582,6 +601,8 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         autoMemoryPromotion: false,
         focusedDiff: false,
         gitCommitLookup: false,
+        gitCrossCloneCherryPick: false,
+        sessionContextAttachments: false,
     },
     memoryPromotion: {
         batchSize: 50,

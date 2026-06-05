@@ -114,6 +114,9 @@ export const CLIConfigSchema = z.object({
             maxGapFixLoops: z.number().int().min(1).optional(),
         }).passthrough().optional(),
     }).passthrough().optional(),
+    forEach: z.object({
+        enabled: z.boolean().optional(),
+    }).passthrough().optional(),
     loops: z.object({
         enabled: z.boolean().optional(),
     }).passthrough().optional(),
@@ -127,6 +130,8 @@ export const CLIConfigSchema = z.object({
         autoMemoryPromotion: z.boolean().optional(),
         focusedDiff: z.boolean().optional(),
         gitCommitLookup: z.boolean().optional(),
+        gitCrossCloneCherryPick: z.boolean().optional(),
+        sessionContextAttachments: z.boolean().optional(),
     }).passthrough().optional(),
     memoryPromotion: z.object({
         batchSize: z.number().int().positive().optional(),

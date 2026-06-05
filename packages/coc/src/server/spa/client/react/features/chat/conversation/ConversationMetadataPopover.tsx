@@ -22,6 +22,19 @@ interface MetaRow {
     link?: string;
 }
 
+const SUMMARY_ROW_LABELS = new Set([
+    'Type',
+    'Status',
+    'Mode',
+    'Agent Provider',
+    'Model',
+    'Reasoning Effort',
+]);
+
+const TIME_ROW_LABELS = new Set(['Started', 'Ended', 'Duration']);
+const WORKSPACE_ROW_LABELS = new Set(['Working Directory', 'Workspace', 'Turns']);
+const RALPH_STATUS_ROW_LABELS = new Set(['Ralph · Phase', 'Ralph · Session ID', 'Ralph · Iteration']);
+
 function toStringValue(value: unknown): string | null {
     if (value == null) return null;
     if (typeof value === 'string') {
@@ -125,6 +138,127 @@ export function buildRows(process: any, turnsCount?: number): MetaRow[] {
     return rows;
 }
 
+function findRow(rows: MetaRow[], label: string): MetaRow | undefined {
+    return rows.find(row => row.label === label);
+}
+
+export function buildSummaryItems(rows: MetaRow[]): string[] {
+    const items: string[] = [];
+    for (const label of ['Type', 'Status', 'Mode', 'Agent Provider', 'Model']) {
+        const row = findRow(rows, label);
+        if (row) items.push(row.value);
+    }
+    const effort = findRow(rows, 'Reasoning Effort');
+    if (effort) items.push(`effort ${effort.value}`);
+    return items;
+}
+
+function buildTimeRow(rows: MetaRow[]): MetaRow | null {
+    const started = findRow(rows, 'Started')?.value;
+    const ended = findRow(rows, 'Ended')?.value;
+    const duration = findRow(rows, 'Duration')?.value;
+    const parts: string[] = [];
+    if (started && ended) {
+        parts.push(`${started} → ${ended}`);
+    } else if (started) {
+        parts.push(`started ${started}`);
+    } else if (ended) {
+        parts.push(`ended ${ended}`);
+    }
+    if (duration) parts.push(duration);
+    if (parts.length === 0) return null;
+    return { label: 'Time', value: parts.join(' · ') };
+}
+
+function formatTurns(value: string): string {
+    const count = Number(value);
+    if (Number.isFinite(count)) {
+        return `${value} ${count === 1 ? 'turn' : 'turns'}`;
+    }
+    return `${value} turns`;
+}
+
+function buildWorkspaceRow(rows: MetaRow[]): MetaRow | null {
+    const workspace = findRow(rows, 'Workspace')?.value;
+    const workingDirectory = findRow(rows, 'Working Directory')?.value;
+    const turns = findRow(rows, 'Turns')?.value;
+    const parts = [
+        workspace,
+        workingDirectory,
+        turns ? formatTurns(turns) : undefined,
+    ].filter((part): part is string => Boolean(part));
+    if (parts.length === 0) return null;
+    return {
+        label: workspace ? 'Workspace' : 'Context',
+        value: parts.join(' · '),
+        breakAll: Boolean(workingDirectory),
+    };
+}
+
+function buildRalphRow(rows: MetaRow[]): MetaRow | null {
+    const phase = findRow(rows, 'Ralph · Phase')?.value;
+    const sessionId = findRow(rows, 'Ralph · Session ID')?.value;
+    const iteration = findRow(rows, 'Ralph · Iteration')?.value;
+    const parts = [
+        phase,
+        iteration ? `iteration ${iteration}` : undefined,
+        sessionId,
+    ].filter((part): part is string => Boolean(part));
+    if (parts.length === 0) return null;
+    return {
+        label: 'Ralph',
+        value: parts.join(' · '),
+        breakAll: Boolean(sessionId),
+    };
+}
+
+export function buildCompactRows(rows: MetaRow[]): MetaRow[] {
+    const compactRows: MetaRow[] = [];
+    let timeAdded = false;
+    let workspaceAdded = false;
+    let ralphAdded = false;
+
+    for (const row of rows) {
+        if (SUMMARY_ROW_LABELS.has(row.label)) continue;
+
+        if (TIME_ROW_LABELS.has(row.label)) {
+            if (!timeAdded) {
+                const timeRow = buildTimeRow(rows);
+                if (timeRow) compactRows.push(timeRow);
+                timeAdded = true;
+            }
+            continue;
+        }
+
+        if (WORKSPACE_ROW_LABELS.has(row.label)) {
+            if (!workspaceAdded) {
+                const workspaceRow = buildWorkspaceRow(rows);
+                if (workspaceRow) compactRows.push(workspaceRow);
+                workspaceAdded = true;
+            }
+            continue;
+        }
+
+        if (RALPH_STATUS_ROW_LABELS.has(row.label)) {
+            if (!ralphAdded) {
+                const ralphRow = buildRalphRow(rows);
+                if (ralphRow) compactRows.push(ralphRow);
+                ralphAdded = true;
+            }
+            continue;
+        }
+
+        if (row.label === 'Ralph · Goal') {
+            compactRows.push({ ...row, label: 'Goal' });
+            continue;
+        }
+
+        compactRows.push(row);
+    }
+
+    return compactRows;
+}
+
 export interface ConversationMetadataPopoverProps {
     process: any;
     turnsCount?: number;
@@ -144,6 +278,8 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
     const triggerRef = useRef<HTMLButtonElement | null>(null);
     const popoverRef = useRef<HTMLDivElement | null>(null);
     const rows = useMemo(() => buildRows(process, turnsCount), [process, turnsCount]);
+    const summaryItems = useMemo(() => buildSummaryItems(rows), [rows]);
+    const compactRows = useMemo(() => buildCompactRows(rows), [rows]);
     const { isMobile } = useBreakpoint();
 
     const handleToggle = useCallback(() => {
@@ -180,7 +316,7 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
         if (top !== menuPos.top || left !== menuPos.left) {
             setMenuPos({ top, left });
         }
-    }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [open, menuPos.top, menuPos.left]);
 
     // Close on outside click
     useEffect(() => {
@@ -217,8 +353,24 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
             <div className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">
                 Conversation metadata
             </div>
-            <div className="grid grid-cols-[130px_1fr] gap-x-3 gap-y-1.5 text-xs">
-                {rows.map((row) => (
+            {summaryItems.length > 0 && (
+                <div
+                    className="mb-2 flex flex-wrap gap-1.5 text-[11px] leading-4"
+                    aria-label="Conversation summary"
+                    data-testid="conversation-metadata-summary"
+                >
+                    {summaryItems.map((item, index) => (
+                        <span
+                            key={`${index}-${item}`}
+                            className="rounded-full border border-[#d6d6d6] dark:border-[#3c3c3c] bg-[#f7f7f7] dark:bg-[#1f1f1f] px-1.5 py-0.5 text-[#4f4f4f] dark:text-[#c8c8c8]"
+                        >
+                            {item}
+                        </span>
+                    ))}
+                </div>
+            )}
+            <div className="grid grid-cols-[112px_1fr] gap-x-2.5 gap-y-1 text-xs">
+                {compactRows.map((row) => (
                     <div key={row.label} className="contents">
                         <span className="text-[#848484]">{row.label}</span>
                         {row.link ? (
@@ -253,7 +405,7 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
                 ))}
                 {process?.metadata?.systemPrompt && (
                     <div className="contents">
-                        <span className="text-[#848484]">System Prompt</span>
+                        <span className="text-[#848484]">System</span>
                         <div className="flex flex-wrap items-baseline gap-x-1.5">
                             <span className="text-[#1e1e1e] dark:text-[#cccccc]">
                                 {(process.metadata.systemPrompt as string).length.toLocaleString()} chars

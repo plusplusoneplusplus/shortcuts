@@ -468,7 +468,7 @@ export function FileDiffPanel({
                                     data-testid="full-context-unavailable-banner"
                                 >
                                     <span>
-                                        Full-file context unavailable for this file (PR commit SHAs may not be locally present). Showing hunk diff instead.
+                                        Full-file context unavailable for this file after trying to load the PR commits. Showing hunk diff instead.
                                     </span>
                                 </div>
                             )}

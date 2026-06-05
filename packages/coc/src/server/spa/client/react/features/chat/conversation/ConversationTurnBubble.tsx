@@ -37,6 +37,13 @@ import { ScriptTerminalBlock } from './ScriptTerminalBlock';
 import { parseScriptOutput, describeScriptExit } from './scriptOutputParser';
 import { getProviderAvatarClasses, type ChatProvider } from '../ProviderBadge';
 import { AskUserHistoryCard, hasAskUserHistory } from '../AskUserHistoryCard';
+import {
+    parseAttachedSessionContextBlocks,
+    shortenSessionProcessId,
+    type ParsedAttachedContextBlock,
+    type ParsedRalphSessionContextBlock,
+    type ParsedSessionContextBlock,
+} from '../hooks/useAttachedContext';
 
 function escapeAttr(value: string): string {
     return value
@@ -291,6 +298,163 @@ type RenderChunk =
 
 export function toContentHtml(content: string, wsId?: string, options?: { htmlEmbedEnabled?: boolean; excalidrawEmbedEnabled?: boolean }): string {
     return chatMarkdownToHtml(content, wsId, options);
+}
+
+function AttachedSessionContextBlockCard({ context }: { context: ParsedSessionContextBlock }) {
+    const [copiedRawBlock, setCopiedRawBlock] = useState(false);
+
+    const handleCopyRawBlock = async () => {
+        try {
+            await copyToClipboard(context.rawBlock);
+            setCopiedRawBlock(true);
+            setTimeout(() => setCopiedRawBlock(false), 1500);
+        } catch (e) {
+            console.error('Copy attached session context block failed:', e);
+        }
+    };
+
+    return (
+        <details
+            className="rounded-lg border border-[#d0d0d0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526] text-[12px] overflow-hidden"
+            data-testid="attached-session-context-block"
+        >
+            <summary className="cursor-pointer select-none list-none px-3 py-2 flex items-center gap-2">
+                <span aria-hidden="true">🧵</span>
+                <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc]">Attached session context</span>
+                <span className="min-w-0 flex-1 truncate text-[#616161] dark:text-[#a6a6a6]" data-testid="attached-session-context-summary">
+                    {context.title}
+                </span>
+                <span className="shrink-0 rounded-full border border-[#d0d0d0] dark:border-[#3c3c3c] px-1.5 py-0.5 font-mono text-[10px] uppercase text-[#616161] dark:text-[#a6a6a6]">
+                    {context.status}
+                </span>
+                <span className="shrink-0 font-mono text-[10px] text-[#848484]" data-testid="attached-session-context-last-activity">
+                    {context.lastActivityAt}
+                </span>
+                <span className="shrink-0 font-mono text-[10px] text-[#848484]">
+                    {shortenSessionProcessId(context.sourceProcessId)}
+                </span>
+            </summary>
+            <div className="border-t border-[#d0d0d0] dark:border-[#3c3c3c] px-3 py-2 space-y-2 text-[#3c3c3c] dark:text-[#c8c8c8]">
+                <dl className="grid grid-cols-[auto,1fr] gap-x-2 gap-y-1">
+                    <dt className="text-[#848484]">Title</dt>
+                    <dd className="min-w-0 break-words">{context.title}</dd>
+                    <dt className="text-[#848484]">Status</dt>
+                    <dd className="font-mono">{context.status}</dd>
+                    <dt className="text-[#848484]">Last activity</dt>
+                    <dd className="font-mono break-all">{context.lastActivityAt}</dd>
+                    <dt className="text-[#848484]">Process ID</dt>
+                    <dd className="font-mono break-all" data-testid="attached-session-context-process-id">{context.sourceProcessId}</dd>
+                    <dt className="text-[#848484]">Workspace ID</dt>
+                    <dd className="font-mono break-all">{context.sourceWorkspaceId}</dd>
+                </dl>
+                <div>
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                        <span className="text-[#848484]">Raw context block</span>
+                        <button
+                            type="button"
+                            className="rounded border border-[#d0d0d0] dark:border-[#3c3c3c] px-2 py-0.5 text-[11px] text-[#616161] dark:text-[#c8c8c8] hover:bg-[#eeeeee] dark:hover:bg-[#333333]"
+                            onClick={handleCopyRawBlock}
+                            data-testid="attached-session-context-copy-raw"
+                        >
+                            {copiedRawBlock ? 'Copied' : 'Copy raw block'}
+                        </button>
+                    </div>
+                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] p-2 font-mono text-[11px]" data-testid="attached-session-context-raw-block">{context.rawBlock}</pre>
+                </div>
+            </div>
+        </details>
+    );
+}
+
+function formatContextCount(count: number, singular: string, plural: string): string {
+    return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function AttachedRalphSessionContextBlockCard({ context }: { context: ParsedRalphSessionContextBlock }) {
+    const [copiedRawBlock, setCopiedRawBlock] = useState(false);
+
+    const handleCopyRawBlock = async () => {
+        try {
+            await copyToClipboard(context.rawBlock);
+            setCopiedRawBlock(true);
+            setTimeout(() => setCopiedRawBlock(false), 1500);
+        } catch (e) {
+            console.error('Copy attached Ralph session context block failed:', e);
+        }
+    };
+
+    return (
+        <details
+            className="rounded-lg border border-purple-300 dark:border-purple-700 bg-purple-50 dark:bg-purple-950/30 text-[12px] overflow-hidden"
+            data-testid="attached-ralph-context-block"
+        >
+            <summary className="cursor-pointer select-none list-none px-3 py-2 flex items-center gap-2">
+                <span aria-hidden="true">🔄</span>
+                <span className="font-medium text-purple-800 dark:text-purple-200">Attached Ralph context</span>
+                <span className="min-w-0 flex-1 truncate text-purple-800/80 dark:text-purple-200/80" data-testid="attached-ralph-context-summary">
+                    {context.displayLabel}
+                </span>
+                <span className="shrink-0 rounded-full border border-purple-300 dark:border-purple-700 px-1.5 py-0.5 font-mono text-[10px] uppercase text-purple-700 dark:text-purple-300">
+                    {context.phase}/{context.status}
+                </span>
+                <span className="shrink-0 font-mono text-[10px] text-purple-700/80 dark:text-purple-300/80" data-testid="attached-ralph-context-counts">
+                    {formatContextCount(context.processCount, 'process', 'processes')} · {formatContextCount(context.iterationCount, 'iteration', 'iterations')}
+                </span>
+                <span className="shrink-0 font-mono text-[10px] text-purple-700/80 dark:text-purple-300/80" data-testid="attached-ralph-context-last-activity">
+                    {context.lastActivityAt}
+                </span>
+                <span className="shrink-0 font-mono text-[10px] text-purple-700/80 dark:text-purple-300/80">
+                    {shortenSessionProcessId(context.sourceRalphSessionId)}
+                </span>
+            </summary>
+            <div className="border-t border-purple-300 dark:border-purple-700 px-3 py-2 space-y-2 text-[#3c3c3c] dark:text-[#c8c8c8]">
+                <dl className="grid grid-cols-[auto,1fr] gap-x-2 gap-y-1">
+                    <dt className="text-purple-700 dark:text-purple-300">Title</dt>
+                    <dd className="min-w-0 break-words">{context.title}</dd>
+                    <dt className="text-purple-700 dark:text-purple-300">Display label</dt>
+                    <dd className="min-w-0 break-words">{context.displayLabel}</dd>
+                    <dt className="text-purple-700 dark:text-purple-300">Phase</dt>
+                    <dd className="font-mono">{context.phase}</dd>
+                    <dt className="text-purple-700 dark:text-purple-300">Status</dt>
+                    <dd className="font-mono">{context.status}</dd>
+                    <dt className="text-purple-700 dark:text-purple-300">Last activity</dt>
+                    <dd className="font-mono break-all">{context.lastActivityAt}</dd>
+                    <dt className="text-purple-700 dark:text-purple-300">Ralph session ID</dt>
+                    <dd className="font-mono break-all" data-testid="attached-ralph-context-session-id">{context.sourceRalphSessionId}</dd>
+                    <dt className="text-purple-700 dark:text-purple-300">Workspace ID</dt>
+                    <dd className="font-mono break-all">{context.sourceWorkspaceId}</dd>
+                    <dt className="text-purple-700 dark:text-purple-300">Processes</dt>
+                    <dd className="font-mono break-all">{context.processCount}</dd>
+                    <dt className="text-purple-700 dark:text-purple-300">Iterations</dt>
+                    <dd className="font-mono break-all">{context.iterationCount}</dd>
+                    <dt className="text-purple-700 dark:text-purple-300">Child process IDs</dt>
+                    <dd className="font-mono break-all" data-testid="attached-ralph-context-child-process-ids">
+                        {context.childProcessIds.join(', ')}
+                    </dd>
+                </dl>
+                <div>
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                        <span className="text-purple-700 dark:text-purple-300">Raw context block</span>
+                        <button
+                            type="button"
+                            className="rounded border border-purple-300 dark:border-purple-700 px-2 py-0.5 text-[11px] text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/40"
+                            onClick={handleCopyRawBlock}
+                            data-testid="attached-ralph-context-copy-raw"
+                        >
+                            {copiedRawBlock ? 'Copied' : 'Copy raw block'}
+                        </button>
+                    </div>
+                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded border border-purple-200 dark:border-purple-800 bg-white dark:bg-[#1e1e1e] p-2 font-mono text-[11px]" data-testid="attached-ralph-context-raw-block">{context.rawBlock}</pre>
+                </div>
+            </div>
+        </details>
+    );
+}
+
+function AttachedContextBlockCard({ context }: { context: ParsedAttachedContextBlock }) {
+    return context.kind === 'ralph-session'
+        ? <AttachedRalphSessionContextBlockCard context={context} />
+        : <AttachedSessionContextBlockCard context={context} />;
 }
 
 function normalizeToolCall(raw: any, fallbackId: string): RenderToolCall {
@@ -791,7 +955,11 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [isUser, turn.timeline, turn.content, turn.streaming, wsId, htmlEmbedEnabled, excalidrawEmbedEnabled],
     );
-    const userContentText = isUser ? (turn.content || '') : '';
+    const parsedUserContent = useMemo(
+        () => isUser ? parseAttachedSessionContextBlocks(turn.content || '') : { attachedContexts: [], sessionContexts: [], ralphSessionContexts: [], remainingContent: '' },
+        [isUser, turn.content],
+    );
+    const userContentText = isUser ? parsedUserContent.remainingContent : '';
     const userContentHtml = useMemo(() => {
         if (!isUser || !userContentText.trim()) return '';
         // Split on backtick-delimited segments so paths inside inline code are not linkified.
@@ -1276,6 +1444,12 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                             <span>{turn.turnSource.source === 'loop' ? 'loop' : 'wakeup'}</span>
                         </span>
                     )}
+                    {isUser && !showRaw && parsedUserContent.attachedContexts.map((context, index) => (
+                        <AttachedContextBlockCard
+                            key={`${context.kind}:${context.sourceWorkspaceId}:${context.kind === 'ralph-session' ? context.sourceRalphSessionId : context.sourceProcessId}:${index}`}
+                            context={context}
+                        />
+                    ))}
                     {isUser && !showRaw && userContentText.trim() && (
                         <div className="whitespace-pre-wrap break-words text-[13px]" data-testid="user-plain-text"
                             dangerouslySetInnerHTML={{ __html: userContentHtml }}

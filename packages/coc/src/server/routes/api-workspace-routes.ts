@@ -736,13 +736,19 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             if (!ws) return;
             const liveFlags = ctx.getLiveFeatureFlags?.() ?? { excalidrawEnabled: false };
             const effectiveRegistry = getEffectiveLlmToolRegistry({ loopsEnabled: ctx.loopsEnabled, excalidrawEnabled: liveFlags.excalidrawEnabled });
+            const conversationRetrievalAvailable = typeof ctx.store.searchConversations === 'function';
             if (!ctx.dataDir) {
-                sendJSON(res, 200, { tools: effectiveRegistry, disabledLlmTools: getEffectiveDefaultDisabledTools() });
+                sendJSON(res, 200, {
+                    tools: effectiveRegistry,
+                    disabledLlmTools: getEffectiveDefaultDisabledTools(),
+                    conversationRetrievalAvailable,
+                });
                 return;
             }
             sendJSON(res, 200, {
                 tools: effectiveRegistry,
                 disabledLlmTools: readEffectiveDisabledLlmTools(ctx.dataDir, ws.id),
+                conversationRetrievalAvailable,
             });
         },
     });
@@ -778,6 +784,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             sendJSON(res, 200, {
                 tools: getEffectiveLlmToolRegistry({ loopsEnabled: ctx.loopsEnabled, excalidrawEnabled: ctx.getLiveFeatureFlags?.()?.excalidrawEnabled ?? false }),
                 disabledLlmTools: merged.disabledLlmTools ?? getEffectiveDefaultDisabledTools(globalPrefs.uiLayoutMode),
+                conversationRetrievalAvailable: typeof ctx.store.searchConversations === 'function',
             });
         },
     });

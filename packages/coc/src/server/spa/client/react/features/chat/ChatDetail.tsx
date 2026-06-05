@@ -52,7 +52,7 @@ import { MobileScratchpadTabBar } from './scratchpad/MobileScratchpadTabBar';
 import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
 import { resolveLoadedTaskMode } from './chatMode';
 import { normalizeChatMode } from '../../repos/modeConfig';
-import { isRalphEnabled, isLoopsEnabled, getDefaultProvider, isEffortLevelsEnabled } from '../../utils/config';
+import { isRalphEnabled, isLoopsEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
 import type { ChatMode } from '../../repos/modeConfig';
 import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
@@ -66,6 +66,7 @@ import { getRalphContext } from '../../../../../tasks/task-types';
 import { useLoops } from './hooks/useLoops';
 import { LoopManagementPanel } from './LoopManagementPanel';
 import { RenameDialog } from '../../ui/RenameDialog';
+import { useConversationRetrievalCapability } from './sessionContextDrop';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -237,6 +238,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         const workspace = appState.workspaces.find((ws: any) => ws.id === workspaceId);
         return typeof workspace?.rootPath === 'string' ? workspace.rootPath : '';
     }, [appState.workspaces, workspaceId]);
+    const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
+    const canRetrieveConversations = useConversationRetrievalCapability(workspaceId, sessionContextAttachmentsEnabled);
 
     // Keep refs in sync with state for stale-closure-safe draft saves
     followUpInputRef.current = followUpInput;
@@ -701,6 +704,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         modelOverride: effectiveFollowUpModelOverride,
         effortOverride: effectiveFollowUpEffort,
         workspaceId,
+        sessionContextAttachmentsEnabled,
+        conversationRetrievalAvailable: canRetrieveConversations,
         // After a successful Ralph promotion the follow-up area's `allowedModes`
         // recomputes (the chat now has a ralph context) and the Ralph pill
         // disappears; reset the selector to a value that still exists so we
@@ -1532,6 +1537,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             }}
                             attachedContext={attachedContext.items}
                             onRemoveAttachedContext={attachedContext.remove}
+                            onAttachSessionContext={attachedContext.addSessionContext}
+                            workspaceId={workspaceId}
+                            currentProcessId={processId ?? taskId}
+                            sessionContextAttachmentsEnabled={sessionContextAttachmentsEnabled}
+                            canRetrieveConversations={canRetrieveConversations}
                             task={task}
                             slashCommands={slashCommands}
                             modelCommand={modelCommand}
@@ -1651,6 +1661,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     }}
                     attachedContext={attachedContext.items}
                     onRemoveAttachedContext={attachedContext.remove}
+                    onAttachSessionContext={attachedContext.addSessionContext}
+                    workspaceId={workspaceId}
+                    currentProcessId={processId ?? taskId}
+                    sessionContextAttachmentsEnabled={sessionContextAttachmentsEnabled}
+                    canRetrieveConversations={canRetrieveConversations}
                     task={task}
                     slashCommands={slashCommands}
                     modelCommand={modelCommand}

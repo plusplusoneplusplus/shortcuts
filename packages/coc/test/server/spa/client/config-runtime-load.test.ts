@@ -9,6 +9,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 describe('loadRuntimeConfig', () => {
     let loadRuntimeConfig: () => Promise<void>;
     let isRalphEnabled: () => boolean;
+    let isForEachEnabled: () => boolean;
+    let isGitCrossCloneCherryPickEnabled: () => boolean;
+    let isSessionContextAttachmentsEnabled: () => boolean;
     let isContainerMode: () => boolean;
     let setCurrentAgentId: (id: string | null) => void;
     let _resetRuntimeConfig: () => void;
@@ -18,6 +21,9 @@ describe('loadRuntimeConfig', () => {
         const mod = await import('../../../../src/server/spa/client/react/utils/config');
         loadRuntimeConfig = mod.loadRuntimeConfig;
         isRalphEnabled = mod.isRalphEnabled;
+        isForEachEnabled = mod.isForEachEnabled;
+        isGitCrossCloneCherryPickEnabled = mod.isGitCrossCloneCherryPickEnabled;
+        isSessionContextAttachmentsEnabled = mod.isSessionContextAttachmentsEnabled;
         isContainerMode = mod.isContainerMode;
         setCurrentAgentId = mod.setCurrentAgentId;
         _resetRuntimeConfig = mod._resetRuntimeConfig;
@@ -34,6 +40,9 @@ describe('loadRuntimeConfig', () => {
     it('updates feature flags from API response', async () => {
         (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', ralphEnabled: false };
         expect(isRalphEnabled()).toBe(false);
+        expect(isForEachEnabled()).toBe(false);
+        expect(isGitCrossCloneCherryPickEnabled()).toBe(false);
+        expect(isSessionContextAttachmentsEnabled()).toBe(false);
 
         vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
             ok: true,
@@ -50,11 +59,14 @@ describe('loadRuntimeConfig', () => {
                     pullRequestsEnabled: false,
                     serversEnabled: false,
                     ralphEnabled: true,
+                    forEachEnabled: true,
                     vimNavigationEnabled: false,
                     loopsEnabled: false,
                     excalidrawEnabled: false,
                     mcpOauthEnabled: false,
                     focusedDiffEnabled: false,
+                    gitCrossCloneCherryPickEnabled: true,
+                    sessionContextAttachmentsEnabled: true,
                 },
                 hostname: 'test-host',
                 bindAddress: '127.0.0.1',
@@ -63,6 +75,9 @@ describe('loadRuntimeConfig', () => {
 
         await loadRuntimeConfig();
         expect(isRalphEnabled()).toBe(true);
+        expect(isForEachEnabled()).toBe(true);
+        expect(isGitCrossCloneCherryPickEnabled()).toBe(true);
+        expect(isSessionContextAttachmentsEnabled()).toBe(true);
     });
 
     it('falls back to bootstrap config on fetch failure', async () => {
@@ -104,6 +119,7 @@ describe('loadRuntimeConfig', () => {
                     pullRequestsEnabled: false,
                     serversEnabled: false,
                     ralphEnabled: false,
+                    forEachEnabled: false,
                     vimNavigationEnabled: false,
                     loopsEnabled: false,
                     excalidrawEnabled: false,
@@ -139,6 +155,7 @@ describe('loadRuntimeConfig', () => {
                     pullRequestsEnabled: false,
                     serversEnabled: false,
                     ralphEnabled: false,
+                    forEachEnabled: false,
                     vimNavigationEnabled: false,
                     loopsEnabled: false,
                     excalidrawEnabled: false,
@@ -176,6 +193,7 @@ describe('loadRuntimeConfig', () => {
                     pullRequestsEnabled: false,
                     serversEnabled: false,
                     ralphEnabled: true,
+                    forEachEnabled: true,
                     vimNavigationEnabled: false,
                     loopsEnabled: true,
                     excalidrawEnabled: false,
@@ -191,6 +209,7 @@ describe('loadRuntimeConfig', () => {
 
         expect(fetchSpy).toHaveBeenCalledWith('/api/agent/agent-123/config/runtime');
         expect(isRalphEnabled()).toBe(true);
+        expect(isForEachEnabled()).toBe(true);
     });
 
     it('does not reload config when setCurrentAgentId is called outside container mode', async () => {

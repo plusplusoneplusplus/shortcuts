@@ -325,11 +325,14 @@ export function AdminPanel() {
     const [pullRequestsSuggestionsEnabled, setPullRequestsSuggestionsEnabled] = useState(false);
     const [serversEnabled, setServersEnabled] = useState(false);
     const [ralphEnabled, setRalphEnabled] = useState(false);
+    const [forEachEnabled, setForEachEnabled] = useState(false);
     const [vimNavigationEnabled, setVimNavigationEnabled] = useState(false);
     const [loopsEnabled, setLoopsEnabled] = useState(false);
     const [excalidrawEnabled, setExcalidrawEnabled] = useState(false);
     const [mcpOauthEnabled, setMcpOauthEnabled] = useState(false);
     const [focusedDiffEnabled, setFocusedDiffEnabled] = useState(false);
+    const [gitCrossCloneCherryPickEnabled, setGitCrossCloneCherryPickEnabled] = useState(false);
+    const [sessionContextAttachmentsEnabled, setSessionContextAttachmentsEnabled] = useState(false);
     const [workItemsHierarchyEnabled, setWorkItemsHierarchyEnabled] = useState(false);
     const [workItemsSyncEnabled, setWorkItemsSyncEnabled] = useState(false);
     const [workItemsAiAuthoringEnabled, setWorkItemsAiAuthoringEnabled] = useState(false);
@@ -379,7 +382,7 @@ export function AdminPanel() {
         taskCardDensity: 'compact' as 'compact' | 'dense',
         historyGrouping: true,
     });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false, workItemsHierarchy: false, workItemsSync: false, workItemsAiAuthoring: false, effortLevels: false });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, forEach: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false, gitCrossCloneCherryPick: false, sessionContextAttachments: false, workItemsHierarchy: false, workItemsSync: false, workItemsAiAuthoring: false, effortLevels: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -480,6 +483,8 @@ export function AdminPanel() {
             setServersEnabled(svre);
             const re = resolved.ralph?.enabled ?? false;
             setRalphEnabled(re);
+            const fee = resolved.forEach?.enabled ?? false;
+            setForEachEnabled(fee);
             const vne = resolved.vimNavigation?.enabled ?? false;
             setVimNavigationEnabled(vne);
             const loe = resolved.loops?.enabled ?? false;
@@ -489,7 +494,11 @@ export function AdminPanel() {
             const moae = resolved.mcpOauth?.enabled ?? false;
             setMcpOauthEnabled(moae);
             const fde = resolved.features?.focusedDiff ?? false;
+            const gccpe = resolved.features?.gitCrossCloneCherryPick ?? false;
+            const scae = resolved.features?.sessionContextAttachments ?? false;
+            setGitCrossCloneCherryPickEnabled(gccpe);
             setFocusedDiffEnabled(fde);
+            setSessionContextAttachmentsEnabled(scae);
             const wihe = resolved.workItems?.hierarchy?.enabled ?? false;
             setWorkItemsHierarchyEnabled(wihe);
             const wise = resolved.workItems?.sync?.enabled ?? false;
@@ -504,7 +513,7 @@ export function AdminPanel() {
             setClaudeEnabled(cle);
             const dp = (resolved.defaultProvider === 'codex' ? 'codex' : resolved.defaultProvider === 'claude' ? 'claude' : 'copilot') as 'copilot' | 'codex' | 'claude';
             setDefaultProvider(dp);
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde, workItemsHierarchy: wihe, workItemsSync: wise, workItemsAiAuthoring: waae, effortLevels: ele });
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, forEach: fee, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde, gitCrossCloneCherryPick: gccpe, sessionContextAttachments: scae, workItemsHierarchy: wihe, workItemsSync: wise, workItemsAiAuthoring: waae, effortLevels: ele });
             setAiExecSnapshot({ model: form.model, parallel: form.parallel, timeout: form.timeout, output: form.output });
             setDefaultProviderSnapshot({ provider: dp, codexEnabled: cxe, claudeEnabled: cle });
             const sgr = resolved.sync?.gitRemote ?? '';
@@ -611,11 +620,14 @@ export function AdminPanel() {
         pullRequestsSuggestionsEnabled !== featuresSnapshot.pullRequestsSuggestions ||
         serversEnabled !== featuresSnapshot.servers ||
         ralphEnabled !== featuresSnapshot.ralph ||
+        forEachEnabled !== featuresSnapshot.forEach ||
         vimNavigationEnabled !== featuresSnapshot.vimNavigation ||
         loopsEnabled !== featuresSnapshot.loops ||
         excalidrawEnabled !== featuresSnapshot.excalidraw ||
         mcpOauthEnabled !== featuresSnapshot.mcpOauth ||
         focusedDiffEnabled !== featuresSnapshot.focusedDiff ||
+        gitCrossCloneCherryPickEnabled !== featuresSnapshot.gitCrossCloneCherryPick ||
+        sessionContextAttachmentsEnabled !== featuresSnapshot.sessionContextAttachments ||
         workItemsHierarchyEnabled !== featuresSnapshot.workItemsHierarchy ||
         workItemsSyncEnabled !== featuresSnapshot.workItemsSync ||
         workItemsAiAuthoringEnabled !== featuresSnapshot.workItemsAiAuthoring ||
@@ -838,11 +850,14 @@ export function AdminPanel() {
                 'pullRequests.suggestions': pullRequestsSuggestionsEnabled,
                 'servers.enabled': serversEnabled,
                 'ralph.enabled': ralphEnabled,
+                'forEach.enabled': forEachEnabled,
                 'vimNavigation.enabled': vimNavigationEnabled,
                 'loops.enabled': loopsEnabled,
                 'excalidraw.enabled': excalidrawEnabled,
                 'mcpOauth.enabled': mcpOauthEnabled,
                 'features.focusedDiff': focusedDiffEnabled,
+                'features.gitCrossCloneCherryPick': gitCrossCloneCherryPickEnabled,
+                'features.sessionContextAttachments': sessionContextAttachmentsEnabled,
                 'workItems.hierarchy.enabled': workItemsHierarchyEnabled,
                 'workItems.sync.enabled': workItemsSyncEnabled,
                 'workItems.aiAuthoring.enabled': workItemsAiAuthoringEnabled,
@@ -850,13 +865,13 @@ export function AdminPanel() {
             });
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled, workItemsHierarchy: workItemsHierarchyEnabled, workItemsSync: workItemsSyncEnabled, workItemsAiAuthoring: workItemsAiAuthoringEnabled, effortLevels: effortLevelsEnabled });
+            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, forEach: forEachEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled, gitCrossCloneCherryPick: gitCrossCloneCherryPickEnabled, sessionContextAttachments: sessionContextAttachmentsEnabled, workItemsHierarchy: workItemsHierarchyEnabled, workItemsSync: workItemsSyncEnabled, workItemsAiAuthoring: workItemsAiAuthoringEnabled, effortLevels: effortLevelsEnabled });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, workItemsHierarchyEnabled, workItemsSyncEnabled, workItemsAiAuthoringEnabled, effortLevelsEnabled, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, forEachEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, gitCrossCloneCherryPickEnabled, sessionContextAttachmentsEnabled, workItemsHierarchyEnabled, workItemsSyncEnabled, workItemsAiAuthoringEnabled, effortLevelsEnabled, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setTerminalEnabled(featuresSnapshot.terminal);
@@ -870,11 +885,14 @@ export function AdminPanel() {
         setPullRequestsSuggestionsEnabled(featuresSnapshot.pullRequestsSuggestions);
         setServersEnabled(featuresSnapshot.servers);
         setRalphEnabled(featuresSnapshot.ralph);
+        setForEachEnabled(featuresSnapshot.forEach);
         setVimNavigationEnabled(featuresSnapshot.vimNavigation);
         setLoopsEnabled(featuresSnapshot.loops);
         setExcalidrawEnabled(featuresSnapshot.excalidraw);
         setMcpOauthEnabled(featuresSnapshot.mcpOauth);
         setFocusedDiffEnabled(featuresSnapshot.focusedDiff);
+        setGitCrossCloneCherryPickEnabled(featuresSnapshot.gitCrossCloneCherryPick);
+        setSessionContextAttachmentsEnabled(featuresSnapshot.sessionContextAttachments);
         setWorkItemsHierarchyEnabled(featuresSnapshot.workItemsHierarchy);
         setWorkItemsSyncEnabled(featuresSnapshot.workItemsSync);
         setWorkItemsAiAuthoringEnabled(featuresSnapshot.workItemsAiAuthoring);
@@ -1675,6 +1693,13 @@ export function AdminPanel() {
                                         <AdminToggle checked={ralphEnabled} onChange={setRalphEnabled} data-testid="toggle-ralph-enabled" />
                                     </AdminRow>
                                     <AdminRow
+                                        name={<>For Each Mode <span className="ar-badge ar-badge-accent">Experimental</span></>}
+                                        hint="Generate a reviewed item plan from New Chat, then run each item as a separate child chat. Disabled by default."
+                                    >
+                                        <SourceBadge source={sources['forEach.enabled']} />
+                                        <AdminToggle checked={forEachEnabled} onChange={setForEachEnabled} data-testid="toggle-for-each-enabled" />
+                                    </AdminRow>
+                                    <AdminRow
                                         name="Vim-style navigation"
                                         hint="Enable hjkl pane navigation, j/k to step through chats and messages, gg/G to jump, i to focus the input, Esc to blur. Disabled by default."
                                     >
@@ -1708,6 +1733,20 @@ export function AdminPanel() {
                                     >
                                         <SourceBadge source={sources['features.focusedDiff']} />
                                         <AdminToggle checked={focusedDiffEnabled} onChange={setFocusedDiffEnabled} data-testid="toggle-focused-diff-enabled" />
+                                    </AdminRow>
+                                    <AdminRow
+                                        name={<>Cross-clone cherry-pick <span className="ar-badge ar-badge-accent">Experimental</span></>}
+                                        hint="Adds a Git commit context-menu action that transfers one commit to another registered clone using patch export/apply. Disabled by default."
+                                    >
+                                        <SourceBadge source={sources['features.gitCrossCloneCherryPick']} />
+                                        <AdminToggle checked={gitCrossCloneCherryPickEnabled} onChange={setGitCrossCloneCherryPickEnabled} data-testid="toggle-git-cross-clone-cherry-pick-enabled" />
+                                    </AdminRow>
+                                    <AdminRow
+                                        name={<>Session context attachments <span className="ar-badge ar-badge-accent">Experimental</span></>}
+                                        hint="Allow dragging existing same-workspace chat sessions into chat composers as pointer-only context. Disabled by default."
+                                    >
+                                        <SourceBadge source={sources['features.sessionContextAttachments']} />
+                                        <AdminToggle checked={sessionContextAttachmentsEnabled} onChange={setSessionContextAttachmentsEnabled} data-testid="toggle-session-context-attachments-enabled" />
                                     </AdminRow>
                                     <AdminRow
                                         name="Work Items Hierarchy Board"

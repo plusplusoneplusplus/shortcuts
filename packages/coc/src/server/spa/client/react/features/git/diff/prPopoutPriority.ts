@@ -10,8 +10,9 @@
  *   2. low-intensity logic
  *   3. test (any intensity)
  *   4. mechanical (any intensity)
- *   5. generated (any intensity)
- *   6. unclassified (no badge / classification not yet available)
+ *   5. simple function (any intensity)
+ *   6. generated (any intensity)
+ *   7. unclassified (no badge / classification not yet available)
  *
  * Within a tier, unreviewed files come before reviewed files, and the
  * original input order is preserved as the final tiebreaker (stable sort).
@@ -32,6 +33,7 @@ export interface CategoryCounts {
     logic: number;
     mechanical: number;
     test: number;
+    simple: number;
     generated: number;
     /** Files with no badge (unclassified or classification not ready). */
     unclassified: number;
@@ -43,12 +45,13 @@ export interface CategoryCounts {
 
 /** Lower number = higher priority. */
 function priorityTier(badge: FileBadgeLike | undefined): number {
-    if (!badge) return 5;
+    if (!badge) return 6;
     if (badge.category === 'logic') return badge.intensity === 'high' ? 0 : 1;
     if (badge.category === 'test') return 2;
     if (badge.category === 'mechanical') return 3;
-    if (badge.category === 'generated') return 4;
-    return 5;
+    if (badge.category === 'simple') return 4;
+    if (badge.category === 'generated') return 5;
+    return 6;
 }
 
 export function computeCategoryCounts(
@@ -59,6 +62,7 @@ export function computeCategoryCounts(
         logic: 0,
         mechanical: 0,
         test: 0,
+        simple: 0,
         generated: 0,
         unclassified: 0,
         logicHigh: 0,
@@ -80,6 +84,9 @@ export function computeCategoryCounts(
                 break;
             case 'test':
                 counts.test++;
+                break;
+            case 'simple':
+                counts.simple++;
                 break;
             case 'generated':
                 counts.generated++;

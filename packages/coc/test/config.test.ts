@@ -61,6 +61,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.terminal).toEqual({ enabled: true });
             expect(DEFAULT_CONFIG.scratchpad).toEqual({ enabled: true, layout: 'vertical' });
             expect(DEFAULT_CONFIG.workflows).toEqual({ enabled: false });
+            expect(DEFAULT_CONFIG.forEach).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.workItems.sync.enabled).toBe(false);
         });
 
@@ -829,6 +830,8 @@ timeout: 300
                 '  enabled: true',
                 '  finalCheck:',
                 '    maxGapFixLoops: 5',
+                'forEach:',
+                '  enabled: true',
                 'vimNavigation:',
                 '  enabled: true',
                 'loops:',
@@ -849,6 +852,8 @@ timeout: 300
                 'features:',
                 '  autoMemoryPromotion: true',
                 '  focusedDiff: true',
+                '  gitCrossCloneCherryPick: true',
+                '  sessionContextAttachments: true',
                 'memoryPromotion:',
                 '  batchSize: 25',
                 '  timeoutMs: 80000',
@@ -936,6 +941,8 @@ timeout: 300
                 '  enabled: true',
                 'ralph:',
                 '  enabled: true',
+                'forEach:',
+                '  enabled: false',
                 'vimNavigation:',
                 '  enabled: true',
                 'loops:',
@@ -1004,6 +1011,11 @@ timeout: 300
                     "autoMemoryPromotion": true,
                     "focusedDiff": true,
                     "gitCommitLookup": false,
+                    "gitCrossCloneCherryPick": false,
+                    "sessionContextAttachments": false,
+                  },
+                  "forEach": {
+                    "enabled": false,
                   },
                   "groupSingleLineMessages": false,
                   "logging": {
@@ -1141,6 +1153,9 @@ timeout: 300
                   "excalidraw.enabled": "default",
                   "features.autoMemoryPromotion": "file",
                   "features.focusedDiff": "file",
+                  "features.gitCrossCloneCherryPick": "default",
+                  "features.sessionContextAttachments": "default",
+                  "forEach.enabled": "file",
                   "groupSingleLineMessages": "file",
                   "loops.enabled": "file",
                   "mcpConfig": "file",

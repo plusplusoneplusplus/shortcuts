@@ -146,6 +146,25 @@ describe('validateAndParseTask – chat kind injection (existing behavior)', () 
         expect(result.valid).toBe(true);
         expect((result.input!.payload as any).mode).toBe('ask');
     });
+
+    it('rejects unknown chat modes instead of silently routing them as ask', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello', mode: 'bogus' },
+        });
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('Invalid chat mode: bogus');
+        expect(result.error).toContain('ask, autopilot, ralph');
+    });
+
+    it('rejects for-each on the generic chat queue path', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello', mode: 'for-each' },
+        });
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('Invalid chat mode: for-each');
+    });
 });
 
 // ============================================================================

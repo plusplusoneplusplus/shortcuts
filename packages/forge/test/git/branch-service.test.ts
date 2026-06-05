@@ -951,6 +951,222 @@ describe('BranchService.cherryPick', () => {
     });
 });
 
+// ── exportCommitPatch ──────────────────────────────────────────────
+describe('BranchService.exportCommitPatch', () => {
+    let service: BranchService;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        setLogger(nullLogger);
+        service = new BranchService();
+    });
+
+    it('exports a commit as a format-patch payload with metadata', async () => {
+        const fullHash = 'abcdef1234567890abcdef1234567890abcdef12';
+        const patch = 'From abcdef1234567890 Mon Sep 17 00:00:00 2001\nSubject: [PATCH] Add thing\n';
+        const metadata = [
+            fullHash,
+            'Add thing',
+            'Ada Dev',
+            'ada@example.test',
+            '2026-06-04T04:00:00+00:00',
+        ].join('\0') + '\n';
+        mockedExecAsync
+            .mockResolvedValueOnce({ stdout: `${fullHash}\n`, stderr: '' })
+            .mockResolvedValueOnce({ stdout: metadata, stderr: '' })
+            .mockResolvedValueOnce({ stdout: patch, stderr: '' });
+
+        const result = await service.exportCommitPatch('/repo', 'abcdef1');
+
+        expect(result).toEqual({
+            success: true,
+            commitHash: fullHash,
+            subject: 'Add thing',
+            authorName: 'Ada Dev',
+            authorEmail: 'ada@example.test',
+            authorDate: '2026-06-04T04:00:00+00:00',
+            patch,
+        });
+        expect(mockedExecAsync).toHaveBeenCalledWith(
+            expect.stringMatching(/^git rev-parse --verify ['"]abcdef1\^\{commit\}['"]$/),
+            expect.objectContaining({ cwd: '/repo' })
+        );
+        expect(mockedExecAsync).toHaveBeenCalledWith(
+            `git format-patch -1 --stdout --no-stat ${fullHash}`,
+            expect.objectContaining({ cwd: '/repo', timeout: 600000 })
+        );
+    });
+
+    it('quotes the commit-ish so cmd.exe preserves ^{commit} on Windows', async () => {
+        const originalPlatform = process.platform;
+        Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+        try {
+            const fullHash = 'abcdef1234567890abcdef1234567890abcdef12';
+            const metadata = [
+                fullHash,
+                'Add thing',
+                'Ada Dev',
+                'ada@example.test',
+                '2026-06-04T04:00:00+00:00',
+            ].join('\0') + '\n';
+            mockedExecAsync
+                .mockResolvedValueOnce({ stdout: `${fullHash}\n`, stderr: '' })
+                .mockResolvedValueOnce({ stdout: metadata, stderr: '' })
+                .mockResolvedValueOnce({ stdout: 'patch', stderr: '' });
+
+            const result = await service.exportCommitPatch('C:\\repo', 'abcdef1');
+
+            expect(result.success).toBe(true);
+            expect(mockedExecAsync).toHaveBeenNthCalledWith(
+                1,
+                'git rev-parse --verify "abcdef1^{commit}"',
+                expect.objectContaining({ cwd: 'C:\\repo', shell: 'cmd.exe' }),
+            );
+        } finally {
+            Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+        }
+    });
+
+    it('rejects invalid commit hashes before invoking git', async () => {
+        const result = await service.exportCommitPatch('/repo', 'main;rm -rf /');
+
+        expect(result).toEqual({ success: false, error: 'Invalid commit hash' });
+        expect(mockedExecAsync).not.toHaveBeenCalled();
+    });
+
+    it('returns a failure when git cannot resolve the commit', async () => {
+        mockedExecAsync.mockRejectedValueOnce(new Error('fatal: Needed a single revision'));
+
+        const result = await service.exportCommitPatch('/repo', 'deadbeef');
+
+        expect(result).toEqual({ success: false, error: 'fatal: Needed a single revision' });
+    });
+});
+
+// ── applyCommitPatch ──────────────────────────────────────────────
+describe('BranchService.applyCommitPatch', () => {
+    let service: BranchService;
+    const mockedExistsSync = fs.existsSync as Mock;
+    const mockedMkdtempSync = fs.mkdtempSync as Mock;
+    const mockedWriteFileSync = fs.writeFileSync as Mock;
+    const mockedRmSync = fs.rmSync as Mock;
+    const patchBody = 'From abcdef1234567890 Mon Sep 17 00:00:00 2001\nSubject: [PATCH] Add thing\n';
+    const tmpDir = path.join('/repo', '.git', 'tmp-patch-apply-abc');
+    const patchPath = path.join(tmpDir, 'commit.patch');
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        setLogger(nullLogger);
+        service = new BranchService();
+        mockedExistsSync.mockReturnValue(false);
+        mockedMkdtempSync.mockReturnValue(tmpDir);
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedRmSync.mockReturnValue(undefined);
+    });
+
+    it('applies a format-patch payload with git am --3way and returns the new HEAD', async () => {
+        mockedExecSync
+            .mockReturnValueOnce('.git\n')
+            .mockReturnValueOnce('.git\n')
+            .mockReturnValueOnce('fedcba9876543210fedcba9876543210fedcba98\n');
+        mockedExecAsync
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        const result = await service.applyCommitPatch('/repo', patchBody);
+
+        expect(result).toEqual({
+            success: true,
+            conflicts: false,
+            message: 'Patch applied successfully',
+            headHash: 'fedcba9876543210fedcba9876543210fedcba98',
+            stashed: false,
+        });
+        expect(mockedWriteFileSync).toHaveBeenCalledWith(patchPath, patchBody, 'utf-8');
+        expect(mockedExecAsync).toHaveBeenCalledWith(
+            expect.stringContaining('git am --3way'),
+            expect.objectContaining({ cwd: '/repo', timeout: 600000 }),
+        );
+        expect(mockedRmSync).toHaveBeenCalledWith(tmpDir, { recursive: true });
+    });
+
+    it('rejects an empty patch before invoking git', async () => {
+        const result = await service.applyCommitPatch('/repo', '   ');
+
+        expect(result).toEqual({ success: false, conflicts: false, message: 'Patch body must not be empty' });
+        expect(mockedExecAsync).not.toHaveBeenCalled();
+    });
+
+    it('blocks dirty targets unless stashAndContinue is explicit', async () => {
+        mockedExecSync.mockReturnValueOnce('.git\n');
+        mockedExecAsync.mockResolvedValueOnce({ stdout: ' M src/file.ts\n', stderr: '' });
+
+        const result = await service.applyCommitPatch('/repo', patchBody);
+
+        expect(result).toEqual({
+            success: false,
+            conflicts: false,
+            dirty: true,
+            stashed: false,
+            message: 'Target workspace has uncommitted changes. Choose stash and continue to proceed explicitly.',
+        });
+        expect(mockedExecAsync).toHaveBeenCalledTimes(1);
+        expect(mockedWriteFileSync).not.toHaveBeenCalled();
+    });
+
+    it('stashes dirty targets only when stashAndContinue is explicit', async () => {
+        mockedExecSync
+            .mockReturnValueOnce('.git\n')
+            .mockReturnValueOnce('.git\n')
+            .mockReturnValueOnce('1111111111111111111111111111111111111111\n');
+        mockedExecAsync
+            .mockResolvedValueOnce({ stdout: ' M src/file.ts\n', stderr: '' })
+            .mockResolvedValueOnce({ stdout: 'Saved working directory\n', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        const result = await service.applyCommitPatch('/repo', patchBody, { stashAndContinue: true, stashMessage: 'apply patch' });
+
+        expect(result.success).toBe(true);
+        expect(result.stashed).toBe(true);
+        expect(mockedExecAsync).toHaveBeenNthCalledWith(
+            2,
+            expect.stringContaining('git stash push -u -m'),
+            expect.objectContaining({ cwd: '/repo' }),
+        );
+    });
+
+    it('returns conflicts and preserves git am state when apply fails mid-patch', async () => {
+        let stateReadCount = 0;
+        mockedExecSync.mockImplementation((command: string) => {
+            if (command === 'git rev-parse --git-dir') {
+                stateReadCount += 1;
+                return '.git\n';
+            }
+            if (command === 'git diff --name-only --diff-filter=U') {
+                return 'src/conflict.ts\n';
+            }
+            throw new Error(`unexpected command: ${command}`);
+        });
+        mockedExistsSync.mockImplementation((p: string) =>
+            stateReadCount >= 3
+            && (p.endsWith(path.join('.git', 'rebase-apply')) || p.endsWith(path.join('.git', 'rebase-apply', 'applying'))));
+        mockedExecAsync
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockRejectedValueOnce(new Error('Patch failed at 0001 Add thing'));
+
+        const result = await service.applyCommitPatch('/repo', patchBody);
+
+        expect(result.success).toBe(false);
+        expect(result.conflicts).toBe(true);
+        expect(result.gitState).toEqual({
+            operation: 'cherry-pick',
+            gitOperation: 'am',
+            conflictFiles: ['src/conflict.ts'],
+        });
+        expect(mockedRmSync).toHaveBeenCalledWith(tmpDir, { recursive: true });
+    });
+});
+
 // ── rebaseAutosquash ──────────────────────────────────────────────
 describe('BranchService.rebaseAutosquash', () => {
     let service: BranchService;
@@ -1063,6 +1279,23 @@ describe('BranchService.getRepoState', () => {
 
         expect(result.operation).toBe('cherry-pick');
         expect(result.conflictFiles).toEqual(['index.ts']);
+    });
+
+    it('presents git am rebase-apply state as cherry-pick with accurate gitOperation detail', () => {
+        mockedExecSync
+            .mockReturnValueOnce('.git\n')
+            .mockReturnValueOnce('patch-conflict.ts\n');
+        mockedExistsSync.mockImplementation((p: string) =>
+            typeof p === 'string'
+            && (p.endsWith(path.join('.git', 'rebase-apply')) || p.endsWith(path.join('.git', 'rebase-apply', 'applying'))));
+
+        const result = service.getRepoState('/repo');
+
+        expect(result).toEqual({
+            operation: 'cherry-pick',
+            gitOperation: 'am',
+            conflictFiles: ['patch-conflict.ts'],
+        });
     });
 
     it('returns operation=none with empty conflictFiles on error', () => {

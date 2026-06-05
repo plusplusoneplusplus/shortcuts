@@ -543,6 +543,14 @@ describe('RepoGitTab', () => {
             expect(source).toContain("import { BranchPickerModal } from './branches/BranchPickerModal'");
         });
 
+        it('imports CrossCloneCherryPickModal', () => {
+            expect(source).toContain("import { CrossCloneCherryPickModal } from './CrossCloneCherryPickModal'");
+        });
+
+        it('imports the cross-clone cherry-pick runtime flag helper', () => {
+            expect(source).toContain('isGitCrossCloneCherryPickEnabled');
+        });
+
         it('renders GitPanelHeader', () => {
             expect(source).toContain('<GitPanelHeader');
         });
@@ -666,6 +674,38 @@ describe('RepoGitTab', () => {
 
         it('handleSelect sets right panel to commit view', () => {
             expect(source).toContain("setRightPanelView({ type: 'commit', commit })");
+        });
+
+        it('renders the cross-clone cherry-pick modal with source commit context', () => {
+            expect(source).toContain('<CrossCloneCherryPickModal');
+            expect(source).toContain('commit={crossCloneCherryPickCommit}');
+            expect(source).toContain('sourceWorkspaceId={workspaceId}');
+            expect(source).toContain('sourceWorkspace={sourceWorkspace}');
+        });
+    });
+
+    describe('cross-clone cherry-pick UI', () => {
+        it('tracks the commit selected for cross-clone cherry-pick', () => {
+            expect(source).toContain('crossCloneCherryPickCommit');
+            expect(source).toContain('setCrossCloneCherryPickCommit');
+        });
+
+        it('gates the context menu entry behind the runtime feature flag', () => {
+            const menuBlock = source.match(/if \(isGitCrossCloneCherryPickEnabled\(\)\)[\s\S]*?Cherry-pick to another clone\.\.\./);
+            expect(menuBlock).toBeTruthy();
+        });
+
+        it('opens the modal from the commit context menu', () => {
+            expect(source).toContain('const handleOpenCrossCloneCherryPick = useCallback');
+            expect(source).toContain('setCrossCloneCherryPickCommit(commit)');
+            expect(source).toContain('onClick: () => handleOpenCrossCloneCherryPick(commit)');
+        });
+
+        it('refreshes after a successful patch-transfer apply', () => {
+            const block = source.match(/handleCrossCloneCherryPickApplied[\s\S]*?\}, \[refreshAll\]\)/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('refreshAll()');
+            expect(block![0]).toContain('Cherry-picked to');
         });
     });
 
@@ -1771,7 +1811,8 @@ describe('RepoGitTab', () => {
 
     describe('git commit lookup feature', () => {
         it('imports isGitCommitLookupEnabled from config utils', () => {
-            expect(source).toContain("import { isGitCommitLookupEnabled }");
+            expect(source).toContain('isGitCommitLookupEnabled');
+            expect(source).toContain("from '../../utils/config'");
         });
 
         it('declares commitLookupLoading state', () => {

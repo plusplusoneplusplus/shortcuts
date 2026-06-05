@@ -14,6 +14,9 @@
 
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest';
 import * as http from 'http';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import * as os from 'os';
 import { createRouter } from '../../src/server/shared/router';
 import { registerApiRoutes } from '../../src/server/core/api-handler';
 import type { Route } from '../../src/server/types';
@@ -41,6 +44,10 @@ vi.mock('child_process', function () { return ({
 const mockGetBranchStatus = vi.fn();
 const mockHasUncommittedChanges = vi.fn();
 const mockGetCurrentBranch = vi.fn();
+const mockExportCommitPatch = vi.fn();
+const mockApplyCommitPatch = vi.fn();
+const mockGetRepoState = vi.fn();
+const mockBroadcastGitChanged = vi.fn();
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
@@ -49,6 +56,9 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         BranchService: vi.fn().mockImplementation(function () { return ({
             getBranchStatus: vi.fn(async (...args: any[]) => mockGetBranchStatus(...args)),
             hasUncommittedChanges: vi.fn(async (...args: any[]) => mockHasUncommittedChanges(...args)),
+            exportCommitPatch: vi.fn(async (...args: any[]) => mockExportCommitPatch(...args)),
+            applyCommitPatch: vi.fn(async (...args: any[]) => mockApplyCommitPatch(...args)),
+            getRepoState: vi.fn((...args: any[]) => mockGetRepoState(...args)),
         }); }),
         GitRangeService: vi.fn().mockImplementation(function () { return ({
             getCurrentBranch: vi.fn(async (...args: any[]) => mockGetCurrentBranch(...args)),
@@ -104,18 +114,20 @@ describe('Git API endpoints', () => {
     let server: http.Server;
     let port: number;
     let store: MockProcessStore;
+    let tmpDir: string;
 
     const WORKSPACE_ID = 'ws-git-test';
     const WORKSPACE_ROOT = '/test/repo';
 
     beforeAll(async () => {
+        tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'git-api-test-'));
         store = createMockProcessStore();
         (store.getWorkspaces as any).mockResolvedValue([
-            { id: WORKSPACE_ID, name: 'Test Repo', rootPath: WORKSPACE_ROOT },
+            { id: WORKSPACE_ID, name: 'Test Repo', rootPath: WORKSPACE_ROOT, remoteUrl: 'https://token@example.com/org/repo.git' },
         ]);
 
         const routes: Route[] = [];
-        registerApiRoutes(routes, store);
+        registerApiRoutes(routes, store, undefined, tmpDir, () => ({ broadcastGitChanged: mockBroadcastGitChanged }) as any);
         const handleRequest = createRouter({ routes, spaHtml: '<html></html>' });
         server = http.createServer(handleRequest);
         await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -124,6 +136,7 @@ describe('Git API endpoints', () => {
 
     afterAll(async () => {
         await new Promise<void>((resolve) => server.close(() => resolve()));
+        await fs.rm(tmpDir, { recursive: true, force: true });
     });
 
     beforeEach(() => {
@@ -132,10 +145,15 @@ describe('Git API endpoints', () => {
         mockGetBranchStatus.mockReset();
         mockHasUncommittedChanges.mockReset();
         mockGetCurrentBranch.mockReset();
+        mockExportCommitPatch.mockReset();
+        mockApplyCommitPatch.mockReset();
+        mockGetRepoState.mockReset();
+        mockBroadcastGitChanged.mockReset();
         // Sensible defaults
         mockHasUncommittedChanges.mockReturnValue(false);
         mockGetCurrentBranch.mockReturnValue('main');
         mockGetBranchStatus.mockReturnValue({ name: 'main', isDetached: false, ahead: 0, behind: 0, hasUncommittedChanges: false });
+        mockGetRepoState.mockReturnValue({ operation: 'none', conflictFiles: [] });
         gitCache.clear();
         gitInfoCache.clear();
         mockForgeExecGit.mockReset();
@@ -395,6 +413,297 @@ describe('Git API endpoints', () => {
             expect(res2.status).toBe(200);
             expect(res2.json().subject).toBe('Cached commit');
             expect(mockForgeExecGit).not.toHaveBeenCalled();
+        });
+    });
+
+    // ========================================================================
+    // POST /api/workspaces/:id/git/patch/export
+    // ========================================================================
+
+    describe('POST /api/workspaces/:id/git/patch/export', () => {
+        const fullHash = 'abcdef1234567890abcdef1234567890abcdef12';
+
+        it('returns a format-patch payload with source commit and workspace metadata', async () => {
+            mockExportCommitPatch.mockResolvedValue({
+                success: true,
+                commitHash: fullHash,
+                subject: 'Add portable patch export',
+                authorName: 'Patch Author',
+                authorEmail: 'patch-author@example.test',
+                authorDate: '2026-06-04T04:00:00+00:00',
+                patch: 'From abcdef1234567890 Mon Sep 17 00:00:00 2001\nSubject: [PATCH] Add portable patch export\n',
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/patch/export`, {
+                method: 'POST',
+                body: JSON.stringify({ hash: 'abcdef1' }),
+            });
+
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data).toEqual({
+                sourceWorkspace: { id: WORKSPACE_ID, name: 'Test Repo' },
+                sourceCommit: {
+                    hash: fullHash,
+                    subject: 'Add portable patch export',
+                    author: {
+                        name: 'Patch Author',
+                        email: 'patch-author@example.test',
+                        date: '2026-06-04T04:00:00+00:00',
+                    },
+                },
+                normalizedSourceRemoteUrl: 'example.com/org/repo',
+                patch: {
+                    format: 'format-patch',
+                    body: 'From abcdef1234567890 Mon Sep 17 00:00:00 2001\nSubject: [PATCH] Add portable patch export\n',
+                },
+            });
+            expect(mockExportCommitPatch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'abcdef1');
+        });
+
+        it('returns 404 when the commit cannot be exported', async () => {
+            mockExportCommitPatch.mockResolvedValue({ success: false, error: 'fatal: bad object deadbeef' });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/patch/export`, {
+                method: 'POST',
+                body: JSON.stringify({ hash: 'deadbeef' }),
+            });
+
+            expect(res.status).toBe(404);
+            expect(res.json().error).toBe('Commit not found');
+        });
+
+        it('does not leak source root paths or remote credentials in the payload', async () => {
+            mockExportCommitPatch.mockResolvedValue({
+                success: true,
+                commitHash: fullHash,
+                subject: 'Avoid leaking local paths',
+                authorName: 'Patch Author',
+                authorEmail: 'patch-author@example.test',
+                authorDate: '2026-06-04T04:00:00+00:00',
+                patch: 'From abcdef1234567890 Mon Sep 17 00:00:00 2001\nSubject: [PATCH] Avoid leaking local paths\n',
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/patch/export`, {
+                method: 'POST',
+                body: JSON.stringify({ hash: 'abcdef1' }),
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body).not.toContain(WORKSPACE_ROOT);
+            expect(res.body).not.toContain('token');
+            expect(res.json().normalizedSourceRemoteUrl).toBe('example.com/org/repo');
+        });
+    });
+
+    // ========================================================================
+    // POST /api/workspaces/:id/git/patch/apply
+    // ========================================================================
+
+    describe('POST /api/workspaces/:id/git/patch/apply', () => {
+        const patch = {
+            format: 'format-patch',
+            body: 'From abcdef1234567890 Mon Sep 17 00:00:00 2001\nSubject: [PATCH] Add portable patch apply\n',
+        };
+
+        it('applies a patch payload and returns target branch plus new commit hash', async () => {
+            mockApplyCommitPatch.mockResolvedValue({
+                success: true,
+                conflicts: false,
+                message: 'Patch applied successfully',
+                headHash: 'fedcba9876543210fedcba9876543210fedcba98',
+                stashed: false,
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/patch/apply`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    patch,
+                    sourceServer: { id: 'local', label: 'Local CoC', url: '/Users/source/private' },
+                    sourceWorkspace: { id: 'ws-source', name: 'Source Repo', rootPath: '/Users/source/private/repo' },
+                    sourceCommit: {
+                        hash: 'abcdef1234567890abcdef1234567890abcdef12',
+                        subject: 'Add portable patch apply',
+                        author: {
+                            name: 'Patch Author',
+                            email: 'patch-author@example.test',
+                            date: '2026-06-04T04:01:00+00:00',
+                        },
+                    },
+                    normalizedSourceRemoteUrl: 'https://token@example.com/org/repo.git',
+                }),
+            });
+
+            expect(res.status).toBe(200);
+            const body = res.json();
+            expect(body).toMatchObject({
+                success: true,
+                targetWorkspace: { id: WORKSPACE_ID, name: 'Test Repo' },
+                targetBranch: 'main',
+                targetHead: 'fedcba9876543210fedcba9876543210fedcba98',
+                newCommitHash: 'fedcba9876543210fedcba9876543210fedcba98',
+                stashed: false,
+                operation: {
+                    workspaceId: WORKSPACE_ID,
+                    op: 'cherry-pick-transfer',
+                    status: 'success',
+                    metadata: {
+                        kind: 'patch-transfer',
+                        sourceServer: { id: 'local', label: 'Local CoC' },
+                        sourceWorkspace: { id: 'ws-source', name: 'Source Repo' },
+                        sourceCommit: {
+                            hash: 'abcdef1234567890abcdef1234567890abcdef12',
+                            subject: 'Add portable patch apply',
+                            author: {
+                                name: 'Patch Author',
+                                email: 'patch-author@example.test',
+                                date: '2026-06-04T04:01:00+00:00',
+                            },
+                        },
+                        normalizedSourceRemoteUrl: 'example.com/org/repo',
+                        targetWorkspace: { id: WORKSPACE_ID, name: 'Test Repo' },
+                        targetBranch: 'main',
+                        targetHead: 'fedcba9876543210fedcba9876543210fedcba98',
+                        newCommitHash: 'fedcba9876543210fedcba9876543210fedcba98',
+                        stashed: false,
+                    },
+                },
+            });
+            expect(body.operation.id).toMatch(/^cherry-pick-transfer-/);
+            expect(body.operation.startedAt).toEqual(expect.any(String));
+            expect(body.operation.finishedAt).toEqual(expect.any(String));
+            expect(JSON.stringify(body.operation)).not.toContain('/Users/source/private');
+            expect(JSON.stringify(body.operation)).not.toContain('token');
+            expect(mockApplyCommitPatch).toHaveBeenCalledWith(
+                WORKSPACE_ROOT,
+                patch.body,
+                { stashAndContinue: false, stashMessage: 'CoC patch-transfer cherry-pick' },
+            );
+            expect(mockBroadcastGitChanged).toHaveBeenCalledWith(WORKSPACE_ID, 'patch-apply');
+
+            const latestRes = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/ops/latest?op=cherry-pick-transfer`);
+            expect(latestRes.status).toBe(200);
+            expect(latestRes.json()).toMatchObject({
+                id: body.operation.id,
+                op: 'cherry-pick-transfer',
+                metadata: {
+                    sourceCommit: { hash: 'abcdef1234567890abcdef1234567890abcdef12' },
+                    normalizedSourceRemoteUrl: 'example.com/org/repo',
+                    newCommitHash: 'fedcba9876543210fedcba9876543210fedcba98',
+                },
+            });
+        });
+
+        it('passes explicit stashAndContinue to the service and reports stashed success', async () => {
+            mockHasUncommittedChanges.mockReturnValue(true);
+            mockGetBranchStatus.mockReturnValue({ name: 'main', isDetached: false, ahead: 0, behind: 0, hasUncommittedChanges: true });
+            mockApplyCommitPatch.mockResolvedValue({
+                success: true,
+                conflicts: false,
+                message: 'Patch applied successfully',
+                headHash: '1234567890abcdef1234567890abcdef12345678',
+                stashed: true,
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/patch/apply`, {
+                method: 'POST',
+                body: JSON.stringify({ patch, stashAndContinue: true }),
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json().stashed).toBe(true);
+            expect(mockApplyCommitPatch).toHaveBeenCalledWith(
+                WORKSPACE_ROOT,
+                patch.body,
+                { stashAndContinue: true, stashMessage: 'CoC patch-transfer cherry-pick' },
+            );
+        });
+
+        it('returns 409 dirty when the target has uncommitted changes and stash is not explicit', async () => {
+            mockApplyCommitPatch.mockResolvedValue({
+                success: false,
+                conflicts: false,
+                dirty: true,
+                stashed: false,
+                message: 'Target workspace has uncommitted changes. Choose stash and continue to proceed explicitly.',
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/patch/apply`, {
+                method: 'POST',
+                body: JSON.stringify({ patch }),
+            });
+
+            expect(res.status).toBe(409);
+            expect(res.json()).toEqual({
+                error: 'Target workspace has uncommitted changes. Choose stash and continue to proceed explicitly.',
+                dirty: true,
+                stashed: false,
+            });
+            expect(mockBroadcastGitChanged).not.toHaveBeenCalled();
+        });
+
+        it('returns conflict-style 409 when git am reports conflicts', async () => {
+            mockApplyCommitPatch.mockResolvedValue({
+                success: false,
+                conflicts: true,
+                message: 'Patch failed at 0001 Add portable patch apply',
+                stashed: false,
+                gitState: {
+                    operation: 'cherry-pick',
+                    gitOperation: 'am',
+                    conflictFiles: ['src/conflict.ts'],
+                },
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/patch/apply`, {
+                method: 'POST',
+                body: JSON.stringify({ patch }),
+            });
+
+            expect(res.status).toBe(409);
+            expect(res.json()).toEqual({
+                error: 'Patch failed at 0001 Add portable patch apply',
+                conflicts: true,
+                stashed: false,
+                gitState: {
+                    operation: 'cherry-pick',
+                    gitOperation: 'am',
+                    conflictFiles: ['src/conflict.ts'],
+                },
+            });
+            expect(mockBroadcastGitChanged).not.toHaveBeenCalled();
+        });
+
+        it('blocks when another git operation is already in progress', async () => {
+            mockGetRepoState.mockReturnValue({
+                operation: 'cherry-pick',
+                gitOperation: 'am',
+                conflictFiles: ['src/conflict.ts'],
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/patch/apply`, {
+                method: 'POST',
+                body: JSON.stringify({ patch }),
+            });
+
+            expect(res.status).toBe(409);
+            expect(res.json()).toEqual({
+                error: 'Target workspace already has a am operation in progress',
+                operation: 'cherry-pick',
+                gitOperation: 'am',
+                conflictFiles: ['src/conflict.ts'],
+            });
+            expect(mockApplyCommitPatch).not.toHaveBeenCalled();
+        });
+
+        it('returns 400 for an invalid patch payload shape', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/patch/apply`, {
+                method: 'POST',
+                body: JSON.stringify({ patch: { format: 'diff', body: 'not a format patch' } }),
+            });
+
+            expect(res.status).toBe(400);
+            expect(mockApplyCommitPatch).not.toHaveBeenCalled();
         });
     });
 

@@ -12,8 +12,8 @@ export interface DiffFetchResult {
     totalLines: number;
     /**
      * True when the caller requested a full-file-context diff but the server
-     * could not produce one (e.g. PR SHAs not locally available). The diff
-     * field will contain the normal hunk-only diff as a fallback.
+     * could not produce one after loading/fetching PR commits. The diff field
+     * will contain the normal hunk-only diff as a fallback.
      */
     fullContextUnavailable?: boolean;
 }

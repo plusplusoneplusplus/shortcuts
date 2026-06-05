@@ -4,6 +4,8 @@ import {
     ConversationMetadataPopover,
     getSessionIdFromProcess,
     buildRows,
+    buildSummaryItems,
+    buildCompactRows,
 } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationMetadataPopover';
 
 beforeEach(() => {
@@ -51,7 +53,7 @@ describe('ConversationMetadataPopover', () => {
         expect(screen.getByText('Conversation metadata')).toBeDefined();
     });
 
-    it('displays process metadata rows', async () => {
+    it('displays compact process metadata rows', async () => {
         renderPopover(BASE_PROCESS, 5);
         const trigger = screen.getByRole('button', { name: /conversation metadata/i });
 
@@ -63,26 +65,26 @@ describe('ConversationMetadataPopover', () => {
         expect(screen.getByText('proc-abc-123')).toBeDefined();
         expect(screen.getByText('Queue Task ID')).toBeDefined();
         expect(screen.getByText('qt-456')).toBeDefined();
-        expect(screen.getByText('Type')).toBeDefined();
+        expect(screen.queryByText('Type')).toBeNull();
         expect(screen.getByText('chat')).toBeDefined();
-        expect(screen.getByText('Status')).toBeDefined();
+        expect(screen.queryByText('Status')).toBeNull();
         expect(screen.getByText('completed')).toBeDefined();
-        expect(screen.getByText('Model')).toBeDefined();
+        expect(screen.queryByText('Model')).toBeNull();
         expect(screen.getByText('gpt-4')).toBeDefined();
-        expect(screen.getByText('Mode')).toBeDefined();
+        expect(screen.queryByText('Mode')).toBeNull();
         expect(screen.getByText('autopilot')).toBeDefined();
-        expect(screen.getByText('Agent Provider')).toBeDefined();
+        expect(screen.queryByText('Agent Provider')).toBeNull();
         expect(screen.getByText('codex')).toBeDefined();
         expect(screen.getByText('Session ID')).toBeDefined();
         expect(screen.getByText('sdk-sess-789')).toBeDefined();
         expect(screen.getByText('Backend')).toBeDefined();
         expect(screen.getByText('copilot-sdk')).toBeDefined();
-        expect(screen.getByText('Working Directory')).toBeDefined();
-        expect(screen.getByText('/home/user/project')).toBeDefined();
+        expect(screen.getByText('Time')).toBeDefined();
+        expect(screen.getByText(/5m 0s/)).toBeDefined();
         expect(screen.getByText('Workspace')).toBeDefined();
-        expect(screen.getByText('my-workspace')).toBeDefined();
-        expect(screen.getByText('Turns')).toBeDefined();
-        expect(screen.getByText('5')).toBeDefined();
+        expect(screen.getByText('my-workspace · /home/user/project · 5 turns')).toBeDefined();
+        expect(screen.queryByText('Working Directory')).toBeNull();
+        expect(screen.queryByText('Turns')).toBeNull();
     });
 
     it('renders popover via createPortal into document.body', async () => {
@@ -194,11 +196,57 @@ describe('ConversationMetadataPopover', () => {
         });
 
         expect(screen.getByText('Process ID')).toBeDefined();
-        expect(screen.getByText('Status')).toBeDefined();
+        expect(screen.queryByText('Status')).toBeNull();
+        expect(screen.getByText('running')).toBeDefined();
         expect(screen.queryByText('Queue Task ID')).toBeNull();
-        expect(screen.getByText('Model')).toBeDefined();
+        expect(screen.queryByText('Model')).toBeNull();
         expect(screen.getByText('default')).toBeDefined();
         expect(screen.queryByText('Working Directory')).toBeNull();
+    });
+});
+
+describe('compact metadata helpers', () => {
+    it('moves short categorical fields into a summary strip', () => {
+        const rows = buildRows(BASE_PROCESS, 5);
+        expect(buildSummaryItems(rows)).toEqual(['chat', 'completed', 'autopilot', 'codex', 'gpt-4']);
+    });
+
+    it('includes reasoning effort as a compact summary item', () => {
+        const rows = buildRows({ ...BASE_PROCESS, config: { reasoningEffort: 'high' } });
+        expect(buildSummaryItems(rows)).toContain('effort high');
+    });
+
+    it('merges time, workspace, and Ralph fields into compact rows', () => {
+        const rows = buildRows({
+            ...BASE_PROCESS,
+            payload: { context: { ralph: {
+                phase: 'executing',
+                sessionId: 'ralph-session-1',
+                currentIteration: 2,
+                originalGoal: 'Make metadata easier to scan',
+            } } },
+        }, 5);
+
+        const compactRows = buildCompactRows(rows);
+        const labels = compactRows.map(row => row.label);
+        expect(labels).toContain('Time');
+        expect(labels).toContain('Workspace');
+        expect(labels).toContain('Ralph');
+        expect(labels).toContain('Goal');
+        expect(labels).not.toContain('Started');
+        expect(labels).not.toContain('Ended');
+        expect(labels).not.toContain('Duration');
+        expect(labels).not.toContain('Working Directory');
+        expect(labels).not.toContain('Turns');
+        expect(labels).not.toContain('Ralph · Phase');
+        expect(labels).not.toContain('Ralph · Session ID');
+        expect(labels).not.toContain('Ralph · Iteration');
+        expect(labels).not.toContain('Ralph · Goal');
+
+        expect(compactRows.find(row => row.label === 'Time')!.value).toContain('5m 0s');
+        expect(compactRows.find(row => row.label === 'Workspace')!.value).toBe('my-workspace · /home/user/project · 5 turns');
+        expect(compactRows.find(row => row.label === 'Ralph')!.value).toBe('executing · iteration 2 · ralph-session-1');
+        expect(compactRows.find(row => row.label === 'Goal')!.value).toBe('Make metadata easier to scan');
     });
 });
 
@@ -369,7 +417,7 @@ describe('ConversationMetadataPopover – system prompt row', () => {
             fireEvent.click(trigger);
         });
 
-        expect(screen.getByText('System Prompt')).toBeDefined();
+        expect(screen.getByText('System')).toBeDefined();
         const charCount = (processWithPrompt.metadata.systemPrompt as string).length;
         expect(screen.getByText(`${charCount.toLocaleString()} chars`)).toBeDefined();
         expect(screen.getByTitle('View full system prompt')).toBeDefined();
@@ -383,7 +431,7 @@ describe('ConversationMetadataPopover – system prompt row', () => {
             fireEvent.click(trigger);
         });
 
-        expect(screen.queryByText('System Prompt')).toBeNull();
+        expect(screen.queryByText('System')).toBeNull();
     });
 
     it('opens system prompt dialog on view button click', async () => {
@@ -585,8 +633,8 @@ describe('buildRows – reasoning effort', () => {
         render(<ConversationMetadataPopover process={proc} />);
         const trigger = screen.getByRole('button', { name: /conversation metadata/i });
         await act(async () => { fireEvent.click(trigger); });
-        expect(screen.getByText('Reasoning Effort')).toBeDefined();
-        expect(screen.getByText('xhigh')).toBeDefined();
+        expect(screen.queryByText('Reasoning Effort')).toBeNull();
+        expect(screen.getByText('effort xhigh')).toBeDefined();
     });
 
     it('is positioned after Agent Provider row', () => {

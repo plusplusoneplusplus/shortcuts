@@ -65,6 +65,7 @@ export interface AdminResolvedConfig {
   workflows?: { enabled?: boolean };
   pullRequests?: { enabled?: boolean; suggestions?: boolean };
   servers?: { enabled?: boolean };
+  forEach?: { enabled?: boolean };
   excalidraw?: { enabled?: boolean };
   codex?: { enabled?: boolean };
   claude?: { enabled?: boolean };
@@ -74,6 +75,13 @@ export interface AdminResolvedConfig {
     autoRefresh?: {
       enabled?: boolean;
     };
+  };
+  features?: {
+    autoMemoryPromotion?: boolean;
+    focusedDiff?: boolean;
+    gitCommitLookup?: boolean;
+    gitCrossCloneCherryPick?: boolean;
+    sessionContextAttachments?: boolean;
   };
   workItems?: { hierarchy?: { enabled?: boolean }; sync?: { enabled?: boolean }; aiAuthoring?: { enabled?: boolean } };
   effortLevels?: { enabled?: boolean };
@@ -126,6 +134,7 @@ export interface AdminConfigUpdate {
   'pullRequests.enabled'?: boolean;
   'pullRequests.suggestions'?: boolean;
   'servers.enabled'?: boolean;
+  'forEach.enabled'?: boolean;
   'excalidraw.enabled'?: boolean;
   'mcpOauth.enabled'?: boolean;
   'mcpOauth.autoRefresh.enabled'?: boolean;
@@ -135,6 +144,8 @@ export interface AdminConfigUpdate {
   'workItems.hierarchy.enabled'?: boolean;
   'workItems.sync.enabled'?: boolean;
   'workItems.aiAuthoring.enabled'?: boolean;
+  'features.gitCrossCloneCherryPick'?: boolean;
+  'features.sessionContextAttachments'?: boolean;
   'effortLevels.enabled'?: boolean;
   [key: string]: unknown;
 }
@@ -158,6 +169,7 @@ export interface RuntimeDashboardConfig {
     pullRequestsSuggestionsEnabled: boolean;
     serversEnabled: boolean;
     ralphEnabled: boolean;
+    forEachEnabled: boolean;
     vimNavigationEnabled: boolean;
     loopsEnabled: boolean;
     excalidrawEnabled: boolean;
@@ -171,6 +183,8 @@ export interface RuntimeDashboardConfig {
     workItemsSyncEnabled: boolean;
     workItemsAiAuthoringEnabled: boolean;
     gitCommitLookupEnabled: boolean;
+    gitCrossCloneCherryPickEnabled: boolean;
+    sessionContextAttachmentsEnabled: boolean;
     effortLevelsEnabled: boolean;
   };
   hostname?: string;

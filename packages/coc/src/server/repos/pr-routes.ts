@@ -42,7 +42,7 @@ import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
 import { computeSummary, parseFullDiff } from '@plusplusoneplusplus/forge';
-import type { IPullRequestsService, ISDKService, ProcessStore } from '@plusplusoneplusplus/forge';
+import type { IPullRequestsService, ISDKService, ProcessStore, ProviderPullRequest } from '@plusplusoneplusplus/forge';
 import { readReviewHistoryCache, fetchAndCacheReviewHistory, readSuggestionsCache, rankAndCacheSuggestions, toPrMetadata } from './pr-suggestions';
 
 // ============================================================================
@@ -222,9 +222,37 @@ function makePrDetailCacheKey(repoId: string, prId: string): string {
     return `${repoId}|${prId}`;
 }
 
-/** Clear all cached PR detail entries. Exported for testing. */
+async function getCachedPullRequestDetail(
+    repoId: string,
+    prId: string,
+    getPullRequest: (repoId: string, prId: string) => Promise<ProviderPullRequest>,
+): Promise<ProviderPullRequest> {
+    const cacheKey = makePrDetailCacheKey(repoId, prId);
+    const cached = prDetailCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+        console.debug(`[pr-detail-cache] hit key=${cacheKey}`);
+        return cached.data as ProviderPullRequest;
+    }
+
+    if (cached) {
+        console.debug(`[pr-detail-cache] expired key=${cacheKey}`);
+    } else {
+        console.debug(`[pr-detail-cache] miss key=${cacheKey}`);
+    }
+
+    const pr = await getPullRequest(repoId, prId);
+    prDetailCache.set(cacheKey, { data: pr, expiresAt: Date.now() + PR_DETAIL_TTL_MS });
+    console.debug(`[pr-detail-cache] set key=${cacheKey}`);
+    return pr;
+}
+
+/** Clear all cached PR detail entries (and all sub-endpoint caches). Exported for testing. */
 export function clearPrDetailCache(): void {
     prDetailCache.clear();
+    prThreadsCache.clear();
+    prCommitsCache.clear();
+    prReviewersCache.clear();
+    prChecksCache.clear();
 }
 
 // ============================================================================
@@ -250,29 +278,196 @@ function clearPrDiffCacheEntry(repoId: string, prId: string): void {
     prDiffCache.delete(makePrDiffCacheKey(repoId, prId));
 }
 
+// ============================================================================
+// PR sub-endpoint caches (threads/commits/reviewers/checks)
+// ============================================================================
+
+const PR_THREADS_TTL_MS  = 10 * 60 * 1000;
+const PR_COMMITS_TTL_MS  = 30 * 60 * 1000;
+const PR_REVIEWERS_TTL_MS = 30 * 60 * 1000;
+const PR_CHECKS_TTL_MS   = 10 * 60 * 1000;
+
+interface PrSubCacheEntry {
+    data: any;
+    expiresAt: number;
+}
+
+const prThreadsCache   = new Map<string, PrSubCacheEntry>();
+const prCommitsCache   = new Map<string, PrSubCacheEntry>();
+const prReviewersCache = new Map<string, PrSubCacheEntry>();
+const prChecksCache    = new Map<string, PrSubCacheEntry>();
+
+/** Cache key for per-PR sub-endpoint caches — same format as detail cache. */
+function makePrSubCacheKey(repoId: string, prId: string): string {
+    return `${repoId}|${prId}`;
+}
+
+/** Clear all cached PR threads entries. Exported for testing. */
+export function clearPrThreadsCache(): void {
+    prThreadsCache.clear();
+}
+
+/** Clear all cached PR commits entries. Exported for testing. */
+export function clearPrCommitsCache(): void {
+    prCommitsCache.clear();
+}
+
+/** Clear all cached PR reviewers entries. Exported for testing. */
+export function clearPrReviewersCache(): void {
+    prReviewersCache.clear();
+}
+
+/** Clear all cached PR checks entries. Exported for testing. */
+export function clearPrChecksCache(): void {
+    prChecksCache.clear();
+}
+
+/** Evict all per-PR sub-endpoint cache entries for one PR (used by force-refresh). */
+function clearPrSubCacheEntries(repoId: string, prId: string): void {
+    const key = makePrSubCacheKey(repoId, prId);
+    prThreadsCache.delete(key);
+    prCommitsCache.delete(key);
+    prReviewersCache.delete(key);
+    prChecksCache.delete(key);
+}
+
+type FullContextUnavailableReason =
+    | 'pr-detail-unavailable'
+    | 'missing-pr-shas'
+    | 'missing-local-path'
+    | 'git-diff-failed'
+    | 'git-fetch-failed';
+
+interface FullContextDiffResult {
+    diff: string | null;
+    unavailableReason?: FullContextUnavailableReason;
+}
+
+const execFileAsync = promisify(execFile);
+
+function isMissingCommitError(err: unknown): boolean {
+    const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+    return message.includes('bad object')
+        || message.includes('unknown revision')
+        || message.includes('ambiguous argument')
+        || message.includes('invalid object')
+        || message.includes('needed a single revision')
+        || message.includes('not a valid object name');
+}
+
+async function runGit(localPath: string, args: string[], timeout = 10_000): Promise<string> {
+    const { stdout } = await execFileAsync(
+        'git',
+        args,
+        { cwd: localPath, encoding: 'utf-8', timeout },
+    );
+    return stdout;
+}
+
+async function hasGitCommit(localPath: string, sha: string): Promise<boolean> {
+    try {
+        await runGit(localPath, ['cat-file', '-e', `${sha}^{commit}`]);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function pushUnique(values: string[], value: string | undefined): void {
+    const trimmed = value?.trim();
+    if (trimmed && !values.includes(trimmed)) {
+        values.push(trimmed);
+    }
+}
+
+function buildFetchCandidates(prId: string, prData: ProviderPullRequest, missingBase: boolean, missingHead: boolean): string[] {
+    const candidates: string[] = [];
+    if (missingBase) {
+        pushUnique(candidates, prData.baseSha);
+        pushUnique(candidates, prData.targetBranch);
+        pushUnique(candidates, prData.targetBranch ? `refs/heads/${prData.targetBranch}` : undefined);
+    }
+
+    if (missingHead) {
+        pushUnique(candidates, prData.headSha);
+        pushUnique(candidates, prData.sourceBranch);
+        pushUnique(candidates, prData.sourceBranch ? `refs/heads/${prData.sourceBranch}` : undefined);
+        pushUnique(candidates, `refs/pull/${prId}/head`);
+    }
+
+    return candidates;
+}
+
+async function fetchMissingPrCommits(
+    localPath: string,
+    remote: string,
+    prId: string,
+    prData: ProviderPullRequest,
+): Promise<boolean> {
+    const baseSha = prData.baseSha;
+    const headSha = prData.headSha;
+    if (!baseSha || !headSha) return false;
+
+    let missingBase = !(await hasGitCommit(localPath, baseSha));
+    let missingHead = !(await hasGitCommit(localPath, headSha));
+    if (!missingBase && !missingHead) return true;
+
+    const candidates = buildFetchCandidates(prId, prData, missingBase, missingHead);
+    for (const candidate of candidates) {
+        try {
+            await runGit(localPath, ['fetch', '--no-tags', '--quiet', remote, candidate], 30_000);
+        } catch (err) {
+            console.warn(`[pr-full-context] failed to fetch ${candidate}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+
+        missingBase = !(await hasGitCommit(localPath, baseSha));
+        missingHead = !(await hasGitCommit(localPath, headSha));
+        if (!missingBase && !missingHead) return true;
+    }
+
+    return false;
+}
+
 /**
  * Attempt to produce a full-file-context diff by running `git diff -U99999`
- * with the PR's base and head SHAs against the local repo checkout.
- *
- * Returns the diff string on success, or null if git is unavailable,
- * the SHAs are not present locally (e.g. fork commits), or any other error.
+ * with the PR's base and head SHAs against the local repo checkout. When the
+ * SHAs are missing locally, fetch PR refs/commits into the requested repo
+ * without checking out branches or modifying the working tree.
  */
 async function getFullContextFileDiff(
     localPath: string,
-    baseSha: string,
-    headSha: string,
+    remote: string,
+    prId: string,
+    prData: ProviderPullRequest,
     filePath: string,
-): Promise<string | null> {
-    const execFileAsync = promisify(execFile);
+): Promise<FullContextDiffResult> {
+    const baseSha = prData.baseSha;
+    const headSha = prData.headSha;
+    if (!baseSha || !headSha) {
+        return { diff: null, unavailableReason: 'missing-pr-shas' };
+    }
+
     try {
-        const { stdout } = await execFileAsync(
-            'git',
-            ['diff', '-U99999', baseSha, headSha, '--', filePath],
-            { cwd: localPath, encoding: 'utf-8', timeout: 10_000 },
-        );
-        return stdout || null;
-    } catch {
-        return null;
+        const stdout = await runGit(localPath, ['diff', '-U99999', baseSha, headSha, '--', filePath]);
+        return { diff: stdout || null, unavailableReason: stdout ? undefined : 'git-diff-failed' };
+    } catch (err) {
+        if (!isMissingCommitError(err)) {
+            console.warn(`[pr-full-context] git diff failed before fetch: ${err instanceof Error ? err.message : String(err)}`);
+            return { diff: null, unavailableReason: 'git-diff-failed' };
+        }
+    }
+
+    const fetched = await fetchMissingPrCommits(localPath, remote, prId, prData);
+    if (!fetched) {
+        return { diff: null, unavailableReason: 'git-fetch-failed' };
+    }
+
+    try {
+        const stdout = await runGit(localPath, ['diff', '-U99999', baseSha, headSha, '--', filePath]);
+        return { diff: stdout || null, unavailableReason: stdout ? undefined : 'git-diff-failed' };
+    } catch (err) {
+        console.warn(`[pr-full-context] git diff failed after fetch: ${err instanceof Error ? err.message : String(err)}`);
+        return { diff: null, unavailableReason: 'git-diff-failed' };
     }
 }
 
@@ -610,6 +805,8 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                     prDetailCache.delete(cacheKey);
                     // Also evict the diff cache so the next diff request refetches.
                     clearPrDiffCacheEntry(repoId, prId);
+                    // Evict all sub-endpoint caches for this PR.
+                    clearPrSubCacheEntries(repoId, prId);
                     console.debug(`[pr-detail-cache] bypass key=${cacheKey}`);
                 }
 
@@ -636,9 +833,7 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                     return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
                 }
 
-                const pr = await prSvc.getPullRequest(repoId, prId);
-                prDetailCache.set(cacheKey, { data: pr, expiresAt: Date.now() + PR_DETAIL_TTL_MS });
-                console.debug(`[pr-detail-cache] set key=${cacheKey}`);
+                const pr = await getCachedPullRequestDetail(repoId, prId, prSvc.getPullRequest.bind(prSvc));
                 sendJson(res, pr);
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
@@ -661,6 +856,13 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
             try {
                 const repoId = decodeURIComponent(match![1]);
                 const prId = decodeURIComponent(match![2]);
+                const cacheKey = makePrSubCacheKey(repoId, prId);
+
+                const cached = prThreadsCache.get(cacheKey);
+                if (cached && cached.expiresAt > Date.now()) {
+                    console.debug(`[pr-threads-cache] hit key=${cacheKey}`);
+                    return sendJson(res, cached.data);
+                }
 
                 const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
@@ -676,7 +878,10 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 }
 
                 const threads = await prSvc.getThreads(repoId, prId);
-                sendJson(res, { threads });
+                const result = { threads };
+                prThreadsCache.set(cacheKey, { data: result, expiresAt: Date.now() + PR_THREADS_TTL_MS });
+                console.debug(`[pr-threads-cache] set key=${cacheKey}`);
+                sendJson(res, result);
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
                     send404(res, err.message);
@@ -698,6 +903,13 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
             try {
                 const repoId = decodeURIComponent(match![1]);
                 const prId = decodeURIComponent(match![2]);
+                const cacheKey = makePrSubCacheKey(repoId, prId);
+
+                const cached = prReviewersCache.get(cacheKey);
+                if (cached && cached.expiresAt > Date.now()) {
+                    console.debug(`[pr-reviewers-cache] hit key=${cacheKey}`);
+                    return sendJson(res, cached.data);
+                }
 
                 const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
@@ -713,7 +925,10 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 }
 
                 const reviewers = await prSvc.getReviewers(repoId, prId);
-                sendJson(res, { reviewers });
+                const result = { reviewers };
+                prReviewersCache.set(cacheKey, { data: result, expiresAt: Date.now() + PR_REVIEWERS_TTL_MS });
+                console.debug(`[pr-reviewers-cache] set key=${cacheKey}`);
+                sendJson(res, result);
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
                     send404(res, err.message);
@@ -735,6 +950,13 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
             try {
                 const repoId = decodeURIComponent(match![1]);
                 const prId = decodeURIComponent(match![2]);
+                const cacheKey = makePrSubCacheKey(repoId, prId);
+
+                const cached = prCommitsCache.get(cacheKey);
+                if (cached && cached.expiresAt > Date.now()) {
+                    console.debug(`[pr-commits-cache] hit key=${cacheKey}`);
+                    return sendJson(res, cached.data);
+                }
 
                 const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
@@ -754,7 +976,10 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 }
 
                 const commits = await prSvc.getCommits(repoId, prId);
-                sendJson(res, { commits });
+                const result = { commits };
+                prCommitsCache.set(cacheKey, { data: result, expiresAt: Date.now() + PR_COMMITS_TTL_MS });
+                console.debug(`[pr-commits-cache] set key=${cacheKey}`);
+                sendJson(res, result);
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
                     send404(res, err.message);
@@ -776,6 +1001,13 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
             try {
                 const repoId = decodeURIComponent(match![1]);
                 const prId = decodeURIComponent(match![2]);
+                const cacheKey = makePrSubCacheKey(repoId, prId);
+
+                const cached = prChecksCache.get(cacheKey);
+                if (cached && cached.expiresAt > Date.now()) {
+                    console.debug(`[pr-checks-cache] hit key=${cacheKey}`);
+                    return sendJson(res, cached.data);
+                }
 
                 const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
@@ -795,7 +1027,10 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 }
 
                 const checks = await prSvc.getChecks(repoId, prId);
-                sendJson(res, { checks });
+                const result = { checks };
+                prChecksCache.set(cacheKey, { data: result, expiresAt: Date.now() + PR_CHECKS_TTL_MS });
+                console.debug(`[pr-checks-cache] set key=${cacheKey}`);
+                sendJson(res, result);
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
                     send404(res, err.message);
@@ -846,20 +1081,34 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 const fileDiff = extractFileDiffFromCombined(combinedDiff, filePath);
 
                 if (fullContext) {
-                    // Try to get a full-context diff via local git
-                    const cachedDetail = prDetailCache.get(makePrDetailCacheKey(repoId, prId));
-                    const prData = cachedDetail?.data as { headSha?: string; baseSha?: string } | undefined;
-                    const baseSha = prData?.baseSha;
-                    const headSha = prData?.headSha;
+                    let prData: ProviderPullRequest;
+                    try {
+                        prData = await getCachedPullRequestDetail(repoId, prId, prSvc.getPullRequest.bind(prSvc));
+                    } catch (err) {
+                        console.warn(`[pr-full-context] failed to load PR detail: ${err instanceof Error ? err.message : String(err)}`);
+                        return sendJson(res, {
+                            diff: fileDiff ?? '',
+                            fullContextUnavailable: true,
+                            fullContextUnavailableReason: 'pr-detail-unavailable',
+                        });
+                    }
 
-                    if (baseSha && headSha && repo.localPath) {
-                        const fullCtxDiff = await getFullContextFileDiff(repo.localPath, baseSha, headSha, filePath);
-                        if (fullCtxDiff) {
-                            return sendJson(res, { diff: fullCtxDiff, fullContextUnavailable: false });
+                    let unavailableReason: FullContextUnavailableReason = 'missing-local-path';
+
+                    if (repo.localPath) {
+                        const fullCtxDiff = await getFullContextFileDiff(
+                            repo.localPath,
+                            repo.remoteUrl ?? 'origin',
+                            prId,
+                            prData,
+                            filePath,
+                        );
+                        unavailableReason = fullCtxDiff.unavailableReason ?? 'git-diff-failed';
+                        if (fullCtxDiff.diff) {
+                            return sendJson(res, { diff: fullCtxDiff.diff, fullContextUnavailable: false });
                         }
                     }
-                    // Could not produce full-context diff; return hunk diff with flag
-                    return sendJson(res, { diff: fileDiff ?? '', fullContextUnavailable: true });
+                    return sendJson(res, { diff: fileDiff ?? '', fullContextUnavailable: true, fullContextUnavailableReason: unavailableReason });
                 }
 
                 sendJson(res, { diff: fileDiff ?? '' });

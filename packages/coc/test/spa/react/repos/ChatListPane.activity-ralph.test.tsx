@@ -17,6 +17,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { fireEvent, screen, within } from '@testing-library/react';
 import { renderWithProviders } from '../test-utils';
 import { ChatListPane } from '../../../../src/server/spa/client/react/features/chat/ChatListPane';
+import { RALPH_SESSION_CONTEXT_DRAG_MIME } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 
 // ── Mocks ──────────────────────────────────────────────────────────────
 
@@ -45,6 +46,7 @@ vi.mock('../../../../src/server/spa/client/react/tasks/comments/ContextMenu', ()
 
 let mockPinnedChatIds = new Set<string>();
 let mockArchivedChatIds = new Set<string>();
+let mockSessionContextAttachmentsEnabled = false;
 vi.mock('../../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
     ChatPrefsSync: () => null,
     useChatPrefs: () => ({
@@ -93,6 +95,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '',
     isRalphEnabled: () => true,
     isLoopsEnabled: () => false,
+    isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
@@ -183,6 +186,7 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
         vi.clearAllMocks();
         mockPinnedChatIds = new Set();
         mockArchivedChatIds = new Set();
+        mockSessionContextAttachmentsEnabled = false;
         mockDisplaySettings = { taskCardDensity: 'normal', showReportIntent: false, historyGrouping: true };
         try { window.localStorage.removeItem('coc-activity-scope'); } catch { /* ignore */ }
     });
@@ -203,6 +207,89 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
         const sessionRows = screen.getAllByTestId('ralph-session-row');
         expect(sessionRows).toHaveLength(1);
         expect(sessionRows[0].getAttribute('data-session-id')).toBe(SESSION_ID);
+    });
+
+    it('does not make Ralph session groups drag sources when context attachments are disabled', () => {
+        renderActivity(fixtureFiveIterPlusThreeStandalone(), { workspaceId: 'ws-1' });
+
+        const body = screen.getByTestId('ralph-session-body');
+        expect(body.getAttribute('draggable')).not.toBe('true');
+        expect(body.getAttribute('data-session-context-source')).toBeNull();
+    });
+
+    it('sets a pointer-only Ralph session drag payload when context attachments are enabled', () => {
+        mockSessionContextAttachmentsEnabled = true;
+        renderActivity(fixtureFiveIterPlusThreeStandalone(), { workspaceId: 'ws-1' });
+
+        const body = screen.getByTestId('ralph-session-body');
+        expect(body.getAttribute('draggable')).toBe('true');
+        expect(body.getAttribute('data-session-context-source')).toBe('true');
+        expect(body.getAttribute('data-session-context-kind')).toBe('ralph-session');
+        expect(body.getAttribute('data-session-context-status')).toBe('completed');
+
+        const dataTransfer = { setData: vi.fn(), effectAllowed: 'move' as DataTransfer['effectAllowed'] };
+        fireEvent.dragStart(body, { dataTransfer });
+
+        expect(dataTransfer.effectAllowed).toBe('copy');
+        const [, rawPayload] = dataTransfer.setData.mock.calls.find((call: any[]) => call[0] === RALPH_SESSION_CONTEXT_DRAG_MIME)!;
+        const payload = JSON.parse(rawPayload);
+        expect(payload).toMatchObject({
+            kind: 'coc.ralph-session-context',
+            version: 1,
+            sourceWorkspaceId: 'ws-1',
+            sourceRalphSessionId: SESSION_ID,
+            phase: 'complete',
+            status: 'completed',
+            title: 'Ralph iteration 1',
+            displayLabel: 'Ralph iteration 1 - 5 iter',
+            childProcessIds: [
+                `ralph-${SESSION_ID}-1`,
+                `ralph-${SESSION_ID}-2`,
+                `ralph-${SESSION_ID}-3`,
+                `ralph-${SESSION_ID}-4`,
+                `ralph-${SESSION_ID}-5`,
+            ],
+            processCount: 5,
+            iterationCount: 5,
+        });
+    });
+
+    it('keeps failed Ralph session groups draggable when context attachments are enabled', () => {
+        mockSessionContextAttachmentsEnabled = true;
+        const failed = {
+            ...makeRalphIteration(1),
+            id: 'ralph-failed-1',
+            status: 'failed',
+            payload: {
+                mode: 'ralph',
+                context: {
+                    ralph: {
+                        sessionId: 'ralph-failed-session',
+                        phase: 'failed',
+                        currentIteration: 1,
+                    },
+                },
+            },
+        };
+
+        renderActivity([failed], { workspaceId: 'ws-1' });
+
+        const body = screen.getByTestId('ralph-session-body');
+        expect(body.getAttribute('draggable')).toBe('true');
+        expect(body.getAttribute('data-session-phase')).toBe('failed');
+        expect(body.getAttribute('data-session-context-status')).toBe('failed');
+
+        const dataTransfer = { setData: vi.fn(), effectAllowed: 'move' as DataTransfer['effectAllowed'] };
+        fireEvent.dragStart(body, { dataTransfer });
+        const [, rawPayload] = dataTransfer.setData.mock.calls.find((call: any[]) => call[0] === RALPH_SESSION_CONTEXT_DRAG_MIME)!;
+        const payload = JSON.parse(rawPayload);
+        expect(payload).toMatchObject({
+            sourceWorkspaceId: 'ws-1',
+            sourceRalphSessionId: 'ralph-failed-session',
+            phase: 'failed',
+            status: 'failed',
+            childProcessIds: ['ralph-failed-1'],
+        });
     });
 
     it('keeps standalone (non-ralph) chats visible alongside the session row', () => {
@@ -480,6 +567,7 @@ describe('ChatListPane Activity tab — ralph session context menu', () => {
         lastContextMenuProps = null;
         mockPinnedChatIds = new Set();
         mockArchivedChatIds = new Set();
+        mockSessionContextAttachmentsEnabled = false;
         mockDisplaySettings = { taskCardDensity: 'normal', showReportIntent: false, historyGrouping: true };
         try { window.localStorage.removeItem('coc-activity-scope'); } catch { /* ignore */ }
     });

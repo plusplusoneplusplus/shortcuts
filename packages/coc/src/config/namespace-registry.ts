@@ -30,6 +30,7 @@ export type ResolvedConfigNamespaceValues = Pick<
     | 'pullRequests'
     | 'servers'
     | 'ralph'
+    | 'forEach'
     | 'vimNavigation'
     | 'loops'
     | 'mcpOauth'
@@ -73,6 +74,7 @@ const PULL_REQUESTS_SOURCE_KEYS = ['pullRequests.enabled', 'pullRequests.suggest
 const SERVERS_SOURCE_KEYS = ['servers.enabled'] as const;
 const RALPH_SOURCE_KEYS = ['ralph.enabled'] as const;
 const RALPH_FINAL_CHECK_SOURCE_KEYS = ['ralph.finalCheck.maxGapFixLoops'] as const;
+const FOR_EACH_SOURCE_KEYS = ['forEach.enabled'] as const;
 const VIM_NAVIGATION_SOURCE_KEYS = ['vimNavigation.enabled'] as const;
 const LOOPS_SOURCE_KEYS = ['loops.enabled'] as const;
 const MCP_OAUTH_SOURCE_KEYS = ['mcpOauth.enabled'] as const;
@@ -81,7 +83,12 @@ const EXCALIDRAW_SOURCE_KEYS = ['excalidraw.enabled'] as const;
 const CONTAINER_DEFAULT_AGENT_SOURCE_KEYS = ['containerDefaultAgent.enabled'] as const;
 const CODEX_SOURCE_KEYS = ['codex.enabled'] as const;
 const CLAUDE_SOURCE_KEYS = ['claude.enabled'] as const;
-const FEATURES_SOURCE_KEYS = ['features.autoMemoryPromotion', 'features.focusedDiff'] as const;
+const FEATURES_SOURCE_KEYS = [
+    'features.autoMemoryPromotion',
+    'features.focusedDiff',
+    'features.gitCrossCloneCherryPick',
+    'features.sessionContextAttachments',
+] as const;
 const WORK_ITEMS_HIERARCHY_SOURCE_KEYS = ['workItems.hierarchy.enabled'] as const;
 const WORK_ITEMS_SYNC_SOURCE_KEYS = ['workItems.sync.enabled'] as const;
 const WORK_ITEMS_AI_AUTHORING_SOURCE_KEYS = ['workItems.aiAuthoring.enabled'] as const;
@@ -113,6 +120,7 @@ export const CONFIG_NAMESPACE_SOURCE_KEYS = [
     ...SERVERS_SOURCE_KEYS,
     ...RALPH_SOURCE_KEYS,
     ...RALPH_FINAL_CHECK_SOURCE_KEYS,
+    ...FOR_EACH_SOURCE_KEYS,
     ...VIM_NAVIGATION_SOURCE_KEYS,
     ...LOOPS_SOURCE_KEYS,
     ...MCP_OAUTH_SOURCE_KEYS,
@@ -275,6 +283,11 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
             }),
         },
         {
+            name: 'forEach',
+            sourceDescriptors: [source('forEach.', ['forEach'], FOR_EACH_SOURCE_KEYS)],
+            merge: (base, override) => ({ forEach: { enabled: override?.forEach?.enabled ?? base.forEach?.enabled ?? false } }),
+        },
+        {
             name: 'vimNavigation',
             sourceDescriptors: [source('vimNavigation.', ['vimNavigation'], VIM_NAVIGATION_SOURCE_KEYS)],
             merge: (base, override) => ({ vimNavigation: { enabled: override?.vimNavigation?.enabled ?? base.vimNavigation?.enabled ?? false } }),
@@ -329,6 +342,8 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
                     autoMemoryPromotion: override?.features?.autoMemoryPromotion ?? base.features?.autoMemoryPromotion ?? false,
                     focusedDiff: override?.features?.focusedDiff ?? base.features?.focusedDiff ?? false,
                     gitCommitLookup: override?.features?.gitCommitLookup ?? base.features?.gitCommitLookup ?? false,
+                    gitCrossCloneCherryPick: override?.features?.gitCrossCloneCherryPick ?? base.features?.gitCrossCloneCherryPick ?? false,
+                    sessionContextAttachments: override?.features?.sessionContextAttachments ?? base.features?.sessionContextAttachments ?? false,
                 },
             }),
         },

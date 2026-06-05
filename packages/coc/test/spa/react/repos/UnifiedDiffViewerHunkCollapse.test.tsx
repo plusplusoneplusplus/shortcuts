@@ -5,7 +5,7 @@
  * provided, hunks whose category is not in activeFilters collapse into a
  * single compact summary row instead of disappearing. Reviewers can
  * expand an individual collapsed hunk without resetting filters, and
- * setting activeFilters back to all four categories ("Show all") restores
+ * setting activeFilters back to all categories ("Show all") restores
  * everything.
  */
 
@@ -41,9 +41,70 @@ const HUNKS: HunkClassification[] = [
     { file: 'foo.ts', hunkIndex: 1, category: 'generated', intensity: 'low', reason: 'Generated boilerplate' },
 ];
 
+const RICH_HUNKS: HunkClassification[] = [
+    {
+        file: 'foo.ts',
+        hunkIndex: 0,
+        category: 'logic',
+        intensity: 'high',
+        reason: 'Touches core logic path',
+        summaryComment: 'Refresh behavior now rejects expired tokens before issuing access.',
+        critical: {
+            label: 'auth API',
+            impactSummary: 'Token refresh behavior affects authenticated clients.',
+            usages: [
+                {
+                    file: 'src/server/routes/auth.ts',
+                    symbol: 'refreshToken',
+                    line: 42,
+                    description: 'Route handler invokes the changed helper.',
+                },
+            ],
+            callPath: [
+                { file: 'src/server/routes/auth.ts', symbol: 'POST /auth/refresh' },
+                { file: 'src/server/auth.ts', symbol: 'refreshToken', line: 88 },
+            ],
+        },
+    },
+    {
+        file: 'foo.ts',
+        hunkIndex: 1,
+        category: 'test',
+        intensity: 'low',
+        reason: 'Adds coverage for refresh expiry',
+        testFidelityComment: 'High fidelity: exercises the real route with a realistic expired token.',
+    },
+];
+
+const NOT_DETERMINED_HUNKS: HunkClassification[] = [
+    {
+        file: 'foo.ts',
+        hunkIndex: 0,
+        category: 'logic',
+        intensity: 'high',
+        reason: 'Touches core logic path',
+        summaryComment: 'Refresh behavior now rejects expired tokens before issuing access.',
+        critical: {
+            label: 'auth API',
+            impactSummary: 'Token refresh behavior affects authenticated clients.',
+            usages: [],
+            callPath: [],
+            usageNotDetermined: true,
+            callStackNotDetermined: true,
+        },
+    },
+    { file: 'foo.ts', hunkIndex: 1, category: 'generated', intensity: 'low', reason: 'Generated boilerplate' },
+];
+
 function makeGetHunkClassification() {
     return (file: string, idx: number): HunkClassification | undefined => {
         return HUNKS.find(h => h.file === file && h.hunkIndex === idx);
+    };
+}
+
+function makeGetRichHunkClassification(classifications: HunkClassification[]) {
+    return (file: string, idx: number): HunkClassification | undefined => {
+        return classifications.find(h => h.file === file && h.hunkIndex === idx);
     };
 }
 
@@ -247,5 +308,65 @@ describe('UnifiedDiffViewer — AC-02 hunk collapse', () => {
         summaries = screen.getAllByTestId('collapsed-hunk-summary');
         expect(summaries).toHaveLength(2);
         expect(summaries[1]).toHaveTextContent('Generated');
+    });
+
+    it('renders test fidelity, logic summary, and critical evidence near hunk headers', () => {
+        render(
+            <UnifiedDiffViewer
+                diff={TWO_HUNK_DIFF}
+                fileName="foo.ts"
+                filePath="foo.ts"
+                getHunkClassification={makeGetRichHunkClassification(RICH_HUNKS)}
+                activeFilters={new Set<HunkCategory>(HUNK_CATEGORIES)}
+            />,
+        );
+
+        expect(screen.getByTestId('hunk-summary-comment')).toHaveTextContent(
+            'Refresh behavior now rejects expired tokens before issuing access.',
+        );
+        expect(screen.getByTestId('hunk-test-fidelity-comment')).toHaveTextContent(
+            'High fidelity: exercises the real route with a realistic expired token.',
+        );
+        expect(screen.getByTestId('hunk-critical-marker')).toHaveTextContent('! Critical');
+        expect(screen.getByTestId('hunk-critical-guidance')).toHaveTextContent('auth API');
+        expect(screen.getByTestId('hunk-critical-usages')).toHaveTextContent(
+            'refreshToken at src/server/routes/auth.ts:42 - Route handler invokes the changed helper.',
+        );
+        expect(screen.getByTestId('hunk-critical-call-path')).toHaveTextContent(
+            'POST /auth/refresh (src/server/routes/auth.ts) -> refreshToken (src/server/auth.ts:88)',
+        );
+    });
+
+    it('shows explicit not-determined notes for critical usage and call stack evidence', () => {
+        render(
+            <UnifiedDiffViewer
+                diff={TWO_HUNK_DIFF}
+                fileName="foo.ts"
+                filePath="foo.ts"
+                getHunkClassification={makeGetRichHunkClassification(NOT_DETERMINED_HUNKS)}
+                activeFilters={new Set<HunkCategory>(HUNK_CATEGORIES)}
+            />,
+        );
+
+        expect(screen.getByTestId('hunk-critical-usages')).toHaveTextContent('Usage not determined');
+        expect(screen.getByTestId('hunk-critical-call-path')).toHaveTextContent('Call stack not determined');
+    });
+
+    it('includes logic summaries in collapsed hunk summaries', () => {
+        render(
+            <UnifiedDiffViewer
+                diff={TWO_HUNK_DIFF}
+                fileName="foo.ts"
+                filePath="foo.ts"
+                getHunkClassification={makeGetRichHunkClassification(RICH_HUNKS)}
+                activeFilters={new Set<HunkCategory>(['mechanical'])}
+            />,
+        );
+
+        const summaryComments = screen.getAllByTestId('collapsed-hunk-summary-comment');
+        expect(summaryComments[0]).toHaveTextContent(
+            'Refresh behavior now rejects expired tokens before issuing access.',
+        );
+        expect(screen.getByTestId('collapsed-hunk-critical-marker')).toHaveTextContent('! Critical');
     });
 });

@@ -27,6 +27,14 @@ import type { ModelInfo } from '../../hooks/useModels';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
 import type { AttachedContextItem } from './hooks/useAttachedContext';
 import type { ChatAttachment } from '../../types/attachments';
+import { isSessionContextAttachmentsEnabled } from '../../utils/config';
+import type { SessionContextAttachmentDragPayload } from './sessionContextDrag';
+import {
+    dataTransferHasSessionContext,
+    readSessionContextDropPayload,
+    useConversationRetrievalCapability,
+    validateSessionContextDrop,
+} from './sessionContextDrop';
 
 export interface FollowUpInputAreaProps {
     richTextRef: React.RefObject<RichTextInputHandle>;
@@ -58,6 +66,11 @@ export interface FollowUpInputAreaProps {
     } | null;
     attachedContext?: AttachedContextItem[];
     onRemoveAttachedContext?: (id: string) => void;
+    onAttachSessionContext?: (payload: SessionContextAttachmentDragPayload) => void;
+    workspaceId?: string;
+    currentProcessId?: string | null;
+    sessionContextAttachmentsEnabled?: boolean;
+    canRetrieveConversations?: boolean | null;
     task: any;
     slashCommands: {
         handleInputChange: (val: string, cursor: number) => void;
@@ -170,6 +183,11 @@ export function FollowUpInputArea({
     pastePreview,
     attachedContext,
     onRemoveAttachedContext,
+    onAttachSessionContext,
+    workspaceId,
+    currentProcessId,
+    sessionContextAttachmentsEnabled: sessionContextAttachmentsEnabledProp,
+    canRetrieveConversations: canRetrieveConversationsProp,
     task,
     slashCommands,
     modelCommand,
@@ -200,6 +218,15 @@ export function FollowUpInputArea({
     const chipsCtrlHeld = useModifierKey();
 
     const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
+    const [sessionContextDropError, setSessionContextDropError] = useState<string | null>(null);
+    const activeWorkspaceId = workspaceId ?? task?.metadata?.workspaceId ?? task?.workspaceId ?? task?.payload?.workspaceId;
+    const activeProcessId = currentProcessId ?? task?.processId ?? task?.id ?? null;
+    const sessionContextAttachmentsEnabled = sessionContextAttachmentsEnabledProp ?? isSessionContextAttachmentsEnabled();
+    const localCanRetrieveConversations = useConversationRetrievalCapability(
+        activeWorkspaceId,
+        sessionContextAttachmentsEnabled && canRetrieveConversationsProp === undefined,
+    );
+    const canRetrieveConversations = canRetrieveConversationsProp ?? localCanRetrieveConversations;
     // Reset dismiss state whenever a new set of suggestions arrives.
     useEffect(() => { setSuggestionsDismissed(false); }, [suggestions]);
 
@@ -368,6 +395,31 @@ export function FollowUpInputArea({
         }
     }
 
+    function handleSessionContextDragOver(e: React.DragEvent<HTMLElement>) {
+        if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+    }
+
+    function handleSessionContextDrop(e: React.DragEvent<HTMLElement>) {
+        if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        e.preventDefault();
+        const validation = validateSessionContextDrop({
+            payload: readSessionContextDropPayload(e.dataTransfer),
+            featureEnabled: sessionContextAttachmentsEnabled,
+            activeWorkspaceId,
+            currentProcessId: activeProcessId,
+            existingItems: attachedContext ?? [],
+            canRetrieveConversations,
+        });
+        if (!validation.ok) {
+            setSessionContextDropError(validation.error);
+            return;
+        }
+        onAttachSessionContext?.(validation.payload);
+        setSessionContextDropError(null);
+    }
+
     function focusInputAndInsertSlash() {
         const cur = richTextRef.current?.getValue() ?? followUpInput;
         const next = cur.endsWith('/') || cur === '' ? (cur === '' ? '/' : cur) : cur + ' /';
@@ -476,6 +528,9 @@ export function FollowUpInputArea({
             {attachedContext && onRemoveAttachedContext && (
                 <AttachedContextPreviews items={attachedContext} onRemove={onRemoveAttachedContext} />
             )}
+            {sessionContextDropError && (
+                <div className="text-xs text-[#f14c4c]" data-testid="follow-up-session-context-error">{sessionContextDropError}</div>
+            )}
             {attachmentError && (
                 <div className="text-xs text-[#f14c4c]" data-testid="follow-up-attachment-error">{attachmentError}</div>
             )}
@@ -489,7 +544,12 @@ export function FollowUpInputArea({
             )}
             {compactModeSelector ? (
                 /* ── Legacy compact single-row layout for narrow side panels ── */
-                <div className="flex flex-row items-center gap-2" data-testid="chat-input-bar">
+                <div
+                    className="flex flex-row items-center gap-2"
+                    data-testid="chat-input-bar"
+                    onDragOver={handleSessionContextDragOver}
+                    onDrop={handleSessionContextDrop}
+                >
                     {hiddenFileInput}
                     <button
                         type="button"
@@ -607,6 +667,8 @@ export function FollowUpInputArea({
                     <div
                         ref={inputWrapperRef}
                         data-testid="chat-input-bar"
+                        onDragOver={handleSessionContextDragOver}
+                        onDrop={handleSessionContextDrop}
                         className={cn(
                             'relative flex flex-col rounded-lg border bg-white dark:bg-[#1f1f1f] focus-within:ring-2 transition-[box-shadow,border-color]',
                             MODE_BORDER_COLORS[selectedMode].border,

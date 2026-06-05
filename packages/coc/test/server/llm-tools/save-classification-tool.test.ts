@@ -15,7 +15,14 @@ function makeTempDir(): string {
 }
 
 const validClassifications: HunkClassification[] = [
-    { file: 'src/a.ts', hunkIndex: 0, category: 'logic', intensity: 'high', reason: 'New feature' },
+    {
+        file: 'src/a.ts',
+        hunkIndex: 0,
+        category: 'logic',
+        intensity: 'high',
+        reason: 'New feature',
+        summaryComment: 'Adds a new behavior path that reviewers should inspect.',
+    },
     { file: 'src/a.ts', hunkIndex: 1, category: 'mechanical', intensity: 'low', reason: 'Rename' },
 ];
 
@@ -81,12 +88,43 @@ describe('createSaveClassificationTool', () => {
             dataDir, workspaceId: 'ws', repoId: 'repo', prId: '1', headSha: 'sha',
         });
         const bad = await (tool as any).handler({
-            classifications: [{ file: '', hunkIndex: 0, category: 'logic', intensity: 'high', reason: 'x' }],
+            classifications: [{
+                file: '',
+                hunkIndex: 0,
+                category: 'logic',
+                intensity: 'high',
+                reason: 'x',
+                summaryComment: 'Changes logic.',
+            }],
         });
         expect(bad.success).toBe(false);
 
         const good = await (tool as any).handler({ classifications: validClassifications });
         expect(good.success).toBe(true);
         expect(readClassification(dataDir, 'ws', 'repo', '1', 'sha')).toBeDefined();
+    });
+
+    it('accepts simple hunks and rejects missing required rich fields', async () => {
+        const { tool } = createSaveClassificationTool({
+            dataDir, workspaceId: 'ws', repoId: 'repo', prId: '1', headSha: 'sha',
+        });
+
+        const missingTestFidelity = await (tool as any).handler({
+            classifications: [{ file: 'a.test.ts', hunkIndex: 0, category: 'test', intensity: 'low', reason: 'Adds coverage' }],
+        });
+        expect(missingTestFidelity.success).toBe(false);
+        expect(missingTestFidelity.error).toMatch(/testFidelityComment/);
+
+        const simple = await (tool as any).handler({
+            classifications: [{
+                file: 'src/format.ts',
+                hunkIndex: 0,
+                category: 'simple',
+                intensity: 'low',
+                reason: 'Adds a deterministic formatter',
+            }],
+        });
+        expect(simple.success).toBe(true);
+        expect(readClassification(dataDir, 'ws', 'repo', '1', 'sha')?.result.classifications[0].category).toBe('simple');
     });
 });

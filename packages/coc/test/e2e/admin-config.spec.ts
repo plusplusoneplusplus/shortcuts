@@ -284,7 +284,7 @@ test.describe('Admin: Display settings', () => {
         await expect(page.locator('.toast-success')).toContainText('Settings saved');
     });
 
-    test('toggle terminal enabled sends PUT via card save', async ({ page, serverUrl }) => {
+    test('feature toggles send PUT via card save', async ({ page, serverUrl }) => {
         await page.route('**/api/admin/config', (route, req) => {
             if (req.method() === 'GET') {
                 return route.fulfill({
@@ -312,6 +312,8 @@ test.describe('Admin: Display settings', () => {
         // and visibility checks.
         await expect(page.locator('[data-testid="toggle-terminal-enabled"]')).toBeAttached({ timeout: 5000 });
         await page.locator('[data-testid="toggle-terminal-enabled"]').evaluate((el) => (el as HTMLInputElement).click());
+        await expect(page.locator('[data-testid="toggle-session-context-attachments-enabled"]')).toBeAttached({ timeout: 5000 });
+        await page.locator('[data-testid="toggle-session-context-attachments-enabled"]').evaluate((el) => (el as HTMLInputElement).click());
 
         // Click per-card save to persist the change
         const putPromise = page.waitForRequest(req =>
@@ -322,6 +324,7 @@ test.describe('Admin: Display settings', () => {
         const putReq = await putPromise;
         const body = JSON.parse(putReq.postData() ?? '{}');
         expect(typeof body['terminal.enabled']).toBe('boolean');
+        expect(body['features.sessionContextAttachments']).toBe(true);
 
         // Toast 'Settings saved'
         await expect(page.locator('.toast-success')).toBeVisible({ timeout: 5000 });

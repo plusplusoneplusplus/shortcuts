@@ -115,6 +115,7 @@ export type GitOpType =
   | 'merge-abort'
   | 'rebase-reorder'
   | 'reword'
+  | 'cherry-pick-transfer'
   | string;
 
 export type GitOpStatus = 'running' | 'success' | 'failed' | 'interrupted' | string;
@@ -129,6 +130,75 @@ export interface GitOpJob {
   output?: string;
   error?: string;
   pid?: number;
+  metadata?: GitOpMetadata;
+}
+
+export interface GitOpWorkspaceMetadata {
+  id: string;
+  name?: string;
+}
+
+export interface GitOpServerMetadata {
+  id: string;
+  label?: string;
+}
+
+export interface GitOpCommitAuthorMetadata {
+  name?: string;
+  email?: string;
+  date?: string;
+}
+
+export interface GitOpCommitMetadata {
+  hash: string;
+  subject?: string;
+  author?: GitOpCommitAuthorMetadata;
+}
+
+export interface GitPatchTransferOperationMetadata {
+  kind: 'patch-transfer';
+  sourceServer?: GitOpServerMetadata;
+  sourceWorkspace?: GitOpWorkspaceMetadata;
+  sourceCommit?: GitOpCommitMetadata;
+  normalizedSourceRemoteUrl?: string | null;
+  targetWorkspace: GitOpWorkspaceMetadata;
+  targetBranch?: string | null;
+  targetHead?: string;
+  newCommitHash?: string;
+  stashed?: boolean;
+}
+
+export type GitOpMetadata = GitPatchTransferOperationMetadata;
+
+export interface GitFormatPatchPayload {
+  format: 'format-patch';
+  body: string;
+}
+
+export interface GitPatchExportResponse {
+  sourceWorkspace: GitOpWorkspaceMetadata;
+  sourceCommit: GitOpCommitMetadata;
+  normalizedSourceRemoteUrl: string | null;
+  patch: GitFormatPatchPayload;
+}
+
+export interface GitPatchApplyRequest {
+  patch: GitFormatPatchPayload;
+  stashAndContinue?: boolean;
+  sourceServer?: GitOpServerMetadata;
+  sourceWorkspace?: GitOpWorkspaceMetadata;
+  sourceCommit?: GitOpCommitMetadata;
+  normalizedSourceRemoteUrl?: string | null;
+}
+
+export interface GitPatchApplyResponse {
+  success: true;
+  targetWorkspace: GitOpWorkspaceMetadata;
+  targetBranch: string | null;
+  targetHead?: string;
+  newCommitHash?: string;
+  stashed: boolean;
+  operation: GitOpJob;
 }
 
 export interface GitOperationResult {

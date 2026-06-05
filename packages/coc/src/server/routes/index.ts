@@ -78,6 +78,7 @@ import type { WorkItemChangeCommit } from '../work-items/types';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
 import type { ResolvedCLIConfig } from '../../config';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
+import type { ChatProvider } from '../tasks/task-types';
 import type { TerminalSessionManager } from '../terminal/index';
 import { registerRemoteServerRoutes } from '../servers/remote-server-routes';
 import { RemoteServerStore } from '../servers/remote-server-store';
@@ -90,6 +91,10 @@ import { registerRalphNewLoopRoutes } from './ralph-new-loop-routes';
 import { registerRalphPromoteRoutes } from './ralph-promote-routes';
 import { registerRalphLaunchRoutes } from './ralph-launch-routes';
 import { registerRalphResumeRoutes } from './ralph-resume-routes';
+import { registerForEachRoutes } from './for-each-routes';
+import { FileForEachRunStore } from '../for-each/for-each-run-store';
+import { createForEachPlanGenerator } from '../for-each/for-each-plan-generator';
+import { ForEachRunExecutor } from '../for-each/for-each-run-executor';
 import { registerLoopRoutes } from '../loops/loop-handler';
 import type { LoopStore } from '../loops/loop-store';
 import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
@@ -147,9 +152,11 @@ export interface RegisterRoutesOptions {
     remoteServerStore?: RemoteServerStore;
     remoteServerConnector?: DevTunnelConnector;
     remoteServerSshConnector?: SshConnector;
+    getLocalBaseUrl?: () => string | undefined;
     loopStore?: LoopStore;
     loopExecutor?: LoopExecutor;
     mcpOauthManager?: McpOauthManager;
+    resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
     loopEmit?: LoopEventEmit;
     hostname?: string;
     bindAddress?: string;
@@ -195,6 +202,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         store: opts.remoteServerStore ?? new RemoteServerStore(dataDir),
         connector: opts.remoteServerConnector ?? new DevTunnelConnector(),
         sshConnector: opts.remoteServerSshConnector,
+        getLocalBaseUrl: opts.getLocalBaseUrl,
     });
     registerProviderRoutes(routes, dataDir);
     // Provider SDK install routes (on-demand install of @openai/codex-sdk and @anthropic-ai/claude-agent-sdk).
@@ -448,6 +456,37 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerRalphPromoteRoutes(routes, { bridge, store, dataDir });
     registerRalphLaunchRoutes(routes, { bridge, dataDir });
     registerRalphResumeRoutes(routes, { bridge, store, dataDir });
+
+    // For Each routes: dedicated reviewed item-plan mode. Routes are registered
+    // with a live feature guard so admin toggles take effect without restart.
+    const forEachRunStore = new FileForEachRunStore({ dataDir });
+    const forEachRunExecutor = new ForEachRunExecutor({
+        store: forEachRunStore,
+        enqueueChildTask: (task) => bridge.enqueue(task),
+        cancelChildTask: (taskId) => {
+            const executor = bridge.findExecutorForTask(taskId);
+            if (executor) {
+                executor.cancelTask(taskId);
+                return true;
+            }
+            return bridge.findManagerForTask(taskId)?.cancelTask(taskId) ?? false;
+        },
+    });
+    forEachRunExecutor.attachToQueueRegistry(bridge.registry);
+    const forEachPlanGenerator = createForEachPlanGenerator({
+        aiService: resolvedAiService,
+        resolveAiServiceForProvider: opts.resolveAiServiceForProvider,
+    });
+    const getForEachEnabled = opts.runtimeConfigService
+        ? () => opts.runtimeConfigService!.config.forEach?.enabled ?? false
+        : () => opts.resolvedConfig?.forEach?.enabled ?? false;
+    registerForEachRoutes({
+        routes,
+        store: forEachRunStore,
+        getForEachEnabled,
+        generateItemPlan: forEachPlanGenerator.generateItemPlan,
+        executor: forEachRunExecutor,
+    });
 
     // Work item routes
     const workItemStore = new FileWorkItemStore({ dataDir });

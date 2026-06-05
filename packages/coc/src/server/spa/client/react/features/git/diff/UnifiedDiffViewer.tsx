@@ -6,12 +6,12 @@
  * Code content lines are syntax-highlighted using highlight.js token spans.
  */
 
-import { useMemo, useEffect, useState, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
+import { Fragment, useMemo, useEffect, useState, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
 import { getLanguageFromFileName, highlightLine } from '../hooks/useSyntaxHighlight';
 import { DiffContextMenu } from '../../../tasks/comments/DiffContextMenu';
 import type { DiffCommentSelection, DiffComment } from '../../../../comments/diff-comment-types';
 import type { HunkCategory, HunkClassification } from '../../pull-requests/classification-types';
-import { CATEGORY_LABELS } from '../../pull-requests/classification-types';
+import { CATEGORY_LABELS, HUNK_CATEGORIES } from '../../pull-requests/classification-types';
 
 export interface UnifiedDiffViewerProps {
     diff: string;
@@ -42,8 +42,8 @@ export interface UnifiedDiffViewerProps {
      * whose category is not in activeFilters collapse into a single summary
      * row with category, intensity, reason, changed-line count, and an
      * expand control. Reviewer can expand an individual collapsed hunk
-     * without resetting filters; setting activeFilters to all four
-     * categories ("Show all") also restores all hunks.
+     * without resetting filters; setting activeFilters to all categories
+     * ("Show all") also restores all hunks.
      */
     filePath?: string;
     getHunkClassification?: (filePath: string, hunkIndex: number) => HunkClassification | undefined;
@@ -490,6 +490,181 @@ function getBadgeClass(lineComments: DiffComment[]): string {
     return hasOpen ? 'bg-yellow-400 text-white' : 'bg-green-500 text-white';
 }
 
+function classificationPillClass(classification: HunkClassification): string {
+    return classification.intensity === 'high'
+        ? 'bg-[#ffd8b2] text-[#b94a00] dark:bg-[#5a2e00] dark:text-[#ffb380]'
+        : 'bg-[#e0e7ff] text-[#3730a3] dark:bg-[#1e293b] dark:text-[#93c5fd]';
+}
+
+function hunkGuidanceComment(classification: HunkClassification): { label: string; text: string; testId: string } | null {
+    if (classification.category === 'test' && classification.testFidelityComment) {
+        return {
+            label: 'Test fidelity',
+            text: classification.testFidelityComment,
+            testId: 'hunk-test-fidelity-comment',
+        };
+    }
+    if (classification.category === 'logic' && classification.summaryComment) {
+        return {
+            label: 'Summary',
+            text: classification.summaryComment,
+            testId: 'hunk-summary-comment',
+        };
+    }
+    return null;
+}
+
+function locationLabel(file: string, line?: number): string {
+    return line === undefined ? file : `${file}:${line}`;
+}
+
+function CriticalEvidence({
+    classification,
+    compact = false,
+}: {
+    classification: HunkClassification;
+    compact?: boolean;
+}) {
+    const critical = classification.critical;
+    if (!critical) return null;
+
+    return (
+        <div
+            className={compact
+                ? 'mt-1 rounded border border-red-200 bg-red-50/80 px-2 py-1 text-[10px] text-red-900 dark:border-red-800 dark:bg-red-950/30 dark:text-red-100'
+                : 'mt-1 rounded border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-950 dark:border-red-800 dark:bg-red-950/30 dark:text-red-100'}
+            data-testid={compact ? 'collapsed-hunk-critical-guidance' : 'hunk-critical-guidance'}
+        >
+            <div className="flex flex-wrap items-center gap-1">
+                <span className="inline-flex items-center rounded bg-red-600 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+                    ! Critical
+                </span>
+                <span className="font-semibold">{critical.label}</span>
+                <span className="text-red-800 dark:text-red-200">{critical.impactSummary}</span>
+            </div>
+            <div className="mt-1 grid gap-1 text-red-800 dark:text-red-200">
+                <div data-testid={compact ? 'collapsed-hunk-critical-usages' : 'hunk-critical-usages'}>
+                    <span className="font-semibold">Usage: </span>
+                    {critical.usages.length > 0 ? (
+                        <span>
+                            {critical.usages.map((usage, index) => (
+                                <span key={`${usage.file}:${usage.line ?? 'noline'}:${index}`}>
+                                    {index > 0 ? '; ' : ''}
+                                    {usage.symbol ? `${usage.symbol} at ` : ''}
+                                    {locationLabel(usage.file, usage.line)} - {usage.description}
+                                </span>
+                            ))}
+                        </span>
+                    ) : (
+                        <span>Usage not determined</span>
+                    )}
+                </div>
+                <div data-testid={compact ? 'collapsed-hunk-critical-call-path' : 'hunk-critical-call-path'}>
+                    <span className="font-semibold">Call stack: </span>
+                    {critical.callPath.length > 0 ? (
+                        <span>
+                            {critical.callPath.map((frame, index) => (
+                                <span key={`${frame.file}:${frame.symbol}:${frame.line ?? 'noline'}:${index}`}>
+                                    {index > 0 ? ' -> ' : ''}
+                                    {frame.symbol} ({locationLabel(frame.file, frame.line)})
+                                    {frame.description ? ` - ${frame.description}` : ''}
+                                </span>
+                            ))}
+                        </span>
+                    ) : (
+                        <span>Call stack not determined</span>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function HunkGuidanceDetails({
+    classification,
+    compact = false,
+}: {
+    classification: HunkClassification;
+    compact?: boolean;
+}) {
+    const comment = hunkGuidanceComment(classification);
+    if (!comment && !classification.critical) return null;
+
+    return (
+        <div
+            className={compact
+                ? 'mt-1 min-w-0 flex-1 font-sans text-[10px] leading-snug text-[#57606a] dark:text-[#8b949e]'
+                : 'border-y border-[#e0e0e0] bg-[#f8fafc] px-3 py-1.5 font-sans text-[11px] leading-snug text-[#57606a] dark:border-[#3c3c3c] dark:bg-[#1f252d] dark:text-[#8b949e]'}
+            data-testid={compact ? 'collapsed-hunk-rich-guidance' : 'hunk-rich-guidance'}
+        >
+            {comment && (
+                <div data-testid={compact ? `collapsed-${comment.testId}` : comment.testId}>
+                    <span className="font-semibold text-[#24292f] dark:text-[#c9d1d9]">{comment.label}: </span>
+                    <span>{comment.text}</span>
+                </div>
+            )}
+            <CriticalEvidence classification={classification} compact={compact} />
+        </div>
+    );
+}
+
+function CollapsedHunkSummary({
+    hunk,
+    onExpand,
+}: {
+    hunk: HunkRange;
+    onExpand: (hunkIndex: number) => void;
+}) {
+    const classification = hunk.classification;
+    if (!classification) return null;
+
+    return (
+        <div
+            className="whitespace-pre-wrap break-words border-y border-[#e0e0e0] bg-[#f0f4f8] px-2 py-1 text-[#0550ae] dark:border-[#3c3c3c] dark:bg-[#252b33] dark:text-[#79c0ff] cursor-default"
+            data-collapsed-hunk-index={hunk.hunkIndex}
+            data-testid="collapsed-hunk-summary"
+        >
+            <div className="flex items-center gap-2">
+                <span
+                    className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${classificationPillClass(classification)}`}
+                >
+                    {CATEGORY_LABELS[classification.category]}
+                </span>
+                {classification.critical && (
+                    <span
+                        className="inline-flex items-center rounded bg-red-600 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white"
+                        title={classification.critical.impactSummary}
+                        data-testid="collapsed-hunk-critical-marker"
+                    >
+                        ! Critical
+                    </span>
+                )}
+                <span className="text-[10px] uppercase tracking-wide text-[#6e7681] dark:text-[#8b949e]">
+                    {classification.intensity}
+                </span>
+                <span
+                    className="min-w-0 flex-1 truncate text-[#24292f] dark:text-[#c9d1d9]"
+                    title={classification.reason}
+                >
+                    {classification.reason}
+                </span>
+                <span className="shrink-0 whitespace-nowrap text-[10px] text-[#6e7681] dark:text-[#8b949e]">
+                    ~{hunk.changedLines} line{hunk.changedLines === 1 ? '' : 's'}
+                </span>
+                <button
+                    type="button"
+                    className="shrink-0 rounded border border-[#d0d7de] bg-white px-2 py-0.5 text-[11px] text-[#24292f] hover:bg-[#f3f4f6] dark:border-[#3c3c3c] dark:bg-[#1f2937] dark:text-[#c9d1d9] dark:hover:bg-[#2a3340]"
+                    onClick={() => onExpand(hunk.hunkIndex)}
+                    data-testid="collapsed-hunk-expand"
+                >
+                    Expand
+                </button>
+            </div>
+            <HunkGuidanceDetails classification={classification} compact />
+        </div>
+    );
+}
+
 /** Walk node ancestors up to (but not including) boundary to find the nearest element with data-diff-line-index. */
 function findLineElement(node: Node, boundary: Element | null): Element | null {
     let current: Node | null = node;
@@ -545,6 +720,12 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
         [diffLines, filePath, getHunkClassification],
     );
 
+    const hunkByStart = useMemo(() => {
+        const map = new Map<number, HunkRange>();
+        for (const h of hunkRanges) map.set(h.startIdx, h);
+        return map;
+    }, [hunkRanges]);
+
     const collapsedByStart = useMemo(() => {
         const map = new Map<number, HunkRange>();
         if (!activeFilters || !filePath || !getHunkClassification) return map;
@@ -585,7 +766,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
     // any per-hunk overrides so subsequent filter changes start fresh.
     useEffect(() => {
         if (!activeFilters) return;
-        if (activeFilters.size >= 4) {
+        if (activeFilters.size >= HUNK_CATEGORIES.length) {
             setExpandedHunks(prev => (prev.size === 0 ? prev : new Set()));
         }
     }, [activeFilters]);
@@ -791,44 +972,11 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                 if (skipIndices.has(i)) return null;
                 const collapsedHunk = collapsedByStart.get(i);
                 if (collapsedHunk && collapsedHunk.classification) {
-                    const c = collapsedHunk.classification;
-                    return (
-                        <div
-                            key={i}
-                            className="whitespace-pre-wrap break-words flex items-center gap-2 px-2 py-1 bg-[#f0f4f8] dark:bg-[#252b33] text-[#0550ae] dark:text-[#79c0ff] border-y border-[#e0e0e0] dark:border-[#3c3c3c] cursor-default"
-                            data-collapsed-hunk-index={collapsedHunk.hunkIndex}
-                            data-testid="collapsed-hunk-summary"
-                        >
-                            <span
-                                className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${c.intensity === 'high' ? 'bg-[#ffd8b2] text-[#b94a00] dark:bg-[#5a2e00] dark:text-[#ffb380]' : 'bg-[#e0e7ff] text-[#3730a3] dark:bg-[#1e293b] dark:text-[#93c5fd]'}`}
-                            >
-                                {CATEGORY_LABELS[c.category]}
-                            </span>
-                            <span className="text-[10px] uppercase tracking-wide text-[#6e7681] dark:text-[#8b949e]">
-                                {c.intensity}
-                            </span>
-                            <span
-                                className="flex-1 min-w-0 truncate text-[#24292f] dark:text-[#c9d1d9]"
-                                title={c.reason}
-                            >
-                                {c.reason}
-                            </span>
-                            <span className="shrink-0 text-[10px] text-[#6e7681] dark:text-[#8b949e] whitespace-nowrap">
-                                ~{collapsedHunk.changedLines} line{collapsedHunk.changedLines === 1 ? '' : 's'}
-                            </span>
-                            <button
-                                type="button"
-                                className="shrink-0 text-[11px] px-2 py-0.5 rounded bg-white dark:bg-[#1f2937] border border-[#d0d7de] dark:border-[#3c3c3c] text-[#24292f] dark:text-[#c9d1d9] hover:bg-[#f3f4f6] dark:hover:bg-[#2a3340]"
-                                onClick={() => expandHunk(collapsedHunk.hunkIndex)}
-                                data-testid="collapsed-hunk-expand"
-                            >
-                                Expand
-                            </button>
-                        </div>
-                    );
+                    return <CollapsedHunkSummary key={i} hunk={collapsedHunk} onExpand={expandHunk} />;
                 }
                 // AC-03: hunk that was filtered-out but manually expanded (shows badge + Collapse).
                 const expandedHunk = expandedByStart.get(i);
+                const hunk = hunkByStart.get(i);
                 if ((type === 'added' || type === 'removed' || type === 'context') && line.length > 0) {
                     const content = line.slice(1);
                     const intraParts = (type === 'added' || type === 'removed') ? intraLinePartsMap.get(i) : undefined;
@@ -887,9 +1035,11 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                         </div>
                     );
                 }
-                return (
+                const headerClassification = type === 'hunk-header'
+                    ? expandedHunk?.classification ?? hunk?.classification
+                    : undefined;
+                const row = (
                     <div
-                        key={i}
                         className={`whitespace-pre-wrap break-words flex ${LINE_CLASSES[type]} ${getLineHighlightClass(lineCommentMap.get(i))}`}
                         data-diff-line-index={i}
                         data-old-line={enableComments ? (oldLine ?? '') : undefined}
@@ -927,27 +1077,47 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                             </span>
                         )}
                         <span className="px-1 flex-1 min-w-0">{line || '\u00a0'}</span>
-                        {expandedHunk?.classification && type === 'hunk-header' && (
+                        {headerClassification && (
                             <>
                                 <span
-                                    className={`shrink-0 inline-flex items-center self-center px-1.5 py-0.5 mx-1 rounded text-[10px] font-semibold uppercase tracking-wide ${expandedHunk.classification.intensity === 'high' ? 'bg-[#ffd8b2] text-[#b94a00] dark:bg-[#5a2e00] dark:text-[#ffb380]' : 'bg-[#e0e7ff] text-[#3730a3] dark:bg-[#1e293b] dark:text-[#93c5fd]'}`}
-                                    title={expandedHunk.classification.reason}
-                                    data-testid="expanded-hunk-badge"
+                                    className={`mx-1 inline-flex shrink-0 items-center self-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${classificationPillClass(headerClassification)}`}
+                                    title={headerClassification.reason}
+                                    data-testid={expandedHunk ? 'expanded-hunk-badge' : 'hunk-classification-badge'}
                                 >
-                                    {CATEGORY_LABELS[expandedHunk.classification.category]}
+                                    {CATEGORY_LABELS[headerClassification.category]}
                                 </span>
-                                <button
-                                    type="button"
-                                    className="shrink-0 self-center text-[11px] px-2 py-0.5 mx-1 rounded bg-white dark:bg-[#1f2937] border border-[#d0d7de] dark:border-[#3c3c3c] text-[#24292f] dark:text-[#c9d1d9] hover:bg-[#f3f4f6] dark:hover:bg-[#2a3340]"
-                                    onClick={() => collapseHunk(expandedHunk.hunkIndex)}
-                                    data-testid="expanded-hunk-collapse"
-                                >
-                                    Collapse
-                                </button>
+                                {headerClassification.critical && (
+                                    <span
+                                        className="mx-1 inline-flex shrink-0 items-center self-center rounded bg-red-600 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white"
+                                        title={headerClassification.critical.impactSummary}
+                                        data-testid="hunk-critical-marker"
+                                    >
+                                        ! Critical
+                                    </span>
+                                )}
+                                {expandedHunk && (
+                                    <button
+                                        type="button"
+                                        className="mx-1 shrink-0 self-center rounded border border-[#d0d7de] bg-white px-2 py-0.5 text-[11px] text-[#24292f] hover:bg-[#f3f4f6] dark:border-[#3c3c3c] dark:bg-[#1f2937] dark:text-[#c9d1d9] dark:hover:bg-[#2a3340]"
+                                        onClick={() => collapseHunk(expandedHunk.hunkIndex)}
+                                        data-testid="expanded-hunk-collapse"
+                                    >
+                                        Collapse
+                                    </button>
+                                )}
                             </>
                         )}
                     </div>
                 );
+                if (type === 'hunk-header' && headerClassification) {
+                    return (
+                        <Fragment key={i}>
+                            {row}
+                            <HunkGuidanceDetails classification={headerClassification} />
+                        </Fragment>
+                    );
+                }
+                return <Fragment key={i}>{row}</Fragment>;
             })}
         </div>
         {enableComments && (

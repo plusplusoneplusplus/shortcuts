@@ -28,6 +28,7 @@ import {
     getTaskModeKey,
     getTaskModeLabel,
 } from '../../../../src/server/spa/client/react/features/chat/ChatListPane';
+import { SESSION_CONTEXT_DRAG_MIME } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 
 // ── Mocks ──────────────────────────────────────────────────────────────
 
@@ -80,6 +81,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/ChatPreferencesContext
 
 // ── Display settings ──
 let mockDisplaySettings = { taskCardDensity: 'normal' as string, showReportIntent: false };
+let mockSessionContextAttachmentsEnabled = false;
 vi.mock('../../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
     useDisplaySettings: () => mockDisplaySettings,
     invalidateDisplaySettings: vi.fn(),
@@ -125,6 +127,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '',
     isRalphEnabled: () => false,
     isLoopsEnabled: () => false,
+    isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
@@ -231,6 +234,7 @@ describe('ChatListPane', () => {
         mockPinnedChatIds = new Set();
         mockArchivedChatIds = new Set();
         mockDisplaySettings = { taskCardDensity: 'normal', showReportIntent: false };
+        mockSessionContextAttachmentsEnabled = false;
         mockGetDraft.mockReturnValue(null);
         globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
         vi.spyOn(window, 'confirm').mockReturnValue(true);
@@ -691,7 +695,7 @@ describe('ChatListPane', () => {
 
         it('shows mode pill for ask mode', () => {
             const { container } = renderPane({ running: [makeRunningTask({ type: 'chat', payload: { mode: 'ask' } })] });
-            expect(container.textContent).toContain('ASK');
+            expect(container.textContent).toContain('A');
         });
 
         it('clicking task calls onSelectTask', () => {
@@ -797,6 +801,85 @@ describe('ChatListPane', () => {
             expect(document.querySelector('[data-task-id="q-1"]')).toBeTruthy();
             fireEvent.click(screen.getByTestId('queued-tasks-section-toggle'));
             expect(document.querySelector('[data-task-id="q-1"]')).toBeNull();
+        });
+    });
+
+    // ── Session context drag sources ────────────────────────────────────
+    describe('Session context drag sources', () => {
+        it('does not expose session-context drag attributes while the feature flag is disabled', () => {
+            renderPane({
+                activeTab: 'chats',
+                workspaceId: 'ws-1',
+                history: [makeHistoryTask({
+                    id: 'proc-1',
+                    workspaceId: 'ws-1',
+                    title: 'Source Chat',
+                    startTime: Date.parse('2026-01-01T00:00:00Z'),
+                })],
+            });
+
+            const row = document.querySelector('[data-task-id="proc-1"]') as HTMLElement | null;
+            expect(row).toBeTruthy();
+            expect(row!.getAttribute('data-session-context-source')).toBeNull();
+            expect(row!.getAttribute('draggable')).not.toBe('true');
+        });
+
+        it('sets a pointer-only safe drag payload for same-workspace chat rows when enabled', () => {
+            mockSessionContextAttachmentsEnabled = true;
+            renderPane({
+                activeTab: 'chats',
+                workspaceId: 'ws-1',
+                history: [makeHistoryTask({
+                    id: 'proc-1',
+                    workspaceId: 'ws-1',
+                    title: undefined,
+                    customTitle: undefined,
+                    displayName: undefined,
+                    promptPreview: 'Debug /home/example/repo/src/app.ts',
+                    startTime: Date.parse('2026-01-01T00:00:00Z'),
+                })],
+            });
+
+            const row = document.querySelector('[data-task-id="proc-1"]') as HTMLElement;
+            expect(row.getAttribute('draggable')).toBe('true');
+            expect(row.getAttribute('data-session-context-source')).toBe('true');
+            expect(row.getAttribute('data-session-context-status')).toBe('completed');
+
+            const dataTransfer = { setData: vi.fn(), effectAllowed: 'move' as DataTransfer['effectAllowed'] };
+            fireEvent.dragStart(row, { dataTransfer });
+            const [, rawPayload] = dataTransfer.setData.mock.calls.find((call: any[]) => call[0] === SESSION_CONTEXT_DRAG_MIME)!;
+            const payload = JSON.parse(rawPayload);
+            expect(payload).toMatchObject({
+                sourceWorkspaceId: 'ws-1',
+                sourceProcessId: 'proc-1',
+                status: 'completed',
+                title: 'Debug [path]',
+                lastActivityAt: '2026-01-01T00:00:00.000Z',
+            });
+            expect(rawPayload).not.toContain('/home/example');
+        });
+
+        it('uses a queue process pointer for queued chat rows without a processId', () => {
+            mockSessionContextAttachmentsEnabled = true;
+            renderPane({
+                workspaceId: 'ws-1',
+                queued: [makeQueuedTask({
+                    id: 'q-source',
+                    repoId: 'ws-1',
+                    createdAt: '2026-01-01T00:00:00Z',
+                    displayName: 'Queued Source',
+                })],
+            });
+
+            const row = document.querySelector('[data-task-id="q-source"]') as HTMLElement;
+            const dataTransfer = { setData: vi.fn(), effectAllowed: 'move' as DataTransfer['effectAllowed'] };
+            fireEvent.dragStart(row, { dataTransfer });
+            const [, rawPayload] = dataTransfer.setData.mock.calls.find((call: any[]) => call[0] === SESSION_CONTEXT_DRAG_MIME)!;
+            expect(JSON.parse(rawPayload)).toMatchObject({
+                sourceWorkspaceId: 'ws-1',
+                sourceProcessId: 'queue_q-source',
+                status: 'queued',
+            });
         });
     });
 
@@ -1752,72 +1835,69 @@ describe('ChatListPane', () => {
 
     // ── Mode pills ─────────────────────────────────────────────────────
     // The redesigned compact list surfaces task category via a MODE pill in the
-    // 36px column instead of inline emoji icons. Pills are ASK / AUTO / SCRP.
+    // 30px column. Pills show a single letter: A (ask/auto), R (ralph), S (script).
     describe('Mode pills', () => {
-        it('chat ask renders ASK pill', () => {
+        it('chat ask renders A pill', () => {
             const { container } = renderPane({
                 running: [makeRunningTask({ type: 'chat', payload: { mode: 'ask' } })],
             });
-            expect(container.textContent).toContain('ASK');
+            expect(container.textContent).toContain('A');
         });
 
-        it('legacy chat plan renders ASK pill', () => {
+        it('legacy chat plan renders A pill', () => {
             const { container } = renderPane({
                 running: [makeRunningTask({ type: 'chat', payload: { mode: 'plan' } })],
             });
-            expect(container.textContent).toContain('ASK');
+            expect(container.textContent).toContain('A');
             expect(container.textContent).not.toContain('PLAN');
         });
 
-        it('chat default renders AUTO pill', () => {
+        it('chat default renders A pill', () => {
             const { container } = renderPane({
                 running: [makeRunningTask({ type: 'chat' })],
             });
-            expect(container.textContent).toContain('AUTO');
+            expect(container.textContent).toContain('A');
         });
 
-        it('run-workflow renders AUTO pill', () => {
+        it('run-workflow renders A pill', () => {
             const { container } = renderPane({
                 running: [makeRunningTask({ type: 'run-workflow' })],
             });
-            expect(container.textContent).toContain('AUTO');
+            expect(container.textContent).toContain('A');
         });
 
-        it('run-script renders SCRP pill', () => {
+        it('run-script renders S pill', () => {
             const { container } = renderPane({
                 running: [makeRunningTask({ type: 'run-script' })],
             });
-            expect(container.textContent).toContain('SCRP');
+            expect(container.textContent).toContain('S');
         });
 
-        it('chat ralph renders RLPH pill (execution phase)', () => {
+        it('chat ralph renders R pill (execution phase)', () => {
             const { container } = renderPane({
                 running: [makeRunningTask({
                     type: 'chat',
                     payload: { mode: 'ralph', context: { ralph: { sessionId: 's-1', phase: 'executing', originalGoal: 'g' } } },
                 })],
             });
-            expect(container.textContent).toContain('RLPH');
-            expect(container.textContent).not.toContain('AUTO');
+            expect(container.textContent).toContain('R');
         });
 
-        it('chat ask + ralph context renders RLPH pill (grilling phase)', () => {
+        it('chat ask + ralph context renders R pill (grilling phase)', () => {
             const { container } = renderPane({
                 running: [makeRunningTask({
                     type: 'chat',
                     payload: { mode: 'ask', context: { ralph: { sessionId: 's-2', phase: 'grilling', originalGoal: 'g' } } },
                 })],
             });
-            expect(container.textContent).toContain('RLPH');
-            expect(container.textContent).not.toContain('ASK');
+            expect(container.textContent).toContain('R');
         });
 
-        it('plain ask (no ralph context) still renders ASK', () => {
+        it('plain ask (no ralph context) still renders A pill', () => {
             const { container } = renderPane({
                 running: [makeRunningTask({ type: 'chat', payload: { mode: 'ask' } })],
             });
-            expect(container.textContent).toContain('ASK');
-            expect(container.textContent).not.toContain('RLPH');
+            expect(container.textContent).toContain('A');
         });
 
         it('ralph pill uses purple text class', () => {
@@ -1827,9 +1907,27 @@ describe('ChatListPane', () => {
                     payload: { mode: 'ralph', context: { ralph: { sessionId: 's-3', phase: 'executing', originalGoal: 'g' } } },
                 })],
             });
-            const pill = Array.from(container.querySelectorAll('span')).find(el => el.textContent === 'RLPH');
+            const pill = Array.from(container.querySelectorAll('span')).find(el => el.textContent === 'R');
             expect(pill).toBeDefined();
             expect(pill!.className).toContain('text-purple-600');
+        });
+
+        it('ask pill uses rounded-full (circle) shape', () => {
+            const { container } = renderPane({
+                running: [makeRunningTask({ type: 'chat', payload: { mode: 'ask' } })],
+            });
+            const pill = Array.from(container.querySelectorAll('span')).find(el => el.textContent === 'A' && el.className.includes('text-amber'));
+            expect(pill).toBeDefined();
+            expect(pill!.className).toContain('rounded-full');
+        });
+
+        it('auto pill uses rounded-[3px] (rect) shape, not rounded-full', () => {
+            const { container } = renderPane({
+                running: [makeRunningTask({ type: 'chat', payload: { mode: 'autopilot' } })],
+            });
+            const pill = Array.from(container.querySelectorAll('span')).find(el => el.textContent === 'A' && el.className.includes('text-emerald'));
+            expect(pill).toBeDefined();
+            expect(pill!.className).not.toContain('rounded-full');
         });
     });
 
@@ -1851,7 +1949,7 @@ describe('ChatListPane', () => {
             renderPane({ running: [makeRunningTask()] });
             const card = document.querySelector('[data-task-id="run-1"]');
             expect(card!.className).toContain('grid');
-            expect(card!.className).toContain('grid-cols-[10px_36px_minmax(0,1fr)_auto]');
+            expect(card!.className).toContain('grid-cols-[10px_30px_minmax(0,1fr)_auto]');
         });
     });
 
@@ -2069,6 +2167,7 @@ describe('ChatListPane', () => {
                 id: 'sr-1',
                 type: 'chat',
                 status: 'completed',
+                workspaceId: 'ws-1',
                 displayName: 'Search Result Task',
                 title: 'Search Result Task',
                 promptPreview: 'some prompt',
@@ -2438,31 +2537,31 @@ describe('getTaskModeKey / getTaskModeLabel — Ralph', () => {
     it('returns ralph for chat task with payload.mode === ralph', () => {
         const t = { type: 'chat', payload: { mode: 'ralph', context: { ralph: { sessionId: 's1' } } } };
         expect(getTaskModeKey(t)).toBe('ralph');
-        expect(getTaskModeLabel(t)).toBe('RLPH');
+        expect(getTaskModeLabel(t)).toBe('R');
     });
 
     it('returns ralph for chat task with mode=ask + ralph context (grilling phase)', () => {
         const t = { type: 'chat', payload: { mode: 'ask', context: { ralph: { sessionId: 's2', phase: 'grilling' } } } };
         expect(getTaskModeKey(t)).toBe('ralph');
-        expect(getTaskModeLabel(t)).toBe('RLPH');
+        expect(getTaskModeLabel(t)).toBe('R');
     });
 
     it('returns ralph when ralph context lives on metadata (history projection)', () => {
         const t = { type: 'chat', payload: { mode: 'autopilot' }, metadata: { ralph: { sessionId: 's3' } } };
         expect(getTaskModeKey(t)).toBe('ralph');
-        expect(getTaskModeLabel(t)).toBe('RLPH');
+        expect(getTaskModeLabel(t)).toBe('R');
     });
 
     it('returns ask for plain ask task without ralph context (regression)', () => {
         const t = { type: 'chat', payload: { mode: 'ask' } };
         expect(getTaskModeKey(t)).toBe('ask');
-        expect(getTaskModeLabel(t)).toBe('ASK');
+        expect(getTaskModeLabel(t)).toBe('A');
     });
 
     it('returns auto for plain autopilot chat task', () => {
         const t = { type: 'chat', payload: { mode: 'autopilot' } };
         expect(getTaskModeKey(t)).toBe('auto');
-        expect(getTaskModeLabel(t)).toBe('AUTO');
+        expect(getTaskModeLabel(t)).toBe('A');
     });
 });
 

@@ -29,13 +29,14 @@ import { groupHistoryByPlanFile, type HistoryGroup } from '../git/history-groupi
 import { HistoryGroupHeader, computeAggregateMode } from '../git/commits/HistoryGroupHeader';
 import { groupByRalphSession, type RalphHistoryEntry, type RalphSession } from './ralph-session-grouping';
 import { RalphSessionRow } from './RalphSessionRow';
-import { isRalphEnabled, isLoopsEnabled } from '../../utils/config';
+import { isRalphEnabled, isLoopsEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
 import { getListModeConfig } from './list-mode-config';
 import { useAllLoops, type ProcessLoopState } from './hooks/useAllLoops';
 import { LoopIcon } from './icons/LoopIcon';
 import { isRalphTask } from '../../../../../tasks/task-types';
 import { getProviderDotClasses, getTaskChatProvider } from './ProviderBadge';
 import { normalizeChatMode } from '../../repos/modeConfig';
+import { createRalphSessionContextDragPayload, createSessionContextDragPayload, writeSessionContextDragData } from './sessionContextDrag';
 
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {
@@ -161,12 +162,12 @@ export function getTaskModeKey(task: any): 'ask' | 'auto' | 'script' | 'ralph' {
     return 'auto';
 }
 
-export function getTaskModeLabel(task: any): 'ASK' | 'AUTO' | 'SCRP' | 'RLPH' {
+export function getTaskModeLabel(task: any): 'A' | 'S' | 'R' {
     const key = getTaskModeKey(task);
-    if (key === 'ask') return 'ASK';
-    if (key === 'script') return 'SCRP';
-    if (key === 'ralph') return 'RLPH';
-    return 'AUTO';
+    if (key === 'ask') return 'A';
+    if (key === 'script') return 'S';
+    if (key === 'ralph') return 'R';
+    return 'A';
 }
 
 /** Extract a short preview of the user prompt from the task payload. */
@@ -387,6 +388,7 @@ export function ChatListPane({
     // Fetch all loops server-wide for inline indicators and the "Loops" scope tab.
     const { loopStateByProcess, processIdsWithLoops, loopProcessCount } = useAllLoops();
     const loopsEnabled = isLoopsEnabled();
+    const sessionContextDragEnabled = isSessionContextAttachmentsEnabled();
 
     const [searchQuery, setSearchQueryRaw] = useState('');
     const [searchVisible, setSearchVisible] = useState(false);
@@ -1175,7 +1177,7 @@ export function ChatListPane({
      * Render a single compact row, used for ALL task types (chat, workflow, script)
      * across both the chats and activity branches.
      *
-     * Layout (CSS grid): [status-dot 10px] [MODE pill 36px] [title 1fr] [right auto]
+     * Layout (CSS grid): [status-dot 10px] [MODE pill 30px] [title 1fr] [right auto]
      * - Mode pill: ASK / AUTO (chat) or AUTO / SCRP (non-chat).
      * - Status dot encodes runtime state independently of the mode pill.
      * - On hover the timestamp swaps to inline pin/archive/more buttons.
@@ -1250,8 +1252,9 @@ export function ChatListPane({
         // same text color) so the parent's aggregate-mode pill remains the dominant anchor.
         const isGroupChild = !!options?.isGroupChild;
         const modeBadgeClasses = cn(
-            'inline-flex items-center justify-center rounded-[3px] border font-mono font-bold uppercase select-none',
+            'inline-flex items-center justify-center border font-mono font-bold uppercase select-none',
             'text-[9.5px] leading-none tracking-[0.06em] py-[4px] w-full',
+            modeKey === 'ask' ? 'rounded-full' : 'rounded-[3px]',
             !isGroupChild && modeKey === 'ask' && 'text-amber-600 dark:text-amber-400 border-amber-400/70 dark:border-amber-500/60 bg-amber-50/60 dark:bg-amber-500/10',
             !isGroupChild && modeKey === 'auto' && 'text-emerald-600 dark:text-emerald-400 border-emerald-500/70 dark:border-emerald-500/60 bg-emerald-50/60 dark:bg-emerald-500/10',
             !isGroupChild && modeKey === 'script' && 'text-[#1e1e1e] dark:text-[#dcdcdc] border-[#3c3c3c]/55 dark:border-[#9d9d9d]/45 bg-[#1e1e1e]/[0.06] dark:bg-[#dcdcdc]/[0.06]',
@@ -1277,6 +1280,12 @@ export function ChatListPane({
         const contextMenuKind: 'running' | 'queued' | 'completed' = taskStatus;
         const defaultTestid = isRunning ? 'running-task-row' : isQueued ? 'queued-task-row' : 'history-task-row';
         const rowTitle = isAwaitingInput ? `${titleText} — waiting for your input` : titleText;
+        const sessionContextPayload = sessionContextDragEnabled
+            ? createSessionContextDragPayload(task, {
+                activeWorkspaceId: workspaceId,
+                idSource: task.processId || (!isRunning && !isQueued) ? 'process' : 'queue-task',
+            })
+            : null;
 
         return (
             <SwipeableHistoryItem
@@ -1289,7 +1298,7 @@ export function ChatListPane({
                     className={cn(
                         'chat-row group relative cursor-pointer leading-none transition-colors',
                         'grid items-center gap-2 px-4 py-2 md:px-3 md:py-1',
-                        'grid-cols-[10px_36px_minmax(0,1fr)_auto]',
+                        'grid-cols-[10px_30px_minmax(0,1fr)_auto]',
                         'text-[12.5px] min-h-[40px] md:min-h-0 md:h-[26px]',
                         'border-b border-[#e0e0e0]/60 dark:border-[#3c3c3c]/60',
                         'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2b]',
@@ -1313,6 +1322,8 @@ export function ChatListPane({
                         handleHistoryItemClick(e, task, listForRange);
                     }}
                     onContextMenu={(e) => handleTaskContextMenu(e, task.id, contextMenuKind)}
+                    draggable={!!sessionContextPayload}
+                    onDragStart={sessionContextPayload ? (e) => writeSessionContextDragData(e.dataTransfer, sessionContextPayload) : undefined}
                     onTouchStart={(e) => {
                         historyLongPressTaskRef.current = task.id;
                         historyLongPress.onTouchStart(e);
@@ -1327,7 +1338,9 @@ export function ChatListPane({
                     data-archived={isArchived ? 'true' : undefined}
                     data-group-child={isGroupChild ? 'true' : undefined}
                     data-awaiting-input={isAwaitingInput ? 'true' : undefined}
-                    title={rowTitle}
+                    data-session-context-source={sessionContextPayload ? 'true' : undefined}
+                    data-session-context-status={sessionContextPayload?.status}
+                    title={sessionContextPayload ? `${rowTitle} — drag to attach as session context` : rowTitle}
                 >
                     <span className={dotClasses} aria-label={`status: ${isAwaitingInput ? 'awaiting input' : isRunning ? 'running' : isFailed ? 'failed' : isQueued ? 'queued' : 'done'}`} />
                     <span className={modeBadgeClasses} title={modeTitle}>{modeLabel}</span>
@@ -1474,8 +1487,10 @@ export function ChatListPane({
         onUnpinChat,
         loopStateByProcess,
         loopsEnabled,
+        sessionContextDragEnabled,
         onSelectTask,
         historyLongPress,
+        workspaceId,
     ]);
 
     // When a server-side search is active, always render the main body so FTS5 results
@@ -1699,32 +1714,38 @@ export function ChatListPane({
                                                         section.variant === 'running' ? 'text-[#0078d4] dark:text-[#3794ff] font-semibold' : 'text-[#848484] dark:text-[#a0a0a0]',
                                                     )}>{section.items.length}</span>
                                                 </div>
-                                                {section.items.map((entry: RalphHistoryEntry) =>
-                                                    entry.kind === 'ralph-session' ? (
-                                                        <RalphSessionRow
-                                                            key={`${workspaceId ?? '__all'}:${entry.sessionId}`}
-                                                            session={entry as RalphSession}
-                                                            selectedTaskId={selectedTaskId}
-                                                            selectedSessionId={selectedRalphSessionId}
-                                                            now={now}
-                                                            unseenProcessIds={unseenProcessIds}
-                                                            onSelectTask={onSelectTask}
-                                                            onSelectSession={onSelectRalphSession}
-                                                            onContextMenu={e => {
-                                                                if (e.shiftKey) return;
-                                                                e.preventDefault();
-                                                                e.stopPropagation();
-                                                                const rs = entry as RalphSession;
-                                                                const ids = [rs.grillingProcess?.id, ...rs.iterations.map((i: any) => i.id)].filter(Boolean) as string[];
-                                                                setSelectedHistoryIds(new Set(ids));
-                                                                setContextMenu({ x: e.clientX, y: e.clientY, taskId: ids[0], taskStatus: 'completed', bulkIds: ids, ralphSession: rs });
-                                                            }}
-                                                            renderTaskCard={(task) => renderChatListRow(task, chatGroups!.flatVisible, { isGroupChild: true })}
-                                                        />
-                                                    ) : (
-                                                        renderChatListRow(entry, chatGroups.flatVisible)
-                                                    )
-                                                )}
+                                                {section.items.map((entry: RalphHistoryEntry) => {
+                                                    if (entry.kind === 'ralph-session') {
+                                                        const ralphSession = entry as RalphSession;
+                                                        const ralphSessionContextPayload = sessionContextDragEnabled
+                                                            ? createRalphSessionContextDragPayload(ralphSession, { activeWorkspaceId: workspaceId })
+                                                            : null;
+                                                        return (
+                                                            <RalphSessionRow
+                                                                key={`${workspaceId ?? '__all'}:${entry.sessionId}`}
+                                                                session={ralphSession}
+                                                                selectedTaskId={selectedTaskId}
+                                                                selectedSessionId={selectedRalphSessionId}
+                                                                now={now}
+                                                                unseenProcessIds={unseenProcessIds}
+                                                                onSelectTask={onSelectTask}
+                                                                onSelectSession={onSelectRalphSession}
+                                                                sessionContextPayload={ralphSessionContextPayload}
+                                                                onContextMenu={e => {
+                                                                    if (e.shiftKey) return;
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                    const rs = entry as RalphSession;
+                                                                    const ids = [rs.grillingProcess?.id, ...rs.iterations.map((i: any) => i.id)].filter(Boolean) as string[];
+                                                                    setSelectedHistoryIds(new Set(ids));
+                                                                    setContextMenu({ x: e.clientX, y: e.clientY, taskId: ids[0], taskStatus: 'completed', bulkIds: ids, ralphSession: rs });
+                                                                }}
+                                                                renderTaskCard={(task) => renderChatListRow(task, chatGroups!.flatVisible, { isGroupChild: true })}
+                                                            />
+                                                        );
+                                                    }
+                                                    return renderChatListRow(entry, chatGroups.flatVisible);
+                                                })}
                                             </div>
                                         ));
                                 })()}
@@ -2299,6 +2320,9 @@ export function ChatListPane({
                                     const renderEntry = (entry: any) => {
                                         if (entry.kind === 'ralph-session') {
                                             const session = entry as RalphSession;
+                                            const ralphSessionContextPayload = sessionContextDragEnabled
+                                                ? createRalphSessionContextDragPayload(session, { activeWorkspaceId: workspaceId })
+                                                : null;
                                             return (
                                                 <RalphSessionRow
                                                     key={`${workspaceId ?? '__all'}:${session.sessionId}`}
@@ -2309,6 +2333,7 @@ export function ChatListPane({
                                                     unseenProcessIds={unseenProcessIds}
                                                     onSelectTask={onSelectTask}
                                                     onSelectSession={onSelectRalphSession}
+                                                    sessionContextPayload={ralphSessionContextPayload}
                                                     onContextMenu={e => {
                                                         if (e.shiftKey) return;
                                                         e.preventDefault();

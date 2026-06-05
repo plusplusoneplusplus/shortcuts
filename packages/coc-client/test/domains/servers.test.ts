@@ -14,6 +14,10 @@ describe('ServersClient', () => {
     await client.test({ kind: 'url', label: 'Test', url: 'http://localhost:4000' });
     await client.reconnect('s1');
     await client.getHealth('s1');
+    await client.cherryPickTransfer({
+      source: { serverId: 'source/server', workspaceId: 'source/ws', commitHash: 'abc123' },
+      target: { serverId: 'target/server', workspaceId: 'target/ws', stashAndContinue: true },
+    });
 
     expect(adapter.calls).toMatchObject([
       { path: '/servers' },
@@ -39,6 +43,16 @@ describe('ServersClient', () => {
       },
       {
         path: '/servers/s1/health',
+      },
+      {
+        path: '/servers/cherry-pick-transfer',
+        options: {
+          method: 'POST',
+          body: {
+            source: { serverId: 'source/server', workspaceId: 'source/ws', commitHash: 'abc123' },
+            target: { serverId: 'target/server', workspaceId: 'target/ws', stashAndContinue: true },
+          },
+        },
       },
     ]);
   });

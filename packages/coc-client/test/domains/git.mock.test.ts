@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { CocClient, type GitBranchRangeResponse, type GitCommit } from '../../src';
+import { CocClient, type GitBranchRangeResponse, type GitCommit, type GitPatchApplyResponse, type GitPatchExportResponse } from '../../src';
 import { startMockServer, type MockServer, type RecordedRequest } from '../mock-server';
 
 describe('GitClient mock server contract', () => {
@@ -96,6 +96,57 @@ describe('GitClient mock server contract', () => {
     expectGetRequest(mock.requests[2], '/api/workspaces/repo%2Fa/git/changes');
     expectPostRequest(mock.requests[3], '/api/workspaces/repo%2Fa/git/changes/stage', { filePath: 'src/app.ts' });
     expectGetRequest(mock.requests[4], '/api/workspaces/repo%2Fa/commit-chat-bindings/abc123');
+  });
+
+  it('exports and applies commit patches through typed patch-transfer routes', async () => {
+    mock = await startMockServer();
+    const exported: GitPatchExportResponse = {
+      sourceWorkspace: { id: 'source/ws', name: 'Source Repo' },
+      sourceCommit: {
+        hash: 'abc123',
+        subject: 'Fix app',
+        author: { name: 'Test Author', email: 'author@example.com', date: '2026-01-01T00:00:00.000Z' },
+      },
+      normalizedSourceRemoteUrl: 'https://example.com/org/repo.git',
+      patch: { format: 'format-patch', body: 'From abc123 Mon Sep 17 00:00:00 2001\n' },
+    };
+    const applied: GitPatchApplyResponse = {
+      success: true,
+      targetWorkspace: { id: 'target/ws', name: 'Target Repo' },
+      targetBranch: 'main',
+      targetHead: 'def456',
+      newCommitHash: 'def456',
+      stashed: true,
+      operation: {
+        id: 'cherry-pick-transfer-1',
+        workspaceId: 'target/ws',
+        op: 'cherry-pick-transfer',
+        status: 'success',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        finishedAt: '2026-01-01T00:00:01.000Z',
+      },
+    };
+    mock.on('POST', '/api/workspaces/source%2Fws/git/patch/export', { body: exported });
+    mock.on('POST', '/api/workspaces/target%2Fws/git/patch/apply', { body: applied });
+    const client = createClient(mock);
+
+    await expect(client.git.exportCommitPatch('source/ws', 'abc123')).resolves.toEqual(exported);
+    await expect(client.git.applyCommitPatch('target/ws', {
+      patch: exported.patch,
+      stashAndContinue: true,
+      sourceWorkspace: exported.sourceWorkspace,
+      sourceCommit: exported.sourceCommit,
+      normalizedSourceRemoteUrl: exported.normalizedSourceRemoteUrl,
+    })).resolves.toEqual(applied);
+
+    expectPostRequest(mock.requests[0], '/api/workspaces/source%2Fws/git/patch/export', { hash: 'abc123' });
+    expectPostRequest(mock.requests[1], '/api/workspaces/target%2Fws/git/patch/apply', {
+      patch: exported.patch,
+      stashAndContinue: true,
+      sourceWorkspace: exported.sourceWorkspace,
+      sourceCommit: exported.sourceCommit,
+      normalizedSourceRemoteUrl: exported.normalizedSourceRemoteUrl,
+    });
   });
 
   it('calls diff-comment routes through encoded comment identifiers', async () => {

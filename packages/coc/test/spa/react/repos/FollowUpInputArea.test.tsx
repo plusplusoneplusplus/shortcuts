@@ -11,11 +11,13 @@ import { render, screen, act, fireEvent } from '@testing-library/react';
 import React, { createRef } from 'react';
 
 // Hoist a call tracker so the mock factory can reference it before imports
-const { tracker } = vi.hoisted(() => ({
+const { tracker, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig } = vi.hoisted(() => ({
     tracker: {
         calls: [] as Array<[string, number?]>,
         domValue: '',
     },
+    mockSessionContextAttachmentsEnabled: { value: false },
+    mockGetLlmToolsConfig: vi.fn(),
 }));
 
 // Replace RichTextInput with a minimal stable test double that records setValue calls
@@ -39,9 +41,29 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
     };
 });
 
+vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled.value,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        preferences: {
+            getLlmToolsConfig: mockGetLlmToolsConfig,
+        },
+    }),
+}));
+
 import { FollowUpInputArea } from '../../../../src/server/spa/client/react/features/chat/FollowUpInputArea';
 import type { FollowUpInputAreaProps } from '../../../../src/server/spa/client/react/features/chat/FollowUpInputArea';
 import type { RichTextInputHandle } from '../../../../src/server/spa/client/react/shared/RichTextInput';
+import {
+    RALPH_SESSION_CONTEXT_DRAG_KIND,
+    RALPH_SESSION_CONTEXT_DRAG_MIME,
+    SESSION_CONTEXT_DRAG_KIND,
+    SESSION_CONTEXT_DRAG_MIME,
+    type RalphSessionContextDragPayload,
+    type SessionContextDragPayload,
+} from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 
 afterEach(() => {
     vi.restoreAllMocks();
@@ -50,9 +72,54 @@ afterEach(() => {
 beforeEach(() => {
     tracker.calls = [];
     tracker.domValue = '';
+    mockSessionContextAttachmentsEnabled.value = false;
+    mockGetLlmToolsConfig.mockResolvedValue({
+        tools: [{ name: 'get_conversation', label: 'Get Conversation', description: '', enabledByDefault: true }],
+        disabledLlmTools: [],
+        conversationRetrievalAvailable: true,
+    });
     // JSDOM does not implement scrollIntoView
     Element.prototype.scrollIntoView = vi.fn();
 });
+
+function makeSessionPayload(overrides: Partial<SessionContextDragPayload> = {}): SessionContextDragPayload {
+    return {
+        kind: SESSION_CONTEXT_DRAG_KIND,
+        version: 1,
+        sourceWorkspaceId: 'ws-1',
+        sourceProcessId: 'source-process-123456',
+        title: 'Source chat',
+        status: 'completed',
+        lastActivityAt: '2026-01-01T00:00:00.000Z',
+        ...overrides,
+    };
+}
+
+function makeRalphPayload(overrides: Partial<RalphSessionContextDragPayload> = {}): RalphSessionContextDragPayload {
+    return {
+        kind: RALPH_SESSION_CONTEXT_DRAG_KIND,
+        version: 1,
+        sourceWorkspaceId: 'ws-1',
+        sourceRalphSessionId: 'ralph-session-0001',
+        title: 'Ralph source',
+        displayLabel: 'Ralph source - 2 iter',
+        phase: 'executing',
+        status: 'running',
+        lastActivityAt: '2026-01-01T00:00:00.000Z',
+        childProcessIds: ['grill-proc', 'iter-1', 'iter-2'],
+        processCount: 3,
+        iterationCount: 2,
+        ...overrides,
+    };
+}
+
+function makeSessionDataTransfer(payload: unknown, mime = SESSION_CONTEXT_DRAG_MIME) {
+    return {
+        types: [mime],
+        dropEffect: 'none',
+        getData: vi.fn((format: string) => format === mime ? JSON.stringify(payload) : ''),
+    };
+}
 
 function makeProps(overrides: Partial<FollowUpInputAreaProps> = {}): FollowUpInputAreaProps {
     return {
@@ -76,6 +143,11 @@ function makeProps(overrides: Partial<FollowUpInputAreaProps> = {}): FollowUpInp
         onAttachmentRemove: vi.fn(),
         onAttachmentFiles: vi.fn(),
         attachmentError: null,
+        attachedContext: [],
+        onRemoveAttachedContext: vi.fn(),
+        onAttachSessionContext: vi.fn(),
+        workspaceId: 'ws-1',
+        currentProcessId: 'current-process',
         task: null,
         slashCommands: {
             handleInputChange: vi.fn(),
@@ -332,4 +404,68 @@ describe('FollowUpInputArea — dismiss suggestions', () => {
     });
 });
 
+describe('FollowUpInputArea — session context drops', () => {
+    it('passes a valid dropped session to the parent when enabled', async () => {
+        mockSessionContextAttachmentsEnabled.value = true;
+        const onAttachSessionContext = vi.fn();
+        render(<FollowUpInputArea {...makeProps({ onAttachSessionContext })} />);
+        await act(async () => { await Promise.resolve(); });
 
+        fireEvent.drop(screen.getByTestId('chat-input-bar'), {
+            dataTransfer: makeSessionDataTransfer(makeSessionPayload()),
+        });
+
+        expect(onAttachSessionContext).toHaveBeenCalledWith(makeSessionPayload());
+        expect(screen.queryByTestId('follow-up-session-context-error')).toBeNull();
+    });
+
+    it('passes a valid dropped Ralph group to the parent when enabled', async () => {
+        mockSessionContextAttachmentsEnabled.value = true;
+        const onAttachSessionContext = vi.fn();
+        render(<FollowUpInputArea {...makeProps({ onAttachSessionContext })} />);
+        await act(async () => { await Promise.resolve(); });
+
+        fireEvent.drop(screen.getByTestId('chat-input-bar'), {
+            dataTransfer: makeSessionDataTransfer(makeRalphPayload(), RALPH_SESSION_CONTEXT_DRAG_MIME),
+        });
+
+        expect(onAttachSessionContext).toHaveBeenCalledWith(makeRalphPayload());
+        expect(screen.queryByTestId('follow-up-session-context-error')).toBeNull();
+    });
+
+    it('blocks self-attachment of the current follow-up session', () => {
+        mockSessionContextAttachmentsEnabled.value = true;
+        const onAttachSessionContext = vi.fn();
+        render(<FollowUpInputArea {...makeProps({
+            onAttachSessionContext,
+            currentProcessId: 'source-process-123456',
+        })} />);
+
+        fireEvent.drop(screen.getByTestId('chat-input-bar'), {
+            dataTransfer: makeSessionDataTransfer(makeSessionPayload()),
+        });
+
+        expect(onAttachSessionContext).not.toHaveBeenCalled();
+        expect(screen.getByTestId('follow-up-session-context-error').textContent).toBe(
+            'A follow-up cannot attach its own current session as context.',
+        );
+    });
+
+    it('blocks Ralph groups that include the current follow-up session', () => {
+        mockSessionContextAttachmentsEnabled.value = true;
+        const onAttachSessionContext = vi.fn();
+        render(<FollowUpInputArea {...makeProps({
+            onAttachSessionContext,
+            currentProcessId: 'iter-1',
+        })} />);
+
+        fireEvent.drop(screen.getByTestId('chat-input-bar'), {
+            dataTransfer: makeSessionDataTransfer(makeRalphPayload(), RALPH_SESSION_CONTEXT_DRAG_MIME),
+        });
+
+        expect(onAttachSessionContext).not.toHaveBeenCalled();
+        expect(screen.getByTestId('follow-up-session-context-error').textContent).toBe(
+            'A follow-up cannot attach a Ralph session that includes the current chat.',
+        );
+    });
+});

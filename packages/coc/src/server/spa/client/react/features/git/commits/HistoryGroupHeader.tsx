@@ -2,8 +2,8 @@
  * HistoryGroupHeader — collapsible header for plan-file task groups.
  *
  * Renders as a compact one-line row matching the activity-compact reference's
- * `.row.has-children` style: status dot + mode pill + title (with rotating
- * chevron) + relative time, in the same `[10px_36px_minmax(0,1fr)_auto]`
+ * `.row.has-children` style: status dot + compact mode pill + title (with rotating
+ * chevron) + relative time, in the same `[10px_30px_minmax(0,1fr)_auto]`
  * grid as `renderChatListRow`. The mode pill collapses children's modes:
  * if every child shares the same mode the parent shows that mode
  * (ASK/AUTO/SCRP); when they differ a neutral "MIX" pill is shown with the
@@ -56,10 +56,10 @@ export function computeAggregateMode(children: ProcessHistoryItem[]): GroupAggre
 }
 
 const MODE_LABEL: Record<GroupAggregateMode, string> = {
-    ask: 'ASK',
-    auto: 'AUTO',
-    script: 'SCRP',
-    mixed: 'MIX',
+    ask: 'A',
+    auto: 'A',
+    script: 'S',
+    mixed: 'M',
 };
 
 const STATUS_DOT_CLASSES: Record<HistoryGroup['aggregateStatus'], string> = {
@@ -109,8 +109,9 @@ export function HistoryGroupHeader({
     const dotColor = STATUS_DOT_CLASSES[group.aggregateStatus] ?? STATUS_DOT_CLASSES.completed;
 
     const modeBadgeClasses = cn(
-        'inline-flex items-center justify-center rounded-[3px] border font-mono font-bold uppercase select-none',
+        'inline-flex items-center justify-center border font-mono font-bold uppercase select-none',
         'text-[9.5px] leading-none tracking-[0.06em] py-[4px] w-full',
+        aggregateMode === 'ask' ? 'rounded-full' : 'rounded-[3px]',
         aggregateMode === 'ask' && 'text-amber-600 dark:text-amber-400 border-amber-400/70 dark:border-amber-500/60 bg-amber-50/60 dark:bg-amber-500/10',
         aggregateMode === 'auto' && 'text-emerald-600 dark:text-emerald-400 border-emerald-500/70 dark:border-emerald-500/60 bg-emerald-50/60 dark:bg-emerald-500/10',
         aggregateMode === 'script' && 'text-[#1e1e1e] dark:text-[#dcdcdc] border-[#3c3c3c]/55 dark:border-[#9d9d9d]/45 bg-[#1e1e1e]/[0.06] dark:bg-[#dcdcdc]/[0.06]',
@@ -122,7 +123,7 @@ export function HistoryGroupHeader({
             className={cn(
                 'chat-row group relative cursor-pointer leading-none transition-colors',
                 'grid items-center gap-2 px-3 py-1',
-                'grid-cols-[10px_36px_minmax(0,1fr)_auto]',
+                'grid-cols-[10px_30px_minmax(0,1fr)_auto]',
                 'text-[12.5px] h-[26px]',
                 'border-b border-[#e0e0e0]/60 dark:border-[#3c3c3c]/60',
                 'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2b]',

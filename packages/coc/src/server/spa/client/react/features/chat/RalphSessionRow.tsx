@@ -2,8 +2,8 @@
  * RalphSessionRow — collapsible group row for a Ralph session.
  *
  * Visually mirrors `HistoryGroupHeader` (plan-file groups): a compact one-line
- * row in the same `[10px_36px_minmax(0,1fr)_auto]` grid with a status dot,
- * `RALPH` mode pill, chevron toggle, title, child-count badge, and relative
+ * row in the same `[10px_30px_minmax(0,1fr)_auto]` grid with a status dot,
+ * compact `R` mode pill, chevron toggle, title, child-count badge, and relative
  * time. Phase is signaled entirely via the status-dot color (no separate
  * phase badge). Children are rendered inline (no decorative wrapper) by
  * delegating to the caller's `renderTaskCard` with `{ isGroupChild: true }`.
@@ -15,6 +15,7 @@ import { cn } from '../../ui/cn';
 import { formatRelativeTime } from '../../utils/format';
 import type { RalphSession } from './ralph-session-grouping';
 import { RALPH_MULTI_LOOP } from '../../featureFlags';
+import { type RalphSessionContextDragPayload, writeRalphSessionContextDragData } from './sessionContextDrag';
 
 interface RalphSessionRowProps {
     session: RalphSession;
@@ -32,6 +33,8 @@ interface RalphSessionRowProps {
     onSelectSession?: (sessionId: string) => void;
     /** Right-click handler for the group row (context menu). */
     onContextMenu?: (e: React.MouseEvent) => void;
+    /** Optional pointer-only context payload used when session-context dragging is enabled. */
+    sessionContextPayload?: RalphSessionContextDragPayload | null;
     /** Render a single child task row. Mirrors `renderChatListRow`'s options
      *  object so we can request the muted, group-child variant. */
     renderTaskCard: (
@@ -46,12 +49,14 @@ const PHASE_DOT_CLASSES: Record<RalphSession['phase'], string> = {
     grilling: 'bg-amber-500',
     executing: 'bg-[#0078d4] dark:bg-[#3794ff] animate-pulse shadow-[0_0_0_3px_rgba(0,120,212,0.22)]',
     complete: 'bg-[#bbbbbb] dark:bg-[#5c5c5c]',
+    failed: 'bg-[#e5534b] dark:bg-[#f85149]',
 };
 
 const PHASE_DOT_LABEL: Record<RalphSession['phase'], string> = {
     grilling: 'clarifying',
     executing: 'executing',
     complete: 'done',
+    failed: 'failed',
 };
 
 export function RalphSessionRow({
@@ -63,6 +68,7 @@ export function RalphSessionRow({
     onSelectTask: _onSelectTask,
     onSelectSession,
     onContextMenu,
+    sessionContextPayload,
     renderTaskCard,
 }: RalphSessionRowProps) {
     const [expanded, setExpanded] = useState(false);
@@ -114,7 +120,7 @@ export function RalphSessionRow({
                 className={cn(
                     'chat-row group relative cursor-pointer leading-none transition-colors',
                     'grid items-center gap-2 px-3 py-1',
-                    'grid-cols-[10px_36px_minmax(0,1fr)_auto]',
+                    'grid-cols-[10px_30px_minmax(0,1fr)_auto]',
                     'text-[12.5px] h-[26px]',
                     'border-b border-[#e0e0e0]/60 dark:border-[#3c3c3c]/60',
                     'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2b]',
@@ -124,9 +130,15 @@ export function RalphSessionRow({
                     else toggle();
                 }}
                 onContextMenu={onContextMenu}
+                draggable={!!sessionContextPayload}
+                onDragStart={sessionContextPayload ? (e) => writeRalphSessionContextDragData(e.dataTransfer, sessionContextPayload) : undefined}
                 data-testid="ralph-session-body"
                 data-session-phase={session.phase}
+                data-session-context-source={sessionContextPayload ? 'true' : undefined}
+                data-session-context-kind={sessionContextPayload ? 'ralph-session' : undefined}
+                data-session-context-status={sessionContextPayload?.status}
                 data-expanded={expanded ? 'true' : 'false'}
+                title={sessionContextPayload ? `${sessionContextPayload.displayLabel} - drag to attach as Ralph session context` : undefined}
                 aria-expanded={expanded}
             >
                 <span
@@ -134,7 +146,7 @@ export function RalphSessionRow({
                     aria-label={`phase: ${PHASE_DOT_LABEL[session.phase]}`}
                 />
                 <span className={modeBadgeClasses} title="Ralph · iterative goal-driven session">
-                    RALPH
+                    R
                 </span>
                 <span className="min-w-0 flex items-center gap-1 overflow-hidden">
                     <button

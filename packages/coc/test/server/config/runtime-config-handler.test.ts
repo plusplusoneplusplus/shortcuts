@@ -30,11 +30,12 @@ function createMockRuntimeConfigService(overrides: Partial<ResolvedCLIConfig> = 
         pullRequests: { enabled: false },
         servers: { enabled: false },
         ralph: { enabled: false },
+        forEach: { enabled: false },
         vimNavigation: { enabled: false },
         loops: { enabled: false },
         excalidraw: { enabled: false },
         mcpOauth: { enabled: false },
-        features: { focusedDiff: false, autoMemoryPromotion: false },
+        features: { focusedDiff: false, autoMemoryPromotion: false, gitCommitLookup: false, gitCrossCloneCherryPick: false, sessionContextAttachments: false },
         memoryPromotion: { enabled: false },
         defaultModels: {},
         ...overrides,
@@ -70,11 +71,14 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.pullRequestsEnabled).toBe(false);
         expect(result.features.serversEnabled).toBe(false);
         expect(result.features.ralphEnabled).toBe(false);
+        expect(result.features.forEachEnabled).toBe(false);
         expect(result.features.vimNavigationEnabled).toBe(false);
         expect(result.features.loopsEnabled).toBe(false);
         expect(result.features.excalidrawEnabled).toBe(false);
         expect(result.features.mcpOauthEnabled).toBe(false);
         expect(result.features.focusedDiffEnabled).toBe(false);
+        expect(result.features.gitCrossCloneCherryPickEnabled).toBe(false);
+        expect(result.features.sessionContextAttachmentsEnabled).toBe(false);
         expect(result.features.codexEnabled).toBe(false);
         expect(result.features.defaultProvider).toBe('copilot');
         expect(result.features.workItemsSyncEnabled).toBe(false);
@@ -84,6 +88,12 @@ describe('buildRuntimeDashboardConfig', () => {
         const svc = createMockRuntimeConfigService({ ralph: { enabled: true } });
         const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
         expect(result.features.ralphEnabled).toBe(true);
+    });
+
+    it('reflects forEach.enabled = true from config', () => {
+        const svc = createMockRuntimeConfigService({ forEach: { enabled: true } });
+        const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
+        expect(result.features.forEachEnabled).toBe(true);
     });
 
     it('defaults workItemsHierarchyEnabled to false', () => {
@@ -120,6 +130,20 @@ describe('buildRuntimeDashboardConfig', () => {
         const svc = createMockRuntimeConfigService({ effortLevels: { enabled: true } } as any);
         const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
         expect(result.features.effortLevelsEnabled).toBe(true);
+    });
+
+    it('reflects features.sessionContextAttachments = true from config', () => {
+        const svc = createMockRuntimeConfigService({
+            features: {
+                focusedDiff: false,
+                autoMemoryPromotion: false,
+                gitCommitLookup: false,
+                gitCrossCloneCherryPick: false,
+                sessionContextAttachments: true,
+            },
+        } as any);
+        const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
+        expect(result.features.sessionContextAttachmentsEnabled).toBe(true);
     });
 
     it('uses serve.serverName for hostname when set', () => {
@@ -241,6 +265,36 @@ describe('AC-01 effortLevels.enabled live enablement end-to-end', () => {
     });
 });
 
+describe('session context attachments feature flag', () => {
+    it('features.sessionContextAttachments defaults disabled and updates through runtime config service', async () => {
+        const fs = await import('fs');
+        const path = await import('path');
+        const os = await import('os');
+        const { RuntimeConfigService } = await import('../../../src/config/runtime-config-service');
+
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-session-context-'));
+        try {
+            const configPath = path.join(tmpDir, 'config.yaml');
+            const svc = new RuntimeConfigService({ configPath });
+
+            const before = buildRuntimeDashboardConfig(svc, 'test-host', '127.0.0.1');
+            expect(before.features.sessionContextAttachmentsEnabled).toBe(false);
+
+            const updateResult = await svc.updateConfig({ 'features.sessionContextAttachments': true });
+            expect(updateResult.config.features.sessionContextAttachments).toBe(true);
+
+            const after = buildRuntimeDashboardConfig(svc, 'test-host', '127.0.0.1');
+            expect(after.features.sessionContextAttachmentsEnabled).toBe(true);
+
+            const effect = updateResult.effects.find(e => e.field === 'features.sessionContextAttachments');
+            expect(effect).toBeDefined();
+            expect(effect!.runtime).toBe('live');
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+});
+
 
 describe('AC-05: ralph.enabled live enablement end-to-end', () => {
     it('ralph.enabled update through service is reflected in runtime dashboard config', async () => {
@@ -340,6 +394,39 @@ describe('getBundleETag with config revision', () => {
     });
 });
 
+describe('forEach.enabled live enablement end-to-end', () => {
+    it('forEach.enabled update through service is reflected in runtime dashboard config', async () => {
+        const fs = await import('fs');
+        const path = await import('path');
+        const os = await import('os');
+        const { RuntimeConfigService } = await import('../../../src/config/runtime-config-service');
+
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-for-each-'));
+        try {
+            const configPath = path.join(tmpDir, 'config.yaml');
+            const svc = new RuntimeConfigService({ configPath });
+
+            const before = buildRuntimeDashboardConfig(svc, 'test-host', '127.0.0.1');
+            expect(before.features.forEachEnabled).toBe(false);
+            expect(before.revision).toBe(0);
+
+            const updateResult = await svc.updateConfig({ 'forEach.enabled': true });
+            expect(updateResult.config.forEach.enabled).toBe(true);
+            expect(updateResult.revision).toBe(1);
+
+            const after = buildRuntimeDashboardConfig(svc, 'test-host', '127.0.0.1');
+            expect(after.features.forEachEnabled).toBe(true);
+            expect(after.revision).toBe(1);
+
+            const effect = updateResult.effects.find(e => e.field === 'forEach.enabled');
+            expect(effect).toBeDefined();
+            expect(effect!.runtime).toBe('live');
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+});
+
 describe('AC-08: live-classified route registration', () => {
     it('diagram routes are always registered (not gated by excalidraw.enabled at startup)', async () => {
         const routesSrc = await import('fs').then(fs =>
@@ -378,14 +465,20 @@ describe('AC-08: live-classified route registration', () => {
         expect(routesSrc).not.toMatch(/ctx\.excalidrawEnabled/);
     });
 
-    it('excalidraw.enabled and features.focusedDiff are classified as live in admin config fields', async () => {
+    it('excalidraw.enabled and git feature flags are classified as live in admin config fields', async () => {
         const { ADMIN_CONFIG_FIELDS } = await import('../../../src/server/admin/admin-config-fields');
         const excalidrawField = ADMIN_CONFIG_FIELDS.find(f => f.key === 'excalidraw.enabled');
         const focusedDiffField = ADMIN_CONFIG_FIELDS.find(f => f.key === 'features.focusedDiff');
+        const crossCloneField = ADMIN_CONFIG_FIELDS.find(f => f.key === 'features.gitCrossCloneCherryPick');
+        const sessionContextField = ADMIN_CONFIG_FIELDS.find(f => f.key === 'features.sessionContextAttachments');
         expect(excalidrawField).toBeDefined();
         expect(excalidrawField!.runtime).toBe('live');
         expect(focusedDiffField).toBeDefined();
         expect(focusedDiffField!.runtime).toBe('live');
+        expect(crossCloneField).toBeDefined();
+        expect(crossCloneField!.runtime).toBe('live');
+        expect(sessionContextField).toBeDefined();
+        expect(sessionContextField!.runtime).toBe('live');
     });
 
     it('terminal.enabled and loops.enabled are classified as restartRequired', async () => {

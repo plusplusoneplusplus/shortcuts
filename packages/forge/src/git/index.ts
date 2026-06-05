@@ -20,7 +20,12 @@ export {
     BranchListOptions,
     PaginatedBranchResult,
     GitOperationResult,
+    GitPatchExportPayload,
+    GitPatchExportResult,
+    GitPatchApplyOptions,
+    GitPatchApplyResult,
     RepoOperationType,
+    GitOperationInProgress,
     RepoState,
 } from './types';
 
@@ -42,4 +47,16 @@ export { BranchService } from './branch-service';
 export { WorkingTreeService, parsePorcelain } from './working-tree-service';
 export { normalizeRemoteUrl } from './normalize-url';
 export { getRemoteUrl, computeRemoteHash, detectRemoteUrl } from './remote';
-export { GitOpsStore, GitOpJob, GitOpType, GitOpStatus, GitOpsStoreOptions } from './git-ops-store';
+export {
+    GitOpsStore,
+    GitOpJob,
+    GitOpType,
+    GitOpStatus,
+    GitOpWorkspaceMetadata,
+    GitOpServerMetadata,
+    GitOpCommitAuthorMetadata,
+    GitOpCommitMetadata,
+    GitPatchTransferOperationMetadata,
+    GitOpMetadata,
+    GitOpsStoreOptions,
+} from './git-ops-store';

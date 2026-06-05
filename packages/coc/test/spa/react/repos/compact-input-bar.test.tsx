@@ -58,11 +58,13 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '/api',
     getConfig: () => ({ apiBasePath: '/api' }),
     isRalphEnabled: () => false,
+    isForEachEnabled: () => false,
     isLoopsEnabled: () => false,
     isCodexEnabled: () => false,
     getDefaultProvider: () => 'copilot',
     getActiveProvider: () => 'copilot',
     isEffortLevelsEnabled: () => false,
+    isSessionContextAttachmentsEnabled: () => false,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useProviderEffortTiers', () => ({

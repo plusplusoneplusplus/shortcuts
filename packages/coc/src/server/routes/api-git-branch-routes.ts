@@ -6,8 +6,8 @@
  * cherry-pick, git-ops tracking, and amending commit messages.
  */
 
-import { BranchService } from '@plusplusoneplusplus/forge';
-import type { GitOpJob } from '@plusplusoneplusplus/forge';
+import { BranchService, detectRemoteUrl, normalizeRemoteUrl } from '@plusplusoneplusplus/forge';
+import type { GitOpJob, GitOpMetadata, ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody, execGitArgsSync } from '../core/api-handler';
 import { handleAPIError, missingFields, notFound, badRequest, conflict } from '../errors';
 import { gitCache } from '../git/git-cache';
@@ -354,6 +354,136 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
         },
     }));
 
+    // POST /api/workspaces/:id/git/patch/export — Export one commit as a format-patch payload
+    routes.push(createRoute({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/patch\/export$/,
+        handler: async ({ match, res, req }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
+            if (!ws) return;
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+            if (!body.hash || typeof body.hash !== 'string') return void handleAPIError(res, missingFields(['hash']));
+            const hash = body.hash.trim();
+            if (!/^[a-fA-F0-9]{4,40}$/.test(hash)) return void handleAPIError(res, badRequest('Missing or invalid hash'));
+
+            const result = await branchService.exportCommitPatch(ws.rootPath, hash);
+            if (!result.success) return void handleAPIError(res, notFound('Commit'));
+
+            const remoteUrl = await resolveWorkspaceRemoteUrl(ws, store);
+            const normalizedSourceRemoteUrl = remoteUrl ? normalizeRemoteUrl(remoteUrl) || null : null;
+            return {
+                sourceWorkspace: {
+                    id: ws.id,
+                    name: ws.name,
+                },
+                sourceCommit: {
+                    hash: result.commitHash,
+                    subject: result.subject,
+                    author: {
+                        name: result.authorName,
+                        email: result.authorEmail,
+                        date: result.authorDate,
+                    },
+                },
+                normalizedSourceRemoteUrl,
+                patch: {
+                    format: 'format-patch',
+                    body: result.patch,
+                },
+            };
+        },
+    }));
+
+    // POST /api/workspaces/:id/git/patch/apply — Apply a format-patch payload to the target workspace
+    routes.push(createRoute({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/patch\/apply$/,
+        handler: async ({ match, res, req }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
+            if (!ws) return;
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+
+            const patchFormat = body.patch?.format;
+            const patchBody = typeof body.patch?.body === 'string' ? body.patch.body : undefined;
+            if (patchFormat !== 'format-patch' || !patchBody || !patchBody.trim()) {
+                return void handleAPIError(res, badRequest('Missing or invalid format-patch payload'));
+            }
+
+            const repoState = branchService.getRepoState(ws.rootPath);
+            if (repoState.operation !== 'none') {
+                sendJSON(res, 409, {
+                    error: `Target workspace already has a ${repoState.gitOperation ?? repoState.operation} operation in progress`,
+                    operation: repoState.operation,
+                    gitOperation: repoState.gitOperation,
+                    conflictFiles: repoState.conflictFiles,
+                });
+                return;
+            }
+
+            const hasUncommittedChanges = await branchService.hasUncommittedChanges(ws.rootPath);
+            const branchStatus = await branchService.getBranchStatus(ws.rootPath, hasUncommittedChanges);
+            if (!branchStatus) return void handleAPIError(res, badRequest('Target workspace is not a usable git repository'));
+            if (branchStatus.isDetached) {
+                sendJSON(res, 409, {
+                    error: 'Target workspace is in detached HEAD state',
+                    targetBranch: null,
+                    detachedHash: branchStatus.detachedHash,
+                });
+                return;
+            }
+
+            const operationStartedAt = new Date().toISOString();
+            const result = await branchService.applyCommitPatch(ws.rootPath, patchBody, {
+                stashAndContinue: body.stashAndContinue === true,
+                stashMessage: 'CoC patch-transfer cherry-pick',
+            });
+            if (result.success) {
+                const operation: GitOpJob = {
+                    id: `cherry-pick-transfer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    workspaceId: ws.id,
+                    op: 'cherry-pick-transfer',
+                    status: 'success',
+                    startedAt: operationStartedAt,
+                    finishedAt: new Date().toISOString(),
+                    pid: process.pid,
+                    metadata: buildPatchTransferMetadata(body, ws, branchStatus.name, result.headHash, result.stashed === true),
+                };
+                await gitOpsStore.create(operation);
+                gitCache.invalidateMutable(ws.id);
+                getWsServer?.()?.broadcastGitChanged(ws.id, 'patch-apply');
+                return {
+                    success: true,
+                    targetWorkspace: { id: ws.id, name: ws.name },
+                    targetBranch: branchStatus.name,
+                    targetHead: result.headHash,
+                    newCommitHash: result.headHash,
+                    stashed: result.stashed === true,
+                    operation,
+                };
+            }
+            if (result.dirty) {
+                sendJSON(res, 409, {
+                    error: result.message,
+                    dirty: true,
+                    stashed: result.stashed === true,
+                });
+                return;
+            }
+            if (result.conflicts) {
+                sendJSON(res, 409, {
+                    error: result.message,
+                    conflicts: true,
+                    stashed: result.stashed === true,
+                    gitState: result.gitState,
+                });
+                return;
+            }
+            throw badRequest('Patch apply failed: ' + result.message);
+        },
+    }));
+
     // POST /api/workspaces/:id/git/amend — Amend the HEAD commit message
     routes.push(createRoute({
         method: 'POST',
@@ -576,6 +706,15 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
     }));
 }
 
+async function resolveWorkspaceRemoteUrl(ws: WorkspaceInfo, store: ProcessStore): Promise<string | undefined> {
+    if (ws.remoteUrl?.trim()) return ws.remoteUrl;
+    const remoteUrl = await detectRemoteUrl(ws.rootPath);
+    if (remoteUrl && remoteUrl !== ws.remoteUrl) {
+        await store.updateWorkspace(ws.id, { remoteUrl });
+    }
+    return remoteUrl;
+}
+
 function buildRebaseReorderPrompt(repoRoot: string, commits: string[]): string {
     const firstCommit = commits[0];
     const pickLines = commits.map(h => `pick ${h}`).join('\n');
@@ -650,4 +789,112 @@ State clearly one of:
 - Always end with the repository in a clean state (no REBASE_HEAD, no staged conflict markers).
 - If \`git rebase --abort\` was run, confirm with \`git status\` that the working tree is clean.
 - Do NOT push any changes — only local commit reordering.`;
+}
+
+function buildPatchTransferMetadata(
+    body: Record<string, unknown>,
+    targetWorkspace: WorkspaceInfo,
+    targetBranch: string,
+    targetHead: string | undefined,
+    stashed: boolean,
+): GitOpMetadata {
+    const metadata: GitOpMetadata = {
+        kind: 'patch-transfer',
+        targetWorkspace: sanitizeTargetWorkspace(targetWorkspace),
+        targetBranch: sanitizeMetadataString(targetBranch) ?? null,
+        stashed,
+    };
+    const safeTargetHead = sanitizeHash(targetHead);
+    if (safeTargetHead) {
+        metadata.targetHead = safeTargetHead;
+        metadata.newCommitHash = safeTargetHead;
+    }
+    const sourceServer = sanitizeServerMetadata(body.sourceServer);
+    if (sourceServer) metadata.sourceServer = sourceServer;
+    const sourceWorkspace = sanitizeWorkspaceMetadata(body.sourceWorkspace);
+    if (sourceWorkspace) metadata.sourceWorkspace = sourceWorkspace;
+    const sourceCommit = sanitizeCommitMetadata(body.sourceCommit);
+    if (sourceCommit) metadata.sourceCommit = sourceCommit;
+    if (body.normalizedSourceRemoteUrl === null) {
+        metadata.normalizedSourceRemoteUrl = null;
+    } else {
+        const normalizedSourceRemoteUrl = sanitizeNormalizedRemoteUrl(body.normalizedSourceRemoteUrl);
+        if (normalizedSourceRemoteUrl) metadata.normalizedSourceRemoteUrl = normalizedSourceRemoteUrl;
+    }
+    return metadata;
+}
+
+function sanitizeTargetWorkspace(ws: WorkspaceInfo): { id: string; name?: string } {
+    const name = sanitizeMetadataString(ws.name);
+    return name ? { id: ws.id, name } : { id: ws.id };
+}
+
+function sanitizeWorkspaceMetadata(value: unknown): { id: string; name?: string } | undefined {
+    if (!isRecord(value)) return undefined;
+    const id = sanitizeMetadataString(value.id);
+    if (!id) return undefined;
+    const name = sanitizeMetadataString(value.name);
+    return name ? { id, name } : { id };
+}
+
+function sanitizeServerMetadata(value: unknown): { id: string; label?: string } | undefined {
+    if (!isRecord(value)) return undefined;
+    const id = sanitizeMetadataString(value.id);
+    if (!id) return undefined;
+    const label = sanitizeMetadataString(value.label);
+    return label ? { id, label } : { id };
+}
+
+function sanitizeCommitMetadata(value: unknown): { hash: string; subject?: string; author?: { name?: string; email?: string; date?: string } } | undefined {
+    if (!isRecord(value)) return undefined;
+    const hash = sanitizeHash(value.hash);
+    if (!hash) return undefined;
+    const subject = sanitizeMetadataString(value.subject, 500);
+    const author = sanitizeAuthorMetadata(value.author);
+    return {
+        hash,
+        ...(subject ? { subject } : {}),
+        ...(author ? { author } : {}),
+    };
+}
+
+function sanitizeAuthorMetadata(value: unknown): { name?: string; email?: string; date?: string } | undefined {
+    if (!isRecord(value)) return undefined;
+    const name = sanitizeMetadataString(value.name);
+    const email = sanitizeMetadataString(value.email);
+    const date = sanitizeMetadataString(value.date);
+    if (!name && !email && !date) return undefined;
+    return {
+        ...(name ? { name } : {}),
+        ...(email ? { email } : {}),
+        ...(date ? { date } : {}),
+    };
+}
+
+function sanitizeNormalizedRemoteUrl(value: unknown): string | undefined {
+    const raw = typeof value === 'string' ? value.trim() : '';
+    if (!raw || looksLikeLocalAbsolutePath(raw)) return undefined;
+    const normalized = normalizeRemoteUrl(raw).trim();
+    if (!normalized || looksLikeLocalAbsolutePath(normalized)) return undefined;
+    return normalized.slice(0, 500);
+}
+
+function sanitizeHash(value: unknown): string | undefined {
+    const hash = sanitizeMetadataString(value, 40);
+    return hash && /^[a-fA-F0-9]{4,40}$/.test(hash) ? hash.toLowerCase() : undefined;
+}
+
+function sanitizeMetadataString(value: unknown, maxLength = 200): string | undefined {
+    if (typeof value !== 'string') return undefined;
+    const trimmed = value.trim().replace(/[\r\n\t]+/g, ' ');
+    if (!trimmed || looksLikeLocalAbsolutePath(trimmed)) return undefined;
+    return trimmed.slice(0, maxLength);
+}
+
+function looksLikeLocalAbsolutePath(value: string): boolean {
+    return value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value) || value.startsWith('\\\\');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

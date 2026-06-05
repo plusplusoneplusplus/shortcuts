@@ -36,6 +36,7 @@ describe('adaptSearchResultToTask', () => {
         expect(task.id).toBe('proc-1');
         expect(task.type).toBe('chat');
         expect(task.status).toBe('completed');
+        expect(task.workspaceId).toBe('ws-1');
         expect(task.displayName).toBe('Test Process');
         expect(task.title).toBe('Test Process');
         expect(task.promptPreview).toBe('some prompt preview');

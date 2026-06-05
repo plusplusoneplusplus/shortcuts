@@ -1,4 +1,4 @@
-import { AdminClient, AgentProvidersClient, DbBrowserClient, ExplorerClient, GitClient, HealthClient, LoopsClient, MemoryClient, MemoryV2Client, NotesClient, PreferencesClient, ProcessesClient, PromptHistoryClient, PullRequestsClient, QueueClient, SchedulesClient, SeenStateClient, ServersClient, SkillsClient, StatsClient, SuggestionsClient, SyncClient, TasksClient, TemplatesClient, WikiClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
+import { AdminClient, AgentProvidersClient, DbBrowserClient, ExplorerClient, ForEachClient, GitClient, HealthClient, LoopsClient, MemoryClient, MemoryV2Client, NotesClient, PreferencesClient, ProcessesClient, PromptHistoryClient, PullRequestsClient, QueueClient, SchedulesClient, SeenStateClient, ServersClient, SkillsClient, StatsClient, SuggestionsClient, SyncClient, TasksClient, TemplatesClient, WikiClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
 import { HttpTransport, normalizeOptions } from './http';
 import { EventsClient } from './realtime';
 import type { CocClientOptions, CocRequestOptions, NormalizedCocClientOptions } from './types';
@@ -9,6 +9,7 @@ export class CocClient {
   readonly agentProviders: AgentProvidersClient;
   readonly dbBrowser: DbBrowserClient;
   readonly explorer: ExplorerClient;
+  readonly forEach: ForEachClient;
   readonly git: GitClient;
   readonly health: HealthClient;
   readonly memory: MemoryClient;
@@ -45,6 +46,7 @@ export class CocClient {
     this.agentProviders = new AgentProvidersClient(this.transport);
     this.dbBrowser = new DbBrowserClient(this.transport);
     this.explorer = new ExplorerClient(this.transport);
+    this.forEach = new ForEachClient(this.transport);
     this.git = new GitClient(this.transport);
     this.health = new HealthClient(this.transport);
     this.memory = new MemoryClient(this.transport);

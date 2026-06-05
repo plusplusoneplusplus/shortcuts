@@ -25,14 +25,14 @@ import { useSlashCommands } from './hooks/useSlashCommands';
 import { useModelCommand, selectPickableModels } from './hooks/useModelCommand';
 import { SlashCommandMenu, getMetaSkillItems, mergeSkillsWithMeta, type SkillItem } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
-import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION } from './ModePillSelector';
+import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION, FOR_EACH_MODE_PILL_OPTION } from './ModePillSelector';
 import { EffortPillSelector, buildEffortOptionsForModel } from './EffortPillSelector';
 import type { EffortLevel } from './EffortPillSelector';
 import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
 import { useChatPromptHistory } from '../../hooks/useChatPromptHistory';
-import { getDefaultProvider, isRalphEnabled, isLoopsEnabled, isEffortLevelsEnabled } from '../../utils/config';
+import { getDefaultProvider, isRalphEnabled, isForEachEnabled, isLoopsEnabled, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
 import type { EffortTierKey } from '../../hooks/useProviderEffortTiers';
 import { EffortTierSelector } from './EffortTierSelector';
@@ -43,10 +43,23 @@ import { AgentSelectorChip } from './AgentSelectorChip';
 import type { ChatProvider } from './AgentSelectorChip';
 import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
 import { deriveEffort } from '../../utils/effortUtils';
+import { RalphLaunchDialog } from '../../shared/RalphLaunchDialog';
+import { ForEachLaunchDialog } from '../../shared/ForEachLaunchDialog';
+import type { ResolvedModalJobAiSelection } from '../../shared/ModalJobAiControls';
+import { AttachedContextPreviews } from '../../ui/AttachedContextPreviews';
+import { formatAttachedContext, useAttachedContext } from './hooks/useAttachedContext';
+import {
+    dataTransferHasSessionContext,
+    readSessionContextDropPayload,
+    useConversationRetrievalCapability,
+    validateSessionContextAttachmentsForSend,
+    validateSessionContextDrop,
+} from './sessionContextDrop';
 
 export interface NewChatAreaProps {
     workspaceId?: string;
     onBack?: () => void;
+    onForEachRunSelected?: (runId: string) => void;
 }
 
 function isChatProvider(value: unknown): value is ChatProvider {
@@ -59,16 +72,19 @@ function isSelectableProvider(provider: ChatProvider, providers: Array<{ id: str
     return status?.enabled === true && status?.available === true;
 }
 
-export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
+export function NewChatArea({ workspaceId, onBack, onForEachRunSelected }: NewChatAreaProps) {
     const [input, setInput] = useState('');
     const [cursorPos, setCursorPos] = useState(0);
     const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
     const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [sessionContextDropError, setSessionContextDropError] = useState<string | null>(null);
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [selectedProvider, setSelectedProvider] = useState<ChatProvider>(() => getDefaultProvider());
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
     const [selectedEffortTier, setSelectedEffortTier] = useState<EffortTierKey>('medium');
+    const [ralphDirectGoalDraft, setRalphDirectGoalDraft] = useState<string | null>(null);
+    const [forEachRequestDraft, setForEachRequestDraft] = useState<string | null>(null);
     const richTextRef = useRef<RichTextInputHandle>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -78,6 +94,9 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const userPickedForModelRef = useRef<{ provider: ChatProvider; modelId: string } | null>(null);
 
     const { attachments, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
+    const attachedContext = useAttachedContext();
+    const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
+    const canRetrieveConversations = useConversationRetrievalCapability(workspaceId, sessionContextAttachmentsEnabled);
 
     const { dispatch: queueDispatch } = useQueue();
     const { state: appState } = useApp();
@@ -110,9 +129,11 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     }, [modelCommand.modelOverride, pickableModels]);
 
     const modePillOptions = useMemo(
-        () => isRalphEnabled()
-            ? [...DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION]
-            : DEFAULT_MODE_PILL_OPTIONS,
+        () => [
+            ...DEFAULT_MODE_PILL_OPTIONS,
+            ...(isRalphEnabled() ? [RALPH_MODE_PILL_OPTION] : []),
+            ...(isForEachEnabled() ? [FOR_EACH_MODE_PILL_OPTION] : []),
+        ],
         [],
     );
     const visibleModes = useMemo(
@@ -303,6 +324,24 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         localStorage.setItem(`coc:effort-tier:${workspaceId ?? 'default'}`, tier);
     }
 
+    function getSelectedWorkspaceRoot(): string | undefined {
+        const ws = appState.workspaces?.find((w: any) => w.id === workspaceId);
+        return ws?.rootPath;
+    }
+
+    function resolveComposerAiSelection(): ResolvedModalJobAiSelection {
+        const tierPayload = useEffortTierMode ? resolveEffortTier(selectedEffortTier, effortTierMap) : null;
+        const model = tierPayload?.model ?? validModelOverride ?? undefined;
+        const reasoningEffort = tierPayload !== null
+            ? tierPayload.reasoningEffort ?? undefined
+            : effortOverride ?? undefined;
+        return {
+            provider: selectedProvider,
+            ...(model ? { model } : {}),
+            ...(reasoningEffort ? { reasoningEffort } : {}),
+        };
+    }
+
     // Inline ghost-text autocomplete (matches FollowUpInputArea + EnqueueDialog).
     const promptAutocompleteEnabled = usePromptAutocompleteEnabled();
     const autocomplete = usePromptAutocomplete({
@@ -332,14 +371,56 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
 
     async function handleSend() {
         const trimmed = input.trim();
-        if ((!trimmed && attachments.length === 0) || sending) return;
+        const contextItems = attachedContext.getItems();
+        if ((!trimmed && attachments.length === 0 && contextItems.length === 0) || sending) return;
+        if (selectedMode === 'for-each') {
+            if (!workspaceId) {
+                setError('Select a workspace before starting a For Each run.');
+                setSessionContextDropError(null);
+                return;
+            }
+            if (attachments.length > 0) {
+                setError(`Remove ${attachments.length} file attachment${attachments.length === 1 ? '' : 's'} before starting For Each. For Each v1 sends request text only.`);
+                setSessionContextDropError(null);
+                return;
+            }
+            const sessionContextSendError = validateSessionContextAttachmentsForSend({
+                featureEnabled: sessionContextAttachmentsEnabled,
+                activeWorkspaceId: workspaceId,
+                currentProcessId: null,
+                items: contextItems,
+                canRetrieveConversations,
+            });
+            if (sessionContextSendError) {
+                setError(null);
+                setSessionContextDropError(sessionContextSendError);
+                return;
+            }
+            setError(null);
+            setSessionContextDropError(null);
+            setForEachRequestDraft(formatAttachedContext(contextItems) + trimmed);
+            return;
+        }
+        const sessionContextSendError = validateSessionContextAttachmentsForSend({
+            featureEnabled: sessionContextAttachmentsEnabled,
+            activeWorkspaceId: workspaceId,
+            currentProcessId: null,
+            items: contextItems,
+            canRetrieveConversations,
+        });
+        if (sessionContextSendError) {
+            setError(null);
+            setSessionContextDropError(sessionContextSendError);
+            return;
+        }
 
         setError(null);
+        setSessionContextDropError(null);
         setSending(true);
         abortControllerRef.current = new AbortController();
 
         try {
-            const ws = appState.workspaces?.find((w: any) => w.id === workspaceId);
+            const workspaceRoot = getSelectedWorkspaceRoot();
             const attachmentPayload = toPayload();
             const { skills: extractedSkills, prompt: cleanedPrompt } = slashCommands.parseAndExtract(trimmed);
 
@@ -362,11 +443,12 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                 contextOverride = { skills: extractedSkills };
             }
 
-            let effectivePrompt = extractedSkills.length > 0 ? cleanedPrompt : trimmed;
+            let basePrompt = extractedSkills.length > 0 ? cleanedPrompt : trimmed;
 
             if (selectedMode === 'ralph') {
-                effectivePrompt += '\n\nWhen you\'ve finished grilling me and have a clear understanding of the goal, write the final goal specification to a `.goal.md` file (e.g. `feature-name.goal.md`).';
+                basePrompt += '\n\nWhen you\'ve finished grilling me and have a clear understanding of the goal, write the final goal specification to a `.goal.md` file (e.g. `feature-name.goal.md`).';
             }
+            const effectivePrompt = formatAttachedContext(contextItems) + basePrompt;
 
             // Resolve model + reasoningEffort: tier mode takes priority over legacy controls.
             const tierPayload = useEffortTierMode ? resolveEffortTier(selectedEffortTier, effortTierMap) : null;
@@ -380,7 +462,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                     kind: 'chat',
                     mode: mode as any,
                     prompt: effectivePrompt,
-                    workingDirectory: ws?.rootPath,
+                    workingDirectory: workspaceRoot,
                     workspaceId,
                     ...(contextOverride ? { context: contextOverride } : {}),
                     ...(attachmentPayload.length > 0 ? { attachments: attachmentPayload } : {}),
@@ -400,6 +482,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             setCursorPos(0);
             richTextRef.current?.setValue('');
             clearAttachments();
+            attachedContext.clear();
             promptHistory.reset();
             clearDraft(draftKey);
         } catch (err: any) {
@@ -412,9 +495,70 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         }
     }
 
+    function handleOpenRalphDirectGoalDialog() {
+        if (sending) return;
+        setError(null);
+        setRalphDirectGoalDraft(input);
+    }
+
+    async function handleRalphDirectGoalLaunched(processId: string) {
+        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: workspaceId });
+        if (!appState.onboardingProgress?.hasUsedChat) {
+            await updateOnboarding({ hasUsedChat: true }).catch(() => {});
+        }
+        setRalphDirectGoalDraft(null);
+        setInput('');
+        setCursorPos(0);
+        richTextRef.current?.setValue('');
+        clearAttachments();
+        attachedContext.clear();
+        promptHistory.reset();
+        clearDraft(draftKey);
+    }
+
+    async function handleForEachRunApproved(run: { runId: string }) {
+        onForEachRunSelected?.(run.runId);
+        if (!appState.onboardingProgress?.hasUsedChat) {
+            await updateOnboarding({ hasUsedChat: true }).catch(() => {});
+        }
+        setForEachRequestDraft(null);
+        setInput('');
+        setCursorPos(0);
+        richTextRef.current?.setValue('');
+        clearAttachments();
+        attachedContext.clear();
+        promptHistory.reset();
+        clearDraft(draftKey);
+    }
+
     function handleStop() {
         abortControllerRef.current?.abort();
         setSending(false);
+    }
+
+    function handleSessionContextDragOver(e: React.DragEvent<HTMLElement>) {
+        if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+    }
+
+    function handleSessionContextDrop(e: React.DragEvent<HTMLElement>) {
+        if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        e.preventDefault();
+        const validation = validateSessionContextDrop({
+            payload: readSessionContextDropPayload(e.dataTransfer),
+            featureEnabled: sessionContextAttachmentsEnabled,
+            activeWorkspaceId: workspaceId,
+            currentProcessId: null,
+            existingItems: attachedContext.getItems(),
+            canRetrieveConversations,
+        });
+        if (!validation.ok) {
+            setSessionContextDropError(validation.error);
+            return;
+        }
+        attachedContext.addSessionContext(validation.payload);
+        setSessionContextDropError(null);
     }
 
     function focusInputAndInsertSlash() {
@@ -429,6 +573,34 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
 
     return (
         <div className="flex flex-col h-full bg-white dark:bg-[#1e1e1e]" data-testid="new-chat-area">
+            {ralphDirectGoalDraft !== null && (
+                <RalphLaunchDialog
+                    open={ralphDirectGoalDraft !== null}
+                    workspaceId={workspaceId ?? ''}
+                    sourceLabel="New Chat composer"
+                    goalSpec={ralphDirectGoalDraft}
+                    folderPath={getSelectedWorkspaceRoot()}
+                    workingDirectory={getSelectedWorkspaceRoot()}
+                    editable
+                    resolvedAiSelection={resolveComposerAiSelection()}
+                    attachmentCount={attachments.length + attachedContext.items.length}
+                    title="🔄 Start Ralph from Goal"
+                    confirmLabel="🔄 Start Ralph"
+                    onClose={() => setRalphDirectGoalDraft(null)}
+                    onLaunched={handleRalphDirectGoalLaunched}
+                />
+            )}
+            {forEachRequestDraft !== null && (
+                <ForEachLaunchDialog
+                    open={forEachRequestDraft !== null}
+                    workspaceId={workspaceId ?? ''}
+                    request={forEachRequestDraft}
+                    resolvedAiSelection={resolveComposerAiSelection()}
+                    attachmentCount={attachments.length}
+                    onClose={() => setForEachRequestDraft(null)}
+                    onApproved={handleForEachRunApproved}
+                />
+            )}
             {/* Back button — rendered when a back handler is provided (mobile new-chat flow) */}
             {onBack && (
                 <div className="flex items-center border-b border-[#e0e0e0] dark:border-[#3c3c3c] px-3 py-2">
@@ -461,6 +633,14 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                 {attachmentError && (
                     <div className="text-xs text-[#f14c4c]" data-testid="new-chat-attachment-error">{attachmentError}</div>
                 )}
+                {sessionContextDropError && (
+                    <div className="text-xs text-[#f14c4c]" data-testid="new-chat-session-context-error">{sessionContextDropError}</div>
+                )}
+                <AttachedContextPreviews
+                    items={attachedContext.items}
+                    onRemove={attachedContext.remove}
+                    data-testid="new-chat-attached-context-previews"
+                />
                 <AttachmentPreviews attachments={attachments} onRemove={removeAttachment} />
                 <input
                     ref={fileInputRef}
@@ -475,7 +655,12 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         e.target.value = '';
                     }}
                 />
-                <div data-testid="chat-input-stack" className="space-y-1">
+                <div
+                    data-testid="chat-input-stack"
+                    className="space-y-1"
+                    onDragOver={handleSessionContextDragOver}
+                    onDrop={handleSessionContextDrop}
+                >
                 <div
                     data-testid="chat-input-bar"
                     className={cn(
@@ -745,10 +930,68 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                             >
                                 Stop
                             </button>
+                        ) : selectedMode === 'ralph' && isRalphEnabled() ? (
+                            <div
+                                className="shrink-0 inline-flex h-[24px] rounded-md shadow-sm"
+                                data-testid="new-chat-ralph-submit-split"
+                            >
+                                <button
+                                    type="button"
+                                    disabled={!input.trim() && attachments.length === 0 && attachedContext.items.length === 0}
+                                    className="inline-flex items-center gap-1 h-[24px] pl-2 pr-2 rounded-l-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    onClick={() => { void handleSend(); }}
+                                    data-testid="new-chat-send-btn"
+                                    title="Grill (Enter) · Shift+Enter for newline"
+                                >
+                                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                        <path
+                                            d="M3 4h10a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H6.5L4 13v-2H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"
+                                            stroke="currentColor"
+                                            strokeWidth="1.2"
+                                            strokeLinejoin="round"
+                                        />
+                                    </svg>
+                                    <span>Grill</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    className="inline-flex items-center h-[24px] px-2 -ml-px rounded-r-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
+                                    onClick={handleOpenRalphDirectGoalDialog}
+                                    data-testid="new-chat-ralph-start-from-goal-btn"
+                                    title="Review pasted goal text and start Ralph execution"
+                                >
+                                    Start from goal...
+                                </button>
+                            </div>
+                        ) : selectedMode === 'for-each' && isForEachEnabled() ? (
+                            <button
+                                type="button"
+                                disabled={!input.trim() && attachments.length === 0 && attachedContext.items.length === 0}
+                                className="shrink-0 inline-flex items-center gap-1 h-[24px] pl-2 pr-1.5 rounded-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                onClick={() => { void handleSend(); }}
+                                data-testid="new-chat-send-btn"
+                                title="Generate a reviewed For Each item plan"
+                            >
+                                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                    <path
+                                        d="M4 3.5h8M4 8h8M4 12.5h8"
+                                        stroke="currentColor"
+                                        strokeWidth="1.2"
+                                        strokeLinecap="round"
+                                    />
+                                    <path
+                                        d="M2.5 3.5h.01M2.5 8h.01M2.5 12.5h.01"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                    />
+                                </svg>
+                                <span>Plan items</span>
+                            </button>
                         ) : (
                             <button
                                 type="button"
-                                disabled={!input.trim() && attachments.length === 0}
+                                disabled={!input.trim() && attachments.length === 0 && attachedContext.items.length === 0}
                                 className="shrink-0 inline-flex items-center gap-1 h-[24px] pl-2 pr-1.5 rounded-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                 onClick={() => { void handleSend(); }}
                                 data-testid="new-chat-send-btn"

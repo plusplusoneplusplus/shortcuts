@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
 import { PopOutFilePanel } from '../../../../src/server/spa/client/react/features/git/diff/PopOutFilePanel';
-import type { FileChange } from '../../../../src/server/spa/client/react/features/git/diff/FileTree';
+import type { FileBadgeInfo, FileChange } from '../../../../src/server/spa/client/react/features/git/diff/FileTree';
 
 // Mock useFilesViewMode
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useFilesViewMode', () => ({
@@ -184,8 +184,8 @@ describe('PopOutFilePanel', () => {
     });
 
     describe('classification-aware controls', () => {
-        const badges = new Map<string, { category: 'logic' | 'mechanical' | 'test' | 'generated'; intensity: 'high' | 'low' }>([
-            ['src/auth.ts', { category: 'logic', intensity: 'high' }],
+        const badges = new Map<string, FileBadgeInfo>([
+            ['src/auth.ts', { category: 'logic', intensity: 'high', hasCritical: true }],
             ['src/login.ts', { category: 'mechanical', intensity: 'low' }],
             ['tests/old.ts', { category: 'test', intensity: 'low' }],
         ]);
@@ -254,7 +254,7 @@ describe('PopOutFilePanel', () => {
         });
 
         it('shows "Show all" button only when some filters are off', () => {
-            const allOn = new Set(['logic', 'mechanical', 'test', 'generated'] as const);
+            const allOn = new Set(['logic', 'mechanical', 'test', 'simple', 'generated'] as const);
             const partial = new Set(['logic'] as const);
             const onShowAll = vi.fn();
 
@@ -301,6 +301,20 @@ describe('PopOutFilePanel', () => {
             expect(screen.getByTestId('tree-file-category-badge-src/auth.ts').textContent).toBe('L');
             expect(screen.getByTestId('tree-file-category-badge-src/login.ts').textContent).toBe('M');
             expect(screen.getByTestId('tree-file-category-badge-tests/old.ts').textContent).toBe('T');
+        });
+
+        it('renders a compact critical marker next to critical classified files in the rail', () => {
+            render(
+                <PopOutFilePanel
+                    workspaceId="ws1"
+                    files={SAMPLE_FILES}
+                    selectedFilePath={null}
+                    onFileSelect={() => {}}
+                    getFileBadge={getFileBadge}
+                />
+            );
+            expect(screen.getByTestId('tree-file-critical-marker-src/auth.ts').textContent).toBe('!');
+            expect(screen.queryByTestId('tree-file-critical-marker-src/login.ts')).toBeNull();
         });
 
         it('renders reviewed (✓) and visited (•) indicators distinctly', () => {

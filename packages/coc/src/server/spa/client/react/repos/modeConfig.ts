@@ -1,10 +1,10 @@
-export type ChatMode = 'ask' | 'autopilot' | 'ralph';
+export type ChatMode = 'ask' | 'autopilot' | 'ralph' | 'for-each';
 
 export const DEFAULT_CHAT_MODES: readonly ChatMode[] = ['ask', 'autopilot'];
 
 export function normalizeChatMode(mode: unknown): ChatMode | undefined {
     if (mode === 'plan') return 'ask';
-    if (mode === 'ask' || mode === 'autopilot' || mode === 'ralph') return mode;
+    if (mode === 'ask' || mode === 'autopilot' || mode === 'ralph' || mode === 'for-each') return mode;
     return undefined;
 }
 
@@ -24,12 +24,14 @@ export const MODE_BORDER_COLORS: Record<ChatMode, { border: string; ring: string
     autopilot: { border: 'border-green-500 dark:border-green-400', ring: 'focus-within:ring-green-500/30' },
     ask: { border: 'border-yellow-500 dark:border-yellow-400', ring: 'focus-within:ring-yellow-500/30' },
     ralph: { border: 'border-purple-500 dark:border-purple-400', ring: 'focus-within:ring-purple-500/30' },
+    'for-each': { border: 'border-sky-500 dark:border-sky-400', ring: 'focus-within:ring-sky-500/30' },
 };
 
 export const MODE_ICONS: Record<ChatMode, string> = {
     ask: '💡',
     autopilot: '🤖',
     ralph: '🔄',
+    'for-each': '🔁',
 };
 
 /**
@@ -40,18 +42,21 @@ export const MODE_TEXT_COLORS: Record<ChatMode, string> = {
     autopilot: 'text-green-600 dark:text-green-400',
     ask: 'text-yellow-600 dark:text-yellow-400',
     ralph: 'text-purple-600 dark:text-purple-400',
+    'for-each': 'text-sky-600 dark:text-sky-400',
 };
 
 export const MODE_LABELS: Record<ChatMode, string> = {
     ask: '💡 Ask',
     autopilot: '🤖 Autopilot',
     ralph: '🔄 Ralph',
+    'for-each': '🔁 For Each',
 };
 
 export const MODE_TOOLTIPS: Record<ChatMode, string> = {
     ask: 'Ask — get answers without making changes',
     autopilot: 'Autopilot — execute changes automatically',
     ralph: 'Ralph — iterative AI coding loop with guided goal setting',
+    'for-each': 'For Each — generate a reviewed item plan, then run each item separately',
 };
 
 const MODE_ORDER: readonly ChatMode[] = DEFAULT_CHAT_MODES;

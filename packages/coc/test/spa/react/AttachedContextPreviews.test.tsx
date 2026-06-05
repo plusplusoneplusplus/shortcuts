@@ -6,6 +6,7 @@ import type { AttachedContextItem } from '../../../src/server/spa/client/react/f
 
 function makeItem(overrides: Partial<AttachedContextItem> = {}): AttachedContextItem {
     return {
+        kind: 'turn',
         id: 'ctx-1',
         turnIndex: 3,
         role: 'assistant',
@@ -106,5 +107,60 @@ describe('AttachedContextPreviews', () => {
             />,
         );
         expect(screen.getByTestId('custom-test-id')).toBeTruthy();
+    });
+
+    it('renders session context identity details', () => {
+        render(
+            <AttachedContextPreviews
+                items={[{
+                    kind: 'session',
+                    id: 'ctx-session',
+                    sourceWorkspaceId: 'ws-1',
+                    sourceProcessId: 'process-1234567890',
+                    title: 'Debug source session',
+                    status: 'failed',
+                    lastActivityAt: '2026-01-01T00:00:00.000Z',
+                    preview: 'Debug source session',
+                }]}
+                onRemove={vi.fn()}
+            />,
+        );
+
+        expect(screen.getByTestId('attached-session-context-chip').textContent).toContain('Session');
+        expect(screen.getByTestId('attached-session-context-chip').textContent).toContain('Debug source session');
+        expect(screen.getByTestId('attached-session-context-meta').textContent).toContain('failed');
+        expect(screen.getByTestId('attached-session-context-meta').textContent).toContain('process-…7890');
+    });
+
+    it('renders Ralph session context identity details with a purple Ralph chip', () => {
+        render(
+            <AttachedContextPreviews
+                items={[{
+                    kind: 'ralph-session',
+                    id: 'ctx-ralph',
+                    sourceWorkspaceId: 'ws-1',
+                    sourceRalphSessionId: 'ralph-session-0001',
+                    title: 'Ralph source',
+                    displayLabel: 'Ralph source - 2 iter',
+                    phase: 'executing',
+                    status: 'running',
+                    lastActivityAt: '2026-01-01T00:00:00.000Z',
+                    childProcessIds: ['grill-proc', 'iter-1', 'iter-2'],
+                    processCount: 3,
+                    iterationCount: 2,
+                    preview: 'Ralph source',
+                }]}
+                onRemove={vi.fn()}
+            />,
+        );
+
+        const chip = screen.getByTestId('attached-ralph-context-chip');
+        expect(chip.textContent).toContain('RALPH');
+        expect(chip.textContent).toContain('Ralph source - 2 iter');
+        expect(chip.className).toContain('border-purple-300');
+        expect(screen.getByTestId('attached-ralph-context-meta').textContent).toContain('executing/running');
+        expect(screen.getByTestId('attached-ralph-context-meta').textContent).toContain('3 processes');
+        expect(screen.getByTestId('attached-ralph-context-meta').textContent).toContain('2 iterations');
+        expect(screen.getByTestId('attached-ralph-context-meta').textContent).toContain('ralph-se…0001');
     });
 });

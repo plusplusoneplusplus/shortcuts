@@ -25,7 +25,14 @@ function makeTempDir(): string {
 
 const validResult: DiffClassificationResult = {
     classifications: [
-        { file: 'src/a.ts', hunkIndex: 0, category: 'logic', intensity: 'high', reason: 'New code' },
+        {
+            file: 'src/a.ts',
+            hunkIndex: 0,
+            category: 'logic',
+            intensity: 'high',
+            reason: 'New code',
+            summaryComment: 'Adds a new behavior path that reviewers should inspect.',
+        },
         { file: 'src/a.ts', hunkIndex: 1, category: 'mechanical', intensity: 'low', reason: 'Rename' },
     ],
 };
@@ -94,7 +101,14 @@ describe('writeClassification / readClassification', () => {
     it('overwrites an existing result for the same key', () => {
         writeClassification(dataDir, 'ws', 'repo', '1', 'sha', validResult);
         const next: DiffClassificationResult = {
-            classifications: [{ file: 'b.ts', hunkIndex: 0, category: 'test', intensity: 'low', reason: 'Add' }],
+            classifications: [{
+                file: 'b.ts',
+                hunkIndex: 0,
+                category: 'test',
+                intensity: 'low',
+                reason: 'Add',
+                testFidelityComment: 'Medium fidelity: exercises the public API with mocked storage.',
+            }],
         };
         writeClassification(dataDir, 'ws', 'repo', '1', 'sha', next);
         const read = readClassification(dataDir, 'ws', 'repo', '1', 'sha');
@@ -170,9 +184,148 @@ describe('validateClassificationResult', () => {
 
     it('rejects negative hunkIndex', () => {
         const v = validateClassificationResult({
-            classifications: [{ file: 'a', hunkIndex: -1, category: 'logic', intensity: 'high', reason: 'x' }],
+            classifications: [{
+                file: 'a',
+                hunkIndex: -1,
+                category: 'logic',
+                intensity: 'high',
+                reason: 'x',
+                summaryComment: 'Changes logic.',
+            }],
         });
         expect(v.ok).toBe(false);
+    });
+
+    it('accepts simple function hunks without rich review comments', () => {
+        const v = validateClassificationResult({
+            classifications: [{
+                file: 'src/format.ts',
+                hunkIndex: 0,
+                category: 'simple',
+                intensity: 'low',
+                reason: 'Adds a deterministic string formatter',
+            }],
+        });
+        expect(v.ok).toBe(true);
+        if (v.ok) expect(v.classifications[0].category).toBe('simple');
+    });
+
+    it('requires testFidelityComment only for test hunks', () => {
+        const missing = validateClassificationResult({
+            classifications: [{ file: 'a.test.ts', hunkIndex: 0, category: 'test', intensity: 'low', reason: 'Adds a test' }],
+        });
+        expect(missing.ok).toBe(false);
+        if (!missing.ok) expect(missing.error).toMatch(/testFidelityComment/);
+
+        const present = validateClassificationResult({
+            classifications: [{
+                file: 'a.test.ts',
+                hunkIndex: 0,
+                category: 'test',
+                intensity: 'low',
+                reason: 'Adds a test',
+                testFidelityComment: 'High fidelity: covers the real handler through its public API.',
+            }],
+        });
+        expect(present.ok).toBe(true);
+    });
+
+    it('requires summaryComment for logic hunks', () => {
+        const missing = validateClassificationResult({
+            classifications: [{ file: 'src/a.ts', hunkIndex: 0, category: 'logic', intensity: 'low', reason: 'Changes behavior' }],
+        });
+        expect(missing.ok).toBe(false);
+        if (!missing.ok) expect(missing.error).toMatch(/summaryComment/);
+
+        const present = validateClassificationResult({
+            classifications: [{
+                file: 'src/a.ts',
+                hunkIndex: 0,
+                category: 'logic',
+                intensity: 'low',
+                reason: 'Changes behavior',
+                summaryComment: 'The handler now returns cached data for warm requests.',
+            }],
+        });
+        expect(present.ok).toBe(true);
+    });
+
+    it('preserves valid critical existing-function metadata', () => {
+        const v = validateClassificationResult({
+            classifications: [{
+                file: 'src/routes.ts',
+                hunkIndex: 0,
+                category: 'logic',
+                intensity: 'high',
+                reason: 'Changes route behavior',
+                summaryComment: 'The route now rejects unauthenticated writes before persistence.',
+                critical: {
+                    label: 'route handler',
+                    impactSummary: 'Affects every write request to the route.',
+                    usages: [{
+                        file: 'src/server.ts',
+                        symbol: 'registerRoutes',
+                        line: 12,
+                        description: 'Server startup registers the changed route.',
+                    }],
+                    callPath: [
+                        { file: 'src/server.ts', symbol: 'startServer', line: 8 },
+                        { file: 'src/routes.ts', symbol: 'POST /items', line: 34 },
+                    ],
+                },
+            }],
+        });
+        expect(v.ok).toBe(true);
+        if (v.ok) {
+            expect(v.classifications[0].critical?.label).toBe('route handler');
+            expect(v.classifications[0].critical?.usages).toHaveLength(1);
+            expect(v.classifications[0].critical?.callPath).toHaveLength(2);
+        }
+    });
+
+    it('rejects malformed critical metadata instead of dropping it', () => {
+        const tooManyUsages = validateClassificationResult({
+            classifications: [{
+                file: 'src/a.ts',
+                hunkIndex: 0,
+                category: 'logic',
+                intensity: 'high',
+                reason: 'Changes exported behavior',
+                summaryComment: 'The exported function now changes its return contract.',
+                critical: {
+                    label: 'exported API',
+                    impactSummary: 'Callers observe a new return value.',
+                    usages: [
+                        { file: 'a.ts', description: 'caller 1' },
+                        { file: 'b.ts', description: 'caller 2' },
+                        { file: 'c.ts', description: 'caller 3' },
+                        { file: 'd.ts', description: 'caller 4' },
+                    ],
+                    callPath: [{ file: 'a.ts', symbol: 'run' }],
+                },
+            }],
+        });
+        expect(tooManyUsages.ok).toBe(false);
+        if (!tooManyUsages.ok) expect(tooManyUsages.error).toMatch(/at most 3/);
+
+        const missingEvidenceNote = validateClassificationResult({
+            classifications: [{
+                file: 'src/a.ts',
+                hunkIndex: 0,
+                category: 'logic',
+                intensity: 'high',
+                reason: 'Changes exported behavior',
+                summaryComment: 'The exported function now changes its return contract.',
+                critical: {
+                    label: 'exported API',
+                    impactSummary: 'Callers observe a new return value.',
+                    usages: [],
+                    callPath: [{ file: 'a.ts', symbol: 'run' }],
+                },
+            }],
+        });
+        expect(missingEvidenceNote.ok).toBe(false);
+        if (!missingEvidenceNote.ok) expect(missingEvidenceNote.error).toMatch(/usageNotDetermined/);
     });
 });
 

@@ -2,6 +2,7 @@ export * from './admin';
 export * from './common';
 export * from './db-browser';
 export * from './explorer';
+export * from './for-each';
 export * from './git';
 export * from './memory';
 export * from './notes';

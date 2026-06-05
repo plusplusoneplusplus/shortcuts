@@ -74,6 +74,7 @@ const BADGE_COLORS: Record<HunkCategory, string> = {
     logic: 'text-orange-500 dark:text-orange-400',
     mechanical: 'text-gray-400 dark:text-gray-500',
     test: 'text-blue-500 dark:text-blue-400',
+    simple: 'text-sky-500 dark:text-sky-400',
     generated: 'text-purple-500 dark:text-purple-400',
 };
 
@@ -97,6 +98,7 @@ const CATEGORY_DESCRIPTIONS: Record<HunkCategory, string> = {
     logic: 'Behavior changes — new features, bug fixes, conditional changes',
     mechanical: 'Refactors, renames, moves, signature cascades with no behavior change',
     test: 'Test file additions/updates, fixtures, mocks',
+    simple: 'Straightforward deterministic functions with no I/O, branching, or side effects',
     generated: 'Lock files, codegen output, auto-formatted files',
 };
 

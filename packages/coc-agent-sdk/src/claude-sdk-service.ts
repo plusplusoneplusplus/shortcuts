@@ -552,12 +552,13 @@ export class ClaudeSDKService implements ISDKService {
         return CLAUDE_EFFORT_LEVELS.filter(level => value.includes(level));
     }
 
-    // ── Account quota from Claude rate-limit events ───────────────────────────
+    // ── Account quota from Claude rate-limit events or OAuth API ─────────────
 
     public async getAccountQuota(): Promise<IAccountQuotaResult> {
         if (this.disposed) throw new Error('ClaudeSDKService has been disposed');
         const avail = await this.isAvailable();
         if (!avail.available) throw new Error(avail.error ?? 'Claude Code SDK is not available');
+        if (process.platform === 'linux') return fetchClaudeOAuthQuota();
         if (this.lastRateLimitInfo) return mapClaudeRateLimitInfoToQuota(this.lastRateLimitInfo);
         if (this.lastAccountInfo) return mapClaudeAccountInfoToQuota(this.lastAccountInfo);
         return { quotaSnapshots: {} };
@@ -1417,4 +1418,91 @@ function toResetDate(value: number | undefined): string | undefined {
     const millis = value < 10_000_000_000 ? value * 1000 : value;
     const date = new Date(millis);
     return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
+/**
+ * Maps the raw JSON response from `https://api.anthropic.com/api/oauth/usage`
+ * into `IAccountQuotaResult`. Iterates `five_hour` and `seven_day` windows only.
+ * Any window with missing or non-numeric utilization is silently skipped.
+ */
+export function mapOAuthUsageToQuota(data: Record<string, unknown>): IAccountQuotaResult {
+    const quotaSnapshots: Record<string, IAccountQuotaSnapshot> = {};
+
+    for (const key of ['five_hour', 'seven_day'] as const) {
+        const window = data[key];
+        if (!window || typeof window !== 'object') continue;
+        const w = window as Record<string, unknown>;
+        const utilization = typeof w.utilization === 'number' ? w.utilization : undefined;
+        if (utilization === undefined) continue;
+
+        const entitlementRequests = 100;
+        const normalizedUtil = clamp01(utilization / 100);
+        const usedRequests = Math.round(utilization);
+        const resetDate = typeof w.resets_at === 'string' && w.resets_at ? w.resets_at : undefined;
+
+        quotaSnapshots[key] = {
+            isUnlimitedEntitlement: false,
+            entitlementRequests,
+            usedRequests,
+            usageAllowedWithExhaustedQuota: false,
+            remainingPercentage: clamp01(1 - normalizedUtil),
+            overage: Math.max(0, usedRequests - entitlementRequests),
+            ...(resetDate ? { resetDate } : {}),
+        };
+    }
+
+    return { quotaSnapshots };
+}
+
+/**
+ * Reads the Claude OAuth credentials from disk and calls the Anthropic OAuth
+ * usage endpoint. Linux-only; returns empty snapshots on any I/O or network
+ * error so callers never need to handle rejections.
+ */
+async function fetchClaudeOAuthQuota(): Promise<IAccountQuotaResult> {
+    try {
+        const credentialsFile = process.env['CLAUDE_CREDENTIALS_FILE']
+            ?? path.join(os.homedir(), '.claude', '.credentials.json');
+
+        let rawContent: string;
+        try {
+            rawContent = fs.readFileSync(credentialsFile, 'utf8');
+        } catch {
+            return { quotaSnapshots: {} };
+        }
+
+        let credentials: unknown;
+        try {
+            credentials = JSON.parse(rawContent);
+        } catch {
+            return { quotaSnapshots: {} };
+        }
+
+        if (!credentials || typeof credentials !== 'object') return { quotaSnapshots: {} };
+        const accessToken = (credentials as Record<string, unknown>)['access_token'];
+        if (typeof accessToken !== 'string' || !accessToken) return { quotaSnapshots: {} };
+
+        let response: Response;
+        try {
+            response = await fetch('https://api.anthropic.com/api/oauth/usage', {
+                headers: { 'Authorization': `Bearer ${accessToken}` },
+            });
+        } catch {
+            return { quotaSnapshots: {} };
+        }
+
+        if (!response.ok) return { quotaSnapshots: {} };
+
+        let data: unknown;
+        try {
+            data = await response.json();
+        } catch {
+            return { quotaSnapshots: {} };
+        }
+
+        if (!data || typeof data !== 'object') return { quotaSnapshots: {} };
+        return mapOAuthUsageToQuota(data as Record<string, unknown>);
+    } catch {
+        return { quotaSnapshots: {} };
+    }
 }

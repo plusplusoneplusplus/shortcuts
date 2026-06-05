@@ -3,6 +3,7 @@ export { AgentProvidersClient } from './agent-providers';
 export type { ProviderInstallStatusResponse, ProviderInstallResponse } from './agent-providers';
 export { DbBrowserClient } from './db-browser';
 export { ExplorerClient } from './explorer';
+export { ForEachClient } from './for-each';
 export { GitClient } from './git';
 export { HealthClient } from './health';
 export { MemoryClient, MemoryV2Client } from './memory';

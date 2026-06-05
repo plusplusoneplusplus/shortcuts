@@ -100,6 +100,7 @@ The `src/server/` tree is grouped by feature domain. Cross-cutting plumbing stay
 | `terminal/` | WebSocket-based PTY (session-manager, routes, ws-server) |
 | `memory/` | Memory config, bounded-memory REST, repo-memory, promote, background-review |
 | `ralph/` | Iterative execution sessions and file-backed journal (see [ralph.md](ralph.md)) |
+| `for-each/` | Dedicated For Each run records, item-plan validation, file-backed repo-scoped draft/approval storage, and sequential child-chat orchestration |
 | `models/` | Model registry endpoints |
 | `messaging/` | Teams bot integration: manager, command router, per-user state |
 | `spa/` | Dashboard SPA (HTML template, React client) |
@@ -161,6 +162,9 @@ terminal:
 workflows:
   enabled: true
 
+forEach:
+  enabled: false
+
 codex:
   enabled: false
 
@@ -193,6 +197,7 @@ Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT.
 - `outputs/` — AI conversation output markdown
 - `memory/MEMORY.md` — per-repo bounded memory
 - `ralph-sessions/<sessionId>/` — Ralph `session.json` metadata and `progress.md` journal
+- `for-each-runs/<runId>/` — For Each `run.json` metadata and `items.json` reviewed item plan/state
 - `paste-context/` — temp files for large pasted content
 
 Use `getRepoDataPath(dataDir, workspaceId, filename)` for all per-repo path construction.

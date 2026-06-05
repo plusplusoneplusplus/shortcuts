@@ -10,6 +10,7 @@ import type { DeliveryMode } from '@plusplusoneplusplus/forge';
 import type { AttachmentPayload } from '../../../types/attachments';
 import { CocApiError, type ProcessMessageRequest } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../../api/cocClient';
+import { validateSessionContextAttachmentsForSend } from '../sessionContextDrop';
 
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
 
@@ -61,6 +62,10 @@ export interface UseSendMessageOptions {
      * Without it the server falls back to the workspaceId stored on the process.
      */
     workspaceId?: string;
+    /** Feature flag state for session-context attachments. Required before sending session pointers. */
+    sessionContextAttachmentsEnabled?: boolean;
+    /** Conversation retrieval capability for the active workspace/provider mode. */
+    conversationRetrievalAvailable?: boolean | null;
     /**
      * Reset the mode pill back to 'ask' after a successful Ralph promotion.
      * Caller-owned because the visible pill is hidden by `allowedModes`
@@ -100,6 +105,8 @@ export function useSendMessage({
     modelOverride,
     effortOverride,
     workspaceId,
+    sessionContextAttachmentsEnabled = false,
+    conversationRetrievalAvailable,
     onPromotedToRalph,
 }: UseSendMessageOptions): {
     sendFollowUp: (overrideContent?: string, deliveryMode?: DeliveryMode) => Promise<void>;
@@ -161,6 +168,17 @@ export function useSendMessage({
         const userText = (overrideContent ?? followUpInputRef.current).trim();
         const pastedContent = getPastedContent?.() ?? null;
         const contextItems = getAttachedContext?.() ?? [];
+        const sessionContextSendError = validateSessionContextAttachmentsForSend({
+            featureEnabled: sessionContextAttachmentsEnabled,
+            activeWorkspaceId: workspaceId,
+            currentProcessId: processId,
+            items: contextItems,
+            canRetrieveConversations: conversationRetrievalAvailable,
+        });
+        if (sessionContextSendError) {
+            setError(sessionContextSendError);
+            return;
+        }
         const contextPrefix = formatAttachedContext(contextItems);
         const baseContent = pastedContent
             ? (userText ? userText + '\n\n' + pastedContent : pastedContent)
@@ -298,7 +316,7 @@ export function useSendMessage({
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
             void refreshConversation(processId);
         }
-    }, [processId, taskId, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, buildMessageRequest]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [processId, taskId, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, buildMessageRequest, sessionContextAttachmentsEnabled, conversationRetrievalAvailable, workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { sendFollowUp, closeFollowUpStream, onSendComplete };
 }

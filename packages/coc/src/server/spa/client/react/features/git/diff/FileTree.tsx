@@ -14,6 +14,8 @@ import { TruncatedPath } from '../../../ui';
 import { ContextMenu } from '../../../tasks/comments/ContextMenu';
 import type { ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import { copyToClipboard } from '../../../utils/format';
+import type { HunkCategory } from '../../pull-requests/classification-types';
+import { CATEGORY_LABELS } from '../../pull-requests/classification-types';
 
 // ----- Types -----
 
@@ -216,8 +218,9 @@ function buildCopyPathMenuItems(filePath: string, repoRoot?: string): ContextMen
 
 /** Per-file classification badge info for rail display. */
 export interface FileBadgeInfo {
-    category: 'logic' | 'mechanical' | 'test' | 'generated';
+    category: HunkCategory;
     intensity: 'high' | 'low';
+    hasCritical?: boolean;
 }
 
 export interface FlatFileListProps {
@@ -247,6 +250,7 @@ const CATEGORY_BADGE_STYLE: Record<FileBadgeInfo['category'], { label: string; c
     logic:      { label: 'L', cls: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200' },
     test:       { label: 'T', cls: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200' },
     mechanical: { label: 'M', cls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200' },
+    simple:     { label: 'S', cls: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200' },
     generated:  { label: 'G', cls: 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300' },
 };
 
@@ -256,10 +260,22 @@ function CategoryBadge({ badge, testId }: { badge: FileBadgeInfo; testId?: strin
     return (
         <span
             className={`inline-flex items-center justify-center w-4 h-3.5 text-[9px] leading-none rounded flex-shrink-0 ${style.cls}${ring}`}
-            title={`${badge.category} (${badge.intensity})`}
+            title={`${CATEGORY_LABELS[badge.category]} (${badge.intensity})`}
             data-testid={testId}
         >
             {style.label}
+        </span>
+    );
+}
+
+function CriticalMarker({ testId }: { testId?: string }) {
+    return (
+        <span
+            className="inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-100 px-1 text-[9px] font-bold leading-none text-red-700 ring-1 ring-red-300 dark:bg-red-900/40 dark:text-red-200 dark:ring-red-500/60"
+            title="Critical existing-function change"
+            data-testid={testId}
+        >
+            !
         </span>
     );
 }
@@ -345,6 +361,9 @@ export function FlatFileList({
                                     badge={badge}
                                     testId={`flat-file-category-badge-${file.path}`}
                                 />
+                            )}
+                            {badge?.hasCritical && (
+                                <CriticalMarker testId={`flat-file-critical-marker-${file.path}`} />
                             )}
                             <ReviewStateIndicator
                                 isReviewed={isReviewed}
@@ -658,6 +677,9 @@ function FileEntry({
                         badge={badge}
                         testId={`tree-file-category-badge-${node.path}`}
                     />
+                )}
+                {badge?.hasCritical && (
+                    <CriticalMarker testId={`tree-file-critical-marker-${node.path}`} />
                 )}
                 <ReviewStateIndicator
                     isReviewed={isReviewed}
