@@ -43,6 +43,23 @@ export interface AIProviderPageProps {
 
 const PROVIDER_LABELS: Record<Provider, string> = { copilot: 'Copilot', codex: 'Codex', claude: 'Claude' };
 const PROVIDER_IDS: Provider[] = ['copilot', 'codex', 'claude'];
+const QUOTA_TYPE_LABELS: Record<string, string> = {
+    five_hour: '5h',
+    seven_day: 'Weekly',
+};
+
+function formatQuotaTypeLabel(type: string): string {
+    const normalized = type.trim();
+    const knownLabel = QUOTA_TYPE_LABELS[normalized];
+    if (knownLabel) return knownLabel;
+    const readable = normalized.replace(/[_-]+/g, ' ').trim();
+    if (!readable) return 'Quota';
+    return readable.charAt(0).toUpperCase() + readable.slice(1);
+}
+
+function getQuotaPercent(remainingPercentage: number | undefined): number {
+    return Math.max(0, Math.min(100, Math.round((remainingPercentage ?? 1) * 100)));
+}
 
 function CopilotIcon() {
     return (
@@ -146,27 +163,30 @@ function QuotaCell({ providerId, quotaData }: { providerId: Provider; quotaData:
     const finiteTypes = providerData.quotaTypes.filter(q => !q.isUnlimitedEntitlement);
 
     if (finiteTypes.length > 0) {
-        const tightest = finiteTypes.reduce((best, qt) => {
-            const pct = Math.round((qt.remainingPercentage ?? 1) * 100);
-            const bestPct = Math.round((best.remainingPercentage ?? 1) * 100);
-            return pct < bestPct ? qt : best;
-        }, finiteTypes[0]);
-        const pct = Math.round((tightest.remainingPercentage ?? 1) * 100);
-        const barClass = pct < 25 ? 'aip-bar-danger' : pct < 50 ? 'aip-bar-warning' : '';
-        const badgeClass = pct < 25 ? 'ar-badge-danger' : pct < 50 ? 'ar-badge-warning' : 'ar-badge-success';
-        const badgeLabel = pct < 25 ? 'Risk' : pct < 50 ? 'Watch' : 'OK';
         return (
-            <div className="aip-quota-cell">
-                <div className="aip-quota-top">
-                    <strong className="aip-quota-value">{pct}% remaining</strong>
-                    <span className={`ar-badge ${badgeClass}`}>{badgeLabel}</span>
-                </div>
-                <div className="aip-quota-caption">
-                    {tightest.usedRequests} / {tightest.entitlementRequests} used
-                </div>
-                <div className={`aip-bar ${barClass}`}>
-                    <span style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
-                </div>
+            <div className="aip-quota-cell aip-quota-list">
+                {finiteTypes.map((quotaType, index) => {
+                    const label = formatQuotaTypeLabel(quotaType.type);
+                    const pct = getQuotaPercent(quotaType.remainingPercentage);
+                    const barClass = pct < 25 ? 'aip-bar-danger' : pct < 50 ? 'aip-bar-warning' : '';
+                    const badgeClass = pct < 25 ? 'ar-badge-danger' : pct < 50 ? 'ar-badge-warning' : 'ar-badge-success';
+                    const badgeLabel = pct < 25 ? 'Risk' : pct < 50 ? 'Watch' : 'OK';
+                    return (
+                        <div className="aip-quota-row" key={`${quotaType.type}-${quotaType.resetDate ?? index}`}>
+                            <div className="aip-quota-top">
+                                <span className="aip-quota-label">{label}</span>
+                                <strong className="aip-quota-value">{pct}% remaining</strong>
+                                <span className={`ar-badge ${badgeClass}`}>{badgeLabel}</span>
+                            </div>
+                            <div className="aip-quota-caption">
+                                {quotaType.usedRequests} / {quotaType.entitlementRequests} used
+                            </div>
+                            <div className={`aip-bar ${barClass}`} aria-label={`${label} quota remaining`}>
+                                <span style={{ width: `${pct}%` }} />
+                            </div>
+                        </div>
+                    );
+                })}
             </div>
         );
     }

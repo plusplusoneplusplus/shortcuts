@@ -193,6 +193,12 @@ Modal job-submission dialogs use `shared/ModalJobAiControls.tsx` when they need 
 When effort-tier mode is enabled, `EffortTierSelector` lists `Very Low`, `Low`, `Medium`, and `High` in that order. Tooltips expose the concrete model and reasoning effort mapped to the selected tier and each configured menu option; empty reasoning effort displays as `Auto`, and unconfigured options remain disabled with an Admin configuration tooltip.
 
 The Admin AI Provider page's `ProviderEffortTiersSection` uses the same tier order (`Very Low`, `Low`, `Medium`, `High`) when editing provider defaults. Rows sourced from hardcoded provider defaults are prefilled and marked with a `Default` badge; saving persists only rows explicitly changed from those defaults, and clearing an override reverts that row to its provider default.
+The provider routing table's quota cell renders every finite `quotaTypes[]`
+snapshot reported for a provider as a compact row with a readable quota-window
+label, remaining percentage, used/entitlement caption, and remaining-usage bar.
+Known provider windows label `five_hour` as `5h` and `seven_day` as `Weekly`;
+unknown ids are converted to readable text. The page-level quota-risk summary
+still uses the tightest finite quota across all providers.
 
 The model-picker chip in both `NewChatArea` and `FollowUpInputArea` mirrors the `AgentSelectorChip` style: icon + label + chevron, no inline `✕` clear. When a `modelOverride` is set, `ModelCommandMenu` renders a `Use default` entry at the top of the dropdown that calls `setModelOverride(null)`; clearing flows through the menu rather than a chip-side button. `NoteChatPanel` reuses the same menu without passing `onClearOverride`, so the clear row only appears in the chat composers.
 

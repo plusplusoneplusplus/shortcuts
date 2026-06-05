@@ -1456,12 +1456,27 @@
   display: grid;
   gap: 3px;
 }
+.admin-redesign .aip-quota-list {
+  gap: 8px;
+}
+.admin-redesign .aip-quota-row {
+  display: grid;
+  gap: 3px;
+}
 .admin-redesign .aip-quota-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   min-width: 0;
+}
+.admin-redesign .aip-quota-label {
+  min-width: 44px;
+  color: var(--ar-text-mute);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
 }
 .admin-redesign .aip-quota-value {
   font-weight: 600;
