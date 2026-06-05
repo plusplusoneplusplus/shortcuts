@@ -632,6 +632,11 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         selectTask(processId);
     }, [selectTask]);
 
+    const handleSelectForEachGenerationProcess = useCallback((processId: string) => {
+        setSelectedForEachRunId(null);
+        selectTask(processId);
+    }, [selectTask]);
+
     const handleOpenForEachRun = useCallback((runId: string) => {
         if (selectedTaskId) {
             queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
@@ -767,6 +772,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                                         setSelectedForEachRunId(null);
                                         setMobileShowDetail(false);
                                     }}
+                                    onSelectGenerationProcess={handleSelectForEachGenerationProcess}
                                     onSelectChildProcess={handleSelectForEachChildProcess}
                                 />
                             ) : (
@@ -865,6 +871,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                         workspaceId={workspaceId}
                         runId={selectedForEachRunId}
                         onClose={() => setSelectedForEachRunId(null)}
+                        onSelectGenerationProcess={handleSelectForEachGenerationProcess}
                         onSelectChildProcess={handleSelectForEachChildProcess}
                     />
                 ) : (

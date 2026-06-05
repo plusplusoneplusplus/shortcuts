@@ -48,6 +48,7 @@ function makeRun(overrides: Partial<ForEachRun> = {}): ForEachRun {
         sharedInstructions: 'Keep each item isolated',
         childMode: 'autopilot',
         provider: 'copilot',
+        generationProcessId: 'queue_generation-chat',
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:01:00.000Z',
         approvedAt: '2026-01-01T00:00:30.000Z',
@@ -92,13 +93,17 @@ describe('ForEachRunPane', () => {
 
     it('renders run metadata, item status chips, prompt previews, and child links', async () => {
         const onSelectChildProcess = vi.fn();
-        render(<ForEachRunPane workspaceId="ws-1" runId="for-each-run-1" onSelectChildProcess={onSelectChildProcess} />);
+        const onSelectGenerationProcess = vi.fn();
+        render(<ForEachRunPane workspaceId="ws-1" runId="for-each-run-1" onSelectChildProcess={onSelectChildProcess} onSelectGenerationProcess={onSelectGenerationProcess} />);
 
         await waitFor(() => expect(screen.getByTestId('for-each-run-pane')).toBeTruthy());
         expect(screen.getByTestId('for-each-run-status').textContent).toContain('approved');
         expect(screen.getByTestId('for-each-run-counts').textContent).toContain('1 pending');
         expect(screen.getByTestId('for-each-shared-instructions-preview').textContent).toContain('Keep each item isolated');
         expect(screen.getByTestId('for-each-item-prompt-pending-item').textContent).toContain('Do pending work');
+
+        fireEvent.click(screen.getByTestId('for-each-generation-link-btn'));
+        expect(onSelectGenerationProcess).toHaveBeenCalledWith('queue_generation-chat');
 
         fireEvent.click(screen.getByTestId('for-each-child-link-done-item'));
         expect(onSelectChildProcess).toHaveBeenCalledWith('queue_child-done');

@@ -8,6 +8,7 @@ export interface ForEachRunPaneProps {
     workspaceId: string;
     runId: string;
     onClose?: () => void;
+    onSelectGenerationProcess?: (processId: string) => void;
     onSelectChildProcess?: (processId: string) => void;
 }
 
@@ -64,7 +65,7 @@ function promptPreview(item: ForEachItem): string {
     return singleLine(item.prompt, 220);
 }
 
-export function ForEachRunPane({ workspaceId, runId, onClose, onSelectChildProcess }: ForEachRunPaneProps) {
+export function ForEachRunPane({ workspaceId, runId, onClose, onSelectGenerationProcess, onSelectChildProcess }: ForEachRunPaneProps) {
     const [run, setRun] = useState<ForEachRun | null | undefined>(undefined);
     const [busyAction, setBusyAction] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -124,6 +125,7 @@ export function ForEachRunPane({ workspaceId, runId, onClose, onSelectChildProce
         }
         return getSpaCocClient().forEach.continue(workspaceId, run.runId);
     };
+    const generationProcessId = run.generationProcessId;
 
     return (
         <div className="flex h-full flex-col overflow-hidden bg-white dark:bg-zinc-950" data-testid="for-each-run-pane">
@@ -145,6 +147,16 @@ export function ForEachRunPane({ workspaceId, runId, onClose, onSelectChildProce
                     </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+                    {generationProcessId && onSelectGenerationProcess && (
+                        <button
+                            type="button"
+                            onClick={() => onSelectGenerationProcess(generationProcessId)}
+                            data-testid="for-each-generation-link-btn"
+                            className="rounded border border-sky-300 bg-white px-2 py-1 text-xs font-medium text-sky-700 hover:bg-sky-50 dark:border-sky-700 dark:bg-sky-950 dark:text-sky-100 dark:hover:bg-sky-900/60"
+                        >
+                            Open generation chat
+                        </button>
+                    )}
                     <button
                         type="button"
                         onClick={() => runAction('continue', startOrContinue)}
