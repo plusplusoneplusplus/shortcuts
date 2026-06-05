@@ -8,9 +8,13 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+    getForEachContext,
     getRalphContext,
+    isForEachGenerationContext,
     isRalphTask,
+    serializeForEachMetadata,
     serializeRalphMetadata,
+    type ForEachGenerationContext,
     type RalphContext,
 } from '../../../src/server/tasks/task-types';
 
@@ -133,5 +137,42 @@ describe('serializeRalphMetadata', () => {
         expect(serializeRalphMetadata(undefined)).toBeUndefined();
         expect(serializeRalphMetadata('string')).toBeUndefined();
         expect(serializeRalphMetadata(42)).toBeUndefined();
+    });
+});
+
+const sampleForEachGeneration: ForEachGenerationContext = {
+    kind: 'generation',
+    workspaceId: 'ws-1',
+    generationId: 'for-each-gen-1',
+    childMode: 'ask',
+    originalRequest: 'Split this work into items',
+    status: 'draft',
+};
+
+describe('For Each context accessors', () => {
+    it('reads generation context from payload or metadata', () => {
+        expect(getForEachContext({
+            payload: { kind: 'chat', context: { forEach: sampleForEachGeneration } },
+        })).toBe(sampleForEachGeneration);
+        expect(getForEachContext({ metadata: { forEach: sampleForEachGeneration } })).toBe(sampleForEachGeneration);
+    });
+
+    it('identifies generation context without treating child context as generation', () => {
+        expect(isForEachGenerationContext(sampleForEachGeneration)).toBe(true);
+        expect(isForEachGenerationContext({
+            workspaceId: 'ws-1',
+            runId: 'run-1',
+            itemId: 'item-1',
+            childMode: 'ask',
+        })).toBe(false);
+    });
+
+    it('serializes For Each metadata from chat payload context', () => {
+        expect(serializeForEachMetadata({
+            kind: 'chat',
+            mode: 'ask',
+            prompt: 'Split',
+            context: { forEach: sampleForEachGeneration },
+        })).toBe(sampleForEachGeneration);
     });
 });

@@ -190,6 +190,100 @@ describe('toProcessHistoryItem', () => {
         });
     });
 
+    it('forwards child metadata.forEach verbatim when present', () => {
+        const proc = makeProcess({
+            metadata: {
+                type: 'chat',
+                workspaceId: 'ws-abc',
+                mode: 'autopilot',
+                forEach: {
+                    kind: 'child',
+                    workspaceId: 'ws-abc',
+                    runId: 'for-each-run-1',
+                    itemId: 'item-2',
+                    childMode: 'autopilot',
+                },
+            },
+        } as any);
+
+        const item = toProcessHistoryItem(proc);
+
+        expect(item.forEach).toEqual({
+            kind: 'child',
+            workspaceId: 'ws-abc',
+            runId: 'for-each-run-1',
+            itemId: 'item-2',
+            childMode: 'autopilot',
+        });
+    });
+
+    it('forwards generation metadata.forEach verbatim when present', () => {
+        const proc = makeProcess({
+            metadata: {
+                type: 'chat',
+                workspaceId: 'ws-abc',
+                mode: 'ask',
+                forEach: {
+                    kind: 'generation',
+                    workspaceId: 'ws-abc',
+                    generationId: 'for-each-gen-1',
+                    runId: 'for-each-run-1',
+                    childMode: 'ask',
+                    originalRequest: 'Split this change',
+                    status: 'approved',
+                    latestItemCount: 1,
+                    latestPlanTurnIndex: 4,
+                    latestPlan: {
+                        turnIndex: 4,
+                        childMode: 'ask',
+                        sharedInstructions: 'Keep changes small',
+                        items: [
+                            {
+                                id: 'item-1',
+                                title: 'First item',
+                                prompt: 'Do the first item',
+                                status: 'pending',
+                            },
+                        ],
+                    },
+                },
+            },
+        } as any);
+
+        const item = toProcessHistoryItem(proc);
+
+        expect(item.forEach).toEqual({
+            kind: 'generation',
+            workspaceId: 'ws-abc',
+            generationId: 'for-each-gen-1',
+            runId: 'for-each-run-1',
+            childMode: 'ask',
+            originalRequest: 'Split this change',
+            status: 'approved',
+            latestItemCount: 1,
+            latestPlanTurnIndex: 4,
+            latestPlan: {
+                turnIndex: 4,
+                childMode: 'ask',
+                sharedInstructions: 'Keep changes small',
+                items: [
+                    {
+                        id: 'item-1',
+                        title: 'First item',
+                        prompt: 'Do the first item',
+                        status: 'pending',
+                    },
+                ],
+            },
+        });
+    });
+
+    it('omits forEach when metadata.forEach is absent', () => {
+        const proc = makeProcess();
+        const item = toProcessHistoryItem(proc);
+        expect(item.forEach).toBeUndefined();
+    });
+
     it('omits ralph when metadata.ralph is absent', () => {
         const proc = makeProcess();
         const item = toProcessHistoryItem(proc);

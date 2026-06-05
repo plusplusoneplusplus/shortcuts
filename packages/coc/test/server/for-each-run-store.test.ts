@@ -39,6 +39,8 @@ describe('FileForEachRunStore', () => {
                 provider: 'copilot',
                 model: 'gpt-5.5',
                 reasoningEffort: 'high',
+                generationProcessId: 'queue_for-each-gen-1',
+                generationId: 'for-each-gen-1',
                 items: [item()],
             });
 
@@ -57,6 +59,8 @@ describe('FileForEachRunStore', () => {
                 provider: 'copilot',
                 model: 'gpt-5.5',
                 reasoningEffort: 'high',
+                generationProcessId: 'queue_for-each-gen-1',
+                generationId: 'for-each-gen-1',
             });
             expect(loaded?.items[0].title).toBe('Do one thing');
         });

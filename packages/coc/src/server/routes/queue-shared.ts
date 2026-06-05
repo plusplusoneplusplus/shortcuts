@@ -191,6 +191,9 @@ export function serializeTaskSummary(task: QueuedTask): Record<string, unknown> 
     if (payload?.context?.taskGeneration !== undefined) {
         slimPayload.context = { ...slimPayload.context as any, taskGeneration: payload.context.taskGeneration };
     }
+    if (payload?.context?.forEach !== undefined) {
+        slimPayload.context = { ...slimPayload.context as any, forEach: payload.context.forEach };
+    }
 
     return {
         id: task.id,

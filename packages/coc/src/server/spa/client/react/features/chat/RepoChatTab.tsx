@@ -9,7 +9,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { cn } from '../../ui';
 import { getSpaCocClient } from '../../api/cocClient';
-import { isContainerMode } from '../../utils/config';
+import { isContainerMode, isForEachEnabled } from '../../utils/config';
 import { useQueue } from '../../contexts/QueueContext';
 import { useApp } from '../../contexts/AppContext';
 import { useRepos } from '../../contexts/ReposContext';
@@ -25,7 +25,7 @@ import { ChatPreferencesProvider, ChatPrefsSync } from '../../contexts/ChatPrefe
 import { useNotifications } from '../../contexts/NotificationContext';
 import { useProcessSearch } from '../../processes/hooks/useProcessSearch';
 import { adaptSearchResults } from '../../utils/search-adapter';
-import type { ProcessHistoryItem } from '@plusplusoneplusplus/coc-client';
+import type { ForEachRunSummary, ProcessHistoryItem } from '@plusplusoneplusplus/coc-client';
 import { TaskDefs } from '../../../../../tasks/task-types';
 import { isQueueProcessId, toQueueProcessId, toTaskId } from '../../utils/queue-process-id';
 import { parseForEachRunDeepLink, parseRalphSessionDeepLink } from '../../layout/Router';
@@ -86,6 +86,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     const [history, setHistory] = useState<ProcessHistoryItem[]>(
         (cachedHistory?.items as ProcessHistoryItem[]) ?? [],
     );
+    const [forEachRuns, setForEachRuns] = useState<ForEachRunSummary[]>([]);
     const [loading, setLoading] = useState(!cachedHistory && !cachedQueue);
     const [hasMore, setHasMore] = useState<boolean>(cachedHistory?.hasMore ?? false);
     const [loadingMore, setLoadingMore] = useState(false);
@@ -172,9 +173,10 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         // the effect will re-fire once currentAgentId is set.
         if (isContainerMode() && !appState.currentAgentId) return;
         try {
-            const [queueData, historyData] = await Promise.all([
+            const [queueData, historyData, forEachData] = await Promise.all([
                 getSpaCocClient().queue.list({ repoId: workspaceId }).catch(() => null),
                 getSpaCocClient().workspaces.history(workspaceId, { limit: 100, offset: 0 }).catch(() => null),
+                isForEachEnabled() ? getSpaCocClient().forEach.list(workspaceId).catch(() => null) : Promise.resolve(null),
             ]);
             // Only update queue/pause state when the queue fetch actually succeeded —
             // a transient network error must not clear the running list out from under
@@ -208,6 +210,12 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                     items,
                     hasMore: nextHasMore,
                 });
+            }
+
+            if (isForEachEnabled()) {
+                setForEachRuns(Array.isArray(forEachData) ? forEachData : []);
+            } else {
+                setForEachRuns([]);
             }
         } catch {
             // Both fetches already have inner `.catch(() => null)`; this outer catch is
@@ -576,20 +584,6 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         if (isMobile) setMobileShowDetail(true);
     }, [queueDispatch, workspaceId, selectedTaskId, isMobile, mode]);
 
-    const handleSelectForEachRun = useCallback((runId: string) => {
-        if (selectedTaskId) {
-            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
-            setSelectedTask(null);
-            selectedTaskRef.current = null;
-        }
-        setSelectedRalphSessionId(null);
-        setSelectedRalphFileName(null);
-        setSelectedForEachRunId(runId);
-        const next = buildForEachRunHash(workspaceId, mode, runId);
-        if (location.hash !== next) location.hash = next;
-        if (isMobile) setMobileShowDetail(true);
-    }, [queueDispatch, workspaceId, selectedTaskId, isMobile, mode]);
-
     const handleSelectRalphFile = useCallback((fileName: string) => {
         if (!selectedRalphSessionId) return;
         setSelectedRalphFileName(fileName);
@@ -621,8 +615,16 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     useEffect(() => {
         const apply = () => {
             const parsed = parseForEachRunDeepLink(location.hash);
-            if (parsed && parsed.workspaceId === workspaceId) {
+            if (parsed && parsed.workspaceId === workspaceId && isForEachEnabled()) {
+                if (selectedTaskId) {
+                    queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
+                }
+                setSelectedTask(null);
+                selectedTaskRef.current = null;
+                setSelectedRalphSessionId((prev) => (prev === null ? prev : null));
+                setSelectedRalphFileName((prev) => (prev === null ? prev : null));
                 setSelectedForEachRunId((prev) => (prev === parsed.runId ? prev : parsed.runId));
+                if (isMobile) setMobileShowDetail(true);
             } else {
                 setSelectedForEachRunId((prev) => (prev === null ? prev : null));
             }
@@ -630,7 +632,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         apply();
         window.addEventListener('hashchange', apply);
         return () => window.removeEventListener('hashchange', apply);
-    }, [workspaceId]);
+    }, [workspaceId, selectedTaskId, queueDispatch, isMobile]);
 
     const handleSelectRalphIteration = useCallback((processId: string) => {
         // Switching to an iteration's chat detail clears the workflow pane.
@@ -645,6 +647,26 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         setSelectedForEachRunId(null);
         selectTask(processId);
     }, [selectTask]);
+
+    const handleSelectForEachGenerationProcess = useCallback((processId: string) => {
+        setSelectedForEachRunId(null);
+        selectTask(processId);
+    }, [selectTask]);
+
+    const handleOpenForEachRun = useCallback((runId: string) => {
+        if (!isForEachEnabled()) return;
+        if (selectedTaskId) {
+            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
+            setSelectedTask(null);
+            selectedTaskRef.current = null;
+        }
+        setSelectedRalphSessionId(null);
+        setSelectedRalphFileName(null);
+        setSelectedForEachRunId(runId);
+        const next = buildForEachRunHash(workspaceId, mode, runId);
+        if (location.hash !== next) location.hash = next;
+        if (isMobile) setMobileShowDetail(true);
+    }, [isMobile, mode, queueDispatch, selectedTaskId, workspaceId]);
 
     const { focusedPane, cursorTaskId } = useChatPaneNavigation({
         listContainerRef,
@@ -708,6 +730,9 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             activeTab={mode}
             selectedRalphSessionId={selectedRalphSessionId}
             onSelectRalphSession={handleSelectRalphSession}
+            forEachRuns={forEachRuns}
+            selectedForEachRunId={selectedForEachRunId}
+            onSelectForEachRun={handleOpenForEachRun}
             cursorTaskId={cursorTaskId}
             onNewChat={() => {
                 if (isMobile) {
@@ -767,17 +792,18 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                                         setSelectedForEachRunId(null);
                                         setMobileShowDetail(false);
                                     }}
+                                    onSelectGenerationProcess={handleSelectForEachGenerationProcess}
                                     onSelectChildProcess={handleSelectForEachChildProcess}
                                 />
                             ) : (
                                 <ChatDetailPane
                                     selectedTaskId={selectedTaskId}
                                     selectedTask={selectedTask}
-                                    onBack={() => setMobileShowDetail(false)}
-                                    workspaceId={workspaceId}
-                                    readOnly={mode === 'tasks'}
-                                    onForEachRunSelected={handleSelectForEachRun}
-                                />
+                                     onBack={() => setMobileShowDetail(false)}
+                                     workspaceId={workspaceId}
+                                     readOnly={mode === 'tasks'}
+                                     onOpenForEachRun={handleOpenForEachRun}
+                                 />
                             )}
                         </div>
                     ) : (
@@ -865,6 +891,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                         workspaceId={workspaceId}
                         runId={selectedForEachRunId}
                         onClose={() => setSelectedForEachRunId(null)}
+                        onSelectGenerationProcess={handleSelectForEachGenerationProcess}
                         onSelectChildProcess={handleSelectForEachChildProcess}
                     />
                 ) : (
@@ -873,7 +900,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                         selectedTask={selectedTask}
                         workspaceId={workspaceId}
                         readOnly={mode === 'tasks'}
-                        onForEachRunSelected={handleSelectForEachRun}
+                        onOpenForEachRun={handleOpenForEachRun}
                     />
                 )}
             </div>

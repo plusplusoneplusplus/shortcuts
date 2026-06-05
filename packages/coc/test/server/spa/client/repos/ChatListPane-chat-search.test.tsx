@@ -39,6 +39,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => 'http://localhost:4000/api',
     isRalphEnabled: () => false,
     isLoopsEnabled: () => false,
+    isForEachEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => false,
 }));
 
@@ -188,6 +189,24 @@ function makeChatTask(id: string, title: string) {
     return { id, type: 'chat', status: 'completed', displayName: title, customTitle: title, completedAt: new Date().toISOString() };
 }
 
+function makeForEachGenerationChat(overrides: Record<string, unknown> = {}) {
+    return {
+        ...makeChatTask('queue_for_each_gen', 'Split work into tasks'),
+        customTitle: undefined,
+        title: 'Split work into tasks',
+        forEach: {
+            kind: 'generation',
+            workspaceId: 'ws-1',
+            generationId: 'for-each-gen-1',
+            childMode: 'ask',
+            originalRequest: 'Split work into tasks',
+            status: 'draft',
+            latestItemCount: 3,
+            ...overrides,
+        },
+    };
+}
+
 function makeSearchResult(id: string, displayName: string, snippet = '') {
     return {
         id,
@@ -230,6 +249,35 @@ describe('ChatListPane – Chats tab FTS5 search', () => {
         expect(screen.queryByTestId('chat-search-results')).toBeNull();
         // The chat title should appear in normal sections
         expect(screen.getByText('My first chat')).toBeTruthy();
+    });
+
+    it('renders a For Each badge and draft generated-plan preview for generation chats', () => {
+        render(
+            <ChatListPane
+                {...defaultProps({
+                    history: [makeForEachGenerationChat()],
+                    activeTab: 'chats',
+                    searchResults: null,
+                })}
+            />,
+        );
+
+        expect(screen.getByTestId('for-each-generation-badge').textContent).toBe('For Each');
+        expect(screen.getByTestId('for-each-generation-preview').textContent).toBe('3 proposed items - draft');
+    });
+
+    it('renders approved For Each generation previews with singular item copy', () => {
+        render(
+            <ChatListPane
+                {...defaultProps({
+                    history: [makeForEachGenerationChat({ status: 'approved', latestItemCount: 1, runId: 'for-each-run-1' })],
+                    activeTab: 'chats',
+                    searchResults: null,
+                })}
+            />,
+        );
+
+        expect(screen.getByTestId('for-each-generation-preview').textContent).toBe('1 proposed item - approved');
     });
 
     it('shows "No chats yet" when there are no chats and search is not active', () => {

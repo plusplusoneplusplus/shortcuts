@@ -48,6 +48,7 @@ function makeRun(overrides: Partial<ForEachRun> = {}): ForEachRun {
         sharedInstructions: 'Keep each item isolated',
         childMode: 'autopilot',
         provider: 'copilot',
+        generationProcessId: 'queue_generation-chat',
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:01:00.000Z',
         approvedAt: '2026-01-01T00:00:30.000Z',
@@ -92,13 +93,18 @@ describe('ForEachRunPane', () => {
 
     it('renders run metadata, item status chips, prompt previews, and child links', async () => {
         const onSelectChildProcess = vi.fn();
-        render(<ForEachRunPane workspaceId="ws-1" runId="for-each-run-1" onSelectChildProcess={onSelectChildProcess} />);
+        const onSelectGenerationProcess = vi.fn();
+        render(<ForEachRunPane workspaceId="ws-1" runId="for-each-run-1" onSelectChildProcess={onSelectChildProcess} onSelectGenerationProcess={onSelectGenerationProcess} />);
 
         await waitFor(() => expect(screen.getByTestId('for-each-run-pane')).toBeTruthy());
         expect(screen.getByTestId('for-each-run-status').textContent).toContain('approved');
         expect(screen.getByTestId('for-each-run-counts').textContent).toContain('1 pending');
+        expect(screen.getByTestId('for-each-original-request').textContent).toContain('Split the work');
         expect(screen.getByTestId('for-each-shared-instructions-preview').textContent).toContain('Keep each item isolated');
         expect(screen.getByTestId('for-each-item-prompt-pending-item').textContent).toContain('Do pending work');
+
+        fireEvent.click(screen.getByTestId('for-each-generation-link-btn'));
+        expect(onSelectGenerationProcess).toHaveBeenCalledWith('queue_generation-chat');
 
         fireEvent.click(screen.getByTestId('for-each-child-link-done-item'));
         expect(onSelectChildProcess).toHaveBeenCalledWith('queue_child-done');
@@ -114,6 +120,54 @@ describe('ForEachRunPane', () => {
 
         await waitFor(() => expect(mocks.start).toHaveBeenCalledWith('ws-1', 'for-each-run-1'));
         expect(mocks.continueRun).not.toHaveBeenCalled();
+    });
+
+    it('keeps the parent pane open and shows the linked running child after start', async () => {
+        mocks.get.mockResolvedValueOnce(makeRun({ status: 'approved', items: [makeRun().items[0]] }));
+        mocks.start.mockResolvedValueOnce(makeRun({
+            status: 'running',
+            items: [{
+                ...makeRun().items[0],
+                status: 'running',
+                childProcessId: 'queue_child-running',
+                childTaskId: 'child-running',
+            }],
+        }));
+
+        render(<ForEachRunPane workspaceId="ws-1" runId="for-each-run-1" />);
+        await waitFor(() => expect(screen.getByTestId('for-each-continue-btn')).toBeEnabled());
+
+        fireEvent.click(screen.getByTestId('for-each-continue-btn'));
+
+        await waitFor(() => expect(mocks.start).toHaveBeenCalledWith('ws-1', 'for-each-run-1'));
+        await waitFor(() => expect(screen.getByTestId('for-each-run-pane')).toBeTruthy());
+        expect(screen.getByTestId('for-each-run-status').textContent).toContain('running');
+        expect(screen.getByTestId('for-each-child-link-pending-item').textContent).toContain('Open child chat');
+    });
+
+    it('continues a running run without navigating away from the parent pane', async () => {
+        mocks.get.mockResolvedValueOnce(makeRun({ status: 'running', items: [makeRun().items[0]] }));
+        mocks.continueRun.mockResolvedValueOnce(makeRun({
+            status: 'running',
+            items: [{
+                ...makeRun().items[0],
+                status: 'running',
+                childProcessId: 'queue_child-continued',
+                childTaskId: 'child-continued',
+            }],
+        }));
+
+        render(<ForEachRunPane workspaceId="ws-1" runId="for-each-run-1" />);
+        await waitFor(() => expect(screen.getByTestId('for-each-continue-btn')).toBeEnabled());
+        expect(screen.getByTestId('for-each-continue-btn').textContent).toContain('Continue');
+
+        fireEvent.click(screen.getByTestId('for-each-continue-btn'));
+
+        await waitFor(() => expect(mocks.continueRun).toHaveBeenCalledWith('ws-1', 'for-each-run-1'));
+        expect(mocks.start).not.toHaveBeenCalled();
+        await waitFor(() => expect(screen.getByTestId('for-each-run-pane')).toBeTruthy());
+        expect(screen.getByTestId('for-each-run-status').textContent).toContain('running');
+        expect(screen.getByTestId('for-each-child-link-pending-item').textContent).toContain('Open child chat');
     });
 
     it('retries failed items, skips pending items, and cancels remaining work', async () => {

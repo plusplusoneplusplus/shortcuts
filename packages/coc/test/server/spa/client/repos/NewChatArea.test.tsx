@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * Tests for NewChatArea — focused on the queue_ prefix fix in handleSend.
+ * Tests for NewChatArea — focused on queue task selection and launch payloads.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
@@ -15,12 +15,17 @@ const mockAppDispatch = vi.fn();
 const mockEnqueueTask = vi.fn();
 const mockHandleModelSelect = vi.fn();
 const mockSetModelOverride = vi.fn((model: string | null) => { mockModelOverride = model; });
+const mockParseAndExtract = vi.fn();
+const mockClearAttachments = vi.fn();
 let mockDefaultProvider: 'copilot' | 'codex' | 'claude' = 'copilot';
 let mockRepoPreferences: Record<string, unknown> = {};
 let mockModelOverride: string | null = null;
 let mockUseModelsProviders: Array<string | undefined> = [];
 let mockUseDefaultModelArgs: Array<[string | undefined, string, string | undefined]> = [];
 let mockForEachEnabled = false;
+let mockSessionContextAttachmentsEnabled = false;
+let mockAttachments: any[] = [];
+let mockAttachmentPayload: any[] = [];
 let mockAgentProviders: any[] = [
     { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
     { id: 'codex', label: 'Codex', enabled: false, available: false },
@@ -55,7 +60,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isLoopsEnabled: () => false,
     getDefaultProvider: () => mockDefaultProvider,
     isEffortLevelsEnabled: () => mockEffortLevelsEnabled,
-    isSessionContextAttachmentsEnabled: () => false,
+    isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -65,6 +70,11 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
             patchGlobal: vi.fn().mockResolvedValue({}),
             getRepo: vi.fn().mockResolvedValue(mockRepoPreferences),
             patchRepo: vi.fn().mockResolvedValue({}),
+            getLlmToolsConfig: vi.fn().mockResolvedValue({
+                conversationRetrievalAvailable: true,
+                tools: [{ name: 'get_conversation' }],
+                disabledLlmTools: [],
+            }),
         },
         skills: { listAllWorkspace: vi.fn().mockResolvedValue({ merged: [] }) },
         agentProviders: {
@@ -81,13 +91,13 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
 
 vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useFileAttachments', () => ({
     useFileAttachments: () => ({
-        attachments: [],
+        attachments: mockAttachments,
         addFromPaste: vi.fn(),
         addFromFileInput: vi.fn(),
         removeAttachment: vi.fn(),
-        clearAttachments: vi.fn(),
+        clearAttachments: mockClearAttachments,
         error: null,
-        toPayload: () => [],
+        toPayload: () => mockAttachmentPayload,
     }),
 }));
 
@@ -102,17 +112,6 @@ vi.mock('../../../../../src/server/spa/client/react/shared/RichTextInput', () =>
             onKeyDown={onKeyDown}
         />
     )),
-}));
-
-vi.mock('../../../../../src/server/spa/client/react/shared/ForEachLaunchDialog', () => ({
-    ForEachLaunchDialog: ({ open, request, onApproved }: any) => open ? (
-        <div data-testid="for-each-launch-dialog">
-            <div data-testid="for-each-launch-request">{request}</div>
-            <button type="button" data-testid="for-each-dialog-approve" onClick={() => onApproved({ runId: 'for-each-run-1' })}>
-                Approve
-            </button>
-        </div>
-    ) : null,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/ui/AttachmentPreviews', () => ({
@@ -188,7 +187,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useSlash
         handleInputChange: vi.fn(),
         handleKeyDown: vi.fn(() => false),
         selectSkill: vi.fn(),
-        parseAndExtract: vi.fn(() => ({ skills: [], prompt: '' })),
+        parseAndExtract: mockParseAndExtract,
         dismissMenu: vi.fn(),
     }),
 }));
@@ -237,6 +236,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/chat/ModelCommandMe
 }));
 
 import { NewChatArea } from '../../../../../src/server/spa/client/react/features/chat/NewChatArea';
+import { SESSION_CONTEXT_DRAG_KIND, SESSION_CONTEXT_DRAG_MIME } from '../../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -271,8 +271,12 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         mockUseModelsProviders = [];
         mockUseDefaultModelArgs = [];
         mockForEachEnabled = false;
+        mockSessionContextAttachmentsEnabled = false;
+        mockAttachments = [];
+        mockAttachmentPayload = [];
         mockEffortLevelsEnabled = false;
         mockEffortTiers = {};
+        mockParseAndExtract.mockReturnValue({ skills: [], prompt: '' });
         mockAgentProviders = [
             { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
             { id: 'codex', label: 'Codex', enabled: false, available: false },
@@ -492,21 +496,151 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         expect(body.payload.model).toBe('shared-model');
     });
 
-    it('opens the For Each launch dialog instead of enqueueing generic chat when enabled', async () => {
+    it('creates and selects a persisted For Each generation chat when enabled', async () => {
         mockForEachEnabled = true;
-        const onForEachRunSelected = vi.fn();
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'for-each-generation-task' } });
 
-        render(<NewChatArea workspaceId="ws-1" onForEachRunSelected={onForEachRunSelected} />);
+        render(<NewChatArea workspaceId="ws-1" />);
         fireEvent.click(screen.getByTestId('mode-pill-for-each'));
         typeInInput('Split this work into items');
         await clickSend();
 
-        expect(screen.getByTestId('for-each-launch-dialog')).toBeTruthy();
-        expect(screen.getByTestId('for-each-launch-request').textContent).toBe('Split this work into items');
-        expect(mockEnqueueTask).not.toHaveBeenCalled();
+        await waitFor(() => {
+            expect(mockEnqueueTask).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: 'chat',
+                    priority: 'normal',
+                    payload: expect.objectContaining({
+                        kind: 'chat',
+                        mode: 'ask',
+                        prompt: 'Split this work into items',
+                        workspaceId: 'ws-1',
+                        provider: 'copilot',
+                        context: expect.objectContaining({
+                            forEach: expect.objectContaining({
+                                kind: 'generation',
+                                workspaceId: 'ws-1',
+                                childMode: 'ask',
+                                originalRequest: 'Split this work into items',
+                                status: 'draft',
+                            }),
+                        }),
+                    }),
+                }),
+            );
+        });
+        const forEachContext = mockEnqueueTask.mock.calls[0][0].payload.context.forEach;
+        expect(forEachContext.generationId).toMatch(/^for-each-gen-\d+-[a-z0-9]+$/);
+        expect(mockQueueDispatch).toHaveBeenCalledWith({
+            type: 'SELECT_QUEUE_TASK',
+            id: 'queue_for-each-generation-task',
+            repoId: 'ws-1',
+        });
+    });
 
-        fireEvent.click(screen.getByTestId('for-each-dialog-approve'));
-        await waitFor(() => expect(onForEachRunSelected).toHaveBeenCalledWith('for-each-run-1'));
+    it('does not expose the For Each mode while the feature flag is disabled', () => {
+        mockForEachEnabled = false;
+
+        render(<NewChatArea workspaceId="ws-1" />);
+
+        expect(screen.queryByTestId('mode-pill-for-each')).toBeNull();
+    });
+
+    it('uses the normal chat payload capabilities for For Each generation', async () => {
+        mockForEachEnabled = true;
+        mockSessionContextAttachmentsEnabled = true;
+        mockDefaultProvider = 'codex';
+        mockModelOverride = 'shared-model';
+        mockAgentProviders = [
+            { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+            { id: 'codex', label: 'Codex', enabled: true, available: true },
+            { id: 'claude', label: 'Claude', enabled: false, available: false },
+        ];
+        mockAttachments = [
+            {
+                id: 'att-1',
+                name: 'notes.md',
+                mimeType: 'text/markdown',
+                size: 12,
+                dataUrl: 'data:text/markdown;base64,Tm90ZXM=',
+                category: 'document',
+            },
+        ];
+        mockAttachmentPayload = [
+            {
+                name: 'notes.md',
+                mimeType: 'text/markdown',
+                size: 12,
+                dataUrl: 'data:text/markdown;base64,Tm90ZXM=',
+            },
+        ];
+        mockParseAndExtract.mockImplementation((text: string) => ({
+            skills: ['safety'],
+            prompt: text.replace(/^\/safety\s*/, ''),
+        }));
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'for-each-generation-task' } });
+
+        render(<NewChatArea workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Codex'));
+
+        fireEvent.drop(screen.getByTestId('chat-input-stack'), {
+            dataTransfer: {
+                types: [SESSION_CONTEXT_DRAG_MIME],
+                dropEffect: 'copy',
+                getData: (type: string) => type === SESSION_CONTEXT_DRAG_MIME
+                    ? JSON.stringify({
+                        kind: SESSION_CONTEXT_DRAG_KIND,
+                        version: 1,
+                        sourceWorkspaceId: 'ws-1',
+                        sourceProcessId: 'queue_source-1',
+                        title: 'Source chat',
+                        status: 'completed',
+                        lastActivityAt: '2026-01-01T00:00:00.000Z',
+                    })
+                    : '',
+            },
+        });
+        await waitFor(() => expect(screen.getByTestId('attached-session-context-chip')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('effort-pill-trigger-btn'));
+        fireEvent.click(screen.getByTestId('effort-pill-option-high'));
+        fireEvent.click(screen.getByTestId('mode-pill-for-each'));
+        typeInInput('/safety Split into safer tasks');
+        await clickSend();
+
+        await waitFor(() => expect(mockEnqueueTask).toHaveBeenCalledOnce());
+        const body = mockEnqueueTask.mock.calls[0][0];
+        expect(body.payload).toEqual(expect.objectContaining({
+            kind: 'chat',
+            mode: 'ask',
+            workspaceId: 'ws-1',
+            workingDirectory: '/repos/myrepo',
+            provider: 'codex',
+            model: 'shared-model',
+            reasoningEffort: 'high',
+            attachments: mockAttachmentPayload,
+        }));
+        expect(body.payload.prompt).toContain('<attached_session_context version="1">');
+        expect(body.payload.prompt).toContain('process_id="queue_source-1"');
+        expect(body.payload.prompt).toContain('Split into safer tasks');
+        expect(body.payload.prompt).not.toContain('/safety');
+        expect(body.payload.context).toEqual(expect.objectContaining({
+            skills: ['safety'],
+            forEach: expect.objectContaining({
+                kind: 'generation',
+                workspaceId: 'ws-1',
+                childMode: 'ask',
+                originalRequest: 'Split into safer tasks',
+                status: 'draft',
+            }),
+        }));
+        expect(body.payload.context.forEach.generationId).toMatch(/^for-each-gen-\d+-[a-z0-9]+$/);
+        expect(mockClearAttachments).toHaveBeenCalled();
+        expect(mockQueueDispatch).toHaveBeenCalledWith({
+            type: 'SELECT_QUEUE_TASK',
+            id: 'queue_for-each-generation-task',
+            repoId: 'ws-1',
+        });
     });
 });
 
@@ -523,8 +657,12 @@ describe('NewChatArea – Effort Tier selector', () => {
         mockUseModelsProviders = [];
         mockUseDefaultModelArgs = [];
         mockForEachEnabled = false;
+        mockSessionContextAttachmentsEnabled = false;
+        mockAttachments = [];
+        mockAttachmentPayload = [];
         mockEffortLevelsEnabled = false;
         mockEffortTiers = {};
+        mockParseAndExtract.mockReturnValue({ skills: [], prompt: '' });
         mockAgentProviders = [
             { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
             { id: 'codex', label: 'Codex', enabled: false, available: false },

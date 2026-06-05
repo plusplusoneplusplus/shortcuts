@@ -37,8 +37,6 @@ export type { DashboardAICommand } from './ai-commands';
 export { shortenFilePath, linkifyFilePaths, FILE_PATH_RE } from './file-path-utils';
 export { RalphLaunchDialog } from './RalphLaunchDialog';
 export type { RalphLaunchDialogProps } from './RalphLaunchDialog';
-export { ForEachLaunchDialog } from './ForEachLaunchDialog';
-export type { ForEachLaunchDialogProps } from './ForEachLaunchDialog';
 export { isGoalFile } from './goal-file-utils';
 export { useUndoRedo } from './useUndoRedo';
 export type { HistorySnapshot } from './useUndoRedo';

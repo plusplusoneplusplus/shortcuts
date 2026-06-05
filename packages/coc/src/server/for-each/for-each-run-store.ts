@@ -152,6 +152,8 @@ export class FileForEachRunStore {
             if (input.provider) metadata.provider = input.provider;
             if (input.model) metadata.model = input.model;
             if (input.reasoningEffort) metadata.reasoningEffort = input.reasoningEffort;
+            if (input.generationProcessId) metadata.generationProcessId = input.generationProcessId;
+            if (input.generationId) metadata.generationId = input.generationId;
 
             await atomicWriteJSON(this.runPath(input.workspaceId, runId), metadata);
             await atomicWriteJSON(this.itemsPath(input.workspaceId, runId), normalizedItems);

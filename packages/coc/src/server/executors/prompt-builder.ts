@@ -47,6 +47,7 @@ import {
     normalizeChatMode,
     resolveInstructionMode,
 } from '../tasks/task-types';
+import type { ForEachGenerationContext } from '../tasks/task-types';
 import { createTavilyWebSearchTool } from '../llm-tools/tavily-web-search-tool';
 import { createExcalidrawTools } from '../llm-tools/excalidraw-tools';
 import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';
@@ -80,6 +81,31 @@ export function buildModeSystemMessage(
         return undefined;
     }
     return { mode: 'append' as const, content: READ_ONLY_SYSTEM_MESSAGE };
+}
+
+export function buildForEachGenerationSystemMessage(
+    context: ForEachGenerationContext | null | undefined,
+): SystemMessageConfig | undefined {
+    if (!context) return undefined;
+    const content = `\
+You are running a visible CoC For Each item-plan generation chat.
+
+The user is iteratively designing a For Each parent run. Generate or refine a proposed item plan only; do not start child chats, enqueue tasks, approve runs, or execute the items.
+
+Generation metadata:
+- Workspace ID: ${context.workspaceId}
+- Generation ID: ${context.generationId}
+- Child chat mode for proposed items: ${context.childMode}
+- Current approval status: ${context.status}
+
+Response requirements:
+- Start with a concise human-readable summary of the proposed plan.
+- Include item count, child mode, shared instructions if any are implied, item titles, prompts, and dependencies.
+- Include an "Advanced JSON" section containing a single fenced json object with an "items" array.
+- Every item must have a stable filesystem-safe id, required title and prompt, valid dependsOn item ids, and status "pending".
+- If a follow-up asks for a refinement, return the complete latest proposed plan, not a patch.
+- If the request cannot be converted into a valid item plan, say so explicitly and do not invent child execution results.`;
+    return { mode: 'append' as const, content };
 }
 
 /**

@@ -26,6 +26,17 @@ interface GenerateForEachRunRequest {
     config?: unknown;
 }
 
+interface CreateForEachRunRequest {
+    originalRequest?: unknown;
+    sharedInstructions?: unknown;
+    childMode?: unknown;
+    provider?: unknown;
+    config?: unknown;
+    generationProcessId?: unknown;
+    generationId?: unknown;
+    items?: unknown;
+}
+
 interface UpdateForEachPlanRequest {
     items?: unknown;
     sharedInstructions?: unknown;
@@ -58,7 +69,7 @@ function optionalString(value: unknown, fieldName: string): string | undefined {
     return trimmed ? trimmed : undefined;
 }
 
-function parseAiSelection(body: GenerateForEachRunRequest): {
+function parseAiSelection(body: { provider?: unknown; config?: unknown }): {
     provider?: ChatProvider;
     model?: string;
     reasoningEffort?: ReasoningEffort;
@@ -115,6 +126,52 @@ export function registerForEachRoutes(ctx: ForEachRouteContext): void {
                 sendJSON(res, 200, { runs });
             } catch (err) {
                 handleAPIError(res, err);
+            }
+        },
+    });
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/for-each-runs$/,
+        handler: async (req, res, match) => {
+            if (!requireEnabled(ctx, res)) return;
+
+            let body: CreateForEachRunRequest;
+            try {
+                body = await parseBody(req) as CreateForEachRunRequest;
+            } catch {
+                return handleAPIError(res, badRequest('Invalid JSON body'));
+            }
+
+            try {
+                const workspaceId = decodeCapture(match!, 1);
+                const originalRequest = optionalString(body.originalRequest, 'originalRequest');
+                if (!originalRequest) {
+                    throw badRequest('originalRequest is required');
+                }
+                const sharedInstructions = body.sharedInstructions === undefined
+                    ? undefined
+                    : optionalString(body.sharedInstructions, 'sharedInstructions') ?? '';
+                const childMode = parseChildMode(body.childMode);
+                const { provider, model, reasoningEffort } = parseAiSelection(body);
+                const generationProcessId = optionalString(body.generationProcessId, 'generationProcessId');
+                const generationId = optionalString(body.generationId, 'generationId');
+
+                const run = await store.createDraftRun({
+                    workspaceId,
+                    originalRequest,
+                    sharedInstructions,
+                    childMode,
+                    provider,
+                    model,
+                    reasoningEffort,
+                    generationProcessId,
+                    generationId,
+                    items: body.items as ForEachItem[],
+                });
+                sendJSON(res, 201, { run });
+            } catch (err) {
+                handleAPIError(res, toRouteError(err));
             }
         },
     });

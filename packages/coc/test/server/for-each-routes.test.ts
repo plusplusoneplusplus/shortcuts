@@ -159,6 +159,106 @@ describe('For Each routes', () => {
         expect(loaded?.items[0].title).toBe('Generated task');
     });
 
+    it('creates a reviewed draft run without invoking AI generation', async () => {
+        forEachEnabled = true;
+
+        const res = await request('POST', `/api/workspaces/${WORKSPACE_ID}/for-each-runs`, {
+            originalRequest: 'Split this reviewed request',
+            sharedInstructions: 'Use the reviewed shared instructions.',
+            childMode: 'ask',
+            provider: 'copilot',
+            config: { model: 'gpt-5.4', reasoningEffort: 'medium' },
+            generationProcessId: 'queue_for-each-gen-1',
+            generationId: 'for-each-gen-1',
+            items: [
+                { id: 'item-1', title: 'Reviewed item', prompt: 'Do reviewed work.', status: 'pending' },
+            ],
+        });
+
+        expect(res.status).toBe(201);
+        expect(generateItemPlan).not.toHaveBeenCalled();
+        expect(res.body.run).toMatchObject({
+            workspaceId: WORKSPACE_ID,
+            status: 'draft',
+            originalRequest: 'Split this reviewed request',
+            sharedInstructions: 'Use the reviewed shared instructions.',
+            childMode: 'ask',
+            provider: 'copilot',
+            model: 'gpt-5.4',
+            reasoningEffort: 'medium',
+            generationProcessId: 'queue_for-each-gen-1',
+            generationId: 'for-each-gen-1',
+        });
+        expect(res.body.run.items[0].title).toBe('Reviewed item');
+    });
+
+    it('keeps generation-linked reviewed runs isolated by workspace', async () => {
+        forEachEnabled = true;
+        const workspaceA = 'ws-routes-alpha';
+        const workspaceB = 'ws-routes-beta';
+
+        const createdA = await request('POST', `/api/workspaces/${workspaceA}/for-each-runs`, {
+            originalRequest: 'Split alpha work',
+            childMode: 'ask',
+            generationProcessId: 'queue_alpha-generation',
+            generationId: 'for-each-gen-alpha',
+            items: [
+                { id: 'alpha-item', title: 'Alpha item', prompt: 'Do alpha work.', status: 'pending' },
+            ],
+        });
+        const createdB = await request('POST', `/api/workspaces/${workspaceB}/for-each-runs`, {
+            originalRequest: 'Split beta work',
+            childMode: 'autopilot',
+            generationProcessId: 'queue_beta-generation',
+            generationId: 'for-each-gen-beta',
+            items: [
+                { id: 'beta-item', title: 'Beta item', prompt: 'Do beta work.', status: 'pending' },
+            ],
+        });
+
+        expect(createdA.status).toBe(201);
+        expect(createdB.status).toBe(201);
+        expect(generateItemPlan).not.toHaveBeenCalled();
+        expect(createdA.body.run.workspaceId).toBe(workspaceA);
+        expect(createdB.body.run.workspaceId).toBe(workspaceB);
+        expect(createdA.body.run.generationProcessId).toBe('queue_alpha-generation');
+        expect(createdB.body.run.generationProcessId).toBe('queue_beta-generation');
+
+        const listA = await request('GET', `/api/workspaces/${workspaceA}/for-each-runs`);
+        const listB = await request('GET', `/api/workspaces/${workspaceB}/for-each-runs`);
+
+        expect(listA.status).toBe(200);
+        expect(listB.status).toBe(200);
+        expect(listA.body.runs.map((run: { runId: string }) => run.runId)).toEqual([createdA.body.run.runId]);
+        expect(listB.body.runs.map((run: { runId: string }) => run.runId)).toEqual([createdB.body.run.runId]);
+
+        const crossWorkspaceRead = await request('GET', `/api/workspaces/${workspaceB}/for-each-runs/${createdA.body.run.runId}`);
+        expect(crossWorkspaceRead.status).toBe(404);
+
+        const crossWorkspaceApprove = await request('POST', `/api/workspaces/${workspaceB}/for-each-runs/${createdA.body.run.runId}/approve`);
+        expect(crossWorkspaceApprove.status).toBe(404);
+
+        const approvedA = await request('POST', `/api/workspaces/${workspaceA}/for-each-runs/${createdA.body.run.runId}/approve`);
+        expect(approvedA.status).toBe(200);
+        expect(approvedA.body.run.status).toBe('approved');
+        expect(enqueuedTasks).toHaveLength(0);
+
+        const loadedA = await store.getRun(workspaceA, createdA.body.run.runId);
+        const loadedB = await store.getRun(workspaceB, createdB.body.run.runId);
+        expect(loadedA).toMatchObject({
+            workspaceId: workspaceA,
+            status: 'approved',
+            generationProcessId: 'queue_alpha-generation',
+            generationId: 'for-each-gen-alpha',
+        });
+        expect(loadedB).toMatchObject({
+            workspaceId: workspaceB,
+            status: 'draft',
+            generationProcessId: 'queue_beta-generation',
+            generationId: 'for-each-gen-beta',
+        });
+    });
+
     it('allows review edits before approval and blocks edits after approval', async () => {
         forEachEnabled = true;
         const created = await request('POST', `/api/workspaces/${WORKSPACE_ID}/for-each-runs/generate`, {

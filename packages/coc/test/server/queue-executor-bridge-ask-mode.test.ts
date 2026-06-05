@@ -116,6 +116,12 @@ function createProcessWithMode(id: string, sessionId: string, mode: string) {
     });
 }
 
+function forEachPlanResponse(items = [
+    { id: 'item-1', title: 'First item', prompt: 'Do first', status: 'pending' as const },
+]) {
+    return `Readable proposed plan.\n\n\`\`\`json\n${JSON.stringify({ items }, null, 2)}\n\`\`\``;
+}
+
 // ============================================================================
 // Tests — Initial Chat Session
 // ============================================================================
@@ -144,6 +150,72 @@ describe('ask mode system message — initial chat', () => {
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
         expect(callArgs.systemMessage?.mode).toBe('append');
         expect(callArgs.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+    });
+
+    it('should include For Each generation guidance without changing the visible user prompt', async () => {
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task = chatTask('ask', 'Split this work into three tasks');
+        (task.payload as any).workspaceId = 'ws-1';
+        (task.payload as any).context = {
+            forEach: {
+                kind: 'generation',
+                workspaceId: 'ws-1',
+                generationId: 'for-each-gen-1',
+                childMode: 'ask',
+                originalRequest: 'Split this work into three tasks',
+                status: 'draft',
+            },
+        };
+
+        await executor.execute(task);
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
+        const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(callArgs.prompt).toBe('Split this work into three tasks');
+        expect(callArgs.systemMessage?.content).toContain('visible CoC For Each item-plan generation chat');
+        expect(callArgs.systemMessage?.content).toContain('Advanced JSON');
+    });
+
+    it('should persist latest valid For Each generation plan metadata after the initial assistant turn', async () => {
+        sdkMocks.mockSendMessage.mockResolvedValueOnce({
+            success: true,
+            response: forEachPlanResponse([
+                { id: 'item-1', title: 'First item', prompt: 'Do first', status: 'pending' as const },
+                { id: 'item-2', title: 'Second item', prompt: 'Do second', dependsOn: ['item-1'], status: 'pending' as const },
+            ]),
+            sessionId: 'sess-1',
+        });
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task = chatTask('ask', 'Split this work into items');
+        (task.payload as any).workspaceId = 'ws-1';
+        (task.payload as any).context = {
+            forEach: {
+                kind: 'generation',
+                workspaceId: 'ws-1',
+                generationId: 'for-each-gen-1',
+                childMode: 'ask',
+                originalRequest: 'Split this work into items',
+                status: 'draft',
+            },
+        };
+
+        await executor.execute(task);
+
+        const updated = await store.getProcess(task.processId!);
+        expect(updated?.metadata?.forEach).toMatchObject({
+            kind: 'generation',
+            latestItemCount: 2,
+            latestPlanTurnIndex: 1,
+            latestPlan: {
+                turnIndex: 1,
+                childMode: 'ask',
+                items: [
+                    { id: 'item-1', title: 'First item', prompt: 'Do first', status: 'pending' },
+                    { id: 'item-2', title: 'Second item', prompt: 'Do second', dependsOn: ['item-1'], status: 'pending' },
+                ],
+            },
+        });
+        expect((updated?.metadata?.forEach as any).lastPlanError).toBeUndefined();
     });
 
     it('should NOT include read-only systemMessage when chat starts in autopilot mode', async () => {
@@ -229,6 +301,134 @@ describe('ask mode system message — follow-up transitions', () => {
         // Should include read-only system message for ask mode
         expect(callArgs.systemMessage).toBeDefined();
         expect(callArgs.systemMessage.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+    });
+
+    it('should keep For Each generation guidance on refinement follow-ups', async () => {
+        const proc = createProcessWithMode('proc-1', 'sess-1', 'ask');
+        proc.metadata = {
+            ...proc.metadata,
+            forEach: {
+                kind: 'generation',
+                workspaceId: 'ws-1',
+                generationId: 'for-each-gen-1',
+                childMode: 'ask',
+                originalRequest: 'Split this work into items',
+                status: 'draft',
+            },
+        };
+        await store.addProcess(proc);
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task = followUpTask('proc-1', 'split item 2 into two items', 'ask');
+
+        await executor.execute(task);
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
+        const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(callArgs.prompt).toBe('split item 2 into two items');
+        expect(callArgs.systemMessage?.content).toContain('visible CoC For Each item-plan generation chat');
+        expect(callArgs.systemMessage?.content).toContain('return the complete latest proposed plan');
+    });
+
+    it('should replace the persisted latest For Each plan after a valid refinement follow-up', async () => {
+        sdkMocks.mockSendMessage.mockResolvedValueOnce({
+            success: true,
+            response: forEachPlanResponse([
+                { id: 'item-1', title: 'Refined item', prompt: 'Do refined work', status: 'pending' as const },
+            ]),
+            sessionId: 'sess-1',
+        });
+        const proc = createProcessWithMode('proc-1', 'sess-1', 'ask');
+        proc.metadata = {
+            ...proc.metadata,
+            forEach: {
+                kind: 'generation',
+                workspaceId: 'ws-1',
+                generationId: 'for-each-gen-1',
+                childMode: 'ask',
+                originalRequest: 'Split this work into items',
+                status: 'draft',
+                latestItemCount: 2,
+                latestPlanTurnIndex: 1,
+                latestPlan: {
+                    turnIndex: 1,
+                    childMode: 'ask',
+                    items: [
+                        { id: 'item-1', title: 'Old item', prompt: 'Do old work', status: 'pending' },
+                        { id: 'item-2', title: 'Old second', prompt: 'Do old second', status: 'pending' },
+                    ],
+                },
+            },
+        };
+        await store.addProcess(proc);
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task = followUpTask('proc-1', 'make this smaller', 'ask');
+
+        await executor.execute(task);
+
+        const updated = await store.getProcess('proc-1');
+        expect(updated?.metadata?.forEach).toMatchObject({
+            latestItemCount: 1,
+            latestPlanTurnIndex: 2,
+            latestPlan: {
+                turnIndex: 2,
+                childMode: 'ask',
+                items: [
+                    { id: 'item-1', title: 'Refined item', prompt: 'Do refined work', status: 'pending' },
+                ],
+            },
+        });
+        expect((updated?.metadata?.forEach as any).lastPlanError).toBeUndefined();
+    });
+
+    it('should record invalid refinement output without clobbering the previous valid For Each plan', async () => {
+        sdkMocks.mockSendMessage.mockResolvedValueOnce({
+            success: true,
+            response: 'I could not produce Advanced JSON.',
+            sessionId: 'sess-1',
+        });
+        const proc = createProcessWithMode('proc-1', 'sess-1', 'ask');
+        proc.metadata = {
+            ...proc.metadata,
+            forEach: {
+                kind: 'generation',
+                workspaceId: 'ws-1',
+                generationId: 'for-each-gen-1',
+                childMode: 'ask',
+                originalRequest: 'Split this work into items',
+                status: 'draft',
+                latestItemCount: 1,
+                latestPlanTurnIndex: 1,
+                latestPlan: {
+                    turnIndex: 1,
+                    childMode: 'ask',
+                    items: [
+                        { id: 'item-1', title: 'Previous item', prompt: 'Do previous work', status: 'pending' },
+                    ],
+                },
+            },
+        };
+        await store.addProcess(proc);
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task = followUpTask('proc-1', 'split item 1 differently', 'ask');
+
+        await executor.execute(task);
+
+        const updated = await store.getProcess('proc-1');
+        expect(updated?.metadata?.forEach).toMatchObject({
+            latestItemCount: 1,
+            latestPlanTurnIndex: 1,
+            latestPlan: {
+                turnIndex: 1,
+                items: [
+                    { id: 'item-1', title: 'Previous item', prompt: 'Do previous work', status: 'pending' },
+                ],
+            },
+            lastPlanError: 'Assistant output did not include an Advanced JSON item plan',
+            lastPlanErrorTurnIndex: 2,
+        });
     });
 
     it('should NOT destroy session when follow-up stays in ask mode', async () => {

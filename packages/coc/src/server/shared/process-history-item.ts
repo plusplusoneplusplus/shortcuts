@@ -6,6 +6,7 @@
  */
 
 import type { AIProcess } from '@plusplusoneplusplus/forge';
+import type { ForEachContext } from '../tasks/task-types';
 
 export interface ProcessHistoryItem {
     // Core identity
@@ -54,6 +55,8 @@ export interface ProcessHistoryItem {
         phase?: 'grilling' | 'executing' | 'complete';
         currentIteration?: number;
     };
+    /** For Each generation/child metadata forwarded from proc.metadata.forEach. */
+    forEach?: ForEachContext;
 }
 
 export function toProcessHistoryItem(
@@ -98,5 +101,6 @@ export function toProcessHistoryItem(
         pinnedAt: proc.pinnedAt,
         archived: proc.archived || undefined,
         ralph: proc.metadata?.ralph as ProcessHistoryItem['ralph'],
+        forEach: proc.metadata?.forEach as ProcessHistoryItem['forEach'],
     };
 }

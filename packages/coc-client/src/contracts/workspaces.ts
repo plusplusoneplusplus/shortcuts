@@ -1,3 +1,5 @@
+import type { ForEachChildMode, ForEachItem } from './for-each';
+
 export interface WorkspaceInfo {
   id: string;
   name: string;
@@ -189,6 +191,28 @@ export interface ProcessHistoryItem {
     sessionId: string;
     phase?: 'grilling' | 'executing' | 'complete';
     currentIteration?: number;
+  };
+  forEach?: {
+    kind?: 'child' | 'generation';
+    workspaceId: string;
+    runId?: string;
+    itemId?: string;
+    generationId?: string;
+    childMode?: ForEachChildMode;
+    originalRequest?: string;
+    status?: 'draft' | 'approved';
+    latestItemCount?: number;
+    latestPlanTurnIndex?: number;
+    latestPlan?: {
+      turnIndex: number;
+      items: ForEachItem[];
+      childMode: ForEachChildMode;
+      sharedInstructions?: string;
+      rawJson?: string;
+      updatedAt?: string;
+    };
+    lastPlanError?: string;
+    lastPlanErrorTurnIndex?: number;
   };
 }
 

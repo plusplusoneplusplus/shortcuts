@@ -59,6 +59,7 @@ import {
 } from '../tasks/task-types';
 import { deriveScriptTitle } from './title-generator';
 import { BaseExecutor } from './base-executor';
+import { updateForEachGenerationMetadataFromAssistantTurn } from '../for-each/for-each-generation-metadata';
 
 // ============================================================================
 // Constants
@@ -445,19 +446,23 @@ export class ProcessLifecycleRunner extends BaseExecutor {
 
             try {
                 const tokenUsage = (result as any)?.tokenUsage;
+                let assistantTurnIndex = 0;
                 const appendResult = await this.store.appendConversationTurn(
                     processId,
-                    (turnIndex) => ({
-                        role: 'assistant' as const,
-                        content: responseText,
-                        timestamp: new Date(),
-                        turnIndex,
-                        toolCalls: (result as any)?.toolCalls || undefined,
-                        timeline: finalTimeline,
-                        suggestions: (result as any)?.pendingSuggestions ?? this.sessions.get(processId)?.pendingSuggestions,
-                        ...(effectiveModel ? { model: effectiveModel } : {}),
-                        ...(tokenUsage ? { tokenUsage } : {}),
-                    }),
+                    (turnIndex) => {
+                        assistantTurnIndex = turnIndex;
+                        return {
+                            role: 'assistant' as const,
+                            content: responseText,
+                            timestamp: new Date(),
+                            turnIndex,
+                            toolCalls: (result as any)?.toolCalls || undefined,
+                            timeline: finalTimeline,
+                            suggestions: (result as any)?.pendingSuggestions ?? this.sessions.get(processId)?.pendingSuggestions,
+                            ...(effectiveModel ? { model: effectiveModel } : {}),
+                            ...(tokenUsage ? { tokenUsage } : {}),
+                        };
+                    },
                     {
                         filterStreaming: true,
                         additionalUpdates: (current) => {
@@ -484,16 +489,22 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                             } : prevCumulative;
                             // If cancellation was requested while executing, finalize as cancelled
                             if (current.status === 'cancelling') {
+                                const baseMetadata = {
+                                    ...(current.metadata ?? {}),
+                                    type: current.metadata?.type ?? task.type,
+                                    model: effectiveModel,
+                                };
+                                const metadata = updateForEachGenerationMetadataFromAssistantTurn(
+                                    baseMetadata,
+                                    responseText,
+                                    assistantTurnIndex,
+                                ) ?? baseMetadata;
                                 return {
                                     status: 'cancelled' as const,
                                     endTime: new Date(),
                                     result: typeof result === 'string' ? result : JSON.stringify(result),
                                     ...(sessionId ? { sdkSessionId: sessionId } : {}),
-                                    metadata: {
-                                        ...(current.metadata ?? {}),
-                                        type: current.metadata?.type ?? task.type,
-                                        model: effectiveModel,
-                                    },
+                                    metadata,
                                     ...(tokenLimit !== undefined ? { tokenLimit } : {}),
                                     ...(currentTokens !== undefined ? { currentTokens } : {}),
                                     ...(systemTokens !== undefined ? { systemTokens } : {}),
@@ -502,16 +513,22 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                     ...(cumulativeTokenUsage ? { cumulativeTokenUsage } : {}),
                                 };
                             }
+                            const baseMetadata = {
+                                ...(current.metadata ?? {}),
+                                type: current.metadata?.type ?? task.type,
+                                model: effectiveModel,
+                            };
+                            const metadata = updateForEachGenerationMetadataFromAssistantTurn(
+                                baseMetadata,
+                                responseText,
+                                assistantTurnIndex,
+                            ) ?? baseMetadata;
                             return {
                                 status: 'completed' as const,
                                 endTime: new Date(),
                                 result: typeof result === 'string' ? result : JSON.stringify(result),
                                 ...(sessionId ? { sdkSessionId: sessionId } : {}),
-                                metadata: {
-                                    ...(current.metadata ?? {}),
-                                    type: current.metadata?.type ?? task.type,
-                                    model: effectiveModel,
-                                },
+                                metadata,
                                 ...(tokenLimit !== undefined ? { tokenLimit } : {}),
                                 ...(currentTokens !== undefined ? { currentTokens } : {}),
                                 ...(systemTokens !== undefined ? { systemTokens } : {}),

@@ -62,6 +62,6 @@ all have their own `references/*.md`.
   `payload.mode`. `FollowUpExecutor.executeFollowUp` fail-loud warns + defaults
   to `'ask'` if missing.
 - **Direct package builds** use `scripts/prebuild.mjs` to build
-  `@plusplusoneplusplus/coc-workflow` and `@plusplusoneplusplus/coc-memory`
+  `@plusplusoneplusplus/coc-client`, `@plusplusoneplusplus/coc-workflow`, and `@plusplusoneplusplus/coc-memory`
   before `tsc` and to generate
   `src/server/core/build-info.ts`; keep this script cross-platform.

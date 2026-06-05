@@ -62,6 +62,7 @@ import { deriveEffort } from '../../utils/effortUtils';
 import { RalphStartPanel } from './RalphStartPanel';
 import { ImplementPlanCard } from './ImplementPlanCard';
 import type { ImplementationRecord, ExistingRun, RunLiveStatus } from './ImplementPlanCard';
+import { ForEachPlanReviewCard, type ForEachGenerationMetadata } from './ForEachPlanReviewCard';
 import { getRalphContext } from '../../../../../tasks/task-types';
 import { useLoops } from './hooks/useLoops';
 import { LoopManagementPanel } from './LoopManagementPanel';
@@ -112,9 +113,11 @@ export interface ChatDetailProps {
     pendingPrefix?: string;
     /** Called after pendingPrefix has been consumed (prepended and sent). */
     onClearPendingPrefix?: () => void;
+    /** Opens the reviewed For Each parent-run pane after approval. */
+    onOpenForEachRun?: (runId: string) => void;
 }
 
-export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, compactModeSelector = false, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix }: ChatDetailProps) {
+export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, compactModeSelector = false, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onOpenForEachRun }: ChatDetailProps) {
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
 
@@ -196,7 +199,17 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         ? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(taskId))
         : null);
     const metadataProcess = useMemo(() => buildMetadataProcess(task, processDetails, processId), [task, processId, processDetails]);
+    const forEachGeneration = metadataProcess?.metadata?.forEach?.kind === 'generation'
+        ? metadataProcess.metadata.forEach as ForEachGenerationMetadata
+        : null;
     const sessionModel = metadataProcess?.metadata?.model as string | undefined;
+    const rawReasoningEffort = metadataProcess?.metadata?.reasoningEffort;
+    const sessionReasoningEffort = rawReasoningEffort === 'low'
+        || rawReasoningEffort === 'medium'
+        || rawReasoningEffort === 'high'
+        || rawReasoningEffort === 'xhigh'
+        ? rawReasoningEffort
+        : undefined;
     const workingDirectory: string | undefined = metadataProcess?.workingDirectory
         || metadataProcess?.payload?.workingDirectory
         || metadataProcess?.metadata?.workingDirectory
@@ -1518,6 +1531,19 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         }
                         return null;
                     })()}
+                    {forEachGeneration && (
+                        <ForEachPlanReviewCard
+                            workspaceId={workspaceId ?? forEachGeneration.workspaceId}
+                            processId={processId}
+                            metadataProcess={metadataProcess}
+                            forEach={forEachGeneration}
+                            turns={turns}
+                            provider={sessionProvider}
+                            model={sessionModel}
+                            reasoningEffort={sessionReasoningEffort}
+                            onApprovedRun={onOpenForEachRun}
+                        />
+                    )}
                     {/* Plan file complete — offer one-click handoff to autopilot */}
                     {isTerminal && !planChatBusy && resolveLoadedTaskMode(task) === 'ask' && effectivePlanPath && (
                         <ImplementPlanCard

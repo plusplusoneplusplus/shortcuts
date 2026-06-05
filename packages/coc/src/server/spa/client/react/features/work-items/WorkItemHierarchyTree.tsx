@@ -57,7 +57,7 @@ interface RemoteSyncStatusState {
 }
 
 interface RemoteSyncStatusNotice {
-    tone: 'muted' | 'success' | 'warning' | 'error';
+    tone: 'muted' | 'warning' | 'error';
     message: string;
 }
 
@@ -76,13 +76,6 @@ function saveCollapsed(workspaceId: string, ids: Set<string>): void {
 
 function remoteProviderFilterLabel(filter: WorkItemRemoteProviderFilter): string {
     return filter === 'all' ? 'remote providers' : REMOTE_PROVIDER_LABELS[filter];
-}
-
-function repositoryLabel(status: WorkItemSyncProviderStatus): string | undefined {
-    if (status.provider === 'azure-boards') return status.repository?.project;
-    const owner = status.repository?.owner;
-    const repo = status.repository?.repo;
-    return owner && repo ? `${owner}/${repo}` : undefined;
 }
 
 function unavailableStatusMessage(status: WorkItemSyncProviderStatus): string {
@@ -165,20 +158,7 @@ function remoteSyncStatusNotice(state: RemoteSyncStatusState, filter: WorkItemRe
             message: `${REMOTE_PROVIDER_LABELS[status.provider]} unavailable: ${unavailableStatusMessage(status)}`,
         };
     }
-    if (providers.length === 1) {
-        const status = providers[0];
-        const repoLabel = repositoryLabel(status);
-        return {
-            tone: 'success',
-            message: repoLabel
-                ? `${REMOTE_PROVIDER_LABELS[status.provider]} ready for ${repoLabel}.`
-                : `${REMOTE_PROVIDER_LABELS[status.provider]} sync is ready.`,
-        };
-    }
-    return {
-        tone: 'success',
-        message: `Remote sync ready for ${providers.map(provider => REMOTE_PROVIDER_LABELS[provider.provider]).join(' and ')}.`,
-    };
+    return null;
 }
 
 export interface WorkItemHierarchyTreeProps {
@@ -191,6 +171,7 @@ export interface WorkItemHierarchyTreeProps {
     trackerViewKind?: WorkItemTrackerViewKind;
     remoteProviderFilter?: WorkItemRemoteProviderFilter;
     onRemoteProviderFilterChange?: (provider: WorkItemRemoteProviderFilter) => void;
+    onDetectedRemoteProviderChange?: (provider: WorkItemSyncProvider | undefined) => void;
     selectedWorkItemId: string | null;
     onSelectWorkItem: (id: string) => void;
     /** Called when a new work item is created from within the tree. */
@@ -216,6 +197,7 @@ export function WorkItemHierarchyTree({
     trackerViewKind,
     remoteProviderFilter = 'all',
     onRemoteProviderFilterChange,
+    onDetectedRemoteProviderChange,
     selectedWorkItemId,
     onSelectWorkItem,
     onCreated,
@@ -326,6 +308,7 @@ export function WorkItemHierarchyTree({
     useEffect(() => {
         if (!isRemoteView) {
             setRemoteStatus({ loading: false });
+            onDetectedRemoteProviderChange?.(undefined);
             return;
         }
         if (!workItemsSyncEnabled) {
@@ -356,7 +339,21 @@ export function WorkItemHierarchyTree({
                 }
             });
         return () => { cancelled = true; };
-    }, [isRemoteView, workItemsSyncEnabled, workspaceId]);
+    }, [isRemoteView, onDetectedRemoteProviderChange, workItemsSyncEnabled, workspaceId]);
+
+    useEffect(() => {
+        if (!isRemoteView) return;
+        onDetectedRemoteProviderChange?.(detectedRemoteProvider);
+        if (detectedRemoteProvider && remoteProviderFilter !== detectedRemoteProvider) {
+            onRemoteProviderFilterChange?.(detectedRemoteProvider);
+        }
+    }, [
+        detectedRemoteProvider,
+        isRemoteView,
+        onDetectedRemoteProviderChange,
+        onRemoteProviderFilterChange,
+        remoteProviderFilter,
+    ]);
 
     // Refresh when WebSocket events arrive (work item context changes)
     const repoItems = workItemState.workItemsByRepo[workspaceId];
@@ -737,13 +734,11 @@ export function WorkItemHierarchyTree({
                 <div
                     className={cn(
                         'mx-2 mt-2 rounded-md border px-2.5 py-1.5 text-[12px] leading-[1.4]',
-                        remoteStatusNotice.tone === 'success'
-                            ? 'border-green-300 bg-green-50 text-green-800 dark:border-green-700 dark:bg-green-900/20 dark:text-green-300'
-                            : remoteStatusNotice.tone === 'warning'
-                                ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
-                                : remoteStatusNotice.tone === 'error'
-                                    ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-900/20 dark:text-red-300'
-                                    : 'border-[#d0d7de] bg-[#f6f8fa] text-[#656d76] dark:border-[#3c3c3c] dark:bg-[#252526] dark:text-[#999]',
+                        remoteStatusNotice.tone === 'warning'
+                            ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
+                            : remoteStatusNotice.tone === 'error'
+                                ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-900/20 dark:text-red-300'
+                                : 'border-[#d0d7de] bg-[#f6f8fa] text-[#656d76] dark:border-[#3c3c3c] dark:bg-[#252526] dark:text-[#999]',
                     )}
                     role={remoteStatusNotice.tone === 'error' ? 'alert' : 'status'}
                     data-testid="remote-sync-status-message"
@@ -805,8 +800,8 @@ export function WorkItemHierarchyTree({
                                 Import from GitHub
                             </Button>
                         )}
-                        {!searchQuery && isRemoteView && onImportFromRemote && (
-                            <Button variant="primary" size="sm" onClick={onImportFromRemote} data-testid="empty-import-from-remote-btn">
+                        {!searchQuery && remoteProviderAffordancesVisible && detectedRemoteProvider && onImportFromRemote && (
+                            <Button variant="primary" size="sm" onClick={() => onImportFromRemote(detectedRemoteProvider)} data-testid="empty-import-from-remote-btn">
                                 Import remote work item
                             </Button>
                         )}

@@ -2,6 +2,7 @@ import type {
   ForEachRun,
   ForEachRunResponse,
   ForEachRunSummary,
+  CreateForEachRunRequest,
   GenerateForEachRunRequest,
   ListForEachRunsResponse,
   UpdateForEachPlanRequest,
@@ -27,6 +28,14 @@ export class ForEachClient {
 
   async generate(workspaceId: string, request: GenerateForEachRunRequest): Promise<ForEachRun> {
     const response = await this.transport.request<ForEachRunResponse>(runsPath(workspaceId, '/generate'), {
+      method: 'POST',
+      body: request,
+    });
+    return response.run;
+  }
+
+  async create(workspaceId: string, request: CreateForEachRunRequest): Promise<ForEachRun> {
+    const response = await this.transport.request<ForEachRunResponse>(runsPath(workspaceId), {
       method: 'POST',
       body: request,
     });
