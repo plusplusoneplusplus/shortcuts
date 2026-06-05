@@ -228,6 +228,58 @@ describe('WorkItemAzureBoardsPullPoller', () => {
         expect(cleared).toEqual([1]);
     });
 
+    it('suppresses and clears timers when global work item sync is disabled', async () => {
+        transport.set([
+            makeWorkItem(100, 'Polling Epic', { workItemType: 'Epic' }),
+        ]);
+        await importTree(store, transport);
+        writeRepoPreferences(tmpDir, REPO_ID, {
+            workItems: {
+                sync: {
+                    azureBoards: {
+                        project: PROJECT,
+                        pollingEnabled: true,
+                        pollIntervalMinutes: 1,
+                    },
+                },
+            },
+        });
+        const scheduled: Array<{ handler: () => void | Promise<void>; ms: number; id: number }> = [];
+        const cleared: unknown[] = [];
+        const timerApi: WorkItemAzureBoardsPullPollerTimerApi = {
+            setInterval(handler, ms) {
+                const id = scheduled.length + 1;
+                scheduled.push({ handler, ms, id });
+                return id;
+            },
+            clearInterval(timer) {
+                cleared.push(timer);
+            },
+        };
+        let syncEnabled = false;
+        const poller = new WorkItemAzureBoardsPullPoller({
+            dataDir: tmpDir,
+            processStore: processStore(tmpDir),
+            workItemStore: store,
+            provider: makeProvider(),
+            transport,
+            timerApi,
+            getSyncEnabled: () => syncEnabled,
+        });
+
+        await poller.start();
+
+        expect(scheduled).toHaveLength(0);
+
+        syncEnabled = true;
+        await poller.configureWorkspace(REPO_ID);
+        expect(scheduled).toHaveLength(1);
+
+        syncEnabled = false;
+        await poller.configureWorkspace(REPO_ID);
+        expect(cleared).toEqual([1]);
+    });
+
     it('polls Azure-backed Epic roots, prunes descendants, reports remote-wins warnings, and deletes missing roots', async () => {
         transport.set([
             makeWorkItem(100, 'Remote Epic', {

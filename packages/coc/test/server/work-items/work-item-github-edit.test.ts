@@ -136,7 +136,7 @@ let store: FileWorkItemStore;
 let server: http.Server | undefined;
 let baseUrl: string;
 
-function makeServer(mock: MockTransport): http.Server {
+function makeServer(mock: MockTransport, getSyncEnabled: () => boolean = () => true): http.Server {
     const routes: Route[] = [];
     registerWorkItemRoutes({
         routes,
@@ -150,14 +150,15 @@ function makeServer(mock: MockTransport): http.Server {
             }],
         } as any,
         getHierarchyEnabled: () => true,
+        getSyncEnabled,
         dataDir: tmpDir,
         githubTransport: mock.transport,
     });
     return http.createServer(createRouter({ routes, spaHtml: '' }));
 }
 
-async function startServer(mock: MockTransport): Promise<void> {
-    server = makeServer(mock);
+async function startServer(mock: MockTransport, getSyncEnabled?: () => boolean): Promise<void> {
+    server = makeServer(mock, getSyncEnabled);
     await new Promise<void>((resolve, reject) => {
         server!.on('error', reject);
         server!.listen(0, '127.0.0.1', () => {
@@ -431,6 +432,25 @@ describe('GitHub-backed work item edits', () => {
         expect(mock.calls.updateIssue).toHaveLength(0);
         const stored = await store.getWorkItem('local-epic', REPO_ID);
         expect(stored?.title).toBe('Renamed Local Epic');
+    });
+
+    it('stores GitHub-backed local edits without provider transport calls when work item sync is disabled', async () => {
+        await store.addWorkItem(githubBackedRoot());
+        const mock = makeMockTransport([mirroredIssue(10, { title: 'GitHub Epic' })]);
+        await startServer(mock, () => false);
+
+        const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/epic-1`, {
+            title: 'Local-only while sync disabled',
+            status: 'planning',
+        });
+
+        expect(res.status).toBe(200);
+        expect(mock.calls.getIssue).toHaveLength(0);
+        expect(mock.calls.updateIssue).toHaveLength(0);
+        const stored = await store.getWorkItem('epic-1', REPO_ID);
+        expect(stored?.title).toBe('Local-only while sync disabled');
+        expect(stored?.status).toBe('planning');
+        expect(stored?.githubMirror?.updatedAt).toBe(NOW);
     });
 
     it('does not call GitHub when only local-only fields change', async () => {

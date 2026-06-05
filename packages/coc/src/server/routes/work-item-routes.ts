@@ -90,6 +90,8 @@ export interface WorkItemRouteContext {
     getWsServer?: () => ProcessWebSocketServer;
     /** Returns true when the workItems.hierarchy feature flag is enabled. */
     getHierarchyEnabled?: () => boolean;
+    /** Returns true when remote work-item provider integration is enabled. */
+    getSyncEnabled?: () => boolean;
     /** Base CoC data directory, required to resolve workspace GitHub preferences for GitHub-backed child creation. */
     dataDir?: string;
     /** Override GitHub transport for testing. Defaults to GhCliGitHubWorkItemIssueTransport. */
@@ -323,6 +325,7 @@ function azureBoardsMirrorIsStale(local: WorkItem, remote: AzureBoardsWorkItem):
 export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
     const { routes, workItemStore, processStore, enqueue, getWsServer } = ctx;
     const isHierarchyEnabled = () => ctx.getHierarchyEnabled?.() ?? false;
+    const isSyncEnabled = () => ctx.getSyncEnabled?.() ?? true;
     // All valid types when hierarchy is enabled
     const ALL_VALID_TYPES = new Set<string>(WORK_ITEM_TYPES);
 
@@ -556,6 +559,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             || updates.tags !== undefined
             || parentChanged;
         if (!hasGitHubWritableChange) return updates;
+        if (!isSyncEnabled()) return updates;
 
         const root = await findTreeRoot(current, repoId);
         if (root.tracker?.kind !== 'github-backed' || root.tracker.provider !== 'github') {
@@ -654,6 +658,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             || updates.tags !== undefined
             || parentChanged;
         if (!hasAzureWritableChange) return updates;
+        if (!isSyncEnabled()) return updates;
 
         const root = await findTreeRoot(current, repoId);
         if (root.tracker?.kind !== 'azure-boards-backed' || root.tracker.provider !== 'azure-boards') {

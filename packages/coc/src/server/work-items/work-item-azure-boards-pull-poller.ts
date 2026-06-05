@@ -35,6 +35,7 @@ export interface WorkItemAzureBoardsPullPollerOptions {
     now?: () => string;
     timerApi?: WorkItemAzureBoardsPullPollerTimerApi;
     logError?: (message: string) => void;
+    getSyncEnabled?: () => boolean;
 }
 
 export interface WorkItemAzureBoardsPullPollError {
@@ -148,6 +149,10 @@ export class WorkItemAzureBoardsPullPoller {
     }
 
     async configureWorkspace(workspaceId: string): Promise<void> {
+        if (this.options.getSyncEnabled?.() === false) {
+            this.clearWorkspaceTimer(workspaceId);
+            return;
+        }
         const prefs = readRepoPreferences(this.options.dataDir, workspaceId);
         const azureBoardsPrefs = prefs.workItems?.sync?.azureBoards;
         if (azureBoardsPrefs?.pollingEnabled === false) {
@@ -173,6 +178,7 @@ export class WorkItemAzureBoardsPullPoller {
 
     async pollWorkspace(workspaceId: string): Promise<WorkItemAzureBoardsPullWorkspaceResult> {
         const result = blankResult(workspaceId);
+        if (this.options.getSyncEnabled?.() === false) return result;
         const roots = await this.listAzureBoardsBackedEpicRoots(workspaceId);
         result.rootsConsidered = roots.length;
         if (roots.length === 0) return result;

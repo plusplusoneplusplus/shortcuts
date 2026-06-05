@@ -499,16 +499,6 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     // Work item routes
     const workItemStore = new FileWorkItemStore({ dataDir });
-    workItemGitHubPullPoller = new WorkItemGitHubPullPoller({
-        dataDir,
-        processStore: store,
-        workItemStore,
-    });
-    workItemAzureBoardsPullPoller = new WorkItemAzureBoardsPullPoller({
-        dataDir,
-        processStore: store,
-        workItemStore,
-    });
     const enqueueForWorkItems = bridge.enqueue.bind(bridge) as EnqueueFunction;
     const getWorkItemsHierarchyEnabled = opts.runtimeConfigService
         ? () => opts.runtimeConfigService!.config.workItems?.hierarchy?.enabled ?? false
@@ -516,6 +506,27 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const getWorkItemsSyncEnabled = opts.runtimeConfigService
         ? () => opts.runtimeConfigService!.config.workItems?.sync?.enabled ?? false
         : () => opts.resolvedConfig?.workItems?.sync?.enabled ?? false;
+    workItemGitHubPullPoller = new WorkItemGitHubPullPoller({
+        dataDir,
+        processStore: store,
+        workItemStore,
+        getSyncEnabled: getWorkItemsSyncEnabled,
+    });
+    workItemAzureBoardsPullPoller = new WorkItemAzureBoardsPullPoller({
+        dataDir,
+        processStore: store,
+        workItemStore,
+        getSyncEnabled: getWorkItemsSyncEnabled,
+    });
+    opts.runtimeConfigService?.onChange?.(() => {
+        void Promise.all([
+            workItemGitHubPullPoller?.refreshWorkspaceTimers(),
+            workItemAzureBoardsPullPoller?.refreshWorkspaceTimers(),
+        ]).catch(error => {
+            const message = error instanceof Error ? error.message : String(error);
+            process.stderr.write(`[work-items/provider-poll] Failed to refresh polling after config change: ${message}\n`);
+        });
+    });
     const getWorkItemsAiAuthoringEnabled = opts.runtimeConfigService
         ? () => opts.runtimeConfigService!.config.workItems?.aiAuthoring?.enabled ?? false
         : () => opts.resolvedConfig?.workItems?.aiAuthoring?.enabled ?? false;
@@ -552,6 +563,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         enqueue: enqueueForWorkItems,
         getWsServer,
         getHierarchyEnabled: getWorkItemsHierarchyEnabled,
+        getSyncEnabled: getWorkItemsSyncEnabled,
         dataDir,
     });
     registerWorkItemPlanRoutes({ routes, workItemStore, getWsServer });
