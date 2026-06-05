@@ -211,8 +211,11 @@ export function RalphSessionRow({
                             'chat-title truncate text-[#1e1e1e] dark:text-[#cccccc]',
                             session.hasUnseen && 'font-semibold',
                         )}
+                        title={`${session.title} · ${subLabel}`}
+                        aria-label={`Ralph session: ${session.title} · ${subLabel}`}
+                        data-testid="ralph-session-title"
                     >
-                        Ralph Session
+                        {session.title}
                         <span className="ml-1.5 font-normal text-[#848484] dark:text-[#9d9d9d]">
                             {subLabel}
                         </span>

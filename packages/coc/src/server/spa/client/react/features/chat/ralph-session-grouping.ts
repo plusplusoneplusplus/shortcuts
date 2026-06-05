@@ -4,9 +4,17 @@
  * Pure utility: no React, no side effects.
  */
 
+import { deriveRalphTitle } from './ralph-title';
+
 export interface RalphSession {
     kind: 'ralph-session';
     sessionId: string;
+    /**
+     * Concise, goal-derived display title for the session row. Derived on the
+     * fly from existing Ralph goal metadata (no new persistent title state);
+     * falls back to "Ralph Session" when no usable goal text is available.
+     */
+    title: string;
     /** The grilling-phase process (ask mode + context.ralph.phase = 'grilling') */
     grillingProcess: any | undefined;
     /** All non-grilling processes in this session (iterations, follow-ups, etc.) */
@@ -32,6 +40,34 @@ export type RalphSessionPhase = 'grilling' | 'executing' | 'complete' | 'failed'
  */
 export function getRalphSessionId(task: any): string | undefined {
     return (task.payload?.context?.ralph?.sessionId ?? task.ralph?.sessionId) as string | undefined;
+}
+
+/** Extract ralph.originalGoal from a process/task.
+ *
+ * Live queue_tasks expose this on `payload.context.ralph`, while history items
+ * (from GET /api/workspaces/:id/history) expose it on the top-level `ralph`
+ * field forwarded verbatim by `serializeRalphMetadata` → `toProcessHistoryItem`.
+ */
+export function getRalphGoal(task: any): string | undefined {
+    return (task?.payload?.context?.ralph?.originalGoal ?? task?.ralph?.originalGoal) as string | undefined;
+}
+
+/**
+ * Resolve a concise display title for a Ralph session from the goal metadata
+ * carried by any of its processes. Prefers the grilling process (which holds
+ * the originally confirmed goal) and falls back through the iterations so
+ * completed historical sessions improve automatically once their existing
+ * metadata contains the goal.
+ */
+function resolveSessionTitle(grillingProcess: any | undefined, iterations: any[]): string {
+    const ordered = [grillingProcess, ...iterations].filter(Boolean);
+    for (const task of ordered) {
+        const goal = getRalphGoal(task);
+        if (typeof goal === 'string' && goal.trim()) {
+            return deriveRalphTitle(goal);
+        }
+    }
+    return deriveRalphTitle(undefined);
 }
 
 /** Extract ralph.phase from a process/task. Same fallback rule as above. */
@@ -170,6 +206,7 @@ export function groupByRalphSession(
         entries.push({
             kind: 'ralph-session',
             sessionId,
+            title: resolveSessionTitle(grillingProcess, iterations),
             grillingProcess,
             iterations,
             latestTimestamp,

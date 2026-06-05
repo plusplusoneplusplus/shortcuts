@@ -1,4 +1,5 @@
 import { ensureQueueProcessId } from '../../utils/queue-process-id';
+import { deriveRalphTitle, RALPH_FALLBACK_TITLE } from './ralph-title';
 
 export const SESSION_CONTEXT_DRAG_MIME = 'application/vnd.coc.session-context+json';
 export const SESSION_CONTEXT_DRAG_KIND = 'coc.session-context';
@@ -197,7 +198,32 @@ function resolveRalphStatus(source: any, children: any[]): SessionContextSourceS
     return childStatuses[0] ?? null;
 }
 
+function resolveRalphGoalTitle(source: any, children: any[]): string | null {
+    for (const item of [source, ...children]) {
+        const goal = stringFrom(item, [
+            ['originalGoal'],
+            ['ralph', 'originalGoal'],
+            ['payload', 'context', 'ralph', 'originalGoal'],
+        ]);
+        if (goal) {
+            const derived = deriveRalphTitle(goal);
+            if (derived && derived !== RALPH_FALLBACK_TITLE) return sanitizeDisplayText(derived);
+        }
+    }
+    return null;
+}
+
 function resolveRalphTitle(source: any, children: any[]): string {
+    // 1. Prefer a title already resolved by the grouping layer so the drag
+    //    label, MIME payload, and the rendered row stay in lock-step (AC-04).
+    const resolved = stringFrom(source, [['title']]);
+    if (resolved && resolved !== RALPH_FALLBACK_TITLE) return sanitizeDisplayText(resolved);
+
+    // 2. Otherwise derive a goal-based title from raw Ralph metadata (AC-04).
+    const goalTitle = resolveRalphGoalTitle(source, children);
+    if (goalTitle) return goalTitle;
+
+    // 3. Fall back to existing safe prompt/title metadata, then "Ralph Session".
     const sources = [source, ...children];
     for (const item of sources) {
         const rawTitle = stringFrom(item, [
@@ -212,7 +238,7 @@ function resolveRalphTitle(source: any, children: any[]): string {
         const sanitized = rawTitle ? sanitizeDisplayText(rawTitle) : '';
         if (sanitized) return sanitized;
     }
-    return 'Ralph Session';
+    return RALPH_FALLBACK_TITLE;
 }
 
 function buildRalphDisplayLabel(source: any, title: string, childProcessIds: string[]): string {

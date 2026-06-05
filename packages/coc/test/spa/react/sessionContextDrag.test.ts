@@ -203,6 +203,56 @@ describe('sessionContextDrag', () => {
         }, { activeWorkspaceId: 'ws-1' })).toBeNull();
     });
 
+    it('prefers a goal-derived title for Ralph session groups over prompt previews', () => {
+        const payload = createRalphSessionContextDragPayload({
+            sessionId: 'ralph-session-goal',
+            phase: 'executing',
+            latestTimestamp: '2026-01-01T12:00:00Z',
+            grillingProcess: {
+                id: 'grill-proc',
+                workspaceId: 'ws-1',
+                status: 'completed',
+                promptPreview: 'Continue the Ralph execution loop toward the goal',
+                ralph: { sessionId: 'ralph-session-goal', originalGoal: '## Goal\nReviewing Codex skill access for the dashboard' },
+            },
+            iterations: [
+                { id: 'iter-1', workspaceId: 'ws-1', status: 'running' },
+            ],
+        }, { activeWorkspaceId: 'ws-1' });
+
+        expect(payload?.title).toBe('Reviewing Codex skill access for the dashboard');
+        expect(payload?.displayLabel).toBe('Reviewing Codex skill access for the dashboard - 1 iter');
+    });
+
+    it('reuses an already-resolved Ralph session title when present', () => {
+        const payload = createRalphSessionContextDragPayload({
+            sessionId: 'ralph-session-resolved',
+            title: 'Improve Ralph session titles',
+            phase: 'complete',
+            latestTimestamp: '2026-01-01T12:00:00Z',
+            iterations: [
+                { id: 'iter-1', workspaceId: 'ws-1', status: 'completed', promptPreview: 'noise prompt' },
+            ],
+        }, { activeWorkspaceId: 'ws-1' });
+
+        expect(payload?.title).toBe('Improve Ralph session titles');
+        expect(payload?.displayLabel).toBe('Improve Ralph session titles - 1 iter');
+    });
+
+    it('writes a goal-derived Ralph group text fallback instead of the generic title', () => {
+        const payload = createRalphSessionContextDragPayload({
+            sessionId: 'ralph-session-1',
+            phase: 'complete',
+            latestTimestamp: '2026-01-01T00:00:00Z',
+            iterations: [{ id: 'iter-1', workspaceId: 'ws-1', status: 'completed', ralph: { sessionId: 'ralph-session-1', originalGoal: 'Reviewing Codex skill access' } }],
+        }, { activeWorkspaceId: 'ws-1' })!;
+        const dataTransfer = { setData: vi.fn(), effectAllowed: 'move' as DataTransfer['effectAllowed'] };
+
+        writeRalphSessionContextDragData(dataTransfer, payload);
+
+        expect(dataTransfer.setData).toHaveBeenCalledWith('text/plain', 'CoC Ralph session context: Reviewing Codex skill access - 1 iter [complete/completed] ralph-session-1');
+    });
+
     it('writes the Ralph group MIME payload and safe text fallback', () => {
         const payload = createRalphSessionContextDragPayload({
             sessionId: 'ralph-session-1',

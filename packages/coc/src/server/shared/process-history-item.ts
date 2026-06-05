@@ -54,6 +54,8 @@ export interface ProcessHistoryItem {
         sessionId: string;
         phase?: 'grilling' | 'executing' | 'complete';
         currentIteration?: number;
+        /** Confirmed goal spec, used to derive a concise chat-list title. */
+        originalGoal?: string;
     };
     /** For Each generation/child metadata forwarded from proc.metadata.forEach. */
     forEach?: ForEachContext;

@@ -13,6 +13,7 @@ function makeRalphSession(sessionId: string, overrides: Partial<RalphSession> = 
     return {
         kind: 'ralph-session',
         sessionId,
+        title: 'Ralph Session',
         grillingProcess: undefined,
         iterations: [],
         latestTimestamp: Date.parse('2026-01-01T00:00:00.000Z'),
