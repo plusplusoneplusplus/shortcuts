@@ -190,7 +190,7 @@ export interface CLIConfig {
         focusedDiff?: boolean;
         /** Direct commit SHA lookup in the Git tab. Disabled by default. */
         gitCommitLookup?: boolean;
-        /** Cross-clone cherry-pick transfer UI in the Git tab. Disabled by default. */
+        /** Cross-clone cherry-pick transfer UI in the Git tab. Enabled by default. */
         gitCrossCloneCherryPick?: boolean;
         /** Drag/drop session-context attachments in chat composers. Disabled by default. */
         sessionContextAttachments?: boolean;
@@ -427,7 +427,7 @@ export interface ResolvedCLIConfig {
         focusedDiff: boolean;
         /** Direct commit SHA lookup in the Git tab. Disabled by default. */
         gitCommitLookup: boolean;
-        /** Cross-clone cherry-pick transfer UI in the Git tab. Disabled by default. */
+        /** Cross-clone cherry-pick transfer UI in the Git tab. Enabled by default. */
         gitCrossCloneCherryPick: boolean;
         /** Drag/drop session-context attachments in chat composers. Disabled by default. */
         sessionContextAttachments: boolean;
@@ -601,7 +601,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         autoMemoryPromotion: false,
         focusedDiff: false,
         gitCommitLookup: false,
-        gitCrossCloneCherryPick: false,
+        gitCrossCloneCherryPick: true,
         sessionContextAttachments: false,
     },
     memoryPromotion: {
