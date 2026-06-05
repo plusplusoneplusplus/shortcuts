@@ -9,7 +9,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { cn } from '../../ui';
 import { getSpaCocClient } from '../../api/cocClient';
-import { isContainerMode } from '../../utils/config';
+import { isContainerMode, isForEachEnabled } from '../../utils/config';
 import { useQueue } from '../../contexts/QueueContext';
 import { useApp } from '../../contexts/AppContext';
 import { useRepos } from '../../contexts/ReposContext';
@@ -25,7 +25,7 @@ import { ChatPreferencesProvider, ChatPrefsSync } from '../../contexts/ChatPrefe
 import { useNotifications } from '../../contexts/NotificationContext';
 import { useProcessSearch } from '../../processes/hooks/useProcessSearch';
 import { adaptSearchResults } from '../../utils/search-adapter';
-import type { ProcessHistoryItem } from '@plusplusoneplusplus/coc-client';
+import type { ForEachRunSummary, ProcessHistoryItem } from '@plusplusoneplusplus/coc-client';
 import { TaskDefs } from '../../../../../tasks/task-types';
 import { isQueueProcessId, toQueueProcessId, toTaskId } from '../../utils/queue-process-id';
 import { parseForEachRunDeepLink, parseRalphSessionDeepLink } from '../../layout/Router';
@@ -86,6 +86,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     const [history, setHistory] = useState<ProcessHistoryItem[]>(
         (cachedHistory?.items as ProcessHistoryItem[]) ?? [],
     );
+    const [forEachRuns, setForEachRuns] = useState<ForEachRunSummary[]>([]);
     const [loading, setLoading] = useState(!cachedHistory && !cachedQueue);
     const [hasMore, setHasMore] = useState<boolean>(cachedHistory?.hasMore ?? false);
     const [loadingMore, setLoadingMore] = useState(false);
@@ -172,9 +173,10 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         // the effect will re-fire once currentAgentId is set.
         if (isContainerMode() && !appState.currentAgentId) return;
         try {
-            const [queueData, historyData] = await Promise.all([
+            const [queueData, historyData, forEachData] = await Promise.all([
                 getSpaCocClient().queue.list({ repoId: workspaceId }).catch(() => null),
                 getSpaCocClient().workspaces.history(workspaceId, { limit: 100, offset: 0 }).catch(() => null),
+                isForEachEnabled() ? getSpaCocClient().forEach.list(workspaceId).catch(() => null) : Promise.resolve(null),
             ]);
             // Only update queue/pause state when the queue fetch actually succeeded —
             // a transient network error must not clear the running list out from under
@@ -208,6 +210,12 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                     items,
                     hasMore: nextHasMore,
                 });
+            }
+
+            if (isForEachEnabled()) {
+                setForEachRuns(Array.isArray(forEachData) ? forEachData : []);
+            } else {
+                setForEachRuns([]);
             }
         } catch {
             // Both fetches already have inner `.catch(() => null)`; this outer catch is
@@ -713,6 +721,9 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             activeTab={mode}
             selectedRalphSessionId={selectedRalphSessionId}
             onSelectRalphSession={handleSelectRalphSession}
+            forEachRuns={forEachRuns}
+            selectedForEachRunId={selectedForEachRunId}
+            onSelectForEachRun={handleOpenForEachRun}
             cursorTaskId={cursorTaskId}
             onNewChat={() => {
                 if (isMobile) {
