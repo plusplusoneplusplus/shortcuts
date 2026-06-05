@@ -16,7 +16,9 @@ commits — use `impl` for that.
    "last N commits", resolve to `HEAD~N..HEAD`. **If omitted, defaults
    to all outgoing commits on the current branch that are not yet on
    `<remote>/<base>` — do not ask the user for commits unless they want
-   to submit a specific subset.**
+   to submit a specific subset.** Commit order does not matter — the
+   script always cherry-picks oldest-first. Comma-separated SHAs may be
+   pasted in any order (including `git log` newest-first order).
 2. **Base** — defaults to `main`. Ask only if the repo clearly differs.
 3. **Title / body** — optional; otherwise `gh pr create --fill` uses the
    commit message.
