@@ -56,7 +56,20 @@ export async function setupPrRoutes(
     const commitsPattern   = `${base}/*/commits`;
     const checksPattern    = `${base}/*/checks`;
     const diffPattern      = `${base}/*/diff`;
-    const detailPattern    = `${base}/*`;
+    const baseUrl = new URL(base);
+    const collectionSegments = new Set([
+        'recent-opened',
+        'coworker-roster',
+        'review-history',
+        'suggestions',
+    ]);
+    const detailPattern = (url: URL) => {
+        if (url.origin !== baseUrl.origin) return false;
+        const prefix = `${baseUrl.pathname}/`;
+        if (!url.pathname.startsWith(prefix)) return false;
+        const rest = decodeURIComponent(url.pathname.slice(prefix.length));
+        return rest.length > 0 && !rest.includes('/') && !collectionSegments.has(rest);
+    };
     const listPattern      = `${base}?*`;
 
     const unconfiguredBody = {
