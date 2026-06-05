@@ -537,7 +537,7 @@ describe('CodexSDKService — SDK mocked', () => {
         );
     });
 
-    it('sendMessage starts interactive Codex threads with workspace-write sandbox', async () => {
+    it('sendMessage starts interactive Codex threads with danger-full-access sandbox', async () => {
         const codexMock = svc['sdk'] as ReturnType<typeof makeCodexSdkMock>;
 
         await svc.sendMessage({ prompt: 'ask mode', mode: 'interactive' });
@@ -545,8 +545,8 @@ describe('CodexSDKService — SDK mocked', () => {
         expect(codexMock.startThread).toHaveBeenCalledOnce();
         expect(codexMock.startThread.mock.calls[0][0]).toEqual(expect.objectContaining({
             approvalPolicy: 'never',
-            sandboxMode: 'workspace-write',
-            networkAccessEnabled: false,
+            sandboxMode: 'danger-full-access',
+            networkAccessEnabled: true,
         }));
     });
 
