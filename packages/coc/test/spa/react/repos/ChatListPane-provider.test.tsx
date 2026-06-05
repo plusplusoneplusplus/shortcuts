@@ -22,6 +22,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '',
     isRalphEnabled: () => false,
     isLoopsEnabled: () => false,
+    isForEachEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => false,
 }));
 

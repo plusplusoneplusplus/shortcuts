@@ -74,12 +74,12 @@ describe('ChatListPane pinned chats', () => {
             expect(source).toContain('filteredUnpinned');
         });
 
-        it('uses filteredUnpinned for the completed tasks section', () => {
+        it('uses visibleFilteredUnpinned for the completed tasks section', () => {
             const historySection = source.substring(
                 source.indexOf('Completed Tasks'),
                 source.indexOf('Completed Tasks') + 200,
             );
-            expect(historySection).toContain('filteredUnpinned');
+            expect(historySection).toContain('visibleFilteredUnpinned');
         });
     });
 
@@ -321,11 +321,11 @@ describe('ChatListPane pinned chats', () => {
         });
 
         it('pinned section visible when only running tasks are pinned', () => {
-            expect(source).toContain('filteredPinned.length > 0 || pinnedRunningCount > 0');
+            expect(source).toContain('visibleFilteredPinned.length > 0 || pinnedRunningCount > 0');
         });
 
         it('pinned section count includes pinnedRunningCount', () => {
-            expect(source).toContain('filteredPinned.length + pinnedRunningCount');
+            expect(source).toContain('visibleFilteredPinned.length + pinnedRunningCount');
         });
     });
 
@@ -1156,7 +1156,7 @@ describe('ChatListPane mobile long-press context menu', () => {
             // Each queued task is wrapped in a draggable <div> that delegates rendering to
             // the unified renderChatListRow with taskStatus='queued'. Drag/drop and
             // pause-marker insertion are preserved on the wrapper.
-            expect(source).toContain("renderChatListRow(item, tabFilteredQueued, { taskStatus: 'queued' })");
+            expect(source).toContain("renderChatListRow(item, visibleTabFilteredQueued, { taskStatus: 'queued' })");
         });
 
         it('preserves the activeDraggedTaskId opacity-40 affordance on the wrapper', () => {
