@@ -8,15 +8,30 @@ export type PrStatus = 'open' | 'closed' | 'merged' | 'draft';
 
 export type ReviewVote = 'approved' | 'approvedWithSuggestions' | 'waitingForAuthor' | 'rejected' | 'noVote';
 
+export interface PrIdentity {
+    id?: string | number;
+    displayName?: string;
+    email?: string;
+    avatarUrl?: string;
+}
+
+export interface PrCoworkerRosterEntry {
+    id: string;
+    displayName: string;
+    email?: string;
+    avatarUrl?: string;
+    addedAt: string;
+}
+
 export interface Reviewer {
-    identity: { displayName?: string; email?: string; avatarUrl?: string };
+    identity: PrIdentity;
     vote?: string;
     isRequired?: boolean;
 }
 
 export interface PrComment {
     id: string | number;
-    author?: { displayName?: string; email?: string };
+    author?: PrIdentity;
     body: string;
     createdAt?: string;
     updatedAt?: string;
@@ -72,8 +87,8 @@ export interface PullRequestCommit {
     shortId: string;
     message: string;
     subject: string;
-    author?: { displayName?: string; email?: string; avatarUrl?: string };
-    committer?: { displayName?: string; email?: string; avatarUrl?: string };
+    author?: PrIdentity;
+    committer?: PrIdentity;
     authoredAt?: string;
     committedAt?: string;
     url?: string;
@@ -98,7 +113,7 @@ export interface PullRequest {
     number?: number;
     title: string;
     description?: string;
-    author?: { displayName?: string; email?: string; avatarUrl?: string };
+    author?: PrIdentity;
     sourceBranch: string;
     targetBranch: string;
     status: PrStatus;
@@ -115,6 +130,44 @@ export interface PullRequest {
     headSha?: string;
     /** Real diff stats enriched by the server for list/detail queue metadata. */
     diffStats?: PullRequestDiffStats;
+}
+
+function normalizeIdentityId(id: string | number | undefined): string {
+    if (id === undefined || id === null) return '';
+    return String(id).trim().toLowerCase();
+}
+
+function normalizeDisplayName(displayName: string | undefined): string {
+    return (displayName ?? '').trim().toLowerCase();
+}
+
+export function authorMatchesCoworkerRosterEntry(
+    author: PrIdentity | undefined,
+    entry: Pick<PrCoworkerRosterEntry, 'id' | 'displayName'>,
+): boolean {
+    const authorId = normalizeIdentityId(author?.id);
+    const entryId = normalizeIdentityId(entry.id);
+    if (authorId && entryId) {
+        return authorId === entryId;
+    }
+
+    const authorDisplayName = normalizeDisplayName(author?.displayName);
+    const entryDisplayName = normalizeDisplayName(entry.displayName);
+    return Boolean(authorDisplayName && entryDisplayName && authorDisplayName === entryDisplayName);
+}
+
+export function pullRequestMatchesCoworkerRoster(
+    pr: Pick<PullRequest, 'author'>,
+    roster: readonly Pick<PrCoworkerRosterEntry, 'id' | 'displayName'>[],
+): boolean {
+    return roster.some(entry => authorMatchesCoworkerRosterEntry(pr.author, entry));
+}
+
+export function filterPullRequestsByCoworkerRoster<T extends Pick<PullRequest, 'author'>>(
+    pullRequests: readonly T[],
+    roster: readonly Pick<PrCoworkerRosterEntry, 'id' | 'displayName'>[],
+): T[] {
+    return pullRequests.filter(pr => pullRequestMatchesCoworkerRoster(pr, roster));
 }
 
 export interface StatusBadge {
