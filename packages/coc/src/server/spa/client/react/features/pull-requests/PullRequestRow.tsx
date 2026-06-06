@@ -15,6 +15,7 @@ import {
 import type { QueueDotState } from './pr-derived-data';
 import { deriveQueueRisk, estimateReviewMinutes, formatTimestamp } from './pr-utils';
 import type { PullRequest, QueueRiskBadge } from './pr-utils';
+import { type PullRequestContextDragPayload, writePointerContextDragData } from '../chat/sessionContextDrag';
 
 interface PullRequestRowProps {
     pr: PullRequest;
@@ -41,6 +42,8 @@ interface PullRequestRowProps {
     risk?: QueueRiskBadge;
     /** When true, show a ⭐ badge indicating this PR is AI-suggested for the user. */
     isSuggested?: boolean;
+    /** Pointer-only context payload used by chat/task composer drag targets. */
+    sessionContextPayload?: PullRequestContextDragPayload | null;
 }
 
 const RISK_LABEL: Record<QueueRiskBadge, string> = {
@@ -68,6 +71,7 @@ export function PullRequestRow({
     dotState,
     risk,
     isSuggested,
+    sessionContextPayload,
 }: PullRequestRowProps) {
     const effectiveRisk: QueueRiskBadge = risk ?? deriveQueueRisk(pr.diffStats);
     const effectiveDot: QueueDotState = dotState ?? deriveDotState(pr, effectiveRisk);
@@ -85,7 +89,11 @@ export function PullRequestRow({
                 title={pr.title}
                 aria-label={pr.title}
                 onClick={onClick}
+                draggable={!!sessionContextPayload}
+                onDragStart={sessionContextPayload ? e => writePointerContextDragData(e.dataTransfer, sessionContextPayload) : undefined}
                 data-testid="pr-row"
+                data-session-context-source={sessionContextPayload ? 'true' : undefined}
+                data-session-context-kind={sessionContextPayload ? 'pull-request' : undefined}
                 data-pr-status={pr.status}
                 data-compact="true"
                 className={cn(
@@ -115,11 +123,17 @@ export function PullRequestRow({
                 isSelected
                     ? 'border-l-gray-500 bg-gray-100 dark:border-l-gray-400 dark:bg-gray-700/60'
                     : 'border-l-transparent hover:bg-gray-50 dark:hover:bg-gray-800/60',
+                sessionContextPayload && 'cursor-grab active:cursor-grabbing hover:ring-1 hover:ring-sky-300 dark:hover:ring-sky-700',
             )}
             style={{ gridTemplateColumns: '16px minmax(0, 1fr) auto' }}
             onClick={onClick}
+            draggable={!!sessionContextPayload}
+            onDragStart={sessionContextPayload ? e => writePointerContextDragData(e.dataTransfer, sessionContextPayload) : undefined}
             data-testid="pr-row"
+            data-session-context-source={sessionContextPayload ? 'true' : undefined}
+            data-session-context-kind={sessionContextPayload ? 'pull-request' : undefined}
             data-pr-status={pr.status}
+            title={sessionContextPayload ? `${sessionContextPayload.label} - drag to attach as pull request context` : undefined}
         >
             {batchMode && (
                 <input

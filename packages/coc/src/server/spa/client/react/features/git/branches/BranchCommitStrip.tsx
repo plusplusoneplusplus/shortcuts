@@ -8,6 +8,7 @@
 import { formatRelativeTime } from '../../../utils/format';
 import type { GitCommitItem } from '../commits/CommitList';
 import type { BranchRangeInfo } from './BranchChanges';
+import { type GitRangeContextDragPayload, writePointerContextDragData } from '../../chat/sessionContextDrag';
 
 interface BranchCommitStripProps {
     commits: GitCommitItem[];
@@ -15,9 +16,10 @@ interface BranchCommitStripProps {
     onAllCommentsClick?: () => void;
     commentCount?: number;
     onAskAI?: () => void;
+    sessionContextPayload?: GitRangeContextDragPayload | null;
 }
 
-export function BranchCommitStrip({ commits, branchRangeData, onAllCommentsClick, commentCount, onAskAI }: BranchCommitStripProps) {
+export function BranchCommitStrip({ commits, branchRangeData, onAllCommentsClick, commentCount, onAskAI, sessionContextPayload }: BranchCommitStripProps) {
     const branchLabel = branchRangeData.branchName || branchRangeData.headRef;
     const baseShort = branchRangeData.baseRef.replace(/^origin\//, '');
 
@@ -25,8 +27,13 @@ export function BranchCommitStrip({ commits, branchRangeData, onAllCommentsClick
         <div className="flex flex-col h-full" data-testid="branch-commit-strip">
             {/* Header */}
             <div
-                className="px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#252526] flex-shrink-0"
+                className={`px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#252526] flex-shrink-0${sessionContextPayload ? ' cursor-grab active:cursor-grabbing hover:ring-1 hover:ring-inset hover:ring-sky-300 dark:hover:ring-sky-700' : ''}`}
                 data-testid="branch-commit-strip-header"
+                draggable={!!sessionContextPayload}
+                onDragStart={sessionContextPayload ? e => writePointerContextDragData(e.dataTransfer, sessionContextPayload) : undefined}
+                data-session-context-source={sessionContextPayload ? 'true' : undefined}
+                data-session-context-kind={sessionContextPayload ? 'range' : undefined}
+                title={sessionContextPayload ? `${sessionContextPayload.label} - drag to attach as range context` : undefined}
             >
                 <div className="flex items-center gap-1">
                     <div className="text-xs font-semibold text-[#616161] dark:text-[#999] truncate flex-1">

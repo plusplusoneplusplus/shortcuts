@@ -20,11 +20,12 @@ import { useApp } from '../../contexts/AppContext';
 import { cn } from '../../ui';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
-import { isPullRequestsSuggestionsEnabled } from '../../utils/config';
+import { isPullRequestsSuggestionsEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
 import { PullRequestDetail } from './PullRequestDetail';
 import { PullRequestRow } from './PullRequestRow';
 import { PrQueueFilters } from './PrQueueFilters';
 import { PrQueueGroupSection } from './PrQueueGroupSection';
+import { createPullRequestContextDragPayload } from '../chat/sessionContextDrag';
 
 import { ProviderConfigPanel } from './ProviderConfigPanel';
 import { BatchCommandPanel } from './BatchCommandPanel';
@@ -137,6 +138,7 @@ function buildRecentOpenedRecord(pr: unknown, prNumber: number): { number: numbe
 
 export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     const { state, dispatch } = useApp();
+    const sessionContextDragEnabled = isSessionContextAttachmentsEnabled();
     const [prs, setPrs] = useState<PullRequest[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -1078,21 +1080,27 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                                     label={config.label}
                                     compact={queueCollapsed}
                                 >
-                                    {sectionPrs.map(pr => (
-                                        <PullRequestRow
-                                            key={pr.id}
-                                            pr={pr}
-                                            onClick={() => handleRowClick(pr)}
-                                            isSelected={state.selectedPrId != null && String(pr.number ?? pr.id) === String(state.selectedPrId)}
-                                            isChecked={selectedPrIds.has(getPrSelectionId(pr))}
-                                            onSelect={(id, checked, shiftKey) =>
-                                                handlePrSelect(id, checked, shiftKey, sectionPrs)
-                                            }
-                                            batchMode={batchMode && !queueCollapsed}
-                                            compact={queueCollapsed}
-                                            isSuggested={suggestionsEnabled && suggestedPrNumbers.has(pr.number ?? 0)}
-                                        />
-                                    ))}
+                                    {sectionPrs.map(pr => {
+                                        const sessionContextPayload = sessionContextDragEnabled
+                                            ? createPullRequestContextDragPayload(pr, { activeWorkspaceId: workspaceId })
+                                            : null;
+                                        return (
+                                            <PullRequestRow
+                                                key={pr.id}
+                                                pr={pr}
+                                                onClick={() => handleRowClick(pr)}
+                                                isSelected={state.selectedPrId != null && String(pr.number ?? pr.id) === String(state.selectedPrId)}
+                                                isChecked={selectedPrIds.has(getPrSelectionId(pr))}
+                                                onSelect={(id, checked, shiftKey) =>
+                                                    handlePrSelect(id, checked, shiftKey, sectionPrs)
+                                                }
+                                                batchMode={batchMode && !queueCollapsed}
+                                                compact={queueCollapsed}
+                                                isSuggested={suggestionsEnabled && suggestedPrNumbers.has(pr.number ?? 0)}
+                                                sessionContextPayload={sessionContextPayload}
+                                            />
+                                        );
+                                    })}
                                 </PrQueueGroupSection>
                             ))
                     )}

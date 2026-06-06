@@ -59,6 +59,11 @@ describe('BranchRangeOverview', () => {
         it('does not import Spinner for focused file loading state', () => {
             expect(source).not.toContain("Spinner");
         });
+
+        it('imports shared range pointer context helpers', () => {
+            expect(source).toContain('createGitRangeContextDragPayload');
+            expect(source).toContain('isSessionContextAttachmentsEnabled');
+        });
     });
 
     describe('component signature — range props', () => {
@@ -154,6 +159,10 @@ describe('BranchRangeOverview', () => {
 
         it('slices commits to unpushed range for BranchCommitStrip', () => {
             expect(source).toMatch(/slice\(0,\s*unpushedCount/);
+        });
+
+        it('passes the range pointer payload into BranchCommitStrip', () => {
+            expect(source).toContain('sessionContextPayload={sessionContextPayload}');
         });
     });
 });

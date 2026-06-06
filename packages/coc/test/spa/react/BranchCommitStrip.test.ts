@@ -43,6 +43,11 @@ describe('BranchCommitStrip', () => {
         it('imports BranchRangeInfo type', () => {
             expect(source).toContain("BranchRangeInfo");
         });
+
+        it('imports shared pointer context drag helpers', () => {
+            expect(source).toContain('GitRangeContextDragPayload');
+            expect(source).toContain('writePointerContextDragData');
+        });
     });
 
     describe('component signature', () => {
@@ -94,6 +99,13 @@ describe('BranchCommitStrip', () => {
 
         it('renders All Comments button with data-testid', () => {
             expect(source).toContain('data-testid="branch-range-all-comments-btn"');
+        });
+
+        it('makes the header a range pointer context drag source when payload is provided', () => {
+            expect(source).toContain('sessionContextPayload?: GitRangeContextDragPayload | null');
+            expect(source).toContain('draggable={!!sessionContextPayload}');
+            expect(source).toContain('data-session-context-kind={sessionContextPayload ? \'range\' : undefined}');
+            expect(source).toContain('writePointerContextDragData(e.dataTransfer, sessionContextPayload)');
         });
     });
 

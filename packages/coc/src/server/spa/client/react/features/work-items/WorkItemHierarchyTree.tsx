@@ -12,6 +12,7 @@ import { WorkItemHierarchyNode } from './WorkItemHierarchyNode';
 import { WorkItemParentPicker } from './WorkItemParentPicker';
 import { ContextMenu } from '../../tasks/comments/ContextMenu';
 import type { ContextMenuItem } from '../../tasks/comments/ContextMenu';
+import { createWorkItemContextDragPayload } from '../chat/sessionContextDrag';
 import {
     ALLOWED_CHILD_TYPES,
     type WorkItemSyncProvider,
@@ -21,7 +22,7 @@ import {
     type WorkItemTreeNode,
     type WorkItemTreeResponse,
 } from '@plusplusoneplusplus/coc-client';
-import { isWorkItemsSyncEnabled } from '../../utils/config';
+import { isSessionContextAttachmentsEnabled, isWorkItemsSyncEnabled } from '../../utils/config';
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
 import { TYPE_LABELS } from './WorkItemHierarchyNode';
 import {
@@ -225,6 +226,7 @@ export function WorkItemHierarchyTree({
     const isGitHubTrackerView = isGitHubTrackerKind(trackerKind);
     const isRemoteView = isRemoteTrackerView(trackerViewKind);
     const workItemsSyncEnabled = isWorkItemsSyncEnabled();
+    const sessionContextDragEnabled = isSessionContextAttachmentsEnabled();
     const detectedRemoteProvider = isRemoteView ? remoteStatus.response?.remoteProvider : undefined;
     const visibleRemoteProviderFilter: WorkItemRemoteProviderFilter = detectedRemoteProvider ?? remoteProviderFilter;
     const remoteProviderFilterOptions = isRemoteView && remoteStatus.response && !remoteStatus.response.disabled
@@ -498,6 +500,9 @@ export function WorkItemHierarchyTree({
         const id = node.item.id;
         const hasChildren = node.children.length > 0;
         const collapsed = collapsedIds.has(id);
+        const sessionContextPayload = sessionContextDragEnabled
+            ? createWorkItemContextDragPayload(node.item, { activeWorkspaceId: workspaceId })
+            : null;
 
         return (
             <WorkItemHierarchyNode
@@ -513,11 +518,12 @@ export function WorkItemHierarchyTree({
                 isMobile={isMobile}
                 onAddChild={handleAddChild}
                 highlighted={highlightedWorkItemId === id}
+                sessionContextPayload={sessionContextPayload}
             >
                 {!collapsed && node.children.map(child => renderNode(child, depth + 1))}
             </WorkItemHierarchyNode>
         );
-    }, [collapsedIds, selectedWorkItemId, onSelectWorkItem, handleToggleCollapse, handleContextMenu, isMobile, handleAddChild]);
+    }, [collapsedIds, selectedWorkItemId, onSelectWorkItem, handleToggleCollapse, handleContextMenu, isMobile, handleAddChild, highlightedWorkItemId, sessionContextDragEnabled, workspaceId]);
 
     const readyCount = useMemo(() => {
         const countReady = (nodes: WorkItemTreeNode[]): number =>

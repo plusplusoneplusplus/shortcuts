@@ -485,6 +485,30 @@ describe('CommitList', () => {
         });
     });
 
+    describe('context drag source support', () => {
+        it('imports shared pointer context drag helpers', () => {
+            expect(source).toContain('createGitCommitContextDragPayload');
+            expect(source).toContain('writePointerContextDragData');
+            expect(source).toContain('isSessionContextAttachmentsEnabled');
+        });
+
+        it('builds commit payloads from the active workspace only when enabled', () => {
+            expect(source).toContain('sessionContextDragEnabled && workspaceId');
+            expect(source).toContain('createGitCommitContextDragPayload(commit, { activeWorkspaceId: workspaceId })');
+        });
+
+        it('marks commit rows as shared context drag sources', () => {
+            expect(source).toContain('data-session-context-kind={isContextDragSource ? \'commit\' : undefined}');
+            expect(source).toContain('drag to attach as commit context');
+        });
+
+        it('preserves unpushed commit reordering while adding pointer MIME data', () => {
+            expect(source).toContain('writePointerContextDragData(e.dataTransfer, sessionContextPayload)');
+            expect(source).toContain('if (canReorder) e.dataTransfer.effectAllowed = \'copyMove\';');
+            expect(source).toContain('e.dataTransfer.setData(\'text/plain\', String(index))');
+        });
+    });
+
     describe('double-click to pop out', () => {
         it('accepts optional onDoubleClick callback', () => {
             expect(source).toContain('onDoubleClick?: (commit: GitCommitItem) => void');

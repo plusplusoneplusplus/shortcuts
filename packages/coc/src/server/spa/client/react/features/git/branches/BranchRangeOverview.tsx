@@ -16,6 +16,8 @@ import type { GitCommitItem } from '../commits/CommitList';
 import type { BranchRangeInfo } from './BranchChanges';
 import { useGitReviewPopOut, gitReviewBranchPopOutKey } from '../../../contexts/GitReviewPopOutContext';
 import { buildGitBranchRangePopOutUrl } from '../../../layout/Router';
+import { createGitRangeContextDragPayload } from '../../chat/sessionContextDrag';
+import { isSessionContextAttachmentsEnabled } from '../../../utils/config';
 
 const RANGE_STORAGE_KEY = 'coc.branchRangeOverview.upperHeight';
 const DEFAULT_UPPER_HEIGHT = 160;
@@ -54,6 +56,9 @@ export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits,
     const startYRef = useRef(0);
     const startHeightRef = useRef(0);
     const { markPoppedOut } = useGitReviewPopOut();
+    const sessionContextPayload = isSessionContextAttachmentsEnabled()
+        ? createGitRangeContextDragPayload(range, { activeWorkspaceId: workspaceId })
+        : null;
 
     const handlePopOut = useCallback(() => {
         const url = buildGitBranchRangePopOutUrl(workspaceId);
@@ -148,6 +153,7 @@ export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits,
                     onAllCommentsClick={onAllCommentsClick}
                     commentCount={branchCommentCount}
                     onAskAI={onAskAI}
+                    sessionContextPayload={sessionContextPayload}
                 />
             </div>
 

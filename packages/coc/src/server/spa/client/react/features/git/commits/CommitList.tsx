@@ -22,6 +22,8 @@ import { buildFixupGroups, FIXUP_GROUP_COLORS_LIGHT, FIXUP_GROUP_COLORS_DARK } f
 import type { FixupGroupMap } from '../fixup-utils';
 import { useLongPress } from '../../../hooks/ui/useLongPress';
 import { useSwipeReveal, SWIPE_LEFT_MAX, SWIPE_DETECT_THRESHOLD } from '../../../hooks/ui/useSwipeReveal';
+import { createGitCommitContextDragPayload, type GitCommitContextDragPayload, writePointerContextDragData } from '../../chat/sessionContextDrag';
+import { isSessionContextAttachmentsEnabled } from '../../../utils/config';
 
 export interface GitCommitItem {
     hash: string;
@@ -278,6 +280,7 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
     const isDarkMode = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
     const groupColors = isDarkMode ? FIXUP_GROUP_COLORS_DARK : FIXUP_GROUP_COLORS_LIGHT;
     const touchOnly = isTouchOnly();
+    const sessionContextDragEnabled = isSessionContextAttachmentsEnabled();
 
     const selectedCommitList = useMemo(() => {
         const currentSet = selectedHashes ?? (selectedHash ? new Set([selectedHash]) : new Set<string>());
@@ -573,10 +576,16 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
     }, []);
 
     // Drag-and-drop handlers for commit reordering
-    const handleDragStart = useCallback((e: React.DragEvent, index: number) => {
-        setDragIndex(index);
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', String(index));
+    const handleDragStart = useCallback((e: React.DragEvent, index: number, sessionContextPayload: GitCommitContextDragPayload | null, canReorder: boolean) => {
+        if (canReorder) {
+            setDragIndex(index);
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', String(index));
+        }
+        if (sessionContextPayload) {
+            writePointerContextDragData(e.dataTransfer, sessionContextPayload);
+            if (canReorder) e.dataTransfer.effectAllowed = 'copyMove';
+        }
     }, []);
 
     const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
@@ -724,6 +733,11 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                         const isMerge = (commit.parentHashes?.length ?? 0) > 1;
                         const group = commitGroupsByStart.get(index);
                         const canDrag = reorderable && isUnpushed;
+                        const sessionContextPayload = sessionContextDragEnabled && workspaceId
+                            ? createGitCommitContextDragPayload(commit, { activeWorkspaceId: workspaceId })
+                            : null;
+                        const isContextDragSource = !!sessionContextPayload;
+                        const isDraggable = canDrag || isContextDragSource;
                         const isDragOver = dragOverIndex === index && dragIndex !== index;
 
                         // Fixup group visual treatment
@@ -747,11 +761,13 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                             <div
                                 key={commit.hash}
                                 className={`relative ${dragIndex === index ? 'opacity-40' : isDragOver ? 'border-t-2 border-t-[#007acc]' : ''}`}
-                                draggable={canDrag}
-                                onDragStart={canDrag ? (e) => handleDragStart(e, index) : undefined}
+                                draggable={isDraggable}
+                                onDragStart={isDraggable ? (e) => handleDragStart(e, index, sessionContextPayload, canDrag) : undefined}
                                 onDragOver={canDrag ? (e) => handleDragOver(e, index) : undefined}
                                 onDrop={canDrag ? (e) => handleDrop(e, index) : undefined}
                                 onDragEnd={canDrag ? handleDragEnd : undefined}
+                                data-session-context-source={isContextDragSource ? 'true' : undefined}
+                                data-session-context-kind={isContextDragSource ? 'commit' : undefined}
                             >
                                 {group && group.isUnpushed && (
                                     <div
@@ -790,6 +806,7 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                             data-testid={`commit-row-${commit.shortHash}`}
                                             data-fixup-type={fixupEntry?.type}
                                             data-fixup-target={fixupEntry?.targetHash}
+                                            title={sessionContextPayload ? `${sessionContextPayload.label} - drag to attach as commit context` : undefined}
                                         >
                                     {/* Graph column: dot + connector line down to the next commit */}
                                     <span className="flex flex-col items-center self-stretch pt-1 leading-none">

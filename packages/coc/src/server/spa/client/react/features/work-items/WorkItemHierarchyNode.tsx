@@ -8,6 +8,7 @@ import { cn } from '../../ui';
 import type { WorkItemTreeNode } from '@plusplusoneplusplus/coc-client';
 import { formatRelativeTime } from '../../utils/format';
 import { WorkItemRemoteMirrorBadge } from './WorkItemGitHubMirrorBadge';
+import { type WorkItemContextDragPayload, writePointerContextDragData } from '../chat/sessionContextDrag';
 
 // ── Type display config ──────────────────────────────────────────────────────
 
@@ -89,6 +90,7 @@ export interface WorkItemHierarchyNodeProps {
     /** When true the '+' add-child button is always visible (no hover). */
     isMobile?: boolean;
     highlighted?: boolean;
+    sessionContextPayload?: WorkItemContextDragPayload | null;
     children?: ReactNode;
 }
 
@@ -104,6 +106,7 @@ export function WorkItemHierarchyNode({
     onAddChild,
     isMobile = false,
     highlighted = false,
+    sessionContextPayload,
     children,
 }: WorkItemHierarchyNodeProps) {
     const { item, rollup } = node;
@@ -129,6 +132,7 @@ export function WorkItemHierarchyNode({
                         ? 'bg-[#ddf4ff] dark:bg-[#0969da]/20 border-[color-mix(in_srgb,#0969da_42%,#d0d7de)] dark:border-[#0969da]/40 min-h-[44px]'
                         : 'hover:bg-[#f6f8fa] dark:hover:bg-[#2a2d2e] hover:border-[#eaeef2] dark:hover:border-[#3c3c3c]',
                     highlighted && 'animate-pulse ring-2 ring-[#0078d4]/50',
+                    sessionContextPayload && 'cursor-grab active:cursor-grabbing hover:ring-1 hover:ring-sky-300 dark:hover:ring-sky-700',
                 )}
                 style={{
                     paddingLeft: `${depthPadding}px`,
@@ -137,8 +141,13 @@ export function WorkItemHierarchyNode({
                 }}
                 onClick={() => onSelect(item.id)}
                 onContextMenu={e => { e.preventDefault(); onContextMenu(e, node); }}
+                draggable={!!sessionContextPayload}
+                onDragStart={sessionContextPayload ? e => writePointerContextDragData(e.dataTransfer, sessionContextPayload) : undefined}
                 data-testid={`hierarchy-node-row-${item.id}`}
                 data-work-item-id={item.id}
+                data-session-context-source={sessionContextPayload ? 'true' : undefined}
+                data-session-context-kind={sessionContextPayload ? 'work-item' : undefined}
+                title={sessionContextPayload ? `${sessionContextPayload.label} - drag to attach as work item context` : undefined}
                 type="button"
             >
                 {/* Guide line for nested depth */}
