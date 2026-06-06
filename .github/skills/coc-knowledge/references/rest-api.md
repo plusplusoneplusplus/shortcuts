@@ -13,7 +13,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | GET | `/api/logs` | Server log ring buffer |
 | GET | `/api/stats` | Token usage + cost stats |
 | GET | `/api/agent-providers` | Copilot/Codex/Claude enabled + SDK availability status. Codex auth is handled by the Codex SDK/CLI, not CoC routes |
-| GET | `/api/agent-providers/quota` | Provider quota snapshots where supported |
+| GET | `/api/agent-providers/quota` | Cached provider quota snapshots where supported; `?force=1` refreshes live provider data and updates the cache |
 
 ## Agent Providers
 

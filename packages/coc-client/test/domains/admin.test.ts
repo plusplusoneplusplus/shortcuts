@@ -79,4 +79,22 @@ describe('AdminClient', () => {
     });
   });
 
+  it('passes force=1 for agent provider quota refreshes', async () => {
+    const adapter = createMockAdapter({});
+    const client = new AdminClient(adapter, {
+      baseUrl: '',
+      apiBasePath: '/api',
+      fetch: globalThis.fetch,
+      wsPath: '/ws',
+    });
+
+    await client.getAgentProvidersQuota();
+    await client.getAgentProvidersQuota({ force: true });
+
+    expect(adapter.calls).toMatchObject([
+      { path: '/agent-providers/quota', options: undefined },
+      { path: '/agent-providers/quota', options: { query: { force: '1' } } },
+    ]);
+  });
+
 });

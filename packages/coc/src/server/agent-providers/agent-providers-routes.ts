@@ -18,13 +18,14 @@
 import type { Route } from '../types';
 import { sendJson, send400, send500 } from '../shared/router';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
-import type { AgentProviderStatus, AgentProvidersResponse, AgentProvidersQuotaResponse, ProviderQuotaType } from '@plusplusoneplusplus/coc-client';
-import type { CopilotSDKService, IAvailabilityResult, CodexSDKService, ClaudeSDKService, IAccountQuotaResult, ModelInfo, ISDKService } from '@plusplusoneplusplus/forge';
-import { getLogger, LogCategory, getAllModels, modelMetadataStore, sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, SDK_PROVIDER_CLAUDE, mergeEffortTiersWithDefaults, getDefaultEffortTiers, type MergedEffortTiersMap, type EffortTierDefaultsMap } from '@plusplusoneplusplus/forge';
+import type { AgentProviderStatus, AgentProvidersResponse } from '@plusplusoneplusplus/coc-client';
+import type { CopilotSDKService, IAvailabilityResult, CodexSDKService, ClaudeSDKService, ModelInfo, ISDKService } from '@plusplusoneplusplus/forge';
+import { getAllModels, modelMetadataStore, sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, SDK_PROVIDER_CLAUDE, mergeEffortTiersWithDefaults, getDefaultEffortTiers, type MergedEffortTiersMap, type EffortTierDefaultsMap } from '@plusplusoneplusplus/forge';
 import { getResolvedInstallState } from '../providers/provider-install-routes';
 import type { CLIConfig } from '../../config';
+import { AgentProvidersQuotaCache, type AgentProvidersQuotaContext } from './quota-cache';
 
-export interface AgentProvidersRouteContext {
+export interface AgentProvidersRouteContext extends AgentProvidersQuotaContext {
     runtimeConfigService: RuntimeConfigService;
     /** Checks Codex SDK availability. Resolved per-request; the service caches the result. */
     getCodexAvailability: () => Promise<IAvailabilityResult>;
@@ -41,21 +42,7 @@ export interface AgentProvidersRouteContext {
     loadConfigFile: (p?: string) => CLIConfig | undefined;
     writeConfigFile: (p: string, c: CLIConfig) => void;
     getConfigFilePath: () => string;
-}
-
-function quotaResultToProviderQuotaTypes(result: IAccountQuotaResult): ProviderQuotaType[] {
-    return Object.entries(result.quotaSnapshots).map(
-        ([type, snap]) => ({
-            type,
-            isUnlimitedEntitlement: snap.isUnlimitedEntitlement,
-            usedRequests: snap.usedRequests,
-            entitlementRequests: snap.entitlementRequests,
-            remainingPercentage: snap.remainingPercentage,
-            usageAllowedWithExhaustedQuota: snap.usageAllowedWithExhaustedQuota,
-            overage: snap.overage,
-            resetDate: snap.resetDate,
-        }),
-    );
+    quotaCache?: AgentProvidersQuotaCache;
 }
 
 /** Build the providers array from live config + SDK state. Exported for unit testing. */
@@ -263,6 +250,8 @@ async function getProviderCatalog(ctx: AgentProvidersRouteContext, provider: str
 }
 
 export function registerAgentProvidersRoutes(routes: Route[], ctx: AgentProvidersRouteContext): void {
+    const quotaCache = ctx.quotaCache ?? new AgentProvidersQuotaCache(ctx);
+
     routes.push({
         method: 'GET',
         pattern: '/api/agent-providers',
@@ -275,69 +264,10 @@ export function registerAgentProvidersRoutes(routes: Route[], ctx: AgentProvider
     routes.push({
         method: 'GET',
         pattern: '/api/agent-providers/quota',
-        handler: async (_req, res) => {
-            const config = ctx.runtimeConfigService.config;
-            const codexEnabled = config.codex?.enabled ?? false;
-            const claudeEnabled = config.claude?.enabled ?? false;
-
-            const providers: AgentProvidersQuotaResponse['providers'] = [];
-
-            // Copilot quota
-            try {
-                const sdkService = ctx.getCopilotSdkService?.();
-                if (!sdkService) {
-                    providers.push({ id: 'copilot', quotaTypes: [], error: 'Copilot SDK service not available' });
-                } else {
-                    const result = await sdkService.getAccountQuota();
-                    const quotaTypes = quotaResultToProviderQuotaTypes(result);
-                    providers.push({ id: 'copilot', quotaTypes });
-                }
-            } catch (err: unknown) {
-                const msg = err instanceof Error ? err.message : String(err);
-                providers.push({ id: 'copilot', quotaTypes: [], error: msg });
-            }
-
-            // Codex quota via app-server RPC
-            if (codexEnabled) {
-                try {
-                    const codexService = ctx.getCodexSdkService?.();
-                    if (!codexService) {
-                        providers.push({ id: 'codex', quotaTypes: [] });
-                    } else {
-                        const result = await codexService.getAccountQuota();
-                        const quotaTypes = quotaResultToProviderQuotaTypes(result);
-                        providers.push({ id: 'codex', quotaTypes });
-                    }
-                } catch (err: unknown) {
-                    const msg = err instanceof Error ? err.message : String(err);
-                    providers.push({ id: 'codex', quotaTypes: [], error: msg });
-                }
-            }
-
-            // Claude quota uses cached `rate_limit_event` and `accountInfo()`
-            // signals — see `ClaudeSDKService.getAccountQuota()` for the full
-            // priority order. We always emit a `claude` entry when Claude is
-            // enabled so the UI consistently shows the provider; only a real
-            // SDK error pushes an entry with an `error` field.
-            if (claudeEnabled) {
-                try {
-                    const claudeService = ctx.getClaudeSdkService?.();
-                    if (claudeService) {
-                        const result = await claudeService.getAccountQuota();
-                        const quotaTypes = quotaResultToProviderQuotaTypes(result);
-                        providers.push({ id: 'claude', quotaTypes });
-                        if (quotaTypes.length === 0) {
-                            getLogger().debug(LogCategory.AI, '[ClaudeQuota] No quota snapshots to report — emitting claude entry with empty quotaTypes');
-                        }
-                    }
-                } catch (err: unknown) {
-                    const msg = err instanceof Error ? err.message : String(err);
-                    getLogger().warn(LogCategory.AI, `[ClaudeQuota] quota lookup failed: ${msg}`);
-                    providers.push({ id: 'claude', quotaTypes: [], error: msg });
-                }
-            }
-
-            const body: AgentProvidersQuotaResponse = { providers };
+        handler: async (req, res) => {
+            const url = new URL(req.url ?? '/api/agent-providers/quota', 'http://localhost');
+            const force = url.searchParams.get('force') === '1';
+            const body = await quotaCache.get({ force });
             sendJson(res, body);
         },
     });

@@ -401,4 +401,12 @@ export interface ProviderQuotaResult {
 /** Response from GET /api/agent-providers/quota. */
 export interface AgentProvidersQuotaResponse {
   providers: ProviderQuotaResult[];
+  /** ISO 8601 timestamp for the cache refresh that produced this response, or null before any refresh. */
+  lastUpdated: string | null;
+}
+
+/** Query options for GET /api/agent-providers/quota. */
+export interface AgentProvidersQuotaOptions {
+  /** Force a live provider refresh and update the server cache. */
+  force?: boolean;
 }

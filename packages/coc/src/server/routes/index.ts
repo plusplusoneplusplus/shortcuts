@@ -103,6 +103,7 @@ import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
 import { registerMcpOauthRoutes } from '../mcp-oauth';
 import type { McpOauthManager } from '../mcp-oauth';
 import { registerAgentProvidersRoutes } from '../agent-providers/agent-providers-routes';
+import { AgentProvidersQuotaCache } from '../agent-providers/quota-cache';
 import { registerProviderInstallRoutes } from '../providers/provider-install-routes';
 import { registerDiagramRoutes } from '../diagrams/diagrams-handler';
 import { registerRuntimeConfigRoutes } from '../config/runtime-config-handler';
@@ -165,7 +166,7 @@ export interface RegisterRoutesOptions {
     syncEngines?: Map<string, SyncEngine>;
 }
 
-export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller } {
+export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; agentProvidersQuotaCache?: AgentProvidersQuotaCache } {
     const {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
@@ -175,6 +176,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     } = opts;
     let workItemGitHubPullPoller: WorkItemGitHubPullPoller | undefined;
     let workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller | undefined;
+    let agentProvidersQuotaCache: AgentProvidersQuotaCache | undefined;
 
     // excalidrawEnabled uses a live getter via runtimeConfigService so admin
     // changes take effect without restart. loopsEnabled stays startup-captured
@@ -358,7 +360,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     // Agent providers route — always registered, reads live config + SDK state.
     if (opts.runtimeConfigService) {
-        registerAgentProvidersRoutes(routes, {
+        const agentProvidersCtx: Parameters<typeof registerAgentProvidersRoutes>[1] = {
             runtimeConfigService: opts.runtimeConfigService,
             getCodexAvailability: async () => {
                 const svc = sdkServiceRegistry.get(SDK_PROVIDER_CODEX);
@@ -383,6 +385,12 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             loadConfigFile,
             writeConfigFile,
             getConfigFilePath,
+        };
+        agentProvidersQuotaCache = new AgentProvidersQuotaCache(agentProvidersCtx);
+        agentProvidersQuotaCache.start();
+        registerAgentProvidersRoutes(routes, {
+            ...agentProvidersCtx,
+            quotaCache: agentProvidersQuotaCache,
         });
     }
 
@@ -699,5 +707,5 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
     );
 
-    return { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller };
+    return { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, agentProvidersQuotaCache };
 }

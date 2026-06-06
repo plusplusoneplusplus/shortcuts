@@ -92,6 +92,7 @@ interface CloseHandlerDeps {
     syncEngines?: Map<string, SyncEngine>;
     workItemGitHubPullPoller?: { dispose(): void };
     workItemAzureBoardsPullPoller?: { dispose(): void };
+    agentProvidersQuotaCache?: { dispose(): void };
     containerLink?: { stop(): void };
     activeSockets: Set<import('net').Socket>;
     server: http.Server;
@@ -118,6 +119,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.syncEngines?.forEach(e => e.stop());
         deps.workItemGitHubPullPoller?.dispose();
         deps.workItemAzureBoardsPullPoller?.dispose();
+        deps.agentProvidersQuotaCache?.dispose();
         deps.containerLink?.stop();
         gitInfoCache.dispose();
         deps.notesGitTimerManager.dispose();
@@ -500,7 +502,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     let localBaseUrl = formatLocalBaseUrl(host, port);
     const routes: Route[] = [];
-    const { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller } = registerAllRoutes(routes, {
+    const { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, agentProvidersQuotaCache } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
         dataDir, configPath: options.configPath,
@@ -720,6 +722,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             syncEngines,
             workItemGitHubPullPoller,
             workItemAzureBoardsPullPoller,
+            agentProvidersQuotaCache,
             containerLink,
             activeSockets, server,
         }),
