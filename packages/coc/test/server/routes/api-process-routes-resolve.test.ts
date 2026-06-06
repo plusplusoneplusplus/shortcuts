@@ -239,6 +239,39 @@ describe('Process ID resolution: queue_ prefix fallback', () => {
         expect(store.processes.get('priced-process')!.conversationCostEstimate).toBeUndefined();
     });
 
+    it('GET uses config.model as the default pricing model when metadata.model is absent', async () => {
+        const usage = {
+            inputTokens: 1_000_000,
+            outputTokens: 100_000,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            totalTokens: 1_100_000,
+            turnCount: 1,
+        };
+        await store.addProcess({
+            id: 'config-priced-process',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'priced from config',
+            metadata: { type: 'chat' },
+            config: { model: 'gpt-5.5' },
+            cumulativeTokenUsage: usage,
+            conversationTurns: [
+                { role: 'user', content: 'question', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                { role: 'assistant', content: 'answer', timestamp: new Date(), turnIndex: 1, timeline: [], tokenUsage: usage },
+            ],
+        } as any);
+
+        const res = await request(baseUrl, '/api/processes/config-priced-process');
+        expect(res.status, res.body).toBe(200);
+        const process = res.json().process;
+        const expected = estimateCopilotTokenCost('gpt-5.5', usage)!.totalUsd;
+        expect(process.conversationCostEstimate.estimatedUsdCost).toBeCloseTo(expected);
+        expect(process.conversationCostEstimate.unpricedTurnCount).toBe(0);
+        expect(process.conversationCostEstimate.pricingUnavailable).toBe(false);
+    });
+
     // ---------------------------------------------------------------
     // PATCH /api/processes/:id
     // ---------------------------------------------------------------

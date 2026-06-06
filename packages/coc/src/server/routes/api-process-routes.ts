@@ -94,7 +94,8 @@ async function resolveProcess(
 }
 
 function getProcessDefaultModel(process: AIProcess): string | undefined {
-    const model = process.metadata?.model;
+    const model = process.metadata?.model
+        ?? (process as AIProcess & { config?: { model?: unknown } }).config?.model;
     return typeof model === 'string' && model.trim() ? model.trim() : undefined;
 }
 
