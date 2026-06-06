@@ -613,7 +613,7 @@ describe('NewChatArea', () => {
             });
 
             expect(screen.getByTestId('new-chat-session-context-error').textContent).toBe(
-                'Only sessions from the active workspace can be attached as context.',
+                'Only context from the active workspace can be attached.',
             );
             expect(screen.queryByTestId('attached-session-context-chip')).toBeNull();
         });

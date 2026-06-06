@@ -2,18 +2,29 @@ import { useEffect, useState } from 'react';
 import { getSpaCocClient } from '../../api/cocClient';
 import type { AttachedContextItem } from './hooks/useAttachedContext';
 import {
+    GIT_COMMIT_CONTEXT_DRAG_KIND,
+    GIT_RANGE_CONTEXT_DRAG_KIND,
+    POINTER_CONTEXT_DRAG_MIME,
+    PULL_REQUEST_CONTEXT_DRAG_KIND,
     RALPH_SESSION_CONTEXT_DRAG_KIND,
     RALPH_SESSION_CONTEXT_DRAG_MIME,
     SESSION_CONTEXT_DRAG_KIND,
     SESSION_CONTEXT_DRAG_MIME,
+    WORK_ITEM_CONTEXT_DRAG_KIND,
+    type GitCommitContextDragPayload,
+    type GitRangeContextDragPayload,
+    type PointerContextDragPayload,
+    type PullRequestContextDragPayload,
     type RalphSessionContextDragPayload,
     type RalphSessionContextPhase,
     type SessionContextAttachmentDragPayload,
     type SessionContextDragPayload,
     type SessionContextSourceStatus,
+    type WorkItemContextDragPayload,
 } from './sessionContextDrag';
 
-export const MAX_SESSION_CONTEXT_ATTACHMENTS = 3;
+export const MAX_ATTACHED_CONTEXT_ITEMS = 3;
+export const MAX_SESSION_CONTEXT_ATTACHMENTS = MAX_ATTACHED_CONTEXT_ITEMS;
 
 const ATTACHABLE_STATUSES = new Set<SessionContextSourceStatus>([
     'queued',
@@ -45,12 +56,31 @@ type AttachedLogicalSessionContextItem =
     | Extract<AttachedContextItem, { kind: 'session' }>
     | Extract<AttachedContextItem, { kind: 'ralph-session' }>;
 
+type AttachedLogicalContextItem =
+    | AttachedLogicalSessionContextItem
+    | Extract<AttachedContextItem, { kind: 'work-item' }>
+    | Extract<AttachedContextItem, { kind: 'commit' }>
+    | Extract<AttachedContextItem, { kind: 'range' }>
+    | Extract<AttachedContextItem, { kind: 'pull-request' }>;
+
 function isLogicalSessionContextItem(item: AttachedContextItem): item is AttachedLogicalSessionContextItem {
     return item.kind === 'session' || item.kind === 'ralph-session';
 }
 
+function isLogicalContextItem(item: AttachedContextItem): item is AttachedLogicalContextItem {
+    return isLogicalSessionContextItem(item)
+        || item.kind === 'work-item'
+        || item.kind === 'commit'
+        || item.kind === 'range'
+        || item.kind === 'pull-request';
+}
+
+function getLogicalContextItems(items: AttachedContextItem[]): AttachedLogicalContextItem[] {
+    return items.filter(isLogicalContextItem);
+}
+
 function getSessionContextItems(items: AttachedContextItem[]): AttachedLogicalSessionContextItem[] {
-    return items.filter(isLogicalSessionContextItem);
+    return getLogicalContextItems(items).filter(isLogicalSessionContextItem);
 }
 
 function looksLikeLocalPath(value: string): boolean {
@@ -83,6 +113,12 @@ function normalizeString(value: unknown): string | null {
 
 function normalizeNonNegativeInteger(value: unknown): number | null {
     return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+function normalizeOptionalNonNegativeInteger(value: unknown): number | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    const normalized = normalizeNonNegativeInteger(value);
+    return normalized === null ? undefined : normalized;
 }
 
 function normalizeChildProcessIds(value: unknown): string[] | null {
@@ -182,10 +218,123 @@ function normalizeRalphSessionContextPayload(value: unknown): RalphSessionContex
     };
 }
 
+function normalizePointerId(value: unknown): string | null {
+    const normalized = normalizeString(value);
+    return normalized && !looksLikeLocalPath(normalized) ? normalized : null;
+}
+
+function normalizeOptionalDisplayText(value: unknown): string | undefined {
+    const normalized = normalizeString(value);
+    if (!normalized) return undefined;
+    const sanitized = sanitizeDisplayText(normalized);
+    return sanitized || undefined;
+}
+
+function normalizeWorkItemContextPayload(record: Partial<WorkItemContextDragPayload>, sourceWorkspaceId: string, label: string): WorkItemContextDragPayload | null {
+    const workItemId = normalizePointerId(record.workItemId);
+    if (!workItemId) return null;
+    const workItemNumber = normalizeOptionalNonNegativeInteger(record.workItemNumber);
+    const title = normalizeOptionalDisplayText(record.title);
+    const status = normalizeOptionalDisplayText(record.status);
+    const type = normalizeOptionalDisplayText(record.type);
+    return {
+        kind: WORK_ITEM_CONTEXT_DRAG_KIND,
+        version: 1,
+        sourceWorkspaceId,
+        workItemId,
+        ...(workItemNumber !== undefined ? { workItemNumber } : {}),
+        label,
+        ...(title ? { title } : {}),
+        ...(status ? { status } : {}),
+        ...(type ? { type } : {}),
+    };
+}
+
+function normalizeGitCommitContextPayload(record: Partial<GitCommitContextDragPayload>, sourceWorkspaceId: string, label: string): GitCommitContextDragPayload | null {
+    const commitHash = normalizePointerId(record.commitHash);
+    const shortHash = normalizeOptionalDisplayText(record.shortHash);
+    if (!commitHash || !shortHash) return null;
+    const subject = normalizeOptionalDisplayText(record.subject ?? record.title);
+    return {
+        kind: GIT_COMMIT_CONTEXT_DRAG_KIND,
+        version: 1,
+        sourceWorkspaceId,
+        commitHash,
+        shortHash,
+        label,
+        ...(subject ? { subject, title: subject } : {}),
+    };
+}
+
+function normalizeGitRangeContextPayload(record: Partial<GitRangeContextDragPayload>, sourceWorkspaceId: string, label: string): GitRangeContextDragPayload | null {
+    const baseRef = normalizePointerId(record.baseRef);
+    const headRef = normalizePointerId(record.headRef);
+    if (!baseRef || !headRef) return null;
+    const branchName = normalizeOptionalDisplayText(record.branchName ?? record.title);
+    const mergeBase = normalizePointerId(record.mergeBase);
+    const commitCount = normalizeOptionalNonNegativeInteger(record.commitCount);
+    const fileCount = normalizeOptionalNonNegativeInteger(record.fileCount);
+    return {
+        kind: GIT_RANGE_CONTEXT_DRAG_KIND,
+        version: 1,
+        sourceWorkspaceId,
+        baseRef,
+        headRef,
+        label,
+        ...(branchName ? { branchName, title: branchName } : {}),
+        ...(mergeBase ? { mergeBase } : {}),
+        ...(commitCount !== undefined ? { commitCount } : {}),
+        ...(fileCount !== undefined ? { fileCount } : {}),
+    };
+}
+
+function normalizePullRequestContextPayload(record: Partial<PullRequestContextDragPayload>, sourceWorkspaceId: string, label: string): PullRequestContextDragPayload | null {
+    const pullRequestId = normalizePointerId(record.pullRequestId);
+    if (!pullRequestId) return null;
+    const number = normalizeOptionalNonNegativeInteger(record.number);
+    const title = normalizeOptionalDisplayText(record.title);
+    const status = normalizeOptionalDisplayText(record.status);
+    return {
+        kind: PULL_REQUEST_CONTEXT_DRAG_KIND,
+        version: 1,
+        sourceWorkspaceId,
+        pullRequestId,
+        ...(number !== undefined ? { number } : {}),
+        label,
+        ...(title ? { title } : {}),
+        ...(status ? { status } : {}),
+    };
+}
+
+function normalizePointerContextPayload(value: unknown): PointerContextDragPayload | null {
+    if (!value || typeof value !== 'object') return null;
+    const record = value as Partial<PointerContextDragPayload>;
+    const sourceWorkspaceId = normalizePointerId(record.sourceWorkspaceId);
+    const label = normalizeOptionalDisplayText(record.label);
+
+    if (record.version !== 1 || !sourceWorkspaceId || !label) return null;
+
+    if (record.kind === WORK_ITEM_CONTEXT_DRAG_KIND) {
+        return normalizeWorkItemContextPayload(record, sourceWorkspaceId, label);
+    }
+    if (record.kind === GIT_COMMIT_CONTEXT_DRAG_KIND) {
+        return normalizeGitCommitContextPayload(record, sourceWorkspaceId, label);
+    }
+    if (record.kind === GIT_RANGE_CONTEXT_DRAG_KIND) {
+        return normalizeGitRangeContextPayload(record, sourceWorkspaceId, label);
+    }
+    if (record.kind === PULL_REQUEST_CONTEXT_DRAG_KIND) {
+        return normalizePullRequestContextPayload(record, sourceWorkspaceId, label);
+    }
+    return null;
+}
+
 export function dataTransferHasSessionContext(dataTransfer: SessionContextDataTransfer | null | undefined): boolean {
     if (!dataTransfer) return false;
     const types = Array.from(dataTransfer.types ?? []);
-    return types.includes(SESSION_CONTEXT_DRAG_MIME) || types.includes(RALPH_SESSION_CONTEXT_DRAG_MIME);
+    return types.includes(SESSION_CONTEXT_DRAG_MIME)
+        || types.includes(RALPH_SESSION_CONTEXT_DRAG_MIME)
+        || types.includes(POINTER_CONTEXT_DRAG_MIME);
 }
 
 export function readSessionContextDragPayload(dataTransfer: SessionContextDataTransfer): SessionContextDragPayload | null {
@@ -208,31 +357,84 @@ export function readRalphSessionContextDragPayload(dataTransfer: SessionContextD
     }
 }
 
+export function readPointerContextDragPayload(dataTransfer: SessionContextDataTransfer): PointerContextDragPayload | null {
+    const raw = dataTransfer.getData(POINTER_CONTEXT_DRAG_MIME);
+    if (!raw) return null;
+    try {
+        return normalizePointerContextPayload(JSON.parse(raw));
+    } catch {
+        return null;
+    }
+}
+
 export function readSessionContextDropPayload(dataTransfer: SessionContextDataTransfer): SessionContextAttachmentDragPayload | null {
-    return readRalphSessionContextDragPayload(dataTransfer) ?? readSessionContextDragPayload(dataTransfer);
+    return readRalphSessionContextDragPayload(dataTransfer)
+        ?? readPointerContextDragPayload(dataTransfer)
+        ?? readSessionContextDragPayload(dataTransfer);
 }
 
 function payloadIncludesProcess(payload: SessionContextAttachmentDragPayload, processId: string | null | undefined): boolean {
     if (!processId) return false;
-    return payload.kind === SESSION_CONTEXT_DRAG_KIND
-        ? payload.sourceProcessId === processId
-        : payload.childProcessIds.includes(processId);
+    if (payload.kind === SESSION_CONTEXT_DRAG_KIND) return payload.sourceProcessId === processId;
+    if (payload.kind === RALPH_SESSION_CONTEXT_DRAG_KIND) return payload.childProcessIds.includes(processId);
+    return false;
 }
 
-function isDuplicatePayload(existingItems: AttachedLogicalSessionContextItem[], payload: SessionContextAttachmentDragPayload): boolean {
+function getPayloadLogicalKey(payload: SessionContextAttachmentDragPayload): string {
     if (payload.kind === SESSION_CONTEXT_DRAG_KIND) {
-        return existingItems.some(item =>
-            item.kind === 'session'
-            && item.sourceWorkspaceId === payload.sourceWorkspaceId
-            && item.sourceProcessId === payload.sourceProcessId
-        );
+        return `session\0${payload.sourceWorkspaceId}\0${payload.sourceProcessId}`;
     }
+    if (payload.kind === RALPH_SESSION_CONTEXT_DRAG_KIND) {
+        return `ralph-session\0${payload.sourceWorkspaceId}\0${payload.sourceRalphSessionId}`;
+    }
+    if (payload.kind === WORK_ITEM_CONTEXT_DRAG_KIND) {
+        return `work-item\0${payload.sourceWorkspaceId}\0${payload.workItemId}`;
+    }
+    if (payload.kind === GIT_COMMIT_CONTEXT_DRAG_KIND) {
+        return `commit\0${payload.sourceWorkspaceId}\0${payload.commitHash}`;
+    }
+    if (payload.kind === GIT_RANGE_CONTEXT_DRAG_KIND) {
+        return `range\0${payload.sourceWorkspaceId}\0${payload.baseRef}\0${payload.headRef}`;
+    }
+    const pullRequestRef = payload.number !== undefined ? `number:${payload.number}` : `id:${payload.pullRequestId}`;
+    return `pull-request\0${payload.sourceWorkspaceId}\0${pullRequestRef}`;
+}
 
-    return existingItems.some(item =>
-        item.kind === 'ralph-session'
-        && item.sourceWorkspaceId === payload.sourceWorkspaceId
-        && item.sourceRalphSessionId === payload.sourceRalphSessionId
-    );
+function getItemLogicalKey(item: AttachedLogicalContextItem): string {
+    if (item.kind === 'session') return `session\0${item.sourceWorkspaceId}\0${item.sourceProcessId}`;
+    if (item.kind === 'ralph-session') return `ralph-session\0${item.sourceWorkspaceId}\0${item.sourceRalphSessionId}`;
+    if (item.kind === 'work-item') return `work-item\0${item.sourceWorkspaceId}\0${item.workItemId}`;
+    if (item.kind === 'commit') return `commit\0${item.sourceWorkspaceId}\0${item.commitHash}`;
+    if (item.kind === 'range') return `range\0${item.sourceWorkspaceId}\0${item.baseRef}\0${item.headRef}`;
+    const pullRequestRef = item.number !== undefined ? `number:${item.number}` : `id:${item.pullRequestId}`;
+    return `pull-request\0${item.sourceWorkspaceId}\0${pullRequestRef}`;
+}
+
+function duplicateErrorForPayload(payload: SessionContextAttachmentDragPayload): string {
+    if (payload.kind === RALPH_SESSION_CONTEXT_DRAG_KIND) return 'This Ralph session is already attached to the message.';
+    if (payload.kind === WORK_ITEM_CONTEXT_DRAG_KIND) return 'This work item is already attached to the message.';
+    if (payload.kind === GIT_COMMIT_CONTEXT_DRAG_KIND) return 'This commit is already attached to the message.';
+    if (payload.kind === GIT_RANGE_CONTEXT_DRAG_KIND) return 'This range is already attached to the message.';
+    if (payload.kind === PULL_REQUEST_CONTEXT_DRAG_KIND) return 'This pull request is already attached to the message.';
+    return 'This session is already attached to the message.';
+}
+
+function duplicateErrorForItem(item: AttachedLogicalContextItem): string {
+    if (item.kind === 'ralph-session') return 'This Ralph session is already attached to the message.';
+    if (item.kind === 'work-item') return 'This work item is already attached to the message.';
+    if (item.kind === 'commit') return 'This commit is already attached to the message.';
+    if (item.kind === 'range') return 'This range is already attached to the message.';
+    if (item.kind === 'pull-request') return 'This pull request is already attached to the message.';
+    return 'This session is already attached to the message.';
+}
+
+function isDuplicatePayload(existingItems: AttachedLogicalContextItem[], payload: SessionContextAttachmentDragPayload): boolean {
+    const payloadKey = getPayloadLogicalKey(payload);
+    return existingItems.some(item => getItemLogicalKey(item) === payloadKey);
+}
+
+function isConversationRetrievalRequired(items: AttachedLogicalContextItem[]): boolean {
+    return items.some(isLogicalSessionContextItem);
 }
 
 export function validateSessionContextDrop(options: {
@@ -247,13 +449,13 @@ export function validateSessionContextDrop(options: {
         return { ok: false, error: 'Session context attachments are disabled.' };
     }
     if (!options.payload) {
-        return { ok: false, error: 'Drop a CoC session or Ralph session group from this workspace to attach it as context.' };
+        return { ok: false, error: 'Drop a supported CoC context item from this workspace to attach it as context.' };
     }
     if (!options.activeWorkspaceId) {
-        return { ok: false, error: 'Open a workspace before attaching session context.' };
+        return { ok: false, error: 'Open a workspace before attaching context.' };
     }
     if (options.payload.sourceWorkspaceId !== options.activeWorkspaceId) {
-        return { ok: false, error: 'Only sessions from the active workspace can be attached as context.' };
+        return { ok: false, error: 'Only context from the active workspace can be attached.' };
     }
     if (payloadIncludesProcess(options.payload, options.currentProcessId)) {
         return {
@@ -264,22 +466,18 @@ export function validateSessionContextDrop(options: {
         };
     }
 
-    const sessionItems = getSessionContextItems(options.existingItems);
-    if (isDuplicatePayload(sessionItems, options.payload)) {
-        return {
-            ok: false,
-            error: options.payload.kind === RALPH_SESSION_CONTEXT_DRAG_KIND
-                ? 'This Ralph session is already attached to the message.'
-                : 'This session is already attached to the message.',
-        };
+    const contextItems = getLogicalContextItems(options.existingItems);
+    if (isDuplicatePayload(contextItems, options.payload)) {
+        return { ok: false, error: duplicateErrorForPayload(options.payload) };
     }
-    if (sessionItems.length >= MAX_SESSION_CONTEXT_ATTACHMENTS) {
-        return { ok: false, error: `You can attach up to ${MAX_SESSION_CONTEXT_ATTACHMENTS} sessions as context.` };
+    if (contextItems.length >= MAX_ATTACHED_CONTEXT_ITEMS) {
+        return { ok: false, error: `You can attach up to ${MAX_ATTACHED_CONTEXT_ITEMS} context items.` };
     }
-    if (options.canRetrieveConversations === null) {
+    const requiresConversationRetrieval = options.payload.kind === SESSION_CONTEXT_DRAG_KIND || options.payload.kind === RALPH_SESSION_CONTEXT_DRAG_KIND;
+    if (requiresConversationRetrieval && options.canRetrieveConversations === null) {
         return { ok: false, error: 'Checking conversation retrieval capability. Try again shortly.' };
     }
-    if (options.canRetrieveConversations !== true) {
+    if (requiresConversationRetrieval && options.canRetrieveConversations !== true) {
         return { ok: false, error: 'Conversation retrieval is not available for this chat.' };
     }
 
@@ -293,19 +491,19 @@ export function validateSessionContextAttachmentsForSend(options: {
     items: AttachedContextItem[];
     canRetrieveConversations: boolean | null | undefined;
 }): string | null {
-    const sessionItems = getSessionContextItems(options.items);
-    if (sessionItems.length === 0) return null;
+    const contextItems = getLogicalContextItems(options.items);
+    if (contextItems.length === 0) return null;
 
     if (!options.featureEnabled) {
         return 'Session context attachments are disabled.';
     }
     if (!options.activeWorkspaceId) {
-        return 'Open a workspace before attaching session context.';
+        return 'Open a workspace before attaching context.';
     }
-    if (sessionItems.some(item => item.sourceWorkspaceId !== options.activeWorkspaceId)) {
-        return 'Only sessions from the active workspace can be attached as context.';
+    if (contextItems.some(item => item.sourceWorkspaceId !== options.activeWorkspaceId)) {
+        return 'Only context from the active workspace can be attached.';
     }
-    const selfAttachedItem = sessionItems.find(item =>
+    const selfAttachedItem = getSessionContextItems(options.items).find(item =>
         item.kind === 'session'
             ? item.sourceProcessId === options.currentProcessId
             : options.currentProcessId ? item.childProcessIds.includes(options.currentProcessId) : false
@@ -315,33 +513,24 @@ export function validateSessionContextAttachmentsForSend(options: {
             ? 'A follow-up cannot attach a Ralph session that includes the current chat.'
             : 'A follow-up cannot attach its own current session as context.';
     }
-    if (sessionItems.length > MAX_SESSION_CONTEXT_ATTACHMENTS) {
-        return `You can attach up to ${MAX_SESSION_CONTEXT_ATTACHMENTS} sessions as context.`;
+    if (contextItems.length > MAX_ATTACHED_CONTEXT_ITEMS) {
+        return `You can attach up to ${MAX_ATTACHED_CONTEXT_ITEMS} context items.`;
     }
 
-    const seenSessions = new Set<string>();
-    const seenRalphSessions = new Set<string>();
-    for (const item of sessionItems) {
-        if (item.kind === 'session') {
-            const key = `${item.sourceWorkspaceId}\0${item.sourceProcessId}`;
-            if (seenSessions.has(key)) {
-                return 'This session is already attached to the message.';
-            }
-            seenSessions.add(key);
-            continue;
+    const seenItems = new Map<string, AttachedLogicalContextItem>();
+    for (const item of contextItems) {
+        const key = getItemLogicalKey(item);
+        const duplicate = seenItems.get(key);
+        if (duplicate) {
+            return duplicateErrorForItem(duplicate);
         }
-
-        const key = `${item.sourceWorkspaceId}\0${item.sourceRalphSessionId}`;
-        if (seenRalphSessions.has(key)) {
-            return 'This Ralph session is already attached to the message.';
-        }
-        seenRalphSessions.add(key);
+        seenItems.set(key, item);
     }
 
-    if (options.canRetrieveConversations == null) {
+    if (isConversationRetrievalRequired(contextItems) && options.canRetrieveConversations == null) {
         return 'Checking conversation retrieval capability. Try again shortly.';
     }
-    if (options.canRetrieveConversations !== true) {
+    if (isConversationRetrievalRequired(contextItems) && options.canRetrieveConversations !== true) {
         return 'Conversation retrieval is not available for this chat.';
     }
 

@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useAttachedContext, formatAttachedContext, parseAttachedSessionContextBlocks } from '../../../../src/server/spa/client/react/features/chat/hooks/useAttachedContext';
-import { createSessionContextDragPayload, RALPH_SESSION_CONTEXT_DRAG_KIND } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
+import {
+    createSessionContextDragPayload,
+    RALPH_SESSION_CONTEXT_DRAG_KIND,
+    WORK_ITEM_CONTEXT_DRAG_KIND,
+} from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 
 describe('useAttachedContext', () => {
     it('starts with empty items', () => {
@@ -101,6 +105,36 @@ describe('useAttachedContext', () => {
         expect(result.current.items[0].preview).toContain('executing/running');
         expect(result.current.items[0].preview).toContain('3 processes');
         expect(result.current.items[0].preview).toContain('ralph-se…0001');
+    });
+
+    it('adds pointer context items through the shared attachment path', () => {
+        const { result } = renderHook(() => useAttachedContext());
+        act(() => {
+            result.current.addSessionContext({
+                kind: WORK_ITEM_CONTEXT_DRAG_KIND,
+                version: 1,
+                sourceWorkspaceId: 'ws-1',
+                workItemId: 'wi-123',
+                workItemNumber: 123,
+                label: 'Work Item #123',
+                title: 'Fix context drag',
+                status: 'planning',
+                type: 'bug',
+            });
+        });
+
+        expect(result.current.items).toHaveLength(1);
+        expect(result.current.items[0]).toMatchObject({
+            kind: 'work-item',
+            sourceWorkspaceId: 'ws-1',
+            workItemId: 'wi-123',
+            workItemNumber: 123,
+            label: 'Work Item #123',
+            title: 'Fix context drag',
+            status: 'planning',
+        });
+        expect(result.current.items[0].preview).toContain('Work Item #123');
+        expect(result.current.items[0].preview).toContain('planning');
     });
 
     it('generates a truncated preview', () => {
@@ -296,6 +330,85 @@ describe('formatAttachedContext', () => {
         expect(result).not.toContain('/home/example');
         expect(result).not.toContain('C:\\Users\\example');
     });
+
+    it('formats pointer-only work item context blocks', () => {
+        const result = formatAttachedContext([{
+            kind: 'work-item',
+            id: 'ctx-work-item',
+            sourceWorkspaceId: 'ws-1',
+            workItemId: 'wi-123',
+            workItemNumber: 123,
+            label: 'Work Item #123',
+            title: 'Fix <context> & drag',
+            status: 'planning',
+            type: 'bug',
+            preview: 'Work Item #123',
+        }]);
+
+        expect(result).toContain('<attached_pointer_context version="1">');
+        expect(result).toContain('workspace_id="ws-1"');
+        expect(result).toContain('kind="work-item"');
+        expect(result).toContain('label="Work Item #123"');
+        expect(result).toContain('work_item_id="wi-123"');
+        expect(result).toContain('work_item_number="123"');
+        expect(result).toContain('status="planning"');
+        expect(result).toContain('type="bug"');
+        expect(result).toContain('<title>Fix &lt;context&gt; &amp; drag</title>');
+        expect(result).toContain('stable references and safe display metadata');
+        expect(result).not.toContain('description');
+    });
+
+    it('formats pointer-only git and pull request context blocks', () => {
+        const result = formatAttachedContext([
+            {
+                kind: 'commit',
+                id: 'ctx-commit',
+                sourceWorkspaceId: 'ws-1',
+                commitHash: 'abcdef1234567890',
+                shortHash: 'abcdef1',
+                label: 'Commit abcdef1',
+                subject: 'Add context drag',
+                title: 'Add context drag',
+                preview: 'Commit abcdef1',
+            },
+            {
+                kind: 'range',
+                id: 'ctx-range',
+                sourceWorkspaceId: 'ws-1',
+                baseRef: 'origin/main',
+                headRef: 'feature/context-drag',
+                label: 'Range origin/main..feature/context-drag',
+                branchName: 'feature/context-drag',
+                title: 'feature/context-drag',
+                commitCount: 4,
+                fileCount: 12,
+                preview: 'Range origin/main..feature/context-drag',
+            },
+            {
+                kind: 'pull-request',
+                id: 'ctx-pr',
+                sourceWorkspaceId: 'ws-1',
+                pullRequestId: '45',
+                number: 45,
+                label: 'PR #45',
+                title: 'Review context drag',
+                status: 'open',
+                preview: 'PR #45',
+            },
+        ]);
+
+        expect(result).toContain('kind="commit"');
+        expect(result).toContain('commit_hash="abcdef1234567890"');
+        expect(result).toContain('short_hash="abcdef1"');
+        expect(result).toContain('kind="range"');
+        expect(result).toContain('base_ref="origin/main"');
+        expect(result).toContain('head_ref="feature/context-drag"');
+        expect(result).toContain('commit_count="4"');
+        expect(result).toContain('file_count="12"');
+        expect(result).toContain('kind="pull-request"');
+        expect(result).toContain('pull_request_id="45"');
+        expect(result).toContain('number="45"');
+    });
 });
 
 describe('parseAttachedSessionContextBlocks', () => {
@@ -399,12 +512,62 @@ describe('parseAttachedSessionContextBlocks', () => {
         expect(result.remainingContent).toBe('Compare both contexts.');
     });
 
+    it('round-trips pointer context blocks', () => {
+        const formatted = formatAttachedContext([
+            {
+                kind: 'commit',
+                id: 'ctx-commit',
+                sourceWorkspaceId: 'ws-1',
+                commitHash: 'abcdef1234567890',
+                shortHash: 'abcdef1',
+                label: 'Commit abcdef1',
+                subject: 'Add context drag',
+                title: 'Add context drag',
+                preview: 'Commit abcdef1',
+            },
+            {
+                kind: 'pull-request',
+                id: 'ctx-pr',
+                sourceWorkspaceId: 'ws-1',
+                pullRequestId: '45',
+                number: 45,
+                label: 'PR #45',
+                title: 'Review context drag',
+                status: 'open',
+                preview: 'PR #45',
+            },
+        ]);
+        const result = parseAttachedSessionContextBlocks(`${formatted}Compare these pointers.`);
+
+        expect(result.attachedContexts.map(context => context.kind)).toEqual(['commit', 'pull-request']);
+        expect(result.pointerContexts).toHaveLength(2);
+        expect(result.pointerContexts[0]).toMatchObject({
+            kind: 'commit',
+            sourceWorkspaceId: 'ws-1',
+            commitHash: 'abcdef1234567890',
+            shortHash: 'abcdef1',
+            label: 'Commit abcdef1',
+            title: 'Add context drag',
+        });
+        expect(result.pointerContexts[1]).toMatchObject({
+            kind: 'pull-request',
+            sourceWorkspaceId: 'ws-1',
+            pullRequestId: '45',
+            number: 45,
+            label: 'PR #45',
+            title: 'Review context drag',
+            status: 'open',
+        });
+        expect(result.remainingContent).toBe('Compare these pointers.');
+    });
+
     it('leaves ordinary messages unchanged', () => {
         const content = 'No attached session context here.';
         expect(parseAttachedSessionContextBlocks(content)).toEqual({
             attachedContexts: [],
             sessionContexts: [],
             ralphSessionContexts: [],
+            pointerContexts: [],
             remainingContent: content,
         });
     });

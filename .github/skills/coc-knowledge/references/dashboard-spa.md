@@ -165,29 +165,40 @@ Stacked layout with:
 Focus indicator propagates mode-colored ring from contenteditable to parent card.
 
 When `features.sessionContextAttachments` is enabled, same-workspace chat/process
-rows and Ralph session group rows are copy-drag context sources. Both
-`NewChatArea` and `FollowUpInputArea` accept drag/drop payloads for single source
-sessions and Ralph groups. The composers validate same-workspace, duplicate,
-self-drop/current-child, three-logical-attachment cap, and `get_conversation`
-tool availability before adding removable context chips through
-`AttachedContextPreviews`; single sessions render as neutral **Session** chips,
-while Ralph groups render as purple **RALPH** chips with phase/status,
-process/iteration counts, latest activity, and a shortened Ralph session ID.
+rows and Ralph session group rows are copy-drag context sources; the shared
+attachment model also supports pointer-only Work Item, Git commit, Git range,
+and Pull Request payloads for source tabs to wire into. Both `NewChatArea` and
+`FollowUpInputArea` accept these shared drag/drop payloads. The composers
+validate same-workspace, duplicate, self-drop/current-child for session-backed
+pointers, and a shared three-logical-attachment cap before adding removable
+context chips through `AttachedContextPreviews`. `get_conversation` tool
+availability is required only for single-session and Ralph pointers. Single
+sessions render as neutral **Session** chips, Ralph groups render as purple
+**RALPH** chips, and Work Item/Commit/Range/PR pointers render as sky chips with
+stable labels such as `Work Item #123`, `Commit abc1234`, `Range base..head`,
+and `PR #45` plus short safe metadata.
+
 Send paths re-check the same constraints before formatting already-attached
 source IDs so stale feature/capability state cannot send unusable pointers. The
 attached-context formatter emits pointer-only `<attached_session_context>` blocks
-for single sessions and pointer-only `<attached_ralph_session_context>` blocks
-for Ralph groups; the Ralph block stores source workspace ID, Ralph session ID,
-phase/status, safe title/display label, latest activity, process/iteration
-counts, and ordered child process IDs only. Single-session drag payloads derive
-their title from custom title/title/displayName, prompt preview or prompt
-metadata, then process ID; they do not use latest-turn previews such as
-`lastMessagePreview`. `ConversationTurnBubble` parses persisted attached-context
-blocks on user turns and renders them as collapsed cards: neutral "Attached
-session context" cards for single sessions and purple "Attached Ralph context"
-cards for Ralph groups. Both cards show their pointer metadata and a raw-block
-copy affordance while raw mode still exposes the exact persisted message
-content.
+for single sessions, pointer-only `<attached_ralph_session_context>` blocks for
+Ralph groups, and generic pointer-only `<attached_pointer_context>` blocks for
+Work Item, Git commit, Git range, and Pull Request references. Pointer blocks
+store source workspace ID and stable identifiers/references only (for example
+work item ID/number, commit hash, base/head refs, PR ID/number) plus safe labels,
+titles/statuses, and summary counts when available; they do not store work item
+bodies, diffs, PR descriptions, file contents, or latest-turn previews. The Ralph
+block stores source workspace ID, Ralph session ID, phase/status, safe
+title/display label, latest activity, process/iteration counts, and ordered child
+process IDs only. Single-session drag payloads derive their title from custom
+title/title/displayName, prompt preview or prompt metadata, then process ID; they
+do not use latest-turn previews such as `lastMessagePreview`.
+`ConversationTurnBubble` parses persisted attached-context blocks on user turns
+and renders them as collapsed cards: neutral "Attached session context" cards
+for single sessions, purple "Attached Ralph context" cards for Ralph groups, and
+sky pointer cards for Work Item/Commit/Range/PR pointers. These cards show their
+pointer metadata and a raw-block copy affordance while raw mode still exposes the
+exact persisted message content.
 
 New chats use `AgentSelectorChip` to choose a per-chat provider. The initial selection comes from the workspace's `lastChatProvider` preference when that provider is enabled and available; otherwise it falls back to the configured `defaultProvider` from runtime config, and then to Copilot if the configured default provider cannot be selected. Follow-up inputs show the provider stored on the process metadata so existing chats continue using their original provider.
 

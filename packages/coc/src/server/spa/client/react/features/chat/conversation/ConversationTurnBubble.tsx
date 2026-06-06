@@ -41,6 +41,7 @@ import {
     parseAttachedSessionContextBlocks,
     shortenSessionProcessId,
     type ParsedAttachedContextBlock,
+    type ParsedPointerContextBlock,
     type ParsedRalphSessionContextBlock,
     type ParsedSessionContextBlock,
 } from '../hooks/useAttachedContext';
@@ -370,6 +371,125 @@ function formatContextCount(count: number, singular: string, plural: string): st
     return `${count} ${count === 1 ? singular : plural}`;
 }
 
+function getPointerContextKindLabel(kind: ParsedPointerContextBlock['kind']): string {
+    if (kind === 'work-item') return 'Work Item';
+    if (kind === 'commit') return 'Commit';
+    if (kind === 'range') return 'Range';
+    return 'PR';
+}
+
+function getPointerContextDetailRows(context: ParsedPointerContextBlock): Array<[string, string]> {
+    const rows: Array<[string, string | undefined]> = [
+        ['Title', context.title],
+        ['Label', context.label],
+        ['Workspace ID', context.sourceWorkspaceId],
+    ];
+    if (context.kind === 'work-item') {
+        rows.push(
+            ['Work item ID', context.workItemId],
+            ['Work item number', context.workItemNumber === undefined ? undefined : String(context.workItemNumber)],
+            ['Status', context.status],
+            ['Type', context.type],
+        );
+    } else if (context.kind === 'commit') {
+        rows.push(
+            ['Commit hash', context.commitHash],
+            ['Short hash', context.shortHash],
+        );
+    } else if (context.kind === 'range') {
+        rows.push(
+            ['Base ref', context.baseRef],
+            ['Head ref', context.headRef],
+            ['Branch', context.branchName],
+            ['Merge base', context.mergeBase],
+            ['Commits', context.commitCount === undefined ? undefined : String(context.commitCount)],
+            ['Files', context.fileCount === undefined ? undefined : String(context.fileCount)],
+        );
+    } else {
+        rows.push(
+            ['Pull request ID', context.pullRequestId],
+            ['Number', context.number === undefined ? undefined : String(context.number)],
+            ['Status', context.status],
+        );
+    }
+    return rows.filter((row): row is [string, string] => Boolean(row[1]));
+}
+
+function getPointerContextSummaryMeta(context: ParsedPointerContextBlock): string {
+    if (context.kind === 'work-item') return [context.status, context.type, context.workItemId].filter(Boolean).join(' · ');
+    if (context.kind === 'commit') return context.shortHash || (context.commitHash ? shortenSessionProcessId(context.commitHash) : '');
+    if (context.kind === 'range') {
+        return [
+            context.branchName,
+            context.commitCount !== undefined ? formatContextCount(context.commitCount, 'commit', 'commits') : '',
+            context.fileCount !== undefined ? formatContextCount(context.fileCount, 'file', 'files') : '',
+        ].filter(Boolean).join(' · ');
+    }
+    return [context.status, context.number === undefined ? context.pullRequestId : `#${context.number}`].filter(Boolean).join(' · ');
+}
+
+function AttachedPointerContextBlockCard({ context }: { context: ParsedPointerContextBlock }) {
+    const [copiedRawBlock, setCopiedRawBlock] = useState(false);
+
+    const handleCopyRawBlock = async () => {
+        try {
+            await copyToClipboard(context.rawBlock);
+            setCopiedRawBlock(true);
+            setTimeout(() => setCopiedRawBlock(false), 1500);
+        } catch (e) {
+            console.error('Copy attached pointer context block failed:', e);
+        }
+    };
+
+    const kindLabel = getPointerContextKindLabel(context.kind);
+    const meta = getPointerContextSummaryMeta(context);
+
+    return (
+        <details
+            className="rounded-lg border border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/30 text-[12px] overflow-hidden"
+            data-testid="attached-pointer-context-block"
+            data-context-kind={context.kind}
+        >
+            <summary className="cursor-pointer select-none list-none px-3 py-2 flex items-center gap-2">
+                <span aria-hidden="true">▣</span>
+                <span className="font-medium text-sky-800 dark:text-sky-200">Attached {kindLabel} context</span>
+                <span className="min-w-0 flex-1 truncate text-sky-800/80 dark:text-sky-200/80" data-testid="attached-pointer-context-summary">
+                    {context.label}
+                </span>
+                {meta && (
+                    <span className="shrink-0 font-mono text-[10px] text-sky-700/80 dark:text-sky-300/80" data-testid="attached-pointer-context-meta">
+                        {meta}
+                    </span>
+                )}
+            </summary>
+            <div className="border-t border-sky-300 dark:border-sky-700 px-3 py-2 space-y-2 text-[#3c3c3c] dark:text-[#c8c8c8]">
+                <dl className="grid grid-cols-[auto,1fr] gap-x-2 gap-y-1">
+                    {getPointerContextDetailRows(context).map(([label, value]) => (
+                        <React.Fragment key={label}>
+                            <dt className="text-sky-700 dark:text-sky-300">{label}</dt>
+                            <dd className="font-mono break-all">{value}</dd>
+                        </React.Fragment>
+                    ))}
+                </dl>
+                <div>
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                        <span className="text-sky-700 dark:text-sky-300">Raw context block</span>
+                        <button
+                            type="button"
+                            className="rounded border border-sky-300 dark:border-sky-700 px-2 py-0.5 text-[11px] text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/40"
+                            onClick={handleCopyRawBlock}
+                            data-testid="attached-pointer-context-copy-raw"
+                        >
+                            {copiedRawBlock ? 'Copied' : 'Copy raw block'}
+                        </button>
+                    </div>
+                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded border border-sky-200 dark:border-sky-800 bg-white dark:bg-[#1e1e1e] p-2 font-mono text-[11px]" data-testid="attached-pointer-context-raw-block">{context.rawBlock}</pre>
+                </div>
+            </div>
+        </details>
+    );
+}
+
 function AttachedRalphSessionContextBlockCard({ context }: { context: ParsedRalphSessionContextBlock }) {
     const [copiedRawBlock, setCopiedRawBlock] = useState(false);
 
@@ -452,9 +572,9 @@ function AttachedRalphSessionContextBlockCard({ context }: { context: ParsedRalp
 }
 
 function AttachedContextBlockCard({ context }: { context: ParsedAttachedContextBlock }) {
-    return context.kind === 'ralph-session'
-        ? <AttachedRalphSessionContextBlockCard context={context} />
-        : <AttachedSessionContextBlockCard context={context} />;
+    if (context.kind === 'ralph-session') return <AttachedRalphSessionContextBlockCard context={context} />;
+    if (context.kind === 'session') return <AttachedSessionContextBlockCard context={context} />;
+    return <AttachedPointerContextBlockCard context={context} />;
 }
 
 function normalizeToolCall(raw: any, fallbackId: string): RenderToolCall {
@@ -956,7 +1076,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
         [isUser, turn.timeline, turn.content, turn.streaming, wsId, htmlEmbedEnabled, excalidrawEmbedEnabled],
     );
     const parsedUserContent = useMemo(
-        () => isUser ? parseAttachedSessionContextBlocks(turn.content || '') : { attachedContexts: [], sessionContexts: [], ralphSessionContexts: [], remainingContent: '' },
+        () => isUser ? parseAttachedSessionContextBlocks(turn.content || '') : { attachedContexts: [], sessionContexts: [], ralphSessionContexts: [], pointerContexts: [], remainingContent: '' },
         [isUser, turn.content],
     );
     const userContentText = isUser ? parsedUserContent.remainingContent : '';

@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { AttachedContextItem } from '../../../src/server/spa/client/react/features/chat/hooks/useAttachedContext';
 import {
     dataTransferHasSessionContext,
+    MAX_ATTACHED_CONTEXT_ITEMS,
     MAX_SESSION_CONTEXT_ATTACHMENTS,
+    readPointerContextDragPayload,
     readRalphSessionContextDragPayload,
     readSessionContextDragPayload,
     readSessionContextDropPayload,
@@ -10,13 +12,23 @@ import {
     validateSessionContextDrop,
 } from '../../../src/server/spa/client/react/features/chat/sessionContextDrop';
 import {
+    GIT_COMMIT_CONTEXT_DRAG_KIND,
+    GIT_RANGE_CONTEXT_DRAG_KIND,
+    POINTER_CONTEXT_DRAG_MIME,
+    PULL_REQUEST_CONTEXT_DRAG_KIND,
     RALPH_SESSION_CONTEXT_DRAG_KIND,
     RALPH_SESSION_CONTEXT_DRAG_MIME,
     SESSION_CONTEXT_DRAG_KIND,
     SESSION_CONTEXT_DRAG_MIME,
+    WORK_ITEM_CONTEXT_DRAG_KIND,
+    type GitCommitContextDragPayload,
+    type GitRangeContextDragPayload,
+    type PointerContextDragPayload,
+    type PullRequestContextDragPayload,
     type RalphSessionContextDragPayload,
     type SessionContextAttachmentDragPayload,
     type SessionContextDragPayload,
+    type WorkItemContextDragPayload,
 } from '../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 
 function makePayload(overrides: Partial<SessionContextDragPayload> = {}): SessionContextDragPayload {
@@ -46,6 +58,65 @@ function makeRalphPayload(overrides: Partial<RalphSessionContextDragPayload> = {
         childProcessIds: ['grill-proc', 'iter-1', 'iter-2'],
         processCount: 3,
         iterationCount: 2,
+        ...overrides,
+    };
+}
+
+function makeWorkItemPayload(overrides: Partial<WorkItemContextDragPayload> = {}): WorkItemContextDragPayload {
+    return {
+        kind: WORK_ITEM_CONTEXT_DRAG_KIND,
+        version: 1,
+        sourceWorkspaceId: 'ws-1',
+        workItemId: 'wi-123',
+        workItemNumber: 123,
+        label: 'Work Item #123',
+        title: 'Fix context drag',
+        status: 'planning',
+        type: 'bug',
+        ...overrides,
+    };
+}
+
+function makeCommitPayload(overrides: Partial<GitCommitContextDragPayload> = {}): GitCommitContextDragPayload {
+    return {
+        kind: GIT_COMMIT_CONTEXT_DRAG_KIND,
+        version: 1,
+        sourceWorkspaceId: 'ws-1',
+        commitHash: 'abcdef1234567890',
+        shortHash: 'abcdef1',
+        label: 'Commit abcdef1',
+        subject: 'Add context drag',
+        title: 'Add context drag',
+        ...overrides,
+    };
+}
+
+function makeRangePayload(overrides: Partial<GitRangeContextDragPayload> = {}): GitRangeContextDragPayload {
+    return {
+        kind: GIT_RANGE_CONTEXT_DRAG_KIND,
+        version: 1,
+        sourceWorkspaceId: 'ws-1',
+        baseRef: 'origin/main',
+        headRef: 'feature/context-drag',
+        label: 'Range origin/main..feature/context-drag',
+        title: 'feature/context-drag',
+        branchName: 'feature/context-drag',
+        commitCount: 4,
+        fileCount: 12,
+        ...overrides,
+    };
+}
+
+function makePullRequestPayload(overrides: Partial<PullRequestContextDragPayload> = {}): PullRequestContextDragPayload {
+    return {
+        kind: PULL_REQUEST_CONTEXT_DRAG_KIND,
+        version: 1,
+        sourceWorkspaceId: 'ws-1',
+        pullRequestId: '45',
+        number: 45,
+        label: 'PR #45',
+        title: 'Review context drag',
+        status: 'open',
         ...overrides,
     };
 }
@@ -102,6 +173,37 @@ function makeRalphItem(overrides: Partial<Extract<AttachedContextItem, { kind: '
     };
 }
 
+function makeWorkItem(overrides: Partial<Extract<AttachedContextItem, { kind: 'work-item' }>> = {}): Extract<AttachedContextItem, { kind: 'work-item' }> {
+    return {
+        kind: 'work-item',
+        id: 'ctx-work-item',
+        sourceWorkspaceId: 'ws-1',
+        workItemId: 'wi-123',
+        workItemNumber: 123,
+        label: 'Work Item #123',
+        title: 'Fix context drag',
+        status: 'planning',
+        type: 'bug',
+        preview: 'Work Item #123',
+        ...overrides,
+    };
+}
+
+function makePullRequestItem(overrides: Partial<Extract<AttachedContextItem, { kind: 'pull-request' }>> = {}): Extract<AttachedContextItem, { kind: 'pull-request' }> {
+    return {
+        kind: 'pull-request',
+        id: 'ctx-pr',
+        sourceWorkspaceId: 'ws-1',
+        pullRequestId: 'provider-pr-id',
+        number: 45,
+        label: 'PR #45',
+        title: 'Review context drag',
+        status: 'open',
+        preview: 'PR #45',
+        ...overrides,
+    };
+}
+
 function validateForSend(overrides: Partial<Parameters<typeof validateSessionContextAttachmentsForSend>[0]> = {}) {
     return validateSessionContextAttachmentsForSend({
         featureEnabled: true,
@@ -135,6 +237,19 @@ describe('sessionContextDrop', () => {
         const payload = makeRalphPayload({ phase: 'failed', status: 'failed' });
         const dataTransfer = makeDataTransfer(payload, RALPH_SESSION_CONTEXT_DRAG_MIME);
 
+        expect(readSessionContextDropPayload(dataTransfer)).toEqual(payload);
+    });
+
+    it.each([
+        ['work item', makeWorkItemPayload()],
+        ['commit', makeCommitPayload()],
+        ['range', makeRangePayload()],
+        ['pull request', makePullRequestPayload()],
+    ] satisfies Array<[string, PointerContextDragPayload]>)('reads valid %s pointer drag payloads', (_label, payload) => {
+        const dataTransfer = makeDataTransfer(payload, POINTER_CONTEXT_DRAG_MIME);
+
+        expect(dataTransferHasSessionContext(dataTransfer)).toBe(true);
+        expect(readPointerContextDragPayload(dataTransfer)).toEqual(payload);
         expect(readSessionContextDropPayload(dataTransfer)).toEqual(payload);
     });
 
@@ -180,12 +295,17 @@ describe('sessionContextDrop', () => {
 
     it('rejects cross-workspace drops', () => {
         const result = validate(makePayload({ sourceWorkspaceId: 'ws-other' }));
-        expect(result).toEqual({ ok: false, error: 'Only sessions from the active workspace can be attached as context.' });
+        expect(result).toEqual({ ok: false, error: 'Only context from the active workspace can be attached.' });
     });
 
     it('rejects cross-workspace Ralph group drops', () => {
         const result = validate(makeRalphPayload({ sourceWorkspaceId: 'ws-other' }));
-        expect(result).toEqual({ ok: false, error: 'Only sessions from the active workspace can be attached as context.' });
+        expect(result).toEqual({ ok: false, error: 'Only context from the active workspace can be attached.' });
+    });
+
+    it('rejects cross-workspace pointer drops', () => {
+        const result = validate(makeWorkItemPayload({ sourceWorkspaceId: 'ws-other' }));
+        expect(result).toEqual({ ok: false, error: 'Only context from the active workspace can be attached.' });
     });
 
     it('rejects duplicate source sessions', () => {
@@ -209,6 +329,18 @@ describe('sessionContextDrop', () => {
         expect(result).toEqual({ ok: false, error: 'This Ralph session is already attached to the message.' });
     });
 
+    it('rejects duplicate pointer context items', () => {
+        const result = validate(makeWorkItemPayload(), { existingItems: [makeWorkItem()] });
+        expect(result).toEqual({ ok: false, error: 'This work item is already attached to the message.' });
+    });
+
+    it('deduplicates pull request context by PR number when provider IDs differ', () => {
+        const result = validate(makePullRequestPayload({ pullRequestId: 'different-provider-id', number: 45 }), {
+            existingItems: [makePullRequestItem({ pullRequestId: 'provider-pr-id', number: 45 })],
+        });
+        expect(result).toEqual({ ok: false, error: 'This pull request is already attached to the message.' });
+    });
+
     it('rejects self-attachment for follow-up sessions', () => {
         const result = validate(makePayload(), { currentProcessId: 'source-proc' });
         expect(result).toEqual({ ok: false, error: 'A follow-up cannot attach its own current session as context.' });
@@ -220,7 +352,7 @@ describe('sessionContextDrop', () => {
     });
 
     it('enforces the three-session cap', () => {
-        const existingItems: AttachedContextItem[] = Array.from({ length: MAX_SESSION_CONTEXT_ATTACHMENTS }, (_, index) => ({
+        const existingItems: AttachedContextItem[] = Array.from({ length: MAX_ATTACHED_CONTEXT_ITEMS }, (_, index) => ({
             kind: 'session',
             id: `ctx-${index}`,
             sourceWorkspaceId: 'ws-1',
@@ -232,7 +364,8 @@ describe('sessionContextDrop', () => {
         }));
 
         const result = validate(makePayload({ sourceProcessId: 'source-extra' }), { existingItems });
-        expect(result).toEqual({ ok: false, error: 'You can attach up to 3 sessions as context.' });
+        expect(MAX_SESSION_CONTEXT_ATTACHMENTS).toBe(MAX_ATTACHED_CONTEXT_ITEMS);
+        expect(result).toEqual({ ok: false, error: 'You can attach up to 3 context items.' });
     });
 
     it('counts Ralph groups as one logical attachment for the three-session cap', () => {
@@ -243,7 +376,18 @@ describe('sessionContextDrop', () => {
         ];
 
         const result = validate(makeRalphPayload({ sourceRalphSessionId: 'ralph-session-extra' }), { existingItems });
-        expect(result).toEqual({ ok: false, error: 'You can attach up to 3 sessions as context.' });
+        expect(result).toEqual({ ok: false, error: 'You can attach up to 3 context items.' });
+    });
+
+    it('enforces the shared cap across sessions and pointer context items', () => {
+        const existingItems: AttachedContextItem[] = [
+            makeSessionItem({ id: 'ctx-1', sourceProcessId: 'source-1' }),
+            makeRalphItem({ id: 'ctx-2', sourceRalphSessionId: 'ralph-session-2' }),
+            makeWorkItem({ id: 'ctx-3', workItemId: 'wi-3' }),
+        ];
+
+        const result = validate(makePullRequestPayload({ pullRequestId: '46', number: 46, label: 'PR #46' }), { existingItems });
+        expect(result).toEqual({ ok: false, error: 'You can attach up to 3 context items.' });
     });
 
     it('rejects Ralph drops while the feature is disabled', () => {
@@ -256,12 +400,21 @@ describe('sessionContextDrop', () => {
         expect(result).toEqual({ ok: false, error: 'Conversation retrieval is not available for this chat.' });
     });
 
+    it('allows pointer drops when conversation retrieval is unavailable', () => {
+        const result = validate(makePullRequestPayload(), { canRetrieveConversations: false });
+        expect(result).toEqual({ ok: true, payload: makePullRequestPayload() });
+    });
+
     it('allows send-time validation for valid attached session context items', () => {
         expect(validateForSend()).toBeNull();
     });
 
     it('allows send-time validation for valid attached Ralph group context items', () => {
         expect(validateForSend({ items: [makeRalphItem()] })).toBeNull();
+    });
+
+    it('allows send-time validation for valid pointer context items without conversation retrieval', () => {
+        expect(validateForSend({ items: [makeWorkItem()], canRetrieveConversations: false })).toBeNull();
     });
 
     it('blocks send-time validation for duplicate Ralph groups', () => {
@@ -271,6 +424,16 @@ describe('sessionContextDrop', () => {
                 makeRalphItem({ id: 'ctx-2' }),
             ],
         })).toBe('This Ralph session is already attached to the message.');
+    });
+
+    it('blocks send-time validation for duplicate pointer context items', () => {
+        expect(validateForSend({
+            items: [
+                makeWorkItem({ id: 'ctx-1' }),
+                makeWorkItem({ id: 'ctx-2' }),
+            ],
+            canRetrieveConversations: false,
+        })).toBe('This work item is already attached to the message.');
     });
 
     it('blocks send-time validation when a Ralph group contains the current process', () => {
