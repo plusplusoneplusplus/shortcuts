@@ -100,6 +100,9 @@ interface ClaudeResultMessage {
     is_error?: boolean;
     duration_ms?: number;
     num_turns?: number;
+    api_error_status?: number | string;
+    terminal_reason?: string;
+    stop_reason?: string;
     /** Total cost of the request in USD */
     total_cost_usd?: number;
     /** Total input/output token counts */
@@ -265,6 +268,15 @@ interface ClaudeSDKModule {
 interface ActiveClaudeSession {
     sessionId: string;
     abortController: AbortController;
+}
+
+interface ClaudeResultFailureLogContext {
+    requestedModel?: string;
+    effectiveModel?: string;
+    workingDirectory?: string;
+    permissionMode?: ClaudePermissionMode;
+    mcpServerNames: string[];
+    latestRateLimitInfo?: ClaudeRateLimitInfo | null;
 }
 
 // ============================================================================
@@ -600,6 +612,7 @@ export class ClaudeSDKService implements ISDKService {
         const toolCalls = new Map<string, ToolCall>();
         const startedToolCalls = new Set<string>();
         let tokenUsage: TokenUsage | undefined;
+        let latestRateLimitInfo: ClaudeRateLimitInfo | null = null;
 
         const publishProviderSessionId = (providerSessionId: string | undefined) => {
             if (!providerSessionId || providerSessionId === currentSessionId) return;
@@ -621,6 +634,7 @@ export class ClaudeSDKService implements ISDKService {
             const effort = this.normalizeClaudeEffort(options.reasoningEffort);
             const permissionOptions = this.resolveClaudePermissionOptions(options.mode);
             const { servers: mcpServers, allowedTools, cleanup } = await this.buildClaudeMcpServers(options);
+            const mcpServerNames = Object.keys(mcpServers).sort();
             mcpCleanup = cleanup;
             const queryOptions: ClaudeQueryOptions = {
                 prompt: this.buildClaudePrompt(options),
@@ -657,15 +671,21 @@ export class ClaudeSDKService implements ISDKService {
                     this.handleClaudeUserToolResults(msg, options, toolCalls);
                 } else if (this.isResultMessage(msg)) {
                     if (msg.subtype !== 'success' || msg.is_error) {
-                        const errText = typeof msg.result === 'string' && msg.result
-                            ? msg.result
-                            : `Claude returned ${msg.subtype}`;
-                    return {
-                        success: false,
-                        error: errText,
-                        sessionId: currentSessionId,
-                        effectiveModel: model,
-                    };
+                        this.logClaudeResultFailure(msg, {
+                            requestedModel: options.model,
+                            effectiveModel: model,
+                            workingDirectory: options.workingDirectory,
+                            permissionMode: permissionOptions.permissionMode,
+                            mcpServerNames,
+                            latestRateLimitInfo,
+                        });
+                        const errText = this.formatClaudeResultFailureError(msg);
+                        return {
+                            success: false,
+                            error: errText,
+                            sessionId: currentSessionId,
+                            effectiveModel: model,
+                        };
                     }
                     tokenUsage = addClaudeUsage(tokenUsage, msg);
                     // If the result contains text not yet emitted, add it.
@@ -680,6 +700,7 @@ export class ClaudeSDKService implements ISDKService {
                         msg.rate_limit_info.rateLimitType ?? '(none)',
                         msg.rate_limit_info.utilization ?? msg.rate_limit_info.surpassedThreshold ?? '(none)',
                     );
+                    latestRateLimitInfo = msg.rate_limit_info;
                     this.lastRateLimitInfo = msg.rate_limit_info;
                 }
             }
@@ -705,6 +726,22 @@ export class ClaudeSDKService implements ISDKService {
             this.sessions.delete(currentSessionId);
             if (currentSessionId !== sessionId) this.sessions.delete(sessionId);
         }
+    }
+
+    private formatClaudeResultFailureError(msg: ClaudeResultMessage): string {
+        if (typeof msg.result === 'string' && msg.result) return msg.result;
+        if (typeof msg.subtype === 'string' && msg.subtype) return `Claude returned ${msg.subtype}`;
+        return 'Claude returned an unsuccessful result';
+    }
+
+    private logClaudeResultFailure(
+        msg: ClaudeResultMessage,
+        context: ClaudeResultFailureLogContext,
+    ): void {
+        getSDKLogger().warn(
+            buildClaudeResultFailureLogFields(msg, context),
+            'Claude SDK result message reported failure',
+        );
     }
 
     private buildClaudePrompt(options: SendMessageOptions): string | AsyncIterable<ClaudeStreamingUserMessage> {
@@ -1227,6 +1264,61 @@ function mapForgeMcpServerToClaude(cfg: MCPServerConfig): ClaudeMcpServerConfig 
         args: local.args ?? [],
         ...(local.env ? { env: local.env } : {}),
     };
+}
+
+function buildClaudeResultFailureLogFields(
+    msg: ClaudeResultMessage,
+    context: ClaudeResultFailureLogContext,
+): Record<string, unknown> {
+    const fields: Record<string, unknown> = {
+        provider: CLAUDE_PROVIDER,
+        event: 'claude_result_failure',
+        mcpConfigured: context.mcpServerNames.length > 0,
+        mcpServerNames: context.mcpServerNames,
+    };
+
+    addStringField(fields, 'subtype', msg.subtype);
+    addBooleanField(fields, 'is_error', msg.is_error);
+    addStringField(fields, 'session_id', msg.session_id);
+    addNumberField(fields, 'duration_ms', msg.duration_ms);
+    addNumberField(fields, 'num_turns', msg.num_turns);
+    addStatusField(fields, 'api_error_status', msg.api_error_status);
+    addStringField(fields, 'terminal_reason', msg.terminal_reason);
+    addStringField(fields, 'stop_reason', msg.stop_reason);
+    addStringField(fields, 'requestedModel', context.requestedModel);
+    addStringField(fields, 'effectiveModel', context.effectiveModel);
+    addStringField(fields, 'workingDirectory', context.workingDirectory);
+    addStringField(fields, 'permissionMode', context.permissionMode);
+
+    const rateLimitInfo = context.latestRateLimitInfo;
+    if (rateLimitInfo) {
+        addStringField(fields, 'rateLimitType', rateLimitInfo.rateLimitType);
+        addStringField(fields, 'rateLimitStatus', rateLimitInfo.status);
+    }
+
+    return fields;
+}
+
+function addStringField(fields: Record<string, unknown>, key: string, value: unknown): void {
+    if (typeof value !== 'string') return;
+    const trimmed = value.trim();
+    if (trimmed) fields[key] = trimmed;
+}
+
+function addBooleanField(fields: Record<string, unknown>, key: string, value: unknown): void {
+    if (typeof value === 'boolean') fields[key] = value;
+}
+
+function addNumberField(fields: Record<string, unknown>, key: string, value: unknown): void {
+    if (typeof value === 'number' && Number.isFinite(value)) fields[key] = value;
+}
+
+function addStatusField(fields: Record<string, unknown>, key: string, value: unknown): void {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        fields[key] = value;
+        return;
+    }
+    addStringField(fields, key, value);
 }
 
 function emptyClaudeTokenUsage(): TokenUsage {

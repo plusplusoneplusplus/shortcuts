@@ -31,6 +31,7 @@ import {
     SDK_PROVIDER_CLAUDE,
     sdkServiceRegistry,
 } from '../../src/sdk-service-registry';
+import { initSDKLogger, resetSDKLogger } from '../../src/logger';
 
 // ============================================================================
 // Module mock for @anthropic-ai/claude-agent-sdk
@@ -125,6 +126,36 @@ function stubProcessPlatform(platform: NodeJS.Platform): () => void {
         if (original) {
             Object.defineProperty(process, 'platform', original);
         }
+    };
+}
+
+function createCapturingLogger() {
+    const logs: Array<{ level: string; fields: Record<string, unknown>; message: string }> = [];
+
+    function makeCapture(bindings: Record<string, unknown> = {}) {
+        const capture = (level: string, firstArg?: unknown, secondArg?: string) => {
+            const fields = typeof firstArg === 'object' && firstArg !== null && !Array.isArray(firstArg)
+                ? { ...bindings, ...(firstArg as Record<string, unknown>) }
+                : { ...bindings };
+            const message = typeof firstArg === 'string'
+                ? firstArg
+                : typeof secondArg === 'string'
+                    ? secondArg
+                    : '';
+            logs.push({ level, fields, message });
+        };
+        return {
+            debug: (a?: unknown, b?: string) => capture('debug', a, b),
+            info: (a?: unknown, b?: string) => capture('info', a, b),
+            warn: (a?: unknown, b?: string) => capture('warn', a, b),
+            error: (a?: unknown, b?: string) => capture('error', a, b),
+            child: (childBindings: Record<string, unknown>) => makeCapture({ ...bindings, ...childBindings }),
+        };
+    }
+
+    return {
+        logs,
+        logger: makeCapture(),
     };
 }
 
@@ -258,6 +289,7 @@ describe('ClaudeSDKService.listModels', () => {
     });
 
     afterEach(() => {
+        resetSDKLogger();
         svc.dispose();
     });
 
@@ -492,6 +524,7 @@ describe('ClaudeSDKService.sendMessage', () => {
     });
 
     afterEach(() => {
+        resetSDKLogger();
         svc.dispose();
     });
 
@@ -856,6 +889,70 @@ describe('ClaudeSDKService.sendMessage', () => {
         const result = await svc.sendMessage({ prompt: 'fail me' });
         expect(result.success).toBe(false);
         expect(result.error).toMatch(/something went wrong/);
+    });
+
+    it('logs sanitized metadata when Claude returns error_during_execution without a result body', async () => {
+        const capLogger = createCapturingLogger();
+        initSDKLogger(capLogger.logger as any);
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'result',
+                subtype: 'error_during_execution',
+                is_error: true,
+                session_id: 'provider-session',
+                duration_ms: 1234,
+                num_turns: 2,
+                api_error_status: 429,
+                terminal_reason: 'api_error',
+                stop_reason: 'rate_limit',
+            },
+        ]));
+
+        const result = await svc.sendMessage({
+            prompt: 'SECRET_PROMPT_TEXT',
+            model: 'opus',
+            workingDirectory: '/safe/project',
+            mode: 'autopilot',
+            systemMessage: { mode: 'append', content: 'SECRET_SYSTEM_PROMPT' },
+            mcpServers: {
+                safe_server: {
+                    command: 'node',
+                    args: ['bridge.js', '--token', 'SECRET_MCP_TOKEN'],
+                    env: { TOKEN: 'SECRET_MCP_TOKEN' },
+                },
+            },
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('Claude returned error_during_execution');
+
+        const warning = capLogger.logs.find(log =>
+            log.level === 'warn' &&
+            log.message === 'Claude SDK result message reported failure'
+        );
+        expect(warning?.fields).toMatchObject({
+            store: 'coc-agent-sdk',
+            provider: 'claude',
+            event: 'claude_result_failure',
+            subtype: 'error_during_execution',
+            is_error: true,
+            session_id: 'provider-session',
+            duration_ms: 1234,
+            num_turns: 2,
+            api_error_status: 429,
+            terminal_reason: 'api_error',
+            stop_reason: 'rate_limit',
+            requestedModel: 'opus',
+            effectiveModel: 'opus',
+            workingDirectory: '/safe/project',
+            permissionMode: 'bypassPermissions',
+            mcpConfigured: true,
+            mcpServerNames: ['safe_server'],
+        });
+        const serializedLog = JSON.stringify(warning);
+        expect(serializedLog).not.toContain('SECRET_PROMPT_TEXT');
+        expect(serializedLog).not.toContain('SECRET_SYSTEM_PROMPT');
+        expect(serializedLog).not.toContain('SECRET_MCP_TOKEN');
     });
 
     it('returns failure when request is already aborted', async () => {
