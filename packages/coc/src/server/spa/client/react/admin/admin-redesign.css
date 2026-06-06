@@ -132,19 +132,31 @@
   background: var(--ar-bg);
 }
 
-/* Sidebar — fills the grid row, scrolls internally only if its own
-   content is too tall for the viewport. */
+/* Sidebar — three-zone layout: fixed brand header, scrollable nav
+   groups, fixed footer.  The sidebar never scrolls as a whole; only
+   the middle nav zone scrolls when its content overflows. */
 .admin-redesign .ar-sidebar {
   background: var(--ar-bg-1);
   border-right: 1px solid var(--ar-border);
-  padding: 18px 14px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.admin-redesign .ar-sidebar-head {
+  padding: 18px 14px 4px;
+  flex-shrink: 0;
+}
+.admin-redesign .ar-sidebar-nav {
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: thin;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 .admin-redesign .ar-brand {
   display: flex;
@@ -261,8 +273,8 @@
 }
 
 .admin-redesign .ar-sidebar-foot {
-  margin-top: auto;
-  padding-top: 12px;
+  flex-shrink: 0;
+  padding: 12px 14px 14px;
   border-top: 1px solid var(--ar-border);
   display: flex;
   flex-direction: column;
@@ -320,6 +332,34 @@
   color: var(--ar-text);
   background: var(--ar-bg-3);
   border-color: var(--ar-border);
+}
+
+.admin-redesign .ar-sidebar-restart {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 30px;
+  border-radius: var(--ar-radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid var(--ar-border-strong);
+  background: var(--ar-bg-2);
+  color: var(--ar-text-2);
+  transition: background .12s, border-color .12s, color .12s;
+  white-space: nowrap;
+}
+.admin-redesign .ar-sidebar-restart:hover {
+  background: var(--ar-bg-3);
+  border-color: var(--ar-border-focus);
+  color: var(--ar-text);
+}
+.admin-redesign .ar-sidebar-restart[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 /* Mobile-only tab select shown when the sidebar collapses */
