@@ -134,7 +134,7 @@ export function ModePillSelector({
                 );
             })}
             {hasWorkflowOptions && (
-                <div className="relative shrink-0" data-testid="workflow-mode-selector">
+                <div className="relative shrink-0 inline-flex items-center" data-testid="workflow-mode-selector">
                     <button
                         type="button"
                         aria-haspopup="menu"
