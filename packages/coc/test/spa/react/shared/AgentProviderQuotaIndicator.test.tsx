@@ -80,7 +80,7 @@ describe('AgentProviderQuotaIndicator', () => {
         expect(container.className).toContain('md:block');
     });
 
-    it('renders one dropdown row per enabled provider with only the tightest quota type', async () => {
+    it('renders one dropdown row per enabled provider with every finite quota window', async () => {
         mocks.getAgentProvidersQuota.mockResolvedValue(quotaResponse({
             providers: [
                 {
@@ -96,8 +96,8 @@ describe('AgentProviderQuotaIndicator', () => {
                 {
                     id: 'codex',
                     quotaTypes: [
-                        quotaType({ type: 'seven_day', remainingPercentage: 0.9, usedRequests: 10, entitlementRequests: 100 }),
-                        quotaType({ type: 'five_hour', remainingPercentage: 0.2, usedRequests: 80, entitlementRequests: 100 }),
+                        quotaType({ type: 'seven_day', remainingPercentage: 0.9, usedRequests: 10, entitlementRequests: 100, resetDate: '2026-06-13T00:00:00.000Z' }),
+                        quotaType({ type: 'five_hour', remainingPercentage: 0.2, usedRequests: 80, entitlementRequests: 100, resetDate: '2026-06-06T15:00:00.000Z' }),
                     ],
                 },
                 {
@@ -122,9 +122,19 @@ describe('AgentProviderQuotaIndicator', () => {
 
         const codexRow = screen.getByTestId('quota-provider-row-codex');
         expect(codexRow.textContent).toContain('Codex');
+        // Both the weekly and 5h windows are now displayed.
+        expect(codexRow.textContent).toContain('Weekly');
         expect(codexRow.textContent).toContain('5h');
-        expect(codexRow.textContent).not.toContain('Weekly');
+        // The gauge stays driven by the most constrained (5h) window.
         expect(screen.getByTestId('quota-provider-gauge-codex').getAttribute('data-used-percent')).toBe('80');
+
+        const codexWeekly = screen.getByTestId('quota-provider-window-codex-seven_day');
+        expect(codexWeekly.textContent).toContain('10 / 100 used');
+        expect(codexWeekly.textContent).toContain('Reset 2026-06-13');
+
+        const codexFiveHour = screen.getByTestId('quota-provider-window-codex-five_hour');
+        expect(codexFiveHour.textContent).toContain('80 / 100 used');
+        expect(codexFiveHour.textContent).toContain('Reset 2026-06-06');
 
         const claudeRow = screen.getByTestId('quota-provider-row-claude');
         expect(claudeRow.textContent).toContain('Claude');

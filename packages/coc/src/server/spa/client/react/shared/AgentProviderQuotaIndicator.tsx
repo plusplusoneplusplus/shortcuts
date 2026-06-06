@@ -7,6 +7,7 @@ import type { AgentProviderId, AgentProvidersQuotaResponse, ProviderQuotaResult,
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import {
     formatQuotaTypeLabel,
+    getFiniteQuotaTypes,
     getMostConstrainedProviderQuota,
     getQuotaPercent,
     getQuotaRiskClasses,
@@ -114,10 +115,10 @@ function renderProviderQuotaRow(provider: ProviderQuotaResult) {
     }
 
     if (tightest) {
+        const finiteTypes = getFiniteQuotaTypes(provider.quotaTypes);
         const remainingPercent = getQuotaPercent(tightest.remainingPercentage);
         const usedPercent = getQuotaUsedPercent(tightest.remainingPercentage);
         const risk = getQuotaRiskClasses(remainingPercent);
-        const quotaLabel = formatQuotaTypeLabel(tightest.type);
         return (
             <div key={provider.id} className="px-3 py-2 border-b border-[#f0f0f0] dark:border-[#2d2d2d] last:border-b-0" data-testid={`quota-provider-row-${provider.id}`}>
                 <div className="flex items-start gap-2">
@@ -127,11 +128,19 @@ function renderProviderQuotaRow(provider: ProviderQuotaResult) {
                             <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">{label}</span>
                             <span className="text-[10px] font-semibold uppercase tracking-wide text-[#6e6e6e] dark:text-[#999]">{risk.badgeLabel}</span>
                         </div>
-                        <div className="mt-1 flex items-center justify-between gap-2 text-xs">
-                            <span className="font-medium text-[#57606a] dark:text-[#adbac7]">{quotaLabel}</span>
-                            <span className="text-[#6e6e6e] dark:text-[#999]">{tightest.usedRequests} / {tightest.entitlementRequests} used</span>
-                        </div>
-                        <div className="mt-0.5 text-[11px] text-[#6e6e6e] dark:text-[#999]">{formatResetDate(tightest.resetDate)}</div>
+                        {finiteTypes.map((quotaType, index) => (
+                            <div
+                                key={`${quotaType.type}-${quotaType.resetDate ?? index}`}
+                                className="mt-1"
+                                data-testid={`quota-provider-window-${provider.id}-${quotaType.type}`}
+                            >
+                                <div className="flex items-center justify-between gap-2 text-xs">
+                                    <span className="font-medium text-[#57606a] dark:text-[#adbac7]">{formatQuotaTypeLabel(quotaType.type)}</span>
+                                    <span className="text-[#6e6e6e] dark:text-[#999]">{quotaType.usedRequests} / {quotaType.entitlementRequests} used</span>
+                                </div>
+                                <div className="mt-0.5 text-[11px] text-[#6e6e6e] dark:text-[#999]">{formatResetDate(quotaType.resetDate)}</div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </div>

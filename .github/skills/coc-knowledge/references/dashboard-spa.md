@@ -252,8 +252,11 @@ quota button still calls the force path. The desktop
 top-bar `AgentProviderQuotaIndicator` uses the same helpers to fill a circular
 gauge to the most-constrained enabled provider's used percentage and to render a
 NotificationBell-style dropdown. The dropdown lists one row per enabled
-provider, showing only that provider's tightest finite quota type, an unlimited
-badge for all-unlimited providers, provider-level errors, a last-updated line,
+provider; each row's gauge and risk badge are driven by that provider's tightest
+finite quota window, while the body lists every finite quota window (e.g. both
+`5h` and `Weekly`) with its used/entitlement caption and reset date. It also
+shows an unlimited badge for all-unlimited providers, provider-level errors, a
+last-updated line,
 a force-refresh button that calls `admin.getAgentProvidersQuota({ force: true })`,
 and an `#admin/agents` link to the AI Provider page.
 
