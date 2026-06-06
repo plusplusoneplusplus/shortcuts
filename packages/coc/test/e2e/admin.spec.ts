@@ -71,7 +71,6 @@ test.describe('Admin Panel (008)', () => {
         expect(byLabel.Configure).toEqual([
             'Configure',
             'AI Provider',
-            'Providers',
             'Servers',
         ]);
         expect(byLabel.Knowledge).toEqual(['Memory', 'Skills']);
@@ -98,7 +97,7 @@ test.describe('Admin Panel (008)', () => {
         );
         const byLabel = Object.fromEntries(groups.map(group => [group.label, group.values]));
 
-        expect(byLabel.Configure).toEqual(expect.arrayContaining(['settings:configure', 'admin:agents', 'admin:providers']));
+        expect(byLabel.Configure).toEqual(expect.arrayContaining(['settings:configure', 'admin:agents']));
         expect(byLabel.Knowledge).toEqual(expect.arrayContaining(['tool:memory', 'tool:skills']));
         expect(byLabel.Operations).toEqual(expect.arrayContaining(['tool:stats', 'tool:logs', 'admin:data']));
         expect(byLabel['Developer / Internals']).toEqual(expect.arrayContaining(['admin:prompts', 'admin:database', 'settings:advanced']));
