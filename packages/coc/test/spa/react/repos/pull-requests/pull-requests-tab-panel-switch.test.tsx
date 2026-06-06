@@ -11,6 +11,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isRalphEnabled: () => false,
     isPullRequestsSuggestionsEnabled: () => false,
     getActiveProvider: () => 'copilot',
+    isSessionContextAttachmentsEnabled: () => false,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({

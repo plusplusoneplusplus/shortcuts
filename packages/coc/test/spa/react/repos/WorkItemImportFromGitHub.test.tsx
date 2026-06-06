@@ -48,6 +48,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isWorkItemsSyncEnabled: () => mocks.isWorkItemsSyncEnabled(),
+    isSessionContextAttachmentsEnabled: () => false,
 }));
 
 const importedItem = {
