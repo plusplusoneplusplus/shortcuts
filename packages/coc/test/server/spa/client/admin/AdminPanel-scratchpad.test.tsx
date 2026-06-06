@@ -147,7 +147,7 @@ describe('AdminPanel — Scratchpad toggle', () => {
         });
     });
 
-    it('renders admin stats from the typed admin client', async () => {
+    it('does not render sidebar stats block but still calls the stats API', async () => {
         mockFetch.mockImplementation((url: string) => {
             if (url.includes('/admin/data/stats')) return Promise.resolve(mockStatsResponse({ processCount: 7, wikiCount: 2, totalBytes: 1536 }));
             if (url.includes('/admin/config')) return Promise.resolve(mockConfigResponse());
@@ -158,13 +158,11 @@ describe('AdminPanel — Scratchpad toggle', () => {
         render(<AdminPanel />);
 
         await waitFor(() => {
-            // The sidebar stats block renders the count and label in separate
-            // spans, so the row's combined text content is "Processes7".
-            expect(screen.getByTestId('stat-processes').textContent).toMatch(/Processes.*7/);
+            expect(mockFetch.mock.calls.some(([url]) => String(url).includes('/admin/data/stats?includeWikis=true'))).toBe(true);
         });
-        expect(screen.getByTestId('stat-wikis').textContent).toMatch(/Wikis.*2/);
-        expect(screen.getByTestId('stat-disk').textContent).toMatch(/Disk.*1\.5 KB/);
-        expect(mockFetch.mock.calls.some(([url]) => String(url).includes('/admin/data/stats?includeWikis=true'))).toBe(true);
+        expect(screen.queryByTestId('stat-processes')).toBeNull();
+        expect(screen.queryByTestId('stat-wikis')).toBeNull();
+        expect(screen.queryByTestId('stat-disk')).toBeNull();
     });
 
     /**

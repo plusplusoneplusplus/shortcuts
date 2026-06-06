@@ -55,6 +55,65 @@ function renderAdmin() {
 
 // ── AdminPanel grouped sidebar navigation ─────────────────────
 
+describe('AdminPanel — sidebar layout zones', () => {
+    it('renders the sidebar with fixed header, scrollable nav, and fixed footer zones', async () => {
+        await act(async () => { renderAdmin(); });
+        await waitFor(() => {
+            const sidebar = document.querySelector('.ar-sidebar');
+            expect(sidebar).toBeTruthy();
+            expect(sidebar!.querySelector('.ar-sidebar-head')).toBeTruthy();
+            expect(sidebar!.querySelector('.ar-sidebar-nav')).toBeTruthy();
+            expect(sidebar!.querySelector('.ar-sidebar-foot')).toBeTruthy();
+        });
+    });
+
+    it('renders brand/title inside the fixed header zone', async () => {
+        await act(async () => { renderAdmin(); });
+        await waitFor(() => {
+            const head = document.querySelector('.ar-sidebar-head');
+            expect(head).toBeTruthy();
+            expect(head!.querySelector('.ar-brand')).toBeTruthy();
+            expect(head!.textContent).toContain('CoC Admin');
+        });
+    });
+
+    it('renders nav groups inside the scrollable middle zone', async () => {
+        await act(async () => { renderAdmin(); });
+        await waitFor(() => {
+            const nav = document.querySelector('.ar-sidebar-nav');
+            expect(nav).toBeTruthy();
+            const labels = Array.from(nav!.querySelectorAll('.ar-nav-group-label')).map(el => el.textContent);
+            expect(labels).toEqual(['Configure', 'Knowledge', 'Operations', 'Developer / Internals']);
+        });
+    });
+
+    it('renders restart button in the fixed footer zone', async () => {
+        await act(async () => { renderAdmin(); });
+        await waitFor(() => {
+            const foot = document.querySelector('.ar-sidebar-foot');
+            expect(foot).toBeTruthy();
+            const restartBtn = foot!.querySelector('[data-testid="sidebar-restart-btn"]') as HTMLButtonElement;
+            expect(restartBtn).toBeTruthy();
+            expect(restartBtn.textContent).toContain('Restart Server');
+            expect(restartBtn.disabled).toBe(false);
+        });
+    });
+
+    it('sidebar restart button triggers the restart handler', async () => {
+        await act(async () => { renderAdmin(); });
+        await waitFor(() => expect(document.querySelector('[data-testid="sidebar-restart-btn"]')).toBeTruthy());
+
+        await act(async () => {
+            fireEvent.click(document.querySelector('[data-testid="sidebar-restart-btn"]')!);
+        });
+
+        const restartCall = mockFetch.mock.calls.find(
+            (call: any[]) => typeof call[0] === 'string' && call[0].includes('/api/admin/restart')
+        );
+        expect(restartCall).toBeTruthy();
+    });
+});
+
 describe('AdminPanel — grouped sidebar navigation', () => {
     it('renders user-intent nav groups in the sidebar', async () => {
         await act(async () => { renderAdmin(); });

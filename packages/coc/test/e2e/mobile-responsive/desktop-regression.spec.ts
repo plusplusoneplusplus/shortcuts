@@ -157,22 +157,14 @@ test.describe('Desktop Regression', () => {
         await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
     });
 
-    test('desktop: admin panel renders', async ({ page, serverUrl }) => {
+    test('desktop: admin panel renders with restart button in sidebar footer', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
         await page.click('#admin-toggle');
 
         await expect(page.locator('#view-admin')).toBeVisible({ timeout: 5000 });
-        await expect(page.locator('[data-testid="stat-processes"]')).toBeVisible();
-        await expect(page.locator('[data-testid="stat-wikis"]')).toBeVisible();
-        await expect(page.locator('[data-testid="stat-disk"]')).toBeVisible();
 
-        // Sidebar usage block stacks the stats vertically (Linear-inspired admin
-        // redesign). Each subsequent stat must sit below the previous one.
-        const procBox = await page.locator('[data-testid="stat-processes"]').boundingBox();
-        const wikiBox = await page.locator('[data-testid="stat-wikis"]').boundingBox();
-        const diskBox = await page.locator('[data-testid="stat-disk"]').boundingBox();
-        expect(procBox && wikiBox && diskBox).toBeTruthy();
-        expect(wikiBox!.y).toBeGreaterThanOrEqual(procBox!.y);
-        expect(diskBox!.y).toBeGreaterThanOrEqual(wikiBox!.y);
+        // Sidebar stats block is removed; restart button is in the footer
+        await expect(page.locator('[data-testid="stat-processes"]')).toHaveCount(0);
+        await expect(page.locator('[data-testid="sidebar-restart-btn"]')).toBeVisible();
     });
 });

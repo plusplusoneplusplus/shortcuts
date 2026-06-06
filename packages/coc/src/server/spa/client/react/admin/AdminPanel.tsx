@@ -1201,73 +1201,56 @@ export function AdminPanel() {
             <div id="admin-page-content" className="ar-shell">
                 {/* ── Sidebar ── */}
                 <aside className="ar-sidebar" aria-label="Admin sections">
-                    <div className="ar-brand">
-                        <div className="ar-brand-logo" aria-hidden="true" />
-                        <div className="ar-brand-text">
-                            <span className="ar-brand-name">CoC Admin</span>
-                            <span className="ar-brand-sub">{versionInfo?.version ? `v${versionInfo.version}` : 'Local server'}</span>
+                    <div className="ar-sidebar-head">
+                        <div className="ar-brand">
+                            <div className="ar-brand-logo" aria-hidden="true" />
+                            <div className="ar-brand-text">
+                                <span className="ar-brand-name">CoC Admin</span>
+                                <span className="ar-brand-sub">{versionInfo?.version ? `v${versionInfo.version}` : 'Local server'}</span>
+                            </div>
                         </div>
                     </div>
 
-                    {navGroups.map(group => (
-                        <nav key={group.label} className="ar-nav-group" aria-label={group.label}>
-                            <div className="ar-nav-group-label">{group.label}</div>
-                            {group.items.map(item => {
-                                const isActive = activeNavKey === item.key;
-                                const isTool = item.action.kind === 'tool';
-                                return (
-                                    <button
-                                        key={item.key}
-                                        id={isTool ? item.testId : undefined}
-                                        type="button"
-                                        className={`ar-nav-item${isActive ? ' is-active' : ''}`}
-                                        onClick={() => handleNavItemClick(item)}
-                                        data-testid={item.testId}
-                                        data-tab={isTool ? item.action.tab : undefined}
-                                        aria-label={item.label}
-                                        aria-current={isActive ? 'page' : undefined}
-                                        title={item.label}
-                                    >
-                                        <span className="ar-nav-icon" aria-hidden="true">{item.icon}</span>
-                                        <span className="ar-nav-label">{item.label}</span>
-                                    </button>
-                                );
-                            })}
-                        </nav>
-                    ))}
+                    <div className="ar-sidebar-nav">
+                        {navGroups.map(group => (
+                            <nav key={group.label} className="ar-nav-group" aria-label={group.label}>
+                                <div className="ar-nav-group-label">{group.label}</div>
+                                {group.items.map(item => {
+                                    const isActive = activeNavKey === item.key;
+                                    const isTool = item.action.kind === 'tool';
+                                    return (
+                                        <button
+                                            key={item.key}
+                                            id={isTool ? item.testId : undefined}
+                                            type="button"
+                                            className={`ar-nav-item${isActive ? ' is-active' : ''}`}
+                                            onClick={() => handleNavItemClick(item)}
+                                            data-testid={item.testId}
+                                            data-tab={isTool ? item.action.tab : undefined}
+                                            aria-label={item.label}
+                                            aria-current={isActive ? 'page' : undefined}
+                                            title={item.label}
+                                        >
+                                            <span className="ar-nav-icon" aria-hidden="true">{item.icon}</span>
+                                            <span className="ar-nav-label">{item.label}</span>
+                                        </button>
+                                    );
+                                })}
+                            </nav>
+                        ))}
+                    </div>
 
                     <div className="ar-sidebar-foot">
-                        <div className="ar-stats-block">
-                            <div className="ar-stats-head">
-                                <span>Usage</span>
-                                <button
-                                    id="admin-refresh-stats"
-                                    type="button"
-                                    onClick={loadStats}
-                                    title="Refresh stats"
-                                    className="ar-stats-refresh"
-                                    aria-label="Refresh stats"
-                                >↻</button>
-                            </div>
-                            {statsLoading ? (
-                                <Spinner size="sm" />
-                            ) : (
-                                <>
-                                    <div className="ar-stat-row" data-testid="stat-processes">
-                                        <span className="ar-stat-label">Processes</span>
-                                        <span className="ar-stat-value">{stats?.processCount ?? '—'}</span>
-                                    </div>
-                                    <div className="ar-stat-row" data-testid="stat-wikis">
-                                        <span className="ar-stat-label">Wikis</span>
-                                        <span className="ar-stat-value">{stats?.wikiCount ?? '—'}</span>
-                                    </div>
-                                    <div className="ar-stat-row" data-testid="stat-disk">
-                                        <span className="ar-stat-label">Disk</span>
-                                        <span className="ar-stat-value">{stats?.totalBytes != null ? formatBytes(stats.totalBytes) : '—'}</span>
-                                    </div>
-                                </>
-                            )}
-                        </div>
+                        <button
+                            type="button"
+                            className="ar-sidebar-restart"
+                            onClick={handleRestart}
+                            disabled={restarting}
+                            data-testid="sidebar-restart-btn"
+                            title={restarting ? restartStatus : 'Rebuild & restart the CoC server'}
+                        >
+                            {restarting ? <><Spinner size="sm" /> Restarting…</> : '↻ Restart Server'}
+                        </button>
                     </div>
                 </aside>
 

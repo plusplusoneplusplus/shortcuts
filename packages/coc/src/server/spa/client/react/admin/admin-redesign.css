@@ -132,19 +132,31 @@
   background: var(--ar-bg);
 }
 
-/* Sidebar — fills the grid row, scrolls internally only if its own
-   content is too tall for the viewport. */
+/* Sidebar — three-zone layout: fixed brand header, scrollable nav
+   groups, fixed footer.  The sidebar never scrolls as a whole; only
+   the middle nav zone scrolls when its content overflows. */
 .admin-redesign .ar-sidebar {
   background: var(--ar-bg-1);
   border-right: 1px solid var(--ar-border);
-  padding: 18px 14px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.admin-redesign .ar-sidebar-head {
+  padding: 18px 14px 4px;
+  flex-shrink: 0;
+}
+.admin-redesign .ar-sidebar-nav {
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: thin;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 .admin-redesign .ar-brand {
   display: flex;
@@ -261,65 +273,39 @@
 }
 
 .admin-redesign .ar-sidebar-foot {
-  margin-top: auto;
-  padding-top: 12px;
+  flex-shrink: 0;
+  padding: 12px 14px 14px;
   border-top: 1px solid var(--ar-border);
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
-.admin-redesign .ar-stats-block {
-  display: grid;
-  gap: 8px;
-  padding: 10px 10px;
-  background: var(--ar-bg-2);
-  border-radius: var(--ar-radius);
-  border: 1px solid var(--ar-border);
-}
-.admin-redesign .ar-stats-block .ar-stats-head {
+.admin-redesign .ar-sidebar-restart {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 10.5px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--ar-text-dim);
-}
-.admin-redesign .ar-stats-block .ar-stat-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  font-size: 11.5px;
-}
-.admin-redesign .ar-stats-block .ar-stat-row .ar-stat-label {
-  color: var(--ar-text-mute);
-}
-.admin-redesign .ar-stats-block .ar-stat-row .ar-stat-value {
-  color: var(--ar-text);
-  font-family: var(--ar-font-mono);
-  font-size: 12px;
-  font-weight: 500;
-}
-.admin-redesign .ar-stats-block .ar-stats-refresh {
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--ar-text-mute);
-  cursor: pointer;
-  font-size: 13px;
-  line-height: 1;
-  display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0;
+  gap: 6px;
+  width: 100%;
+  height: 30px;
+  border-radius: var(--ar-radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid var(--ar-border-strong);
+  background: var(--ar-bg-2);
+  color: var(--ar-text-2);
+  transition: background .12s, border-color .12s, color .12s;
+  white-space: nowrap;
 }
-.admin-redesign .ar-stats-block .ar-stats-refresh:hover {
-  color: var(--ar-text);
+.admin-redesign .ar-sidebar-restart:hover {
   background: var(--ar-bg-3);
-  border-color: var(--ar-border);
+  border-color: var(--ar-border-focus);
+  color: var(--ar-text);
+}
+.admin-redesign .ar-sidebar-restart[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 /* Mobile-only tab select shown when the sidebar collapses */

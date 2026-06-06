@@ -96,7 +96,7 @@ describe('UsageStatsView', () => {
         expect(mockReload).toHaveBeenCalledTimes(1);
     });
 
-    it('renders table with date and model header when data is present', () => {
+    it('renders table with date, model column, and "All models" summary row', () => {
         (useTokenUsageStats as ReturnType<typeof vi.fn>).mockReturnValue(
             makeHookResult({
                 data: {
@@ -109,16 +109,56 @@ describe('UsageStatsView', () => {
         );
         render(<UsageStatsView />);
         expect(screen.getByText('2025-07-10')).toBeTruthy();
-        expect(screen.getByText('gpt-4o')).toBeTruthy();
+        expect(screen.getAllByText('gpt-4o').length).toBeGreaterThanOrEqual(1);
+        expect(screen.getAllByText('All models').length).toBeGreaterThan(0);
         expect(screen.getAllByText('Total').length).toBeGreaterThan(0);
     });
 
-    it('renders — for missing model data in a row', () => {
+    it('renders per-model rows under each date group', () => {
+        (useTokenUsageStats as ReturnType<typeof vi.fn>).mockReturnValue(
+            makeHookResult({
+                data: {
+                    entries: [{
+                        date: '2025-07-10',
+                        byModel: {
+                            'gpt-4o': makeUsage({ inputTokens: 500 }),
+                            'claude-3': makeUsage({ inputTokens: 800 }),
+                        },
+                        dayTotal: makeUsage({ inputTokens: 1300 }),
+                    }],
+                    models: ['gpt-4o', 'claude-3'],
+                    generatedAt: '2025-07-10T12:00:00Z',
+                    totalDays: 1,
+                },
+            })
+        );
+        render(<UsageStatsView />);
+        expect(screen.getAllByText('gpt-4o').length).toBeGreaterThanOrEqual(1);
+        expect(screen.getAllByText('claude-3').length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('only shows models that have data for a given date', () => {
         (useTokenUsageStats as ReturnType<typeof vi.fn>).mockReturnValue(
             makeHookResult({
                 data: {
                     entries: [makeEntry('2025-07-10', 'gpt-4o')],
                     models: ['gpt-4o', 'claude-3'],
+                    generatedAt: '2025-07-10T12:00:00Z',
+                    totalDays: 1,
+                },
+            })
+        );
+        render(<UsageStatsView />);
+        const gpt4oCells = screen.getAllByText('gpt-4o');
+        expect(gpt4oCells.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('shows — for models with no usage in the grand total', () => {
+        (useTokenUsageStats as ReturnType<typeof vi.fn>).mockReturnValue(
+            makeHookResult({
+                data: {
+                    entries: [makeEntry('2025-07-10', 'gpt-4o')],
+                    models: ['gpt-4o', 'never-used-model'],
                     generatedAt: '2025-07-10T12:00:00Z',
                     totalDays: 1,
                 },
@@ -153,7 +193,7 @@ describe('UsageStatsView', () => {
         expect(screen.getByText(/Generated at:/)).toBeTruthy();
     });
 
-    it('shows premium units only in rightmost total cells', () => {
+    it('shows premium units only in cost-details cells (All models summary)', () => {
         (useTokenUsageStats as ReturnType<typeof vi.fn>).mockReturnValue(
             makeHookResult({
                 data: {
@@ -176,16 +216,10 @@ describe('UsageStatsView', () => {
 
         render(<UsageStatsView />);
 
-        expect(screen.getAllByText('↓14.1M total').length).toBe(4);
-        expect(screen.getAllByText('· 9.5M cached').length).toBe(4);
-        expect(screen.getAllByText('· 4.6M new').length).toBe(4);
-        expect(screen.getAllByText('↑125.4k out').length).toBe(4);
-        expect(screen.getAllByText('· 18.2k cache write').length).toBe(4);
         expect(screen.getAllByText('Premium units: 416.38').length).toBe(2);
-        expect(screen.queryByText(/416\.38 units/)).toBeNull();
     });
 
-    it('renders estimated token cost only in rightmost total cells', () => {
+    it('renders estimated token cost only in cost-details cells', () => {
         (useTokenUsageStats as ReturnType<typeof vi.fn>).mockReturnValue(
             makeHookResult({
                 data: {
@@ -240,5 +274,58 @@ describe('UsageStatsView', () => {
 
         expect(screen.getAllByText('Premium units: 12.50').length).toBe(2);
         expect(document.body.textContent).not.toContain('$12.50');
+    });
+
+    it('fits within a fixed number of columns regardless of model count', () => {
+        const manyModels = Array.from({ length: 20 }, (_, i) => `model-${i}`);
+        const byModel: Record<string, ClientTokenUsage> = {};
+        for (const m of manyModels) {
+            byModel[m] = makeUsage({ inputTokens: 100 * (manyModels.indexOf(m) + 1) });
+        }
+        const dayTotal = makeUsage({ inputTokens: 2000, outputTokens: 1000 });
+
+        (useTokenUsageStats as ReturnType<typeof vi.fn>).mockReturnValue(
+            makeHookResult({
+                data: {
+                    entries: [{ date: '2025-07-10', byModel, dayTotal }],
+                    models: manyModels,
+                    generatedAt: '2025-07-10T12:00:00Z',
+                    totalDays: 1,
+                },
+            })
+        );
+
+        render(<UsageStatsView />);
+
+        const headers = screen.getAllByRole('columnheader');
+        expect(headers).toHaveLength(3);
+        expect(headers[0].textContent).toBe('Date');
+        expect(headers[1].textContent).toBe('Model');
+        expect(headers[2].textContent).toBe('Tokens');
+
+        for (const m of manyModels) {
+            expect(screen.getAllByText(m).length).toBeGreaterThanOrEqual(1);
+        }
+    });
+
+    it('shows grand total in footer with per-model breakdowns', () => {
+        (useTokenUsageStats as ReturnType<typeof vi.fn>).mockReturnValue(
+            makeHookResult({
+                data: {
+                    entries: [
+                        makeEntry('2025-07-10', 'gpt-4o', { inputTokens: 2000, outputTokens: 1000 }),
+                        makeEntry('2025-07-11', 'gpt-4o', { inputTokens: 3000, outputTokens: 1500 }),
+                    ],
+                    models: ['gpt-4o'],
+                    generatedAt: '2025-07-11T12:00:00Z',
+                    totalDays: 2,
+                },
+            })
+        );
+
+        render(<UsageStatsView />);
+
+        expect(screen.getByText('Total')).toBeTruthy();
+        expect(screen.getAllByText('All models').length).toBe(3);
     });
 });

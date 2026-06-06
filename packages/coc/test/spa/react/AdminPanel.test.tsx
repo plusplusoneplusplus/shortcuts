@@ -51,7 +51,7 @@ describe('AdminPanel', () => {
         expect(screen.queryByRole('heading', { name: 'Admin' })).toBeNull();
     });
 
-    it('renders storage stats section', async () => {
+    it('does not render the sidebar usage stats block', async () => {
         mockFetch.mockImplementation((url: string) => {
             if (url.includes('/admin/data/stats')) {
                 return Promise.resolve({
@@ -66,11 +66,9 @@ describe('AdminPanel', () => {
             renderWithProviders();
         });
 
-        await waitFor(() => {
-            expect(screen.getByTestId('stat-processes').textContent).toContain('42');
-            expect(screen.getByTestId('stat-wikis').textContent).toContain('5');
-            expect(screen.getByTestId('stat-disk').textContent).toContain('1.0 MB');
-        });
+        expect(screen.queryByTestId('stat-processes')).toBeNull();
+        expect(screen.queryByTestId('stat-wikis')).toBeNull();
+        expect(screen.queryByTestId('stat-disk')).toBeNull();
     });
 
     it('renders configuration section with editable fields', async () => {

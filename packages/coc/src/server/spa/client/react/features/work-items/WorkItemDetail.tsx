@@ -800,9 +800,18 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             Plan v{item.plan.version}
                         </span>
                     )}
-                    <span className="inline-flex items-center rounded-full h-6 px-2 border border-[#d0d7de] dark:border-[#555] bg-[#f6f8fa] dark:bg-transparent text-[11px] text-[#656d76] dark:text-[#999] whitespace-nowrap">
-                        {d.priority}
-                    </span>
+                    <select
+                        value={d.priority}
+                        onChange={e => updateDraft('priority', e.target.value as 'high' | 'normal' | 'low')}
+                        className="h-[24px] rounded-full border border-[#d0d7de] dark:border-[#555] bg-[#f6f8fa] dark:bg-transparent px-2 text-[11px] text-[#656d76] dark:text-[#999] cursor-pointer appearance-none outline-none whitespace-nowrap"
+                        disabled={saving}
+                        data-testid="wi-priority-select"
+                        aria-label="Priority"
+                    >
+                        <option value="high">High</option>
+                        <option value="normal">Normal</option>
+                        <option value="low">Low</option>
+                    </select>
                     <span className="text-[11px] leading-[1.35] text-[#656d76] dark:text-[#999] truncate min-w-0 flex-1">
                         Updated {formatRelativeTime(item.updatedAt)}
                     </span>
@@ -1094,22 +1103,6 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                 <span className="text-[#656d76] dark:text-[#999] font-mono">{item.parentId.slice(0, 8)}…</span>
                             </span>
                         ) : null}
-                        {/* Priority */}
-                        <span className="flex items-center gap-1" data-testid="wi-edit-fields">
-                            <strong className="text-[#1f2328] dark:text-[#cccccc]">Pri</strong>
-                            <select
-                                className="text-[11px] px-0.5 py-0 rounded border border-[#d0d7de] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1f2328] dark:text-[#cccccc] outline-none"
-                                value={d.priority}
-                                onChange={e => updateDraft('priority', e.target.value as 'high' | 'normal' | 'low')}
-                                disabled={saving}
-                                data-testid="wi-priority-select"
-                                aria-label="Priority"
-                            >
-                                <option value="high">High</option>
-                                <option value="normal">Normal</option>
-                                <option value="low">Low</option>
-                            </select>
-                        </span>
                         {/* Tags */}
                         <span className="flex items-center gap-1 min-w-0">
                             <strong className="text-[#1f2328] dark:text-[#cccccc] shrink-0">Tags</strong>
@@ -1158,19 +1151,6 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     </div>
                 </article>
 
-                {/* Remote mirror section */}
-                {(item.githubMirror || item.azureBoardsMirror) && (
-                    <section className="text-[12px]" data-testid={item.githubMirror ? 'work-item-github-mirror' : 'work-item-azure-boards-mirror'}>
-                        <div className="flex flex-wrap gap-2">
-                            <WorkItemRemoteMirrorBadge
-                                githubMirror={item.githubMirror}
-                                azureBoardsMirror={item.azureBoardsMirror}
-                                asLink
-                                data-testid={item.githubMirror ? 'work-item-github-mirror-link' : 'work-item-azure-boards-mirror-link'}
-                            />
-                        </div>
-                    </section>
-                )}
 
                 {/* AI Review section (aiDone only) */}
                 {isAiDone && (

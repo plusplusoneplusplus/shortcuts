@@ -68,17 +68,20 @@ describe('AdminPanel — fit-to-viewport layout invariants', () => {
         expect(shell).not.toMatch(/min-height:\s*100%/);
     });
 
-    it('.ar-sidebar fills the grid row, scrolls only its own overflow, and is NOT sticky', () => {
+    it('.ar-sidebar fills the grid row with three fixed zones and does NOT scroll as a whole', () => {
         const sidebar = block('.ar-sidebar');
         expect(sidebar).toMatch(/height:\s*100%/);
         expect(sidebar).toMatch(/min-height:\s*0/);
-        expect(sidebar).toMatch(/overflow-y:\s*auto/);
-        // The previous design used sticky + 100vh to keep the sidebar in view
-        // while the whole page scrolled. With fit-to-viewport, both are
-        // unnecessary and would be wrong (100vh != container height in a
-        // dialog or nested pane).
+        expect(sidebar).toMatch(/overflow:\s*hidden/);
         expect(sidebar).not.toMatch(/position:\s*sticky/);
         expect(sidebar).not.toMatch(/height:\s*100vh/);
+    });
+
+    it('.ar-sidebar-nav is the scrollable zone inside the sidebar', () => {
+        const nav = block('.ar-sidebar-nav');
+        expect(nav).toMatch(/flex:\s*1/);
+        expect(nav).toMatch(/min-height:\s*0/);
+        expect(nav).toMatch(/overflow-y:\s*auto/);
     });
 
     it('.ar-main is the single internal scroller', () => {

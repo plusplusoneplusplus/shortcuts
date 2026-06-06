@@ -72,21 +72,12 @@ function sumByModel(entries: ClientTokenUsageStatsEntry[], model: string): Clien
     );
 }
 
-function UsageCell({
-    usage,
-    showCostDetails = false,
-}: {
-    usage: ClientTokenUsage;
-    showCostDetails?: boolean;
-}) {
-    const premiumUnits = showCostDetails ? fmtPremiumUnits(usage.cost) : null;
-    const estimatedCost = showCostDetails && usage.estimatedUsdCost !== undefined
-        ? fmtUsdCost(usage.estimatedUsdCost)
-        : null;
+function buildTooltip(usage: ClientTokenUsage, showCostDetails: boolean): string {
     const cachedInputTokens = usage.cacheReadTokens;
     const newInputTokens = Math.max(usage.inputTokens - cachedInputTokens - usage.cacheWriteTokens, 0);
+    const premiumUnits = showCostDetails ? fmtPremiumUnits(usage.cost) : null;
 
-    const tooltip = [
+    return [
         `Input total:   ${usage.inputTokens.toLocaleString()}`,
         `Input cached/read: ${cachedInputTokens.toLocaleString()}`,
         `Input non-cached:  ${newInputTokens.toLocaleString()}`,
@@ -104,6 +95,22 @@ function UsageCell({
         ...(showCostDetails && premiumUnits ? [`Premium units: ${premiumUnits}`] : []),
         ...(showCostDetails && usage.pricingSource ? [`Pricing source: ${usage.pricingSource}`] : []),
     ].join('\n');
+}
+
+function UsageCell({
+    usage,
+    showCostDetails = false,
+}: {
+    usage: ClientTokenUsage;
+    showCostDetails?: boolean;
+}) {
+    const premiumUnits = showCostDetails ? fmtPremiumUnits(usage.cost) : null;
+    const estimatedCost = showCostDetails && usage.estimatedUsdCost !== undefined
+        ? fmtUsdCost(usage.estimatedUsdCost)
+        : null;
+    const cachedInputTokens = usage.cacheReadTokens;
+    const newInputTokens = Math.max(usage.inputTokens - cachedInputTokens - usage.cacheWriteTokens, 0);
+    const tooltip = buildTooltip(usage, showCostDetails);
 
     return (
         <span title={tooltip} className="cursor-default inline-flex flex-col gap-0.5 leading-snug">
@@ -130,8 +137,48 @@ const thClass =
     'px-3 py-2 text-left font-semibold text-xs text-[var(--vscode-descriptionForeground)] ' +
     'uppercase border-b border-[var(--vscode-panel-border)] whitespace-nowrap';
 
-const tdClass = 'px-3 py-1.5 align-top whitespace-nowrap';
-const tdDateClass = 'px-3 py-1.5 align-top font-mono text-[var(--vscode-foreground)] whitespace-nowrap';
+const tdClass = 'px-3 py-1.5 align-top';
+
+function DateGroupRow({
+    entry,
+    models,
+    isEven,
+}: {
+    entry: ClientTokenUsageStatsEntry;
+    models: string[];
+    isEven: boolean;
+}) {
+    const modelsWithUsage = models.filter(m => entry.byModel[m]);
+    const bgClass = isEven ? '' : 'bg-[var(--vscode-list-hoverBackground)]';
+
+    return (
+        <>
+            {/* Day total summary row */}
+            <tr className={`border-b border-[var(--vscode-panel-border)] ${bgClass}`}>
+                <td className="px-3 py-1.5 align-top font-mono text-[var(--vscode-foreground)] whitespace-nowrap" rowSpan={modelsWithUsage.length + 1}>
+                    {entry.date}
+                </td>
+                <td className={`${tdClass} font-semibold text-[var(--vscode-foreground)]`}>
+                    All models
+                </td>
+                <td className={tdClass}>
+                    <UsageCell usage={entry.dayTotal} showCostDetails />
+                </td>
+            </tr>
+            {/* Per-model rows */}
+            {modelsWithUsage.map(model => (
+                <tr key={model} className={`border-b border-[var(--vscode-panel-border)] ${bgClass}`}>
+                    <td className={`${tdClass} text-[var(--vscode-descriptionForeground)] truncate max-w-[200px]`} title={model}>
+                        {model}
+                    </td>
+                    <td className={tdClass}>
+                        <UsageCell usage={entry.byModel[model]} />
+                    </td>
+                </tr>
+            ))}
+        </>
+    );
+}
 
 export function UsageStatsView() {
     const [days, setDays] = useState<number | undefined>(30);
@@ -197,64 +244,51 @@ export function UsageStatsView() {
                     <table className="w-full text-xs border-collapse">
                         <thead className="sticky top-0 bg-[var(--vscode-editor-background)] z-10">
                             <tr>
-                                <th className={thClass}>Date</th>
-                                {data.models.map(m => (
-                                    <th key={m} className={thClass} title={m}>
-                                        {m.length > 20 ? m.slice(0, 18) + '…' : m}
-                                    </th>
-                                ))}
-                                <th className={thClass}>Total</th>
+                                <th className={thClass} style={{ width: '110px' }}>Date</th>
+                                <th className={thClass} style={{ width: '200px' }}>Model</th>
+                                <th className={thClass}>Tokens</th>
                             </tr>
                         </thead>
                         <tbody>
                             {data.entries.map((entry, i) => (
-                                <tr
+                                <DateGroupRow
                                     key={entry.date}
-                                    className={
-                                        'border-b border-[var(--vscode-panel-border)] ' +
-                                        (i % 2 === 1 ? 'bg-[var(--vscode-list-hoverBackground)]' : '')
-                                    }
-                                >
-                                    <td className={tdDateClass}>{entry.date}</td>
-
-                                    {data.models.map(model => {
-                                        const usage = entry.byModel[model];
-                                        return (
-                                            <td key={model} className={tdClass}>
-                                                {usage ? (
-                                                    <UsageCell usage={usage} />
-                                                ) : (
-                                                    <span className="text-[var(--vscode-descriptionForeground)]">—</span>
-                                                )}
-                                            </td>
-                                        );
-                                    })}
-
-                                    <td className={tdClass}>
-                                        <UsageCell usage={entry.dayTotal} showCostDetails />
-                                    </td>
-                                </tr>
+                                    entry={entry}
+                                    models={data.models}
+                                    isEven={i % 2 === 0}
+                                />
                             ))}
                         </tbody>
                         <tfoot>
+                            {/* Grand total row */}
                             <tr className="border-t-2 border-[var(--vscode-panel-border)] font-semibold bg-[var(--vscode-editor-background)]">
-                                <td className={tdDateClass}>Total</td>
-                                {data.models.map(model => {
-                                    const total = sumByModel(data.entries, model);
-                                    return (
-                                        <td key={model} className={tdClass}>
+                                <td className="px-3 py-1.5 align-top font-mono text-[var(--vscode-foreground)] whitespace-nowrap" rowSpan={data.models.length + 1}>
+                                    Total
+                                </td>
+                                <td className={`${tdClass} font-semibold text-[var(--vscode-foreground)]`}>
+                                    All models
+                                </td>
+                                <td className={tdClass}>
+                                    <UsageCell usage={grandTotal} showCostDetails />
+                                </td>
+                            </tr>
+                            {data.models.map(model => {
+                                const total = sumByModel(data.entries, model);
+                                return (
+                                    <tr key={model} className="border-b border-[var(--vscode-panel-border)] font-semibold bg-[var(--vscode-editor-background)]">
+                                        <td className={`${tdClass} text-[var(--vscode-descriptionForeground)] truncate max-w-[200px]`} title={model}>
+                                            {model}
+                                        </td>
+                                        <td className={tdClass}>
                                             {total ? (
                                                 <UsageCell usage={total} />
                                             ) : (
                                                 <span className="text-[var(--vscode-descriptionForeground)]">—</span>
                                             )}
                                         </td>
-                                    );
-                                })}
-                                <td className={tdClass}>
-                                    <UsageCell usage={grandTotal} showCostDetails />
-                                </td>
-                            </tr>
+                                    </tr>
+                                );
+                            })}
                         </tfoot>
                     </table>
                 )}
