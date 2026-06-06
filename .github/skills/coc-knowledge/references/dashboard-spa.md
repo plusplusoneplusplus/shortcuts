@@ -232,6 +232,8 @@ Modal job-submission dialogs use `shared/ModalJobAiControls.tsx` when they need 
 
 When effort-tier mode is enabled, `EffortTierSelector` lists `Very Low`, `Low`, `Medium`, and `High` in that order. Tooltips expose the concrete model and reasoning effort mapped to the selected tier and each configured menu option; empty reasoning effort displays as `Auto`, and unconfigured options remain disabled with an Admin configuration tooltip.
 
+The Admin AI Provider page's Provider routing subtab includes the feature-gated Auto routing editor when `features.autoAgentProviderRouting` is enabled. The editor can select `defaultProvider: auto`, reorder provider rules, toggle each rule, edit normal minimum remaining quota percentages, toggle and edit weekly guard thresholds, choose a fallback provider, and preview the concrete provider selected by the shared Auto router using the current availability state plus cached quota response. The Refresh quota button force-refreshes the provider quota cache and updates the preview. When the flag is disabled, Auto cannot be selected from this page and the rule editor is hidden behind an enable-the-feature message.
+
 The Admin AI Provider page's `ProviderEffortTiersSection` uses the same tier order (`Very Low`, `Low`, `Medium`, `High`) when editing provider defaults. Rows sourced from hardcoded provider defaults are prefilled and marked with a `Default` badge; saving persists only rows explicitly changed from those defaults, and clearing an override reverts that row to its provider default.
 
 Quota UI math lives in `shared/quotaUtils.ts`. It formats quota-window labels,

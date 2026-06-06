@@ -1273,6 +1273,98 @@
   flex-wrap: wrap;
 }
 
+/* -- Auto provider routing ------------------------------------ */
+.admin-redesign .aip-auto-card {
+  margin: 14px;
+  border: 1px solid var(--ar-border);
+  border-radius: 12px;
+  background: var(--ar-bg);
+  overflow: hidden;
+}
+.admin-redesign .aip-auto-head,
+.admin-redesign .aip-auto-preview,
+.admin-redesign .aip-auto-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+}
+.admin-redesign .aip-auto-head,
+.admin-redesign .aip-auto-preview {
+  border-bottom: 1px solid var(--ar-border);
+}
+.admin-redesign .aip-auto-disabled {
+  margin: 12px 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--ar-border);
+  background: var(--ar-bg-2);
+  color: var(--ar-text-mute);
+  font-size: 12px;
+}
+.admin-redesign .aip-auto-warnings {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 50%;
+}
+.admin-redesign .aip-auto-rules {
+  display: grid;
+}
+.admin-redesign .aip-auto-rule {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(420px, auto);
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ar-border);
+}
+.admin-redesign .aip-auto-rule-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.admin-redesign .aip-auto-rule .aip-provider-meta {
+  max-width: none;
+  white-space: normal;
+}
+.admin-redesign .aip-auto-rule-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.admin-redesign .aip-auto-rule-checks {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+  color: var(--ar-text-mute);
+  font-size: 11.5px;
+}
+.admin-redesign .aip-auto-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ar-text-mute);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.admin-redesign .aip-percent-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.admin-redesign .aip-percent-input .ar-input {
+  width: 72px;
+}
+.admin-redesign .aip-percent-suffix {
+  color: var(--ar-text-mute);
+  font-size: 11px;
+}
+
 /* ── Routing table ──────────────────────────────────────────── */
 .admin-redesign .aip-routing-table {
   min-width: 0;

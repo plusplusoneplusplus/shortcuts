@@ -9,7 +9,14 @@
  */
 import { Suspense, lazy, useState, type ReactNode } from 'react';
 import { Spinner } from '../ui';
-import type { AgentProviderId, ProviderInstallStatus, AgentProvidersQuotaResponse } from '@plusplusoneplusplus/coc-client';
+import type {
+    ProviderInstallStatus,
+    AgentProvidersQuotaResponse,
+    AdminAutoProviderRoutingConfig,
+    AdminConcreteAgentProvider,
+    AdminDefaultProvider,
+} from '@plusplusoneplusplus/coc-client';
+import { resolveAutoAgentProvider } from '../../../../agent-providers/auto-provider-router';
 import {
     formatQuotaTypeLabel,
     getFiniteQuotaTypes,
@@ -23,15 +30,31 @@ import {
 const ProviderModelsSection = lazy(() => import('../features/models/ProviderModelsSection').then(m => ({ default: m.ProviderModelsSection })));
 const ProviderEffortTiersSection = lazy(() => import('../features/models/ProviderEffortTiersSection').then(m => ({ default: m.ProviderEffortTiersSection })));
 
-type Provider = AgentProviderId;
+type Provider = AdminConcreteAgentProvider;
+type DefaultProvider = AdminDefaultProvider;
+export type NormalizedAutoProviderRoutingConfig = {
+    rules: {
+        provider: Provider;
+        enabled: boolean;
+        minimumRemainingPercent: number;
+        weeklyGuard: {
+            enabled: boolean;
+            minimumRemainingPercent: number;
+        };
+    }[];
+    fallbackProvider: Provider;
+};
 
 export interface AIProviderPageProps {
-    defaultProvider: Provider;
-    setDefaultProvider: (p: Provider) => void;
+    defaultProvider: DefaultProvider;
+    setDefaultProvider: (p: DefaultProvider) => void;
     codexEnabled: boolean;
     setCodexEnabled: (v: boolean) => void;
     claudeEnabled: boolean;
     setClaudeEnabled: (v: boolean) => void;
+    autoAgentProviderRoutingEnabled: boolean;
+    autoRoutingConfig: AdminAutoProviderRoutingConfig | null | undefined;
+    setAutoRoutingConfig: (config: NormalizedAutoProviderRoutingConfig) => void;
     providerAvailability: Record<string, { available: boolean; error?: string }>;
     sdkInstallStatuses: Record<string, ProviderInstallStatus>;
     sdkInstallErrors: Record<string, string | undefined>;
@@ -51,7 +74,87 @@ export interface AIProviderPageProps {
 }
 
 const PROVIDER_LABELS: Record<Provider, string> = { copilot: 'Copilot', codex: 'Codex', claude: 'Claude' };
+const DEFAULT_PROVIDER_LABELS: Record<DefaultProvider, string> = { ...PROVIDER_LABELS, auto: 'Auto' };
 const PROVIDER_IDS: Provider[] = ['copilot', 'codex', 'claude'];
+export const DEFAULT_AUTO_PROVIDER_ROUTING_CONFIG: NormalizedAutoProviderRoutingConfig = {
+    rules: [
+        {
+            provider: 'claude',
+            enabled: true,
+            minimumRemainingPercent: 25,
+            weeklyGuard: {
+                enabled: true,
+                minimumRemainingPercent: 25,
+            },
+        },
+        {
+            provider: 'codex',
+            enabled: true,
+            minimumRemainingPercent: 25,
+            weeklyGuard: {
+                enabled: true,
+                minimumRemainingPercent: 25,
+            },
+        },
+        {
+            provider: 'copilot',
+            enabled: true,
+            minimumRemainingPercent: 10,
+            weeklyGuard: {
+                enabled: true,
+                minimumRemainingPercent: 10,
+            },
+        },
+    ],
+    fallbackProvider: 'copilot',
+};
+
+function isProvider(value: unknown): value is Provider {
+    return typeof value === 'string' && PROVIDER_IDS.includes(value as Provider);
+}
+
+function normalizePercent(value: unknown, fallback: number): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+    return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function parsePercentInput(value: string, fallback: number): number {
+    if (value.trim() === '') return fallback;
+    return normalizePercent(Number(value), fallback);
+}
+
+export function normalizeAutoProviderRoutingConfig(config: AdminAutoProviderRoutingConfig | null | undefined): NormalizedAutoProviderRoutingConfig {
+    const defaultsByProvider = new Map(DEFAULT_AUTO_PROVIDER_ROUTING_CONFIG.rules.map(rule => [rule.provider, rule]));
+    const configuredRules = Array.isArray(config?.rules) ? config.rules : [];
+    const seen = new Set<Provider>();
+    const rules: NormalizedAutoProviderRoutingConfig['rules'] = [];
+
+    for (const candidate of [...configuredRules, ...DEFAULT_AUTO_PROVIDER_ROUTING_CONFIG.rules]) {
+        if (!isProvider(candidate.provider) || seen.has(candidate.provider)) continue;
+        const defaults = defaultsByProvider.get(candidate.provider) ?? DEFAULT_AUTO_PROVIDER_ROUTING_CONFIG.rules[0];
+        rules.push({
+            provider: candidate.provider,
+            enabled: candidate.enabled ?? defaults.enabled,
+            minimumRemainingPercent: normalizePercent(candidate.minimumRemainingPercent, defaults.minimumRemainingPercent),
+            weeklyGuard: {
+                enabled: candidate.weeklyGuard?.enabled ?? defaults.weeklyGuard.enabled,
+                minimumRemainingPercent: normalizePercent(candidate.weeklyGuard?.minimumRemainingPercent, defaults.weeklyGuard.minimumRemainingPercent),
+            },
+        });
+        seen.add(candidate.provider);
+    }
+
+    const fallbackProvider = isProvider(config?.fallbackProvider)
+        ? config.fallbackProvider
+        : DEFAULT_AUTO_PROVIDER_ROUTING_CONFIG.fallbackProvider;
+    return { rules, fallbackProvider };
+}
+
+function formatCheckStatus(check: { status: string; reason: string } | undefined): string {
+    if (!check) return 'Not checked';
+    const label = check.status.replace(/_/g, ' ');
+    return `${label.charAt(0).toUpperCase()}${label.slice(1)} — ${check.reason}`;
+}
 
 function CopilotIcon() {
     return (
@@ -260,6 +363,28 @@ function Toggle({ checked, onChange, disabled, label, testId }: {
     );
 }
 
+function AdminPercentInput({ value, onChange, testId }: {
+    value: number;
+    onChange: (value: number) => void;
+    testId: string;
+}) {
+    return (
+        <span className="aip-percent-input">
+            <input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                className="ar-input ar-short"
+                value={value}
+                onChange={event => onChange(parsePercentInput(event.target.value, value))}
+                data-testid={testId}
+            />
+            <span className="aip-percent-suffix">%</span>
+        </span>
+    );
+}
+
 type AIProviderSubTab = 'routing' | 'models';
 const AI_PROVIDER_SUBTABS: { id: AIProviderSubTab; label: string; icon: string }[] = [
     { id: 'routing', label: 'Provider routing', icon: '◇' },
@@ -271,12 +396,16 @@ export function AIProviderPage(props: AIProviderPageProps) {
         defaultProvider, setDefaultProvider,
         codexEnabled, setCodexEnabled,
         claudeEnabled, setClaudeEnabled,
+        autoAgentProviderRoutingEnabled, autoRoutingConfig, setAutoRoutingConfig,
         providerAvailability, sdkInstallStatuses, sdkInstallErrors, onInstallSdk,
         dirty, saving, onSave, onCancel,
         quotaData, quotaLoading, quotaError, onRefreshQuota,
     } = props;
 
-    const [activeModelProvider, setActiveModelProvider] = useState<Provider>(defaultProvider);
+    const normalizedAutoRouting = normalizeAutoProviderRoutingConfig(autoRoutingConfig);
+    const [activeModelProvider, setActiveModelProvider] = useState<Provider>(
+        defaultProvider === 'auto' ? normalizedAutoRouting.fallbackProvider : defaultProvider,
+    );
     const [activeSubTab, setActiveSubTab] = useState<AIProviderSubTab>('routing');
 
     const providers: Array<{
@@ -322,6 +451,52 @@ export function AIProviderPage(props: AIProviderPageProps) {
 
     const availableCount = providers.filter(p => p.available || p.locked).length;
     const enabledModelCount = '—';
+    const autoPreview = autoAgentProviderRoutingEnabled
+        ? resolveAutoAgentProvider(normalizedAutoRouting, {
+            providerAvailability: {
+                copilot: { enabled: true, available: true },
+                codex: {
+                    enabled: codexEnabled,
+                    available: providerAvailability['codex']?.available ?? false,
+                    error: providerAvailability['codex']?.error,
+                },
+                claude: {
+                    enabled: claudeEnabled,
+                    available: providerAvailability['claude']?.available ?? false,
+                    error: providerAvailability['claude']?.error,
+                },
+            },
+            quotaData,
+        })
+        : null;
+    const autoPreviewSelectedDecision = autoPreview?.decisions.find(decision => decision.selected);
+    const autoPreviewLabel = autoPreview?.provider
+        ? `${PROVIDER_LABELS[autoPreview.provider]}${autoPreview.fallbackUsed ? ' fallback' : ''}`
+        : 'No provider selected';
+    const autoPreviewReason = autoPreview?.error
+        ?? autoPreviewSelectedDecision?.reason
+        ?? autoPreview?.fallback?.reason
+        ?? 'Refresh quota to preview Auto selection with current provider data.';
+
+    const updateAutoRule = (
+        index: number,
+        update: (rule: NormalizedAutoProviderRoutingConfig['rules'][number]) => NormalizedAutoProviderRoutingConfig['rules'][number],
+    ) => {
+        setAutoRoutingConfig({
+            ...normalizedAutoRouting,
+            rules: normalizedAutoRouting.rules.map((rule, ruleIndex) => ruleIndex === index ? update(rule) : rule),
+        });
+    };
+
+    const moveAutoRule = (index: number, direction: -1 | 1) => {
+        const nextIndex = index + direction;
+        if (nextIndex < 0 || nextIndex >= normalizedAutoRouting.rules.length) return;
+        const rules = [...normalizedAutoRouting.rules];
+        const current = rules[index];
+        rules[index] = rules[nextIndex];
+        rules[nextIndex] = current;
+        setAutoRoutingConfig({ ...normalizedAutoRouting, rules });
+    };
 
     const overallQuotaRisk = (() => {
         if (!quotaData) return { badge: 'No data', cls: '', note: 'Quota not loaded' };
@@ -374,8 +549,8 @@ export function AIProviderPage(props: AIProviderPageProps) {
             <section className="aip-summary-grid" aria-label="Provider summary" data-testid="aip-summary-grid">
                 <SummaryCard
                     label="Default provider"
-                    value={PROVIDER_LABELS[defaultProvider]}
-                    note="No per-chat override"
+                    value={DEFAULT_PROVIDER_LABELS[defaultProvider]}
+                    note={defaultProvider === 'auto' ? 'Priority + quota based' : 'No per-chat override'}
                 />
                 <SummaryCard
                     label="Provider health"
@@ -399,7 +574,7 @@ export function AIProviderPage(props: AIProviderPageProps) {
                 <header className="aip-panel-head">
                     <div>
                         <h3 className="aip-panel-title" id="provider-routing-title">Provider routing</h3>
-                        <p className="aip-panel-desc">Availability, quota, install state, and default provider are visible in one scan.</p>
+                        <p className="aip-panel-desc">Availability, quota, install state, Auto routing, and default provider are visible in one scan.</p>
                     </div>
                     <div className="aip-panel-actions">
                         <button
@@ -419,6 +594,155 @@ export function AIProviderPage(props: AIProviderPageProps) {
                         ⚠ {quotaError}
                     </div>
                 )}
+                <div className="aip-auto-card" data-testid="auto-provider-routing-card">
+                    <div className="aip-auto-head">
+                        <div>
+                            <div className="aip-provider-line">
+                                <span className="aip-provider-main">Auto provider routing</span>
+                                <span className="aip-provider-source">feature flag</span>
+                            </div>
+                            <div className="aip-provider-meta">
+                                Resolve new work by provider priority, live availability, normal quota thresholds, and weekly guardrails.
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            className={`ar-btn ar-btn-sm ${defaultProvider === 'auto' ? 'ar-btn-primary' : 'ar-btn-secondary'}`}
+                            onClick={() => setDefaultProvider('auto')}
+                            disabled={!autoAgentProviderRoutingEnabled}
+                            data-testid="select-default-provider-auto"
+                        >
+                            {defaultProvider === 'auto' ? 'Default' : 'Make default'}
+                        </button>
+                    </div>
+                    {!autoAgentProviderRoutingEnabled ? (
+                        <div className="aip-auto-disabled" data-testid="auto-provider-routing-disabled">
+                            Enable the "Auto agent provider routing" feature flag in Admin → Configure → Features before Auto can be selected or edited.
+                        </div>
+                    ) : (
+                        <>
+                            <div className="aip-auto-preview" data-testid="auto-provider-preview">
+                                <div>
+                                    <div className="aip-summary-label">Current Auto preview</div>
+                                    <div className="aip-summary-value">{autoPreviewLabel}</div>
+                                    <div className="aip-summary-note">{autoPreviewReason}</div>
+                                </div>
+                                {autoPreview?.warnings.length ? (
+                                    <div className="aip-auto-warnings" data-testid="auto-provider-preview-warnings">
+                                        {autoPreview.warnings.map(warning => <span key={warning} className="ar-badge ar-badge-warning">{warning}</span>)}
+                                    </div>
+                                ) : null}
+                            </div>
+                            <div className="aip-auto-rules" data-testid="auto-provider-rules">
+                                {normalizedAutoRouting.rules.map((rule, index) => {
+                                    const decision = autoPreview?.decisions.find(item => item.provider === rule.provider);
+                                    return (
+                                        <div className="aip-auto-rule" key={rule.provider} data-testid={`auto-provider-rule-${rule.provider}`}>
+                                            <div className="aip-auto-rule-main">
+                                                <ProviderAvatar provider={rule.provider} />
+                                                <div>
+                                                    <div className="aip-provider-line">
+                                                        <span className="aip-provider-main">{index + 1}. {PROVIDER_LABELS[rule.provider]}</span>
+                                                        <span className={`ar-badge ${decision?.selected ? 'ar-badge-success' : decision?.eligible ? 'ar-badge-accent' : ''}`}>
+                                                            {decision?.selected ? 'Selected' : decision?.eligible ? 'Eligible' : 'Candidate'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="aip-provider-meta" data-testid={`auto-provider-rule-reason-${rule.provider}`}>
+                                                        {decision?.reason ?? 'Waiting for preview data.'}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="aip-auto-rule-controls">
+                                                <button
+                                                    type="button"
+                                                    className="ar-btn ar-btn-secondary ar-btn-sm"
+                                                    onClick={() => moveAutoRule(index, -1)}
+                                                    disabled={index === 0}
+                                                    data-testid={`auto-provider-move-up-${rule.provider}`}
+                                                >
+                                                    ↑
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="ar-btn ar-btn-secondary ar-btn-sm"
+                                                    onClick={() => moveAutoRule(index, 1)}
+                                                    disabled={index === normalizedAutoRouting.rules.length - 1}
+                                                    data-testid={`auto-provider-move-down-${rule.provider}`}
+                                                >
+                                                    ↓
+                                                </button>
+                                                <label className="aip-auto-inline">
+                                                    Enabled
+                                                    <Toggle
+                                                        checked={rule.enabled}
+                                                        onChange={(enabled) => updateAutoRule(index, current => ({ ...current, enabled }))}
+                                                        label={`Toggle ${PROVIDER_LABELS[rule.provider]} Auto rule`}
+                                                        testId={`auto-provider-rule-enabled-${rule.provider}`}
+                                                    />
+                                                </label>
+                                                <label className="aip-auto-inline">
+                                                    Normal min
+                                                    <AdminPercentInput
+                                                        value={rule.minimumRemainingPercent}
+                                                        onChange={value => updateAutoRule(index, current => ({ ...current, minimumRemainingPercent: value }))}
+                                                        testId={`auto-provider-threshold-${rule.provider}`}
+                                                    />
+                                                </label>
+                                                <label className="aip-auto-inline">
+                                                    Weekly guard
+                                                    <Toggle
+                                                        checked={rule.weeklyGuard.enabled}
+                                                        onChange={(enabled) => updateAutoRule(index, current => ({ ...current, weeklyGuard: { ...current.weeklyGuard, enabled } }))}
+                                                        label={`Toggle ${PROVIDER_LABELS[rule.provider]} weekly guard`}
+                                                        testId={`auto-provider-weekly-enabled-${rule.provider}`}
+                                                    />
+                                                </label>
+                                                <label className="aip-auto-inline">
+                                                    Weekly min
+                                                    <AdminPercentInput
+                                                        value={rule.weeklyGuard.minimumRemainingPercent}
+                                                        onChange={value => updateAutoRule(index, current => ({
+                                                            ...current,
+                                                            weeklyGuard: { ...current.weeklyGuard, minimumRemainingPercent: value },
+                                                        }))}
+                                                        testId={`auto-provider-weekly-threshold-${rule.provider}`}
+                                                    />
+                                                </label>
+                                            </div>
+                                            <div className="aip-auto-rule-checks">
+                                                <span data-testid={`auto-provider-normal-status-${rule.provider}`}>
+                                                    Normal: {formatCheckStatus(decision?.normalThreshold)}
+                                                </span>
+                                                <span data-testid={`auto-provider-weekly-status-${rule.provider}`}>
+                                                    Weekly: {formatCheckStatus(decision?.weeklyGuard)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            <div className="aip-auto-footer">
+                                <label className="aip-auto-inline">
+                                    Fallback provider
+                                    <select
+                                        className="ar-select ar-med"
+                                        value={normalizedAutoRouting.fallbackProvider}
+                                        onChange={event => setAutoRoutingConfig({
+                                            ...normalizedAutoRouting,
+                                            fallbackProvider: event.target.value as Provider,
+                                        })}
+                                        data-testid="auto-provider-fallback"
+                                    >
+                                        {PROVIDER_IDS.map(provider => <option key={provider} value={provider}>{PROVIDER_LABELS[provider]}</option>)}
+                                    </select>
+                                </label>
+                                <div className="aip-provider-meta">
+                                    Weekly guards reserve shared provider quota for other tools. If a provider has no weekly quota snapshot, Auto falls back to the normal threshold and records a warning.
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
                 <div className="aip-routing-table">
                     <table aria-label="Provider routing table">
                         <thead>

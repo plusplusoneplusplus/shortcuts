@@ -1530,4 +1530,136 @@ describe('AdminPanel', () => {
             expect(postCalls[0]).toContain('/providers/sdk/codex/install');
         });
     });
+
+    describe('auto provider routing controls', () => {
+        it('saves the Auto provider routing feature flag from the Features card', async () => {
+            let capturedBody: any = null;
+            mockFetch.mockImplementation((url: string, options?: any) => {
+                if (url.includes('/admin/config') && options?.method === 'PUT') {
+                    capturedBody = JSON.parse(options.body);
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+                }
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            resolved: {
+                                features: { autoAgentProviderRouting: false },
+                            },
+                            sources: {},
+                        }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}), headers: new Headers() });
+            });
+
+            await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('features');
+            await waitFor(() => expect(screen.getByTestId('toggle-auto-agent-provider-routing-enabled')).toBeDefined());
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('toggle-auto-agent-provider-routing-enabled'));
+            });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('settings-features-save'));
+            });
+
+            await waitFor(() => expect(capturedBody).not.toBeNull());
+            expect(capturedBody['features.autoAgentProviderRouting']).toBe(true);
+        });
+
+        it('saves Auto as the default provider with the edited routing profile', async () => {
+            let capturedBody: any = null;
+            mockFetch.mockImplementation((url: string, options?: any) => {
+                if (url.includes('/admin/config') && options?.method === 'PUT') {
+                    capturedBody = JSON.parse(options.body);
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+                }
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            resolved: {
+                                codex: { enabled: true },
+                                claude: { enabled: true },
+                                defaultProvider: 'copilot',
+                                features: { autoAgentProviderRouting: true },
+                                agentProviderRouting: {
+                                    auto: {
+                                        rules: [
+                                            { provider: 'claude', enabled: true, minimumRemainingPercent: 25, weeklyGuard: { enabled: true, minimumRemainingPercent: 25 } },
+                                            { provider: 'codex', enabled: true, minimumRemainingPercent: 25, weeklyGuard: { enabled: true, minimumRemainingPercent: 25 } },
+                                            { provider: 'copilot', enabled: true, minimumRemainingPercent: 10, weeklyGuard: { enabled: true, minimumRemainingPercent: 10 } },
+                                        ],
+                                        fallbackProvider: 'copilot',
+                                    },
+                                },
+                            },
+                            sources: {},
+                        }),
+                    });
+                }
+                if (url.includes('/admin/providers/availability')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({ codex: { available: true }, claude: { available: true } }),
+                    });
+                }
+                if (url.includes('/agent-providers/quota')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            lastUpdated: '2026-06-06T17:00:00Z',
+                            providers: [
+                                { id: 'claude', quotaTypes: [{ type: 'five_hour', isUnlimitedEntitlement: false, usedRequests: 10, entitlementRequests: 100, remainingPercentage: 0.9, usageAllowedWithExhaustedQuota: false, overage: 0 }] },
+                                { id: 'codex', quotaTypes: [{ type: 'five_hour', isUnlimitedEntitlement: false, usedRequests: 10, entitlementRequests: 100, remainingPercentage: 0.9, usageAllowedWithExhaustedQuota: false, overage: 0 }] },
+                                { id: 'copilot', quotaTypes: [{ type: 'five_hour', isUnlimitedEntitlement: false, usedRequests: 10, entitlementRequests: 100, remainingPercentage: 0.9, usageAllowedWithExhaustedQuota: false, overage: 0 }] },
+                            ],
+                        }),
+                    });
+                }
+                if (url.includes('/agent-providers')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            providers: [
+                                { id: 'codex', installStatus: 'installed' },
+                                { id: 'claude', installStatus: 'installed' },
+                            ],
+                        }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}), headers: new Headers() });
+            });
+
+            await act(async () => { renderWithProviders(); });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('admin-tab-agents'));
+            });
+            await waitFor(() => expect(screen.getByTestId('select-default-provider-auto')).toBeDefined());
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('select-default-provider-auto'));
+            });
+            await act(async () => {
+                fireEvent.change(screen.getByTestId('auto-provider-threshold-claude'), { target: { value: '35' } });
+            });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('settings-default-provider-save'));
+            });
+
+            await waitFor(() => expect(capturedBody).not.toBeNull());
+            expect(capturedBody.defaultProvider).toBe('auto');
+            expect(capturedBody['codex.enabled']).toBe(true);
+            expect(capturedBody['claude.enabled']).toBe(true);
+            expect(capturedBody['agentProviderRouting.auto']).toEqual(expect.objectContaining({
+                fallbackProvider: 'copilot',
+                rules: [
+                    expect.objectContaining({ provider: 'claude', minimumRemainingPercent: 35 }),
+                    expect.objectContaining({ provider: 'codex', minimumRemainingPercent: 25 }),
+                    expect.objectContaining({ provider: 'copilot', minimumRemainingPercent: 10 }),
+                ],
+            }));
+        });
+    });
 });
