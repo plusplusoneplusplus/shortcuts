@@ -449,7 +449,6 @@ export async function prepareTaskForEnqueue(input: CreateTaskInput, ctx: Pick<Qu
  * @internal exported for tests
  */
 export async function resolveDefaultProviderForTask(input: CreateTaskInput, ctx: Pick<QueueRouteContext, 'getDefaultProvider' | 'resolveDefaultProvider'>): Promise<void> {
-    if (input.type !== 'chat') return;
     const payload = input.payload as Record<string, unknown>;
     if (payload.kind !== 'chat') return;
     if (isChatProvider(payload.provider)) return;

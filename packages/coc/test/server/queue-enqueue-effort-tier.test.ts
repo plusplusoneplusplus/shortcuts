@@ -135,6 +135,33 @@ describe('prepareTaskForEnqueue', () => {
         expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
     });
 
+    it('resolves Auto for non-chat task types that carry a chat payload', async () => {
+        const input = makeInput({
+            type: 'run-workflow',
+            payload: { kind: 'chat', mode: 'autopilot', prompt: 'execute work item' },
+        });
+
+        await prepareTaskForEnqueue(input, makeContext({
+            resolveDefaultProvider: async () => ({
+                provider: 'claude',
+                selectedByAuto: true,
+                fallbackUsed: false,
+                warnings: [],
+                decisions: [{
+                    provider: 'claude',
+                    selected: true,
+                    reason: 'Provider passed checks.',
+                } as any],
+            }),
+        }));
+
+        expect((input.payload as any).provider).toBe('claude');
+        expect((input.payload as any).context.autoProviderRouting).toMatchObject({
+            selectedByAuto: true,
+            provider: 'claude',
+        });
+    });
+
     it('preserves explicit providers and does not invoke Auto routing', async () => {
         const resolveDefaultProvider = vi.fn(async () => ({
             provider: 'codex' as const,

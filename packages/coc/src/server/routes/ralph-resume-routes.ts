@@ -70,7 +70,7 @@ export function registerRalphResumeRoutes(routes: Route[], ctx: RalphResumeRoute
                 return sendError(res, 409, `A Ralph task for this session is still ${inFlight.status}`);
             }
 
-            const { workingDirectory, folderPath } = await recoverIterationPaths(record, store, workspaceId);
+            const { workingDirectory, folderPath, provider, model, reasoningEffort } = await recoverIterationPaths(record, store, workspaceId);
 
             const nowIso = new Date().toISOString();
             try {
@@ -96,6 +96,9 @@ export function registerRalphResumeRoutes(routes: Route[], ctx: RalphResumeRoute
                 maxIterations: record.maxIterations,
                 dataDir,
                 extraContext: { ralph: { loopIndex } },
+                provider,
+                model,
+                reasoningEffort,
             });
 
             let taskId: string;

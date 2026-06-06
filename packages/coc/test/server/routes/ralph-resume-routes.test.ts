@@ -153,6 +153,36 @@ describe('POST /api/workspaces/:wsId/ralph-sessions/:sessionId/resume', () => {
         expect(md).toMatch(/Session resumed at .* picking up from iteration 3/);
     });
 
+    it('preserves the prior concrete provider when resuming a stuck session', async () => {
+        await seedSession(dataDir, 'ws-provider', 'sess-provider');
+        await store.addProcess({
+            id: 'queue_p3',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'last iteration',
+            metadata: {
+                provider: 'codex',
+                model: 'gpt-5.3-codex',
+            },
+            payload: {
+                kind: 'chat',
+                mode: 'ralph',
+                prompt: 'last iteration',
+                provider: 'codex',
+                workspaceId: 'ws-provider',
+                workingDirectory: '/repos/provider',
+            },
+        } as any);
+
+        const res = await post(baseUrl, '/api/workspaces/ws-provider/ralph-sessions/sess-provider/resume', {});
+
+        expect(res.status).toBe(200);
+        const enqueueArg = bridgeStub.enqueue.mock.calls[0][0];
+        expect(enqueueArg.payload.provider).toBe('codex');
+        expect(enqueueArg.config.model).toBe('gpt-5.3-codex');
+    });
+
     it('resumes a session where last iteration failed', async () => {
         await seedSession(dataDir, 'ws-2', 'sess-failed', {
             currentIteration: 2,

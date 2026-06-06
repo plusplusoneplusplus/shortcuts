@@ -126,7 +126,7 @@ export function registerRalphNewLoopRoutes(routes: Route[], ctx: RalphNewLoopRou
             const loopIndex = updated.loops?.[updated.loops.length - 1]?.loopIndex ?? 2;
             const nextIteration = updated.currentIteration + 1;
 
-            const { workingDirectory, folderPath } = await recoverIterationPaths(record, store, workspaceId);
+            const { workingDirectory, folderPath, provider, model, reasoningEffort } = await recoverIterationPaths(record, store, workspaceId);
 
             const taskInput = buildRalphIterationTask({
                 workspaceId,
@@ -138,6 +138,9 @@ export function registerRalphNewLoopRoutes(routes: Route[], ctx: RalphNewLoopRou
                 maxIterations: updated.maxIterations,
                 dataDir,
                 extraContext: { ralph: { loopIndex } },
+                provider,
+                model,
+                reasoningEffort,
             });
 
             let taskId: string;

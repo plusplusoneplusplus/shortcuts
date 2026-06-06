@@ -8,7 +8,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { Route } from '../types';
-import type { ProcessStore, TaskQueueManager, ISDKService, AIInvoker } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, TaskQueueManager, ISDKService, AIInvoker, CreateTaskInput } from '@plusplusoneplusplus/forge';
 import { modelMetadataStore, sdkServiceRegistry, CopilotSDKService, CodexSDKService, ClaudeSDKService, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_CODEX } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
@@ -18,6 +18,7 @@ import type { WikiServerOptions } from '../types';
 import type { WikiManager } from '../wiki';
 import { registerApiRoutes } from '../core/api-handler';
 import { registerQueueRoutes } from '../queue/queue-handler';
+import { prepareTaskForEnqueue } from './queue-enqueue';
 import { registerTaskRoutes, registerTaskWriteRoutes } from '../tasks/tasks-handler';
 import { registerTaskGenerationRoutes } from '../tasks/task-generation-handler';
 import { registerPromptRoutes } from '../prompts/prompt-handler';
@@ -248,6 +249,28 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         }
         return resolution.provider;
     };
+    const getEffortTiersForProvider = (provider: ChatProvider) => (
+        loadConfigFile(opts.runtimeConfigService?.configPath ?? opts.configPath)?.models?.providers?.[provider]?.effortTiers
+        ?? opts.runtimeConfigService?.config.models?.providers?.[provider]?.effortTiers
+        ?? opts.resolvedConfig?.models?.providers?.[provider]?.effortTiers
+    );
+    const prepareEnqueueTask = async (input: CreateTaskInput): Promise<void> => {
+        await prepareTaskForEnqueue(input, {
+            getDefaultProvider: concreteDefaultProvider,
+            resolveDefaultProvider,
+            getEffortTiersForProvider,
+        });
+    };
+    const enqueueWithResolvedDefaults = async (input: CreateTaskInput): Promise<string> => {
+        await prepareEnqueueTask(input);
+        return bridge.enqueue(input);
+    };
+    const bridgeWithResolvedDefaults = Object.create(bridge) as MultiRepoQueueRouter;
+    Object.defineProperty(bridgeWithResolvedDefaults, 'enqueue', {
+        value: enqueueWithResolvedDefaults,
+        configurable: true,
+        writable: true,
+    });
 
     // excalidrawEnabled uses a live getter via runtimeConfigService so admin
     // changes take effect without restart. loopsEnabled stays startup-captured
@@ -297,11 +320,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerQueueRoutes(routes, bridge, store, globalWorkspaceRootPath, {
         getDefaultProvider: concreteDefaultProvider,
         resolveDefaultProvider,
-        getEffortTiersForProvider: (provider) => (
-            loadConfigFile(opts.runtimeConfigService?.configPath ?? opts.configPath)?.models?.providers?.[provider]?.effortTiers
-            ?? opts.runtimeConfigService?.config.models?.providers?.[provider]?.effortTiers
-            ?? opts.resolvedConfig?.models?.providers?.[provider]?.effortTiers
-        ),
+        getEffortTiersForProvider,
     });
     registerTaskRoutes(routes, store, dataDir, (workspaceId) => {
         getWsServer().broadcastProcessEvent({
@@ -526,20 +545,20 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
 
     // Ralph routes
-    registerRalphRoutes(routes, { bridge, store, dataDir });
+    registerRalphRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
     registerRalphSessionRoutes(routes, { dataDir });
-    registerRalphContinueRoutes(routes, { bridge, store, dataDir });
-    registerRalphNewLoopRoutes(routes, { bridge, store, dataDir });
-    registerRalphPromoteRoutes(routes, { bridge, store, dataDir });
-    registerRalphLaunchRoutes(routes, { bridge, dataDir });
-    registerRalphResumeRoutes(routes, { bridge, store, dataDir });
+    registerRalphContinueRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
+    registerRalphNewLoopRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
+    registerRalphPromoteRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
+    registerRalphLaunchRoutes(routes, { bridge: bridgeWithResolvedDefaults, dataDir });
+    registerRalphResumeRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
 
     // For Each routes: dedicated reviewed item-plan mode. Routes are registered
     // with a live feature guard so admin toggles take effect without restart.
     const forEachRunStore = new FileForEachRunStore({ dataDir });
     const forEachRunExecutor = new ForEachRunExecutor({
         store: forEachRunStore,
-        enqueueChildTask: (task) => bridge.enqueue(task),
+        enqueueChildTask: (task) => enqueueWithResolvedDefaults(task),
         cancelChildTask: (taskId) => {
             const executor = bridge.findExecutorForTask(taskId);
             if (executor) {
@@ -563,11 +582,15 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         getForEachEnabled,
         generateItemPlan: forEachPlanGenerator.generateItemPlan,
         executor: forEachRunExecutor,
+        resolveDefaultProvider,
     });
 
     // Work item routes
     const workItemStore = new FileWorkItemStore({ dataDir });
-    const enqueueForWorkItems = bridge.enqueue.bind(bridge) as EnqueueFunction;
+    const enqueueForWorkItems = (async (input: Parameters<EnqueueFunction>[0]) => {
+        await prepareEnqueueTask(input as CreateTaskInput);
+        return bridge.enqueue(input as CreateTaskInput);
+    }) as EnqueueFunction;
     const getWorkItemsHierarchyEnabled = opts.runtimeConfigService
         ? () => opts.runtimeConfigService!.config.workItems?.hierarchy?.enabled ?? false
         : () => opts.resolvedConfig?.workItems?.hierarchy?.enabled ?? false;

@@ -97,16 +97,16 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/processes/:id/ralph-start` | Start Ralph execution after grilling. Body accepts optional `provider`, `config.model`, and `config.reasoningEffort` overrides for the first execution task. |
-| POST | `/api/ralph-launch` | Direct Ralph launch (skip grilling). Body accepts optional `provider`, `config.model`, and `config.reasoningEffort` overrides for the first execution task. |
+| POST | `/api/processes/:id/ralph-start` | Start Ralph execution after grilling. Body accepts optional `provider`, `config.model`, and `config.reasoningEffort` overrides for the first execution task; omitted provider resolves through Auto when `defaultProvider: auto` is enabled. |
+| POST | `/api/ralph-launch` | Direct Ralph launch (skip grilling). Body accepts optional `provider`, `config.model`, and `config.reasoningEffort` overrides for the first execution task; omitted provider resolves through Auto when `defaultProvider: auto` is enabled. |
 | GET | `/api/workspaces/:wsId/ralph-sessions/:sessionId` | Read session journal (`record`, parsed progress `sections`, and alphabetically ordered raw session `files`) |
-| POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/continue` | Extend completed session (CAP_REACHED or NO_SIGNAL) by N iterations |
-| POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/new-loop` | New goal loop after RALPH_COMPLETE |
-| POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/resume` | Resume stuck executing session (no in-flight task) |
+| POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/continue` | Extend completed session (CAP_REACHED or NO_SIGNAL) by N iterations, preserving the prior concrete provider/model when recoverable |
+| POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/new-loop` | New goal loop after RALPH_COMPLETE, preserving the prior concrete provider/model when recoverable |
+| POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/resume` | Resume stuck executing session (no in-flight task), preserving the prior concrete provider/model when recoverable |
 
 ## For Each Runs
 
-All For Each routes are workspace-scoped and gated by `forEach.enabled` (default `false`); disabled routes return unavailable/not-found behavior. Parent run state is stored under `~/.coc/repos/<workspaceId>/for-each-runs/<runId>/` as `run.json` plus `items.json`, never as a Ralph session. `@plusplusoneplusplus/coc-client` exposes these routes through `client.forEach`, and the dashboard uses that domain for reviewed parent-run persistence, approval, and For Each detail pane actions. Visible item-plan generation chats are normal queue/process records whose metadata links to the eventual parent run; reviewed chat-backed plans use the non-AI create endpoint so approval persists exactly what the user reviewed.
+All For Each routes are workspace-scoped and gated by `forEach.enabled` (default `false`); disabled routes return unavailable/not-found behavior. Parent run state is stored under `~/.coc/repos/<workspaceId>/for-each-runs/<runId>/` as `run.json` plus `items.json`, never as a Ralph session. `@plusplusoneplusplus/coc-client` exposes these routes through `client.forEach`, and the dashboard uses that domain for reviewed parent-run persistence, approval, and For Each detail pane actions. Visible item-plan generation chats are normal queue/process records whose metadata links to the eventual parent run; reviewed chat-backed plans use the non-AI create endpoint so approval persists exactly what the user reviewed. Omitted For Each providers resolve through Auto when `defaultProvider: auto` is enabled, and the resolved concrete provider is stored on the run for child orchestration.
 
 | Method | Path | Description |
 |--------|------|-------------|

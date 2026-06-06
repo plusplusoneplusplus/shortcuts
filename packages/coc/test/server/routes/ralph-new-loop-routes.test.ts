@@ -186,6 +186,40 @@ describe('POST /api/workspaces/:wsId/ralph-sessions/:sessionId/new-loop', () => 
         expect(md).toMatch(/Goal: Second goal/);
     });
 
+    it('preserves the prior concrete provider when starting a new loop', async () => {
+        await seedSession(dataDir, 'ws-provider', 'sess-provider');
+        await store.addProcess({
+            id: 'queue_p7',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'last iteration',
+            metadata: {
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+            },
+            payload: {
+                kind: 'chat',
+                mode: 'ralph',
+                prompt: 'last iteration',
+                provider: 'claude',
+                workspaceId: 'ws-provider',
+                workingDirectory: '/repos/provider',
+            },
+        } as any);
+
+        const res = await post(
+            baseUrl,
+            '/api/workspaces/ws-provider/ralph-sessions/sess-provider/new-loop',
+            { newGoal: 'Second goal', additionalIterations: 5 },
+        );
+
+        expect(res.status).toBe(200);
+        const enqueueArg = bridgeStub.enqueue.mock.calls[0][0];
+        expect(enqueueArg.payload.provider).toBe('claude');
+        expect(enqueueArg.config.model).toBe('claude-sonnet-4.6');
+    });
+
     it('uses default additionalIterations when omitted', async () => {
         await seedSession(dataDir, 'ws-def', 'sess-def');
 

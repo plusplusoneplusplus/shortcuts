@@ -2,6 +2,7 @@ import type { ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import type { RalphSessionRecord } from '../ralph/types';
+import type { ChatProvider, ReasoningEffort } from '../tasks/task-types';
 
 // Shared utilities for Ralph session resume routes and final-check gap loops.
 export const RALPH_RESUME_HARD_CAP = 500;
@@ -19,6 +20,9 @@ export type AdditionalIterationsResult =
 export interface RecoveredIterationPaths {
     workingDirectory: string | undefined;
     folderPath: string | undefined;
+    provider: ChatProvider | undefined;
+    model: string | undefined;
+    reasoningEffort: ReasoningEffort | undefined;
 }
 
 export function findInFlightRalphTask(
@@ -87,13 +91,20 @@ export async function recoverIterationPaths(
 ): Promise<RecoveredIterationPaths> {
     const lastIter = [...record.iterations].sort((a, b) => b.iteration - a.iteration)[0];
     if (!lastIter?.processId) {
-        return { workingDirectory: undefined, folderPath: undefined };
+        return {
+            workingDirectory: undefined,
+            folderPath: undefined,
+            provider: undefined,
+            model: undefined,
+            reasoningEffort: undefined,
+        };
     }
 
     try {
         const proc = await store.getProcess(lastIter.processId, workspaceId);
         const procWithPayload = proc as (typeof proc & { payload?: Record<string, unknown> }) | undefined;
         const payload = isRecord(procWithPayload?.payload) ? procWithPayload.payload : undefined;
+        const metadata = isRecord(procWithPayload?.metadata) ? procWithPayload.metadata : undefined;
         const payloadWorkingDirectory = asString(payload?.workingDirectory);
         const payloadFolderPath = asString(payload?.folderPath);
         return {
@@ -101,9 +112,18 @@ export async function recoverIterationPaths(
                 ?? payloadFolderPath
                 ?? procWithPayload?.workingDirectory,
             folderPath: payloadFolderPath,
+            provider: asProvider(payload?.provider) ?? asProvider(metadata?.provider),
+            model: asString(payload?.model) ?? asString(metadata?.model),
+            reasoningEffort: asReasoningEffort(payload?.reasoningEffort),
         };
     } catch {
-        return { workingDirectory: undefined, folderPath: undefined };
+        return {
+            workingDirectory: undefined,
+            folderPath: undefined,
+            provider: undefined,
+            model: undefined,
+            reasoningEffort: undefined,
+        };
     }
 }
 
@@ -126,4 +146,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function asString(value: unknown): string | undefined {
     return typeof value === 'string' ? value : undefined;
+}
+
+function asProvider(value: unknown): ChatProvider | undefined {
+    return value === 'copilot' || value === 'codex' || value === 'claude'
+        ? value
+        : undefined;
+}
+
+function asReasoningEffort(value: unknown): ReasoningEffort | undefined {
+    return value === 'low' || value === 'medium' || value === 'high' || value === 'xhigh'
+        ? value
+        : undefined;
 }

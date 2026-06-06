@@ -163,6 +163,42 @@ describe('POST /api/workspaces/:wsId/ralph-sessions/:sessionId/continue', () => 
         expect(md).toMatch(/Loop continued at .* extending to 15/);
     });
 
+    it('preserves the prior concrete provider and model when continuing a session', async () => {
+        await seedSession(dataDir, 'ws-provider', 'sess-provider');
+        await store.addProcess({
+            id: 'queue_p10',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'last iteration',
+            metadata: {
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+            },
+            payload: {
+                kind: 'chat',
+                mode: 'ralph',
+                prompt: 'last iteration',
+                provider: 'claude',
+                reasoningEffort: 'high',
+                workspaceId: 'ws-provider',
+                workingDirectory: '/repos/provider',
+            },
+        } as any);
+
+        const res = await post(baseUrl, '/api/workspaces/ws-provider/ralph-sessions/sess-provider/continue', {
+            additionalIterations: 5,
+        });
+
+        expect(res.status).toBe(200);
+        const enqueueArg = bridgeStub.enqueue.mock.calls[0][0];
+        expect(enqueueArg.payload.provider).toBe('claude');
+        expect(enqueueArg.config).toMatchObject({
+            model: 'claude-sonnet-4.6',
+            reasoningEffort: 'high',
+        });
+    });
+
     it('continues a NO_SIGNAL session at the cap', async () => {
         await seedSession(dataDir, 'ws-2', 'sess-no-signal', {
             terminalReason: 'NO_SIGNAL',

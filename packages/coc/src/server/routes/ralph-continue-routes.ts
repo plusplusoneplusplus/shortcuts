@@ -110,7 +110,7 @@ export function registerRalphContinueRoutes(routes: Route[], ctx: RalphContinueR
                 );
             }
 
-            const { workingDirectory, folderPath } = await recoverIterationPaths(record, store, workspaceId);
+            const { workingDirectory, folderPath, provider, model, reasoningEffort } = await recoverIterationPaths(record, store, workspaceId);
 
             // Mutate session.json + append continuation marker. Order matters:
             // do the atomic record update first so concurrent continues lose
@@ -150,6 +150,9 @@ export function registerRalphContinueRoutes(routes: Route[], ctx: RalphContinueR
                 maxIterations: newMax,
                 dataDir,
                 extraContext: { ralph: { loopIndex } },
+                provider,
+                model,
+                reasoningEffort,
             });
 
             let taskId: string;

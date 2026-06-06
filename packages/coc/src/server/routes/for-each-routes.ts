@@ -9,6 +9,7 @@ import type { ForEachRunExecutor } from '../for-each/for-each-run-executor';
 import type { ForEachChildMode, ForEachItem } from '../for-each/types';
 import { FOR_EACH_CHILD_MODES } from '../for-each/types';
 import type { GenerateForEachItemPlanFn } from '../for-each/for-each-plan-generator';
+import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 
 export interface ForEachRouteContext {
     routes: Route[];
@@ -16,6 +17,7 @@ export interface ForEachRouteContext {
     getForEachEnabled: () => boolean;
     generateItemPlan: GenerateForEachItemPlanFn;
     executor: ForEachRunExecutor;
+    resolveDefaultProvider?: () => Promise<AutoProviderResolutionResult>;
 }
 
 interface GenerateForEachRunRequest {
@@ -98,6 +100,25 @@ function parseAiSelection(body: { provider?: unknown; config?: unknown }): {
     return { provider, model, reasoningEffort };
 }
 
+async function resolveAiSelection(
+    ctx: ForEachRouteContext,
+    body: { provider?: unknown; config?: unknown },
+): Promise<{
+    provider?: ChatProvider;
+    model?: string;
+    reasoningEffort?: ReasoningEffort;
+}> {
+    const selection = parseAiSelection(body);
+    if (selection.provider || !ctx.resolveDefaultProvider) {
+        return selection;
+    }
+    const resolution = await ctx.resolveDefaultProvider();
+    if (!resolution.provider) {
+        throw badRequest(resolution.error ?? 'Default provider resolution did not select a concrete provider.');
+    }
+    return { ...selection, provider: resolution.provider };
+}
+
 function toRouteError(error: unknown): APIError {
     const message = error instanceof Error ? error.message : String(error);
     if (/not found/i.test(message)) {
@@ -153,7 +174,7 @@ export function registerForEachRoutes(ctx: ForEachRouteContext): void {
                     ? undefined
                     : optionalString(body.sharedInstructions, 'sharedInstructions') ?? '';
                 const childMode = parseChildMode(body.childMode);
-                const { provider, model, reasoningEffort } = parseAiSelection(body);
+                const { provider, model, reasoningEffort } = await resolveAiSelection(ctx, body);
                 const generationProcessId = optionalString(body.generationProcessId, 'generationProcessId');
                 const generationId = optionalString(body.generationId, 'generationId');
 
@@ -197,7 +218,7 @@ export function registerForEachRoutes(ctx: ForEachRouteContext): void {
                 }
                 const sharedInstructions = optionalString(body.sharedInstructions, 'sharedInstructions');
                 const childMode = parseChildMode(body.childMode);
-                const { provider, model, reasoningEffort } = parseAiSelection(body);
+                const { provider, model, reasoningEffort } = await resolveAiSelection(ctx, body);
 
                 let items: ForEachItem[];
                 try {
