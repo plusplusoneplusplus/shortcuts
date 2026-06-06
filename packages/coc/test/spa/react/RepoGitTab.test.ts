@@ -43,7 +43,7 @@ describe('RepoGitTab', () => {
         });
 
         it('imports typed CoC client', () => {
-            expect(source).toContain("import { getSpaCocClient } from '../../api/cocClient'");
+            expect(source).toContain("import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient'");
         });
 
         it('fetches branch-range data', () => {
@@ -377,6 +377,31 @@ describe('RepoGitTab', () => {
             expect(source).toContain('setActionError(null)');
         });
 
+        it('opens a local branch picker for cherry-picking instead of immediately cherry-picking onto HEAD', () => {
+            const block = source.match(/const handleCherryPick = useCallback[\s\S]*?(?=const handleOpenCrossCloneCherryPick)/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('handleOpenCherryPickToBranch([commit])');
+            expect(block![0]).not.toContain('.git.cherryPick(workspaceId, commit.hash)');
+        });
+
+        it('cherry-picks selected commits oldest-first onto the picked branch', () => {
+            const orderBlock = source.match(/const orderOldestFirst = useCallback[\s\S]*?(?=const handleOpenCherryPickToBranch)/);
+            const applyBlock = source.match(/const handleCherryPickToBranch = useCallback[\s\S]*?(?=const handleCherryPick = useCallback)/);
+            expect(orderBlock).toBeTruthy();
+            expect(applyBlock).toBeTruthy();
+            expect(orderBlock![0]).toContain('return rightIndex - leftIndex');
+            expect(applyBlock![0]).toContain('hashes');
+            expect(applyBlock![0]).toContain('targetBranch');
+            expect(applyBlock![0]).toContain('.git.cherryPick(workspaceId, primaryHash');
+        });
+
+        it('surfaces dirty/conflict cherry-pick errors without continue instructions', () => {
+            const applyBlock = source.match(/const handleCherryPickToBranch = useCallback[\s\S]*?(?=const handleCherryPick = useCallback)/);
+            expect(applyBlock).toBeTruthy();
+            expect(applyBlock![0]).toContain('getSpaCocClientErrorMessage');
+            expect(applyBlock![0]).not.toContain('cherry-pick --continue');
+        });
+
         it('shows action error toast', () => {
             expect(source).toContain('data-testid="git-action-error"');
         });
@@ -559,6 +584,12 @@ describe('RepoGitTab', () => {
 
         it('imports BranchPickerModal', () => {
             expect(source).toContain("import { BranchPickerModal } from './branches/BranchPickerModal'");
+        });
+
+        it('renders a second BranchPickerModal for cherry-pick target selection', () => {
+            expect(source).toContain('title="Cherry-pick to branch"');
+            expect(source).toContain('onSelected={handleCherryPickToBranch}');
+            expect(source).toContain('isOpen={cherryPickTarget !== null}');
         });
 
         it('imports CrossCloneCherryPickModal', () => {
@@ -937,7 +968,7 @@ describe('RepoGitTab', () => {
         });
 
         it('imports typed CoC client utility', () => {
-            expect(source).toContain("import { getSpaCocClient } from '../../api/cocClient'");
+            expect(source).toContain("import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient'");
         });
 
         it('imports useMemo from react', () => {

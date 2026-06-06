@@ -16,7 +16,7 @@ import { fetchApi } from '../../hooks/useApi';
 import type { GitPatchApplyResponse } from '@plusplusoneplusplus/coc-client';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
-import { getSpaCocClient } from '../../api/cocClient';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { Spinner } from '../../ui';
 import { CommitList, isTouchOnly } from './commits/CommitList';
 import type { GitCommitItem } from './commits/CommitList';
@@ -198,6 +198,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [branchPickerOpen, setBranchPickerOpen] = useState(false);
     const [amendingCommit, setAmendingCommit] = useState<GitCommitItem | null>(null);
     const [rewordingCommit, setRewordingCommit] = useState<GitCommitItem | null>(null);
+    const [cherryPickTarget, setCherryPickTarget] = useState<{ commits: GitCommitItem[] } | null>(null);
     const [crossCloneCherryPickCommit, setCrossCloneCherryPickCommit] = useState<GitCommitItem | null>(null);
     const [isMobileSelecting, setIsMobileSelecting] = useState(false);
     const [mobileAnchorHash, setMobileAnchorHash] = useState<string | null>(null);
@@ -928,30 +929,58 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
     }, [closeContextMenu, workspaceId, refreshAll]);
 
-    const handleCherryPick = useCallback(async (commit: GitCommitItem) => {
+    const orderOldestFirst = useCallback((selectedCommits: GitCommitItem[]) => {
+        const indexByHash = new Map(commits.map((commit, index) => [commit.hash, index]));
+        return [...selectedCommits].sort((left, right) => {
+            const leftIndex = indexByHash.get(left.hash);
+            const rightIndex = indexByHash.get(right.hash);
+            if (leftIndex === undefined && rightIndex === undefined) return 0;
+            if (leftIndex === undefined) return 1;
+            if (rightIndex === undefined) return -1;
+            return rightIndex - leftIndex;
+        });
+    }, [commits]);
+
+    const handleOpenCherryPickToBranch = useCallback((selectedCommits: GitCommitItem[]) => {
         closeContextMenu();
-        const shortHash = commit.hash.slice(0, 7);
-        if (!window.confirm(`Cherry pick commit ${shortHash}?`)) return;
+        const orderedCommits = orderOldestFirst(selectedCommits);
+        if (orderedCommits.length === 0) return;
+        setActionError(null);
+        setCherryPickTarget({ commits: orderedCommits });
+    }, [closeContextMenu, orderOldestFirst]);
+
+    const handleCherryPickToBranch = useCallback(async (targetBranch: string) => {
+        const target = cherryPickTarget;
+        if (!target?.commits.length) return;
+        const hashes = target.commits.map(commit => commit.hash);
+        const primaryHash = hashes[0];
         setActionError(null);
         try {
-            const result = await getSpaCocClient().git.cherryPick(workspaceId, commit.hash);
+            const result = await getSpaCocClient().git.cherryPick(workspaceId, primaryHash, {
+                hashes,
+                targetBranch,
+            });
             if (result.conflicts) {
-                setActionError(`Cherry-pick has conflicts — resolve them and run \`git cherry-pick --continue\``);
-            } else if (result.success === false) {
-                throw new Error(result.error || 'Cherry-pick failed');
-            } else {
-                refreshAll();
-                setEnqueueToast(`Cherry-picked ${shortHash}`);
-                setTimeout(() => setEnqueueToast(null), 3000);
+                throw new Error(result.error || result.message || 'Cherry-pick failed; changes were aborted and branch restored.');
             }
-        } catch (err: any) {
-            if (err?.status === 409 || err?.body?.conflicts) {
-                setActionError(`Cherry-pick has conflicts — resolve them and run \`git cherry-pick --continue\``);
-                return;
+            if (result.success === false) {
+                throw new Error(result.error || result.message || 'Cherry-pick failed');
             }
-            setActionError(err.message || 'Cherry-pick failed');
+            refreshAll();
+            const toastHash = hashes.length === 1 ? target.commits[0].shortHash : `${hashes.length} commits`;
+            setEnqueueToast(`Cherry-picked ${toastHash} onto ${targetBranch}`);
+            setTimeout(() => setEnqueueToast(null), 3000);
+        } catch (error) {
+            const message = getSpaCocClientErrorMessage(error, 'Cherry-pick failed');
+            setActionError(message);
+            throw new Error(message);
         }
-    }, [closeContextMenu, workspaceId, refreshAll]);
+    }, [cherryPickTarget, refreshAll, workspaceId]);
+
+    const handleCherryPick = useCallback((commit: GitCommitItem) => {
+        closeContextMenu();
+        handleOpenCherryPickToBranch([commit]);
+    }, [closeContextMenu, handleOpenCherryPickToBranch]);
 
     const handleOpenCrossCloneCherryPick = useCallback((commit: GitCommitItem) => {
         closeContextMenu();
@@ -1412,7 +1441,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 onClick: () => handleHardReset(commit),
             });
             items.push({
-                label: 'Cherry Pick',
+                label: 'Cherry-pick to branch…',
                 icon: '🍒',
                 onClick: () => handleCherryPick(commit),
             });
@@ -1495,6 +1524,11 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 });
             }
             items.push({
+                label: 'Cherry-pick to branch…',
+                icon: '🍒',
+                onClick: () => handleOpenCherryPickToBranch(selectedCommits),
+            });
+            items.push({
                 label: 'Ask AI', icon: '💡', onClick: () => {
                     queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'ask', initialPrompt, launchMode: 'floating-chat' });
                 },
@@ -1562,7 +1596,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
 
         return items;
-    }, [contextMenu, skills, commitSkillUsageMap, handleEnqueueSkill, handleSquashCommits, handleBranchAskAI, handleSelect, handleOpenAsPopup, handleHardReset, handleCherryPick, handleOpenCrossCloneCherryPick, commits, closeContextMenu, queueDispatch, workspaceId, fixupGroupsForMenu, handleRebaseAutosquash, handlePushToCommit, unpushedCount, isMobileSelecting, mobileAnchorHash, handleMultiSelect, handleDropCommit]);
+    }, [contextMenu, skills, commitSkillUsageMap, handleEnqueueSkill, handleSquashCommits, handleOpenCherryPickToBranch, handleBranchAskAI, handleSelect, handleOpenAsPopup, handleHardReset, handleCherryPick, handleOpenCrossCloneCherryPick, commits, closeContextMenu, queueDispatch, workspaceId, fixupGroupsForMenu, handleRebaseAutosquash, handlePushToCommit, unpushedCount, isMobileSelecting, mobileAnchorHash, handleMultiSelect, handleDropCommit]);
 
     // Keyboard shortcuts:
     //   - R: refresh
@@ -2060,6 +2094,16 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 fetchBranchRange(true);
                 fetchCommits(true);
             }}
+        />
+        <BranchPickerModal
+            workspaceId={workspaceId}
+            currentBranch={branchName || 'HEAD'}
+            isOpen={cherryPickTarget !== null}
+            onClose={() => setCherryPickTarget(null)}
+            onSelected={handleCherryPickToBranch}
+            title="Cherry-pick to branch"
+            busyLabel="Cherry-picking…"
+            errorLabel="Cherry-pick failed"
         />
         {amendingCommit && (
             <AmendMessageModal

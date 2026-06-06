@@ -1,8 +1,10 @@
 /**
  * BranchPickerModal — server-driven branch picker with debounced search and pagination.
  *
- * Opens as a modal overlay. Fetches branches from GET /workspaces/:id/git/branches
- * using search + pagination. Switches branches via POST /workspaces/:id/git/branches/switch.
+ * Opens as a modal overlay. Fetches local branches from GET /workspaces/:id/git/branches
+ * using search + pagination. By default it switches branches via
+ * POST /workspaces/:id/git/branches/switch; callers may provide onSelected to
+ * reuse the picker as a branch-selection modal without switching here.
  * Supports keyboard navigation (ArrowUp/Down, Enter, Escape).
  */
 
@@ -24,10 +26,24 @@ interface BranchPickerModalProps {
     currentBranch: string;
     isOpen: boolean;
     onClose: () => void;
-    onSwitched: (newBranch: string) => void;
+    onSwitched?: (newBranch: string) => void;
+    onSelected?: (branchName: string) => void | Promise<void>;
+    title?: string;
+    busyLabel?: string;
+    errorLabel?: string;
 }
 
-export function BranchPickerModal({ workspaceId, currentBranch, isOpen, onClose, onSwitched }: BranchPickerModalProps) {
+export function BranchPickerModal({
+    workspaceId,
+    currentBranch,
+    isOpen,
+    onClose,
+    onSwitched,
+    onSelected,
+    title,
+    busyLabel,
+    errorLabel,
+}: BranchPickerModalProps) {
     const [query, setQuery] = useState('');
     const [branches, setBranches] = useState<GitBranch[]>([]);
     const [offset, setOffset] = useState(0);
@@ -41,6 +57,10 @@ export function BranchPickerModal({ workspaceId, currentBranch, isOpen, onClose,
     const searchInputRef = useRef<HTMLInputElement>(null);
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const listRef = useRef<HTMLUListElement>(null);
+    const isSelectionMode = typeof onSelected === 'function';
+    const dialogTitle = title ?? (isSelectionMode ? 'Select branch' : 'Switch branch');
+    const actionErrorLabel = errorLabel ?? (isSelectionMode ? 'Failed to select branch' : 'Failed to switch branch');
+    const actionBusyLabel = busyLabel ?? (isSelectionMode ? 'Applying…' : 'Switching branch…');
 
     const fetchBranches = useCallback(
         async (search: string, newOffset: number, append = false) => {
@@ -113,23 +133,28 @@ export function BranchPickerModal({ workspaceId, currentBranch, isOpen, onClose,
 
     const handleSwitch = useCallback(
         async (branchName: string) => {
-            if (branchName === currentBranch || isSwitching) return;
+            if (isSwitching) return;
+            if (!isSelectionMode && branchName === currentBranch) return;
             setIsSwitching(true);
             setError(null);
             try {
-                const result = await getSpaCocClient().git.switchBranch(workspaceId, branchName, { force: false });
-                if (result.success === false) {
-                    throw new Error(result.error || 'Switch failed');
+                if (onSelected) {
+                    await onSelected(branchName);
+                } else {
+                    const result = await getSpaCocClient().git.switchBranch(workspaceId, branchName, { force: false });
+                    if (result.success === false) {
+                        throw new Error(result.error || 'Switch failed');
+                    }
+                    onSwitched?.(branchName);
                 }
-                onSwitched(branchName);
                 onClose();
             } catch (err: any) {
-                setError(err.message || 'Failed to switch branch');
+                setError(err.message || actionErrorLabel);
             } finally {
                 setIsSwitching(false);
             }
         },
-        [currentBranch, isSwitching, workspaceId, onSwitched, onClose]
+        [actionErrorLabel, currentBranch, isSelectionMode, isSwitching, onClose, onSelected, onSwitched, workspaceId]
     );
 
     const handleKeyDown = useCallback(
@@ -177,7 +202,7 @@ export function BranchPickerModal({ workspaceId, currentBranch, isOpen, onClose,
                 className="relative z-10 w-full max-w-lg bg-white dark:bg-[#252526] rounded-lg shadow-2xl border border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col max-h-[70vh]"
                 data-testid="branch-picker-modal"
                 role="dialog"
-                aria-label="Switch branch"
+                aria-label={dialogTitle}
                 onKeyDown={handleKeyDown}
             >
                 {/* Header */}
@@ -289,7 +314,7 @@ export function BranchPickerModal({ workspaceId, currentBranch, isOpen, onClose,
                 {/* Switching spinner */}
                 {isSwitching && (
                     <div className="px-4 py-2 text-xs text-[#999] border-t border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="branch-picker-switching">
-                        Switching branch…
+                        {actionBusyLabel}
                     </div>
                 )}
             </div>
