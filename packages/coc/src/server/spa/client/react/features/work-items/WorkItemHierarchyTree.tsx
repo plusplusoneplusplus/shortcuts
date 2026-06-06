@@ -718,7 +718,7 @@ export function WorkItemHierarchyTree({
                         <Button variant="ghost" size="sm" onClick={fetchTree}>Retry</Button>
                     </div>
                 ) : treeData.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-24 gap-3 px-4 text-center" data-testid="hierarchy-empty">
+                    <div className="flex flex-col items-center justify-center min-h-24 gap-3 px-4 py-4 text-center" data-testid="hierarchy-empty">
                         <div className="text-3xl">🗂️</div>
                         <p className="text-xs text-[#848484]">
                             {searchQuery ? 'No results found.' : trackerCopy.empty}
