@@ -717,11 +717,6 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                             }
                         }}
                         onKeyDown={(e) => {
-                            if (e.key === 'Tab' && e.shiftKey) {
-                                e.preventDefault();
-                                setSelectedMode(cycleMode(selectedMode, visibleModes));
-                                return;
-                            }
                             // Priority 1: model command menu
                             if (modelCommand.handleModelKeyDown(e)) {
                                 if (e.key === 'Enter' || e.key === 'Tab') {
@@ -751,6 +746,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                             // Priority 3: inline ghost-text accept (Tab, no modifiers).
                             if (
                                 e.key === 'Tab'
+                                && !e.shiftKey
                                 && !e.ctrlKey && !e.metaKey && !e.altKey
                                 && autocomplete.completion
                             ) {
@@ -773,6 +769,11 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                             }
                             // Priority 5: bash-style up/down history navigation.
                             if (promptHistory.handleKeyDown(e)) {
+                                return;
+                            }
+                            if (e.key === 'Tab' && e.shiftKey) {
+                                e.preventDefault();
+                                setSelectedMode(cycleMode(selectedMode, visibleModes));
                                 return;
                             }
                             if (e.key === 'Enter' && !e.shiftKey) {

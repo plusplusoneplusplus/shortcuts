@@ -382,6 +382,31 @@ describe('chat composer keyboard shortcuts', () => {
         expect(screen.getByTestId('effort-pill-selector').getAttribute('data-effort-value')).toBe('auto');
     });
 
+    it('lets the NewChatArea model menu own Shift+Tab before mode cycling', () => {
+        mockModelCommand.modelMenuVisible = true;
+        mockModelCommand.filteredModels = mockModels.models;
+        mockModelCommand.handleModelKeyDown.mockReturnValue(true);
+        render(<NewChatArea workspaceId="ws-1" />);
+
+        fireEvent.keyDown(screen.getByTestId('new-chat-input'), { key: 'Tab', shiftKey: true });
+
+        expect(mockModelCommand.handleModelKeyDown).toHaveBeenCalled();
+        expect(screen.getByTestId('mode-pill-ask').getAttribute('data-selected')).toBe('true');
+        expect(screen.getByTestId('mode-pill-autopilot').getAttribute('data-selected')).toBe('false');
+    });
+
+    it('keeps NewChatArea Shift+Tab mode cycling from accepting autocomplete', () => {
+        mockAutocomplete.completion = 'llo';
+        mockAutocomplete.accept.mockReturnValue('hello');
+        render(<NewChatArea workspaceId="ws-1" />);
+
+        fireEvent.keyDown(screen.getByTestId('new-chat-input'), { key: 'Tab', shiftKey: true });
+
+        expect(mockAutocomplete.accept).not.toHaveBeenCalled();
+        expect(screen.getByTestId('mode-pill-ask').getAttribute('data-selected')).toBe('false');
+        expect(screen.getByTestId('mode-pill-autopilot').getAttribute('data-selected')).toBe('true');
+    });
+
     it('cycles NewChatArea provider with Ctrl+Down, persists it, and sends it in the queue payload', async () => {
         mockAgentProviders.providers = [
             { id: 'copilot', label: 'Copilot', enabled: true, available: true },
