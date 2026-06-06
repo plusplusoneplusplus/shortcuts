@@ -239,7 +239,7 @@ interface CodexRateLimitEntry {
     limitId: string;
     limitName: string | null;
     primary: CodexRateLimitWindow;
-    secondary: CodexRateLimitWindow;
+    secondary: CodexRateLimitWindow | null;
     credits: CodexCredits;
     planType: string;
     rateLimitReachedType: string | null;
@@ -1037,32 +1037,63 @@ function addCodexUsage(current: TokenUsage | undefined, usage: CodexUsage | unde
     return result;
 }
 
-/** Map a Codex rate limits RPC response to the IAccountQuotaResult format. */
+/**
+ * Map a Codex rate limits RPC response to the IAccountQuotaResult format.
+ *
+ * Each Codex limit entry carries two rolling windows: `primary` (the ~5-hour
+ * window) and `secondary` (the weekly window). Both are surfaced as separate
+ * snapshots keyed `five_hour` / `seven_day` so the dashboard renders them with
+ * the same "5h" / "Weekly" labels as Claude. When usage is broken out across
+ * multiple limit ids the window keys are prefixed with the limit id to keep
+ * them distinct. A window is skipped when the upstream omits it (Codex may
+ * return a `null` secondary).
+ */
 export function mapCodexRateLimitsToQuota(result: CodexRateLimitsResult): IAccountQuotaResult {
     const snapshots: Record<string, IAccountQuotaSnapshot> = {};
     const entries = result.rateLimitsByLimitId
         ? Object.entries(result.rateLimitsByLimitId)
         : [[result.rateLimits.limitId || 'codex', result.rateLimits] as const];
 
-    for (const [limitId, entry] of entries) {
-        const primary = entry.primary;
-        const remaining = Math.max(0, Math.min(1, (100 - primary.usedPercent) / 100));
-        const resetDate = primary.resetsAt
-            ? new Date(primary.resetsAt * 1000).toISOString()
-            : undefined;
+    const prefixWithLimitId = entries.length > 1;
 
-        snapshots[limitId] = {
-            isUnlimitedEntitlement: entry.credits?.unlimited ?? false,
-            entitlementRequests: 100,
-            usedRequests: primary.usedPercent,
-            remainingPercentage: remaining,
-            usageAllowedWithExhaustedQuota: entry.credits?.hasCredits ?? false,
-            overage: 0,
-            resetDate,
-        };
+    for (const [limitId, entry] of entries) {
+        const prefix = prefixWithLimitId ? `${limitId}_` : '';
+        addCodexWindowSnapshot(snapshots, `${prefix}five_hour`, entry, entry.primary);
+        addCodexWindowSnapshot(snapshots, `${prefix}seven_day`, entry, entry.secondary);
     }
 
     return { quotaSnapshots: snapshots };
+}
+
+/**
+ * Add one quota snapshot for a single Codex rate-limit window. No-ops when the
+ * window is absent or carries a non-numeric `usedPercent`, so a missing weekly
+ * window simply yields no `seven_day` snapshot rather than a bogus full bar.
+ */
+function addCodexWindowSnapshot(
+    snapshots: Record<string, IAccountQuotaSnapshot>,
+    key: string,
+    entry: CodexRateLimitEntry,
+    window: CodexRateLimitWindow | null | undefined,
+): void {
+    if (!window || typeof window.usedPercent !== 'number' || !Number.isFinite(window.usedPercent)) {
+        return;
+    }
+
+    const remaining = Math.max(0, Math.min(1, (100 - window.usedPercent) / 100));
+    const resetDate = window.resetsAt
+        ? new Date(window.resetsAt * 1000).toISOString()
+        : undefined;
+
+    snapshots[key] = {
+        isUnlimitedEntitlement: entry.credits?.unlimited ?? false,
+        entitlementRequests: 100,
+        usedRequests: window.usedPercent,
+        remainingPercentage: remaining,
+        usageAllowedWithExhaustedQuota: entry.credits?.hasCredits ?? false,
+        overage: 0,
+        ...(resetDate ? { resetDate } : {}),
+    };
 }
 
 // ============================================================================

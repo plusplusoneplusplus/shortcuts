@@ -8,7 +8,7 @@ import * as path from 'path';
 import { CodexSDKService, mapCodexRateLimitsToQuota } from '../../src/codex-sdk-service';
 
 describe('mapCodexRateLimitsToQuota', () => {
-    it('maps a single rate limit entry from rateLimitsByLimitId', () => {
+    it('maps primary and secondary windows to five_hour / seven_day snapshots', () => {
         const result = mapCodexRateLimitsToQuota({
             rateLimits: {
                 limitId: 'codex',
@@ -32,15 +32,21 @@ describe('mapCodexRateLimitsToQuota', () => {
             },
         });
 
-        expect(result.quotaSnapshots).toHaveProperty('codex');
-        const snap = result.quotaSnapshots['codex'];
-        expect(snap.isUnlimitedEntitlement).toBe(false);
-        expect(snap.usedRequests).toBe(10);
-        expect(snap.entitlementRequests).toBe(100);
-        expect(snap.remainingPercentage).toBe(0.9);
-        expect(snap.usageAllowedWithExhaustedQuota).toBe(false);
-        expect(snap.overage).toBe(0);
-        expect(snap.resetDate).toBe(new Date(1700000000 * 1000).toISOString());
+        expect(Object.keys(result.quotaSnapshots).sort()).toEqual(['five_hour', 'seven_day']);
+
+        const primary = result.quotaSnapshots['five_hour'];
+        expect(primary.isUnlimitedEntitlement).toBe(false);
+        expect(primary.usedRequests).toBe(10);
+        expect(primary.entitlementRequests).toBe(100);
+        expect(primary.remainingPercentage).toBe(0.9);
+        expect(primary.usageAllowedWithExhaustedQuota).toBe(false);
+        expect(primary.overage).toBe(0);
+        expect(primary.resetDate).toBe(new Date(1700000000 * 1000).toISOString());
+
+        const secondary = result.quotaSnapshots['seven_day'];
+        expect(secondary.usedRequests).toBe(0);
+        expect(secondary.remainingPercentage).toBe(1);
+        expect(secondary.resetDate).toBe(new Date(1700500000 * 1000).toISOString());
     });
 
     it('falls back to rateLimits when rateLimitsByLimitId is absent', () => {
@@ -56,14 +62,33 @@ describe('mapCodexRateLimitsToQuota', () => {
             },
         });
 
-        expect(Object.keys(result.quotaSnapshots)).toEqual(['codex']);
-        const snap = result.quotaSnapshots['codex'];
-        expect(snap.usedRequests).toBe(50);
-        expect(snap.remainingPercentage).toBe(0.5);
-        expect(snap.usageAllowedWithExhaustedQuota).toBe(true);
+        expect(Object.keys(result.quotaSnapshots).sort()).toEqual(['five_hour', 'seven_day']);
+        expect(result.quotaSnapshots['five_hour'].usedRequests).toBe(50);
+        expect(result.quotaSnapshots['five_hour'].remainingPercentage).toBe(0.5);
+        expect(result.quotaSnapshots['five_hour'].usageAllowedWithExhaustedQuota).toBe(true);
+        expect(result.quotaSnapshots['seven_day'].usedRequests).toBe(5);
+        expect(result.quotaSnapshots['seven_day'].remainingPercentage).toBe(0.95);
     });
 
-    it('handles unlimited entitlements', () => {
+    it('skips the weekly window when secondary is null', () => {
+        const result = mapCodexRateLimitsToQuota({
+            rateLimits: {
+                limitId: 'codex',
+                limitName: null,
+                primary: { usedPercent: 30, windowDurationMins: 300, resetsAt: 1700000000 },
+                secondary: null,
+                credits: { hasCredits: false, unlimited: false, balance: '0' },
+                planType: 'plus',
+                rateLimitReachedType: null,
+            },
+        });
+
+        expect(Object.keys(result.quotaSnapshots)).toEqual(['five_hour']);
+        expect(result.quotaSnapshots['seven_day']).toBeUndefined();
+        expect(result.quotaSnapshots['five_hour'].usedRequests).toBe(30);
+    });
+
+    it('handles unlimited entitlements on both windows', () => {
         const result = mapCodexRateLimitsToQuota({
             rateLimits: {
                 limitId: 'codex',
@@ -76,9 +101,9 @@ describe('mapCodexRateLimitsToQuota', () => {
             },
         });
 
-        const snap = result.quotaSnapshots['codex'];
-        expect(snap.isUnlimitedEntitlement).toBe(true);
-        expect(snap.remainingPercentage).toBe(1);
+        expect(result.quotaSnapshots['five_hour'].isUnlimitedEntitlement).toBe(true);
+        expect(result.quotaSnapshots['five_hour'].remainingPercentage).toBe(1);
+        expect(result.quotaSnapshots['seven_day'].isUnlimitedEntitlement).toBe(true);
     });
 
     it('clamps remaining percentage to [0, 1] range', () => {
@@ -94,27 +119,10 @@ describe('mapCodexRateLimitsToQuota', () => {
             },
         });
 
-        const snap = result.quotaSnapshots['codex'];
-        expect(snap.remainingPercentage).toBe(0);
+        expect(result.quotaSnapshots['five_hour'].remainingPercentage).toBe(0);
     });
 
-    it('uses default limitId "codex" when limitId is empty', () => {
-        const result = mapCodexRateLimitsToQuota({
-            rateLimits: {
-                limitId: '',
-                limitName: null,
-                primary: { usedPercent: 5, windowDurationMins: 300, resetsAt: 1700000000 },
-                secondary: { usedPercent: 0, windowDurationMins: 10080, resetsAt: 1700500000 },
-                credits: { hasCredits: false, unlimited: false, balance: '0' },
-                planType: 'plus',
-                rateLimitReachedType: null,
-            },
-        });
-
-        expect(result.quotaSnapshots).toHaveProperty('codex');
-    });
-
-    it('handles multiple rate limit entries', () => {
+    it('prefixes window keys with the limit id when multiple entries are present', () => {
         const result = mapCodexRateLimitsToQuota({
             rateLimits: {
                 limitId: 'codex',
@@ -147,14 +155,35 @@ describe('mapCodexRateLimitsToQuota', () => {
             },
         });
 
-        expect(Object.keys(result.quotaSnapshots)).toHaveLength(2);
-        expect(result.quotaSnapshots['codex']).toBeDefined();
-        expect(result.quotaSnapshots['codex-pro']).toBeDefined();
-        expect(result.quotaSnapshots['codex-pro'].usedRequests).toBe(25);
-        expect(result.quotaSnapshots['codex-pro'].remainingPercentage).toBe(0.75);
+        expect(Object.keys(result.quotaSnapshots).sort()).toEqual([
+            'codex-pro_five_hour',
+            'codex-pro_seven_day',
+            'codex_five_hour',
+            'codex_seven_day',
+        ]);
+        expect(result.quotaSnapshots['codex-pro_five_hour'].usedRequests).toBe(25);
+        expect(result.quotaSnapshots['codex-pro_five_hour'].remainingPercentage).toBe(0.75);
+        expect(result.quotaSnapshots['codex-pro_seven_day'].usedRequests).toBe(2);
     });
 
-    it('handles zero resetsAt (no reset date)', () => {
+    it('uses default limitId "codex" prefix when limitId is empty across multiple entries', () => {
+        const result = mapCodexRateLimitsToQuota({
+            rateLimits: {
+                limitId: '',
+                limitName: null,
+                primary: { usedPercent: 5, windowDurationMins: 300, resetsAt: 1700000000 },
+                secondary: { usedPercent: 0, windowDurationMins: 10080, resetsAt: 1700500000 },
+                credits: { hasCredits: false, unlimited: false, balance: '0' },
+                planType: 'plus',
+                rateLimitReachedType: null,
+            },
+        });
+
+        // Single entry → unprefixed semantic keys.
+        expect(Object.keys(result.quotaSnapshots).sort()).toEqual(['five_hour', 'seven_day']);
+    });
+
+    it('handles zero resetsAt (no reset date) on both windows', () => {
         const result = mapCodexRateLimitsToQuota({
             rateLimits: {
                 limitId: 'codex',
@@ -167,8 +196,8 @@ describe('mapCodexRateLimitsToQuota', () => {
             },
         });
 
-        const snap = result.quotaSnapshots['codex'];
-        expect(snap.resetDate).toBeUndefined();
+        expect(result.quotaSnapshots['five_hour'].resetDate).toBeUndefined();
+        expect(result.quotaSnapshots['seven_day'].resetDate).toBeUndefined();
     });
 });
 
