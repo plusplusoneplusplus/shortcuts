@@ -17,6 +17,7 @@ import {
     buildWslCommandArgs,
     getWslExecutablePath,
     resolveWorkspaceExecutionContext,
+    translatePathForExecution,
 } from '../utils/workspace-execution';
 import {
     BranchStatus,
@@ -103,6 +104,55 @@ export class BranchService {
                 ...options.env,
             },
         });
+        return stdout;
+    }
+
+    /**
+     * Execute git with an explicit argv array (no shell interpolation).
+     * Safe for paths with spaces, backslashes, or shell metacharacters on all platforms.
+     * For WSL contexts, path arguments are translated from Windows UNC paths to Linux paths.
+     */
+    private async execGitFileAsync(args: string[], options: GitExecOptions): Promise<string> {
+        await ensureGitSafeDirectoryAsync(options.cwd);
+        const executionContext = resolveWorkspaceExecutionContext(options.cwd);
+
+        if (executionContext.kind === 'wsl') {
+            const translatedArgs = args.map(arg => {
+                try {
+                    return translatePathForExecution(arg, executionContext);
+                } catch {
+                    return arg;
+                }
+            });
+            const { stdout } = await execFileAsync(
+                getWslExecutablePath(),
+                buildWslCommandArgs(executionContext, ['git', ...translatedArgs]),
+                {
+                    timeout: options.timeout || 30000,
+                    windowsHide: true,
+                    env: {
+                        ...process.env,
+                        GIT_TERMINAL_PROMPT: '0',
+                        ...options.env,
+                    },
+                },
+            );
+            return stdout;
+        }
+
+        const { stdout } = await execFileAsync(
+            'git',
+            args,
+            {
+                cwd: options.cwd,
+                timeout: options.timeout || 30000,
+                env: {
+                    ...process.env,
+                    GIT_TERMINAL_PROMPT: '0',
+                    ...options.env,
+                },
+            },
+        );
         return stdout;
     }
 
@@ -914,7 +964,7 @@ export class BranchService {
         const msgPath = path.join(tmpDir, 'COMMIT_MSG');
         try {
             fs.writeFileSync(msgPath, message, 'utf-8');
-            await this.execGit(`git commit --amend --only -F "${msgPath}"`, { cwd: repoRoot });
+            await this.execGitFileAsync(['commit', '--amend', '--only', '-F', msgPath], { cwd: repoRoot });
             const hash = this.execGitSync('git rev-parse HEAD', { cwd: repoRoot }).trim();
             return { success: true, hash };
         } catch (error) {

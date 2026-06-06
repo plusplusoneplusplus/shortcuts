@@ -747,24 +747,47 @@ describe('BranchService.amendCommitMessage', () => {
         mockedRmSync.mockReturnValue(undefined);
     }
 
-    it('writes message to temp file and runs git commit --amend --only -F', async () => {
+    it('writes message to temp file and runs git commit --amend --only -F via argv (no shell)', async () => {
         setupMocks();
-        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
         mockedExecSync.mockReturnValueOnce('abc1234\n');
 
         const result = await service.amendCommitMessage('/repo', 'Fix typo in README');
 
         expect(result).toEqual({ success: true, hash: 'abc1234' });
         expect(mockedWriteFileSync).toHaveBeenCalledWith(MOCK_MSG_PATH, 'Fix typo in README', 'utf-8');
-        expect(mockedExecAsync).toHaveBeenCalledWith(
-            `git commit --amend --only -F "${MOCK_MSG_PATH}"`,
+        // Must use execFileAsync (argv-style, no shell) — not execAsync (shell-string)
+        expect(mockedExecAsync).not.toHaveBeenCalled();
+        expect(mockedExecFileAsync).toHaveBeenCalledWith(
+            'git',
+            ['commit', '--amend', '--only', '-F', MOCK_MSG_PATH],
             expect.objectContaining({ cwd: '/repo' })
+        );
+    });
+
+    it('passes path with spaces and backslashes directly via argv without shell quoting', async () => {
+        const spaceDir = path.join('/my repo', '.git', 'tmp-amend-sp');
+        const spaceMsgPath = path.join(spaceDir, 'COMMIT_MSG');
+        mockedMkdtempSync.mockReturnValueOnce(spaceDir);
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedRmSync.mockReturnValue(undefined);
+        mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecSync.mockReturnValueOnce('hhh0009\n');
+
+        const result = await service.amendCommitMessage('/my repo', 'Windows path test');
+
+        expect(result.success).toBe(true);
+        // Path is passed as a plain argv element — no shell quoting or escaping
+        expect(mockedExecFileAsync).toHaveBeenCalledWith(
+            'git',
+            ['commit', '--amend', '--only', '-F', spaceMsgPath],
+            expect.objectContaining({ cwd: '/my repo' })
         );
     });
 
     it('includes body separated by double newline in temp file', async () => {
         setupMocks();
-        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
         mockedExecSync.mockReturnValueOnce('def5678\n');
 
         const result = await service.amendCommitMessage('/repo', 'feat: add button', 'Extended description here.');
@@ -782,19 +805,19 @@ describe('BranchService.amendCommitMessage', () => {
 
         expect(result.success).toBe(false);
         expect(result.error).toMatch(/title.*empty/i);
-        expect(mockedExecAsync).not.toHaveBeenCalled();
+        expect(mockedExecFileAsync).not.toHaveBeenCalled();
     });
 
     it('returns error when title is whitespace only', async () => {
         const result = await service.amendCommitMessage('/repo', '   ');
 
         expect(result.success).toBe(false);
-        expect(mockedExecAsync).not.toHaveBeenCalled();
+        expect(mockedExecFileAsync).not.toHaveBeenCalled();
     });
 
     it('returns error result on git failure', async () => {
         setupMocks();
-        mockedExecAsync.mockRejectedValueOnce(new Error('nothing to amend'));
+        mockedExecFileAsync.mockRejectedValueOnce(new Error('nothing to amend'));
 
         const result = await service.amendCommitMessage('/repo', 'Some title');
 
@@ -804,7 +827,7 @@ describe('BranchService.amendCommitMessage', () => {
 
     it('handles messages with double quotes', async () => {
         setupMocks();
-        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
         mockedExecSync.mockReturnValueOnce('aaa0001\n');
 
         await service.amendCommitMessage('/repo', 'Fix "the" bug');
@@ -814,7 +837,7 @@ describe('BranchService.amendCommitMessage', () => {
 
     it('handles messages with shell metacharacters ($, backticks, !)', async () => {
         setupMocks();
-        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
         mockedExecSync.mockReturnValueOnce('bbb0002\n');
 
         const title = 'Fix $HOME expansion and `command` injection!';
@@ -825,7 +848,7 @@ describe('BranchService.amendCommitMessage', () => {
 
     it('handles messages with Windows-specific characters (% and ^)', async () => {
         setupMocks();
-        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
         mockedExecSync.mockReturnValueOnce('ccc0003\n');
 
         const title = 'Fix 100% of ^caret issues';
@@ -836,7 +859,7 @@ describe('BranchService.amendCommitMessage', () => {
 
     it('handles messages with Unicode and emoji', async () => {
         setupMocks();
-        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
         mockedExecSync.mockReturnValueOnce('ddd0004\n');
 
         const title = '🐛 Fix bug in über-feature — résumé handling';
@@ -847,7 +870,7 @@ describe('BranchService.amendCommitMessage', () => {
 
     it('handles very long messages (>500 chars)', async () => {
         setupMocks();
-        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
         mockedExecSync.mockReturnValueOnce('eee0005\n');
 
         const title = 'Fix: ' + 'a'.repeat(600);
@@ -859,7 +882,7 @@ describe('BranchService.amendCommitMessage', () => {
 
     it('handles multi-line body with embedded quotes and special chars', async () => {
         setupMocks();
-        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
         mockedExecSync.mockReturnValueOnce('fff0006\n');
 
         const title = 'feat: add "login" feature';
@@ -871,7 +894,7 @@ describe('BranchService.amendCommitMessage', () => {
 
     it('cleans up temp directory on success', async () => {
         setupMocks();
-        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
         mockedExecSync.mockReturnValueOnce('ggg0007\n');
 
         await service.amendCommitMessage('/repo', 'Some title');
@@ -881,7 +904,7 @@ describe('BranchService.amendCommitMessage', () => {
 
     it('cleans up temp directory on failure', async () => {
         setupMocks();
-        mockedExecAsync.mockRejectedValueOnce(new Error('git error'));
+        mockedExecFileAsync.mockRejectedValueOnce(new Error('git error'));
 
         await service.amendCommitMessage('/repo', 'Some title');
 
