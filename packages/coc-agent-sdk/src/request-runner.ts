@@ -27,6 +27,7 @@ import {
     ToolEvent,
 } from './types';
 import { StreamingSession, StreamingResult } from './streaming-session';
+import type { TransformOptions, TransformResult } from './sdk-service-interface';
 import { SessionManager } from './session-manager';
 import { isStreamDestroyedError } from './stream-error-guard';
 import { isWithinDirectory } from './internal/path-security';
@@ -440,34 +441,54 @@ export class RequestRunner {
     }
 
     /**
-     * Sends a one-shot prompt and returns a parsed value of type T.
-     * Uses `gpt-4.1` by default. Throws on AI unavailability or parse failure.
+     * Runs a single isolated transform request and returns a structured result.
+     *
+     * The request is fresh: it never resumes a session and never reuses a
+     * caller-visible client. By default it runs with no MCP servers/tools
+     * (`loadDefaultMcpConfig: false`) and denies every permission request, so it
+     * cannot perform side effects unless the caller overrides those defaults.
+     * The SDK owns no model default — when `options.model` is omitted the
+     * provider default applies.
      *
      * @param sendFn - Optional send override (defaults to this.send). Pass
      *   `service.sendMessage.bind(service)` from the facade so tests can spy on sendMessage.
      */
-    async transform<T = string>(
-        prompt: string,
-        parse?: (raw: string) => T,
-        options?: { model?: string; timeoutMs?: number; cwd?: string },
+    async transform(
+        input: string,
+        options?: TransformOptions,
         sendFn?: (opts: SendMessageOptions) => Promise<SDKInvocationResult>,
-    ): Promise<T> {
+    ): Promise<TransformResult> {
         const doSend = sendFn ?? ((opts: SendMessageOptions) => this.send(opts));
         const aiLog = getAIServiceLogger();
         try {
             const result = await doSend({
-                prompt,
-                model: options?.model ?? 'gpt-4.1',
+                prompt: input,
+                model: options?.model,
                 timeoutMs: options?.timeoutMs ?? this.defaultTimeoutMs,
                 workingDirectory: options?.cwd,
+                signal: options?.signal,
+                loadDefaultMcpConfig: options?.loadDefaultMcpConfig ?? false,
+                onPermissionRequest: options?.onPermissionRequest ?? denyAllPermissions,
             });
-            if (!result.success) throw new Error(result.error || 'AI transform failed');
-            const raw = result.response ?? '';
-            return parse ? parse(raw) : raw as unknown as T;
+            if (!result.success) {
+                return {
+                    success: false,
+                    text: '',
+                    error: result.error || 'AI transform failed',
+                    effectiveModel: result.effectiveModel,
+                    tokenUsage: result.tokenUsage,
+                };
+            }
+            return {
+                success: true,
+                text: result.response ?? '',
+                effectiveModel: result.effectiveModel,
+                tokenUsage: result.tokenUsage,
+            };
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
             aiLog.error({ err: error instanceof Error ? error : undefined }, `transform: ${msg}`);
-            throw error instanceof Error ? error : new Error(msg);
+            return { success: false, text: '', error: msg };
         }
     }
 

@@ -162,8 +162,10 @@ describe('CodexSDKService — SDK not available', () => {
         await expect(svc.listModels()).rejects.toThrow('Codex SDK');
     });
 
-    it('transform throws when SDK is not available', async () => {
-        await expect(svc.transform('prompt')).rejects.toThrow('Codex SDK');
+    it('transform returns a failure result when SDK is not available', async () => {
+        const result = await svc.transform('prompt');
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('Codex SDK');
     });
 
     it('forkSession throws when SDK is not available', async () => {
@@ -468,16 +470,11 @@ describe('CodexSDKService — SDK mocked', () => {
         expect(result.error).toContain('aborted');
     });
 
-    it('transform returns the raw response when no parse function given', async () => {
+    it('transform returns a structured success result with the response text', async () => {
         const result = await svc.transform('hello codex');
-        expect(typeof result).toBe('string');
-        expect(result.length).toBeGreaterThan(0);
-    });
-
-    it('transform applies parse function to the raw response', async () => {
-        const length = await svc.transform<number>('input', (raw) => raw.length);
-        expect(typeof length).toBe('number');
-        expect(length).toBeGreaterThan(0);
+        expect(result.success).toBe(true);
+        expect(typeof result.text).toBe('string');
+        expect(result.text.length).toBeGreaterThan(0);
     });
 
     it('forkSession returns a resumable session ID', async () => {

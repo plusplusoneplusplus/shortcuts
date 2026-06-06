@@ -87,6 +87,18 @@ const svc = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
 
 Each `sendMessage()` call creates its **own `CopilotClient`** child process — no shared client. Concurrent tasks with different working directories cannot interfere.
 
+### One-shot `transform` primitive
+
+`ISDKService.transform(input, options?)` is the provider-agnostic primitive for isolated, single-shot text transformations (e.g. chat-title generation, PR ranking). Contract:
+
+- **Signature:** `transform(input: string, options?: TransformOptions): Promise<TransformResult>`.
+- **Structured result:** returns `{ success, text, error?, effectiveModel?, tokenUsage? }` — it does **not** throw on provider failure; callers branch on `success` and may verify `effectiveModel`.
+- **Fresh & isolated:** one provider request per call. No session resume, no caller-visible session/thread reuse, no session cache, no `sendFollowUp`-style continuation.
+- **Safe defaults:** `loadDefaultMcpConfig` defaults to `false` (no MCP/tools) and `onPermissionRequest` defaults to `denyAllPermissions`; both are overridable via `TransformOptions`.
+- **No model default:** the SDK owns no transform model. The caller passes `options.model`; omitting it falls back to the provider default. Product policy (model choice, prompt construction, sanitization) stays in the calling layer.
+
+`TransformOptions` / `TransformResult` live in `sdk-service-interface.ts` and are re-exported through forge.
+
 ## CodexSDKService Architecture
 
 `CodexSDKService` implements `ISDKService` backed by the **optional** `@openai/codex-sdk` peer dependency. When the package is not installed, `isAvailable()` returns `{ available: false }` and `sendMessage()` returns an error result rather than throwing.

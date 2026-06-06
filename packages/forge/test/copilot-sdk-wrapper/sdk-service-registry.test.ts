@@ -20,9 +20,8 @@ function makeMockProvider(id = 'mock'): ISDKService {
         listModelsResult: [{ id, name: `Model ${id}` }],
         overrides: {
             hasActiveSession: () => false,
-            transform: (async <T = string>(prompt: string, parse?: (raw: string) => T) => {
-                const raw = `transformed: ${prompt}`;
-                return (parse ? parse(raw) : raw) as T;
+            transform: (async (input: string) => {
+                return { success: true, text: `transformed: ${input}` };
             }) as ISDKService['transform'],
             forkSession: async (sid: string) => `${sid}-fork`,
         },
@@ -157,8 +156,9 @@ describe('ISDKService structural contract', () => {
         const result = await svc.sendMessage({ prompt: 'hello' });
         expect(result.success).toBe(true);
 
-        const text = await svc.transform('x');
-        expect(typeof text).toBe('string');
+        const transformResult = await svc.transform('x');
+        expect(transformResult.success).toBe(true);
+        expect(typeof transformResult.text).toBe('string');
 
         const forked = await svc.forkSession('s1');
         expect(forked).toBe('s1-fork');
@@ -174,11 +174,11 @@ describe('ISDKService structural contract', () => {
         expect(() => svc.clearAvailabilityCache()).not.toThrow();
     });
 
-    it('transform with parse function returns parsed result', async () => {
+    it('transform returns a structured result', async () => {
         const svc: ISDKService = makeMockProvider('p');
-        const result = await svc.transform<number>('prompt', (raw) => raw.length);
-        expect(typeof result).toBe('number');
-        expect(result).toBeGreaterThan(0);
+        const result = await svc.transform('prompt');
+        expect(result.success).toBe(true);
+        expect(result.text).toBe('transformed: prompt');
     });
 });
 
@@ -221,19 +221,16 @@ describe('sdkServiceRegistry integration — mock ISDKService provider', () => {
     it('transform flows through the registry to the mock', async () => {
         const mock: ISDKService = {
             ...makeMockProvider('transform-flow'),
-            transform: async <T = string>(prompt: string, parse?: (raw: string) => T) => {
-                const raw = `mocked:${prompt}`;
-                return (parse ? parse(raw) : raw) as T;
+            transform: async (input: string) => {
+                return { success: true, text: `mocked:${input}` };
             },
         };
         sdkServiceRegistry.register(SDK_PROVIDER_COPILOT, mock);
 
         const svc = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
-        const text = await svc.transform('ping');
-        expect(text).toBe('mocked:ping');
-
-        const parsed = await svc.transform<number>('ping', (raw) => raw.length);
-        expect(typeof parsed).toBe('number');
+        const result = await svc.transform('ping');
+        expect(result.success).toBe(true);
+        expect(result.text).toBe('mocked:ping');
     });
 
     it('isAvailable flows through the registry to the mock', async () => {

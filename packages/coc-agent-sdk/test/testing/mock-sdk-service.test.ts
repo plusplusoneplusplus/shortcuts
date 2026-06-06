@@ -58,9 +58,11 @@ describe('createMockSDKService (default shim)', () => {
         expect(await service.isAvailable()).toEqual({ available: true });
     });
 
-    it('default transform returns Generated Title', async () => {
+    it('default transform returns a structured Generated Title result', async () => {
         const { service } = createMockSDKService();
-        expect(await service.transform('prompt')).toBe('Generated Title');
+        const result = await service.transform('prompt');
+        expect(result.success).toBe(true);
+        expect(result.text).toBe('Generated Title');
     });
 
     it('default forkSession returns id-forked', async () => {
@@ -130,8 +132,9 @@ describe('createMockSDKService options', () => {
     });
 
     it('accepts custom transformResult', async () => {
-        const { service } = createMockSDKService({ transformResult: 'custom title' });
-        expect(await service.transform('p')).toBe('custom title');
+        const { service } = createMockSDKService({ transformResult: { success: true, text: 'custom title' } });
+        const result = await service.transform('p');
+        expect(result.text).toBe('custom title');
     });
 
     it('accepts custom listModelsResult', async () => {

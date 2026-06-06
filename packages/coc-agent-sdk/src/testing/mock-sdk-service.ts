@@ -6,7 +6,7 @@
  * full spy assertions while the package itself imports nothing from vitest.
  */
 
-import type { ISDKService, IAvailabilityResult, IInvocationResult, IModelInfo } from '../sdk-service-interface';
+import type { ISDKService, IAvailabilityResult, IInvocationResult, IModelInfo, TransformResult } from '../sdk-service-interface';
 import type { SendMessageOptions } from '../types';
 import type { MockFnHandle, MockFnFactory } from './mock-fn';
 import { createDefaultMockFn } from './mock-fn';
@@ -20,8 +20,8 @@ export interface MockSDKServiceOptions {
     available?: boolean | IAvailabilityResult;
     /** Default sendMessage response */
     sendMessageResponse?: IInvocationResult;
-    /** Default transform result. Default: `'Generated Title'` */
-    transformResult?: unknown;
+    /** Default transform result. Default: `{ success: true, text: 'Generated Title', effectiveModel: 'gpt-5.4-mini' }` */
+    transformResult?: TransformResult;
     /** Default listModels result. Default: `[]` */
     listModelsResult?: IModelInfo[];
     /** Arbitrary method overrides applied after defaults */
@@ -69,7 +69,11 @@ export function createMockSDKService(
         sessionId: 'session-123',
     };
 
-    const transformResult = options?.transformResult ?? 'Generated Title';
+    const transformResult: TransformResult = options?.transformResult ?? {
+        success: true,
+        text: 'Generated Title',
+        effectiveModel: 'gpt-5.4-mini',
+    };
     const listModelsResult = options?.listModelsResult ?? [];
 
     // Individual mock handles

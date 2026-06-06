@@ -32,7 +32,7 @@ export type { StreamingResult, IStreamableSession, StreamingState, StreamingSess
 import { SessionManager } from './session-manager';
 import { StreamErrorGuard, isStreamDestroyedError } from './stream-error-guard';
 import { RequestRunner } from './request-runner';
-import type { ISDKService } from './sdk-service-interface';
+import type { ISDKService, TransformOptions, TransformResult } from './sdk-service-interface';
 import { sdkServiceRegistry, COPILOT_PROVIDER } from './sdk-service-registry';
 
 const DEFAULT_AI_TIMEOUT_MS = 6 * 60 * 60 * 1000;
@@ -233,12 +233,11 @@ export class CopilotSDKService implements ISDKService {
         this.availabilityCache = null;
     }
 
-    public async transform<T = string>(
-        prompt: string,
-        parse?: (raw: string) => T,
-        options?: { model?: string; timeoutMs?: number; cwd?: string },
-    ): Promise<T> {
-        return this.requestRunner.transform(prompt, parse, options, this.sendMessage.bind(this));
+    public async transform(
+        input: string,
+        options?: TransformOptions,
+    ): Promise<TransformResult> {
+        return this.requestRunner.transform(input, options, this.sendMessage.bind(this));
     }
 
     public dispose(): void {

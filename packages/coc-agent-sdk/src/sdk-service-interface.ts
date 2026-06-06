@@ -9,7 +9,7 @@
  * provider-specific responses at their own boundaries.
  */
 
-import type { SendMessageOptions } from './types';
+import type { SendMessageOptions, TokenUsage, PermissionHandler } from './types';
 
 // ============================================================================
 // Provider-Agnostic Primitive Types
@@ -59,6 +59,60 @@ export interface IInvocationResult {
     sessionId?: string;
     /** Model that the provider actually used. Omitted means provider default. */
     effectiveModel?: string;
+    /** Aggregated token usage / provider diagnostics, when the provider reports them. */
+    tokenUsage?: TokenUsage;
+}
+
+/**
+ * Options for a one-shot {@link ISDKService.transform} call.
+ *
+ * The transform primitive is deliberately minimal: it runs a single isolated
+ * provider request with safe defaults (no MCP/tools, denied permissions) so it
+ * can be reused for arbitrary text transformations without leaking caller
+ * state. Every field is optional; product policy (model choice, prompt,
+ * sanitization) is owned by the caller, not the SDK.
+ */
+export interface TransformOptions {
+    /** Model id to use. Omitted means the provider default — the SDK owns no model default for transforms. */
+    model?: string;
+    /** Per-call timeout in milliseconds. */
+    timeoutMs?: number;
+    /** Working directory for the isolated request. */
+    cwd?: string;
+    /** Abort signal to cancel the in-flight request. */
+    signal?: AbortSignal;
+    /**
+     * Whether to load the ambient default MCP configuration. Defaults to
+     * `false`, so the transform runs with no MCP servers/tools unless a caller
+     * explicitly opts in.
+     */
+    loadDefaultMcpConfig?: boolean;
+    /**
+     * Permission handler for the request. Defaults to denying every permission
+     * request, so a transform performs no side effects unless a caller
+     * explicitly overrides this.
+     */
+    onPermissionRequest?: PermissionHandler;
+}
+
+/**
+ * Structured result of a one-shot {@link ISDKService.transform} call.
+ *
+ * Mirrors {@link IInvocationResult} but is scoped to the transform primitive:
+ * it always reports success/error and surfaces execution metadata so callers
+ * can verify the effective model and inspect provider diagnostics.
+ */
+export interface TransformResult {
+    /** Whether the transform completed without error. */
+    success: boolean;
+    /** Transformed text. Empty string when the transform failed. */
+    text: string;
+    /** Error message, populated when `success` is false. */
+    error?: string;
+    /** Model the provider actually used, when reported. Omitted means provider default. */
+    effectiveModel?: string;
+    /** Token usage / provider diagnostics, when the provider reports them. */
+    tokenUsage?: TokenUsage;
 }
 
 // ============================================================================
@@ -107,14 +161,16 @@ export interface ISDKService {
     sendMessage(options: SendMessageOptions): Promise<IInvocationResult>;
 
     /**
-     * Run a one-shot transformation prompt and return the parsed result.
-     * Equivalent to a non-streaming `sendMessage` focused on text extraction.
+     * Run a one-shot, isolated text transformation and return a structured
+     * result.
+     *
+     * The call is fresh and isolated: it never resumes a session, exposes no
+     * reusable thread/session handle, and performs no follow-up. By default it
+     * runs with no MCP servers/tools and denies all permission requests; pass
+     * {@link TransformOptions} to override. The SDK owns no model default — the
+     * caller supplies the model (or accepts the provider default).
      */
-    transform<T = string>(
-        prompt: string,
-        parse?: (raw: string) => T,
-        options?: { model?: string; timeoutMs?: number; cwd?: string },
-    ): Promise<T>;
+    transform(input: string, options?: TransformOptions): Promise<TransformResult>;
 
     // ------------------------------------------------------------------
     // Session management

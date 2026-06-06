@@ -367,11 +367,11 @@ export async function rankAndCacheSuggestions(
     }
 
     const prompt = buildRankingPrompt(reviewHistory.reviews, openPrs);
-    const suggestions = await aiService.transform<PrSuggestion[]>(
-        prompt,
-        parseSuggestionsResponse,
-        { model: 'gpt-4.1', timeoutMs: 30_000 },
-    );
+    const result = await aiService.transform(prompt, { model: 'gpt-4.1', timeoutMs: 30_000 });
+    if (!result.success) {
+        throw new Error(result.error || 'AI PR suggestion ranking failed');
+    }
+    const suggestions = parseSuggestionsResponse(result.text);
 
     const cache: SuggestionsCache = {
         rankedAt: new Date().toISOString(),

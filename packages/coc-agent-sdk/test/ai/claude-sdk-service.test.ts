@@ -2098,7 +2098,7 @@ describe('ClaudeSDKService.transform', () => {
         svc.dispose();
     });
 
-    it('returns raw string by default', async () => {
+    it('returns a structured success result with the response text', async () => {
         queryFn.mockReturnValueOnce(makeMessages([
             {
                 type: 'assistant',
@@ -2107,25 +2107,15 @@ describe('ClaudeSDKService.transform', () => {
             { type: 'result', subtype: 'success' },
         ]));
 
-        const raw = await svc.transform('give me the result');
-        expect(raw).toBe('parsed result');
+        const result = await svc.transform('give me the result');
+        expect(result.success).toBe(true);
+        expect(result.text).toBe('parsed result');
     });
 
-    it('applies parse function when provided', async () => {
-        queryFn.mockReturnValueOnce(makeMessages([
-            {
-                type: 'assistant',
-                message: { content: [{ type: 'text', text: '42' }] },
-            },
-            { type: 'result', subtype: 'success' },
-        ]));
-
-        const num = await svc.transform('give me a number', (s) => parseInt(s, 10));
-        expect(num).toBe(42);
-    });
-
-    it('throws when sendMessage fails', async () => {
+    it('returns a failure result (does not throw) when sendMessage fails', async () => {
         mockDynamicImport.mockRejectedValueOnce(new Error("Cannot find module '@anthropic-ai/claude-agent-sdk'"));
-        await expect(svc.transform('fail')).rejects.toThrow();
+        const result = await svc.transform('fail');
+        expect(result.success).toBe(false);
+        expect(result.error).toBeTruthy();
     });
 });
