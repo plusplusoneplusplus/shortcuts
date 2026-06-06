@@ -141,13 +141,11 @@ test.describe('Mobile Navigation', () => {
         await page.goto(`${serverUrl}/#admin`);
         await expect(page.locator('#view-admin')).toBeVisible({ timeout: 10000 });
 
-        // The Linear-inspired admin redesign hides the entire sidebar (which carries
-        // the usage stats) under the 600px breakpoint and surfaces a mobile select
-        // for the top-level tabs instead. The mobile-tab fallback control should be
-        // visible while the desktop-only stat rows must be hidden.
+        // The Linear-inspired admin redesign hides the entire sidebar under
+        // the 600px breakpoint and surfaces a mobile select for the top-level
+        // tabs instead.
         await expect(page.locator('#view-admin .ar-mobile-tab-select')).toBeVisible({ timeout: 10000 });
         await expect(page.locator('#view-admin .ar-sidebar')).toBeHidden();
-        await expect(page.locator('[data-testid="stat-processes"]')).toBeHidden();
     });
 
     test('mobile: bottom nav hides when a repo is selected', async ({ page, serverUrl }) => {

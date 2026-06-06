@@ -1241,37 +1241,6 @@ export function AdminPanel() {
                     </div>
 
                     <div className="ar-sidebar-foot">
-                        <div className="ar-stats-block">
-                            <div className="ar-stats-head">
-                                <span>Usage</span>
-                                <button
-                                    id="admin-refresh-stats"
-                                    type="button"
-                                    onClick={loadStats}
-                                    title="Refresh stats"
-                                    className="ar-stats-refresh"
-                                    aria-label="Refresh stats"
-                                >↻</button>
-                            </div>
-                            {statsLoading ? (
-                                <Spinner size="sm" />
-                            ) : (
-                                <>
-                                    <div className="ar-stat-row" data-testid="stat-processes">
-                                        <span className="ar-stat-label">Processes</span>
-                                        <span className="ar-stat-value">{stats?.processCount ?? '—'}</span>
-                                    </div>
-                                    <div className="ar-stat-row" data-testid="stat-wikis">
-                                        <span className="ar-stat-label">Wikis</span>
-                                        <span className="ar-stat-value">{stats?.wikiCount ?? '—'}</span>
-                                    </div>
-                                    <div className="ar-stat-row" data-testid="stat-disk">
-                                        <span className="ar-stat-label">Disk</span>
-                                        <span className="ar-stat-value">{stats?.totalBytes != null ? formatBytes(stats.totalBytes) : '—'}</span>
-                                    </div>
-                                </>
-                            )}
-                        </div>
                         <button
                             type="button"
                             className="ar-sidebar-restart"

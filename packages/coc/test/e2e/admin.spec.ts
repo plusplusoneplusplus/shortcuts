@@ -125,44 +125,16 @@ test.describe('Admin Panel (008)', () => {
     });
 
     // ----------------------------------------------------------------
-    // TC2: Admin Page Shows Storage Stats
+    // TC2: Sidebar stats block is removed
     // ----------------------------------------------------------------
 
-    test('8.3 admin page renders stat cards', async ({ page, serverUrl }) => {
+    test('8.3 admin sidebar does not render the stats block', async ({ page, serverUrl }) => {
         await navigateToAdmin(page, serverUrl);
 
-        // Stat cards should be visible and rendered
-        await expect(page.locator('[data-testid="stat-processes"]')).toBeVisible();
-        await expect(page.locator('[data-testid="stat-wikis"]')).toBeVisible();
-        await expect(page.locator('[data-testid="stat-disk"]')).toBeVisible();
-
-        // Stats should have loaded (no longer showing the loading indicator "…")
-        await expect(page.locator('[data-testid="stat-processes"]')).not.toHaveText('…', { timeout: 5000 });
-    });
-
-    // ----------------------------------------------------------------
-    // TC3: Refresh Stats
-    // ----------------------------------------------------------------
-
-    test('8.4 refresh button triggers stats API call', async ({ page, serverUrl }) => {
-        await navigateToAdmin(page, serverUrl);
-
-        // Wait for initial stats load
-        await expect(page.locator('[data-testid="stat-processes"]')).not.toHaveText('…', { timeout: 5000 });
-
-        // Intercept the next stats request to prove refresh triggers a new fetch
-        const statsPromise = page.waitForRequest(req =>
-            req.url().includes('/admin/data/stats'),
-        );
-
-        // Click refresh
-        await page.click('#admin-refresh-stats');
-
-        // Should trigger a stats API call
-        await statsPromise;
-
-        // After refresh, stats should finish loading again
-        await expect(page.locator('[data-testid="stat-processes"]')).not.toHaveText('…', { timeout: 5000 });
+        await expect(page.locator('[data-testid="stat-processes"]')).toHaveCount(0);
+        await expect(page.locator('[data-testid="stat-wikis"]')).toHaveCount(0);
+        await expect(page.locator('[data-testid="stat-disk"]')).toHaveCount(0);
+        await expect(page.locator('#admin-refresh-stats')).toHaveCount(0);
     });
 
     // ----------------------------------------------------------------
@@ -224,7 +196,7 @@ test.describe('Admin Panel (008)', () => {
 
         await navigateToAdmin(page, serverUrl);
         await page.click('[data-testid="admin-tab-data"]');
-        await expect(page.locator('[data-testid="stat-processes"]')).not.toHaveText('…', { timeout: 5000 });
+        await expect(page.locator('#admin-wipe-btn')).toBeVisible({ timeout: 5000 });
 
         // Click "Wipe Data" to get token (two-step flow)
         await page.click('#admin-wipe-btn');
@@ -302,7 +274,7 @@ test.describe('Admin Panel (008)', () => {
     // TC8: Stats Show Error on API Failure
     // ----------------------------------------------------------------
 
-    test('8.10 stats show dash when API fails', async ({ page, serverUrl }) => {
+    test('8.10 admin page renders without sidebar stats block even when API fails', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
         // Intercept stats API to return error
@@ -319,10 +291,8 @@ test.describe('Admin Panel (008)', () => {
         await expect(page.locator('#view-admin')).toBeVisible({ timeout: 5000 });
         await expect(page.locator('#admin-page-content')).not.toBeEmpty({ timeout: 5000 });
 
-        // Stats should show "—" (dash) when API fails (counts are suffixed: "— processes", "— wikis")
-        await expect(page.locator('[data-testid="stat-processes"]')).toContainText('—', { timeout: 5000 });
-        await expect(page.locator('[data-testid="stat-wikis"]')).toContainText('—');
-        await expect(page.locator('[data-testid="stat-disk"]')).toContainText('—');
+        // Sidebar stats block no longer exists
+        await expect(page.locator('[data-testid="stat-processes"]')).toHaveCount(0);
     });
 
     // ----------------------------------------------------------------
@@ -614,8 +584,8 @@ test.describe('Admin Panel (008)', () => {
         await navigateToAdmin(page, serverUrl);
         await page.click('[data-testid="admin-tab-data"]');
 
-        // Wait for initial stat load to finish (not loading indicator "…")
-        await expect(page.locator('[data-testid="stat-processes"]')).not.toHaveText('…', { timeout: 5000 });
+        // Wait for wipe button to be ready
+        await expect(page.locator('#admin-wipe-btn')).toBeVisible({ timeout: 5000 });
 
         // Perform wipe
         await page.click('#admin-wipe-btn');
