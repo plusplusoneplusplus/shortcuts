@@ -3,7 +3,7 @@
 **Document type:** Formal UX Specification  
 **Scope:** CoC Dashboard → Usage & Costs (embedded in Admin Shell · Operations Group)  
 **Purpose:** Authoritative reference for validating any future UI/UX changes to the Usage & Costs tab.  
-**Version:** 2.0.0
+**Version:** 3.0.0
 
 ---
 
@@ -11,7 +11,7 @@
 
 The **Usage & Costs route** displays AI token usage and estimated cost statistics aggregated across all processes. It is reached at the top-level URL `#stats` but is rendered embedded inside the Admin shell's left sidebar **Operations** group — `UsageStatsView` is mounted in the right pane while the admin sidebar stays visible.
 
-The view shows a per-day table with one column per model and a Total column. Each cell breaks input tokens into `total / cached / new`, output tokens, cache-write tokens, and (in the Total column) estimated USD cost. Hover tooltips reveal the full numeric breakdown plus per-model pricing source. Data is computed server-side by aggregating all process records.
+The view shows a three-column table (Date / Model / Tokens) with models stacked as rows within each date group rather than spread horizontally as columns. Each date group starts with an "All models" summary row followed by per-model rows. Each cell breaks input tokens into `total / cached / new`, output tokens, cache-write tokens, and (in summary rows) estimated USD cost. Hover tooltips reveal the full numeric breakdown plus per-model pricing source. Data is computed server-side by aggregating all process records. This row-based layout fits the viewport regardless of how many models are in use.
 
 ### 1.1 Tab Identity
 
@@ -42,8 +42,8 @@ The view shows a per-day table with one column per model and a Total column. Eac
 
 - **Given** the Usage & Costs tab is open
 - **When** usage data is loaded via `useTokenUsageStats(days)` (`GET /api/stats/token-usage?days=<n>`)
-- **Then** the table shows one row per `entry.date` (`YYYY-MM-DD`) with one column per `data.models[]` plus a final Total column
-- **And** each cell shows `↓<input> total · <cached> cached · <new> new` and `↑<output> out · <cacheWrite> cache write` (with optional `est $X` cost in the Total column)
+- **Then** the table has 3 fixed columns (Date / Model / Tokens); each date group shows an "All models" summary row followed by one row per model that has data for that day
+- **And** each cell shows `↓<input> total · <cached> cached · <new> new` and `↑<output> out · <cacheWrite> cache write` (with optional `est $X` cost in summary rows)
 
 ---
 
@@ -88,10 +88,10 @@ The view shows a per-day table with one column per model and a Total column. Eac
 ---
 
 **US-05 — View per-model and grand totals**
-> As an administrator, I want to see a per-model column total plus a single grand total.
+> As an administrator, I want to see a per-model total plus a single grand total.
 
 - **Given** the usage table is displayed with at least one entry
-- **Then** a `<tfoot>` row labeled "Total" sums the per-model columns (using `sumByModel`) and the rightmost cell shows the grand total cell (`UsageCell` with `showCostDetails`)
+- **Then** a `<tfoot>` section labeled "Total" shows an "All models" grand total row (with `showCostDetails`) followed by one row per model (using `sumByModel`)
 
 ---
 
@@ -117,19 +117,19 @@ The view shows a per-day table with one column per model and a Total column. Eac
 
 | Feature | Acceptance Criteria |
 |---|---|
-| Sticky header | `<thead>` is `sticky top-0` |
-| Date column | Monospace; one row per `entry.date` |
-| Model columns | One per `data.models[]`; header truncated to 18 chars + `…` when ID longer than 20 chars; full ID in `title` |
-| Total column | Per-row grand total via `entry.dayTotal`, rendered with `showCostDetails` |
-| Empty model cell | `—` |
+| Sticky header | `<thead>` is `sticky top-0` with 3 columns: Date / Model / Tokens |
+| Date groups | Each date uses `rowSpan` on the Date cell; first row is "All models" summary, followed by per-model rows (only models with data for that day) |
+| Model names | Full model name in cell text and `title` attribute; truncated via CSS `max-w-[200px] truncate` |
+| Summary row | "All models" row per date shows `entry.dayTotal` with `showCostDetails` |
 | Cell input row | `↓<inputTotal> total · <cachedInput> cached · <newInput> new` |
 | Cell output row | `↑<outputTotal> out · <cacheWrite> cache write[ · est $<usd>]` (cost only when `showCostDetails`) |
 | Premium units row | `Premium units: <units>` (only when `usage.cost` is present and `showCostDetails`) |
 | Token formatting | `fmt(n)` — `k` for ≥1000, `M` for ≥1_000_000, otherwise integer |
 | Cost formatting | `fmtUsdCost`: `$X.XX` for ≥$0.01; up to 6 decimals (trailing zeros stripped) for smaller |
-| Zebra striping | Odd rows (`i % 2 === 1`) use `vscode-list-hoverBackground` |
-| Footer total row | `<tfoot>` "Total" with per-model sums and grand total |
+| Zebra striping | Alternating date groups use `vscode-list-hoverBackground` |
+| Footer total section | `<tfoot>` "Total" with "All models" grand total row (with `showCostDetails`) + per-model rows; `—` for models with no data |
 | Tooltip | Multi-line `title` per US-04 |
+| Fixed width | 3 columns fit within the viewport regardless of model count |
 
 ### 4.3 Hooks / Data Aggregation
 
@@ -148,9 +148,9 @@ The view shows a per-day table with one column per model and a Total column. Eac
 | INV-01 | The Usage & Costs route renders inside the Admin shell's right pane (Operations group); the admin sidebar stays mounted |
 | INV-02 | Time range change triggers a server refetch via `useTokenUsageStats`, not client-side filtering |
 | INV-03 | "All time" is sent as no `days` param (the server treats missing/invalid `days` as all-time) |
-| INV-04 | The table footer Total row is only rendered when `data.entries.length > 0` |
-| INV-05 | Model column headers are truncated at 20 characters with the full ID available in the `title` attribute |
-| INV-06 | Cost details (`est $X`, premium units, breakdown lines) are only rendered when `showCostDetails` is true — currently only on the Total column and grand total |
+| INV-04 | The table footer Total section is only rendered when `data.entries.length > 0` |
+| INV-05 | Model names are shown in full within each row; CSS `truncate` with `max-w-[200px]` handles overflow; full ID is available in the `title` attribute |
+| INV-06 | Cost details (`est $X`, premium units, breakdown lines) are only rendered when `showCostDetails` is true — on "All models" summary rows (per-date and grand total) |
 | INV-07 | When `costBreakdown` is missing on an `entry.byModel[m]` cell, that cell still aggregates without breakdown; the Total column may still show breakdown if at least one source provided it |
 | INV-08 | Tooltip text is rendered via the native `title` attribute (no custom popover) |
 
@@ -165,13 +165,16 @@ The view shows a per-day table with one column per model and a Total column. Eac
 │ │  📊 Usage*   │  │ ─────────────────────────────────────────────  │ │
 │ │  📋 Logs     │  │ [Last 30 days ▾] [↻ Refresh]   Generated at:…  │ │
 │ │  ⌗ Server    │  │ ─────────────────────────────────────────────  │ │
-│ │  ▦ Backup…   │  │ DATE | gpt-4o          | claude-…   | TOTAL    │ │
-│ │              │  │ 26-05-29 ↓20k total · 8k cached · 12k new      │ │
-│ │              │  │            ↑6k out · 0 cache write             │ │
-│ │              │  │          | …            | …          | est $0.18│ │
-│ │              │  │ …                                              │ │
-│ │              │  │ ──────┼─────────────────┼──────────┼────────── │ │
-│ │              │  │ Total | …               | …        | est $0.50 │ │
+│ │  ▦ Backup…   │  │ DATE     | MODEL       | TOKENS                │ │
+│ │              │  │ 26-05-29 | All models  | ↓20k total …  est $0.18│
+│ │              │  │          | gpt-4o      | ↓12k total …           │ │
+│ │              │  │          | claude-…    | ↓8k total …            │ │
+│ │              │  │ 26-05-28 | All models  | ↓15k total …  est $0.12│
+│ │              │  │          | gpt-4o      | ↓15k total …           │ │
+│ │              │  │ ─────────┼─────────────┼──────────────────────  │ │
+│ │              │  │ Total    | All models  | ↓35k total …  est $0.30│
+│ │              │  │          | gpt-4o      | ↓27k total …           │ │
+│ │              │  │          | claude-…    | ↓8k total …            │ │
 │ └──────────────┘  └────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -214,3 +217,4 @@ The response shape is `ClientTokenUsageStatsResponse` with `entries[]` (date / b
 |---|---|---|
 | 1.0.0 | 2026-03-25 | Initial specification (top-level Usage tab; flat input/output cell + simple cost) |
 | 2.0.0 | 2026-05-29 | Embedded inside Admin shell's Operations group; sidebar label changed to "Usage & Costs"; cell layout now shows `↓<input> total · <cached> · <new>` and `↑<output> · <cacheWrite>`; cost details (`costBreakdown`, `estimatedUsdCost`, premium units, pricing source / unavailable) surfaced via tooltip and Total column. |
+| 3.0.0 | 2026-06-05 | Redesigned from column-per-model table to 3-column row-based layout (Date / Model / Tokens). Models are stacked as rows within each date group, keeping the table width fixed regardless of model count. |
