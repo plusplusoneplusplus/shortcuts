@@ -1372,6 +1372,69 @@ describe('ClaudeSDKService.sendMessage', () => {
         }
     });
 
+    it('keeps successful opus alias calls on the same response shape', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'system', subtype: 'init', session_id: 'provider-session' },
+            {
+                type: 'assistant',
+                message: { content: [{ type: 'text', text: 'CLAUDE_SDK_SMOKE_OK' }] },
+            },
+            {
+                type: 'result',
+                subtype: 'success',
+                result: 'CLAUDE_SDK_SMOKE_OK',
+                session_id: 'provider-session',
+                duration_ms: 42,
+                num_turns: 1,
+                total_cost_usd: 0,
+                usage: {
+                    input_tokens: 2,
+                    output_tokens: 3,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 1,
+                },
+            },
+        ]));
+
+        const chunks: string[] = [];
+        const createdSessionIds: string[] = [];
+        const result = await svc.sendMessage({
+            prompt: 'Reply exactly: CLAUDE_SDK_SMOKE_OK',
+            model: 'opus',
+            mode: 'ask',
+            onStreamingChunk: (chunk) => chunks.push(chunk),
+            onSessionCreated: (sessionId) => createdSessionIds.push(sessionId),
+        });
+
+        expect(result).toMatchObject({
+            success: true,
+            response: 'CLAUDE_SDK_SMOKE_OK',
+            sessionId: 'provider-session',
+            effectiveModel: 'opus',
+            tokenUsage: {
+                inputTokens: 2,
+                outputTokens: 3,
+                cacheReadTokens: 1,
+                cacheWriteTokens: 0,
+                totalTokens: 5,
+                cost: 0,
+                duration: 42,
+                turnCount: 1,
+            },
+        });
+        expect(chunks).toEqual(['CLAUDE_SDK_SMOKE_OK', '']);
+        expect(createdSessionIds[0]).toBeTruthy();
+        expect(createdSessionIds[1]).toBe('provider-session');
+        expect(queryFn).toHaveBeenCalledWith(
+            expect.objectContaining({
+                options: expect.objectContaining({
+                    model: 'opus',
+                    permissionMode: 'acceptEdits',
+                }),
+            }),
+        );
+    });
+
     it('drops non-Claude short words that are not valid aliases', async () => {
         queryFn.mockReturnValue(makeMessages([{ type: 'result', subtype: 'success' }]));
 
