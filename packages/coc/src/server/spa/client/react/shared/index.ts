@@ -41,6 +41,17 @@ export type { RalphLaunchDialogProps } from './RalphLaunchDialog';
 export { isGoalFile } from './goal-file-utils';
 export { useUndoRedo } from './useUndoRedo';
 export type { HistorySnapshot } from './useUndoRedo';
+export {
+    formatQuotaTypeLabel,
+    getQuotaPercent,
+    getQuotaUsedPercent,
+    getQuotaRiskClasses,
+    getFiniteQuotaTypes,
+    getUnlimitedQuotaTypes,
+    getTightestFiniteQuotaType,
+    getMostConstrainedProviderQuota,
+} from './quotaUtils';
+export type { QuotaRiskClasses, MostConstrainedQuota } from './quotaUtils';
 export { ModalJobAiControls, useModalJobAiSelection, isChatProvider, isSelectableProvider } from './ModalJobAiControls';
 export type {
     ModalJobAiControlsProps,

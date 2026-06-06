@@ -913,6 +913,12 @@ describe('BranchService.amendCommitMessage', () => {
 });
 
 // ── cherryPick ──────────────────────────────────────────────
+function q(value: string): string {
+    return process.platform === 'win32'
+        ? `"${value.replace(/"/g, '\\"')}"`
+        : `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 describe('BranchService.cherryPick', () => {
     let service: BranchService;
 
@@ -960,12 +966,12 @@ describe('BranchService.cherryPick', () => {
         expect(mockedExecAsync.mock.calls.map(call => call[0])).toEqual([
             'git rev-parse --abbrev-ref HEAD',
             'git status --porcelain',
-            "git checkout 'feature'",
+            `git checkout ${q('feature')}`,
             'git rev-parse HEAD',
-            "git cherry-pick 'older123'",
-            "git cherry-pick 'newer456'",
+            `git cherry-pick ${q('older123')}`,
+            `git cherry-pick ${q('newer456')}`,
             'git rev-parse --abbrev-ref HEAD',
-            "git checkout 'main'",
+            `git checkout ${q('main')}`,
         ]);
     });
 
@@ -1006,7 +1012,7 @@ describe('BranchService.cherryPick', () => {
         });
         expect(mockedExecAsync.mock.calls.map(call => call[0])).toEqual([
             'git rev-parse --abbrev-ref HEAD',
-            "git cherry-pick 'abc1234'",
+            `git cherry-pick ${q('abc1234')}`,
         ]);
     });
 
@@ -1028,7 +1034,7 @@ describe('BranchService.cherryPick', () => {
         });
         expect(mockedExecAsync.mock.calls.map(call => call[0])).toEqual([
             'git rev-parse --abbrev-ref HEAD',
-            "git cherry-pick 'abc1234'",
+            `git cherry-pick ${q('abc1234')}`,
             'git cherry-pick --abort',
             'git rev-parse --abbrev-ref HEAD',
         ]);
@@ -1061,10 +1067,10 @@ describe('BranchService.cherryPick', () => {
             'git rev-parse --abbrev-ref HEAD',
             'git status --porcelain',
             'git rev-parse HEAD',
-            "git cherry-pick 'older123'",
-            "git cherry-pick 'bad456'",
+            `git cherry-pick ${q('older123')}`,
+            `git cherry-pick ${q('bad456')}`,
             'git cherry-pick --abort',
-            "git reset --hard 'main-start'",
+            `git reset --hard ${q('main-start')}`,
             'git rev-parse --abbrev-ref HEAD',
         ]);
     });
@@ -1098,14 +1104,14 @@ describe('BranchService.cherryPick', () => {
         expect(mockedExecAsync.mock.calls.map(call => call[0])).toEqual([
             'git rev-parse --abbrev-ref HEAD',
             'git status --porcelain',
-            "git checkout 'feature'",
+            `git checkout ${q('feature')}`,
             'git rev-parse HEAD',
-            "git cherry-pick 'older123'",
-            "git cherry-pick 'bad456'",
+            `git cherry-pick ${q('older123')}`,
+            `git cherry-pick ${q('bad456')}`,
             'git cherry-pick --abort',
-            "git reset --hard 'target-start'",
+            `git reset --hard ${q('target-start')}`,
             'git rev-parse --abbrev-ref HEAD',
-            "git checkout 'main'",
+            `git checkout ${q('main')}`,
             'git rev-parse --abbrev-ref HEAD',
         ]);
     });

@@ -208,7 +208,7 @@ describe('RalphSessionRow', () => {
         expect(screen.queryByTestId('ralph-session-children')).toBeNull();
 
         fireEvent.click(screen.getByTestId('ralph-session-body'));
-        expect(onSelectSession).toHaveBeenCalledWith('sess-1');
+        expect(onSelectSession).toHaveBeenCalledWith('sess-1', expect.anything());
         // body click no longer toggles when onSelectSession is wired
         expect(screen.queryByTestId('ralph-session-children')).toBeNull();
     });
