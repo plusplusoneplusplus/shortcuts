@@ -1318,6 +1318,14 @@ function buildClaudeResultFailureLogFields(
     if (rateLimitInfo) {
         addStringField(fields, 'rateLimitType', rateLimitInfo.rateLimitType);
         addStringField(fields, 'rateLimitStatus', rateLimitInfo.status);
+        addNumberField(fields, 'rateLimitUtilization', rateLimitInfo.utilization);
+        addNumberField(fields, 'rateLimitSurpassedThreshold', rateLimitInfo.surpassedThreshold);
+        addNumberField(fields, 'rateLimitResetsAt', rateLimitInfo.resetsAt);
+        addStringField(fields, 'rateLimitResetDate', toResetDate(rateLimitInfo.resetsAt));
+        addStringField(fields, 'rateLimitOverageStatus', rateLimitInfo.overageStatus);
+        addNumberField(fields, 'rateLimitOverageResetsAt', rateLimitInfo.overageResetsAt);
+        addStringField(fields, 'rateLimitOverageResetDate', toResetDate(rateLimitInfo.overageResetsAt));
+        addBooleanField(fields, 'rateLimitIsUsingOverage', rateLimitInfo.isUsingOverage);
     }
 
     return fields;

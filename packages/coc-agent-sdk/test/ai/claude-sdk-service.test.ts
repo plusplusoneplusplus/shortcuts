@@ -130,10 +130,11 @@ function stubProcessPlatform(platform: NodeJS.Platform): () => void {
 }
 
 function createCapturingLogger() {
-    const logs: Array<{ level: string; fields: Record<string, unknown>; message: string }> = [];
+    const logs: Array<{ level: string; fields: Record<string, unknown>; message: string; args: unknown[] }> = [];
 
     function makeCapture(bindings: Record<string, unknown> = {}) {
-        const capture = (level: string, firstArg?: unknown, secondArg?: string) => {
+        const capture = (level: string, ...args: unknown[]) => {
+            const [firstArg, secondArg, ...restArgs] = args;
             const fields = typeof firstArg === 'object' && firstArg !== null && !Array.isArray(firstArg)
                 ? { ...bindings, ...(firstArg as Record<string, unknown>) }
                 : { ...bindings };
@@ -142,13 +143,18 @@ function createCapturingLogger() {
                 : typeof secondArg === 'string'
                     ? secondArg
                     : '';
-            logs.push({ level, fields, message });
+            logs.push({
+                level,
+                fields,
+                message,
+                args: typeof firstArg === 'string' ? args.slice(1) : restArgs,
+            });
         };
         return {
-            debug: (a?: unknown, b?: string) => capture('debug', a, b),
-            info: (a?: unknown, b?: string) => capture('info', a, b),
-            warn: (a?: unknown, b?: string) => capture('warn', a, b),
-            error: (a?: unknown, b?: string) => capture('error', a, b),
+            debug: (...args: unknown[]) => capture('debug', ...args),
+            info: (...args: unknown[]) => capture('info', ...args),
+            warn: (...args: unknown[]) => capture('warn', ...args),
+            error: (...args: unknown[]) => capture('error', ...args),
             child: (childBindings: Record<string, unknown>) => makeCapture({ ...bindings, ...childBindings }),
         };
     }
@@ -1023,6 +1029,107 @@ describe('ClaudeSDKService.sendMessage', () => {
         expect(serializedLog).not.toContain('SECRET_PROMPT_TEXT');
         expect(serializedLog).not.toContain('SECRET_SYSTEM_PROMPT');
         expect(serializedLog).not.toContain('SECRET_MCP_TOKEN');
+    });
+
+    it('correlates the latest in-call rate_limit_event with a later failed result', async () => {
+        const capLogger = createCapturingLogger();
+        initSDKLogger(capLogger.logger as any);
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'rate_limit_event',
+                rate_limit_info: {
+                    status: 'allowed_warning',
+                    rateLimitType: 'five_hour',
+                    utilization: 0.75,
+                    resetsAt: 1700000000,
+                },
+            },
+            {
+                type: 'rate_limit_event',
+                rate_limit_info: {
+                    status: 'rejected',
+                    rateLimitType: 'seven_day_opus',
+                    utilization: 0.99,
+                    surpassedThreshold: 1,
+                    resetsAt: 1700500000000,
+                    overageStatus: 'rejected',
+                    overageResetsAt: 1700600000,
+                    isUsingOverage: false,
+                },
+            },
+            {
+                type: 'result',
+                subtype: 'error_during_execution',
+                is_error: true,
+                session_id: 'provider-session',
+            },
+        ]));
+
+        const result = await svc.sendMessage({
+            prompt: 'SECRET_PROMPT_TEXT',
+            model: 'opus',
+            workingDirectory: '/safe/project',
+            mode: 'ask',
+        });
+
+        expect(result).toMatchObject({
+            success: false,
+            error: 'Claude returned error_during_execution',
+            sessionId: 'provider-session',
+            effectiveModel: 'opus',
+        });
+
+        const warning = capLogger.logs.find(log =>
+            log.level === 'warn' &&
+            log.message === 'Claude SDK result message reported failure'
+        );
+        expect(warning?.fields).toMatchObject({
+            event: 'claude_result_failure',
+            rateLimitType: 'seven_day_opus',
+            rateLimitStatus: 'rejected',
+            rateLimitUtilization: 0.99,
+            rateLimitSurpassedThreshold: 1,
+            rateLimitResetsAt: 1700500000000,
+            rateLimitResetDate: new Date(1700500000000).toISOString(),
+            rateLimitOverageStatus: 'rejected',
+            rateLimitOverageResetsAt: 1700600000,
+            rateLimitOverageResetDate: new Date(1700600000 * 1000).toISOString(),
+            rateLimitIsUsingOverage: false,
+        });
+        expect(JSON.stringify(warning)).not.toContain('SECRET_PROMPT_TEXT');
+    });
+
+    it('treats allowed rate_limit_event messages as successful-session metadata', async () => {
+        const capLogger = createCapturingLogger();
+        initSDKLogger(capLogger.logger as any);
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'rate_limit_event',
+                rate_limit_info: {
+                    status: 'allowed',
+                    rateLimitType: 'five_hour',
+                    utilization: 0.12,
+                    resetsAt: 1700000000,
+                },
+            },
+            { type: 'result', subtype: 'success', result: 'ok' },
+        ]));
+
+        const result = await svc.sendMessage({ prompt: 'hello' });
+
+        expect(result).toMatchObject({
+            success: true,
+            response: 'ok',
+        });
+        const debug = capLogger.logs.find(log =>
+            log.level === 'debug' &&
+            log.message === '[ClaudeQuota] session rate_limit_event — status=%s type=%s utilization=%s'
+        );
+        expect(debug?.args).toEqual(['allowed', 'five_hour', 0.12]);
+        expect(capLogger.logs).not.toContainEqual(expect.objectContaining({
+            level: 'warn',
+            message: 'Claude SDK result message reported failure',
+        }));
     });
 
     it('returns failure when request is already aborted', async () => {
