@@ -43,6 +43,14 @@ import { AgentSelectorChip } from './AgentSelectorChip';
 import type { ChatProvider } from './AgentSelectorChip';
 import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
 import { deriveEffort } from '../../utils/effortUtils';
+import {
+    cycleChatProvider,
+    cycleConfiguredEffortTier,
+    cycleReasoningEffort,
+    getComposerArrowCycleDirection,
+    isEffortCycleShortcut,
+    isProviderCycleShortcut,
+} from '../../utils/composerKeyboardShortcuts';
 import { RalphLaunchDialog } from '../../shared/RalphLaunchDialog';
 import type { ResolvedModalJobAiSelection } from '../../shared/ModalJobAiControls';
 import { AttachedContextPreviews } from '../../ui/AttachedContextPreviews';
@@ -319,6 +327,59 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     function handleEffortTierChange(tier: EffortTierKey) {
         setSelectedEffortTier(tier);
         localStorage.setItem(`coc:effort-tier:${workspaceId ?? 'default'}`, tier);
+    }
+
+    function handleEffortShortcut(e: React.KeyboardEvent<HTMLElement>): boolean {
+        if (!isEffortCycleShortcut(e)) {
+            return false;
+        }
+        if (slashCommands.menuVisible || modelCommand.modelMenuVisible) {
+            return false;
+        }
+
+        const direction = getComposerArrowCycleDirection(e.key);
+        if (direction === null) {
+            return false;
+        }
+
+        if (useEffortTierMode) {
+            const next = cycleConfiguredEffortTier(selectedEffortTier, effortTierMap, direction);
+            if (next.changed) {
+                handleEffortTierChange(next.value);
+            }
+            e.preventDefault();
+            return true;
+        }
+
+        if (!effortPickerDisabled) {
+            const next = cycleReasoningEffort(effortOverride, effortOptions, direction);
+            if (next.changed) {
+                handleEffortChange(next.value);
+            }
+        }
+        e.preventDefault();
+        return true;
+    }
+
+    function handleProviderShortcut(e: React.KeyboardEvent<HTMLElement>): boolean {
+        if (!isProviderCycleShortcut(e)) {
+            return false;
+        }
+        if (slashCommands.menuVisible || modelCommand.modelMenuVisible) {
+            return false;
+        }
+
+        const direction = getComposerArrowCycleDirection(e.key);
+        if (direction === null) {
+            return false;
+        }
+
+        const next = cycleChatProvider(selectedProvider, agentProviders, direction);
+        if (next.changed) {
+            handleProviderChange(next.value);
+        }
+        e.preventDefault();
+        return true;
     }
 
     function getSelectedWorkspaceRoot(): string | undefined {
@@ -706,7 +767,11 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                 autocomplete.dismiss();
                                 return;
                             }
-                            // Priority 4: bash-style up/down history navigation.
+                            // Priority 4: modified-arrow composer shortcuts.
+                            if (handleEffortShortcut(e) || handleProviderShortcut(e)) {
+                                return;
+                            }
+                            // Priority 5: bash-style up/down history navigation.
                             if (promptHistory.handleKeyDown(e)) {
                                 return;
                             }

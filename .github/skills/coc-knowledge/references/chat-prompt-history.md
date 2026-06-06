@@ -93,8 +93,11 @@ history. Once the menu is dismissed, the arrows resume their history role.
 ### Modifier keys
 
 History is **not** triggered when an arrow key is pressed with **Ctrl**,
-**Cmd**, **Alt**, or **Shift**. Use those modifiers to do whatever the
-underlying editor would do (e.g. select text), unaffected by the feature.
+**Cmd**, **Alt**, or **Shift**. Chat composers may handle selected modified
+arrow shortcuts before history runs — for example focused new-chat/follow-up
+inputs use **Shift+Up/Down** for effort selection, and focused new-chat inputs
+use platform provider cycling (**Ctrl+Up/Down** on Windows/Linux,
+**Cmd+Up/Down** on macOS). Other modified arrows fall through to the editor.
 
 ## What ends up in your history
 

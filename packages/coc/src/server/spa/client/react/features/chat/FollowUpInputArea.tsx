@@ -25,6 +25,12 @@ import type { ChatMode } from '../../repos/modeConfig';
 import type { SkillItem } from './SlashCommandMenu';
 import type { ModelInfo } from '../../hooks/useModels';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
+import {
+    cycleConfiguredEffortTier,
+    cycleReasoningEffort,
+    getComposerArrowCycleDirection,
+    isEffortCycleShortcut,
+} from '../../utils/composerKeyboardShortcuts';
 import type { AttachedContextItem } from './hooks/useAttachedContext';
 import type { ChatAttachment } from '../../types/attachments';
 import { isSessionContextAttachmentsEnabled } from '../../utils/config';
@@ -138,6 +144,8 @@ export interface FollowUpInputAreaProps {
     effortOverride?: EffortLevel | null;
     /** Called when the user picks (or clears) a reasoning-effort level. */
     onEffortChange?: (value: EffortLevel | null) => void;
+    /** When true, the reasoning-effort pill is visible but not selectable. */
+    effortDisabled?: boolean;
     /**
      * Model-specific effort options. Pass `buildEffortOptionsForModel(model.supportedReasoningEfforts)`
      * to show only the efforts supported by the active session model.
@@ -351,7 +359,11 @@ export function FollowUpInputArea({
             autocomplete.dismiss();
             return;
         }
-        // Priority 4: bash-style up/down history navigation.
+        // Priority 4: modified-arrow composer shortcuts.
+        if (handleEffortShortcut(e)) {
+            return;
+        }
+        // Priority 5: bash-style up/down history navigation.
         if (promptHistory.handleKeyDown(e)) {
             return;
         }
@@ -369,6 +381,44 @@ export function FollowUpInputArea({
                 void onSend(undefined, 'enqueue');
             }
         }
+    }
+
+    function handleEffortShortcut(e: React.KeyboardEvent<HTMLElement>): boolean {
+        if (!isEffortCycleShortcut(e)) {
+            return false;
+        }
+        if (slashCommands.menuVisible || (modelCommand?.modelMenuVisible ?? false)) {
+            return false;
+        }
+
+        const direction = getComposerArrowCycleDirection(e.key);
+        if (direction === null) {
+            return false;
+        }
+
+        if (useEffortTierMode) {
+            if (!selectedEffortTier || !onEffortTierChange || !effortTierMap) {
+                return false;
+            }
+            const next = cycleConfiguredEffortTier(selectedEffortTier, effortTierMap, direction);
+            if (next.changed) {
+                onEffortTierChange(next.value);
+            }
+            e.preventDefault();
+            return true;
+        }
+
+        if (!onEffortChange) {
+            return false;
+        }
+        if (!effortDisabled) {
+            const next = cycleReasoningEffort(effortOverride, effortOptions, direction);
+            if (next.changed) {
+                onEffortChange(next.value);
+            }
+        }
+        e.preventDefault();
+        return true;
     }
 
     function handleEditorChange(val: string, cursorPos: number) {
