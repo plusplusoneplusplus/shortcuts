@@ -732,6 +732,9 @@ export function AdminPanel() {
         setQuotaError(null);
         try {
             const data = await getSpaCocClient().admin.getAgentProvidersQuota({ force: options.force });
+            if (!Array.isArray(data.providers)) {
+                throw new Error('Quota response missing providers');
+            }
             setQuotaData(data);
         } catch (err: unknown) {
             setQuotaError(getSpaCocClientErrorMessage(err, 'Failed to fetch quota'));
@@ -739,6 +742,13 @@ export function AdminPanel() {
             setQuotaLoading(false);
         }
     }, []);
+
+    useEffect(() => {
+        if (activeTab !== 'agents' || isContainerMode()) {
+            return;
+        }
+        void handleRefreshQuota();
+    }, [activeTab, handleRefreshQuota]);
 
     // ── Chat Experience card ──
     const handleSaveChat = useCallback(async () => {

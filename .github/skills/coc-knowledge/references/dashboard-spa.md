@@ -240,7 +240,11 @@ finite `quotaTypes[]` snapshots render as compact per-window rows with a
 readable quota-window label, remaining percentage, used/entitlement caption,
 and remaining-usage bar. Copilot finite quotas render as the single
 tightest-limit row used by the legacy quota cell. The page-level quota-risk
-summary uses the tightest finite quota across all providers. The desktop
+summary uses the tightest finite quota across all providers. When the non-container
+Admin AI Provider tab is active, `AdminPanel` loads
+`admin.getAgentProvidersQuota()` without `force` so the page displays the
+server's cached quota snapshot after refresh or tab entry; the page's Refresh
+quota button still calls the force path. The desktop
 top-bar `AgentProviderQuotaIndicator` uses the same helpers to fill a circular
 gauge to the most-constrained enabled provider's used percentage and to render a
 NotificationBell-style dropdown. The dropdown lists one row per enabled

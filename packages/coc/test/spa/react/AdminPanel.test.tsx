@@ -1315,6 +1315,79 @@ describe('AdminPanel', () => {
         });
     });
 
+    describe('AI Provider tab — quota cache loading', () => {
+        it('loads cached quota when the AI Provider tab becomes active', async () => {
+            const quotaCalls: string[] = [];
+            mockFetch.mockImplementation((url: string) => {
+                if (url.includes('/agent-providers/quota')) {
+                    quotaCalls.push(url);
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            lastUpdated: '2026-06-06T12:00:00.000Z',
+                            providers: [
+                                {
+                                    id: 'copilot',
+                                    quotaTypes: [
+                                        {
+                                            type: 'chat',
+                                            isUnlimitedEntitlement: false,
+                                            usedRequests: 20,
+                                            entitlementRequests: 100,
+                                            remainingPercentage: 0.8,
+                                            usageAllowedWithExhaustedQuota: false,
+                                            overage: 0,
+                                            resetDate: '2026-06-07T00:00:00.000Z',
+                                        },
+                                    ],
+                                },
+                            ],
+                        }),
+                    });
+                }
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            resolved: {
+                                model: 'gpt-4', parallel: 1, timeout: null, output: 'table',
+                                codex: { enabled: false },
+                                claude: { enabled: false },
+                                defaultProvider: 'copilot',
+                            },
+                            sources: {},
+                        }),
+                    });
+                }
+                if (url.includes('/agent-providers') && !url.includes('quota')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            providers: [
+                                { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+                                { id: 'codex', label: 'Codex', enabled: false, available: false, installStatus: 'installed' },
+                                { id: 'claude', label: 'Claude', enabled: false, available: false, installStatus: 'not-installed' },
+                            ],
+                        }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+
+            await act(async () => { renderWithProviders(); });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('admin-tab-agents'));
+            });
+
+            await waitFor(() => expect(quotaCalls).toHaveLength(1));
+            expect(quotaCalls[0]).toContain('/agent-providers/quota');
+            expect(quotaCalls[0]).not.toContain('force=1');
+            await waitFor(() => expect(screen.getAllByText('80% remaining').length).toBeGreaterThan(0));
+            expect(screen.queryByText('Quota not loaded')).toBeNull();
+        });
+    });
+
     describe('AI Provider tab — SDK install buttons and badges', () => {
         function mockWithInstallStatuses(
             codexInstallStatus: string,
