@@ -167,8 +167,8 @@ Focus indicator propagates mode-colored ring from contenteditable to parent card
 When `features.sessionContextAttachments` is enabled, same-workspace chat/process
 rows, Ralph session group rows, Work Item list/hierarchy rows, Git commit rows,
 branch range headers/overview headers, and Pull Request rows are copy-drag
-context sources. Both `NewChatArea` and `FollowUpInputArea` accept these shared
-drag/drop payloads. The composers
+context sources. `NewChatArea`, `FollowUpInputArea`, and the desktop repo header
+Queue Task / Ask buttons accept these shared drag/drop payloads. The composers
 validate same-workspace, duplicate, self-drop/current-child for session-backed
 pointers, and a shared three-logical-attachment cap before adding removable
 context chips through `AttachedContextPreviews`. `get_conversation` tool
@@ -178,7 +178,8 @@ sessions render as neutral **Session** chips, Ralph groups render as purple
 stable labels such as `Work Item #123`, `Commit abc1234`, `Range base..head`,
 and `PR #45` plus short safe metadata.
 
-Send paths re-check the same constraints before formatting already-attached
+The header buttons validate the drop, open the queue dialog in task or ask mode,
+and seed a removable context chip without submitting. Send paths re-check the same constraints before formatting already-attached
 source IDs so stale feature/capability state cannot send unusable pointers. The
 attached-context formatter emits pointer-only `<attached_session_context>` blocks
 for single sessions, pointer-only `<attached_ralph_session_context>` blocks for
@@ -277,7 +278,7 @@ The top-level `#memory` route is embedded in the Admin shell's Knowledge group a
 
 ## Feature Flags
 
-`featureFlags.ts` defines compile-time flags (e.g., `SHOW_WELCOME_TUTORIAL`). Runtime feature flags are exposed through `GET /api/config/runtime` and SPA helpers in `utils/config.ts`; `workItems.sync.enabled` only reports usable sync UI when both it and `workItems.hierarchy.enabled` are true. Most features gated by flags are disabled by default. The Git tab's cross-clone cherry-pick UI is gated by `features.gitCrossCloneCherryPick` / `gitCrossCloneCherryPickEnabled` and is enabled by default. Chat composer drag/drop session-context attachments are gated by `features.sessionContextAttachments` / `sessionContextAttachmentsEnabled`; when enabled, same-workspace chat rows, process cards, queue/history process rows, process search result cards, Ralph session group rows, Work Item rows/cards, Git commit rows, Git branch-range headers, and Pull Request rows become copy-drag sources using custom pointer-only MIME payloads. Single-session payloads contain workspace ID, process ID, title/preview, status, and last-activity metadata; Ralph group payloads contain workspace ID, Ralph session ID, phase/status, title/display label, last activity, and ordered child process IDs. Work Item, commit, range, and PR payloads contain stable IDs/references plus safe display metadata only.
+`featureFlags.ts` defines compile-time flags (e.g., `SHOW_WELCOME_TUTORIAL`). Runtime feature flags are exposed through `GET /api/config/runtime` and SPA helpers in `utils/config.ts`; `workItems.sync.enabled` only reports usable sync UI when both it and `workItems.hierarchy.enabled` are true. Most features gated by flags are disabled by default. The Git tab's cross-clone cherry-pick UI is gated by `features.gitCrossCloneCherryPick` / `gitCrossCloneCherryPickEnabled` and is enabled by default. Chat composer drag/drop session-context attachments are gated by `features.sessionContextAttachments` / `sessionContextAttachmentsEnabled`; when enabled, same-workspace chat rows, process cards, queue/history process rows, process search result cards, Ralph session group rows, Work Item rows/cards, Git commit rows, Git branch-range headers, and Pull Request rows become copy-drag sources using custom pointer-only MIME payloads, and desktop repo-header Ask/Queue Task buttons become copy drop targets that seed queue-dialog chips. Single-session payloads contain workspace ID, process ID, title/preview, status, and last-activity metadata; Ralph group payloads contain workspace ID, Ralph session ID, phase/status, title/display label, last activity, and ordered child process IDs. Work Item, commit, range, and PR payloads contain stable IDs/references plus safe display metadata only.
 
 ## Work Items
 

@@ -30,6 +30,13 @@ import { usePromptAutocompleteEnabled } from '../hooks/usePromptAutocompleteEnab
 import { useChatPromptHistory } from '../hooks/useChatPromptHistory';
 import { ModalJobAiControls, useModalJobAiSelection } from '../shared/ModalJobAiControls';
 import type { EnqueueTaskRequest } from '@plusplusoneplusplus/coc-client';
+import { AttachedContextPreviews } from '../ui/AttachedContextPreviews';
+import { formatAttachedContext, useAttachedContext } from '../features/chat/hooks/useAttachedContext';
+import { isSessionContextAttachmentsEnabled } from '../utils/config';
+import {
+    useConversationRetrievalCapability,
+    validateSessionContextAttachmentsForSend,
+} from '../features/chat/sessionContextDrop';
 
 interface HookEntry {
     id: string;
@@ -107,6 +114,7 @@ export function EnqueueDialog() {
         setHooks(prev => prev.map(h => h.id === id ? { ...h, ...updates } : h));
 
     const { attachments, images, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, clearError: clearAttachmentError } = useFileAttachments();
+    const attachedContext = useAttachedContext();
     const richTextRef = useRef<RichTextInputHandle>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isDragOver, setIsDragOver] = useState(false);
@@ -115,6 +123,12 @@ export function EnqueueDialog() {
     const isBulkMode = queueState.dialogBulkMode && contextFiles.length > 1;
     const hasContextFiles = contextFiles.length > 0;
     const [promptCursorPos, setPromptCursorPos] = useState(0);
+    const [attachedContextError, setAttachedContextError] = useState<string | null>(null);
+    const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
+    const canRetrieveConversations = useConversationRetrievalCapability(
+        workspaceId || undefined,
+        sessionContextAttachmentsEnabled,
+    );
     const promptAutocompleteEnabled = usePromptAutocompleteEnabled();
     const autocomplete = usePromptAutocomplete({
         text: prompt,
@@ -165,6 +179,15 @@ export function EnqueueDialog() {
         }
         setContextFiles(queueState.dialogContextFiles ?? []);
     }, [queueState.showDialog]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(() => {
+        if (!queueState.showDialog) return;
+        attachedContext.clear();
+        setAttachedContextError(null);
+        for (const payload of queueState.dialogAttachedContext ?? []) {
+            attachedContext.addSessionContext(payload);
+        }
+    }, [queueState.showDialog, queueState.dialogAttachedContext]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Fetch folders when workspaceId changes
     useEffect(() => {
@@ -267,7 +290,20 @@ export function EnqueueDialog() {
         const rawText = richTextRef.current?.getValue() ?? prompt;
         const { skills: slashSkills } = slashCommands.parseAndExtract(rawText);
         const effectiveSkills = [...new Set([...selectedSkills, ...slashSkills])];
-        const effectivePrompt = rawText.trim();
+        const contextItems = attachedContext.getItems();
+        const sessionContextSendError = validateSessionContextAttachmentsForSend({
+            featureEnabled: sessionContextAttachmentsEnabled,
+            activeWorkspaceId: workspaceId || undefined,
+            currentProcessId: null,
+            items: contextItems,
+            canRetrieveConversations,
+        });
+        if (sessionContextSendError) {
+            setAttachedContextError(sessionContextSendError);
+            return;
+        }
+        setAttachedContextError(null);
+        const effectivePrompt = formatAttachedContext(contextItems) + rawText.trim();
 
         if (effectiveSkills.length === 0 && !effectivePrompt && !contextFiles.length && !isResolveMode) return;
 
@@ -279,6 +315,7 @@ export function EnqueueDialog() {
             setSelectedSkills([]);
             setHooks([]);
             clearAttachments();
+            attachedContext.clear();
             queueDispatch({ type: 'CLOSE_DIALOG' });
             return;
         }
@@ -424,6 +461,7 @@ export function EnqueueDialog() {
             setSelectedSkills([]);
             setHooks([]);
             setContextFiles([]);
+            attachedContext.clear();
             persistSkill(isAskMode ? 'ask' : 'task', effectiveSkills);
             // Record skill usage for ordering
             for (const sk of effectiveSkills) {
@@ -438,7 +476,7 @@ export function EnqueueDialog() {
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
         finally { setSubmitting(false); queueDispatch({ type: 'SET_TASK_SUBMITTING', value: false }); }
-    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, contextFiles, isBulkMode, appState.workspaces, appState.onboardingProgress, updateOnboarding, queueDispatch, clearAttachments, persistSkill, slashCommands, isAskMode, isResolveMode, floatChat, queueState.dialogLaunchMode, queueState.dialogContextTaskName, queueState.dialogResolveContext, hooks, aiSelection.resolved, selectedTemplateId]);
+    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, contextFiles, isBulkMode, appState.workspaces, appState.onboardingProgress, updateOnboarding, queueDispatch, clearAttachments, attachedContext, persistSkill, slashCommands, isAskMode, isResolveMode, floatChat, queueState.dialogLaunchMode, queueState.dialogContextTaskName, queueState.dialogResolveContext, hooks, aiSelection.resolved, selectedTemplateId, sessionContextAttachmentsEnabled, canRetrieveConversations]);
 
     const handleSlashSelect = useCallback((name: string) => {
         slashCommands.selectSkill(name, prompt, setPrompt, richTextRef);
@@ -552,6 +590,14 @@ export function EnqueueDialog() {
     const dialogContent = (
         <div className="flex flex-col gap-3">
             {/* Context files chips (document-context mode) */}
+            <AttachedContextPreviews
+                items={attachedContext.items}
+                onRemove={attachedContext.remove}
+                data-testid="enqueue-attached-context-previews"
+            />
+            {attachedContextError && (
+                <div className="text-xs text-[#f14c4c]" data-testid="enqueue-session-context-error">{attachedContextError}</div>
+            )}
             {hasContextFiles && (
                 <div data-testid="context-files-section">
                     <label className="block text-xs font-medium text-[#848484] mb-1">Context</label>
@@ -867,9 +913,9 @@ export function EnqueueDialog() {
                 disabled={
                     isResolveMode
                         ? false
-                        : activeTab === 'templates'
-                            ? selectedTemplateId === null
-                            : selectedSkills.length === 0 && !prompt.trim() && !hasContextFiles
+                            : activeTab === 'templates'
+                                ? selectedTemplateId === null
+                                : selectedSkills.length === 0 && !prompt.trim() && !hasContextFiles && attachedContext.items.length === 0
                 }
                 title="Ctrl+Enter"
             >

@@ -10,6 +10,8 @@ import { AppProvider, useApp } from '../../../src/server/spa/client/react/contex
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/contexts/QueueContext';
 import { MinimizedDialogsProvider, MinimizedDialogsTray } from '../../../src/server/spa/client/react/contexts/MinimizedDialogsContext';
 import { EnqueueDialog } from '../../../src/server/spa/client/react/queue/EnqueueDialog';
+import type { SessionContextAttachmentDragPayload } from '../../../src/server/spa/client/react/features/chat/sessionContextDrag';
+import { _resetRuntimeConfig } from '../../../src/server/spa/client/react/utils/config';
 import { mockViewport } from '../../spa/helpers/viewport-mock';
 
 if (!Element.prototype.scrollIntoView) {
@@ -48,6 +50,7 @@ interface DialogOpenerProps {
     bulkMode?: boolean;
     workspaceId?: string;
     mode?: 'task' | 'ask' | 'resolve';
+    attachedContext?: SessionContextAttachmentDragPayload[];
 }
 
 function DialogOpener({
@@ -56,6 +59,7 @@ function DialogOpener({
     bulkMode,
     workspaceId = 'ws-1',
     mode,
+    attachedContext,
 }: DialogOpenerProps) {
     const { dispatch } = useQueue();
     useEffect(() => {
@@ -66,6 +70,7 @@ function DialogOpener({
             contextTaskName,
             bulkMode,
             mode,
+            attachedContext,
         });
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
     return null;
@@ -75,6 +80,12 @@ let mockFetch: ReturnType<typeof vi.fn>;
 let cleanup: (() => void) | undefined;
 
 beforeEach(() => {
+    _resetRuntimeConfig();
+    (window as any).__DASHBOARD_CONFIG__ = {
+        apiBasePath: '/api',
+        wsPath: '/ws',
+        sessionContextAttachmentsEnabled: true,
+    };
     cleanup = mockViewport({ width: 1024, height: 768 });
     mockFetch = vi.fn().mockImplementation((url: string) => {
         if (typeof url === 'string' && url.includes('/models')) {
@@ -111,6 +122,8 @@ beforeEach(() => {
 
 afterEach(() => {
     vi.restoreAllMocks();
+    delete (window as any).__DASHBOARD_CONFIG__;
+    _resetRuntimeConfig();
     cleanup?.();
 });
 
@@ -217,6 +230,49 @@ describe('EnqueueDialog — document context mode', () => {
             expect(body.payload.context.skills).toEqual(['impl']);
             expect(body.displayName).toContain('Follow:');
             expect(body.displayName).toContain('feature');
+        });
+    });
+
+    it('renders seeded context as a removable chip and submits pointer-only context', async () => {
+        render(
+            <Wrap>
+                <DialogOpener
+                    workspaceId="ws-1"
+                    mode="ask"
+                    attachedContext={[{
+                        kind: 'coc.work-item-context',
+                        version: 1,
+                        sourceWorkspaceId: 'ws-1',
+                        workItemId: 'wi-123',
+                        workItemNumber: 123,
+                        label: 'Work Item #123',
+                        title: 'Investigate drag context',
+                        status: 'open',
+                    }]}
+                />
+                <EnqueueDialog />
+            </Wrap>,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('attached-work-item-context-chip')).toBeTruthy();
+        });
+        expect(screen.getByText('Work Item #123')).toBeTruthy();
+
+        await act(async () => { fireEvent.click(screen.getByText('Ask')); });
+
+        await waitFor(() => {
+            const postCall = mockFetch.mock.calls.find(
+                (c: any) => typeof c[0] === 'string' && c[0].includes('/queue') && c[1]?.method === 'POST',
+            );
+            expect(postCall).toBeTruthy();
+            const body = JSON.parse(postCall![1].body);
+            expect(body.payload.mode).toBe('ask');
+            expect(body.payload.prompt).toContain('<attached_pointer_context version="1">');
+            expect(body.payload.prompt).toContain('kind="work-item"');
+            expect(body.payload.prompt).toContain('work_item_id="wi-123"');
+            expect(body.payload.prompt).toContain('<title>Investigate drag context</title>');
+            expect(body.payload.prompt).not.toContain('full diff');
         });
     });
 
