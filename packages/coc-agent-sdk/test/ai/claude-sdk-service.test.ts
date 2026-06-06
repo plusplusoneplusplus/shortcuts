@@ -20,6 +20,7 @@ import * as path from 'path';
 import { PassThrough, Writable } from 'stream';
 import {
     ClaudeSDKService,
+    addClaudeContextUsage,
     extractClaudeAccessToken,
     mapClaudeAccountInfoToQuota,
     mapClaudeRateLimitInfoToQuota,
@@ -669,6 +670,39 @@ describe('ClaudeSDKService.sendMessage', () => {
             turnCount: 1,
             tokenLimit: 1000,
             currentTokens: 300,
+        });
+    });
+
+    it('returns Claude context-window quota fields when getContextUsage has no token totals', async () => {
+        queryFn.mockReturnValueOnce(makeQueryHandle([
+            { type: 'result', subtype: 'success', result: 'done' },
+        ], undefined, undefined, async () => ({
+            totalTokens: 400,
+            maxTokens: 2000,
+            systemPromptSections: [{ tokens: 50 }],
+            systemTools: [{ tokens: 20 }],
+            mcpTools: [{ tokens: 10 }],
+            messageBreakdown: {
+                assistantMessageTokens: 120,
+                userMessageTokens: 80,
+            },
+        })));
+
+        const result = await svc.sendMessage({ prompt: 'test' });
+
+        expect(result.success).toBe(true);
+        expect(result.tokenUsage).toEqual({
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            totalTokens: 0,
+            turnCount: 0,
+            tokenLimit: 2000,
+            currentTokens: 400,
+            systemTokens: 50,
+            toolDefinitionsTokens: 30,
+            conversationTokens: 200,
         });
     });
 
@@ -1532,6 +1566,42 @@ describe('ClaudeSDKService.sendMessage', () => {
         } finally {
             restorePlatform();
         }
+    });
+});
+
+describe('addClaudeContextUsage', () => {
+    it('creates a context-only token usage envelope for Claude quota snapshots', () => {
+        const usage = addClaudeContextUsage(undefined, {
+            totalTokens: 1200,
+            maxTokens: 200000,
+            systemPromptSections: [{ tokens: 100 }, { tokens: 25 }],
+            systemTools: [{ tokens: 40 }],
+            mcpTools: [{ tokens: 30 }],
+            deferredBuiltinTools: [{ tokens: 5 }],
+            messageBreakdown: {
+                toolCallTokens: 11,
+                toolResultTokens: 12,
+                attachmentTokens: 13,
+                assistantMessageTokens: 14,
+                userMessageTokens: 15,
+                redirectedContextTokens: 16,
+                unattributedTokens: 17,
+            },
+        });
+
+        expect(usage).toEqual({
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            totalTokens: 0,
+            turnCount: 0,
+            tokenLimit: 200000,
+            currentTokens: 1200,
+            systemTokens: 125,
+            toolDefinitionsTokens: 75,
+            conversationTokens: 98,
+        });
     });
 });
 

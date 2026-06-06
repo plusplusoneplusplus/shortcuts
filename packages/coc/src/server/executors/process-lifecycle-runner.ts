@@ -490,6 +490,11 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                 duration: tokenUsage.duration !== undefined
                                     ? (prevCumulative?.duration ?? 0) + tokenUsage.duration
                                     : prevCumulative?.duration,
+                                tokenLimit: tokenUsage.tokenLimit ?? prevCumulative?.tokenLimit,
+                                currentTokens: tokenUsage.currentTokens ?? prevCumulative?.currentTokens,
+                                systemTokens: tokenUsage.systemTokens ?? prevCumulative?.systemTokens,
+                                toolDefinitionsTokens: tokenUsage.toolDefinitionsTokens ?? prevCumulative?.toolDefinitionsTokens,
+                                conversationTokens: tokenUsage.conversationTokens ?? prevCumulative?.conversationTokens,
                             } : prevCumulative;
                             // If cancellation was requested while executing, finalize as cancelled
                             if (current.status === 'cancelling') {

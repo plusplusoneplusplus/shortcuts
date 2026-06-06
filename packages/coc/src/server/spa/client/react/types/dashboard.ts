@@ -24,10 +24,16 @@ export interface ClientTokenUsage {
     pricingSource?: string;
     pricingUnavailable?: boolean;
     duration?: number;
-    /** Session-level token limit (from session.usage_info) */
+    /** Session-level token limit (from provider context-window usage) */
     tokenLimit?: number;
-    /** Session-level current token count (from session.usage_info) */
+    /** Session-level current token count (from provider context-window usage) */
     currentTokens?: number;
+    /** Tokens consumed by the system prompt when the provider reports a breakdown */
+    systemTokens?: number;
+    /** Tokens consumed by tool definitions when the provider reports a breakdown */
+    toolDefinitionsTokens?: number;
+    /** Tokens consumed by conversation history when the provider reports a breakdown */
+    conversationTokens?: number;
 }
 
 export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports' | 'stats' | 'admin' | 'memory' | 'skills' | 'logs' | 'servers';

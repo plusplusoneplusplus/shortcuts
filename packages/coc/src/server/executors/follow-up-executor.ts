@@ -451,6 +451,11 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                             duration: result.tokenUsage.duration !== undefined
                                 ? (prevCumulative?.duration ?? 0) + result.tokenUsage.duration
                                 : prevCumulative?.duration,
+                            tokenLimit: result.tokenUsage.tokenLimit ?? prevCumulative?.tokenLimit,
+                            currentTokens: result.tokenUsage.currentTokens ?? prevCumulative?.currentTokens,
+                            systemTokens: result.tokenUsage.systemTokens ?? prevCumulative?.systemTokens,
+                            toolDefinitionsTokens: result.tokenUsage.toolDefinitionsTokens ?? prevCumulative?.toolDefinitionsTokens,
+                            conversationTokens: result.tokenUsage.conversationTokens ?? prevCumulative?.conversationTokens,
                         } : prevCumulative;
                         const assistantContent = result.response || '(No text response)';
                         const baseMetadata = {

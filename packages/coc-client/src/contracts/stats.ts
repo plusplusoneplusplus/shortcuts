@@ -21,6 +21,9 @@ export interface TokenUsage {
   duration?: number;
   tokenLimit?: number;
   currentTokens?: number;
+  systemTokens?: number;
+  toolDefinitionsTokens?: number;
+  conversationTokens?: number;
 }
 
 export interface TokenUsageStatsEntry {

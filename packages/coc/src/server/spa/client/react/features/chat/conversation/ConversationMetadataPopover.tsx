@@ -136,6 +136,9 @@ function readTokenUsage(value: unknown): ClientTokenUsage | null {
         duration: usage.duration,
         tokenLimit: usage.tokenLimit,
         currentTokens: usage.currentTokens,
+        systemTokens: usage.systemTokens,
+        toolDefinitionsTokens: usage.toolDefinitionsTokens,
+        conversationTokens: usage.conversationTokens,
     };
 }
 

@@ -2,7 +2,7 @@
  * ContextWindowIndicator — displays current context window usage as a progress bar.
  *
  * When breakdown props (systemTokens / toolDefinitionsTokens / conversationTokens) are
- * provided (Copilot SDK only), renders a segmented bar:
+ * provided by the active provider, renders a segmented bar:
  *   purple  — system prompt
  *   blue    — tool definitions
  *   green   — conversation
@@ -28,11 +28,11 @@ export interface ContextWindowIndicatorProps {
     /** Optional model name to display to the left of the ctx label */
     modelName?: string;
     className?: string;
-    /** System-prompt token count (Copilot SDK only) */
+    /** System-prompt token count when the provider reports a breakdown */
     systemTokens?: number;
-    /** Tool-definition token count (Copilot SDK only) */
+    /** Tool-definition token count when the provider reports a breakdown */
     toolDefinitionsTokens?: number;
-    /** Conversation-history token count (Copilot SDK only) */
+    /** Conversation-history token count when the provider reports a breakdown */
     conversationTokens?: number;
 }
 

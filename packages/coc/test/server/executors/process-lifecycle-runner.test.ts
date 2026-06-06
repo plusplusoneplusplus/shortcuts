@@ -1551,6 +1551,11 @@ describe('ProcessLifecycleRunner — token usage persistence', () => {
             turnCount: 2 + 1,
             cost: 0.004 + 0.002,
             duration: 2400 + 1200,
+            tokenLimit: sampleTokenUsage.tokenLimit,
+            currentTokens: sampleTokenUsage.currentTokens,
+            systemTokens: sampleTokenUsage.systemTokens,
+            toolDefinitionsTokens: sampleTokenUsage.toolDefinitionsTokens,
+            conversationTokens: sampleTokenUsage.conversationTokens,
         });
     });
 
@@ -1576,6 +1581,11 @@ describe('ProcessLifecycleRunner — token usage persistence', () => {
                     outputTokens: 50,
                     totalTokens: 165,
                     turnCount: 1,
+                    tokenLimit: sampleTokenUsage.tokenLimit,
+                    currentTokens: sampleTokenUsage.currentTokens,
+                    systemTokens: sampleTokenUsage.systemTokens,
+                    toolDefinitionsTokens: sampleTokenUsage.toolDefinitionsTokens,
+                    conversationTokens: sampleTokenUsage.conversationTokens,
                 }),
                 conversationCostEstimate: expect.objectContaining({
                     pricingUnavailable: false,

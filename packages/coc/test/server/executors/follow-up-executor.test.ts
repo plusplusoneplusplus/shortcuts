@@ -264,6 +264,13 @@ describe('FollowUpExecutor', () => {
         expect(updated?.systemTokens).toBe(12_000);
         expect(updated?.toolDefinitionsTokens).toBe(24_000);
         expect(updated?.conversationTokens).toBe(14_000);
+        expect(updated?.cumulativeTokenUsage).toMatchObject({
+            tokenLimit: 200_000,
+            currentTokens: 50_000,
+            systemTokens: 12_000,
+            toolDefinitionsTokens: 24_000,
+            conversationTokens: 14_000,
+        });
         expect(store.emitProcessEvent).toHaveBeenCalledWith(
             'proc-token-breakdown',
             expect.objectContaining({
