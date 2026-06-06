@@ -87,20 +87,32 @@ function isSelectableProvider(provider: ChatProvider, providers: Array<{ id: str
 
 function WorkflowModeMenu({ options, value, onChange }: WorkflowModeMenuProps) {
     const [open, setOpen] = useState(false);
+    const activeOption = options.find(option => option.value === value);
     if (options.length === 0) return null;
 
     return (
         <div className="relative shrink-0" data-testid="workflow-mode-selector">
             <button
                 type="button"
-                className="ctool inline-flex items-center gap-1 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
+                className={cn(
+                    'ctool inline-flex items-center gap-1 h-[22px] px-1.5 rounded-sm text-[11px] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors',
+                    activeOption
+                        ? 'bg-[#f3f3f3] dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#cccccc] shadow-[inset_0_0_0_1px_#d0d0d0] dark:shadow-[inset_0_0_0_1px_#4a4a4a]'
+                        : 'text-[#5a5a5a] dark:text-[#999999]',
+                )}
                 onClick={() => setOpen(current => !current)}
                 aria-haspopup="menu"
                 aria-expanded={open}
+                aria-pressed={activeOption ? 'true' : 'false'}
                 title="Workflow modes"
                 data-testid="workflow-mode-trigger"
+                data-active={activeOption ? 'true' : 'false'}
+                data-selected-mode={activeOption?.value}
             >
-                <span aria-hidden="true" className="inline-block h-[4px] w-[4px] rounded-full bg-purple-500" />
+                <span
+                    aria-hidden="true"
+                    className={cn('inline-block h-[4px] w-[4px] rounded-full', activeOption?.dotClass ?? 'bg-purple-500')}
+                />
                 <span>Workflow</span>
                 <svg
                     width="7"

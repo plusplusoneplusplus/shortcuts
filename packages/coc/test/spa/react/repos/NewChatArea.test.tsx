@@ -395,6 +395,37 @@ describe('NewChatArea', () => {
         expect(screen.getByTestId('new-chat-ralph-start-from-goal-btn')).toBeTruthy();
     });
 
+    it('marks the Workflow trigger active and keeps the Ralph composer accent when Ralph is selected', () => {
+        mockRalphEnabled.value = true;
+
+        render(<NewChatArea workspaceId="ws-1" />);
+        selectRalphMode();
+
+        const trigger = screen.getByTestId('workflow-mode-trigger');
+        expect(trigger.getAttribute('aria-pressed')).toBe('true');
+        expect(trigger.getAttribute('data-active')).toBe('true');
+        expect(trigger.getAttribute('data-selected-mode')).toBe('ralph');
+        expect(trigger.className).toContain('shadow-[inset_0_0_0_1px_#d0d0d0]');
+        expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('false');
+
+        const inputBar = screen.getByTestId('chat-input-bar');
+        expect(inputBar.className).toContain('border-purple-500');
+        expect(inputBar.className).toContain('focus-within:ring-purple-500/30');
+    });
+
+    it('updates the Workflow trigger and composer accent for For Each', () => {
+        mockForEachEnabled.value = true;
+
+        render(<NewChatArea workspaceId="ws-1" />);
+        fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
+        fireEvent.click(screen.getByTestId('workflow-mode-option-for-each'));
+
+        const trigger = screen.getByTestId('workflow-mode-trigger');
+        expect(trigger.getAttribute('data-selected-mode')).toBe('for-each');
+        expect(trigger.className).toContain('shadow-[inset_0_0_0_1px_#d0d0d0]');
+        expect(screen.getByTestId('chat-input-bar').className).toContain('border-sky-500');
+    });
+
     it('sends with default ask mode', async () => {
         mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'task-ask' } });
 
@@ -893,6 +924,20 @@ describe('NewChatArea', () => {
             fireEvent.keyDown(input, { key: 'Tab', shiftKey: true });
             expect(screen.getByTestId('mode-pill-autopilot').getAttribute('aria-checked')).toBe('true');
         });
+
+        it('Shift+Tab cycles into enabled workflow modes using the visible mode list', () => {
+            mockRalphEnabled.value = true;
+
+            render(<NewChatArea workspaceId="ws-1" />);
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+
+            fireEvent.keyDown(input, { key: 'Tab', shiftKey: true });
+            expect(screen.getByTestId('mode-pill-autopilot').getAttribute('aria-checked')).toBe('true');
+
+            fireEvent.keyDown(input, { key: 'Tab', shiftKey: true });
+            expect(screen.getByTestId('workflow-mode-trigger').getAttribute('data-selected-mode')).toBe('ralph');
+            expect(screen.getByTestId('chat-input-bar').className).toContain('border-purple-500');
+        });
     });
 
     describe('inline ghost-text autocomplete', () => {
@@ -999,6 +1044,21 @@ describe('NewChatArea', () => {
             // component called setInput('saved message') so later interactions
             // will see it. We can verify the draft was read.
             expect(mockDraftStore.getDraft).toHaveBeenCalled();
+        });
+
+        it('falls back to Ask when a saved workflow draft is no longer feature-enabled', () => {
+            mockDraftStore.getDraft.mockReturnValue({
+                text: 'saved workflow message',
+                mode: 'ralph',
+                updatedAt: Date.now(),
+            });
+            mockRalphEnabled.value = false;
+
+            render(<NewChatArea workspaceId="ws-1" />);
+
+            expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
+            expect(screen.queryByTestId('workflow-mode-trigger')).toBeNull();
+            expect(screen.getByTestId('chat-input-bar').className).toContain('border-yellow-500');
         });
 
         it('restores modelOverride from saved draft on mount', () => {
