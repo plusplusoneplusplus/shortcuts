@@ -32,6 +32,7 @@ export type { MarkdownReviewEditorProps } from './MarkdownReviewEditor';
 export { FilePreview } from './FilePreview';
 export type { FilePreviewProps } from './FilePreview';
 export { NotificationBell } from './NotificationBell';
+export { agentProviderQuotaIndicator } from './AgentProviderQuotaIndicator';
 export { DASHBOARD_AI_COMMANDS } from './ai-commands';
 export type { DashboardAICommand } from './ai-commands';
 export { shortenFilePath, linkifyFilePaths, FILE_PATH_RE } from './file-path-utils';

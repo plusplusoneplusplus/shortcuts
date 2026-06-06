@@ -231,20 +231,30 @@ The Admin AI Provider page's `ProviderEffortTiersSection` uses the same tier ord
 Quota UI math lives in `shared/quotaUtils.ts`. It formats quota-window labels,
 clamps remaining and used percentages, maps remaining percentages to risk
 classes, and selects the tightest finite quota across one provider or across
-enabled providers. The Admin provider routing table uses those helpers for quota
-cells: Codex and Claude finite `quotaTypes[]` snapshots render as compact
-per-window rows with a readable quota-window label, remaining percentage,
-used/entitlement caption, and remaining-usage bar. Known provider windows label
-`five_hour` as `5h` and `seven_day` as `Weekly`; unknown ids are converted to
-readable text. Copilot finite quotas render as the single tightest-limit row
-used by the legacy quota cell. The page-level quota-risk summary uses the
-tightest finite quota across all providers.
+enabled providers. Known provider windows label `five_hour` as `5h` and
+`seven_day` as `Weekly`; unknown ids are converted to readable text. The Admin
+provider routing table uses those helpers for quota cells: Codex and Claude
+finite `quotaTypes[]` snapshots render as compact per-window rows with a
+readable quota-window label, remaining percentage, used/entitlement caption,
+and remaining-usage bar. Copilot finite quotas render as the single
+tightest-limit row used by the legacy quota cell. The page-level quota-risk
+summary uses the tightest finite quota across all providers. The desktop
+top-bar `AgentProviderQuotaIndicator` uses the same helpers to fill a circular
+gauge to the most-constrained enabled provider's used percentage and to render a
+NotificationBell-style dropdown. The dropdown lists one row per enabled
+provider, showing only that provider's tightest finite quota type, an unlimited
+badge for all-unlimited providers, provider-level errors, a last-updated line,
+a force-refresh button that calls `admin.getAgentProvidersQuota({ force: true })`,
+and an `#admin/agents` link to the AI Provider page.
 
 The model-picker chip in both `NewChatArea` and `FollowUpInputArea` mirrors the `AgentSelectorChip` style: icon + label + chevron, no inline `✕` clear. When a `modelOverride` is set, `ModelCommandMenu` renders a `Use default` entry at the top of the dropdown that calls `setModelOverride(null)`; clearing flows through the menu rather than a chip-side button. `NoteChatPanel` reuses the same menu without passing `onClearOverride`, so the clear row only appears in the chat composers.
 
 ## Top Bar
 
-Right-hand action cluster: `[Connected pill | NotificationBell | Admin | Theme]`
+Right-hand action cluster:
+`[Connected pill | NotificationBell | AgentProviderQuotaIndicator | Admin | Theme]`.
+The quota indicator is hidden below the `md` breakpoint; the mobile top bar does
+not render the quota dropdown trigger.
 
 The legacy "Tools" popover has been migrated into the Admin page's left
 sidebar, but there is no longer a generic Tools group. The Admin sidebar is

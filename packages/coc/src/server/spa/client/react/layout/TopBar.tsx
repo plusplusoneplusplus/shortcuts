@@ -2,7 +2,7 @@
  * TopBar — top navigation bar with tab switching and theme toggle.
  *
  * Right-side layout:
- *   [Connected pill] [NotificationBell] [Admin] [Theme]
+ *   [Connected pill] [NotificationBell] [Quota] [Admin] [Theme]
  *
  * The Skills / Logs / Usage / Models / Servers nav targets now live in
  * the Admin page's left-panel "Tools" group — see `AdminPanel.tsx`. They
@@ -16,6 +16,7 @@ import { useRepos } from '../contexts/ReposContext';
 import { useTheme } from './ThemeProvider';
 import { buildNoteHash, buildRepoSubTabSuffix } from './Router';
 import { NotificationBell } from '../shared/NotificationBell';
+import { agentProviderQuotaIndicator as AgentProviderQuotaIndicator } from '../shared/AgentProviderQuotaIndicator';
 import { RepoTabStrip } from '../features/repo-detail/RepoTabStrip';
 import { MY_WORK_WORKSPACE_ID } from '../repos/MyWorkView';
 import { MY_LIFE_WORKSPACE_ID } from '../repos/MyLifeView';
@@ -243,6 +244,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                     />
                 </span>
                 <NotificationBell />
+                <AgentProviderQuotaIndicator />
                 <button
                     id="admin-toggle"
                     data-tab="admin"

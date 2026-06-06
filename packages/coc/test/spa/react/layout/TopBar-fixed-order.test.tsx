@@ -40,6 +40,10 @@ vi.mock('../../../../src/server/spa/client/react/shared/NotificationBell', () =>
     NotificationBell: () => <button aria-label="Notifications" data-testid="notification-bell">🔔</button>,
 }));
 
+vi.mock('../../../../src/server/spa/client/react/shared/AgentProviderQuotaIndicator', () => ({
+    agentProviderQuotaIndicator: () => <button aria-label="Agent provider quota" data-testid="agent-provider-quota-indicator">◔</button>,
+}));
+
 vi.mock('../../../../src/server/spa/client/react/repos/RepoManagementPopover', () => ({
     RepoManagementPopover: () => null,
 }));
@@ -90,6 +94,7 @@ describe('TopBar fixed action order', () => {
         // high-level buttons.
         expect(actionLabels()).toEqual([
             'Notifications',
+            'Agent provider quota',
             'Admin',
             'Toggle theme',
         ]);
