@@ -284,12 +284,14 @@ describe('ConversationMetadataPopover – token and cost rows', () => {
         expect(screen.getByText(/Total: 1,801/)).toBeDefined();
     });
 
-    it('shows a priced estimated cost with Stats-page USD formatting and text pricing source', async () => {
+    it('shows a priced estimated USD cost with Stats-page USD formatting and text pricing source', async () => {
         renderPopover({
             ...BASE_PROCESS,
             cumulativeTokenUsage: TOKEN_USAGE,
             conversationCostEstimate: {
                 estimatedUsdCost: 42.314,
+                displayedUsdCost: 42.314,
+                displayedUsdCostSource: 'estimated',
                 costBreakdown: { inputUsd: 10, cachedInputUsd: 0.25, cacheWriteUsd: 0.064, outputUsd: 32 },
                 pricingSource: 'Copilot pricing table',
                 unpricedTurnCount: 0,
@@ -302,9 +304,10 @@ describe('ConversationMetadataPopover – token and cost rows', () => {
             fireEvent.click(trigger);
         });
 
-        expect(screen.getByText('Est. cost')).toBeDefined();
-        expect(screen.getByText(/Est\. \$42\.31/)).toBeDefined();
+        expect(screen.getByText('USD cost')).toBeDefined();
+        expect(screen.getByText(/\$42\.31 \(pricing estimate\)/)).toBeDefined();
         expect(screen.getByText(/Source: Copilot pricing table/)).toBeDefined();
+        expect(screen.getByTitle(/Displayed USD: \$42\.31 \(pricing estimate\)/)).toBeDefined();
     });
 
     it('renders URL pricing sources as compact links without showing the full URL', async () => {
@@ -314,6 +317,8 @@ describe('ConversationMetadataPopover – token and cost rows', () => {
             cumulativeTokenUsage: TOKEN_USAGE,
             conversationCostEstimate: {
                 estimatedUsdCost: 1.72,
+                displayedUsdCost: 1.72,
+                displayedUsdCostSource: 'estimated',
                 costBreakdown: { inputUsd: 0.5, cachedInputUsd: 0.02, cacheWriteUsd: 0, outputUsd: 1.2 },
                 pricingSource,
                 unpricedTurnCount: 0,
@@ -326,7 +331,7 @@ describe('ConversationMetadataPopover – token and cost rows', () => {
             fireEvent.click(trigger);
         });
 
-        expect(screen.getByText(/Est\. \$1\.72/)).toBeDefined();
+        expect(screen.getByText(/\$1\.72 \(pricing estimate\)/)).toBeDefined();
         expect(document.body.textContent).not.toContain(pricingSource);
         const link = screen.getByRole('link', { name: 'Source' }) as HTMLAnchorElement;
         expect(link.href).toBe(pricingSource);
@@ -339,6 +344,8 @@ describe('ConversationMetadataPopover – token and cost rows', () => {
             cumulativeTokenUsage: TOKEN_USAGE,
             conversationCostEstimate: {
                 estimatedUsdCost: 0.0042,
+                displayedUsdCost: 0.0042,
+                displayedUsdCostSource: 'estimated',
                 costBreakdown: { inputUsd: 0.001, cachedInputUsd: 0.0002, cacheWriteUsd: 0, outputUsd: 0.003 },
                 pricingSource: 'Copilot pricing table',
                 unpricedTurnCount: 0,
@@ -351,7 +358,73 @@ describe('ConversationMetadataPopover – token and cost rows', () => {
             fireEvent.click(trigger);
         });
 
-        expect(screen.getByText(/Est\. \$0\.0042/)).toBeDefined();
+        expect(screen.getByText(/\$0\.0042 \(pricing estimate\)/)).toBeDefined();
+    });
+
+    it('uses Claude native USD ahead of the pricing-table estimate', async () => {
+        renderPopover({
+            ...BASE_PROCESS,
+            metadata: { ...BASE_PROCESS.metadata, provider: 'claude', model: 'claude-sonnet-4.6' },
+            cumulativeTokenUsage: {
+                ...TOKEN_USAGE,
+                actualUsdCost: 0.1234,
+                estimatedUsdCost: 42.314,
+            },
+            conversationCostEstimate: {
+                actualUsdCost: 0.1234,
+                estimatedUsdCost: 42.314,
+                displayedUsdCost: 0.1234,
+                displayedUsdCostSource: 'native',
+                costBreakdown: { inputUsd: 10, cachedInputUsd: 0.25, cacheWriteUsd: 0.064, outputUsd: 32 },
+                pricingSource: 'Copilot pricing table',
+                unpricedTurnCount: 0,
+                pricingUnavailable: false,
+            },
+        });
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+
+        await act(async () => {
+            fireEvent.click(trigger);
+        });
+
+        expect(screen.getByText('USD cost')).toBeDefined();
+        expect(screen.getByText(/\$0\.12 \(native reported\)/)).toBeDefined();
+        expect(screen.queryByText(/\$42\.31 \(pricing estimate\)/)).toBeNull();
+        expect(screen.getByTitle(/Displayed USD: \$0\.12 \(native reported\)/)).toBeDefined();
+        expect(screen.getByTitle(/Pricing-table estimate: \$42\.31/)).toBeDefined();
+    });
+
+    it('uses estimated USD for Codex and Copilot when no native USD is present', async () => {
+        const cases = [
+            { provider: 'codex', model: 'gpt-5.3-codex', expected: '$1.50' },
+            { provider: 'copilot', model: 'gpt-5.5', expected: '$2.25' },
+        ];
+
+        for (const item of cases) {
+            const { unmount } = renderPopover({
+                ...BASE_PROCESS,
+                metadata: { ...BASE_PROCESS.metadata, provider: item.provider, model: item.model },
+                cumulativeTokenUsage: TOKEN_USAGE,
+                conversationCostEstimate: {
+                    estimatedUsdCost: item.provider === 'codex' ? 1.5 : 2.25,
+                    displayedUsdCost: item.provider === 'codex' ? 1.5 : 2.25,
+                    displayedUsdCostSource: 'estimated',
+                    costBreakdown: { inputUsd: 0.5, cachedInputUsd: 0, cacheWriteUsd: 0, outputUsd: item.provider === 'codex' ? 1 : 1.75 },
+                    pricingSource: 'Copilot pricing table',
+                    unpricedTurnCount: 0,
+                    pricingUnavailable: false,
+                },
+            });
+            const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+
+            await act(async () => {
+                fireEvent.click(trigger);
+            });
+
+            expect(screen.getByText(new RegExp(`\\${item.expected} \\(pricing estimate\\)`))).toBeDefined();
+            expect(screen.getByTitle(new RegExp(`Displayed USD: \\${item.expected} \\(pricing estimate\\)`))).toBeDefined();
+            unmount();
+        }
     });
 
     it('omits the token and cost section when cumulativeTokenUsage is missing', async () => {
@@ -372,7 +445,7 @@ describe('ConversationMetadataPopover – token and cost rows', () => {
         });
 
         expect(screen.queryByText('Tokens')).toBeNull();
-        expect(screen.queryByText('Est. cost')).toBeNull();
+        expect(screen.queryByText('USD cost')).toBeNull();
     });
 
     it('shows pricing unavailable when all usage-bearing turns are unpriced', async () => {
@@ -402,6 +475,8 @@ describe('ConversationMetadataPopover – token and cost rows', () => {
             cumulativeTokenUsage: TOKEN_USAGE,
             conversationCostEstimate: {
                 estimatedUsdCost: 1.234,
+                displayedUsdCost: 1.234,
+                displayedUsdCostSource: 'estimated',
                 costBreakdown: { inputUsd: 0.5, cachedInputUsd: 0.034, cacheWriteUsd: 0, outputUsd: 0.7 },
                 pricingSource: 'Copilot pricing table',
                 unpricedTurnCount: 2,
@@ -414,7 +489,7 @@ describe('ConversationMetadataPopover – token and cost rows', () => {
             fireEvent.click(trigger);
         });
 
-        expect(screen.getByText(/Est\. \$1\.23/)).toBeDefined();
+        expect(screen.getByText(/\$1\.23 \(pricing estimate\)/)).toBeDefined();
         expect(screen.getByText(/partial — 2 turns unpriced/)).toBeDefined();
     });
 });

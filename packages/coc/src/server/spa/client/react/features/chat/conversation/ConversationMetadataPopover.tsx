@@ -11,7 +11,10 @@ import type { ClientTokenUsage } from '../../../types/dashboard';
 const RALPH_FIELD_TRUNCATE = 200;
 
 interface ClientConversationCostEstimate {
+    actualUsdCost?: number;
     estimatedUsdCost?: number;
+    displayedUsdCost?: number;
+    displayedUsdCostSource?: ClientTokenUsage['displayedUsdCostSource'];
     costBreakdown?: {
         inputUsd: number;
         cachedInputUsd: number;
@@ -78,6 +81,17 @@ function formatUsdCost(usd: number): string {
     return '$' + usd.toFixed(6).replace(/0+$/, '').replace(/\.$/, '');
 }
 
+function finiteUsd(value: number | undefined): number | undefined {
+    return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function describeUsdCostSource(source: ClientTokenUsage['displayedUsdCostSource']): string {
+    if (source === 'native') return 'native reported';
+    if (source === 'estimated') return 'pricing estimate';
+    if (source === 'mixed') return 'mixed native/estimate';
+    return 'unknown source';
+}
+
 function getHttpUrl(value: string | undefined): string | null {
     if (!value) return null;
     try {
@@ -112,7 +126,10 @@ function readTokenUsage(value: unknown): ClientTokenUsage | null {
         totalTokens,
         turnCount: usage.turnCount ?? 0,
         cost: usage.cost,
+        actualUsdCost: usage.actualUsdCost,
         estimatedUsdCost: usage.estimatedUsdCost,
+        displayedUsdCost: usage.displayedUsdCost,
+        displayedUsdCostSource: usage.displayedUsdCostSource,
         costBreakdown: usage.costBreakdown,
         pricingSource: usage.pricingSource,
         pricingUnavailable: usage.pricingUnavailable,
@@ -125,6 +142,55 @@ function readTokenUsage(value: unknown): ClientTokenUsage | null {
 function readCostEstimate(value: unknown): ClientConversationCostEstimate | null {
     if (!value || typeof value !== 'object') return null;
     return value as ClientConversationCostEstimate;
+}
+
+function resolveDisplayedUsdCost(
+    usage: ClientTokenUsage,
+    estimate: ClientConversationCostEstimate | null
+): { usd: number; source: ClientTokenUsage['displayedUsdCostSource'] } | null {
+    const estimateDisplayedUsd = finiteUsd(estimate?.displayedUsdCost);
+    if (estimateDisplayedUsd !== undefined) {
+        return {
+            usd: estimateDisplayedUsd,
+            source: estimate?.displayedUsdCostSource
+                ?? (finiteUsd(estimate?.actualUsdCost) !== undefined ? 'native' : 'estimated'),
+        };
+    }
+
+    const usageDisplayedUsd = finiteUsd(usage.displayedUsdCost);
+    if (usageDisplayedUsd !== undefined) {
+        return {
+            usd: usageDisplayedUsd,
+            source: usage.displayedUsdCostSource
+                ?? (finiteUsd(usage.actualUsdCost) !== undefined ? 'native' : 'estimated'),
+        };
+    }
+
+    const estimateActualUsd = finiteUsd(estimate?.actualUsdCost);
+    if (estimateActualUsd !== undefined) {
+        return { usd: estimateActualUsd, source: 'native' };
+    }
+
+    const usageActualUsd = finiteUsd(usage.actualUsdCost);
+    if (usageActualUsd !== undefined) {
+        return { usd: usageActualUsd, source: 'native' };
+    }
+
+    const estimateEstimatedUsd = estimate?.pricingUnavailable
+        ? undefined
+        : finiteUsd(estimate?.estimatedUsdCost);
+    if (estimateEstimatedUsd !== undefined) {
+        return { usd: estimateEstimatedUsd, source: 'estimated' };
+    }
+
+    const usageEstimatedUsd = usage.pricingUnavailable
+        ? undefined
+        : finiteUsd(usage.estimatedUsdCost);
+    if (usageEstimatedUsd !== undefined) {
+        return { usd: usageEstimatedUsd, source: 'estimated' };
+    }
+
+    return null;
 }
 
 function parseSessionIdFromResult(result: unknown): string | null {
@@ -290,31 +356,43 @@ function TokenUsageRows({ process }: { process: any }) {
     if (!usage) return null;
 
     const estimate = readCostEstimate(process?.conversationCostEstimate);
-    const costBreakdown = estimate?.costBreakdown;
+    const displayedUsd = resolveDisplayedUsdCost(usage, estimate);
+    const costBreakdown = estimate?.costBreakdown ?? usage.costBreakdown;
     const unpricedTurnCount = estimate?.unpricedTurnCount ?? 0;
-    const pricingSource = estimate?.pricingSource;
+    const pricingSource = estimate?.pricingSource ?? usage.pricingSource;
     const pricingSourceUrl = getHttpUrl(pricingSource);
     const costSummaryParts: string[] = [];
+    const estimatedUsd = estimate?.pricingUnavailable || usage.pricingUnavailable
+        ? undefined
+        : finiteUsd(estimate?.estimatedUsdCost) ?? finiteUsd(usage.estimatedUsdCost);
 
-    if (!estimate || estimate.pricingUnavailable) {
-        costSummaryParts.push('pricing unavailable');
-    } else if (typeof estimate.estimatedUsdCost === 'number') {
-        costSummaryParts.push(`Est. ${formatUsdCost(estimate.estimatedUsdCost)}`);
+    if (displayedUsd) {
+        costSummaryParts.push(`${formatUsdCost(displayedUsd.usd)} (${describeUsdCostSource(displayedUsd.source)})`);
     } else {
         costSummaryParts.push('pricing unavailable');
     }
     if (unpricedTurnCount > 0) {
-        costSummaryParts.push(estimate?.pricingUnavailable
+        costSummaryParts.push(estimate?.pricingUnavailable || !displayedUsd
             ? `${pluralizeTurns(unpricedTurnCount)} unpriced`
             : `partial — ${pluralizeTurns(unpricedTurnCount)} unpriced`);
     }
 
-    const costDetailParts = costBreakdown ? [
-        `Input: ${formatUsdCost(costBreakdown.inputUsd)}`,
-        `Cached input: ${formatUsdCost(costBreakdown.cachedInputUsd)}`,
-        `Cache write: ${formatUsdCost(costBreakdown.cacheWriteUsd)}`,
-        `Output: ${formatUsdCost(costBreakdown.outputUsd)}`,
-    ] : [];
+    const costDetailParts = [
+        ...(displayedUsd ? [
+            `Displayed USD: ${formatUsdCost(displayedUsd.usd)} (${describeUsdCostSource(displayedUsd.source)})`,
+        ] : ['Displayed USD: pricing unavailable']),
+        ...(estimatedUsd !== undefined ? [
+            `Pricing-table estimate: ${formatUsdCost(estimatedUsd)}`,
+        ] : []),
+    ];
+    if (costBreakdown) {
+        costDetailParts.push(
+            `Input: ${formatUsdCost(costBreakdown.inputUsd)}`,
+            `Cached input: ${formatUsdCost(costBreakdown.cachedInputUsd)}`,
+            `Cache write: ${formatUsdCost(costBreakdown.cacheWriteUsd)}`,
+            `Output: ${formatUsdCost(costBreakdown.outputUsd)}`,
+        );
+    }
     if (pricingSource) costDetailParts.push(`Source: ${pricingSource}`);
 
     return (
@@ -338,7 +416,7 @@ function TokenUsageRows({ process }: { process: any }) {
                 </button>
             </div>
             <div className="contents">
-                <span className="text-[#848484]">Est. cost</span>
+                <span className="text-[#848484]">USD cost</span>
                 <span className="text-[#1e1e1e] dark:text-[#cccccc] break-words" title={costDetailParts.join(' · ') || undefined}>
                     {costSummaryParts.join(' · ')}
                     {pricingSource && (

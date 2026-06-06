@@ -113,8 +113,10 @@ summary chip strip and related fields collapse into `Time`, `Workspace`,
 `Ralph`, `Goal`, and `System` rows. When a process exposes
 `cumulativeTokenUsage`, the popover also renders live conversation-level
 `Tokens` and `USD cost` rows: token totals expand to input/output/cache
-breakdowns, and cost uses the server-derived `conversationCostEstimate` with
-compact URL-backed pricing-source links plus partial/unavailable-pricing caveats. While a conversation is
+breakdowns, and cost uses the server-derived native-first
+`conversationCostEstimate.displayedUsdCost` (`actualUsdCost ?? estimatedUsdCost`
+per turn) with compact source labels, URL-backed pricing-source links, and
+partial/unavailable-pricing caveats. While a conversation is
 running, `useChatSSE` mirrors `token-usage` event `cumulativeTokenUsage` and
 `conversationCostEstimate` snapshots into the cached process details that feed
 the popover; after completion, the normal process refresh replaces that live
