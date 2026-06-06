@@ -141,4 +141,23 @@ describe('computeConversationCostEstimate', () => {
         expect(estimate!.displayedUsdCost).toBeCloseTo(0.0123);
         expect(estimate!.displayedUsdCostSource).toBe('native');
     });
+
+    it('prices provider model ID variants through normalization', () => {
+        const codexUsage = usage({ inputTokens: 1_000_000, outputTokens: 100_000, cacheReadTokens: 0, cacheWriteTokens: 0 });
+        const claudeUsage = usage({ inputTokens: 500_000, outputTokens: 50_000, cacheReadTokens: 0, cacheWriteTokens: 0 });
+        const codexCost = estimateCopilotTokenCost('gpt-5.3-codex', codexUsage)!;
+        const claudeCost = estimateCopilotTokenCost('claude-sonnet-4.6', claudeUsage)!;
+
+        const estimate = computeConversationCostEstimate([
+            turn('user', 0, { model: 'gpt-5-3-codex-2026-01-15' }),
+            turn('assistant', 1, { tokenUsage: codexUsage }),
+            turn('user', 2, { model: 'claude-sonnet-4-6-high' }),
+            turn('assistant', 3, { tokenUsage: claudeUsage }),
+        ]);
+
+        expect(estimate).toBeDefined();
+        expect(estimate!.estimatedUsdCost).toBeCloseTo(codexCost.totalUsd + claudeCost.totalUsd);
+        expect(estimate!.unpricedTurnCount).toBe(0);
+        expect(estimate!.pricingUnavailable).toBe(false);
+    });
 });
