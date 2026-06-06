@@ -115,6 +115,7 @@ export type GitOpType =
   | 'merge-abort'
   | 'rebase-reorder'
   | 'reword'
+  | 'drop-commit'
   | 'cherry-pick-transfer'
   | string;
 

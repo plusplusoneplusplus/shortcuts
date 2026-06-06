@@ -1000,6 +1000,18 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
     }, [rewordingCommit, workspaceId, refreshAll]);
 
+    const handleDropCommit = useCallback(async (commit: GitCommitItem) => {
+        closeContextMenu();
+        setActionError(null);
+        try {
+            const result = await getSpaCocClient().git.dropCommit(workspaceId, commit.hash);
+            if (result.error) throw new Error(result.error);
+            refreshAll({ selectFallbackToHead: true });
+        } catch (err: any) {
+            setActionError(err.message || 'Drop commit failed');
+        }
+    }, [closeContextMenu, workspaceId, refreshAll]);
+
     const handleCommitContextMenu = useCallback((e: React.MouseEvent, commitHash: string) => {
         if (
             rightPanelView?.type === 'multi-commit' &&
@@ -1367,6 +1379,13 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     onClick: () => { closeContextMenu(); handleRebaseAutosquash(); },
                 });
             }
+            if (isUnpushed) {
+                items.push({
+                    label: 'Drop Commit',
+                    icon: '🗑️',
+                    onClick: () => handleDropCommit(commit),
+                });
+            }
             items.push({ label: '', separator: true, onClick: () => {} });
             items.push({
                 label: 'Hard Reset to Here',
@@ -1524,7 +1543,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
 
         return items;
-    }, [contextMenu, skills, commitSkillUsageMap, handleEnqueueSkill, handleSquashCommits, handleBranchAskAI, handleSelect, handleOpenAsPopup, handleHardReset, handleCherryPick, handleOpenCrossCloneCherryPick, commits, closeContextMenu, queueDispatch, workspaceId, fixupGroupsForMenu, handleRebaseAutosquash, handlePushToCommit, unpushedCount, isMobileSelecting, mobileAnchorHash, handleMultiSelect]);
+    }, [contextMenu, skills, commitSkillUsageMap, handleEnqueueSkill, handleSquashCommits, handleBranchAskAI, handleSelect, handleOpenAsPopup, handleHardReset, handleCherryPick, handleOpenCrossCloneCherryPick, commits, closeContextMenu, queueDispatch, workspaceId, fixupGroupsForMenu, handleRebaseAutosquash, handlePushToCommit, unpushedCount, isMobileSelecting, mobileAnchorHash, handleMultiSelect, handleDropCommit]);
 
     // Keyboard shortcuts:
     //   - R: refresh

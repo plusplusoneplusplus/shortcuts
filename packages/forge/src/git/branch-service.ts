@@ -1166,6 +1166,60 @@ export class BranchService {
     }
 
     /**
+     * Drop a single unpushed commit from history via interactive rebase.
+     * Uses GIT_SEQUENCE_EDITOR to replace `pick <hash>` with `drop <hash>`.
+     * On any error the rebase is automatically aborted to prevent leaving a
+     * rebase-in-progress state.
+     */
+    async dropCommit(repoRoot: string, hash: string): Promise<GitOperationResult> {
+        if (!hash || !hash.trim()) {
+            return { success: false, error: 'Commit hash must not be empty' };
+        }
+        let tmpDir: string | undefined;
+        try {
+            const fullHash = this.execGitSync(`git rev-parse ${hash}`, { cwd: repoRoot }).trim();
+            const parentHash = this.execGitSync(`git rev-parse ${fullHash}~1`, { cwd: repoRoot }).trim();
+
+            tmpDir = fs.mkdtempSync(path.join(repoRoot, '.git', 'tmp-drop-'));
+
+            let seqEditor: string;
+            if (process.platform === 'win32') {
+                const seqScriptPath = path.join(tmpDir, 'seq-editor.cmd');
+                const shortHash = fullHash.slice(0, 7);
+                fs.writeFileSync(seqScriptPath,
+                    `@echo off\r\n` +
+                    `powershell -NoProfile -Command "(Get-Content '%1') -replace '^pick ${shortHash}', 'drop ${shortHash}' | Set-Content '%1'"\r\n`,
+                    'utf-8');
+                seqEditor = seqScriptPath;
+            } else {
+                const seqScriptPath = path.join(tmpDir, 'seq-editor.sh');
+                const shortHash = fullHash.slice(0, 7);
+                fs.writeFileSync(seqScriptPath,
+                    `#!/bin/sh\nsed -i "s/^pick ${shortHash}/drop ${shortHash}/" "$1"\n`,
+                    { mode: 0o755 });
+                seqEditor = seqScriptPath;
+            }
+
+            await this.execGit(`git rebase -i ${parentHash}`, {
+                cwd: repoRoot,
+                timeout: 600000,
+                env: { GIT_SEQUENCE_EDITOR: seqEditor },
+            });
+
+            return { success: true };
+        } catch (error) {
+            try { this.execGitSync('git rebase --abort', { cwd: repoRoot }); } catch { /* best effort */ }
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            getLogger().error('Git', 'Failed to drop commit', error instanceof Error ? error : undefined);
+            return { success: false, error: errorMessage };
+        } finally {
+            if (tmpDir) {
+                try { fs.rmSync(tmpDir, { recursive: true }); } catch { /* best effort */ }
+            }
+        }
+    }
+
+    /**
      * Dispose of resources (no-op, provided for Disposable interface compatibility).
      */
     dispose(): void {

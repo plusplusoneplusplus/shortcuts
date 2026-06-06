@@ -650,6 +650,44 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
         },
     }));
 
+    // POST /api/workspaces/:id/git/drop-commit — Drop a single unpushed commit via interactive rebase
+    routes.push(createRoute({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/drop-commit$/,
+        statusCode: 202,
+        handler: async ({ match, res, req }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
+            if (!ws) return;
+            const id = ws.id;
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+            if (!body.hash || typeof body.hash !== 'string') return void handleAPIError(res, missingFields(['hash']));
+            const running = await gitOpsStore.getRunning(id, 'drop-commit');
+            if (running.length > 0) return void handleAPIError(res, conflict('A drop-commit operation is already running'));
+            const jobId = `drop-commit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            const job: GitOpJob = {
+                id: jobId, workspaceId: id, op: 'drop-commit',
+                status: 'running', startedAt: new Date().toISOString(), pid: process.pid,
+            };
+            await gitOpsStore.create(job);
+            void branchService.dropCommit(ws.rootPath, body.hash).then(async (result) => {
+                await gitOpsStore.update(id, jobId, {
+                    status: result.success ? 'success' : 'failed',
+                    finishedAt: new Date().toISOString(), error: result.error,
+                });
+                gitCache.invalidateMutable(id);
+                getWsServer?.()?.broadcastGitChanged(id, 'drop-commit');
+            }).catch(async (err) => {
+                await gitOpsStore.update(id, jobId, {
+                    status: 'failed', finishedAt: new Date().toISOString(),
+                    error: err instanceof Error ? err.message : 'Unknown error',
+                });
+                getWsServer?.()?.broadcastGitChanged(id, 'drop-commit');
+            });
+            return { jobId };
+        },
+    }));
+
     // POST /api/workspaces/:id/git/rebase-reorder
     routes.push(createRoute({
         method: 'POST',

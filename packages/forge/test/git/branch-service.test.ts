@@ -1582,6 +1582,142 @@ describe('BranchService.rewordCommit', () => {
         expect(msgCall[1]).toBe(title.trim());
     });
 
+    });
+
+// ── dropCommit ──────────────────────────────────────────────────
+describe('BranchService.dropCommit', () => {
+    let service: BranchService;
+    const mockedMkdtempSync = fs.mkdtempSync as Mock;
+    const mockedWriteFileSync = fs.writeFileSync as Mock;
+    const mockedRmSync = fs.rmSync as Mock;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        setLogger(nullLogger);
+        service = new BranchService();
+    });
+
+    it('returns error for empty hash', async () => {
+        const result = await service.dropCommit('/repo', '');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toMatch(/hash.*empty/i);
+        expect(mockedExecAsync).not.toHaveBeenCalled();
+    });
+
+    it('returns error for whitespace-only hash', async () => {
+        const result = await service.dropCommit('/repo', '   ');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toMatch(/hash.*empty/i);
+        expect(mockedExecAsync).not.toHaveBeenCalled();
+    });
+
+    it('calls git rebase -i with GIT_SEQUENCE_EDITOR set to drop the commit', async () => {
+        mockedExecSync
+            .mockReturnValueOnce('abc1234full\n')   // rev-parse hash
+            .mockReturnValueOnce('parent000\n');      // rev-parse parent
+        mockedMkdtempSync.mockReturnValueOnce('/repo/.git/tmp-drop-xyz');
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedRmSync.mockReturnValue(undefined);
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        const result = await service.dropCommit('/repo', 'abc1234');
+
+        expect(result.success).toBe(true);
+        expect(mockedExecAsync).toHaveBeenCalledWith(
+            expect.stringContaining('git rebase -i parent000'),
+            expect.objectContaining({
+                cwd: '/repo',
+                timeout: 600000,
+                env: expect.objectContaining({
+                    GIT_SEQUENCE_EDITOR: expect.any(String),
+                }),
+            })
+        );
+    });
+
+    it('does not set GIT_EDITOR (no message file needed)', async () => {
+        mockedExecSync
+            .mockReturnValueOnce('abc1234full\n')
+            .mockReturnValueOnce('parent000\n');
+        mockedMkdtempSync.mockReturnValueOnce('/repo/.git/tmp-drop-xyz');
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedRmSync.mockReturnValue(undefined);
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        await service.dropCommit('/repo', 'abc1234');
+
+        const [, opts] = mockedExecAsync.mock.calls[0];
+        expect(opts.env?.GIT_EDITOR).toBeUndefined();
+    });
+
+    it('aborts rebase and returns failure on rebase error', async () => {
+        mockedExecSync
+            .mockReturnValueOnce('abc1234full\n')   // rev-parse hash
+            .mockReturnValueOnce('parent000\n')       // rev-parse parent
+            .mockReturnValue('');                      // git rebase --abort (best-effort)
+        mockedMkdtempSync.mockReturnValueOnce('/repo/.git/tmp-drop-xyz');
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedRmSync.mockReturnValue(undefined);
+        mockedExecAsync.mockRejectedValueOnce(new Error('rebase conflict'));
+
+        const result = await service.dropCommit('/repo', 'abc1234');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('rebase conflict');
+        // Confirms abort was attempted (third execGitSync call)
+        expect(mockedExecSync).toHaveBeenCalledWith(
+            expect.stringContaining('git rebase --abort'),
+            expect.anything()
+        );
+    });
+
+    it('cleans up temp directory on success', async () => {
+        mockedExecSync
+            .mockReturnValueOnce('abc1234full\n')
+            .mockReturnValueOnce('parent000\n');
+        mockedMkdtempSync.mockReturnValueOnce('/repo/.git/tmp-drop-xyz');
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedRmSync.mockReturnValue(undefined);
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        await service.dropCommit('/repo', 'abc1234');
+
+        expect(mockedRmSync).toHaveBeenCalledWith('/repo/.git/tmp-drop-xyz', { recursive: true });
+    });
+
+    it('cleans up temp directory on failure', async () => {
+        mockedExecSync
+            .mockReturnValueOnce('abc1234full\n')
+            .mockReturnValueOnce('parent000\n')
+            .mockReturnValue('');
+        mockedMkdtempSync.mockReturnValueOnce('/repo/.git/tmp-drop-xyz');
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedRmSync.mockReturnValue(undefined);
+        mockedExecAsync.mockRejectedValueOnce(new Error('rebase conflict'));
+
+        await service.dropCommit('/repo', 'abc1234');
+
+        expect(mockedRmSync).toHaveBeenCalledWith('/repo/.git/tmp-drop-xyz', { recursive: true });
+    });
+
+    it('returns failure with unknown error message for non-Error throws', async () => {
+        mockedExecSync
+            .mockReturnValueOnce('abc1234full\n')
+            .mockReturnValueOnce('parent000\n')
+            .mockReturnValue('');
+        mockedMkdtempSync.mockReturnValueOnce('/repo/.git/tmp-drop-xyz');
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedRmSync.mockReturnValue(undefined);
+        mockedExecAsync.mockRejectedValueOnce('non-error string');
+
+        const result = await service.dropCommit('/repo', 'abc1234');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('Unknown error');
+    });
+
     // ── getBranchStatus / hasUncommittedChanges (async) ─────────────────────────────────────────────
 
     describe('hasUncommittedChanges', () => {

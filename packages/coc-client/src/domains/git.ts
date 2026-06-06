@@ -362,6 +362,10 @@ export class GitClient {
     return this.transport.request<GitAsyncJobResponse>(workspaceGitPath(workspaceId, '/reword'), jsonRequest('POST', { hash, title }));
   }
 
+  dropCommit(workspaceId: string, hash: string): Promise<GitAsyncJobResponse> {
+    return this.transport.request<GitAsyncJobResponse>(workspaceGitPath(workspaceId, '/drop-commit'), jsonRequest('POST', { hash }));
+  }
+
   rebaseContinue(workspaceId: string): Promise<GitAsyncJobResponse> {
     return this.transport.request<GitAsyncJobResponse>(workspaceGitPath(workspaceId, '/rebase-continue'), { method: 'POST' });
   }
