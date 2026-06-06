@@ -51,11 +51,13 @@ when pinned, while retaining the pinned affordance. Parent rows expose the same
 hover pin affordance and context-menu
 Pin to top/Unpin actions as individual chat rows, but those actions call the
 workspace group-pin API instead of changing child process `pinnedAt`.
-The chat-list multi-select range model follows the rendered Ralph rows:
-collapsed sessions count as one row and expand to all child process IDs when
-selected, while expanded sessions range over individual child rows. For Each run
-groups are backed by workspace-scoped `client.forEach.list(workspaceId)`
-summaries and nest linked generation/child chats by `payload.context.forEach`,
+The chat-list multi-select range model follows rendered grouped rows:
+collapsed Ralph sessions and For Each runs count as one row and expand to their
+real child process IDs when selected; expanded groups range over visible child
+rows, and desktop Shift-click on a parent row uses that parent as a range
+endpoint without opening the detail pane. For Each run groups are backed by
+workspace-scoped `client.forEach.list(workspaceId)` summaries and nest linked
+generation/child chats by `payload.context.forEach`,
 persisted `forEach` metadata, or `generationProcessId` so child chats do not
 duplicate as standalone rows.
 

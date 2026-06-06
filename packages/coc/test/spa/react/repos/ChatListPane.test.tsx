@@ -22,6 +22,7 @@ import { renderWithProviders } from '../test-utils';
 import {
     ChatListPane,
     buildHistoryRangeRows,
+    getForEachRunRangeId,
     getRalphSessionRangeId,
     resolveHistoryRangeSelection,
     taskMatchesFilter,
@@ -2396,6 +2397,31 @@ describe('ChatListPane history range helpers', () => {
         phase: 'complete',
         loopCount: 1,
     };
+    const forEachRun: any = {
+        kind: 'for-each-run',
+        runId: 'fe-1',
+        run: {
+            runId: 'fe-1',
+            workspaceId: 'ws-1',
+            status: 'completed',
+            originalRequest: 'Split range work',
+            childMode: 'ask',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:01:00.000Z',
+            generationProcessId: 'fe-1-generation',
+            itemCount: 2,
+            itemStatusCounts: {
+                pending: 0,
+                running: 0,
+                completed: 2,
+                failed: 0,
+                skipped: 0,
+            },
+        },
+        children: [{ id: 'fe-1-generation' }, { id: 'fe-1-child-1' }],
+        latestTimestamp: 2,
+        hasUnseen: false,
+    };
 
     it('expands a collapsed Ralph session sentinel into its child process ids', () => {
         const rows = buildHistoryRangeRows(
@@ -2456,6 +2482,52 @@ describe('ChatListPane history range helpers', () => {
             'rs-1-grill',
             'rs-1-iter-1',
             'rs-1-iter-2',
+        ]);
+    });
+
+    it('treats a collapsed For Each run as one endpoint and selects represented child process ids only', () => {
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, forEachRun, { id: 'regular-b' }],
+            new Set(),
+        );
+
+        expect(rows.map(row => row.id)).toEqual([
+            'regular-a',
+            getForEachRunRangeId('fe-1'),
+            'regular-b',
+        ]);
+        const selected = Array.from(resolveHistoryRangeSelection(rows, 'regular-a', 'regular-b')!);
+        expect(selected).toEqual([
+            'regular-a',
+            'fe-1-generation',
+            'fe-1-child-1',
+            'regular-b',
+        ]);
+        expect(selected).not.toContain('fe-1');
+    });
+
+    it('uses For Each child rows when expanded while keeping the parent row as a selectable endpoint', () => {
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, forEachRun, { id: 'regular-b' }],
+            new Set(),
+            new Set(['fe-1']),
+        );
+
+        expect(rows.map(row => row.id)).toEqual([
+            'regular-a',
+            'fe-1-generation',
+            'fe-1-child-1',
+            'regular-b',
+        ]);
+        expect(Array.from(resolveHistoryRangeSelection(rows, 'regular-a', getForEachRunRangeId('fe-1'))!)).toEqual([
+            'regular-a',
+            'fe-1-generation',
+            'fe-1-child-1',
+        ]);
+        expect(Array.from(resolveHistoryRangeSelection(rows, getForEachRunRangeId('fe-1'), 'regular-b')!)).toEqual([
+            'fe-1-generation',
+            'fe-1-child-1',
+            'regular-b',
         ]);
     });
 });
