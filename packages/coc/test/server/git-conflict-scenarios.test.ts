@@ -402,7 +402,7 @@ describe('Git Conflict Scenarios', () => {
                 success: false,
                 conflicts: false,
                 dirty: true,
-                message: 'Working tree must be clean before cherry-picking to another branch. Please commit or stash your changes.',
+                message: 'Working tree must be clean before atomic cherry-picking. Please commit or stash your changes.',
             });
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/cherry-pick`, {
@@ -412,7 +412,7 @@ describe('Git Conflict Scenarios', () => {
 
             expect(res.status).toBe(409);
             expect(res.json()).toEqual({
-                error: 'Working tree must be clean before cherry-picking to another branch. Please commit or stash your changes.',
+                error: 'Working tree must be clean before atomic cherry-picking. Please commit or stash your changes.',
                 dirty: true,
             });
         });

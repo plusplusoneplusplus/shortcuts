@@ -820,15 +820,16 @@ export class BranchService {
             };
         }
         const shouldSwitch = Boolean(targetBranch && originalBranch && targetBranch !== originalBranch);
+        const shouldRollbackToStartingHead = Boolean(targetBranch) || hashes.length > 1;
         const appliedHashes: string[] = [];
         let targetStartingHead: string | null = null;
 
-        if (shouldSwitch && await this.hasUncommittedChanges(repoRoot)) {
+        if (shouldRollbackToStartingHead && await this.hasUncommittedChanges(repoRoot)) {
             return {
                 success: false,
                 conflicts: false,
                 dirty: true,
-                message: 'Working tree must be clean before cherry-picking to another branch. Please commit or stash your changes.',
+                message: 'Working tree must be clean before atomic cherry-picking. Please commit or stash your changes.',
                 targetBranch,
                 originalBranch,
             };
@@ -837,6 +838,8 @@ export class BranchService {
         try {
             if (shouldSwitch) {
                 await this.execGit(`git checkout ${this.quoteShellArg(targetBranch!)}`, { cwd: repoRoot });
+            }
+            if (shouldRollbackToStartingHead) {
                 targetStartingHead = (await this.execGit('git rev-parse HEAD', { cwd: repoRoot })).trim();
             }
 

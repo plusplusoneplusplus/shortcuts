@@ -993,6 +993,8 @@ describe('BranchService.cherryPick', () => {
     it('does not switch branches when the target is the current branch', async () => {
         mockedExecAsync
             .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: 'main-start\n', stderr: '' })
             .mockResolvedValueOnce({ stdout: '', stderr: '' });
 
         const result = await service.cherryPick('/repo', 'abc1234', { targetBranch: 'main' });
@@ -1006,7 +1008,44 @@ describe('BranchService.cherryPick', () => {
         });
         expect(mockedExecAsync.mock.calls.map(call => call[0])).toEqual([
             'git rev-parse --abbrev-ref HEAD',
+            'git status --porcelain',
+            'git rev-parse HEAD',
             "git cherry-pick 'abc1234'",
+        ]);
+    });
+
+    it('aborts and resets the current branch when a later multi-commit cherry-pick fails', async () => {
+        mockedExecAsync
+            .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: 'main-start\n', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockRejectedValueOnce(new Error('CONFLICT (content): Merge conflict in src/foo.ts'))
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' });
+
+        const result = await service.cherryPick('/repo', 'older123', {
+            hashes: ['older123', 'bad456'],
+            targetBranch: 'main',
+        });
+
+        expect(result).toMatchObject({
+            success: false,
+            conflicts: true,
+            targetBranch: 'main',
+            originalBranch: 'main',
+            appliedHashes: ['older123'],
+        });
+        expect(mockedExecAsync.mock.calls.map(call => call[0])).toEqual([
+            'git rev-parse --abbrev-ref HEAD',
+            'git status --porcelain',
+            'git rev-parse HEAD',
+            "git cherry-pick 'older123'",
+            "git cherry-pick 'bad456'",
+            'git cherry-pick --abort',
+            "git reset --hard 'main-start'",
+            'git rev-parse --abbrev-ref HEAD',
         ]);
     });
 
