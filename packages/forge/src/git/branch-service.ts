@@ -820,7 +820,7 @@ export class BranchService {
             };
         }
         const shouldSwitch = Boolean(targetBranch && originalBranch && targetBranch !== originalBranch);
-        const shouldRollbackToStartingHead = Boolean(targetBranch) || hashes.length > 1;
+        const shouldRollbackToStartingHead = shouldSwitch || hashes.length > 1;
         const appliedHashes: string[] = [];
         let targetStartingHead: string | null = null;
 

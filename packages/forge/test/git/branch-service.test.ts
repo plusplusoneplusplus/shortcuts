@@ -990,11 +990,9 @@ describe('BranchService.cherryPick', () => {
         ]);
     });
 
-    it('does not switch branches when the target is the current branch', async () => {
+    it('does not block or switch branches for a dirty single cherry-pick targeting the current branch', async () => {
         mockedExecAsync
             .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' })
-            .mockResolvedValueOnce({ stdout: '', stderr: '' })
-            .mockResolvedValueOnce({ stdout: 'main-start\n', stderr: '' })
             .mockResolvedValueOnce({ stdout: '', stderr: '' });
 
         const result = await service.cherryPick('/repo', 'abc1234', { targetBranch: 'main' });
@@ -1008,9 +1006,31 @@ describe('BranchService.cherryPick', () => {
         });
         expect(mockedExecAsync.mock.calls.map(call => call[0])).toEqual([
             'git rev-parse --abbrev-ref HEAD',
-            'git status --porcelain',
-            'git rev-parse HEAD',
             "git cherry-pick 'abc1234'",
+        ]);
+    });
+
+    it('aborts a conflicting single cherry-pick targeting the current branch without resetting', async () => {
+        mockedExecAsync
+            .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' })
+            .mockRejectedValueOnce(new Error('CONFLICT (content): Merge conflict in src/foo.ts'))
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' });
+
+        const result = await service.cherryPick('/repo', 'abc1234', { targetBranch: 'main' });
+
+        expect(result).toMatchObject({
+            success: false,
+            conflicts: true,
+            targetBranch: 'main',
+            originalBranch: 'main',
+            appliedHashes: [],
+        });
+        expect(mockedExecAsync.mock.calls.map(call => call[0])).toEqual([
+            'git rev-parse --abbrev-ref HEAD',
+            "git cherry-pick 'abc1234'",
+            'git cherry-pick --abort',
+            'git rev-parse --abbrev-ref HEAD',
         ]);
     });
 
