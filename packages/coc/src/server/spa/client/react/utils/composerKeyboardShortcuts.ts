@@ -28,25 +28,16 @@ function cycleOrderedValue<T>(
     direction: ChatComposerCycleDirection,
     isSelectable: (value: T) => boolean,
 ): ChatComposerCycleResult<T> {
-    const selectableCount = order.reduce((count, value) => count + (isSelectable(value) ? 1 : 0), 0);
-    if (selectableCount <= 1) {
-        return { changed: false, value: current };
-    }
-
     const startIndex = order.findIndex(value => value === current);
     const normalizedStart = startIndex >= 0
         ? startIndex
-        : direction === 1 ? -1 : 0;
+        : direction === 1 ? -1 : order.length;
 
-    for (let offset = 1; offset <= order.length; offset++) {
-        const candidate = order[(normalizedStart + direction * offset + order.length * 2) % order.length];
-        if (!isSelectable(candidate)) {
-            continue;
+    for (let i = normalizedStart + direction; i >= 0 && i < order.length; i += direction) {
+        const candidate = order[i];
+        if (isSelectable(candidate)) {
+            return { changed: true, value: candidate };
         }
-        if (candidate === current) {
-            break;
-        }
-        return { changed: true, value: candidate };
     }
 
     return { changed: false, value: current };
