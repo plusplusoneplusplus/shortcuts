@@ -630,6 +630,65 @@ describe('Queue Handler', () => {
                 });
             }
         });
+
+        it('should include Auto routing metadata in model list responses', async () => {
+            const routes: any[] = [];
+            registerQueueRoutes(routes, {} as any, undefined, undefined, {
+                resolveDefaultProvider: async () => ({
+                    provider: 'copilot',
+                    selectedByAuto: true,
+                    fallbackUsed: true,
+                    warnings: ['Fallback provider was selected without usable quota data.'],
+                    decisions: [{
+                        provider: 'claude',
+                        selected: false,
+                        reason: 'Provider is unavailable.',
+                        normalThreshold: { status: 'not_checked', reason: 'Quota not checked.' },
+                        weeklyGuard: { status: 'not_checked', reason: 'Weekly guard not checked.' },
+                    } as any],
+                    fallback: {
+                        provider: 'copilot',
+                        used: true,
+                        providerEnabled: true,
+                        providerAvailable: true,
+                        reason: "No auto provider rule passed; using fallback provider 'copilot'.",
+                        warnings: ['Fallback provider was selected without usable quota data.'],
+                    },
+                }),
+            });
+            const bareServer = http.createServer(createRouter({ routes, spaHtml: '' }));
+            await new Promise<void>((resolve) => bareServer.listen(0, 'localhost', resolve));
+            const address = bareServer.address();
+            const url = `http://localhost:${typeof address === 'object' && address ? address.port : 0}`;
+
+            try {
+                const res = await request(`${url}/api/queue/models`);
+                expect(res.status).toBe(200);
+                const body = JSON.parse(res.body);
+                expect(body.provider).toBe('copilot');
+                expect(body.autoProviderRouting).toMatchObject({
+                    selectedByAuto: true,
+                    provider: 'copilot',
+                    fallbackUsed: true,
+                    warnings: ['Fallback provider was selected without usable quota data.'],
+                    decisions: [{
+                        provider: 'claude',
+                        selected: false,
+                        reason: 'Provider is unavailable.',
+                    }],
+                    fallback: {
+                        provider: 'copilot',
+                        used: true,
+                        providerEnabled: true,
+                        providerAvailable: true,
+                    },
+                });
+            } finally {
+                await new Promise<void>((resolve, reject) => {
+                    bareServer.close((err) => err ? reject(err) : resolve());
+                });
+            }
+        });
     });
 
     // ========================================================================

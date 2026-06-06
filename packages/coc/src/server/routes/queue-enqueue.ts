@@ -35,6 +35,7 @@ import type { ChatProvider } from '../tasks/task-types';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 
 const EFFORT_TIER_KEYS = new Set(['very-low', 'low', 'medium', 'high']);
+type ResolvedDefaultProviderResolution = AutoProviderResolutionResult & { provider: ChatProvider };
 
 export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteContext): void {
     const { bridge, store, globalWorkspaceRootPath, state } = ctx;
@@ -83,30 +84,35 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
         method: 'GET',
         pattern: '/api/queue/models',
         handler: async (_req, res) => {
-            let activeProvider: ChatProvider;
+            let resolution: ResolvedDefaultProviderResolution;
             try {
-                activeProvider = await resolveDefaultProviderForQueue(ctx);
+                resolution = await resolveDefaultProviderResolution(ctx);
             } catch (err) {
                 return sendError(res, 500, err instanceof Error ? err.message : 'Failed to resolve default provider');
             }
+            const activeProvider = resolution.provider;
             if (activeProvider === 'copilot') {
                 const live = modelMetadataStore.getCachedModels()
                     .filter(m => m.policy?.state !== 'disabled');
                 const models = live.length > 0
                     ? live.map(m => m.id)
                     : getActiveModels().map(m => m.id);
-                sendJSON(res, 200, { provider: activeProvider, models });
+                sendJSON(res, 200, buildQueueModelsResponse(activeProvider, models, resolution));
             } else {
                 const sdkService = sdkServiceRegistry.get(activeProvider);
                 if (!sdkService) {
-                    sendJSON(res, 200, { provider: activeProvider, models: [] });
+                    sendJSON(res, 200, buildQueueModelsResponse(activeProvider, [], resolution));
                     return;
                 }
                 try {
                     const providerModels = await sdkService.listModels();
-                    sendJSON(res, 200, { provider: activeProvider, models: providerModels.map((m: any) => m.id) });
+                    sendJSON(res, 200, buildQueueModelsResponse(
+                        activeProvider,
+                        providerModels.map((m: any) => m.id),
+                        resolution,
+                    ));
                 } catch {
-                    sendJSON(res, 200, { provider: activeProvider, models: [] });
+                    sendJSON(res, 200, buildQueueModelsResponse(activeProvider, [], resolution));
                 }
             }
         },
@@ -478,17 +484,45 @@ export async function resolveDefaultProviderForTask(input: CreateTaskInput, ctx:
  * @internal exported for tests
  */
 export async function resolveDefaultProviderForQueue(ctx: Pick<QueueRouteContext, 'getDefaultProvider' | 'resolveDefaultProvider'>): Promise<ChatProvider> {
-    return (await resolveDefaultProviderResolution(ctx)).provider!;
+    return (await resolveDefaultProviderResolution(ctx)).provider;
 }
 
-async function resolveDefaultProviderResolution(ctx: Pick<QueueRouteContext, 'getDefaultProvider' | 'resolveDefaultProvider'>): Promise<AutoProviderResolutionResult> {
+function buildQueueModelsResponse(
+    provider: ChatProvider,
+    models: string[],
+    resolution: ResolvedDefaultProviderResolution,
+): Record<string, unknown> {
+    return {
+        provider,
+        models,
+        ...buildAutoProviderRoutingMetadata(resolution),
+    };
+}
+
+function buildAutoProviderRoutingMetadata(resolution: ResolvedDefaultProviderResolution): Record<string, unknown> {
+    if (!resolution.selectedByAuto) {
+        return {};
+    }
+    return {
+        autoProviderRouting: {
+            selectedByAuto: true,
+            provider: resolution.provider,
+            fallbackUsed: resolution.fallbackUsed,
+            warnings: resolution.warnings,
+            decisions: resolution.decisions,
+            ...(resolution.fallback ? { fallback: resolution.fallback } : {}),
+        },
+    };
+}
+
+async function resolveDefaultProviderResolution(ctx: Pick<QueueRouteContext, 'getDefaultProvider' | 'resolveDefaultProvider'>): Promise<ResolvedDefaultProviderResolution> {
     const resolution = ctx.resolveDefaultProvider
         ? await ctx.resolveDefaultProvider()
         : concreteDefaultProviderResolution(ctx.getDefaultProvider?.() ?? 'copilot');
     if (!isChatProvider(resolution.provider)) {
         throw new Error(resolution.error ?? 'Default provider resolution did not select a concrete provider.');
     }
-    return resolution;
+    return { ...resolution, provider: resolution.provider };
 }
 
 function concreteDefaultProviderResolution(provider: ChatProvider): AutoProviderResolutionResult {
