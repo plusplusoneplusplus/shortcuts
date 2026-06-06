@@ -2,10 +2,27 @@
  * @vitest-environment node
  */
 import { describe, it, expect } from 'vitest';
-import { cycleMode, MODE_LABELS, MODE_ICONS, MODE_BORDER_COLORS, normalizeChatMode } from '../../../../../src/server/spa/client/react/repos/modeConfig';
+import { cycleMode, DEFAULT_CHAT_MODES, MODE_LABELS, MODE_ICONS, MODE_BORDER_COLORS, MODE_TEXT_COLORS, MODE_TOOLTIPS, normalizeChatMode, WORKFLOW_REGISTRY } from '../../../../../src/server/spa/client/react/repos/modeConfig';
 import type { ChatMode } from '../../../../../src/server/spa/client/react/repos/modeConfig';
 
 describe('modeConfig', () => {
+    describe('WORKFLOW_REGISTRY', () => {
+        it('is the single source for supported chat modes and default visible modes', () => {
+            expect(WORKFLOW_REGISTRY.map(entry => entry.mode)).toEqual(['ask', 'autopilot', 'ralph', 'for-each']);
+            expect(DEFAULT_CHAT_MODES).toEqual(['ask', 'autopilot']);
+        });
+
+        it('derives labels, icons, accents, and tooltips from registry entries', () => {
+            for (const entry of WORKFLOW_REGISTRY) {
+                expect(MODE_LABELS[entry.mode]).toBe(`${entry.icon} ${entry.label}`);
+                expect(MODE_ICONS[entry.mode]).toBe(entry.icon);
+                expect(MODE_BORDER_COLORS[entry.mode]).toEqual({ border: entry.border, ring: entry.ring });
+                expect(MODE_TEXT_COLORS[entry.mode]).toBe(entry.text);
+                expect(MODE_TOOLTIPS[entry.mode]).toBe(entry.tooltip);
+            }
+        });
+    });
+
     describe('cycleMode', () => {
         it('cycles through visible default modes: ask → autopilot → ask', () => {
             expect(cycleMode('ask')).toBe('autopilot');

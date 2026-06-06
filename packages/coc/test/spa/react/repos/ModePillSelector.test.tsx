@@ -8,6 +8,9 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import {
     ModePillSelector,
     DEFAULT_MODE_PILL_OPTIONS,
+    FOR_EACH_MODE_PILL_OPTION,
+    RALPH_MODE_PILL_OPTION,
+    getModePillOption,
 } from '../../../../src/server/spa/client/react/features/chat/ModePillSelector';
 
 describe('ModePillSelector', () => {
@@ -204,5 +207,24 @@ describe('ModePillSelector', () => {
         expect(ids).toEqual(['mode-pill-autopilot', 'mode-pill-ask']);
         expect(screen.queryByTestId('mode-pill-plan')).toBeNull();
         expect(screen.getByTestId('mode-pill-ask').textContent).toBe('Q&A');
+    });
+
+    it('derives built-in pill options from the workflow registry metadata', () => {
+        expect(DEFAULT_MODE_PILL_OPTIONS).toEqual([
+            expect.objectContaining({ value: 'ask', label: 'Ask', dotClass: 'bg-yellow-500' }),
+            expect.objectContaining({ value: 'autopilot', label: 'Autopilot', dotClass: 'bg-green-500' }),
+        ]);
+        expect(getModePillOption('ralph')).toEqual(RALPH_MODE_PILL_OPTION);
+        expect(getModePillOption('for-each')).toEqual(FOR_EACH_MODE_PILL_OPTION);
+        expect(RALPH_MODE_PILL_OPTION).toEqual(expect.objectContaining({
+            value: 'ralph',
+            label: 'Ralph',
+            dotClass: 'bg-purple-500',
+        }));
+        expect(FOR_EACH_MODE_PILL_OPTION).toEqual(expect.objectContaining({
+            value: 'for-each',
+            label: 'For Each',
+            dotClass: 'bg-sky-500',
+        }));
     });
 });

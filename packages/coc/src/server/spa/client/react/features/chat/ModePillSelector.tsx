@@ -11,7 +11,7 @@
  */
 
 import { cn } from '../../ui/cn';
-import { MODE_TOOLTIPS } from '../../repos/modeConfig';
+import { DEFAULT_CHAT_MODES, MODE_TOOLTIPS, WORKFLOW_REGISTRY } from '../../repos/modeConfig';
 import type { ChatMode } from '../../repos/modeConfig';
 
 export interface ModePillOption {
@@ -33,10 +33,20 @@ export interface ModePillSelectorProps {
     className?: string;
 }
 
-const DEFAULT_OPTIONS: readonly ModePillOption[] = [
-    { value: 'ask', label: 'Ask', dotClass: 'bg-yellow-500' },
-    { value: 'autopilot', label: 'Autopilot', dotClass: 'bg-green-500' },
-];
+export function getModePillOption(mode: ChatMode): ModePillOption {
+    const entry = WORKFLOW_REGISTRY.find(candidate => candidate.mode === mode);
+    if (!entry) {
+        throw new Error(`Unknown chat mode: ${mode}`);
+    }
+    return {
+        value: entry.mode,
+        label: entry.label,
+        dotClass: entry.dotClass,
+        title: entry.tooltip,
+    };
+}
+
+const DEFAULT_OPTIONS: readonly ModePillOption[] = DEFAULT_CHAT_MODES.map(getModePillOption);
 
 /**
  * Default mode → label/dot mapping used when the caller does not override
@@ -46,20 +56,10 @@ const DEFAULT_OPTIONS: readonly ModePillOption[] = [
 export const DEFAULT_MODE_PILL_OPTIONS = DEFAULT_OPTIONS;
 
 /** Pill option for Ralph mode — appended to DEFAULT_MODE_PILL_OPTIONS when Ralph is enabled. */
-export const RALPH_MODE_PILL_OPTION: ModePillOption = {
-    value: 'ralph',
-    label: 'Ralph',
-    dotClass: 'bg-purple-500',
-    title: 'Ralph — iterative AI coding loop with guided goal setting',
-};
+export const RALPH_MODE_PILL_OPTION: ModePillOption = getModePillOption('ralph');
 
 /** Pill option for For Each mode — appended to DEFAULT_MODE_PILL_OPTIONS when For Each is enabled. */
-export const FOR_EACH_MODE_PILL_OPTION: ModePillOption = {
-    value: 'for-each',
-    label: 'For Each',
-    dotClass: 'bg-sky-500',
-    title: 'For Each — generate a reviewed item plan, then run each item separately',
-};
+export const FOR_EACH_MODE_PILL_OPTION: ModePillOption = getModePillOption('for-each');
 
 export function ModePillSelector({
     options,
