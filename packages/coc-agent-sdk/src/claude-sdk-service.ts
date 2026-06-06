@@ -270,13 +270,20 @@ interface ActiveClaudeSession {
     abortController: AbortController;
 }
 
-interface ClaudeResultFailureLogContext {
+interface ClaudeDiagnosticLogContext {
     requestedModel?: string;
     effectiveModel?: string;
     workingDirectory?: string;
     permissionMode?: ClaudePermissionMode;
     mcpServerNames: string[];
+    mcpConfigured?: boolean;
     latestRateLimitInfo?: ClaudeRateLimitInfo | null;
+}
+
+type ClaudeResultFailureLogContext = ClaudeDiagnosticLogContext;
+
+interface ClaudeExceptionLogContext extends ClaudeDiagnosticLogContext {
+    sensitiveValues: string[];
 }
 
 // ============================================================================
@@ -629,12 +636,14 @@ export class ClaudeSDKService implements ISDKService {
         // Releases the per-invocation CoC LLM-tool MCP bridge (no-op when no tools).
         let mcpCleanup: () => void = () => {};
 
+        const model = this.normalizeClaudeModel(options.model);
+        const permissionOptions = this.resolveClaudePermissionOptions(options.mode);
+        let mcpServerNames = inferClaudeMcpServerNamesFromOptions(options);
+
         try {
-            const model = this.normalizeClaudeModel(options.model);
             const effort = this.normalizeClaudeEffort(options.reasoningEffort);
-            const permissionOptions = this.resolveClaudePermissionOptions(options.mode);
             const { servers: mcpServers, allowedTools, cleanup } = await this.buildClaudeMcpServers(options);
-            const mcpServerNames = Object.keys(mcpServers).sort();
+            mcpServerNames = Object.keys(mcpServers).sort();
             mcpCleanup = cleanup;
             const queryOptions: ClaudeQueryOptions = {
                 prompt: this.buildClaudePrompt(options),
@@ -718,8 +727,16 @@ export class ClaudeSDKService implements ISDKService {
                 ...(toolCalls.size > 0 ? { toolCalls: Array.from(toolCalls.values()) } : {}),
             } as IInvocationResult;
         } catch (err) {
+            this.logClaudeSDKException(err, {
+                requestedModel: options.model,
+                effectiveModel: model,
+                workingDirectory: options.workingDirectory,
+                permissionMode: permissionOptions.permissionMode,
+                mcpServerNames,
+                sensitiveValues: collectClaudeRequestSensitiveValues(options),
+            });
             const message = err instanceof Error ? err.message : String(err);
-            return { success: false, error: message, sessionId: currentSessionId, effectiveModel: this.normalizeClaudeModel(options.model) };
+            return { success: false, error: message, sessionId: currentSessionId, effectiveModel: model };
         } finally {
             signalCleanup?.();
             mcpCleanup();
@@ -741,6 +758,13 @@ export class ClaudeSDKService implements ISDKService {
         getSDKLogger().warn(
             buildClaudeResultFailureLogFields(msg, context),
             'Claude SDK result message reported failure',
+        );
+    }
+
+    private logClaudeSDKException(err: unknown, context: ClaudeExceptionLogContext): void {
+        getSDKLogger().error(
+            buildClaudeExceptionLogFields(err, context),
+            'Claude SDK sendMessage threw',
         );
     }
 
@@ -1273,7 +1297,7 @@ function buildClaudeResultFailureLogFields(
     const fields: Record<string, unknown> = {
         provider: CLAUDE_PROVIDER,
         event: 'claude_result_failure',
-        mcpConfigured: context.mcpServerNames.length > 0,
+        mcpConfigured: context.mcpConfigured ?? context.mcpServerNames.length > 0,
         mcpServerNames: context.mcpServerNames,
     };
 
@@ -1297,6 +1321,165 @@ function buildClaudeResultFailureLogFields(
     }
 
     return fields;
+}
+
+function buildClaudeExceptionLogFields(
+    err: unknown,
+    context: ClaudeExceptionLogContext,
+): Record<string, unknown> {
+    const fields: Record<string, unknown> = {
+        provider: CLAUDE_PROVIDER,
+        event: 'claude_sdk_exception',
+        mcpConfigured: context.mcpConfigured ?? context.mcpServerNames.length > 0,
+        mcpServerNames: context.mcpServerNames,
+    };
+
+    addStringField(fields, 'requestedModel', context.requestedModel);
+    addStringField(fields, 'effectiveModel', context.effectiveModel);
+    addStringField(fields, 'workingDirectory', context.workingDirectory);
+    addStringField(fields, 'permissionMode', context.permissionMode);
+
+    const exceptionSummary = buildClaudeExceptionSummary(err, context.sensitiveValues);
+    Object.assign(fields, exceptionSummary);
+
+    const stack = buildClaudeSafeStackTrace(err, context.sensitiveValues);
+    if (stack) fields.stack = stack;
+
+    const cause = err instanceof Error ? (err as Error & { cause?: unknown }).cause : undefined;
+    const causeSummary = cause === undefined
+        ? undefined
+        : buildClaudeExceptionSummary(cause, context.sensitiveValues);
+    if (causeSummary && Object.keys(causeSummary).length > 0) {
+        fields.cause = causeSummary;
+    }
+
+    return fields;
+}
+
+function inferClaudeMcpServerNamesFromOptions(options: SendMessageOptions): string[] {
+    const names = new Set<string>();
+    for (const name of Object.keys(options.mcpServers ?? {})) {
+        const trimmed = name.trim();
+        if (trimmed) names.add(trimmed);
+    }
+    if (options.tools && options.tools.length > 0) {
+        names.add(COC_LLM_TOOLS_MCP_SERVER_NAME);
+    }
+    return Array.from(names).sort();
+}
+
+function collectClaudeRequestSensitiveValues(options: SendMessageOptions): string[] {
+    const values: string[] = [];
+    addSensitiveValue(values, options.prompt);
+    addSensitiveValue(values, options.systemMessage?.content);
+
+    for (const cfg of Object.values(options.mcpServers ?? {})) {
+        const record = cfg as unknown as Record<string, unknown>;
+        addSensitiveValue(values, record.url);
+        if (Array.isArray(record.args)) {
+            for (const arg of record.args) addSensitiveValue(values, arg);
+        }
+        addSensitiveObjectValues(values, record.env);
+        addSensitiveObjectValues(values, record.headers);
+    }
+
+    return Array.from(new Set(values)).sort((a, b) => b.length - a.length);
+}
+
+function addSensitiveObjectValues(values: string[], record: unknown): void {
+    if (typeof record !== 'object' || record === null || Array.isArray(record)) return;
+    for (const value of Object.values(record)) {
+        addSensitiveValue(values, value);
+    }
+}
+
+function addSensitiveValue(values: string[], value: unknown): void {
+    if (typeof value !== 'string') return;
+    const trimmed = value.trim();
+    if (trimmed) values.push(trimmed);
+}
+
+function buildClaudeExceptionSummary(
+    err: unknown,
+    sensitiveValues: readonly string[],
+): Record<string, unknown> {
+    const fields: Record<string, unknown> = {};
+    if (err instanceof Error) {
+        addSanitizedStringField(fields, 'name', err.name, sensitiveValues);
+        addSanitizedStringField(fields, 'message', err.message, sensitiveValues);
+        addExceptionProperty(fields, 'code', (err as Error & { code?: unknown }).code, sensitiveValues);
+        addExceptionProperty(fields, 'status', (err as Error & { status?: unknown }).status, sensitiveValues);
+        addExceptionProperty(fields, 'statusCode', (err as Error & { statusCode?: unknown }).statusCode, sensitiveValues);
+        addExceptionProperty(fields, 'type', (err as Error & { type?: unknown }).type, sensitiveValues);
+        return fields;
+    }
+
+    if (typeof err === 'object' && err !== null) {
+        const record = err as Record<string, unknown>;
+        addSanitizedStringField(fields, 'name', record.name, sensitiveValues);
+        addSanitizedStringField(fields, 'message', record.message, sensitiveValues);
+        addExceptionProperty(fields, 'code', record.code, sensitiveValues);
+        addExceptionProperty(fields, 'status', record.status, sensitiveValues);
+        addExceptionProperty(fields, 'statusCode', record.statusCode, sensitiveValues);
+        addExceptionProperty(fields, 'type', record.type, sensitiveValues);
+        return fields;
+    }
+
+    addSanitizedStringField(fields, 'message', String(err), sensitiveValues);
+    return fields;
+}
+
+function addExceptionProperty(
+    fields: Record<string, unknown>,
+    key: string,
+    value: unknown,
+    sensitiveValues: readonly string[],
+): void {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        fields[key] = value;
+        return;
+    }
+    addSanitizedStringField(fields, key, value, sensitiveValues);
+}
+
+function buildClaudeSafeStackTrace(err: unknown, sensitiveValues: readonly string[]): string | undefined {
+    if (!(err instanceof Error) || typeof err.stack !== 'string') return undefined;
+    const frames = err.stack
+        .split(/\r?\n/)
+        .slice(1)
+        .map(line => line.trim())
+        .filter(line => line.startsWith('at '))
+        .slice(0, 20)
+        .map(line => sanitizeDiagnosticString(line, sensitiveValues, 500))
+        .filter((line): line is string => Boolean(line));
+    return frames.length > 0 ? frames.join('\n') : undefined;
+}
+
+function addSanitizedStringField(
+    fields: Record<string, unknown>,
+    key: string,
+    value: unknown,
+    sensitiveValues: readonly string[],
+): void {
+    if (typeof value !== 'string') return;
+    const sanitized = sanitizeDiagnosticString(value, sensitiveValues, 1000);
+    if (sanitized) fields[key] = sanitized;
+}
+
+function sanitizeDiagnosticString(
+    value: string,
+    sensitiveValues: readonly string[],
+    maxLength: number,
+): string | undefined {
+    let sanitized = value.trim();
+    if (!sanitized) return undefined;
+    for (const sensitive of sensitiveValues) {
+        sanitized = sanitized.split(sensitive).join('[redacted]');
+    }
+    if (sanitized.length > maxLength) {
+        sanitized = `${sanitized.slice(0, maxLength)}...`;
+    }
+    return sanitized;
 }
 
 function addStringField(fields: Record<string, unknown>, key: string, value: unknown): void {

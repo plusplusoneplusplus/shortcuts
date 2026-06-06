@@ -955,6 +955,76 @@ describe('ClaudeSDKService.sendMessage', () => {
         expect(serializedLog).not.toContain('SECRET_MCP_TOKEN');
     });
 
+    it('logs sanitized exception diagnostics when the Claude SDK throws', async () => {
+        const capLogger = createCapturingLogger();
+        initSDKLogger(capLogger.logger as any);
+        const cause = Object.assign(
+            new Error('cause saw SECRET_PROMPT_TEXT and SECRET_MCP_TOKEN'),
+            { code: 'rate_limited', status: 429 },
+        );
+        const sdkError = new Error('SDK rejected SECRET_PROMPT_TEXT SECRET_SYSTEM_PROMPT SECRET_MCP_TOKEN');
+        sdkError.name = 'ClaudeSDKError';
+        sdkError.stack = [
+            'ClaudeSDKError: SDK rejected SECRET_PROMPT_TEXT SECRET_SYSTEM_PROMPT SECRET_MCP_TOKEN',
+            '    at query (claude-sdk.js:10:5)',
+            '    at bridge (SECRET_MCP_TOKEN.js:20:5)',
+        ].join('\n');
+        (sdkError as Error & { cause?: unknown }).cause = cause;
+        queryFn.mockImplementationOnce(() => {
+            throw sdkError;
+        });
+
+        const result = await svc.sendMessage({
+            prompt: 'SECRET_PROMPT_TEXT',
+            model: 'opus',
+            workingDirectory: '/safe/project',
+            mode: 'plan',
+            systemMessage: { mode: 'append', content: 'SECRET_SYSTEM_PROMPT' },
+            mcpServers: {
+                safe_server: {
+                    command: 'node',
+                    args: ['bridge.js', '--token', 'SECRET_MCP_TOKEN'],
+                    env: { TOKEN: 'SECRET_MCP_TOKEN' },
+                },
+            },
+        });
+
+        expect(result).toMatchObject({
+            success: false,
+            error: 'SDK rejected SECRET_PROMPT_TEXT SECRET_SYSTEM_PROMPT SECRET_MCP_TOKEN',
+            effectiveModel: 'opus',
+        });
+
+        const errorLog = capLogger.logs.find(log =>
+            log.level === 'error' &&
+            log.message === 'Claude SDK sendMessage threw'
+        );
+        expect(errorLog?.fields).toMatchObject({
+            store: 'coc-agent-sdk',
+            provider: 'claude',
+            event: 'claude_sdk_exception',
+            name: 'ClaudeSDKError',
+            message: 'SDK rejected [redacted] [redacted] [redacted]',
+            requestedModel: 'opus',
+            effectiveModel: 'opus',
+            workingDirectory: '/safe/project',
+            permissionMode: 'plan',
+            mcpConfigured: true,
+            mcpServerNames: ['safe_server'],
+            cause: {
+                name: 'Error',
+                message: 'cause saw [redacted] and [redacted]',
+                code: 'rate_limited',
+                status: 429,
+            },
+        });
+        expect(errorLog?.fields.stack).toContain('at query (claude-sdk.js:10:5)');
+        const serializedLog = JSON.stringify(errorLog);
+        expect(serializedLog).not.toContain('SECRET_PROMPT_TEXT');
+        expect(serializedLog).not.toContain('SECRET_SYSTEM_PROMPT');
+        expect(serializedLog).not.toContain('SECRET_MCP_TOKEN');
+    });
+
     it('returns failure when request is already aborted', async () => {
         const controller = new AbortController();
         controller.abort();
