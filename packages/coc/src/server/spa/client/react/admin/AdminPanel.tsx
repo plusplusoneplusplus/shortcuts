@@ -72,6 +72,7 @@ type FeaturesSnapshot = {
     servers: boolean;
     ralph: boolean;
     forEach: boolean;
+    mapReduce: boolean;
     vimNavigation: boolean;
     loops: boolean;
     excalidraw: boolean;
@@ -369,6 +370,7 @@ export function AdminPanel() {
     const [serversEnabled, setServersEnabled] = useState(false);
     const [ralphEnabled, setRalphEnabled] = useState(false);
     const [forEachEnabled, setForEachEnabled] = useState(false);
+    const [mapReduceEnabled, setMapReduceEnabled] = useState(false);
     const [vimNavigationEnabled, setVimNavigationEnabled] = useState(false);
     const [loopsEnabled, setLoopsEnabled] = useState(false);
     const [excalidrawEnabled, setExcalidrawEnabled] = useState(false);
@@ -432,7 +434,7 @@ export function AdminPanel() {
         taskCardDensity: 'compact' as 'compact' | 'dense',
         historyGrouping: true,
     });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState<FeaturesSnapshot>({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, forEach: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false, gitCrossCloneCherryPick: false, sessionContextAttachments: false, autoAgentProviderRouting: false, workItemsHierarchy: false, workItemsSync: false, workItemsAiAuthoring: false, effortLevels: false });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState<FeaturesSnapshot>({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, forEach: false, mapReduce: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false, gitCrossCloneCherryPick: false, sessionContextAttachments: false, autoAgentProviderRouting: false, workItemsHierarchy: false, workItemsSync: false, workItemsAiAuthoring: false, effortLevels: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -535,6 +537,8 @@ export function AdminPanel() {
             setRalphEnabled(re);
             const fee = resolved.forEach?.enabled ?? false;
             setForEachEnabled(fee);
+            const mre = resolved.mapReduce?.enabled ?? false;
+            setMapReduceEnabled(mre);
             const vne = resolved.vimNavigation?.enabled ?? false;
             setVimNavigationEnabled(vne);
             const loe = resolved.loops?.enabled ?? false;
@@ -567,7 +571,7 @@ export function AdminPanel() {
             const arc = normalizeAutoProviderRoutingConfig(resolved.agentProviderRouting?.auto);
             setDefaultProvider(dp);
             setAutoRoutingConfig(arc);
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, forEach: fee, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde, gitCrossCloneCherryPick: gccpe, sessionContextAttachments: scae, autoAgentProviderRouting: aapre, workItemsHierarchy: wihe, workItemsSync: wise, workItemsAiAuthoring: waae, effortLevels: ele });
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, forEach: fee, mapReduce: mre, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde, gitCrossCloneCherryPick: gccpe, sessionContextAttachments: scae, autoAgentProviderRouting: aapre, workItemsHierarchy: wihe, workItemsSync: wise, workItemsAiAuthoring: waae, effortLevels: ele });
             setAiExecSnapshot({ model: form.model, parallel: form.parallel, timeout: form.timeout, output: form.output });
             setDefaultProviderSnapshot({ provider: dp, codexEnabled: cxe, claudeEnabled: cle, autoRoutingConfig: arc });
             const sgr = resolved.sync?.gitRemote ?? '';
@@ -678,6 +682,7 @@ export function AdminPanel() {
         serversEnabled !== featuresSnapshot.servers ||
         ralphEnabled !== featuresSnapshot.ralph ||
         forEachEnabled !== featuresSnapshot.forEach ||
+        mapReduceEnabled !== featuresSnapshot.mapReduce ||
         vimNavigationEnabled !== featuresSnapshot.vimNavigation ||
         loopsEnabled !== featuresSnapshot.loops ||
         excalidrawEnabled !== featuresSnapshot.excalidraw ||
@@ -934,6 +939,7 @@ export function AdminPanel() {
                 'servers.enabled': serversEnabled,
                 'ralph.enabled': ralphEnabled,
                 'forEach.enabled': forEachEnabled,
+                'mapReduce.enabled': mapReduceEnabled,
                 'vimNavigation.enabled': vimNavigationEnabled,
                 'loops.enabled': loopsEnabled,
                 'excalidraw.enabled': excalidrawEnabled,
@@ -957,13 +963,13 @@ export function AdminPanel() {
                 setDefaultProvider('copilot');
                 setDefaultProviderSnapshot(prev => ({ ...prev, provider: 'copilot' }));
             }
-            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, forEach: forEachEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled, gitCrossCloneCherryPick: gitCrossCloneCherryPickEnabled, sessionContextAttachments: sessionContextAttachmentsEnabled, autoAgentProviderRouting: autoAgentProviderRoutingEnabled, workItemsHierarchy: workItemsHierarchyEnabled, workItemsSync: workItemsSyncEnabled, workItemsAiAuthoring: workItemsAiAuthoringEnabled, effortLevels: effortLevelsEnabled });
+            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, forEach: forEachEnabled, mapReduce: mapReduceEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled, gitCrossCloneCherryPick: gitCrossCloneCherryPickEnabled, sessionContextAttachments: sessionContextAttachmentsEnabled, autoAgentProviderRouting: autoAgentProviderRoutingEnabled, workItemsHierarchy: workItemsHierarchyEnabled, workItemsSync: workItemsSyncEnabled, workItemsAiAuthoring: workItemsAiAuthoringEnabled, effortLevels: effortLevelsEnabled });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, forEachEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, gitCrossCloneCherryPickEnabled, sessionContextAttachmentsEnabled, autoAgentProviderRoutingEnabled, defaultProvider, workItemsHierarchyEnabled, workItemsSyncEnabled, workItemsAiAuthoringEnabled, effortLevelsEnabled, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, forEachEnabled, mapReduceEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, gitCrossCloneCherryPickEnabled, sessionContextAttachmentsEnabled, autoAgentProviderRoutingEnabled, defaultProvider, workItemsHierarchyEnabled, workItemsSyncEnabled, workItemsAiAuthoringEnabled, effortLevelsEnabled, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setTerminalEnabled(featuresSnapshot.terminal);
@@ -978,6 +984,7 @@ export function AdminPanel() {
         setServersEnabled(featuresSnapshot.servers);
         setRalphEnabled(featuresSnapshot.ralph);
         setForEachEnabled(featuresSnapshot.forEach);
+        setMapReduceEnabled(featuresSnapshot.mapReduce);
         setVimNavigationEnabled(featuresSnapshot.vimNavigation);
         setLoopsEnabled(featuresSnapshot.loops);
         setExcalidrawEnabled(featuresSnapshot.excalidraw);
@@ -1775,6 +1782,13 @@ export function AdminPanel() {
                                     >
                                         <SourceBadge source={sources['forEach.enabled']} />
                                         <AdminToggle checked={forEachEnabled} onChange={setForEachEnabled} data-testid="toggle-for-each-enabled" />
+                                    </AdminRow>
+                                    <AdminRow
+                                        name={<>Map Reduce Mode <span className="ar-badge ar-badge-accent">Experimental</span></>}
+                                        hint="Generate a reviewed map plan from New Chat, run items in parallel, then reduce outputs into one result. Disabled by default."
+                                    >
+                                        <SourceBadge source={sources['mapReduce.enabled']} />
+                                        <AdminToggle checked={mapReduceEnabled} onChange={setMapReduceEnabled} data-testid="toggle-map-reduce-enabled" />
                                     </AdminRow>
                                     <AdminRow
                                         name="Vim-style navigation"

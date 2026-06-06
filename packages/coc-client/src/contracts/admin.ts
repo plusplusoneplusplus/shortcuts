@@ -83,6 +83,7 @@ export interface AdminResolvedConfig {
   pullRequests?: { enabled?: boolean; suggestions?: boolean };
   servers?: { enabled?: boolean };
   forEach?: { enabled?: boolean };
+  mapReduce?: { enabled?: boolean };
   excalidraw?: { enabled?: boolean };
   codex?: { enabled?: boolean };
   claude?: { enabled?: boolean };
@@ -156,6 +157,7 @@ export interface AdminConfigUpdate {
   'pullRequests.suggestions'?: boolean;
   'servers.enabled'?: boolean;
   'forEach.enabled'?: boolean;
+  'mapReduce.enabled'?: boolean;
   'excalidraw.enabled'?: boolean;
   'mcpOauth.enabled'?: boolean;
   'mcpOauth.autoRefresh.enabled'?: boolean;
@@ -193,6 +195,7 @@ export interface RuntimeDashboardConfig {
     serversEnabled: boolean;
     ralphEnabled: boolean;
     forEachEnabled: boolean;
+    mapReduceEnabled: boolean;
     vimNavigationEnabled: boolean;
     loopsEnabled: boolean;
     excalidrawEnabled: boolean;

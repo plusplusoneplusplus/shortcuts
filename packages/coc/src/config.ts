@@ -163,6 +163,10 @@ export interface CLIConfig {
     forEach?: {
         enabled?: boolean;
     };
+    /** Dedicated Map Reduce mode configuration. Disabled by default. */
+    mapReduce?: {
+        enabled?: boolean;
+    };
     /** Loops/recurring follow-up subsystem configuration. Disabled by default. */
     loops?: {
         enabled?: boolean;
@@ -408,6 +412,10 @@ export interface ResolvedCLIConfig {
     forEach: {
         enabled: boolean;
     };
+    /** Dedicated Map Reduce mode configuration. */
+    mapReduce: {
+        enabled: boolean;
+    };
     /** Loops/recurring follow-up subsystem configuration. */
     loops: {
         enabled: boolean;
@@ -610,6 +618,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         },
     },
     forEach: {
+        enabled: false,
+    },
+    mapReduce: {
         enabled: false,
     },
     loops: {

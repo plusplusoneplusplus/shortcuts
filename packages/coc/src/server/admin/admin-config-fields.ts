@@ -258,6 +258,10 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         if (!cfg.forEach) { cfg.forEach = {}; }
         cfg.forEach.enabled = v;
     }),
+    bool('mapReduce.enabled', (cfg, v) => {
+        if (!cfg.mapReduce) { cfg.mapReduce = {}; }
+        cfg.mapReduce.enabled = v;
+    }),
     {
         key: 'ralph.finalCheck.maxGapFixLoops',
         runtime: 'live' as AdminConfigFieldRuntime,

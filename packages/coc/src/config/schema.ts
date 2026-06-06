@@ -139,6 +139,9 @@ export const CLIConfigSchema = z.object({
     forEach: z.object({
         enabled: z.boolean().optional(),
     }).passthrough().optional(),
+    mapReduce: z.object({
+        enabled: z.boolean().optional(),
+    }).passthrough().optional(),
     loops: z.object({
         enabled: z.boolean().optional(),
     }).passthrough().optional(),

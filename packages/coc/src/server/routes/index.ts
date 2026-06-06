@@ -98,6 +98,10 @@ import { registerForEachRoutes } from './for-each-routes';
 import { FileForEachRunStore } from '../for-each/for-each-run-store';
 import { createForEachPlanGenerator } from '../for-each/for-each-plan-generator';
 import { ForEachRunExecutor } from '../for-each/for-each-run-executor';
+import { registerMapReduceRoutes } from './map-reduce-routes';
+import { FileMapReduceRunStore } from '../map-reduce/map-reduce-run-store';
+import { createMapReducePlanGenerator } from '../map-reduce/map-reduce-plan-generator';
+import { MapReduceRunExecutor } from '../map-reduce/map-reduce-run-executor';
 import { registerLoopRoutes } from '../loops/loop-handler';
 import type { LoopStore } from '../loops/loop-store';
 import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
@@ -582,6 +586,39 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         getForEachEnabled,
         generateItemPlan: forEachPlanGenerator.generateItemPlan,
         executor: forEachRunExecutor,
+        resolveDefaultProvider,
+    });
+
+    // Map Reduce routes: dedicated reviewed map-plan mode with parallel map
+    // dispatch followed by a single reduce child chat. Live feature guard mirrors
+    // For Each so admin toggles take effect without restart.
+    const mapReduceRunStore = new FileMapReduceRunStore({ dataDir });
+    const mapReduceRunExecutor = new MapReduceRunExecutor({
+        store: mapReduceRunStore,
+        enqueueChildTask: (task) => enqueueWithResolvedDefaults(task),
+        cancelChildTask: (taskId) => {
+            const executor = bridge.findExecutorForTask(taskId);
+            if (executor) {
+                executor.cancelTask(taskId);
+                return true;
+            }
+            return bridge.findManagerForTask(taskId)?.cancelTask(taskId) ?? false;
+        },
+    });
+    mapReduceRunExecutor.attachToQueueRegistry(bridge.registry);
+    const mapReducePlanGenerator = createMapReducePlanGenerator({
+        aiService: resolvedAiService,
+        resolveAiServiceForProvider: opts.resolveAiServiceForProvider,
+    });
+    const getMapReduceEnabled = opts.runtimeConfigService
+        ? () => opts.runtimeConfigService!.config.mapReduce?.enabled ?? false
+        : () => opts.resolvedConfig?.mapReduce?.enabled ?? false;
+    registerMapReduceRoutes({
+        routes,
+        store: mapReduceRunStore,
+        getMapReduceEnabled,
+        generatePlan: mapReducePlanGenerator.generatePlan,
+        executor: mapReduceRunExecutor,
         resolveDefaultProvider,
     });
 

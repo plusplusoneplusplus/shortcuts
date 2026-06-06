@@ -167,6 +167,9 @@ workflows:
 forEach:
   enabled: false
 
+mapReduce:
+  enabled: false
+
 codex:
   enabled: false
 

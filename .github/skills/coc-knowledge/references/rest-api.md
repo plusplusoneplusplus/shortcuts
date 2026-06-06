@@ -122,6 +122,25 @@ All For Each routes are workspace-scoped and gated by `forEach.enabled` (default
 | POST | `/api/workspaces/:id/for-each-runs/:runId/items/:itemId/skip` | Mark a failed or pending item skipped and continue with the next runnable item |
 | POST | `/api/workspaces/:id/for-each-runs/:runId/cancel` | Cancel remaining work, mark pending/running items skipped, and cancel the active child task when available |
 
+## Map Reduce Runs
+
+All Map Reduce routes are workspace-scoped and gated by `mapReduce.enabled` (default `false`); disabled routes return unavailable/not-found behavior. Parent run state is stored under `~/.coc/repos/<workspaceId>/map-reduce-runs/<runId>/` as `run.json`, `items.json`, and `reduce-step.json`. Map items run as normal Ask/Autopilot child chats in parallel up to `maxParallel`, and the reduce step runs as a single child chat after all map items are completed or skipped. Omitted providers resolve through Auto when `defaultProvider: auto` is enabled, and the resolved concrete provider is stored on the run for map and reduce child orchestration.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/workspaces/:id/map-reduce-runs` | List Map Reduce runs for a workspace with map item status counts and reduce status |
+| POST | `/api/workspaces/:id/map-reduce-runs` | Create a draft Map Reduce run from an already-reviewed map plan without invoking AI generation. Body requires `originalRequest`, `childMode`, `reduceInstructions`, and `items`, and accepts `sharedInstructions`, `maxParallel`, `provider`, `config.model` / `config.reasoningEffort`, `generationProcessId`, and `generationId` |
+| POST | `/api/workspaces/:id/map-reduce-runs/generate` | Generate a structured JSON map plan plus reduce instructions and persist a draft run. Body requires `prompt` and `childMode` (`ask` or `autopilot`) and accepts `sharedInstructions`, `provider`, and `config.model` / `config.reasoningEffort` |
+| GET | `/api/workspaces/:id/map-reduce-runs/:runId` | Read a Map Reduce run with reviewed map plan/state and reduce-step state |
+| PUT | `/api/workspaces/:id/map-reduce-runs/:runId/plan` | Replace the reviewed draft map plan and optional shared instructions, reduce instructions, `maxParallel`, or child mode before approval |
+| POST | `/api/workspaces/:id/map-reduce-runs/:runId/approve` | Mark a reviewed draft plan approved. Approval does not enqueue child chats; child execution routes are separate from the draft/review API |
+| POST | `/api/workspaces/:id/map-reduce-runs/:runId/start` | Start an approved run by enqueueing up to `maxParallel` runnable map items as normal Ask/Autopilot child chats |
+| POST | `/api/workspaces/:id/map-reduce-runs/:runId/continue` | Explicitly resume/continue pending map work or the pending reduce step without auto-resuming on server startup |
+| POST | `/api/workspaces/:id/map-reduce-runs/:runId/items/:itemId/retry` | Retry a failed map item as a new child chat and overwrite that item's active child task/process link |
+| POST | `/api/workspaces/:id/map-reduce-runs/:runId/items/:itemId/skip` | Mark a failed or pending map item skipped and continue with the next runnable map item or reduce step |
+| POST | `/api/workspaces/:id/map-reduce-runs/:runId/reduce/retry` | Retry a failed reduce step as a new child chat |
+| POST | `/api/workspaces/:id/map-reduce-runs/:runId/cancel` | Cancel remaining work, mark pending/running map items skipped, cancel a pending/running/failed reduce step, and cancel active child tasks when available |
+
 ## Schedules
 
 | Method | Path | Description |

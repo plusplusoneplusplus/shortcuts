@@ -32,6 +32,7 @@ export type ResolvedConfigNamespaceValues = Pick<
     | 'servers'
     | 'ralph'
     | 'forEach'
+    | 'mapReduce'
     | 'vimNavigation'
     | 'loops'
     | 'mcpOauth'
@@ -77,6 +78,7 @@ const SERVERS_SOURCE_KEYS = ['servers.enabled'] as const;
 const RALPH_SOURCE_KEYS = ['ralph.enabled'] as const;
 const RALPH_FINAL_CHECK_SOURCE_KEYS = ['ralph.finalCheck.maxGapFixLoops'] as const;
 const FOR_EACH_SOURCE_KEYS = ['forEach.enabled'] as const;
+const MAP_REDUCE_SOURCE_KEYS = ['mapReduce.enabled'] as const;
 const VIM_NAVIGATION_SOURCE_KEYS = ['vimNavigation.enabled'] as const;
 const LOOPS_SOURCE_KEYS = ['loops.enabled'] as const;
 const MCP_OAUTH_SOURCE_KEYS = ['mcpOauth.enabled'] as const;
@@ -149,6 +151,7 @@ export const CONFIG_NAMESPACE_SOURCE_KEYS = [
     ...RALPH_SOURCE_KEYS,
     ...RALPH_FINAL_CHECK_SOURCE_KEYS,
     ...FOR_EACH_SOURCE_KEYS,
+    ...MAP_REDUCE_SOURCE_KEYS,
     ...VIM_NAVIGATION_SOURCE_KEYS,
     ...LOOPS_SOURCE_KEYS,
     ...MCP_OAUTH_SOURCE_KEYS,
@@ -315,6 +318,11 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
             name: 'forEach',
             sourceDescriptors: [source('forEach.', ['forEach'], FOR_EACH_SOURCE_KEYS)],
             merge: (base, override) => ({ forEach: { enabled: override?.forEach?.enabled ?? base.forEach?.enabled ?? false } }),
+        },
+        {
+            name: 'mapReduce',
+            sourceDescriptors: [source('mapReduce.', ['mapReduce'], MAP_REDUCE_SOURCE_KEYS)],
+            merge: (base, override) => ({ mapReduce: { enabled: override?.mapReduce?.enabled ?? base.mapReduce?.enabled ?? false } }),
         },
         {
             name: 'vimNavigation',

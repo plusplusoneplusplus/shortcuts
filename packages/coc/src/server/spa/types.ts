@@ -35,6 +35,8 @@ export interface DashboardOptions {
     ralphEnabled?: boolean;
     /** Whether the dedicated For Each mode feature is enabled in server config. */
     forEachEnabled?: boolean;
+    /** Whether the dedicated Map Reduce mode feature is enabled in server config. */
+    mapReduceEnabled?: boolean;
     /** Whether vim-style navigation (hjkl/jk/gg/G/Esc/i bindings) is enabled. */
     vimNavigationEnabled?: boolean;
     /** Whether the loops/recurring follow-up subsystem is enabled in server config. */
