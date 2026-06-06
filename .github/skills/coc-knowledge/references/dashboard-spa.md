@@ -169,10 +169,12 @@ rows, Ralph session group rows, Work Item list/hierarchy rows, Git commit rows,
 branch range headers/overview headers, and Pull Request rows are copy-drag
 context sources. `NewChatArea`, `FollowUpInputArea`, and the desktop repo header
 Queue Task / Ask buttons accept these shared drag/drop payloads. The composers
-validate same-workspace, duplicate, self-drop/current-child for session-backed
-pointers, and a shared three-logical-attachment cap before adding removable
-context chips through `AttachedContextPreviews`. `get_conversation` tool
-availability is required only for single-session and Ralph pointers. Single
+show a dashed copy-context overlay while supported payloads are dragged over
+them and render inline feedback for unsupported drops. They validate
+same-workspace, duplicate, self-drop/current-child for session-backed pointers,
+and a shared three-logical-attachment cap before adding removable context chips
+through `AttachedContextPreviews`. `get_conversation` tool availability is
+required only for single-session and Ralph pointers. Single
 sessions render as neutral **Session** chips, Ralph groups render as purple
 **RALPH** chips, and Work Item/Commit/Range/PR pointers render as sky chips with
 stable labels such as `Work Item #123`, `Commit abc1234`, `Range base..head`,

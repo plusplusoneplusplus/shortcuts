@@ -56,6 +56,7 @@ import type { ResolvedModalJobAiSelection } from '../../shared/ModalJobAiControl
 import { AttachedContextPreviews } from '../../ui/AttachedContextPreviews';
 import { formatAttachedContext, useAttachedContext } from './hooks/useAttachedContext';
 import {
+    dataTransferHasAnyData,
     dataTransferHasSessionContext,
     readSessionContextDropPayload,
     useConversationRetrievalCapability,
@@ -85,6 +86,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [sessionContextDropError, setSessionContextDropError] = useState<string | null>(null);
+    const [sessionContextDragActive, setSessionContextDragActive] = useState(false);
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [selectedProvider, setSelectedProvider] = useState<ChatProvider>(() => getDefaultProvider());
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
@@ -93,6 +95,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const richTextRef = useRef<RichTextInputHandle>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
+    const sessionContextDragDepthRef = useRef(0);
     /** Tracks the (provider, modelId) for which the user last explicitly picked an effort.
      *  When set, prevents auto-derive from overwriting the user's pick for the same model.
      *  Cleared on provider or model change (triggering re-derive for the new model). */
@@ -572,15 +575,58 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         setSending(false);
     }
 
+    function resetSessionContextDragState() {
+        sessionContextDragDepthRef.current = 0;
+        setSessionContextDragActive(false);
+    }
+
+    function getUnsupportedSessionContextDropError(): string {
+        const validation = validateSessionContextDrop({
+            payload: null,
+            featureEnabled: sessionContextAttachmentsEnabled,
+            activeWorkspaceId: workspaceId,
+            currentProcessId: null,
+            existingItems: attachedContext.getItems(),
+            canRetrieveConversations,
+        });
+        return validation.ok ? 'Drop a supported CoC context item from this workspace to attach it as context.' : validation.error;
+    }
+
+    function handleSessionContextDragEnter(e: React.DragEvent<HTMLElement>) {
+        if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        sessionContextDragDepthRef.current += 1;
+        setSessionContextDragActive(true);
+    }
+
     function handleSessionContextDragOver(e: React.DragEvent<HTMLElement>) {
         if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
+        setSessionContextDragActive(true);
+    }
+
+    function handleSessionContextDragLeave(e: React.DragEvent<HTMLElement>) {
+        if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        sessionContextDragDepthRef.current = Math.max(0, sessionContextDragDepthRef.current - 1);
+        if (sessionContextDragDepthRef.current === 0) {
+            setSessionContextDragActive(false);
+        }
     }
 
     function handleSessionContextDrop(e: React.DragEvent<HTMLElement>) {
-        if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        if (!sessionContextAttachmentsEnabled) return;
+        if (!dataTransferHasSessionContext(e.dataTransfer)) {
+            if (dataTransferHasAnyData(e.dataTransfer)) {
+                e.preventDefault();
+                resetSessionContextDragState();
+                setSessionContextDropError(getUnsupportedSessionContextDropError());
+            }
+            return;
+        }
         e.preventDefault();
+        resetSessionContextDragState();
         const validation = validateSessionContextDrop({
             payload: readSessionContextDropPayload(e.dataTransfer),
             featureEnabled: sessionContextAttachmentsEnabled,
@@ -683,7 +729,10 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                 <div
                     data-testid="chat-input-stack"
                     className="space-y-1"
+                    onDragEnter={handleSessionContextDragEnter}
                     onDragOver={handleSessionContextDragOver}
+                    onDragLeave={handleSessionContextDragLeave}
+                    onDragEnd={resetSessionContextDragState}
                     onDrop={handleSessionContextDrop}
                 >
                 <div
@@ -692,8 +741,17 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         'relative flex flex-col rounded-lg border bg-white dark:bg-[#1f1f1f] focus-within:ring-2 transition-[box-shadow,border-color]',
                         MODE_BORDER_COLORS[selectedMode].border,
                         MODE_BORDER_COLORS[selectedMode].ring,
+                        sessionContextDragActive && 'border-[#0078d4] ring-2 ring-[#0078d4]/60 shadow-sm',
                     )}
                 >
+                    {sessionContextDragActive && (
+                        <div
+                            className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-[#0078d4]/70 bg-[#eaf4ff]/80 text-xs font-medium text-[#005a9e] dark:bg-[#06314f]/80 dark:text-[#9cdcfe]"
+                            data-testid="session-context-drop-hint"
+                        >
+                            Drop to copy context
+                        </div>
+                    )}
                     <RichTextInput
                         ref={richTextRef}
                         disabled={sending}

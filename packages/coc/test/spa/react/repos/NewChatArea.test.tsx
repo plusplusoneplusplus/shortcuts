@@ -260,6 +260,14 @@ function makeSessionDataTransfer(payload: unknown, mime = SESSION_CONTEXT_DRAG_M
     };
 }
 
+function makeUnsupportedDataTransfer() {
+    return {
+        types: ['text/plain'],
+        dropEffect: 'none',
+        getData: vi.fn(() => 'not coc context'),
+    };
+}
+
 beforeEach(() => {
     vi.clearAllMocks();
     mockAppState.workspaces = [{ id: 'ws-1', rootPath: '/home/user/repo' }];
@@ -563,6 +571,36 @@ describe('NewChatArea', () => {
             expect(chip.textContent).toContain('source-p…3456');
 
             fireEvent.click(screen.getByTestId('attached-context-remove'));
+            expect(screen.queryByTestId('attached-session-context-chip')).toBeNull();
+        });
+
+        it('highlights the composer with copy semantics while dragging supported context', async () => {
+            mockSessionContextAttachmentsEnabled.value = true;
+            render(<NewChatArea workspaceId="ws-1" />);
+            await waitFor(() => expect(mockGetLlmToolsConfig).toHaveBeenCalledWith('ws-1'));
+
+            const dataTransfer = makeSessionDataTransfer(makeSessionPayload());
+            fireEvent.dragEnter(screen.getByTestId('chat-input-stack'), { dataTransfer });
+
+            expect(dataTransfer.dropEffect).toBe('copy');
+            expect(screen.getByTestId('session-context-drop-hint').textContent).toBe('Drop to copy context');
+            expect(screen.getByTestId('chat-input-bar').className).toContain('ring-[#0078d4]/60');
+
+            fireEvent.drop(screen.getByTestId('chat-input-stack'), { dataTransfer });
+            expect(screen.queryByTestId('session-context-drop-hint')).toBeNull();
+        });
+
+        it('shows inline feedback for unsupported composer drops', () => {
+            mockSessionContextAttachmentsEnabled.value = true;
+            render(<NewChatArea workspaceId="ws-1" />);
+
+            fireEvent.drop(screen.getByTestId('chat-input-stack'), {
+                dataTransfer: makeUnsupportedDataTransfer(),
+            });
+
+            expect(screen.getByTestId('new-chat-session-context-error').textContent).toBe(
+                'Drop a supported CoC context item from this workspace to attach it as context.',
+            );
             expect(screen.queryByTestId('attached-session-context-chip')).toBeNull();
         });
 

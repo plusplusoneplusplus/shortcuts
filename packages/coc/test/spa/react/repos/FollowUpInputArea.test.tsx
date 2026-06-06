@@ -121,6 +121,14 @@ function makeSessionDataTransfer(payload: unknown, mime = SESSION_CONTEXT_DRAG_M
     };
 }
 
+function makeUnsupportedDataTransfer() {
+    return {
+        types: ['text/plain'],
+        dropEffect: 'none',
+        getData: vi.fn(() => 'not coc context'),
+    };
+}
+
 function makeProps(overrides: Partial<FollowUpInputAreaProps> = {}): FollowUpInputAreaProps {
     return {
         richTextRef: createRef<RichTextInputHandle>(),
@@ -417,6 +425,39 @@ describe('FollowUpInputArea — session context drops', () => {
 
         expect(onAttachSessionContext).toHaveBeenCalledWith(makeSessionPayload());
         expect(screen.queryByTestId('follow-up-session-context-error')).toBeNull();
+    });
+
+    it('highlights the composer with copy semantics while dragging supported context', async () => {
+        mockSessionContextAttachmentsEnabled.value = true;
+        const onAttachSessionContext = vi.fn();
+        render(<FollowUpInputArea {...makeProps({ onAttachSessionContext })} />);
+        await act(async () => { await Promise.resolve(); });
+
+        const dataTransfer = makeSessionDataTransfer(makeSessionPayload());
+        fireEvent.dragEnter(screen.getByTestId('chat-input-bar'), { dataTransfer });
+
+        expect(dataTransfer.dropEffect).toBe('copy');
+        expect(screen.getByTestId('session-context-drop-hint').textContent).toBe('Drop to copy context');
+        expect(screen.getByTestId('chat-input-bar').className).toContain('ring-[#0078d4]/60');
+
+        fireEvent.drop(screen.getByTestId('chat-input-bar'), { dataTransfer });
+        expect(screen.queryByTestId('session-context-drop-hint')).toBeNull();
+        expect(onAttachSessionContext).toHaveBeenCalledWith(makeSessionPayload());
+    });
+
+    it('shows inline feedback for unsupported composer drops', () => {
+        mockSessionContextAttachmentsEnabled.value = true;
+        const onAttachSessionContext = vi.fn();
+        render(<FollowUpInputArea {...makeProps({ onAttachSessionContext })} />);
+
+        fireEvent.drop(screen.getByTestId('chat-input-bar'), {
+            dataTransfer: makeUnsupportedDataTransfer(),
+        });
+
+        expect(onAttachSessionContext).not.toHaveBeenCalled();
+        expect(screen.getByTestId('follow-up-session-context-error').textContent).toBe(
+            'Drop a supported CoC context item from this workspace to attach it as context.',
+        );
     });
 
     it('passes a valid dropped Ralph group to the parent when enabled', async () => {

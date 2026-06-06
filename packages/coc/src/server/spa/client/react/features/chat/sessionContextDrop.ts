@@ -337,6 +337,11 @@ export function dataTransferHasSessionContext(dataTransfer: SessionContextDataTr
         || types.includes(POINTER_CONTEXT_DRAG_MIME);
 }
 
+export function dataTransferHasAnyData(dataTransfer: SessionContextDataTransfer | null | undefined): boolean {
+    if (!dataTransfer) return false;
+    return Array.from(dataTransfer.types ?? []).length > 0;
+}
+
 export function readSessionContextDragPayload(dataTransfer: SessionContextDataTransfer): SessionContextDragPayload | null {
     const raw = dataTransfer.getData(SESSION_CONTEXT_DRAG_MIME);
     if (!raw) return null;
