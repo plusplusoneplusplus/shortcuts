@@ -162,6 +162,10 @@ collapse. Generic `ToolCallView` still handles `ask_user` as a fallback and
 summarizes `args.questions[0].question` when present.
 
 `toolNormalization.ts` → `normalizeToolName()` canonicalises SDK-specific names before display and storage. Notable aliases: `read_file`/`open_file` → `view`, `edit_file`/`str_replace`/`str_replace_editor` → `edit`, `write_file`/`create_file` → `create`, `command_execution` → `shell`, `file_change` → `apply_patch`, `Skill` (Claude Code SDK PascalCase) → `skill`. All downstream logic (`getToolKindInfo`, `getToolSummary`, `filterWhisperChunks` skill counting) operates on the normalised lowercase name.
+For Codex `file_change` calls normalized to `apply_patch`, `ToolCallView`
+continues to summarize from `args.changes`; when the backend enriches the
+parameters with a unified `args.diff`, expanded tool details and hover previews
+render that patch text instead of the short result summary.
 
 ## Input Area
 

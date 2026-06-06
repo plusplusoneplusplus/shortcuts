@@ -144,6 +144,32 @@ describe('ToolCallView — task result hover popover', () => {
         expect(popover!.textContent).toContain('Edit Preview');
     });
 
+    it('shows enriched apply_patch diffs in the hover popover', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-patch-1',
+                toolName: 'apply_patch',
+                args: {
+                    changes: [{ path: 'src/file.ts', kind: 'update' }],
+                    diff: 'diff --git a/src/file.ts b/src/file.ts\n--- a/src/file.ts\n+++ b/src/file.ts\n@@ -1 +1 @@\n-old\n+new\n',
+                },
+                status: 'completed',
+                result: 'update: src/file.ts',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(300); });
+
+        const popover = document.querySelector('[data-testid="tool-result-popover"]');
+        expect(popover).toBeTruthy();
+        expect(popover!.textContent).toContain('Patch Preview');
+        expect(popover!.textContent).toContain('old');
+        expect(popover!.textContent).toContain('new');
+        expect(popover!.textContent).not.toContain('update: src/file.ts');
+    });
+
     it('does not show popover for task tool calls with empty result', () => {
         const { container } = render(
             <ToolCallView toolCall={makeTaskToolCall({ result: '' })} />

@@ -34,6 +34,7 @@ import { createRequire } from 'module';
 import * as readline from 'readline';
 import * as path from 'path';
 import * as os from 'os';
+import * as fs from 'fs/promises';
 
 // ============================================================================
 // Install mode detection
@@ -71,6 +72,7 @@ const runtimeRequire = createRequire(__filename);
  * "infinite". Verified against codex 0.133.0 (config key `tool_timeout_sec`).
  */
 const CODEX_LLM_TOOLS_TIMEOUT_SEC = 31_536_000;
+const CODEX_DIFF_TIMEOUT_MS = 5000;
 
 // ============================================================================
 // Auth checker injection (AC-08)
@@ -170,6 +172,230 @@ interface CodexItemEvent {
 }
 
 type CodexThreadEvent = CodexThreadStartedEvent | CodexTurnCompletedEvent | CodexTurnFailedEvent | CodexErrorEvent | CodexItemEvent;
+
+interface CodexFileChange {
+    path?: string;
+    kind?: string;
+}
+
+interface CodexFileSnapshot {
+    exists: boolean;
+    content: string;
+}
+
+class CodexFileChangeDiffTracker {
+    private readonly cwd: string | undefined;
+    private initialized = false;
+    private enabled = false;
+    private root = '';
+    private readonly dirtyStartSnapshots = new Map<string, CodexFileSnapshot>();
+    private readonly lastSnapshots = new Map<string, CodexFileSnapshot>();
+
+    public constructor(cwd: string | undefined) {
+        this.cwd = cwd;
+    }
+
+    public async enrichParameters(changes: CodexFileChange[]): Promise<Record<string, unknown>> {
+        const parameters: Record<string, unknown> = { changes };
+        try {
+            const diff = await this.captureDiff(changes);
+            if (diff) {
+                parameters.diff = diff;
+            }
+        } catch {
+            // Codex file-change diffs are display metadata. Keep the tool event
+            // itself successful even when local git or temp-file diffing fails.
+        }
+        return parameters;
+    }
+
+    public async initialize(): Promise<void> {
+        await this.ensureInitialized();
+    }
+
+    private async captureDiff(changes: CodexFileChange[]): Promise<string | undefined> {
+        const relPaths = changes
+            .map(change => this.normalizeRelativePath(change.path))
+            .filter((relPath): relPath is string => !!relPath);
+        if (relPaths.length === 0) return undefined;
+
+        await this.ensureInitialized();
+        if (!this.enabled) return undefined;
+
+        const parts: string[] = [];
+        for (const relPath of relPaths) {
+            const before = await this.resolveBaseline(relPath);
+            const after = await this.readWorktreeSnapshot(relPath);
+            const diff = await this.diffSnapshots(relPath, before, after);
+            if (diff.trim()) {
+                parts.push(diff.trimEnd());
+            }
+            this.lastSnapshots.set(relPath, after);
+        }
+
+        return parts.length > 0 ? `${parts.join('\n')}\n` : undefined;
+    }
+
+    private async ensureInitialized(): Promise<void> {
+        if (this.initialized) return;
+        this.initialized = true;
+        if (!this.cwd) return;
+
+        try {
+            const { stdout } = await execFileAsync('git', ['rev-parse', '--show-toplevel'], {
+                cwd: this.cwd,
+                timeout: CODEX_DIFF_TIMEOUT_MS,
+            });
+            this.root = stdout.trim();
+            if (!this.root) return;
+            this.enabled = true;
+            await this.snapshotDirtyPaths();
+        } catch {
+            this.enabled = false;
+        }
+    }
+
+    private async snapshotDirtyPaths(): Promise<void> {
+        const { stdout } = await execFileAsync('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all'], {
+            cwd: this.root,
+            timeout: CODEX_DIFF_TIMEOUT_MS,
+        });
+        const entries = stdout.split('\0').filter(Boolean);
+        for (let i = 0; i < entries.length; i++) {
+            const entry = entries[i];
+            const status = entry.slice(0, 2);
+            const relPath = this.normalizeRelativePath(entry.slice(3));
+            if (!relPath) continue;
+            this.dirtyStartSnapshots.set(relPath, await this.readWorktreeSnapshot(relPath));
+            if (status[0] === 'R' || status[0] === 'C') {
+                i++;
+            }
+        }
+    }
+
+    private async resolveBaseline(relPath: string): Promise<CodexFileSnapshot> {
+        const last = this.lastSnapshots.get(relPath);
+        if (last) return last;
+        const dirty = this.dirtyStartSnapshots.get(relPath);
+        if (dirty) return dirty;
+        return this.readHeadSnapshot(relPath);
+    }
+
+    private async readHeadSnapshot(relPath: string): Promise<CodexFileSnapshot> {
+        try {
+            const { stdout } = await execFileAsync('git', ['show', `HEAD:${relPath}`], {
+                cwd: this.root,
+                timeout: CODEX_DIFF_TIMEOUT_MS,
+                maxBuffer: 10 * 1024 * 1024,
+            });
+            return { exists: true, content: stdout };
+        } catch {
+            return { exists: false, content: '' };
+        }
+    }
+
+    private async readWorktreeSnapshot(relPath: string): Promise<CodexFileSnapshot> {
+        const fullPath = path.resolve(this.root, relPath);
+        const rootWithSep = this.root.endsWith(path.sep) ? this.root : `${this.root}${path.sep}`;
+        if (fullPath !== this.root && !fullPath.startsWith(rootWithSep)) {
+            return { exists: false, content: '' };
+        }
+        try {
+            return { exists: true, content: await fs.readFile(fullPath, 'utf8') };
+        } catch {
+            return { exists: false, content: '' };
+        }
+    }
+
+    private async diffSnapshots(relPath: string, before: CodexFileSnapshot, after: CodexFileSnapshot): Promise<string> {
+        if (before.exists === after.exists && before.content === after.content) return '';
+
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-file-diff-'));
+        try {
+            const beforePath = path.join(tempDir, 'before');
+            const afterPath = path.join(tempDir, 'after');
+            await fs.writeFile(beforePath, before.content, 'utf8');
+            await fs.writeFile(afterPath, after.content, 'utf8');
+            const rawDiff = await runGitDiffNoIndex([
+                '--no-ext-diff',
+                '--no-index',
+                '--no-prefix',
+                '--',
+                beforePath,
+                afterPath,
+            ]);
+            return rewriteNoIndexDiffHeaders(rawDiff, {
+                beforeLabel: before.exists ? `a/${relPath}` : '/dev/null',
+                afterLabel: after.exists ? `b/${relPath}` : '/dev/null',
+            });
+        } finally {
+            await fs.rm(tempDir, { recursive: true, force: true });
+        }
+    }
+
+    private normalizeRelativePath(input: unknown): string | undefined {
+        if (typeof input !== 'string' || !input.trim()) return undefined;
+        const raw = input.replace(/\\/g, '/');
+        if (path.isAbsolute(raw) || /^[a-zA-Z]:\//.test(raw)) return undefined;
+        const normalized = path.posix.normalize(raw);
+        if (!normalized || normalized === '.' || normalized.startsWith('../') || normalized === '..') return undefined;
+        return normalized;
+    }
+}
+
+function rewriteNoIndexDiffHeaders(diff: string, labels: { beforeLabel: string; afterLabel: string }): string {
+    let rewroteDiffHeader = false;
+    let rewroteBeforeHeader = false;
+    let rewroteAfterHeader = false;
+    return diff.split(/\r?\n/).map(line => {
+        if (!rewroteDiffHeader && line.startsWith('diff --git ')) {
+            rewroteDiffHeader = true;
+            return `diff --git ${labels.beforeLabel} ${labels.afterLabel}`;
+        }
+        if (!rewroteBeforeHeader && line.startsWith('--- ')) {
+            rewroteBeforeHeader = true;
+            return `--- ${labels.beforeLabel}`;
+        }
+        if (!rewroteAfterHeader && line.startsWith('+++ ')) {
+            rewroteAfterHeader = true;
+            return `+++ ${labels.afterLabel}`;
+        }
+        return line;
+    }).join('\n');
+}
+
+function runGitDiffNoIndex(args: string[]): Promise<string> {
+    const finalArgs = ['diff', ...args];
+    return new Promise((resolve, reject) => {
+        const child = spawn('git', finalArgs, {
+            stdio: ['ignore', 'pipe', 'pipe'],
+            windowsHide: true,
+        });
+        let stdout = '';
+        let stderr = '';
+        const timer = setTimeout(() => {
+            child.kill();
+            reject(new Error('git diff timed out'));
+        }, CODEX_DIFF_TIMEOUT_MS);
+
+        child.stdout.setEncoding('utf8');
+        child.stderr.setEncoding('utf8');
+        child.stdout.on('data', chunk => { stdout += chunk; });
+        child.stderr.on('data', chunk => { stderr += chunk; });
+        child.on('error', err => {
+            clearTimeout(timer);
+            reject(err);
+        });
+        child.on('close', code => {
+            clearTimeout(timer);
+            if (code === 0 || code === 1) {
+                resolve(stdout);
+                return;
+            }
+            reject(new Error(stderr.trim() || `git diff exited with code ${code}`));
+        });
+    });
+}
 
 interface CodexClient {
     startThread(options?: CodexStartThreadOptions): CodexThread;
@@ -620,6 +846,7 @@ export class CodexSDKService implements ISDKService {
         let sessionCreatedNotified = false;
         const toolCalls = new Map<string, ToolCall>();
         const startedToolCalls = new Set<string>();
+        const fileChangeDiffTracker = new CodexFileChangeDiffTracker(options.workingDirectory);
         // Releases the per-invocation CoC LLM-tool MCP bridge (no-op when no tools).
         let mcpCleanup: () => void = () => {};
 
@@ -652,6 +879,7 @@ export class CodexSDKService implements ISDKService {
 
             const chunks: string[] = [];
             let tokenUsage: TokenUsage | undefined;
+            await fileChangeDiffTracker.initialize();
             const streamed = await thread.runStreamed(this.buildCodexInput(options), { signal: abortController.signal });
 
             for await (const event of streamed.events) {
@@ -670,7 +898,7 @@ export class CodexSDKService implements ISDKService {
                     throw new Error(event.message ?? 'Codex stream error');
                 }
                 if (event.type === 'item.started') {
-                    this.handleCodexToolItem(event.item, 'started', options, toolCalls, startedToolCalls);
+                    await this.handleCodexToolItem(event.item, 'started', options, toolCalls, startedToolCalls, fileChangeDiffTracker);
                     continue;
                 }
                 if (event.type === 'item.completed') {
@@ -679,7 +907,7 @@ export class CodexSDKService implements ISDKService {
                         options.onStreamingChunk?.(event.item.text);
                         continue;
                     }
-                    this.handleCodexToolItem(event.item, 'completed', options, toolCalls, startedToolCalls);
+                    await this.handleCodexToolItem(event.item, 'completed', options, toolCalls, startedToolCalls, fileChangeDiffTracker);
                     continue;
                 }
             }
@@ -707,14 +935,15 @@ export class CodexSDKService implements ISDKService {
         }
     }
 
-    private handleCodexToolItem(
+    private async handleCodexToolItem(
         item: CodexItemEvent['item'] | undefined,
         phase: 'started' | 'completed',
         options: SendMessageOptions,
         toolCalls: Map<string, ToolCall>,
         startedToolCalls: Set<string>,
-    ): void {
-        const normalized = this.normalizeCodexToolItem(item);
+        fileChangeDiffTracker: CodexFileChangeDiffTracker,
+    ): Promise<void> {
+        const normalized = await this.normalizeCodexToolItem(item, phase, fileChangeDiffTracker);
         if (!normalized) return;
 
         if (phase === 'started') {
@@ -738,7 +967,7 @@ export class CodexSDKService implements ISDKService {
         }
 
         if (!startedToolCalls.has(normalized.id)) {
-            this.handleCodexToolItem(item, 'started', options, toolCalls, startedToolCalls);
+            await this.handleCodexToolItem(item, 'started', options, toolCalls, startedToolCalls, fileChangeDiffTracker);
         }
 
         const existing = toolCalls.get(normalized.id);
@@ -765,6 +994,7 @@ export class CodexSDKService implements ISDKService {
                 type: 'tool-complete',
                 toolCallId: normalized.id,
                 toolName: normalized.toolName,
+                parameters: normalized.parameters,
                 result: normalized.result,
             });
     }
@@ -778,13 +1008,17 @@ export class CodexSDKService implements ISDKService {
         }
     }
 
-    private normalizeCodexToolItem(item: CodexItemEvent['item'] | undefined): {
+    private async normalizeCodexToolItem(
+        item: CodexItemEvent['item'] | undefined,
+        phase: 'started' | 'completed',
+        fileChangeDiffTracker: CodexFileChangeDiffTracker,
+    ): Promise<{
         id: string;
         toolName: string;
         parameters: Record<string, unknown>;
         result?: string;
         error?: string;
-    } | undefined {
+    } | undefined> {
         if (!item?.type || !item.id) return undefined;
         switch (item.type) {
             case 'command_execution': {
@@ -801,10 +1035,13 @@ export class CodexSDKService implements ISDKService {
             case 'file_change': {
                 const changes = Array.isArray(item.changes) ? item.changes : [];
                 const failed = item.status === 'failed';
+                const parameters = phase === 'completed' && !failed
+                    ? await fileChangeDiffTracker.enrichParameters(changes)
+                    : { changes };
                 return {
                     id: item.id,
                     toolName: 'apply_patch',
-                    parameters: { changes },
+                    parameters,
                     ...(failed ? { error: 'File change failed' } : { result: this.summarizeFileChanges(changes) }),
                 };
             }

@@ -139,6 +139,7 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
     const isGrep = toolName === 'grep';
     const isCreate = toolName === 'create';
     const isEdit = toolName === 'edit';
+    const isApplyPatch = toolName === 'apply_patch';
     const filePath = isView ? (args?.path || args?.filePath || '') : '';
     const editFilePath = isEdit ? (args?.path || args?.filePath || '') : '';
     const editOldStr = isEdit && typeof args?.old_str === 'string' ? args.old_str : (isEdit && typeof args?.old_string === 'string' ? args.old_string : '');
@@ -181,6 +182,22 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
         if (!isEdit) return null;
         return computeLineDiff(editOldStr, editNewStr);
     }, [isEdit, editOldStr, editNewStr]);
+
+    const patchDiffLines = useMemo<DiffLine[]>(() => {
+        if (!isApplyPatch) return [];
+        return visibleText.split(/\r?\n/).map((line) => {
+            if (line.startsWith('+') && !/^(\+\+\+)\s/.test(line)) {
+                return { type: 'added', content: line.slice(1) };
+            }
+            if (line.startsWith('-') && !/^(---)\s/.test(line)) {
+                return { type: 'removed', content: line.slice(1) };
+            }
+            return {
+                type: 'context',
+                content: line.startsWith(' ') ? line.slice(1) : line,
+            };
+        });
+    }, [isApplyPatch, visibleText]);
 
     // hljs highlighting for markdown code blocks
     useEffect(() => {
@@ -378,6 +395,29 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
             );
         }
 
+        if (isApplyPatch) {
+            return (
+                <div data-testid="popover-apply-patch" className="diff-container rounded border border-[#e0e0e0] dark:border-[#3c3c3c] overflow-hidden font-mono text-[11px] leading-[1.55]">
+                    {patchDiffLines.map((line, i) => (
+                        <div
+                            key={i}
+                            className={
+                                'diff-line px-2 whitespace-pre-wrap break-words' +
+                                (line.type === 'added' ? ' diff-line-added' : '') +
+                                (line.type === 'removed' ? ' diff-line-removed' : '') +
+                                (line.type === 'context' ? ' diff-line-context' : '')
+                            }
+                        >
+                            <span className="diff-line-prefix inline-block w-3 select-none text-right mr-1 opacity-70">
+                                {line.type === 'added' ? '+' : line.type === 'removed' ? '−' : ' '}
+                            </span>
+                            {line.content}
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+
         if (isCreate) {
             if (!createFileText) {
                 return (
@@ -409,7 +449,7 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
         );
     };
 
-    const headerLabel = isView ? 'File Preview' : isBash ? 'Shell Output' : isGlob ? `Glob Matches · ${globPaths.length} files` : isGrep ? `Grep Matches · ${grepTotalMatches} matches in ${grepGroups.size} files` : isCreate ? 'Created File' : isEdit ? 'Edit Preview' : 'Result Preview';
+    const headerLabel = isView ? 'File Preview' : isBash ? 'Shell Output' : isGlob ? `Glob Matches · ${globPaths.length} files` : isGrep ? `Grep Matches · ${grepTotalMatches} matches in ${grepGroups.size} files` : isCreate ? 'Created File' : isEdit ? 'Edit Preview' : isApplyPatch ? 'Patch Preview' : 'Result Preview';
 
     if (isMobile) {
         return (
