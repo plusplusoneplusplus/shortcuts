@@ -139,7 +139,7 @@ output: table
 approvePermissions: false
 mcpConfig: ~/.copilot/mcp-config.json  # global MCP; repo .vscode/mcp.json is also loaded per workspace
 timeout: 1800
-defaultProvider: copilot  # default for new chats/tasks when payload.provider is omitted
+defaultProvider: copilot  # concrete default for new chats/tasks when payload.provider is omitted
 
 serve:
   port: 4000
@@ -170,6 +170,32 @@ codex:
 
 claude:
   enabled: false
+
+features:
+  autoAgentProviderRouting: false  # gates defaultProvider: auto and Auto routing UI/runtime behavior
+
+agentProviderRouting:
+  auto:
+    rules:
+      - provider: claude
+        enabled: true
+        minimumRemainingPercent: 25
+        weeklyGuard:
+          enabled: true
+          minimumRemainingPercent: 25
+      - provider: codex
+        enabled: true
+        minimumRemainingPercent: 25
+        weeklyGuard:
+          enabled: true
+          minimumRemainingPercent: 25
+      - provider: copilot
+        enabled: true
+        minimumRemainingPercent: 10
+        weeklyGuard:
+          enabled: true
+          minimumRemainingPercent: 10
+    fallbackProvider: copilot
 ```
 
 Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT.

@@ -45,6 +45,8 @@ export interface DashboardOptions {
     focusedDiffEnabled?: boolean;
     /** Whether drag/drop session-context attachments are enabled in chat composers. */
     sessionContextAttachmentsEnabled?: boolean;
+    /** Whether Auto agent provider routing is enabled in Admin -> AI Provider. */
+    autoAgentProviderRoutingEnabled?: boolean;
     /** Whether the Work Items hierarchy board is enabled in server config. */
     workItemsHierarchyEnabled?: boolean;
     /** Whether remote Work Items provider integration is enabled in server config. */

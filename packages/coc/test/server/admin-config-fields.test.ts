@@ -42,11 +42,13 @@ describe('ADMIN_EDITABLE_KEYS', () => {
             'workflows.enabled', 'pullRequests.enabled', 'servers.enabled',
             'ralph.enabled', 'forEach.enabled', 'vimNavigation.enabled', 'loops.enabled',
             'excalidraw.enabled',
-            'mcpOauth.enabled',
-            'codex.enabled',
+            'mcpOauth.enabled', 'mcpOauth.autoRefresh.enabled',
+            'codex.enabled', 'claude.enabled',
             'defaultProvider',
+            'agentProviderRouting.auto',
             'features.gitCrossCloneCherryPick',
             'features.sessionContextAttachments',
+            'features.autoAgentProviderRouting',
             'workItems.hierarchy.enabled',
             'workItems.sync.enabled',
             'workItems.aiAuthoring.enabled',
@@ -196,11 +198,48 @@ describe('validate()', () => {
         it('accepts "claude"', () => {
             expect(fieldFor('defaultProvider').validate('claude')).toBeUndefined();
         });
+        it('accepts "auto"', () => {
+            expect(fieldFor('defaultProvider').validate('auto')).toBeUndefined();
+        });
         it('rejects other strings', () => {
-            expect(fieldFor('defaultProvider').validate('unknown')).toMatch(/copilot.*codex/);
+            expect(fieldFor('defaultProvider').validate('unknown')).toMatch(/copilot.*codex.*claude.*auto/);
         });
         it('rejects non-string', () => {
-            expect(fieldFor('defaultProvider').validate(true)).toMatch(/copilot.*codex/);
+            expect(fieldFor('defaultProvider').validate(true)).toMatch(/copilot.*codex.*claude.*auto/);
+        });
+    });
+
+    describe('agentProviderRouting.auto', () => {
+        it('accepts a valid auto routing profile', () => {
+            expect(fieldFor('agentProviderRouting.auto').validate({
+                rules: [
+                    {
+                        provider: 'claude',
+                        enabled: true,
+                        minimumRemainingPercent: 25,
+                        weeklyGuard: { enabled: true, minimumRemainingPercent: 25 },
+                    },
+                ],
+                fallbackProvider: 'copilot',
+            })).toBeUndefined();
+        });
+
+        it('rejects invalid rule provider values', () => {
+            expect(fieldFor('agentProviderRouting.auto').validate({
+                rules: [{ provider: 'openai' }],
+            })).toMatch(/provider must be one of/);
+        });
+
+        it('rejects invalid threshold values', () => {
+            expect(fieldFor('agentProviderRouting.auto').validate({
+                rules: [{ provider: 'copilot', minimumRemainingPercent: 101 }],
+            })).toMatch(/between 0 and 100/);
+        });
+
+        it('rejects invalid weekly guard threshold values', () => {
+            expect(fieldFor('agentProviderRouting.auto').validate({
+                rules: [{ provider: 'copilot', weeklyGuard: { minimumRemainingPercent: -1 } }],
+            })).toMatch(/between 0 and 100/);
         });
     });
 
@@ -213,8 +252,12 @@ describe('validate()', () => {
         'servers.enabled', 'ralph.enabled', 'forEach.enabled', 'vimNavigation.enabled', 'loops.enabled',
         'excalidraw.enabled',
         'mcpOauth.enabled',
+        'mcpOauth.autoRefresh.enabled',
+        'codex.enabled',
+        'claude.enabled',
         'features.gitCrossCloneCherryPick',
         'features.sessionContextAttachments',
+        'features.autoAgentProviderRouting',
         'workItems.hierarchy.enabled',
         'workItems.sync.enabled',
         'workItems.aiAuthoring.enabled',
@@ -398,6 +441,23 @@ describe('apply()', () => {
             fieldFor('defaultProvider').apply(cfg, 'codex');
             expect(cfg.defaultProvider).toBe('codex');
         });
+        it('sets auto', () => {
+            const cfg: CLIConfig = {};
+            fieldFor('defaultProvider').apply(cfg, 'auto');
+            expect(cfg.defaultProvider).toBe('auto');
+        });
+    });
+
+    describe('agentProviderRouting.auto', () => {
+        it('sets auto routing config', () => {
+            const cfg: CLIConfig = {};
+            fieldFor('agentProviderRouting.auto').apply(cfg, {
+                rules: [{ provider: 'claude', enabled: true, minimumRemainingPercent: 25 }],
+                fallbackProvider: 'copilot',
+            });
+            expect(cfg.agentProviderRouting?.auto?.rules?.[0].provider).toBe('claude');
+            expect(cfg.agentProviderRouting?.auto?.fallbackProvider).toBe('copilot');
+        });
     });
 
 });
@@ -423,6 +483,14 @@ describe('runtime classification', () => {
 
     it('marks defaultProvider as restartRequired', () => {
         expect(fieldFor('defaultProvider').runtime).toBe('restartRequired');
+    });
+
+    it('marks agentProviderRouting.auto as restartRequired', () => {
+        expect(fieldFor('agentProviderRouting.auto').runtime).toBe('restartRequired');
+    });
+
+    it('marks features.autoAgentProviderRouting as restartRequired', () => {
+        expect(fieldFor('features.autoAgentProviderRouting').runtime).toBe('restartRequired');
     });
 
     const liveFeatures = [

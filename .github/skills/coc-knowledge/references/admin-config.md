@@ -6,7 +6,7 @@ Covers the editable admin config registry in `packages/coc/` and the self-contai
 
 Editable admin config fields are defined in a single registry: `packages/coc/src/server/admin/admin-config-fields.ts` (`ADMIN_CONFIG_FIELDS`).
 
-Each entry provides a flat key (e.g. `'loops.enabled'`), a `validate()` function, and an `apply()` function. The `PUT /api/admin/config` handler derives `editableKeys`, validation, and merge logic entirely from this registry — **no changes to `admin-handler.ts` are needed when adding a new editable field**.
+Each entry provides a flat key (e.g. `'loops.enabled'`), a field-local `validate()` function, and an `apply()` function. The `PUT /api/admin/config` handler derives `editableKeys`, field-local validation, and merge logic from this registry. Cross-field constraints belong in `CLIConfigSchema`/`validateConfigWithSchema()` and the admin write path re-validates the merged config before persisting so admin updates and config-file loading reject the same invalid combinations.
 
 To expose a new config field via the admin API, add ONE entry to `ADMIN_CONFIG_FIELDS`. Also update:
 
@@ -14,13 +14,13 @@ To expose a new config field via the admin API, add ONE entry to `ADMIN_CONFIG_F
 2. `CLIConfigSchema` in `packages/coc/src/config/schema.ts`
 3. Namespace registry in `packages/coc/src/config/namespace-registry.ts` (nested fields)
 4. `AdminResolvedConfig` / `AdminConfigUpdate` in `packages/coc-client/src/contracts/admin.ts`
-5. `AdminPanel.tsx` for the UI control
+5. `AdminPanel.tsx` or the focused admin subpage component for the UI control
 
 The `spaHtml` function in `packages/coc/src/server/index.ts` re-reads the config file on every page request, so feature-flag changes (e.g. `terminal.enabled`) take effect on the next browser reload — no server restart required.
 
-Work Items expose hierarchy-related live flags through this path: `workItems.hierarchy.enabled` enables the hierarchy board, and `workItems.sync.enabled` enables remote provider integration. Sync UI helpers treat provider integration as enabled only when both flags are true; provider credentials stay external and are not admin config fields. Dedicated mode flags such as `forEach.enabled` live as top-level namespaces and are disabled by default. Experimental dashboard/chat flags live under `features.*`; `features.gitCrossCloneCherryPick` enables the cross-clone cherry-pick commit context-menu modal and is enabled by default, while `features.sessionContextAttachments` enables drag/drop session-context attachments in chat composers and is disabled by default.
+Work Items expose hierarchy-related live flags through this path: `workItems.hierarchy.enabled` enables the hierarchy board, and `workItems.sync.enabled` enables remote provider integration. Sync UI helpers treat provider integration as enabled only when both flags are true; provider credentials stay external and are not admin config fields. Dedicated mode flags such as `forEach.enabled` live as top-level namespaces and are disabled by default. Experimental dashboard/chat flags live under `features.*`; `features.gitCrossCloneCherryPick` enables the cross-clone cherry-pick commit context-menu modal and is enabled by default, `features.sessionContextAttachments` enables drag/drop session-context attachments in chat composers and is disabled by default, and `features.autoAgentProviderRouting` gates Auto provider routing in Admin -> AI Provider and is disabled by default.
 
-The AI provider admin card stores `defaultProvider` as a top-level config key. The UI labels it "Default Provider" because it preselects the provider for new chats and tasks; individual chat payloads can still set `payload.provider`, and follow-ups continue with the provider recorded on the original process. The field is classified as `restartRequired` because the server-level default provider is wired into queue infrastructure at `coc serve` startup for API-created tasks that omit `payload.provider`.
+The AI provider admin card stores `defaultProvider` as a top-level config key. The UI labels it "Default Provider" because it preselects the provider for new chats and tasks; individual chat payloads can still set `payload.provider`, and follow-ups continue with the provider recorded on the original process. Concrete providers are `copilot`, `codex`, and `claude`; the `auto` value is valid only when `features.autoAgentProviderRouting` is true. The field is classified as `restartRequired` because the server-level default provider is wired into queue infrastructure at `coc serve` startup for API-created tasks that omit `payload.provider`. Auto routing profile configuration lives under `agentProviderRouting.auto`, with the default ordered profile `claude -> codex -> copilot`, normal thresholds `25/25/10`, matching weekly guard thresholds, and fallback `copilot`.
 
 ## Namespaced Config Merge & Source Tracking
 

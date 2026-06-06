@@ -24,6 +24,7 @@ import {
     resolveConfig,
     getResolvedConfigWithSource,
 } from '../config';
+import { validateConfigWithSchema } from './schema';
 import { ADMIN_CONFIG_FIELDS } from '../server/admin/admin-config-fields';
 
 // ============================================================================
@@ -197,18 +198,21 @@ export class RuntimeConfigService {
             field.apply(existing, patch[field.key]);
         }
 
-        // 4. Write to disk (atomic write-then-rename)
+        // 4. Validate cross-field constraints before mutating disk.
+        validateConfigWithSchema(existing);
+
+        // 5. Write to disk (atomic write-then-rename)
         writeConfigFile(this._configPath, existing);
 
-        // 5. Refresh in-memory snapshot from disk
+        // 6. Refresh in-memory snapshot from disk
         const fresh = getResolvedConfigWithSource(this._configPath);
         this._config = fresh.resolved;
         this._sources = fresh.sources;
 
-        // 6. Bump revision
+        // 7. Bump revision
         this._revision++;
 
-        // 7. Build effects using actual field runtime classification
+        // 8. Build effects using actual field runtime classification
         const effects: ConfigChangeEffect[] = matchedFields.map(field => ({
             field: field.key,
             runtime: field.runtime,
@@ -217,7 +221,7 @@ export class RuntimeConfigService {
 
         const snapshot = this.getSnapshot();
 
-        // 8. Notify listeners
+        // 9. Notify listeners
         for (const listener of this._listeners) {
             try {
                 listener(snapshot);

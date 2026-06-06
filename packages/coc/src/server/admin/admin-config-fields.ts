@@ -14,7 +14,7 @@
  *   7. Add UI in AdminPanel.tsx
  */
 
-import type { CLIConfig } from '../../config';
+import type { AutoProviderRoutingConfig, CLIConfig, ConcreteAgentProvider, DefaultAgentProvider } from '../../config';
 
 /** Runtime behavior classification for admin-editable config fields. */
 export type AdminConfigFieldRuntime = 'live' | 'reloadable' | 'restartRequired';
@@ -40,6 +40,65 @@ const bool = (key: string, set: (cfg: CLIConfig, v: boolean) => void, runtime: A
 });
 
 const VALID_OUTPUT_VALUES = ['table', 'json', 'csv', 'markdown'] as const;
+const VALID_DEFAULT_PROVIDER_VALUES = ['copilot', 'codex', 'claude', 'auto'] as const;
+const VALID_CONCRETE_PROVIDER_VALUES = ['copilot', 'codex', 'claude'] as const;
+
+function isObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isConcreteProvider(value: unknown): value is ConcreteAgentProvider {
+    return typeof value === 'string' && (VALID_CONCRETE_PROVIDER_VALUES as readonly string[]).includes(value);
+}
+
+function validatePercent(value: unknown, key: string): string | undefined {
+    return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 100
+        ? undefined
+        : `${key} must be an integer between 0 and 100`;
+}
+
+function validateAutoProviderRouting(value: unknown): string | undefined {
+    if (!isObject(value)) {
+        return 'agentProviderRouting.auto must be an object';
+    }
+    const rules = value.rules;
+    if (rules !== undefined) {
+        if (!Array.isArray(rules)) {
+            return 'agentProviderRouting.auto.rules must be an array';
+        }
+        for (const [index, rule] of rules.entries()) {
+            if (!isObject(rule)) {
+                return `agentProviderRouting.auto.rules[${index}] must be an object`;
+            }
+            if (!isConcreteProvider(rule.provider)) {
+                return `agentProviderRouting.auto.rules[${index}].provider must be one of: ${VALID_CONCRETE_PROVIDER_VALUES.join(', ')}`;
+            }
+            if (rule.enabled !== undefined && typeof rule.enabled !== 'boolean') {
+                return `agentProviderRouting.auto.rules[${index}].enabled must be a boolean`;
+            }
+            if (rule.minimumRemainingPercent !== undefined) {
+                const err = validatePercent(rule.minimumRemainingPercent, `agentProviderRouting.auto.rules[${index}].minimumRemainingPercent`);
+                if (err) { return err; }
+            }
+            if (rule.weeklyGuard !== undefined) {
+                if (!isObject(rule.weeklyGuard)) {
+                    return `agentProviderRouting.auto.rules[${index}].weeklyGuard must be an object`;
+                }
+                if (rule.weeklyGuard.enabled !== undefined && typeof rule.weeklyGuard.enabled !== 'boolean') {
+                    return `agentProviderRouting.auto.rules[${index}].weeklyGuard.enabled must be a boolean`;
+                }
+                if (rule.weeklyGuard.minimumRemainingPercent !== undefined) {
+                    const err = validatePercent(rule.weeklyGuard.minimumRemainingPercent, `agentProviderRouting.auto.rules[${index}].weeklyGuard.minimumRemainingPercent`);
+                    if (err) { return err; }
+                }
+            }
+        }
+    }
+    if (value.fallbackProvider !== undefined && !isConcreteProvider(value.fallbackProvider)) {
+        return `agentProviderRouting.auto.fallbackProvider must be one of: ${VALID_CONCRETE_PROVIDER_VALUES.join(', ')}`;
+    }
+    return undefined;
+}
 
 // ── registry ─────────────────────────────────────────────────────────────────
 
@@ -247,10 +306,19 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
     {
         key: 'defaultProvider',
         runtime: 'restartRequired',
-        validate: (v) => v === 'copilot' || v === 'codex' || v === 'claude'
+        validate: (v) => typeof v === 'string' && (VALID_DEFAULT_PROVIDER_VALUES as readonly string[]).includes(v)
             ? undefined
-            : 'defaultProvider must be "copilot", "codex", or "claude"',
-        apply: (cfg, v) => { cfg.defaultProvider = v as 'copilot' | 'codex' | 'claude'; },
+            : 'defaultProvider must be "copilot", "codex", "claude", or "auto"',
+        apply: (cfg, v) => { cfg.defaultProvider = v as DefaultAgentProvider; },
+    },
+    {
+        key: 'agentProviderRouting.auto',
+        runtime: 'restartRequired',
+        validate: validateAutoProviderRouting,
+        apply: (cfg, v) => {
+            if (!cfg.agentProviderRouting) { cfg.agentProviderRouting = {}; }
+            cfg.agentProviderRouting.auto = v as AutoProviderRoutingConfig;
+        },
     },
 
     bool('features.focusedDiff', (cfg, v) => {
@@ -265,6 +333,10 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         if (!cfg.features) { cfg.features = {}; }
         cfg.features.sessionContextAttachments = v;
     }),
+    bool('features.autoAgentProviderRouting', (cfg, v) => {
+        if (!cfg.features) { cfg.features = {}; }
+        cfg.features.autoAgentProviderRouting = v;
+    }, 'restartRequired'),
 
     bool('workItems.hierarchy.enabled', (cfg, v) => {
         if (!cfg.workItems) { cfg.workItems = {}; }

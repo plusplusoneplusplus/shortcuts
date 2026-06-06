@@ -1,6 +1,7 @@
-import type { CLIConfig, ConfigFieldSource, ResolvedCLIConfig } from '../config';
+import type { AutoProviderRoutingConfig, CLIConfig, ConfigFieldSource, ResolvedCLIConfig } from '../config';
 
 type ConfigObject = Record<string, unknown>;
+type ResolvedAutoProviderRoutingConfig = ResolvedCLIConfig['agentProviderRouting']['auto'];
 
 export interface ConfigNamespaceSourceDescriptor {
     readonly prefix: string;
@@ -36,6 +37,7 @@ export type ResolvedConfigNamespaceValues = Pick<
     | 'mcpOauth'
     | 'excalidraw'
     | 'containerDefaultAgent'
+    | 'agentProviderRouting'
     | 'codex'
     | 'claude'
     | 'features'
@@ -81,6 +83,7 @@ const MCP_OAUTH_SOURCE_KEYS = ['mcpOauth.enabled'] as const;
 const MCP_OAUTH_AUTO_REFRESH_SOURCE_KEYS = ['mcpOauth.autoRefresh.enabled'] as const;
 const EXCALIDRAW_SOURCE_KEYS = ['excalidraw.enabled'] as const;
 const CONTAINER_DEFAULT_AGENT_SOURCE_KEYS = ['containerDefaultAgent.enabled'] as const;
+const AGENT_PROVIDER_ROUTING_SOURCE_KEYS = ['agentProviderRouting.auto'] as const;
 const CODEX_SOURCE_KEYS = ['codex.enabled'] as const;
 const CLAUDE_SOURCE_KEYS = ['claude.enabled'] as const;
 const FEATURES_SOURCE_KEYS = [
@@ -88,11 +91,36 @@ const FEATURES_SOURCE_KEYS = [
     'features.focusedDiff',
     'features.gitCrossCloneCherryPick',
     'features.sessionContextAttachments',
+    'features.autoAgentProviderRouting',
 ] as const;
 const WORK_ITEMS_HIERARCHY_SOURCE_KEYS = ['workItems.hierarchy.enabled'] as const;
 const WORK_ITEMS_SYNC_SOURCE_KEYS = ['workItems.sync.enabled'] as const;
 const WORK_ITEMS_AI_AUTHORING_SOURCE_KEYS = ['workItems.aiAuthoring.enabled'] as const;
 const EFFORT_LEVELS_SOURCE_KEYS = ['effortLevels.enabled'] as const;
+
+const DEFAULT_AUTO_PROVIDER_ROUTING: ResolvedAutoProviderRoutingConfig = {
+    rules: [
+        {
+            provider: 'claude',
+            enabled: true,
+            minimumRemainingPercent: 25,
+            weeklyGuard: { enabled: true, minimumRemainingPercent: 25 },
+        },
+        {
+            provider: 'codex',
+            enabled: true,
+            minimumRemainingPercent: 25,
+            weeklyGuard: { enabled: true, minimumRemainingPercent: 25 },
+        },
+        {
+            provider: 'copilot',
+            enabled: true,
+            minimumRemainingPercent: 10,
+            weeklyGuard: { enabled: true, minimumRemainingPercent: 10 },
+        },
+    ],
+    fallbackProvider: 'copilot',
+};
 
 const MEMORY_PROMOTION_SOURCE_KEYS = [
     'memoryPromotion.batchSize',
@@ -127,6 +155,7 @@ export const CONFIG_NAMESPACE_SOURCE_KEYS = [
     ...MCP_OAUTH_AUTO_REFRESH_SOURCE_KEYS,
     ...EXCALIDRAW_SOURCE_KEYS,
     ...CONTAINER_DEFAULT_AGENT_SOURCE_KEYS,
+    ...AGENT_PROVIDER_ROUTING_SOURCE_KEYS,
     ...CODEX_SOURCE_KEYS,
     ...CLAUDE_SOURCE_KEYS,
     ...FEATURES_SOURCE_KEYS,
@@ -325,6 +354,15 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
             merge: (base, override) => ({ containerDefaultAgent: { enabled: override?.containerDefaultAgent?.enabled ?? base.containerDefaultAgent?.enabled ?? false } }),
         },
         {
+            name: 'agentProviderRouting',
+            sourceDescriptors: [source('agentProviderRouting.', ['agentProviderRouting'], AGENT_PROVIDER_ROUTING_SOURCE_KEYS)],
+            merge: (base, override) => ({
+                agentProviderRouting: {
+                    auto: resolveAutoProviderRouting(base.agentProviderRouting?.auto, override?.agentProviderRouting?.auto),
+                },
+            }),
+        },
+        {
             name: 'codex',
             sourceDescriptors: [source('codex.', ['codex'], CODEX_SOURCE_KEYS)],
             merge: (base, override) => ({ codex: { enabled: override?.codex?.enabled ?? base.codex?.enabled ?? false } }),
@@ -344,6 +382,7 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
                     gitCommitLookup: override?.features?.gitCommitLookup ?? base.features?.gitCommitLookup ?? false,
                     gitCrossCloneCherryPick: override?.features?.gitCrossCloneCherryPick ?? base.features?.gitCrossCloneCherryPick ?? true,
                     sessionContextAttachments: override?.features?.sessionContextAttachments ?? base.features?.sessionContextAttachments ?? false,
+                    autoAgentProviderRouting: override?.features?.autoAgentProviderRouting ?? base.features?.autoAgentProviderRouting ?? false,
                 },
             }),
         },
@@ -482,4 +521,27 @@ function getNestedObject(config: CLIConfig, path: readonly string[]): ConfigObje
 
 function isObject(value: unknown): value is ConfigObject {
     return typeof value === 'object' && value !== null;
+}
+
+function resolveAutoProviderRouting(
+    base: ResolvedAutoProviderRoutingConfig | undefined,
+    override: AutoProviderRoutingConfig | undefined
+): ResolvedAutoProviderRoutingConfig {
+    const fallback = base ?? DEFAULT_AUTO_PROVIDER_ROUTING;
+    if (!override) {
+        return fallback;
+    }
+
+    return {
+        fallbackProvider: override.fallbackProvider ?? fallback.fallbackProvider,
+        rules: override.rules?.map(rule => ({
+            provider: rule.provider,
+            enabled: rule.enabled ?? true,
+            minimumRemainingPercent: rule.minimumRemainingPercent ?? 0,
+            weeklyGuard: {
+                enabled: rule.weeklyGuard?.enabled ?? false,
+                minimumRemainingPercent: rule.weeklyGuard?.minimumRemainingPercent ?? rule.minimumRemainingPercent ?? 0,
+            },
+        })) ?? fallback.rules,
+    };
 }

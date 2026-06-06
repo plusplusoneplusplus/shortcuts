@@ -35,7 +35,9 @@ interface DashboardConfig {
     /** Whether the Codex SDK provider is enabled (feature flag). */
     codexEnabled?: boolean;
     /** Default AI provider for new chats/tasks. */
-    defaultProvider?: 'copilot' | 'codex' | 'claude';
+    defaultProvider?: 'copilot' | 'codex' | 'claude' | 'auto';
+    /** Whether Auto agent provider routing is enabled. */
+    autoAgentProviderRoutingEnabled?: boolean;
     /** Whether the Work Items hierarchy board is enabled (feature flag). */
     workItemsHierarchyEnabled?: boolean;
     /** Whether remote Work Items provider integration is enabled (requires hierarchy). */
@@ -118,6 +120,7 @@ async function _fetchAndApplyRuntimeConfig(apiBase: string): Promise<void> {
             containerDefaultAgentEnabled: data.features.containerDefaultAgentEnabled,
             codexEnabled: data.features.codexEnabled,
             defaultProvider: data.features.defaultProvider,
+            autoAgentProviderRoutingEnabled: data.features.autoAgentProviderRoutingEnabled,
             workItemsHierarchyEnabled: data.features.workItemsHierarchyEnabled,
             workItemsSyncEnabled: data.features.workItemsSyncEnabled,
             workItemsAiAuthoringEnabled: data.features.workItemsAiAuthoringEnabled,
@@ -273,6 +276,11 @@ export function isCodexEnabled(): boolean {
     return getConfig().codexEnabled === true;
 }
 
+/** Returns true when Auto provider routing is enabled. */
+export function isAutoAgentProviderRoutingEnabled(): boolean {
+    return getConfig().autoAgentProviderRoutingEnabled === true;
+}
+
 /** Returns true when the Work Items hierarchy board feature flag is enabled. */
 export function isWorkItemsHierarchyEnabled(): boolean {
     return getConfig().workItemsHierarchyEnabled === true;
@@ -304,9 +312,15 @@ export function isEffortLevelsEnabled(): boolean {
     return getConfig().effortLevelsEnabled === true;
 }
 
-/** Returns the configured default AI provider for new chats/tasks. */
-export function getDefaultProvider(): 'copilot' | 'codex' | 'claude' {
+/** Returns the raw configured default AI provider selection for new chats/tasks. */
+export function getConfiguredDefaultProvider(): 'copilot' | 'codex' | 'claude' | 'auto' {
     return getConfig().defaultProvider ?? 'copilot';
+}
+
+/** Returns the concrete default AI provider for UI surfaces that require an SDK provider. */
+export function getDefaultProvider(): 'copilot' | 'codex' | 'claude' {
+    const provider = getConfiguredDefaultProvider();
+    return provider === 'auto' ? 'copilot' : provider;
 }
 
 /** Returns the currently active provider (alias for getDefaultProvider). */

@@ -23,6 +23,25 @@ import {
 // Types
 // ============================================================================
 
+export type ConcreteAgentProvider = 'copilot' | 'codex' | 'claude';
+export type DefaultAgentProvider = ConcreteAgentProvider | 'auto';
+export type AutoProviderRoutingRule = {
+    provider: ConcreteAgentProvider;
+    enabled?: boolean;
+    minimumRemainingPercent?: number;
+    weeklyGuard?: {
+        enabled?: boolean;
+        minimumRemainingPercent?: number;
+    };
+};
+export interface AutoProviderRoutingConfig {
+    rules?: AutoProviderRoutingRule[];
+    fallbackProvider?: ConcreteAgentProvider;
+}
+export interface AgentProviderRoutingConfig {
+    auto?: AutoProviderRoutingConfig;
+}
+
 /**
  * CLI configuration as stored in the config file
  */
@@ -171,6 +190,8 @@ export interface CLIConfig {
     containerDefaultAgent?: {
         enabled?: boolean;
     };
+    /** Auto agent provider routing configuration. */
+    agentProviderRouting?: AgentProviderRoutingConfig;
     /** Codex SDK provider support. Disabled by default. */
     codex?: {
         enabled?: boolean;
@@ -180,10 +201,10 @@ export interface CLIConfig {
         enabled?: boolean;
     };
     /**
-     * Default AI provider for new chats/tasks: 'copilot' (default), 'codex', or 'claude'.
+     * Default AI provider for new chats/tasks: 'copilot' (default), 'codex', 'claude', or feature-gated 'auto'.
      * Per-chat provider selection overrides this value.
      */
-    defaultProvider?: 'copilot' | 'codex' | 'claude';
+    defaultProvider?: DefaultAgentProvider;
     /** Development feature flags. */
     features?: {
         autoMemoryPromotion?: boolean;
@@ -194,6 +215,8 @@ export interface CLIConfig {
         gitCrossCloneCherryPick?: boolean;
         /** Drag/drop session-context attachments in chat composers. Disabled by default. */
         sessionContextAttachments?: boolean;
+        /** Auto agent provider routing in Admin -> AI Provider. Disabled by default. */
+        autoAgentProviderRouting?: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion?: {
@@ -408,6 +431,21 @@ export interface ResolvedCLIConfig {
     containerDefaultAgent: {
         enabled: boolean;
     };
+    /** Auto agent provider routing configuration. */
+    agentProviderRouting: {
+        auto: {
+            rules: {
+                provider: ConcreteAgentProvider;
+                enabled: boolean;
+                minimumRemainingPercent: number;
+                weeklyGuard: {
+                    enabled: boolean;
+                    minimumRemainingPercent: number;
+                };
+            }[];
+            fallbackProvider: ConcreteAgentProvider;
+        };
+    };
     /** Codex SDK provider support. Disabled by default. */
     codex: {
         enabled: boolean;
@@ -417,10 +455,10 @@ export interface ResolvedCLIConfig {
         enabled: boolean;
     };
     /**
-     * Default AI provider for new chats/tasks: 'copilot' (default), 'codex', or 'claude'.
+     * Default AI provider for new chats/tasks: 'copilot' (default), 'codex', 'claude', or feature-gated 'auto'.
      * Per-chat provider selection overrides this value.
      */
-    defaultProvider: 'copilot' | 'codex' | 'claude';
+    defaultProvider: DefaultAgentProvider;
     /** Development feature flags. */
     features: {
         autoMemoryPromotion: boolean;
@@ -431,6 +469,8 @@ export interface ResolvedCLIConfig {
         gitCrossCloneCherryPick: boolean;
         /** Drag/drop session-context attachments in chat composers. Disabled by default. */
         sessionContextAttachments: boolean;
+        /** Auto agent provider routing in Admin -> AI Provider. Disabled by default. */
+        autoAgentProviderRouting: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion: {
@@ -590,6 +630,40 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     containerDefaultAgent: {
         enabled: false,
     },
+    agentProviderRouting: {
+        auto: {
+            rules: [
+                {
+                    provider: 'claude',
+                    enabled: true,
+                    minimumRemainingPercent: 25,
+                    weeklyGuard: {
+                        enabled: true,
+                        minimumRemainingPercent: 25,
+                    },
+                },
+                {
+                    provider: 'codex',
+                    enabled: true,
+                    minimumRemainingPercent: 25,
+                    weeklyGuard: {
+                        enabled: true,
+                        minimumRemainingPercent: 25,
+                    },
+                },
+                {
+                    provider: 'copilot',
+                    enabled: true,
+                    minimumRemainingPercent: 10,
+                    weeklyGuard: {
+                        enabled: true,
+                        minimumRemainingPercent: 10,
+                    },
+                },
+            ],
+            fallbackProvider: 'copilot',
+        },
+    },
     codex: {
         enabled: false,
     },
@@ -603,6 +677,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         gitCommitLookup: false,
         gitCrossCloneCherryPick: true,
         sessionContextAttachments: false,
+        autoAgentProviderRouting: false,
     },
     memoryPromotion: {
         batchSize: 50,
@@ -774,7 +849,7 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         toolCompactness: (override.toolCompactness ?? base.toolCompactness) as 0 | 1 | 2 | 3,
         taskCardDensity: (override.taskCardDensity ?? base.taskCardDensity) as 'compact' | 'dense',
         groupSingleLineMessages: override.groupSingleLineMessages ?? base.groupSingleLineMessages,
-        defaultProvider: (override.defaultProvider ?? base.defaultProvider) as 'copilot' | 'codex' | 'claude',
+        defaultProvider: (override.defaultProvider ?? base.defaultProvider) as DefaultAgentProvider,
         ...mergeConfigNamespaces(base, override, DEFAULT_BUNDLED_SKILLS),
     };
 }

@@ -11,6 +11,10 @@ import { z } from 'zod';
 // Logging sub-schemas
 // ============================================================================
 
+const concreteAgentProviderEnum = z.enum(['copilot', 'codex', 'claude']);
+const defaultAgentProviderEnum = z.enum(['copilot', 'codex', 'claude', 'auto']);
+const percentSchema = z.number().int().min(0).max(100);
+
 const loggingLevelEnum = z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']);
 
 const loggingStoreSchema = z.object({
@@ -23,6 +27,21 @@ const loggingConfigSchema = z.object({
     dir: z.string().optional(),
     pretty: z.union([z.literal('auto'), z.boolean()]).optional(),
     stores: z.record(z.string(), loggingStoreSchema.optional()).optional(),
+}).passthrough();
+
+const autoProviderRoutingRuleSchema = z.object({
+    provider: concreteAgentProviderEnum,
+    enabled: z.boolean().optional(),
+    minimumRemainingPercent: percentSchema.optional(),
+    weeklyGuard: z.object({
+        enabled: z.boolean().optional(),
+        minimumRemainingPercent: percentSchema.optional(),
+    }).passthrough().optional(),
+}).passthrough();
+
+const autoProviderRoutingSchema = z.object({
+    rules: z.array(autoProviderRoutingRuleSchema).optional(),
+    fallbackProvider: concreteAgentProviderEnum.optional(),
 }).passthrough();
 
 /**
@@ -101,13 +120,16 @@ export const CLIConfigSchema = z.object({
     excalidraw: z.object({
         enabled: z.boolean().optional(),
     }).passthrough().optional(),
+    agentProviderRouting: z.object({
+        auto: autoProviderRoutingSchema.optional(),
+    }).passthrough().optional(),
     codex: z.object({
         enabled: z.boolean().optional(),
     }).passthrough().optional(),
     claude: z.object({
         enabled: z.boolean().optional(),
     }).passthrough().optional(),
-    defaultProvider: z.enum(['copilot', 'codex', 'claude']).optional(),
+    defaultProvider: defaultAgentProviderEnum.optional(),
     ralph: z.object({
         enabled: z.boolean().optional(),
         finalCheck: z.object({
@@ -132,6 +154,7 @@ export const CLIConfigSchema = z.object({
         gitCommitLookup: z.boolean().optional(),
         gitCrossCloneCherryPick: z.boolean().optional(),
         sessionContextAttachments: z.boolean().optional(),
+        autoAgentProviderRouting: z.boolean().optional(),
     }).passthrough().optional(),
     memoryPromotion: z.object({
         batchSize: z.number().int().positive().optional(),
@@ -172,7 +195,15 @@ export const CLIConfigSchema = z.object({
     effortLevels: z.object({
         enabled: z.boolean().optional(),
     }).passthrough().optional(),
-}).passthrough();
+}).passthrough().superRefine((config, ctx) => {
+    if (config.defaultProvider === 'auto' && config.features?.autoAgentProviderRouting !== true) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['defaultProvider'],
+            message: 'defaultProvider "auto" requires features.autoAgentProviderRouting: true',
+        });
+    }
+});
 
 /**
  * Inferred type from schema (should match CLIConfig)

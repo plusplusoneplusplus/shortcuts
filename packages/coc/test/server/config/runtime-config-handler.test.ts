@@ -79,9 +79,42 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.focusedDiffEnabled).toBe(false);
         expect(result.features.gitCrossCloneCherryPickEnabled).toBe(true);
         expect(result.features.sessionContextAttachmentsEnabled).toBe(false);
+        expect(result.features.autoAgentProviderRoutingEnabled).toBe(false);
         expect(result.features.codexEnabled).toBe(false);
         expect(result.features.defaultProvider).toBe('copilot');
         expect(result.features.workItemsSyncEnabled).toBe(false);
+    });
+
+    it('reflects features.autoAgentProviderRouting = true from config', () => {
+        const svc = createMockRuntimeConfigService({
+            features: {
+                focusedDiff: false,
+                autoMemoryPromotion: false,
+                gitCommitLookup: false,
+                gitCrossCloneCherryPick: true,
+                sessionContextAttachments: false,
+                autoAgentProviderRouting: true,
+            },
+        } as any);
+        const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
+        expect(result.features.autoAgentProviderRoutingEnabled).toBe(true);
+    });
+
+    it('reports defaultProvider auto when configured', () => {
+        const svc = createMockRuntimeConfigService({
+            defaultProvider: 'auto',
+            features: {
+                focusedDiff: false,
+                autoMemoryPromotion: false,
+                gitCommitLookup: false,
+                gitCrossCloneCherryPick: true,
+                sessionContextAttachments: false,
+                autoAgentProviderRouting: true,
+            },
+        } as any);
+        const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
+        expect(result.features.defaultProvider).toBe('auto');
+        expect(result.features.autoAgentProviderRoutingEnabled).toBe(true);
     });
 
     it('reflects ralph.enabled = true from config', () => {
