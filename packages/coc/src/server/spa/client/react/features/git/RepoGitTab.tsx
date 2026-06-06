@@ -1005,6 +1005,25 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setActionError(null);
         try {
             const result = await getSpaCocClient().git.dropCommit(workspaceId, commit.hash);
+            if (result.jobId) {
+                const jobId: string = result.jobId;
+                const poll = setInterval(async () => {
+                    try {
+                        const job = await getSpaCocClient().git.getOperation(workspaceId, jobId);
+                        if (!job || job.status !== 'running') {
+                            clearInterval(poll);
+                            if (job?.status === 'failed') {
+                                setActionError(job.error || 'Drop commit failed');
+                            } else {
+                                refreshAll({ selectFallbackToHead: true });
+                            }
+                        }
+                    } catch {
+                        clearInterval(poll);
+                    }
+                }, 3000);
+                return;
+            }
             if (result.error) throw new Error(result.error);
             refreshAll({ selectFallbackToHead: true });
         } catch (err: any) {

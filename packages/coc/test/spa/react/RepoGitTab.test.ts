@@ -381,6 +381,24 @@ describe('RepoGitTab', () => {
             expect(source).toContain('data-testid="git-action-error"');
         });
 
+        it('handleDropCommit polls async jobs before refreshing', () => {
+            const block = source.match(/const handleDropCommit = useCallback[\s\S]*?(?=const handleCommitContextMenu)/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('.git.dropCommit(workspaceId, commit.hash)');
+            expect(block![0]).toContain('if (result.jobId)');
+            expect(block![0]).toContain('.git.getOperation(workspaceId, jobId)');
+            expect(block![0]).toContain("job.status !== 'running'");
+            expect(block![0]).toContain("refreshAll({ selectFallbackToHead: true })");
+        });
+
+        it('handleDropCommit shows action-error banner state when the async job fails', () => {
+            const block = source.match(/const handleDropCommit = useCallback[\s\S]*?(?=const handleCommitContextMenu)/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain("job?.status === 'failed'");
+            expect(block![0]).toContain("setActionError(job.error || 'Drop commit failed')");
+            expect(source).toContain('data-testid="git-action-error"');
+        });
+
         it('passes onFetch to GitPanelHeader', () => {
             expect(source).toContain('onFetch={handleFetch}');
         });
@@ -706,6 +724,19 @@ describe('RepoGitTab', () => {
             expect(block).toBeTruthy();
             expect(block![0]).toContain('refreshAll()');
             expect(block![0]).toContain('Cherry-picked to');
+        });
+    });
+
+    describe('drop commit context menu', () => {
+        it('computes unpushed commits from commit index and unpushedCount', () => {
+            expect(source).toContain('const commitIndex = commits.findIndex(c => c.hash === commit.hash)');
+            expect(source).toContain('const isUnpushed = commitIndex >= 0 && commitIndex < unpushedCount');
+        });
+
+        it('shows Drop Commit only inside the unpushed context-menu gate', () => {
+            const matches = source.match(/label: 'Drop Commit'/g) ?? [];
+            expect(matches).toHaveLength(1);
+            expect(source).toMatch(/if \(isUnpushed\) \{\s*items\.push\(\{\s*label: 'Drop Commit'[\s\S]*?handleDropCommit\(commit\)/);
         });
     });
 
