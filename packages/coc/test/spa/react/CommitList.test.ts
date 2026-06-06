@@ -484,4 +484,18 @@ describe('CommitList', () => {
             expect(source).toContain('e.stopPropagation()');
         });
     });
+
+    describe('double-click to pop out', () => {
+        it('accepts optional onDoubleClick callback', () => {
+            expect(source).toContain('onDoubleClick?: (commit: GitCommitItem) => void');
+        });
+
+        it('attaches onDoubleClick handler to commit rows', () => {
+            expect(source).toContain('onDoubleClick=');
+        });
+
+        it('calls onDoubleClick with the commit when the row is double-clicked', () => {
+            expect(source).toContain('onDoubleClick?.(commit)');
+        });
+    });
 });

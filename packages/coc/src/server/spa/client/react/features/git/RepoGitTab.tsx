@@ -1621,6 +1621,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             onMobileSelectingChange={handleMobileSelectingChange}
             onSwipeAction={handleSwipeAction}
             classifiedHashes={classifiedHashes}
+            onDoubleClick={handleOpenAsPopup}
         />
     );
 

@@ -225,9 +225,11 @@ export interface CommitListProps {
     onSwipeAction?: (action: 'review' | 'ask-ai' | 'more', commitHash: string) => void;
     /** Set of commit hashes that have a stored classification result. When provided, a ✓ badge is shown. */
     classifiedHashes?: ReadonlySet<string>;
+    /** Called when a commit row is double-clicked. Opens the commit in a pop-out window. */
+    onDoubleClick?: (commit: GitCommitItem) => void;
 }
 
-export function CommitList({ title, commits, selectedHash, selectedHashes, onMultiSelect, selectedFile, initialExpandedHash, onSelect, onFileSelect, onCommitContextMenu, workspaceId, loading, defaultCollapsed = false, showEmpty = false, emptyMessage, unpushedCount = 0, reorderable = false, onReorder, repoRoot, isMobileSelecting = false, onMobileSelectingChange, onSwipeAction, classifiedHashes }: CommitListProps) {
+export function CommitList({ title, commits, selectedHash, selectedHashes, onMultiSelect, selectedFile, initialExpandedHash, onSelect, onFileSelect, onCommitContextMenu, workspaceId, loading, defaultCollapsed = false, showEmpty = false, emptyMessage, unpushedCount = 0, reorderable = false, onReorder, repoRoot, isMobileSelecting = false, onMobileSelectingChange, onSwipeAction, classifiedHashes, onDoubleClick }: CommitListProps) {
     const [collapsed, setCollapsed] = useState(defaultCollapsed);
     const listRef = useRef<HTMLDivElement>(null);
     const [anchorHash, setAnchorHash] = useState<string | null>(null);
@@ -778,6 +780,7 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                             data-hash={commit.hash}
                                             className={`commit-row w-full grid grid-cols-[14px_minmax(0,1fr)_auto] items-start gap-2 px-3 py-1.5 text-left transition-colors border-b border-[#e0e0e0] dark:border-[#3c3c3c] ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20 shadow-[inset_3px_0_0_#0078d4] dark:shadow-[inset_3px_0_0_#3794ff]' : 'hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e]'}${isFixup ? ' opacity-70' : ''}`}
                                             onClick={(e) => handleCommitClick(commit, e)}
+                                            onDoubleClick={() => onDoubleClick?.(commit)}
                                             onMouseEnter={isTouchOnly() ? undefined : (e) => handleRowMouseEnter(commit, e)}
                                             onMouseLeave={isTouchOnly() ? undefined : handleRowMouseLeave}
                                             onTouchStart={touchOnly && onCommitContextMenu ? (e) => { longPressCommitHashRef.current = commit.hash; mobileLongPress.onTouchStart(e); } : undefined}
