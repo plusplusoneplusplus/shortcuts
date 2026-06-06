@@ -102,6 +102,7 @@ The `src/server/` tree is grouped by feature domain. Cross-cutting plumbing stay
 | `ralph/` | Iterative execution sessions and file-backed journal (see [ralph.md](ralph.md)) |
 | `for-each/` | Dedicated For Each run records, item-plan validation, file-backed repo-scoped draft/approval storage, and sequential child-chat orchestration |
 | `models/` | Model registry endpoints |
+| `agent-providers/` | Agent-provider quota cache, provider status routes, SDK install helpers, and the pure Auto provider router that evaluates configured priority, availability, normal quota thresholds, weekly guards, fallback, and selection warnings before callers expand effort tiers |
 | `messaging/` | Teams bot integration: manager, command router, per-user state |
 | `spa/` | Dashboard SPA (HTML template, React client) |
 
