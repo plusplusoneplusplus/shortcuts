@@ -579,4 +579,55 @@ describe('groupByRalphSession', () => {
         const session = result[0] as RalphSession;
         expect(session.loopCount).toBe(3);
     });
+
+    // ---------------------------------------------------------------------
+    // title (goal-derived)
+    // ---------------------------------------------------------------------
+
+    it('derives the session title from a live grilling task originalGoal', () => {
+        const g = makeGrillingTask('sess-title', {
+            createdAt: 1000,
+            payload: { mode: 'ask', context: { ralph: { sessionId: 'sess-title', phase: 'grilling', originalGoal: 'Reviewing Codex skill access for the dashboard' } } },
+        });
+        const session = groupByRalphSession([g])[0] as RalphSession;
+        expect(session.title).toBe('Reviewing Codex skill access for the dashboard');
+    });
+
+    it('derives the session title from a history-item top-level ralph.originalGoal', () => {
+        const i1 = makeIterationHistoryItem('sess-hist-title', 1, {
+            createdAt: 1000,
+            ralph: { sessionId: 'sess-hist-title', phase: 'executing', currentIteration: 1, originalGoal: '## Goal\nImprove Ralph session group titles' },
+        });
+        const session = groupByRalphSession([i1])[0] as RalphSession;
+        expect(session.title).toBe('Improve Ralph session group titles');
+    });
+
+    it('prefers the grilling process goal over iteration goals', () => {
+        const g = makeGrillingTask('sess-pref', {
+            createdAt: 1000,
+            payload: { mode: 'ask', context: { ralph: { sessionId: 'sess-pref', phase: 'grilling', originalGoal: 'Primary confirmed goal text' } } },
+        });
+        const i1 = makeIterationTask('sess-pref', 1, {
+            createdAt: 2000,
+            payload: { mode: 'ralph', context: { ralph: { sessionId: 'sess-pref', phase: 'executing', currentIteration: 1, originalGoal: 'Secondary iteration goal text' } } },
+        });
+        const session = groupByRalphSession([g, i1])[0] as RalphSession;
+        expect(session.title).toBe('Primary confirmed goal text');
+    });
+
+    it('falls back through iterations when the grilling process lacks a goal', () => {
+        const g = makeGrillingTask('sess-fall', { createdAt: 1000 });
+        const i1 = makeIterationTask('sess-fall', 1, {
+            createdAt: 2000,
+            payload: { mode: 'ralph', context: { ralph: { sessionId: 'sess-fall', phase: 'executing', currentIteration: 1, originalGoal: 'Iteration-supplied goal' } } },
+        });
+        const session = groupByRalphSession([g, i1])[0] as RalphSession;
+        expect(session.title).toBe('Iteration-supplied goal');
+    });
+
+    it('falls back to "Ralph Session" when no goal metadata is present', () => {
+        const g = makeGrillingTask('sess-nogoal', { createdAt: 1000 });
+        const session = groupByRalphSession([g])[0] as RalphSession;
+        expect(session.title).toBe('Ralph Session');
+    });
 });

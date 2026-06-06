@@ -157,7 +157,7 @@ async function configureAzureBoards(): Promise<void> {
     });
 }
 
-function makeServer(transport: FakeAzureBoardsTransport): http.Server {
+function makeServer(transport: FakeAzureBoardsTransport, getSyncEnabled: () => boolean = () => true): http.Server {
     const routes: Route[] = [];
     registerWorkItemRoutes({
         routes,
@@ -171,6 +171,7 @@ function makeServer(transport: FakeAzureBoardsTransport): http.Server {
             }],
         } as any,
         getHierarchyEnabled: () => true,
+        getSyncEnabled,
         dataDir: tmpDir,
         azureBoardsProvider: createAzureBoardsWorkItemSyncProviderAdapter({
             dataDir: tmpDir,
@@ -181,8 +182,8 @@ function makeServer(transport: FakeAzureBoardsTransport): http.Server {
     return http.createServer(createRouter({ routes, spaHtml: '' }));
 }
 
-async function startServer(transport: FakeAzureBoardsTransport): Promise<void> {
-    server = makeServer(transport);
+async function startServer(transport: FakeAzureBoardsTransport, getSyncEnabled?: () => boolean): Promise<void> {
+    server = makeServer(transport, getSyncEnabled);
     await new Promise<void>((resolve, reject) => {
         server!.on('error', reject);
         server!.listen(0, '127.0.0.1', () => {
@@ -416,7 +417,37 @@ describe('Azure Boards-backed work item edits', () => {
         expect(stored?.azureBoardsMirror?.revision).toBe(1);
     });
 
-    it('rejects stale local saves when the Azure revision changed remotely', async () => {
+    it('stores Azure-backed local edits without provider transport calls when work item sync is disabled', async () => {
+        await store.addWorkItem(makeWorkItem({
+            id: 'epic-1',
+            title: 'Azure Epic',
+            type: 'epic',
+            tracker: {
+                kind: 'azure-boards-backed',
+                provider: 'azure-boards',
+                azureBoards: { workItemId: 100, workItemUrl: htmlUrl(100), revision: 1, updatedAt: NOW, lastPulledAt: NOW },
+            },
+            azureBoardsMirror: { workItemId: 100, workItemUrl: htmlUrl(100), revision: 1, workItemType: 'Epic', state: 'Active', updatedAt: NOW, lastPulledAt: NOW },
+        }));
+        const transport = new FakeAzureBoardsTransport();
+        transport.set([{ id: 100, revision: 1, title: 'Azure Epic', state: 'Active', workItemType: 'Epic', updatedAt: NOW, url: htmlUrl(100) }]);
+        await startServer(transport, () => false);
+
+        const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/epic-1`, {
+            title: 'Local-only while sync disabled',
+            status: 'planning',
+        });
+
+        expect(res.status).toBe(200);
+        expect(transport.calls.get).toHaveLength(0);
+        expect(transport.calls.update).toHaveLength(0);
+        const stored = await store.getWorkItem('epic-1', REPO_ID);
+        expect(stored?.title).toBe('Local-only while sync disabled');
+        expect(stored?.status).toBe('planning');
+        expect(stored?.azureBoardsMirror?.revision).toBe(1);
+    });
+
+    it('rejects stale local saves with a typed per-field conflict when the Azure revision changed remotely', async () => {
         await store.addWorkItem(makeWorkItem({
             id: 'epic-1',
             title: 'Azure Epic',
@@ -429,18 +460,107 @@ describe('Azure Boards-backed work item edits', () => {
             azureBoardsMirror: { workItemId: 100, workItemUrl: htmlUrl(100), revision: 3, workItemType: 'Epic', state: 'Active', updatedAt: NOW, lastPulledAt: NOW },
         }));
         const transport = new FakeAzureBoardsTransport();
-        transport.set([{ id: 100, revision: 4, title: 'Remote changed title', state: 'Active', workItemType: 'Epic', updatedAt: NOW, url: htmlUrl(100) }]);
+        transport.set([{
+            id: 100,
+            revision: 4,
+            title: 'Remote changed title',
+            description: 'Remote description',
+            state: 'Active',
+            workItemType: 'Epic',
+            priority: 1,
+            tags: 'alpha; beta',
+            updatedAt: NOW,
+            url: htmlUrl(100),
+        }]);
         await startServer(transport);
 
         const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/epic-1`, {
             title: 'Stale local title',
+            priority: 'low',
         });
 
         expect(res.status).toBe(409);
-        expect(res.body.code).toBe('WORK_ITEM_AZURE_BOARDS_CONFLICT');
+        expect(res.body.code).toBe('WORK_ITEM_SYNC_CONFLICT');
         expect(transport.calls.update).toHaveLength(0);
+
+        const details = res.body.details;
+        expect(details).toMatchObject({
+            kind: 'work-item-sync-conflict',
+            provider: 'azure-boards',
+            providerLabel: 'Azure Boards',
+            workItemId: 'epic-1',
+            remoteWorkItemId: 100,
+            localRevision: 3,
+            remoteRevision: 4,
+        });
+        const byField = Object.fromEntries(details.fields.map((f: any) => [f.field, f]));
+        expect(byField.title).toEqual({ field: 'title', draft: 'Stale local title', base: 'Azure Epic', remote: 'Remote changed title' });
+        expect(byField.priority).toEqual({ field: 'priority', draft: 'low', base: 'normal', remote: 'high' });
+        expect(byField.status).toEqual({ field: 'status', draft: 'created', base: 'created', remote: 'executing' });
+        expect(byField.description).toEqual({ field: 'description', draft: null, base: null, remote: 'Remote description' });
+        expect(byField.tags).toEqual({ field: 'tags', draft: null, base: null, remote: 'alpha, beta' });
+        // Remote item has no parent relation, so parent matches the local Epic root and is omitted.
+        expect(byField.parent).toBeUndefined();
+
         const stored = await store.getWorkItem('epic-1', REPO_ID);
         expect(stored?.title).toBe('Azure Epic');
         expect(stored?.azureBoardsMirror?.revision).toBe(3);
+    });
+
+    it('allows a reviewed stale Azure Boards save when the acknowledged revision still matches', async () => {
+        await store.addWorkItem(makeWorkItem({
+            id: 'epic-1',
+            title: 'Azure Epic',
+            type: 'epic',
+            tracker: {
+                kind: 'azure-boards-backed',
+                provider: 'azure-boards',
+                azureBoards: { workItemId: 100, workItemUrl: htmlUrl(100), revision: 3, updatedAt: NOW, lastPulledAt: NOW },
+            },
+            azureBoardsMirror: { workItemId: 100, workItemUrl: htmlUrl(100), revision: 3, workItemType: 'Epic', state: 'Active', updatedAt: NOW, lastPulledAt: NOW },
+        }));
+        const transport = new FakeAzureBoardsTransport();
+        transport.set([{
+            id: 100,
+            revision: 4,
+            title: 'Remote changed title',
+            description: '',
+            state: 'Active',
+            workItemType: 'Epic',
+            priority: 2,
+            updatedAt: NOW,
+            url: htmlUrl(100),
+        }]);
+        await startServer(transport);
+
+        const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/epic-1`, {
+            title: 'Resolved local title',
+            syncConflictResolution: {
+                provider: 'azure-boards',
+                acknowledgedRemoteRevision: 4,
+            },
+        });
+
+        expect(res.status).toBe(200);
+        expect(transport.calls.update).toEqual([{
+            workItemId: 100,
+            input: {
+                workItemType: 'Epic',
+                title: 'Resolved local title',
+                description: '',
+                state: 'New',
+                priority: 2,
+                tags: undefined,
+                expectedRevision: 4,
+            },
+        }]);
+        expect(res.body).toMatchObject({
+            id: 'epic-1',
+            title: 'Resolved local title',
+            azureBoardsMirror: { workItemId: 100, revision: 5 },
+        });
+        const stored = await store.getWorkItem('epic-1', REPO_ID);
+        expect(stored?.title).toBe('Resolved local title');
+        expect(stored?.azureBoardsMirror?.revision).toBe(5);
     });
 });

@@ -1,6 +1,6 @@
 /**
- * Filter pill row for the PR review command queue: All / Mine /
- * Blocked / Ready. The active pill controls both server scope and
+ * Filter pill row for the PR review command queue: All / Mine / Team /
+ * Blocked / Ready / optional For You. The active pill controls server scope and
  * client-side queue grouping in `PullRequestsTab`.
  */
 

@@ -20,6 +20,7 @@ import * as path from 'path';
 import { PassThrough, Writable } from 'stream';
 import {
     ClaudeSDKService,
+    extractClaudeAccessToken,
     mapClaudeAccountInfoToQuota,
     mapClaudeRateLimitInfoToQuota,
     mapOAuthUsageToQuota,
@@ -30,6 +31,7 @@ import {
     SDK_PROVIDER_CLAUDE,
     sdkServiceRegistry,
 } from '../../src/sdk-service-registry';
+import { initSDKLogger, resetSDKLogger } from '../../src/logger';
 
 // ============================================================================
 // Module mock for @anthropic-ai/claude-agent-sdk
@@ -124,6 +126,42 @@ function stubProcessPlatform(platform: NodeJS.Platform): () => void {
         if (original) {
             Object.defineProperty(process, 'platform', original);
         }
+    };
+}
+
+function createCapturingLogger() {
+    const logs: Array<{ level: string; fields: Record<string, unknown>; message: string; args: unknown[] }> = [];
+
+    function makeCapture(bindings: Record<string, unknown> = {}) {
+        const capture = (level: string, ...args: unknown[]) => {
+            const [firstArg, secondArg, ...restArgs] = args;
+            const fields = typeof firstArg === 'object' && firstArg !== null && !Array.isArray(firstArg)
+                ? { ...bindings, ...(firstArg as Record<string, unknown>) }
+                : { ...bindings };
+            const message = typeof firstArg === 'string'
+                ? firstArg
+                : typeof secondArg === 'string'
+                    ? secondArg
+                    : '';
+            logs.push({
+                level,
+                fields,
+                message,
+                args: typeof firstArg === 'string' ? args.slice(1) : restArgs,
+            });
+        };
+        return {
+            debug: (...args: unknown[]) => capture('debug', ...args),
+            info: (...args: unknown[]) => capture('info', ...args),
+            warn: (...args: unknown[]) => capture('warn', ...args),
+            error: (...args: unknown[]) => capture('error', ...args),
+            child: (childBindings: Record<string, unknown>) => makeCapture({ ...bindings, ...childBindings }),
+        };
+    }
+
+    return {
+        logs,
+        logger: makeCapture(),
     };
 }
 
@@ -257,6 +295,7 @@ describe('ClaudeSDKService.listModels', () => {
     });
 
     afterEach(() => {
+        resetSDKLogger();
         svc.dispose();
     });
 
@@ -491,6 +530,7 @@ describe('ClaudeSDKService.sendMessage', () => {
     });
 
     afterEach(() => {
+        resetSDKLogger();
         svc.dispose();
     });
 
@@ -855,6 +895,241 @@ describe('ClaudeSDKService.sendMessage', () => {
         const result = await svc.sendMessage({ prompt: 'fail me' });
         expect(result.success).toBe(false);
         expect(result.error).toMatch(/something went wrong/);
+    });
+
+    it('logs sanitized metadata when Claude returns error_during_execution without a result body', async () => {
+        const capLogger = createCapturingLogger();
+        initSDKLogger(capLogger.logger as any);
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'result',
+                subtype: 'error_during_execution',
+                is_error: true,
+                session_id: 'provider-session',
+                duration_ms: 1234,
+                num_turns: 2,
+                api_error_status: 429,
+                terminal_reason: 'api_error',
+                stop_reason: 'rate_limit',
+            },
+        ]));
+
+        const result = await svc.sendMessage({
+            prompt: 'SECRET_PROMPT_TEXT',
+            model: 'opus',
+            workingDirectory: '/safe/project',
+            mode: 'autopilot',
+            systemMessage: { mode: 'append', content: 'SECRET_SYSTEM_PROMPT' },
+            mcpServers: {
+                safe_server: {
+                    command: 'node',
+                    args: ['bridge.js', '--token', 'SECRET_MCP_TOKEN'],
+                    env: { TOKEN: 'SECRET_MCP_TOKEN' },
+                },
+            },
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('Claude returned error_during_execution');
+
+        const warning = capLogger.logs.find(log =>
+            log.level === 'warn' &&
+            log.message === 'Claude SDK result message reported failure'
+        );
+        expect(warning?.fields).toMatchObject({
+            store: 'coc-agent-sdk',
+            provider: 'claude',
+            event: 'claude_result_failure',
+            subtype: 'error_during_execution',
+            is_error: true,
+            session_id: 'provider-session',
+            duration_ms: 1234,
+            num_turns: 2,
+            api_error_status: 429,
+            terminal_reason: 'api_error',
+            stop_reason: 'rate_limit',
+            requestedModel: 'opus',
+            effectiveModel: 'opus',
+            workingDirectory: '/safe/project',
+            permissionMode: 'bypassPermissions',
+            mcpConfigured: true,
+            mcpServerNames: ['safe_server'],
+        });
+        const serializedLog = JSON.stringify(warning);
+        expect(serializedLog).not.toContain('SECRET_PROMPT_TEXT');
+        expect(serializedLog).not.toContain('SECRET_SYSTEM_PROMPT');
+        expect(serializedLog).not.toContain('SECRET_MCP_TOKEN');
+    });
+
+    it('logs sanitized exception diagnostics when the Claude SDK throws', async () => {
+        const capLogger = createCapturingLogger();
+        initSDKLogger(capLogger.logger as any);
+        const cause = Object.assign(
+            new Error('cause saw SECRET_PROMPT_TEXT and SECRET_MCP_TOKEN'),
+            { code: 'rate_limited', status: 429 },
+        );
+        const sdkError = new Error('SDK rejected SECRET_PROMPT_TEXT SECRET_SYSTEM_PROMPT SECRET_MCP_TOKEN');
+        sdkError.name = 'ClaudeSDKError';
+        sdkError.stack = [
+            'ClaudeSDKError: SDK rejected SECRET_PROMPT_TEXT SECRET_SYSTEM_PROMPT SECRET_MCP_TOKEN',
+            '    at query (claude-sdk.js:10:5)',
+            '    at bridge (SECRET_MCP_TOKEN.js:20:5)',
+        ].join('\n');
+        (sdkError as Error & { cause?: unknown }).cause = cause;
+        queryFn.mockImplementationOnce(() => {
+            throw sdkError;
+        });
+
+        const result = await svc.sendMessage({
+            prompt: 'SECRET_PROMPT_TEXT',
+            model: 'opus',
+            workingDirectory: '/safe/project',
+            mode: 'plan',
+            systemMessage: { mode: 'append', content: 'SECRET_SYSTEM_PROMPT' },
+            mcpServers: {
+                safe_server: {
+                    command: 'node',
+                    args: ['bridge.js', '--token', 'SECRET_MCP_TOKEN'],
+                    env: { TOKEN: 'SECRET_MCP_TOKEN' },
+                },
+            },
+        });
+
+        expect(result).toMatchObject({
+            success: false,
+            error: 'SDK rejected SECRET_PROMPT_TEXT SECRET_SYSTEM_PROMPT SECRET_MCP_TOKEN',
+            effectiveModel: 'opus',
+        });
+
+        const errorLog = capLogger.logs.find(log =>
+            log.level === 'error' &&
+            log.message === 'Claude SDK sendMessage threw'
+        );
+        expect(errorLog?.fields).toMatchObject({
+            store: 'coc-agent-sdk',
+            provider: 'claude',
+            event: 'claude_sdk_exception',
+            name: 'ClaudeSDKError',
+            message: 'SDK rejected [redacted] [redacted] [redacted]',
+            requestedModel: 'opus',
+            effectiveModel: 'opus',
+            workingDirectory: '/safe/project',
+            permissionMode: 'plan',
+            mcpConfigured: true,
+            mcpServerNames: ['safe_server'],
+            cause: {
+                name: 'Error',
+                message: 'cause saw [redacted] and [redacted]',
+                code: 'rate_limited',
+                status: 429,
+            },
+        });
+        expect(errorLog?.fields.stack).toContain('at query (claude-sdk.js:10:5)');
+        const serializedLog = JSON.stringify(errorLog);
+        expect(serializedLog).not.toContain('SECRET_PROMPT_TEXT');
+        expect(serializedLog).not.toContain('SECRET_SYSTEM_PROMPT');
+        expect(serializedLog).not.toContain('SECRET_MCP_TOKEN');
+    });
+
+    it('correlates the latest in-call rate_limit_event with a later failed result', async () => {
+        const capLogger = createCapturingLogger();
+        initSDKLogger(capLogger.logger as any);
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'rate_limit_event',
+                rate_limit_info: {
+                    status: 'allowed_warning',
+                    rateLimitType: 'five_hour',
+                    utilization: 0.75,
+                    resetsAt: 1700000000,
+                },
+            },
+            {
+                type: 'rate_limit_event',
+                rate_limit_info: {
+                    status: 'rejected',
+                    rateLimitType: 'seven_day_opus',
+                    utilization: 0.99,
+                    surpassedThreshold: 1,
+                    resetsAt: 1700500000000,
+                    overageStatus: 'rejected',
+                    overageResetsAt: 1700600000,
+                    isUsingOverage: false,
+                },
+            },
+            {
+                type: 'result',
+                subtype: 'error_during_execution',
+                is_error: true,
+                session_id: 'provider-session',
+            },
+        ]));
+
+        const result = await svc.sendMessage({
+            prompt: 'SECRET_PROMPT_TEXT',
+            model: 'opus',
+            workingDirectory: '/safe/project',
+            mode: 'ask',
+        });
+
+        expect(result).toMatchObject({
+            success: false,
+            error: 'Claude returned error_during_execution',
+            sessionId: 'provider-session',
+            effectiveModel: 'opus',
+        });
+
+        const warning = capLogger.logs.find(log =>
+            log.level === 'warn' &&
+            log.message === 'Claude SDK result message reported failure'
+        );
+        expect(warning?.fields).toMatchObject({
+            event: 'claude_result_failure',
+            rateLimitType: 'seven_day_opus',
+            rateLimitStatus: 'rejected',
+            rateLimitUtilization: 0.99,
+            rateLimitSurpassedThreshold: 1,
+            rateLimitResetsAt: 1700500000000,
+            rateLimitResetDate: new Date(1700500000000).toISOString(),
+            rateLimitOverageStatus: 'rejected',
+            rateLimitOverageResetsAt: 1700600000,
+            rateLimitOverageResetDate: new Date(1700600000 * 1000).toISOString(),
+            rateLimitIsUsingOverage: false,
+        });
+        expect(JSON.stringify(warning)).not.toContain('SECRET_PROMPT_TEXT');
+    });
+
+    it('treats allowed rate_limit_event messages as successful-session metadata', async () => {
+        const capLogger = createCapturingLogger();
+        initSDKLogger(capLogger.logger as any);
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'rate_limit_event',
+                rate_limit_info: {
+                    status: 'allowed',
+                    rateLimitType: 'five_hour',
+                    utilization: 0.12,
+                    resetsAt: 1700000000,
+                },
+            },
+            { type: 'result', subtype: 'success', result: 'ok' },
+        ]));
+
+        const result = await svc.sendMessage({ prompt: 'hello' });
+
+        expect(result).toMatchObject({
+            success: true,
+            response: 'ok',
+        });
+        const debug = capLogger.logs.find(log =>
+            log.level === 'debug' &&
+            log.message === '[ClaudeQuota] session rate_limit_event — status=%s type=%s utilization=%s'
+        );
+        expect(debug?.args).toEqual(['allowed', 'five_hour', 0.12]);
+        expect(capLogger.logs).not.toContainEqual(expect.objectContaining({
+            level: 'warn',
+            message: 'Claude SDK result message reported failure',
+        }));
     });
 
     it('returns failure when request is already aborted', async () => {
@@ -1394,6 +1669,44 @@ describe('mapOAuthUsageToQuota', () => {
 });
 
 // ============================================================================
+// extractClaudeAccessToken
+// ============================================================================
+
+describe('extractClaudeAccessToken', () => {
+    it('reads the Claude Code nested claudeAiOauth.accessToken shape', () => {
+        expect(extractClaudeAccessToken({
+            claudeAiOauth: { accessToken: 'nested-tok', refreshToken: 'r' },
+        })).toBe('nested-tok');
+    });
+
+    it('reads the flat access_token shape', () => {
+        expect(extractClaudeAccessToken({ access_token: 'flat-tok' })).toBe('flat-tok');
+    });
+
+    it('prefers the nested token over a flat token', () => {
+        expect(extractClaudeAccessToken({
+            claudeAiOauth: { accessToken: 'nested-tok' },
+            access_token: 'flat-tok',
+        })).toBe('nested-tok');
+    });
+
+    it('falls back to the flat token when the nested token is empty', () => {
+        expect(extractClaudeAccessToken({
+            claudeAiOauth: { accessToken: '' },
+            access_token: 'flat-tok',
+        })).toBe('flat-tok');
+    });
+
+    it('returns undefined when no token is present', () => {
+        expect(extractClaudeAccessToken({})).toBeUndefined();
+        expect(extractClaudeAccessToken({ claudeAiOauth: {} })).toBeUndefined();
+        expect(extractClaudeAccessToken({ claudeAiOauth: { accessToken: 123 } })).toBeUndefined();
+        expect(extractClaudeAccessToken({ access_token: '' })).toBeUndefined();
+        expect(extractClaudeAccessToken({ claudeAiOauth: null })).toBeUndefined();
+    });
+});
+
+// ============================================================================
 // getAccountQuota — Linux OAuth integration
 // ============================================================================
 
@@ -1444,6 +1757,38 @@ describe('ClaudeSDKService.getAccountQuota (Linux OAuth)', () => {
         expect(quota.quotaSnapshots).toHaveProperty('seven_day');
         expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(72);
         expect(quota.quotaSnapshots.seven_day.usedRequests).toBe(45);
+    });
+
+    it('fetches quota using the Claude Code nested claudeAiOauth.accessToken credential shape', async () => {
+        // Regression: `claude login` writes credentials as
+        // { claudeAiOauth: { accessToken, refreshToken, ... } }, not a flat
+        // { access_token }. The quota lookup must read the nested token.
+        fs.writeFileSync(tempCredFile, JSON.stringify({
+            claudeAiOauth: {
+                accessToken: 'nested-tok-456',
+                refreshToken: 'refresh-789',
+                expiresAt: 9999999999999,
+                scopes: ['user:inference'],
+                subscriptionType: 'max',
+                rateLimitTier: 'default',
+            },
+        }));
+        fetchSpy.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                five_hour: { utilization: 30, resets_at: '2026-06-04T12:00:00.000Z' },
+                seven_day: { utilization: 12, resets_at: '2026-06-11T00:00:00.000Z' },
+            }),
+        });
+
+        const quota = await svc.getAccountQuota();
+
+        expect(fetchSpy).toHaveBeenCalledWith(
+            'https://api.anthropic.com/api/oauth/usage',
+            expect.objectContaining({ headers: expect.objectContaining({ 'Authorization': 'Bearer nested-tok-456' }) })
+        );
+        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(30);
+        expect(quota.quotaSnapshots.seven_day.usedRequests).toBe(12);
     });
 
     it('returns empty snapshots when the credentials file is missing', async () => {

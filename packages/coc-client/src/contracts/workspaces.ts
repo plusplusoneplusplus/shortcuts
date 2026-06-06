@@ -191,6 +191,8 @@ export interface ProcessHistoryItem {
     sessionId: string;
     phase?: 'grilling' | 'executing' | 'complete';
     currentIteration?: number;
+    /** Confirmed goal spec, used to derive a concise chat-list title. */
+    originalGoal?: string;
   };
   forEach?: {
     kind?: 'child' | 'generation';

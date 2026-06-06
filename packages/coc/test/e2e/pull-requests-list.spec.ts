@@ -79,6 +79,88 @@ async function openPrTab(page: any, serverUrl: string, wsId: string) {
     await page.click('button[data-subtab="pull-requests"]');
 }
 
+async function expectRosterEntryPersisted(
+    serverUrl: string,
+    repoId: string,
+    expected: { id: string; displayName: string },
+): Promise<void> {
+    const res = await request(`${serverUrl}/api/repos/${repoId}/pull-requests/coworker-roster?workspaceId=${repoId}`);
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.entries).toEqual(expect.arrayContaining([
+        expect.objectContaining(expected),
+    ]));
+}
+
+async function runTeamFilterProviderDemo(
+    page: any,
+    serverUrl: string,
+    scenario: {
+        repoId: string;
+        teammateId: string | number;
+        teammateDisplayName: string;
+        teammateTitle: string;
+        otherId: string | number;
+        otherDisplayName: string;
+        otherTitle: string;
+    },
+): Promise<void> {
+    const { id: repoId, cleanup } = await seedPrWorkspace(serverUrl, scenario.repoId, 'My Repo');
+    const routeCleanup = await setupPrRoutes(page, serverUrl, repoId, {
+        pullRequests: [
+            createMockPullRequest({
+                id: 1,
+                number: 1,
+                title: scenario.teammateTitle,
+                author: {
+                    id: scenario.teammateId,
+                    displayName: scenario.teammateDisplayName,
+                    email: `${String(scenario.repoId).replace(/[^a-z0-9-]/gi, '-')}@example.invalid`,
+                },
+            }),
+            createMockPullRequest({
+                id: 2,
+                number: 2,
+                title: scenario.otherTitle,
+                author: {
+                    id: scenario.otherId,
+                    displayName: scenario.otherDisplayName,
+                },
+            }),
+        ],
+    });
+
+    try {
+        await openPrTab(page, serverUrl, repoId);
+        await expect(page.locator('[data-testid="pr-row"]')).toHaveCount(2, { timeout: 10000 });
+
+        const teamFilter = page.locator('[data-testid="pr-queue-filter-team"]');
+        await expect(teamFilter).toContainText('0', { timeout: 10000 });
+        await teamFilter.click();
+
+        await expect(page.locator('[data-testid="team-roster-toolbar"]')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('[data-testid="team-roster-empty"]')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('[data-testid="pr-row"]')).toHaveCount(0, { timeout: 10000 });
+
+        await page.locator('[data-testid="team-coworker-picker"]').selectOption({ label: scenario.teammateDisplayName });
+        await page.locator('[data-testid="team-coworker-add"]').click();
+
+        await expect(page.locator('[data-testid="team-coworker-chip"]')).toContainText(scenario.teammateDisplayName, { timeout: 10000 });
+        await expect(teamFilter).toContainText('1', { timeout: 10000 });
+        await expect(page.locator('[data-testid="pr-row"]')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator('[data-testid="pr-row"]').first().locator('.pr-title')).toHaveText(scenario.teammateTitle, { timeout: 10000 });
+        await expect(page.getByText(scenario.otherTitle)).toHaveCount(0);
+
+        await expectRosterEntryPersisted(serverUrl, repoId, {
+            id: String(scenario.teammateId),
+            displayName: scenario.teammateDisplayName,
+        });
+    } finally {
+        await routeCleanup();
+        cleanup();
+    }
+}
+
 test.describe('Pull Requests tab — list', () => {
     test('sub-tab button is visible and clickable', async ({ page, serverUrl }) => {
         const { id: repoId, cleanup } = await seedPrWorkspace(serverUrl, 'ws-1', 'My Repo');
@@ -312,5 +394,29 @@ test.describe('Pull Requests tab — list', () => {
             await page.unroute(`${prApiBase}?*`);
             cleanup();
         }
+    });
+
+    test('Team filter add flow works with GitHub numeric author ids', async ({ page, serverUrl }) => {
+        await runTeamFilterProviderDemo(page, serverUrl, {
+            repoId: 'ws-team-github',
+            teammateId: 123456789,
+            teammateDisplayName: 'GitHub Teammate',
+            teammateTitle: 'GitHub teammate PR',
+            otherId: 987654321,
+            otherDisplayName: 'GitHub Other',
+            otherTitle: 'GitHub other PR',
+        });
+    });
+
+    test('Team filter add flow works with Azure DevOps GUID author ids', async ({ page, serverUrl }) => {
+        await runTeamFilterProviderDemo(page, serverUrl, {
+            repoId: 'ws-team-ado',
+            teammateId: '3f4d2f1a-7b7a-4b58-9a3d-8a8f4a5e2b6c',
+            teammateDisplayName: 'ADO Teammate',
+            teammateTitle: 'ADO teammate PR',
+            otherId: '8d7d43ed-343e-4f23-bf2f-7ec9cf391ccb',
+            otherDisplayName: 'ADO Other',
+            otherTitle: 'ADO other PR',
+        });
     });
 });

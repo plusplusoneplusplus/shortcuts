@@ -34,7 +34,7 @@ describe('work items SPA client migration', () => {
 
     it('loads, mutates, and deletes work item detail through client.workItems', () => {
         for (const call of [
-            'workItems.get(workspaceId, workItemId)',
+            'workItems.get(requestedWorkspaceId, requestedWorkItemId)',
             'workItems.updateStatus(workspaceId, workItemId',
             'workItems.update(workspaceId, workItemId',
             'workItems.requestChanges(workspaceId, workItemId',

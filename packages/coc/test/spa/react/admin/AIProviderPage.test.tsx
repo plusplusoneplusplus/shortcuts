@@ -72,6 +72,26 @@ function renderPage(overrides: Partial<AIProviderPageProps> = {}) {
     };
 }
 
+function quotaType(overrides: {
+    type: string;
+    remainingPercentage?: number;
+    usedRequests?: number;
+    entitlementRequests?: number;
+    resetDate?: string;
+    isUnlimitedEntitlement?: boolean;
+}) {
+    return {
+        type: overrides.type,
+        isUnlimitedEntitlement: overrides.isUnlimitedEntitlement ?? false,
+        usedRequests: overrides.usedRequests ?? 0,
+        entitlementRequests: overrides.entitlementRequests ?? 100,
+        remainingPercentage: overrides.remainingPercentage ?? 1,
+        usageAllowedWithExhaustedQuota: false,
+        overage: 0,
+        resetDate: overrides.resetDate ?? '',
+    };
+}
+
 describe('AIProviderPage', () => {
     beforeEach(() => { vi.clearAllMocks(); });
 
@@ -259,14 +279,13 @@ describe('AIProviderPage', () => {
                 providers: [
                     {
                         id: 'codex',
-                        quotaTypes: [{
+                        quotaTypes: [quotaType({
                             type: 'requests',
                             remainingPercentage: 0.7,
                             usedRequests: 30,
                             entitlementRequests: 100,
                             resetDate: '2026-06-01',
-                            isUnlimitedEntitlement: false,
-                        }],
+                        })],
                     },
                 ],
             },
@@ -275,25 +294,199 @@ describe('AIProviderPage', () => {
         expect(allMatches.length).toBeGreaterThanOrEqual(1);
     });
 
+    it('renders every finite quota window as one compact row without per-window status badges', () => {
+        renderPage({
+            quotaData: {
+                providers: [
+                    {
+                        id: 'codex',
+                        quotaTypes: [
+                            quotaType({
+                                type: 'five_hour',
+                                remainingPercentage: 0.42,
+                                usedRequests: 58,
+                                entitlementRequests: 100,
+                                resetDate: '2026-06-05T20:00:00Z',
+                            }),
+                            quotaType({
+                                type: 'seven_day',
+                                remainingPercentage: 0.87,
+                                usedRequests: 13,
+                                entitlementRequests: 100,
+                                resetDate: '2026-06-12T20:00:00Z',
+                            }),
+                        ],
+                    },
+                ],
+            },
+        });
+
+        const codexRow = screen.getByTestId('provider-row-codex');
+        // Exactly one compact row per quota window.
+        expect(codexRow.querySelectorAll('.aip-quota-row').length).toBe(2);
+        expect(within(codexRow).getByText('5h')).toBeDefined();
+        expect(within(codexRow).getByText('42% remaining')).toBeDefined();
+        expect(within(codexRow).getByText('58 / 100 used')).toBeDefined();
+        expect(within(codexRow).getByLabelText('5h quota remaining')).toBeDefined();
+        expect(within(codexRow).getByText('Weekly')).toBeDefined();
+        expect(within(codexRow).getByText('87% remaining')).toBeDefined();
+        expect(within(codexRow).getByText('13 / 100 used')).toBeDefined();
+        expect(within(codexRow).getByLabelText('Weekly quota remaining')).toBeDefined();
+        // Per-window OK / Watch / Risk badges are removed from quota rows.
+        expect(within(codexRow).queryByText('OK')).toBeNull();
+        expect(within(codexRow).queryByText('Watch')).toBeNull();
+        expect(within(codexRow).queryByText('Risk')).toBeNull();
+    });
+
+    it('renders simultaneous Claude five-hour and weekly quota windows as separate rows', () => {
+        renderPage({
+            quotaData: {
+                providers: [
+                    {
+                        id: 'claude',
+                        quotaTypes: [
+                            quotaType({
+                                type: 'five_hour',
+                                remainingPercentage: 0.24,
+                                usedRequests: 76,
+                                entitlementRequests: 100,
+                                resetDate: '2026-06-05T20:00:00Z',
+                            }),
+                            quotaType({
+                                type: 'seven_day',
+                                remainingPercentage: 0.68,
+                                usedRequests: 32,
+                                entitlementRequests: 100,
+                                resetDate: '2026-06-12T20:00:00Z',
+                            }),
+                        ],
+                    },
+                ],
+            },
+        });
+
+        const claudeRow = screen.getByTestId('provider-row-claude');
+        // One compact row per quota window, no duplicate per-window status badges.
+        expect(claudeRow.querySelectorAll('.aip-quota-row').length).toBe(2);
+        expect(within(claudeRow).getByText('5h')).toBeDefined();
+        expect(within(claudeRow).getByText('24% remaining')).toBeDefined();
+        expect(within(claudeRow).getByText('76 / 100 used')).toBeDefined();
+        expect(within(claudeRow).getByLabelText('5h quota remaining')).toBeDefined();
+        expect(within(claudeRow).getByText('Weekly')).toBeDefined();
+        expect(within(claudeRow).getByText('68% remaining')).toBeDefined();
+        expect(within(claudeRow).getByText('32 / 100 used')).toBeDefined();
+        expect(within(claudeRow).getByLabelText('Weekly quota remaining')).toBeDefined();
+        // Per-window OK / Watch / Risk badges are removed from quota rows.
+        expect(within(claudeRow).queryByText('OK')).toBeNull();
+        expect(within(claudeRow).queryByText('Watch')).toBeNull();
+        expect(within(claudeRow).queryByText('Risk')).toBeNull();
+    });
+
+    it('keeps Copilot finite quota display on the tightest quota row', () => {
+        renderPage({
+            quotaData: {
+                providers: [
+                    {
+                        id: 'copilot',
+                        quotaTypes: [
+                            quotaType({
+                                type: 'five_hour',
+                                remainingPercentage: 0.72,
+                                usedRequests: 28,
+                                entitlementRequests: 100,
+                                resetDate: '2026-06-05T20:00:00Z',
+                            }),
+                            quotaType({
+                                type: 'seven_day',
+                                remainingPercentage: 0.18,
+                                usedRequests: 82,
+                                entitlementRequests: 100,
+                                resetDate: '2026-06-12T20:00:00Z',
+                            }),
+                        ],
+                    },
+                ],
+            },
+        });
+
+        const copilotRow = screen.getByTestId('provider-row-copilot');
+        expect(within(copilotRow).getByText('18% remaining')).toBeDefined();
+        expect(within(copilotRow).getByText('82 / 100 used')).toBeDefined();
+        expect(within(copilotRow).getByText('Risk')).toBeDefined();
+        expect(within(copilotRow).queryByText('5h')).toBeNull();
+        expect(within(copilotRow).queryByText('Weekly')).toBeNull();
+        expect(within(copilotRow).queryByText('72% remaining')).toBeNull();
+        expect(within(copilotRow).queryByLabelText('Weekly quota remaining')).toBeNull();
+    });
+
+    it('falls back to a readable label for unknown quota types', () => {
+        renderPage({
+            quotaData: {
+                providers: [
+                    {
+                        id: 'claude',
+                        quotaTypes: [quotaType({
+                            type: 'monthly-window',
+                            remainingPercentage: 0.53,
+                        })],
+                    },
+                ],
+            },
+        });
+
+        const claudeRow = screen.getByTestId('provider-row-claude');
+        expect(within(claudeRow).getByText('Monthly window')).toBeDefined();
+        expect(within(claudeRow).getByText('53% remaining')).toBeDefined();
+        expect(within(claudeRow).getByLabelText('Monthly window quota remaining')).toBeDefined();
+    });
+
     it('shows unlimited for unlimited quota', () => {
         renderPage({
             quotaData: {
                 providers: [
                     {
                         id: 'copilot',
-                        quotaTypes: [{
+                        quotaTypes: [quotaType({
                             type: 'chat',
                             isUnlimitedEntitlement: true,
                             remainingPercentage: 1,
                             usedRequests: 0,
                             entitlementRequests: 0,
-                            resetDate: '',
-                        }],
+                        })],
                     },
                 ],
             },
         });
         expect(screen.getByText('Unlimited')).toBeDefined();
+    });
+
+    it('shows not reported when a provider returns no quota snapshots', () => {
+        renderPage({
+            quotaData: {
+                providers: [
+                    { id: 'codex', quotaTypes: [] },
+                ],
+            },
+        });
+
+        const codexRow = screen.getByTestId('provider-row-codex');
+        expect(within(codexRow).getByText('Not reported')).toBeDefined();
+        expect(within(codexRow).getByText('Provider returned no quota snapshots')).toBeDefined();
+    });
+
+    it('shows provider quota errors without changing row controls', () => {
+        renderPage({
+            quotaData: {
+                providers: [
+                    { id: 'claude', quotaTypes: [], error: 'quota unavailable' },
+                ],
+            },
+        });
+
+        const claudeRow = screen.getByTestId('provider-row-claude');
+        expect(within(claudeRow).getAllByText('Error').length).toBeGreaterThanOrEqual(1);
+        expect(within(claudeRow).getByText('quota unavailable')).toBeDefined();
+        expect(within(claudeRow).getByTestId('toggle-claude-enabled')).toBeDefined();
     });
 
     // ────────────── Refresh quota ──────────────

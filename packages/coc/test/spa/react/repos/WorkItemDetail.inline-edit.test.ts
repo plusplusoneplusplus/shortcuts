@@ -100,7 +100,7 @@ describe('WorkItemDetail always-on inline editing', () => {
 
     describe('AC-05: save failure preserves values', () => {
         it('validates title and shows inline error', () => {
-            expect(src).toContain('draft.title.trim()');
+            expect(src).toContain('draftToSave.title.trim()');
             expect(src).toContain('Title is required');
             expect(src).toContain('wi-edit-error');
             expect(src).toContain('setEditError');
@@ -114,6 +114,21 @@ describe('WorkItemDetail always-on inline editing', () => {
         it('normalizes tags to unique trimmed non-empty values', () => {
             expect(src).toContain('function parseTags');
             expect(src).toContain('new Set(tags.split');
+        });
+    });
+
+    describe('AC-06: remote sync conflict resolution', () => {
+        it('detects the shared sync conflict code and renders an inline panel', () => {
+            expect(src).toContain('WORK_ITEM_SYNC_CONFLICT_CODE');
+            expect(src).toContain('getSyncConflictDetails');
+            expect(src).toContain('wi-sync-conflict-panel');
+        });
+
+        it('retries the normal PATCH path with syncConflictResolution', () => {
+            expect(src).toContain('syncConflictResolution');
+            expect(src).toContain('conflictResolutionFor');
+            expect(src).toContain('Apply resolution &amp; Save');
+            expect(src).toContain('saveDraft(resolvedDraft, conflictResolutionFor(syncConflict))');
         });
     });
 });

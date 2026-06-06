@@ -31,6 +31,7 @@ import { groupByRalphSession, type RalphHistoryEntry, type RalphSession } from '
 import { RalphSessionRow } from './RalphSessionRow';
 import { groupByForEachRun, getForEachEntryTimestamp, getForEachRunId, type ForEachRunGroup, type ForEachRunHistoryEntry } from './for-each-run-grouping';
 import { ForEachRunRow } from './ForEachRunRow';
+import { getGroupPinKey, isPinnedGroupEntry, mergePinnedEntries, partitionPinnedGroups, type PinnedGroupEntry, type PinnedListEntry } from './group-pinning';
 import { isRalphEnabled, isLoopsEnabled, isSessionContextAttachmentsEnabled, isForEachEnabled } from '../../utils/config';
 import { getListModeConfig } from './list-mode-config';
 import { useAllLoops, type ProcessLoopState } from './hooks/useAllLoops';
@@ -39,7 +40,7 @@ import { isRalphTask } from '../../../../../tasks/task-types';
 import { getProviderDotClasses, getTaskChatProvider } from './ProviderBadge';
 import { normalizeChatMode } from '../../repos/modeConfig';
 import { createRalphSessionContextDragPayload, createSessionContextDragPayload, writeSessionContextDragData } from './sessionContextDrag';
-import type { ForEachRunSummary } from '@plusplusoneplusplus/coc-client';
+import type { ForEachRunSummary, ProcessGroupPin, ProcessGroupPinType } from '@plusplusoneplusplus/coc-client';
 
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {
@@ -59,7 +60,14 @@ export type ActivityTabMode = 'chats' | 'tasks';
 
 type QueuePauseOptions = { durationHours?: 1 | 2 | 3 | 4 | 8; until?: number | string };
 type PauseMenuScope = 'all' | 'autopilot';
+type GroupPinMenuTarget = {
+    type: ProcessGroupPinType;
+    groupId: string;
+    isPinned: boolean;
+    label: string;
+};
 const PAUSE_HOUR_PRESETS = [1, 2, 3, 4, 8] as const;
+const EMPTY_GROUP_PINS: ProcessGroupPin[] = [];
 
 /** Session category labels for display and filtering. */
 export const SESSION_CATEGORY_LABELS: Record<string, { label: string; icon: string; color: string }> = {
@@ -215,11 +223,160 @@ function taskIdentityMatches(task: any, ids: Set<string>): boolean {
     return ids.has(task.id) || (typeof task.processId === 'string' && ids.has(task.processId));
 }
 
+function isRunningForEachRunGroup(group: ForEachRunGroup, runningIds?: Set<string>): boolean {
+    return group.run.status === 'running'
+        || group.children.some((child: any) => (
+            child.status === 'running'
+            || (runningIds ? taskIdentityMatches(child, runningIds) : false)
+        ));
+}
+
+export const RALPH_SESSION_RANGE_ID_PREFIX = 'ralph-session:';
+
+export type HistoryRangeRow =
+    | { kind: 'task'; id: string; ralphSessionId?: string; ralphSessionSubIds?: string[] }
+    | { kind: 'ralph-session'; id: string; sessionId: string; subIds: string[] };
+
+type HistoryRangeInput = HistoryRangeRow | any;
+
+function isRalphSessionEntry(entry: any): entry is RalphSession {
+    return entry?.kind === 'ralph-session'
+        && typeof entry.sessionId === 'string'
+        && Array.isArray(entry.iterations);
+}
+
+function isHistoryRangeRow(entry: any): entry is HistoryRangeRow {
+    return (entry?.kind === 'task' && typeof entry.id === 'string')
+        || (entry?.kind === 'ralph-session' && typeof entry.id === 'string' && Array.isArray(entry.subIds));
+}
+
+export function getRalphSessionRangeId(sessionId: string): string {
+    return `${RALPH_SESSION_RANGE_ID_PREFIX}${sessionId}`;
+}
+
+export function getRalphSessionSubIds(session: RalphSession): string[] {
+    return [session.grillingProcess?.id, ...session.iterations.map((iteration: any) => iteration?.id)]
+        .filter((id): id is string => typeof id === 'string' && id.length > 0);
+}
+
+export function buildHistoryRangeRows(
+    entries: HistoryRangeInput[],
+    expandedRalphSessionIds: ReadonlySet<string>,
+): HistoryRangeRow[] {
+    const rows: HistoryRangeRow[] = [];
+    for (const entry of entries) {
+        if (isRalphSessionEntry(entry)) {
+            const subIds = getRalphSessionSubIds(entry);
+            if (subIds.length === 0) continue;
+            if (expandedRalphSessionIds.has(entry.sessionId)) {
+                for (const id of subIds) {
+                    rows.push({ kind: 'task', id, ralphSessionId: entry.sessionId, ralphSessionSubIds: subIds });
+                }
+            } else {
+                rows.push({
+                    kind: 'ralph-session',
+                    id: getRalphSessionRangeId(entry.sessionId),
+                    sessionId: entry.sessionId,
+                    subIds,
+                });
+            }
+            continue;
+        }
+        if (isHistoryRangeRow(entry)) {
+            rows.push(entry);
+            continue;
+        }
+        if (typeof entry?.id === 'string' && entry.id.length > 0) {
+            rows.push({ kind: 'task', id: entry.id });
+        }
+    }
+    return rows;
+}
+
+function normalizeHistoryRangeRows(entries: HistoryRangeInput[]): HistoryRangeRow[] {
+    return buildHistoryRangeRows(entries, new Set());
+}
+
+export function resolveHistoryRangeSelection(
+    entries: HistoryRangeInput[],
+    anchorId: string,
+    targetId: string,
+): Set<string> | null {
+    const rows = normalizeHistoryRangeRows(entries);
+    let anchorIndex = rows.findIndex(row =>
+        row.id === anchorId
+        || (row.kind === 'ralph-session' && row.subIds.includes(anchorId))
+    );
+    const targetIndex = rows.findIndex(row =>
+        row.id === targetId
+        || (row.kind === 'ralph-session' && row.subIds.includes(targetId))
+    );
+    if (anchorIndex === -1 || targetIndex === -1) return null;
+
+    const anchorRalphRow = rows.find(row =>
+        row.kind === 'ralph-session'
+            ? row.subIds.includes(anchorId)
+            : row.ralphSessionSubIds?.includes(anchorId)
+    );
+    const anchorRalphSessionId = anchorRalphRow?.kind === 'ralph-session'
+        ? anchorRalphRow.sessionId
+        : anchorRalphRow?.ralphSessionId;
+    if (anchorRalphSessionId) {
+        const boundaryIndex = rows.findIndex(row =>
+            row.kind === 'ralph-session'
+                ? row.sessionId === anchorRalphSessionId
+                : row.ralphSessionId === anchorRalphSessionId
+        );
+        if (boundaryIndex !== -1) anchorIndex = boundaryIndex;
+    }
+
+    const [lo, hi] = anchorIndex < targetIndex ? [anchorIndex, targetIndex] : [targetIndex, anchorIndex];
+    const selected = new Set<string>();
+    for (const row of rows.slice(lo, hi + 1)) {
+        if (row.kind === 'ralph-session') {
+            row.subIds.forEach(id => selected.add(id));
+        } else {
+            selected.add(row.id);
+        }
+    }
+    if (anchorRalphRow) {
+        const subIds = anchorRalphRow.kind === 'ralph-session'
+            ? anchorRalphRow.subIds
+            : anchorRalphRow.ralphSessionSubIds ?? [];
+        subIds.forEach(id => selected.add(id));
+    }
+    return selected;
+}
+
 function resolveListEntryTimestamp(entry: any): number {
     if (entry.kind === 'for-each-run') return getForEachEntryTimestamp(entry);
     if (entry.kind === 'group' || entry.kind === 'ralph-session') return entry.latestTimestamp;
     const ts = entry.lastActivityAt ?? entry.endTime ?? entry.completedAt ?? entry.startTime ?? entry.startedAt ?? entry.createdAt ?? 0;
     return typeof ts === 'number' ? ts : +new Date(ts);
+}
+
+function getEntryChildTasks(entry: any): any[] {
+    if (entry?.kind === 'ralph-session') {
+        return [entry.grillingProcess, ...entry.iterations].filter(Boolean);
+    }
+    if (entry?.kind === 'for-each-run') {
+        return entry.children;
+    }
+    if (entry?.kind === 'group') {
+        return entry.children;
+    }
+    return [entry];
+}
+
+function entryHasUnseen(entry: any, unseenProcessIds?: Set<string>): boolean {
+    if (!unseenProcessIds) return false;
+    if (entry?.kind === 'group') {
+        return entry.children.some((child: any) => unseenProcessIds.has(child.id));
+    }
+    if (entry?.kind === 'ralph-session' || entry?.kind === 'for-each-run') {
+        return !!entry.hasUnseen;
+    }
+    return unseenProcessIds.has(entry.id);
 }
 
 export interface ChatListPaneProps {
@@ -296,6 +453,10 @@ export interface ChatListPaneProps {
     onSelectRalphSession?: (sessionId: string) => void;
     /** Persisted For Each runs to surface as parent groups. */
     forEachRuns?: ForEachRunSummary[];
+    /** Workspace-scoped parent-row group pins for Ralph sessions and For Each runs. */
+    groupPins?: ProcessGroupPin[];
+    /** Toggle a workspace-scoped parent-row group pin without mutating child process pins. */
+    onSetGroupPin?: (type: ProcessGroupPinType, groupId: string, pinned: boolean) => void;
     /** When set, the matching For Each run row is highlighted as selected. */
     selectedForEachRunId?: string | null;
     /** Called when the user clicks a For Each run row body (right-pane switch). */
@@ -414,6 +575,8 @@ export function ChatListPane({
     selectedRalphSessionId,
     onSelectRalphSession,
     forEachRuns = [],
+    groupPins = EMPTY_GROUP_PINS,
+    onSetGroupPin,
     selectedForEachRunId,
     onSelectForEachRun,
     cursorTaskId,
@@ -477,7 +640,16 @@ export function ChatListPane({
     }, [onSearchQueryChange]);
 
     const isServerSearchActive = searchResults != null;
-    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; taskId: string; taskStatus: 'running' | 'queued' | 'completed'; bulkIds?: string[]; ralphSession?: RalphSession } | null>(null);
+    const [contextMenu, setContextMenu] = useState<{
+        x: number;
+        y: number;
+        taskId: string;
+        taskStatus: 'running' | 'queued' | 'completed';
+        bulkIds?: string[];
+        ralphSession?: RalphSession;
+        forEachRun?: ForEachRunGroup;
+        groupPin?: GroupPinMenuTarget;
+    } | null>(null);
     const [insertingPauseAt, setInsertingPauseAt] = useState<number | null>(null);
     const [selectedHistoryIds, setSelectedHistoryIds] = useState<Set<string>>(new Set());
     const [anchorHistoryId, setAnchorHistoryId] = useState<string | null>(null);
@@ -517,6 +689,17 @@ export function ChatListPane({
     const { pinnedChatIds, archivedChatIds, pinChat: onPinChat, unpinChat: onUnpinChat, archiveChat: onArchiveChat, unarchiveChat: onUnarchiveChat, archiveChats: onArchiveChats, unarchiveChats: onUnarchiveChats } = useChatPrefs();
     const { taskCardDensity, historyGrouping } = useDisplaySettings();
     const isDense = taskCardDensity === 'dense';
+    const groupPinKeys = useMemo(
+        () => new Set(groupPins.map(pin => getGroupPinKey(pin.type, pin.groupId))),
+        [groupPins],
+    );
+    const isGroupPinned = useCallback(
+        (type: ProcessGroupPinType, groupId: string) => groupPinKeys.has(getGroupPinKey(type, groupId)),
+        [groupPinKeys],
+    );
+    const setGroupPinned = useCallback((type: ProcessGroupPinType, groupId: string, pinned: boolean) => {
+        onSetGroupPin?.(type, groupId, pinned);
+    }, [onSetGroupPin]);
 
     useEffect(() => {
         setSearchQueryRaw('');
@@ -629,6 +812,7 @@ export function ChatListPane({
     }, [activeTab, filteredHistory, isTaskItem, passesScope]);
 
     const forEachFeatureEnabled = isForEachEnabled();
+    const showForEachRunGroups = activeTab === 'chats' || (!activeTab && (activeScope === 'chat' || activeScope === 'all'));
     const visibleForEachRuns = useMemo(() => {
         if (!forEachFeatureEnabled) return [];
         if (!searchQuery) return forEachRuns;
@@ -641,18 +825,31 @@ export function ChatListPane({
     }, [forEachFeatureEnabled, forEachRuns, searchQuery, filteredRunning, filteredQueued, filteredHistory]);
 
     const forEachGroupedEntries = useMemo<ForEachRunHistoryEntry[]>(() => {
-        if (!forEachFeatureEnabled || visibleForEachRuns.length === 0 || activeTab === 'tasks') return [];
+        if (!forEachFeatureEnabled || !showForEachRunGroups || visibleForEachRuns.length === 0 || activeTab === 'tasks') return [];
         const queueTasks = tabFilteredQueued.filter((task: any) => task.kind !== 'pause-marker');
         return groupByForEachRun(
             [...tabFilteredRunning, ...queueTasks, ...tabFilteredHistory],
             visibleForEachRuns,
             unseenProcessIds,
         );
-    }, [activeTab, forEachFeatureEnabled, tabFilteredRunning, tabFilteredQueued, tabFilteredHistory, visibleForEachRuns, unseenProcessIds]);
+    }, [activeTab, forEachFeatureEnabled, showForEachRunGroups, tabFilteredRunning, tabFilteredQueued, tabFilteredHistory, visibleForEachRuns, unseenProcessIds]);
 
     const forEachRunGroups = useMemo(
         () => forEachGroupedEntries.filter((entry): entry is ForEachRunGroup => entry.kind === 'for-each-run'),
         [forEachGroupedEntries],
+    );
+
+    const {
+        pinnedGroups: pinnedForEachRunGroups,
+        unpinnedGroups: unpinnedForEachRunGroups,
+    } = useMemo(
+        () => partitionPinnedGroups(forEachRunGroups.filter(group => !isRunningForEachRunGroup(group)), groupPins),
+        [forEachRunGroups, groupPins],
+    );
+
+    const activityRunningForEachRunGroups = useMemo(
+        () => forEachRunGroups.filter(isRunningForEachRunGroup),
+        [forEachRunGroups],
     );
 
     const forEachGroupedTaskIds = useMemo(() => {
@@ -681,13 +878,16 @@ export function ChatListPane({
      *  of which scope the user is currently viewing. */
     const scopeCounts = useMemo(() => {
         const liveQueue = queued.filter((t: any) => t.kind !== 'pause-marker');
-        const all = [...running, ...liveQueue, ...history].filter((task: any) => !taskIdentityMatches(task, forEachGroupedTaskIds));
+        const allRaw = [...running, ...liveQueue, ...history];
+        const all = allRaw.filter((task: any) => !taskIdentityMatches(task, forEachGroupedTaskIds));
         let chat = forEachRunGroups.length;
         let auto = 0;
         let loops = 0;
         for (const t of all) {
             if (isChat(t)) chat++;
             else if (isAutomation(t)) auto++;
+        }
+        for (const t of allRaw) {
             if (processIdsWithLoops.has(t.id) || processIdsWithLoops.has(t.processId)) loops++;
         }
         return { chat, auto, loops, all: all.length + forEachRunGroups.length };
@@ -792,6 +992,38 @@ export function ChatListPane({
      *  {@link dateBucketedHistory} and the Activity render branch. */
     const listModeConfig = useMemo(() => getListModeConfig(activeTab), [activeTab]);
 
+    const activityRalphGrouping = useMemo(() => {
+        if (!listModeConfig.enableRalphGrouping || !isRalphEnabled()) {
+            return {
+                pinnedRalphGroups: [] as Array<PinnedGroupEntry<RalphSession>>,
+                unpinnedRalphGroups: [] as RalphSession[],
+                nonRalphEntries: visibleFilteredUnpinned,
+            };
+        }
+        const ralphEntries = groupByRalphSession(visibleFilteredUnpinned, unseenProcessIds);
+        const ralphSessions = ralphEntries.filter((entry: any) => entry.kind === 'ralph-session') as RalphSession[];
+        const nonRalphEntries = ralphEntries.filter((entry: any) => entry.kind !== 'ralph-session');
+        const { pinnedGroups, unpinnedGroups } = partitionPinnedGroups(ralphSessions, groupPins);
+        return {
+            pinnedRalphGroups: pinnedGroups,
+            unpinnedRalphGroups: unpinnedGroups,
+            nonRalphEntries,
+        };
+    }, [listModeConfig.enableRalphGrouping, visibleFilteredUnpinned, unseenProcessIds, groupPins]);
+
+    const pinnedActivityEntries = useMemo(
+        () => mergePinnedEntries(visibleFilteredPinned, [
+            ...activityRalphGrouping.pinnedRalphGroups,
+            ...pinnedForEachRunGroups,
+        ]),
+        [visibleFilteredPinned, activityRalphGrouping.pinnedRalphGroups, pinnedForEachRunGroups],
+    );
+
+    const pinnedActivityMarkReadTasks = useMemo(
+        () => pinnedActivityEntries.flatMap(getEntryChildTasks),
+        [pinnedActivityEntries],
+    );
+
     /**
      * Bucket the completed-history entries (For Each runs + ralph sessions + plan-file groups
      * + standalone tasks) into Today / This week / Older time windows so the
@@ -811,21 +1043,18 @@ export function ChatListPane({
         // tasks fall back to the activity-aware chain.
         let entries: Array<HistoryGroup | RalphSession | ForEachRunGroup | (any & { kind?: undefined })>;
         if (listModeConfig.enableRalphGrouping && isRalphEnabled()) {
-            const ralphEntries = groupByRalphSession(visibleFilteredUnpinned, unseenProcessIds);
-            const ralphSessions = ralphEntries.filter((e: any) => e.kind === 'ralph-session') as RalphSession[];
-            const nonRalph = ralphEntries.filter((e: any) => e.kind !== 'ralph-session');
             const planned = (historyGrouping && listModeConfig.enablePlanGrouping)
-                ? groupHistoryByPlanFile(nonRalph, unseenProcessIds)
-                : nonRalph;
+                ? groupHistoryByPlanFile(activityRalphGrouping.nonRalphEntries, unseenProcessIds)
+                : activityRalphGrouping.nonRalphEntries;
             // Merge ralph sessions and plan-file groups, then sort by their
             // resolved timestamp descending. Without this sort, ralph sessions
             // would always cluster at the top regardless of recency, even
             // after lastActivityAt drift was fixed in ralph-session-grouping.
-            entries = [...forEachRunGroups, ...ralphSessions, ...planned].sort((a: any, b: any) => resolveListEntryTimestamp(b) - resolveListEntryTimestamp(a)) as any;
+            entries = [...unpinnedForEachRunGroups, ...activityRalphGrouping.unpinnedRalphGroups, ...planned].sort((a: any, b: any) => resolveListEntryTimestamp(b) - resolveListEntryTimestamp(a)) as any;
         } else if (groupedUnpinned) {
-            entries = [...forEachRunGroups, ...groupedUnpinned].sort((a: any, b: any) => resolveListEntryTimestamp(b) - resolveListEntryTimestamp(a)) as any;
+            entries = [...unpinnedForEachRunGroups, ...groupedUnpinned].sort((a: any, b: any) => resolveListEntryTimestamp(b) - resolveListEntryTimestamp(a)) as any;
         } else {
-            entries = [...forEachRunGroups, ...visibleFilteredUnpinned].sort((a: any, b: any) => resolveListEntryTimestamp(b) - resolveListEntryTimestamp(a)) as any;
+            entries = [...unpinnedForEachRunGroups, ...visibleFilteredUnpinned].sort((a: any, b: any) => resolveListEntryTimestamp(b) - resolveListEntryTimestamp(a)) as any;
         }
         const today: typeof entries = [];
         const week: typeof entries = [];
@@ -839,7 +1068,21 @@ export function ChatListPane({
             else older.push(entry);
         }
         return { today, week, older };
-    }, [groupedUnpinned, visibleFilteredUnpinned, forEachRunGroups, listModeConfig, historyGrouping, unseenProcessIds]);
+    }, [groupedUnpinned, visibleFilteredUnpinned, unpinnedForEachRunGroups, listModeConfig, historyGrouping, unseenProcessIds, activityRalphGrouping]);
+
+    const activityCompletedEntries = useMemo(
+        () => [
+            ...dateBucketedHistory.today,
+            ...dateBucketedHistory.week,
+            ...dateBucketedHistory.older,
+        ],
+        [dateBucketedHistory],
+    );
+
+    const activityCompletedMarkReadTasks = useMemo(
+        () => activityCompletedEntries.flatMap(getEntryChildTasks),
+        [activityCompletedEntries],
+    );
 
     // Only explicit user expansions are tracked; groups otherwise render
     // collapsed immediately, including the first paint after workspace changes.
@@ -917,25 +1160,39 @@ export function ChatListPane({
         const pinnedChats = chatAllItems.pinned.filter(t => !isRunningTask(t) && passesFilter(t));
         const recentNonRunning = chatAllItems.unpinned.filter(t => !isRunningTask(t) && passesFilter(t));
         const archivedChats = chatAllItems.archived.filter(passesFilter);
-        const isRunningForEachGroup = (group: ForEachRunGroup): boolean => {
-            if (group.run.status === 'running') return true;
-            return group.children.some(child => isRunningTask(child));
-        };
         const passesForEachFilter = (group: ForEachRunGroup): boolean => {
             if (chatFilter === 'all') return true;
-            if (chatFilter === 'running') return isRunningForEachGroup(group);
+            if (chatFilter === 'running') return isRunningForEachRunGroup(group, runningIdSet);
             if (chatFilter === 'failed') return group.run.status === 'failed';
             return true;
         };
         const filteredForEachGroups = forEachRunGroups.filter(passesForEachFilter);
-        const runningForEachGroups = filteredForEachGroups.filter(isRunningForEachGroup);
-        const nonRunningForEachGroups = filteredForEachGroups.filter(group => !isRunningForEachGroup(group));
+        const runningForEachGroups = filteredForEachGroups.filter(group => isRunningForEachRunGroup(group, runningIdSet));
+        const nonRunningForEachGroups = filteredForEachGroups.filter(group => !isRunningForEachRunGroup(group, runningIdSet));
+        const {
+            pinnedGroups: pinnedNonRunningForEachGroups,
+            unpinnedGroups: unpinnedNonRunningForEachGroups,
+        } = partitionPinnedGroups(nonRunningForEachGroups, groupPins);
 
-        const today: Array<any | ForEachRunGroup> = [];
-        const week: Array<any | ForEachRunGroup> = [];
-        const older: Array<any | ForEachRunGroup> = [];
+        const recentRalphEntries = isRalphEnabled()
+            ? groupByRalphSession(recentNonRunning, unseenProcessIds)
+            : recentNonRunning;
+        const recentRalphSessions = recentRalphEntries.filter((entry: any) => entry.kind === 'ralph-session') as RalphSession[];
+        const recentNonRalph = recentRalphEntries.filter((entry: any) => entry.kind !== 'ralph-session');
+        const {
+            pinnedGroups: pinnedRalphGroups,
+            unpinnedGroups: unpinnedRalphGroups,
+        } = partitionPinnedGroups(recentRalphSessions, groupPins);
+        const pinnedChatsAndGroups = mergePinnedEntries(pinnedChats, [
+            ...pinnedRalphGroups,
+            ...pinnedNonRunningForEachGroups,
+        ]);
+
+        const today: Array<any | RalphSession | ForEachRunGroup> = [];
+        const week: Array<any | RalphSession | ForEachRunGroup> = [];
+        const older: Array<any | RalphSession | ForEachRunGroup> = [];
         const nowMs = Date.now();
-        for (const t of [...recentNonRunning, ...nonRunningForEachGroups]) {
+        for (const t of [...recentNonRalph, ...unpinnedRalphGroups, ...unpinnedNonRunningForEachGroups]) {
             const time = resolveListEntryTimestamp(t);
             const ageH = time ? (nowMs - time) / 3600000 : Infinity;
             if (ageH < 24) today.push(t);
@@ -945,16 +1202,16 @@ export function ChatListPane({
 
         const counts = {
             all: allActive.length + forEachRunGroups.length,
-            running: allActive.filter(isRunningTask).length + forEachRunGroups.filter(isRunningForEachGroup).length,
+            running: allActive.filter(isRunningTask).length + forEachRunGroups.filter(group => isRunningForEachRunGroup(group, runningIdSet)).length,
             failed: allActive.filter(t => t.status === 'failed').length + forEachRunGroups.filter(group => group.run.status === 'failed').length,
         };
 
         // Flat list across visible sections, used for shift-click range selection
-        const flatVisible = [...runningChats, ...runningForEachGroups, ...pinnedChats, ...today, ...week, ...older];
+        const flatVisible = [...runningChats, ...runningForEachGroups, ...pinnedChatsAndGroups, ...today, ...week, ...older];
 
         return {
             runningChats: [...runningChats, ...runningForEachGroups],
-            pinnedChats,
+            pinnedChats: pinnedChatsAndGroups,
             today,
             week,
             older,
@@ -962,7 +1219,7 @@ export function ChatListPane({
             counts,
             flatVisible,
         };
-    }, [activeTab, running, chatAllItems, chatFilter, forEachRunGroups]);
+    }, [activeTab, running, chatAllItems, chatFilter, forEachRunGroups, groupPins, unseenProcessIds]);
 
     const applyRalphGrouping = useCallback((items: any[]): Array<RalphHistoryEntry | ForEachRunGroup> => {
         const forEachEntries = items.filter((entry): entry is ForEachRunGroup => entry.kind === 'for-each-run');
@@ -982,6 +1239,45 @@ export function ChatListPane({
     const olderGrouped = useMemo(
         () => chatGroups ? applyRalphGrouping(chatGroups.older) : [],
         [chatGroups, applyRalphGrouping],
+    );
+
+    const [expandedRalphSessionState, setExpandedRalphSessionState] = useState<{ workspaceId?: string; sessions: Set<string> }>({
+        workspaceId,
+        sessions: new Set(),
+    });
+    const expandedRalphSessionIds = useMemo(
+        () => expandedRalphSessionState.workspaceId === workspaceId ? expandedRalphSessionState.sessions : new Set<string>(),
+        [expandedRalphSessionState, workspaceId],
+    );
+    const toggleRalphSession = useCallback((sessionId: string) => {
+        setExpandedRalphSessionState(prev => {
+            const sessions = new Set(prev.workspaceId === workspaceId ? prev.sessions : []);
+            sessions.has(sessionId) ? sessions.delete(sessionId) : sessions.add(sessionId);
+            return { workspaceId, sessions };
+        });
+    }, [workspaceId]);
+
+    useEffect(() => {
+        setExpandedRalphSessionState(prev => {
+            if (prev.workspaceId === workspaceId && prev.sessions.size === 0) return prev;
+            return { workspaceId, sessions: new Set() };
+        });
+    }, [workspaceId]);
+
+    const chatRangeRows = useMemo(
+        () => chatGroups
+            ? buildHistoryRangeRows(
+                [
+                    ...chatGroups.runningChats,
+                    ...chatGroups.pinnedChats,
+                    ...todayGrouped,
+                    ...weekGrouped,
+                    ...olderGrouped,
+                ],
+                expandedRalphSessionIds,
+            )
+            : [],
+        [chatGroups, todayGrouped, weekGrouped, olderGrouped, expandedRalphSessionIds],
     );
 
     const handleCancel = async (taskId: string) => {
@@ -1088,6 +1384,31 @@ export function ChatListPane({
             setContextMenu({ x, y, taskId, taskStatus: 'completed', bulkIds });
         },
     );
+    const groupLongPressTargetRef = useRef<{
+        taskId: string;
+        bulkIds?: string[];
+        ralphSession?: RalphSession;
+        forEachRun?: ForEachRunGroup;
+        groupPin: GroupPinMenuTarget;
+    } | null>(null);
+    const groupLongPress = useLongPress(
+        (x: number, y: number) => {
+            const target = groupLongPressTargetRef.current;
+            if (!target) return;
+            if (target.bulkIds) setSelectedHistoryIds(new Set(target.bulkIds));
+            else setSelectedHistoryIds(new Set());
+            setContextMenu({
+                x,
+                y,
+                taskId: target.taskId,
+                taskStatus: 'completed',
+                bulkIds: target.bulkIds,
+                ralphSession: target.ralphSession,
+                forEachRun: target.forEachRun,
+                groupPin: target.groupPin,
+            });
+        },
+    );
 
     // Clean up stale selection when the filtered list changes
     useEffect(() => {
@@ -1100,16 +1421,13 @@ export function ChatListPane({
     }, [visibleFilteredUnpinned, visibleFilteredPinned]);
 
     const handleHistoryItemClick = useCallback(
-        (e: React.MouseEvent, task: any, taskList: any[]) => {
+        (e: React.MouseEvent, task: any, listForRange: HistoryRangeInput[]) => {
             const id = task.id as string;
 
             if (e.shiftKey && anchorHistoryId) {
-                const ids = taskList.map((t: any) => t.id as string);
-                const aIdx = ids.indexOf(anchorHistoryId);
-                const bIdx = ids.indexOf(id);
-                if (aIdx !== -1 && bIdx !== -1) {
-                    const [lo, hi] = aIdx < bIdx ? [aIdx, bIdx] : [bIdx, aIdx];
-                    setSelectedHistoryIds(new Set(ids.slice(lo, hi + 1)));
+                const selection = resolveHistoryRangeSelection(listForRange, anchorHistoryId, id);
+                if (selection) {
+                    setSelectedHistoryIds(selection);
                     return;
                 }
             }
@@ -1164,6 +1482,39 @@ export function ChatListPane({
     const contextMenuItems = useMemo<ContextMenuItem[]>(() => {
         if (!contextMenu) return [];
         const { taskId, taskStatus } = contextMenu;
+        const groupPinAction = contextMenu.groupPin && onSetGroupPin
+            ? {
+                label: contextMenu.groupPin.isPinned ? 'Unpin' : 'Pin to top',
+                icon: '📌',
+                onClick: () => {
+                    setGroupPinned(contextMenu.groupPin!.type, contextMenu.groupPin!.groupId, !contextMenu.groupPin!.isPinned);
+                    closeContextMenu();
+                },
+            }
+            : null;
+
+        if (contextMenu.groupPin && !contextMenu.bulkIds) {
+            return [
+                ...(groupPinAction ? [groupPinAction] : []),
+                ...(contextMenu.forEachRun ? [{
+                    label: 'Copy run info',
+                    icon: '📎',
+                    onClick: () => {
+                        const group = contextMenu.forEachRun!;
+                        const lines = [
+                            `For Each run ${group.runId}`,
+                            `Status: ${group.run.status}`,
+                            `Items: ${group.run.itemCount}`,
+                            `Updated: ${group.run.updatedAt ?? group.run.completedAt ?? group.run.createdAt}`,
+                            'Processes:',
+                            ...group.children.map(child => `  - ${child.id}`),
+                        ];
+                        void copyToClipboard(lines.join('\n'));
+                        closeContextMenu();
+                    },
+                }] : []),
+            ];
+        }
 
         // Bulk context menu for multi-selected completed tasks
         if (contextMenu.bulkIds) {
@@ -1179,8 +1530,9 @@ export function ChatListPane({
                 { label: '', icon: '', separator: true, onClick: () => {} },
                 ...(anyUnseen && onMarkRead    ? [{ label: 'Mark as Read',   icon: '✓', onClick: () => { ids.forEach(id => onMarkRead!(id));   closeContextMenu(); } }] : []),
                 ...(anySeen && onMarkUnread    ? [{ label: 'Mark as Unread', icon: '●', onClick: () => { ids.forEach(id => onMarkUnread!(id)); closeContextMenu(); } }] : []),
-                ...(anyPinned && onUnpinChat   ? [{ label: 'Unpin',          icon: '📌', onClick: () => { ids.forEach(id => onUnpinChat!(id)); closeContextMenu(); } }] : []),
-                ...(anyUnpinned && onPinChat   ? [{ label: 'Pin to top',     icon: '📌', onClick: () => { ids.forEach(id => onPinChat!(id));   closeContextMenu(); } }] : []),
+                ...(groupPinAction ? [groupPinAction] : []),
+                ...(!groupPinAction && anyPinned && onUnpinChat   ? [{ label: 'Unpin',          icon: '📌', onClick: () => { ids.forEach(id => onUnpinChat!(id)); closeContextMenu(); } }] : []),
+                ...(!groupPinAction && anyUnpinned && onPinChat   ? [{ label: 'Pin to top',     icon: '📌', onClick: () => { ids.forEach(id => onPinChat!(id));   closeContextMenu(); } }] : []),
                 ...(anyUnarchived && onArchiveChats  ? [{ label: 'Archive',   icon: '📦', onClick: () => { onArchiveChats!(ids);   closeContextMenu(); } }] : []),
                 ...(anyArchived  && onUnarchiveChats ? [{ label: 'Unarchive', icon: '📤', onClick: () => { onUnarchiveChats!(ids); closeContextMenu(); } }] : []),
                 ...(ids.length <= 20 ? [{
@@ -1295,7 +1647,7 @@ export function ChatListPane({
                 : { label: 'Freeze', icon: '❄', onClick: () => handleFreeze(taskId) },
             { label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) },
         ];
-    }, [contextMenu, queued, running, history, unseenProcessIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat, onArchiveChats, onUnarchiveChats, closeContextMenu, deleteChatDirect, workspaceId, onSelectTask, fetchQueue, isAutopilotPaused]);
+    }, [contextMenu, queued, running, history, unseenProcessIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat, onArchiveChats, onUnarchiveChats, onSetGroupPin, setGroupPinned, closeContextMenu, deleteChatDirect, workspaceId, onSelectTask, fetchQueue, isAutopilotPaused]);
 
     /** Render a single history card (shared between flat and grouped layouts). */
     /**
@@ -1308,7 +1660,7 @@ export function ChatListPane({
      * - On hover the timestamp swaps to inline pin/archive/more buttons.
      * - Queue states (held / scheduled / frozen) are surfaced via inline indicator badges.
      */
-    const renderChatListRow = useCallback((task: any, listForRange: any[], options?: {
+    const renderChatListRow = useCallback((task: any, listForRange: HistoryRangeInput[], options?: {
         dataTestid?: string;
         /** Override status derivation when caller knows the section the row is rendered in. */
         taskStatus?: 'running' | 'queued' | 'completed';
@@ -1647,19 +1999,148 @@ export function ChatListPane({
         return 'completed';
     }, [tabFilteredRunning, tabFilteredQueued]);
 
-    const renderForEachRunGroup = useCallback((group: ForEachRunGroup, listForRange: any[]) => (
-        <ForEachRunRow
-            key={`${workspaceId ?? '__all'}:for-each:${group.runId}`}
-            group={group}
-            selectedRunId={selectedForEachRunId}
-            now={now}
-            onSelectRun={onSelectForEachRun}
-            renderTaskCard={(task) => renderChatListRow(task, listForRange, {
-                taskStatus: getGroupedChildTaskStatus(task),
-                isGroupChild: true,
-            })}
-        />
-    ), [getGroupedChildTaskStatus, now, onSelectForEachRun, renderChatListRow, selectedForEachRunId, workspaceId]);
+    const renderRalphSessionGroup = useCallback((session: RalphSession, listForRange: HistoryRangeInput[]) => {
+        const ralphSubIds = getRalphSessionSubIds(session);
+        const isRalphRangeSelected = ralphSubIds.length > 0 && ralphSubIds.every(id => selectedHistoryIds.has(id));
+        const isPinned = isPinnedGroupEntry(session) || isGroupPinned('ralph-session', session.sessionId);
+        const groupPin: GroupPinMenuTarget = {
+            type: 'ralph-session',
+            groupId: session.sessionId,
+            isPinned,
+            label: 'Ralph session',
+        };
+        const ralphSessionContextPayload = sessionContextDragEnabled
+            ? createRalphSessionContextDragPayload(session, { activeWorkspaceId: workspaceId })
+            : null;
+        const openContextMenu = (x: number, y: number) => {
+            const ids = [session.grillingProcess?.id, ...session.iterations.map((i: any) => i.id)].filter(Boolean) as string[];
+            setSelectedHistoryIds(new Set(ids));
+            setContextMenu({
+                x,
+                y,
+                taskId: ids[0] ?? session.sessionId,
+                taskStatus: 'completed',
+                bulkIds: ids,
+                ralphSession: session,
+                groupPin,
+            });
+        };
+        return (
+            <RalphSessionRow
+                key={`${workspaceId ?? '__all'}:${session.sessionId}`}
+                session={session}
+                selectedTaskId={selectedTaskId}
+                selectedSessionId={selectedRalphSessionId}
+                isRangeSelected={isRalphRangeSelected}
+                expanded={expandedRalphSessionIds.has(session.sessionId)}
+                onToggleExpanded={() => toggleRalphSession(session.sessionId)}
+                now={now}
+                unseenProcessIds={unseenProcessIds}
+                onSelectTask={onSelectTask}
+                onSelectSession={onSelectRalphSession}
+                isPinned={isPinned}
+                onTogglePin={onSetGroupPin ? () => setGroupPinned('ralph-session', session.sessionId, !isPinned) : undefined}
+                onMoreActions={onSetGroupPin ? e => openContextMenu(e.clientX, e.clientY) : undefined}
+                sessionContextPayload={ralphSessionContextPayload}
+                onContextMenu={e => {
+                    if (e.shiftKey) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openContextMenu(e.clientX, e.clientY);
+                }}
+                onTouchStart={e => {
+                    groupLongPressTargetRef.current = {
+                        taskId: ralphSubIds[0] ?? session.sessionId,
+                        bulkIds: ralphSubIds,
+                        ralphSession: session,
+                        groupPin,
+                    };
+                    groupLongPress.onTouchStart(e);
+                }}
+                onTouchEnd={groupLongPress.onTouchEnd}
+                onTouchMove={groupLongPress.onTouchMove}
+                renderTaskCard={(task) => renderChatListRow(task, listForRange, { isGroupChild: true })}
+            />
+        );
+    }, [
+        expandedRalphSessionIds,
+        groupLongPress,
+        isGroupPinned,
+        now,
+        onSetGroupPin,
+        onSelectRalphSession,
+        onSelectTask,
+        renderChatListRow,
+        selectedHistoryIds,
+        selectedRalphSessionId,
+        selectedTaskId,
+        sessionContextDragEnabled,
+        toggleRalphSession,
+        unseenProcessIds,
+        workspaceId,
+        setGroupPinned,
+    ]);
+
+    const renderForEachRunGroup = useCallback((group: ForEachRunGroup, listForRange: HistoryRangeInput[]) => {
+        const isPinned = isPinnedGroupEntry(group) || isGroupPinned('for-each-run', group.runId);
+        const groupPin: GroupPinMenuTarget = {
+            type: 'for-each-run',
+            groupId: group.runId,
+            isPinned,
+            label: 'For Each run',
+        };
+        const openContextMenu = (x: number, y: number) => {
+            setSelectedHistoryIds(new Set());
+            setContextMenu({ x, y, taskId: group.runId, taskStatus: 'completed', forEachRun: group, groupPin });
+        };
+        return (
+            <ForEachRunRow
+                key={`${workspaceId ?? '__all'}:for-each:${group.runId}`}
+                group={group}
+                selectedRunId={selectedForEachRunId}
+                now={now}
+                onSelectRun={onSelectForEachRun}
+                isPinned={isPinned}
+                onTogglePin={onSetGroupPin ? () => setGroupPinned('for-each-run', group.runId, !isPinned) : undefined}
+                onMoreActions={onSetGroupPin ? e => openContextMenu(e.clientX, e.clientY) : undefined}
+                onContextMenu={e => {
+                    if (e.shiftKey) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openContextMenu(e.clientX, e.clientY);
+                }}
+                onTouchStart={e => {
+                    groupLongPressTargetRef.current = {
+                        taskId: group.runId,
+                        forEachRun: group,
+                        groupPin,
+                    };
+                    groupLongPress.onTouchStart(e);
+                }}
+                onTouchEnd={groupLongPress.onTouchEnd}
+                onTouchMove={groupLongPress.onTouchMove}
+                renderTaskCard={(task) => renderChatListRow(task, listForRange, {
+                    taskStatus: getGroupedChildTaskStatus(task),
+                    isGroupChild: true,
+                })}
+            />
+        );
+    }, [getGroupedChildTaskStatus, groupLongPress, isGroupPinned, now, onSelectForEachRun, onSetGroupPin, renderChatListRow, selectedForEachRunId, setGroupPinned, workspaceId]);
+
+    const renderPinnedActivityEntry = useCallback((entry: PinnedListEntry) => {
+        if (isPinnedGroupEntry(entry) && entry.kind === 'for-each-run') {
+            return renderForEachRunGroup(entry, pinnedActivityEntries);
+        }
+        if (isPinnedGroupEntry(entry) && entry.kind === 'ralph-session') {
+            return renderRalphSessionGroup(entry, pinnedActivityEntries);
+        }
+        return renderChatListRow(entry, pinnedActivityEntries, { taskStatus: 'completed' });
+    }, [pinnedActivityEntries, renderChatListRow, renderForEachRunGroup, renderRalphSessionGroup]);
+
+    const activityRunningEntries = useMemo<Array<any | ForEachRunGroup>>(
+        () => [...visibleTabFilteredRunning, ...activityRunningForEachRunGroups],
+        [visibleTabFilteredRunning, activityRunningForEachRunGroups],
+    );
 
     // When a server-side search is active, always render the main body so FTS5 results
     // can be displayed even when the locally-loaded history page is empty.
@@ -1883,40 +2364,14 @@ export function ChatListPane({
                                                     )}>{section.items.length}</span>
                                                  </div>
                                                  {section.items.map((entry: RalphHistoryEntry | ForEachRunGroup) => {
-                                                     if (entry.kind === 'for-each-run') {
-                                                         return renderForEachRunGroup(entry, chatGroups.flatVisible);
-                                                     }
-                                                     if (entry.kind === 'ralph-session') {
-                                                         const ralphSession = entry as RalphSession;
-                                                         const ralphSessionContextPayload = sessionContextDragEnabled
-                                                            ? createRalphSessionContextDragPayload(ralphSession, { activeWorkspaceId: workspaceId })
-                                                            : null;
-                                                        return (
-                                                            <RalphSessionRow
-                                                                key={`${workspaceId ?? '__all'}:${entry.sessionId}`}
-                                                                session={ralphSession}
-                                                                selectedTaskId={selectedTaskId}
-                                                                selectedSessionId={selectedRalphSessionId}
-                                                                now={now}
-                                                                unseenProcessIds={unseenProcessIds}
-                                                                onSelectTask={onSelectTask}
-                                                                onSelectSession={onSelectRalphSession}
-                                                                sessionContextPayload={ralphSessionContextPayload}
-                                                                onContextMenu={e => {
-                                                                    if (e.shiftKey) return;
-                                                                    e.preventDefault();
-                                                                    e.stopPropagation();
-                                                                    const rs = entry as RalphSession;
-                                                                    const ids = [rs.grillingProcess?.id, ...rs.iterations.map((i: any) => i.id)].filter(Boolean) as string[];
-                                                                    setSelectedHistoryIds(new Set(ids));
-                                                                    setContextMenu({ x: e.clientX, y: e.clientY, taskId: ids[0], taskStatus: 'completed', bulkIds: ids, ralphSession: rs });
-                                                                }}
-                                                                renderTaskCard={(task) => renderChatListRow(task, chatGroups!.flatVisible, { isGroupChild: true })}
-                                                            />
-                                                        );
-                                                    }
-                                                    return renderChatListRow(entry, chatGroups.flatVisible);
-                                                })}
+                                                      if (entry.kind === 'for-each-run') {
+                                                          return renderForEachRunGroup(entry, chatRangeRows);
+                                                      }
+                                                      if (entry.kind === 'ralph-session') {
+                                                          return renderRalphSessionGroup(entry as RalphSession, chatRangeRows);
+                                                      }
+                                                     return renderChatListRow(entry, chatRangeRows);
+                                                 })}
                                             </div>
                                         ));
                                 })()}
@@ -2248,12 +2703,12 @@ export function ChatListPane({
                             <span className="text-[#848484] tabular-nums text-[10px]">
                                 {isServerSearchActive
                                     ? searchTotal ?? 0
-                                    : visibleTabFilteredRunning.length
+                                    : activityRunningEntries.length
                                         + visibleTabFilteredQueued.filter((t: any) => t.kind !== 'pause-marker').length
-                                        + visibleFilteredPinned.length
-                                        + visibleFilteredUnpinned.length
+                                        + pinnedActivityEntries.length
+                                        + activityCompletedEntries.length
                                         + visibleFilteredArchived.length
-                                        + forEachRunGroups.length}
+                                }
                             </span>
                             <button
                                 className="text-[#848484] hover:text-[#333] dark:hover:text-[#ccc] leading-none text-[12px]"
@@ -2266,7 +2721,7 @@ export function ChatListPane({
                 </div>
                 </div>
 
-                {visibleTabFilteredRunning.length > 0 && (
+                {activityRunningEntries.length > 0 && (
                     <div data-section="running" className="-mx-2 md:-mx-4">
                         <button
                             type="button"
@@ -2280,11 +2735,13 @@ export function ChatListPane({
                                 <span className="w-[5px] h-[5px] rounded-full bg-[#0078d4] dark:bg-[#3794ff] animate-pulse" aria-hidden="true" />
                                 Running Tasks
                             </span>
-                            <span className="text-[10px] leading-none font-mono tabular-nums text-[#0078d4] dark:text-[#3794ff] font-semibold">{visibleTabFilteredRunning.length}</span>
+                            <span className="text-[10px] leading-none font-mono tabular-nums text-[#0078d4] dark:text-[#3794ff] font-semibold">{activityRunningEntries.length}</span>
                         </button>
                         {showRunning && (
                             <div className="flex flex-col">
-                                {visibleTabFilteredRunning.map(task => renderChatListRow(task, visibleTabFilteredRunning, { taskStatus: 'running' }))}
+                                {activityRunningEntries.map(entry => entry.kind === 'for-each-run'
+                                    ? renderForEachRunGroup(entry, activityRunningEntries)
+                                    : renderChatListRow(entry, activityRunningEntries, { taskStatus: 'running' }))}
                             </div>
                         )}
                     </div>
@@ -2416,7 +2873,7 @@ export function ChatListPane({
                 ) : (
                     /* ── Normal history view (pinned + unpinned + archived + load more) ── */
                     <>
-                {(visibleFilteredPinned.length > 0 || pinnedRunningCount > 0) && (
+                {(pinnedActivityEntries.length > 0 || pinnedRunningCount > 0) && (
                     <div data-section="pinned" className="-mx-2 md:-mx-4">
                         <div className="sticky top-0 z-[2] flex flex-wrap items-center gap-1.5 px-3 py-1 border-b backdrop-blur-md backdrop-saturate-150 bg-white/[0.94] dark:bg-[#1e1e1e]/[0.94] border-[#e0e0e0]/80 dark:border-[#3c3c3c]/80">
                             <button
@@ -2430,17 +2887,17 @@ export function ChatListPane({
                                 <span className="w-[5px] h-[5px] rounded-full bg-[#0078d4] dark:bg-[#3794ff]" aria-hidden="true" />
                                 Pinned
                                 {unseenProcessIds && (() => {
-                                    const count = visibleFilteredPinned.filter(t => unseenProcessIds.has(t.id)).length;
+                                    const count = pinnedActivityEntries.filter(entry => entryHasUnseen(entry, unseenProcessIds)).length;
                                     return count > 0 ? (
                                         <span className="ml-1 text-[9px] bg-[#0078d4] text-white px-1.5 py-px rounded-full" data-testid="unseen-pinned-count-badge">{count}</span>
                                     ) : null;
                                 })()}
                             </button>
-                            <span className="ml-auto text-[10px] leading-none font-mono tabular-nums text-[#848484] dark:text-[#a0a0a0]">{visibleFilteredPinned.length + pinnedRunningCount}</span>
-                            {onMarkAllRead && unseenProcessIds && visibleFilteredPinned.some(t => unseenProcessIds.has(t.id)) && (
+                            <span className="ml-auto text-[10px] leading-none font-mono tabular-nums text-[#848484] dark:text-[#a0a0a0]">{pinnedActivityEntries.length + pinnedRunningCount}</span>
+                            {onMarkAllRead && unseenProcessIds && pinnedActivityEntries.some(entry => entryHasUnseen(entry, unseenProcessIds)) && (
                                 <button
                                     className="text-[10px] text-[#0078d4] dark:text-[#3794ff] hover:underline transition-colors"
-                                    onClick={() => onMarkAllRead(visibleFilteredPinned)}
+                                    onClick={() => onMarkAllRead(pinnedActivityMarkReadTasks)}
                                     data-testid="mark-all-read-pinned-btn"
                                 >
                                     Mark all read
@@ -2449,13 +2906,13 @@ export function ChatListPane({
                         </div>
                         {showPinned && (
                             <div className="flex flex-col">
-                                {visibleFilteredPinned.map(task => renderChatListRow(task, visibleFilteredPinned, { taskStatus: 'completed' }))}
+                                {pinnedActivityEntries.map(renderPinnedActivityEntry)}
                             </div>
                         )}
                     </div>
                 )}
 
-                {(visibleFilteredUnpinned.length > 0 || forEachRunGroups.length > 0) && (
+                {activityCompletedEntries.length > 0 && (
                     <div data-section="completed" className="-mx-2 md:-mx-4">
                         <div className="sticky top-0 z-[2] flex flex-wrap items-center gap-1.5 px-3 py-1 border-b backdrop-blur-md backdrop-saturate-150 bg-white/[0.94] dark:bg-[#1e1e1e]/[0.94] border-[#e0e0e0]/80 dark:border-[#3c3c3c]/80">
                             <button
@@ -2467,17 +2924,17 @@ export function ChatListPane({
                                 <span className="text-[10px]">{showHistory ? '▼' : '▶'}</span>
                                 Completed Tasks
                                 {unseenProcessIds && (() => {
-                                    const count = visibleFilteredUnpinned.filter(t => unseenProcessIds.has(t.id)).length + forEachRunGroups.filter(group => group.hasUnseen).length;
+                                    const count = activityCompletedEntries.filter(entry => entryHasUnseen(entry, unseenProcessIds)).length;
                                     return count > 0 ? (
                                         <span className="ml-1 text-[9px] bg-[#0078d4] text-white px-1.5 py-px rounded-full" data-testid="unseen-count-badge">{count}</span>
                                     ) : null;
                                 })()}
                             </button>
-                            <span className="ml-auto text-[10px] leading-none font-mono tabular-nums text-[#848484] dark:text-[#a0a0a0]">{visibleFilteredUnpinned.length + forEachRunGroups.length}</span>
-                            {onMarkAllRead && unseenProcessIds && (visibleFilteredUnpinned.some(t => unseenProcessIds.has(t.id)) || forEachRunGroups.some(group => group.hasUnseen)) && (
+                            <span className="ml-auto text-[10px] leading-none font-mono tabular-nums text-[#848484] dark:text-[#a0a0a0]">{activityCompletedEntries.length}</span>
+                            {onMarkAllRead && unseenProcessIds && activityCompletedEntries.some(entry => entryHasUnseen(entry, unseenProcessIds)) && (
                                 <button
                                     className="text-[10px] text-[#0078d4] dark:text-[#3794ff] hover:underline transition-colors"
-                                    onClick={() => onMarkAllRead([...visibleFilteredUnpinned, ...forEachRunGroups.flatMap(group => group.children)])}
+                                    onClick={() => onMarkAllRead(activityCompletedMarkReadTasks)}
                                     data-testid="mark-all-read-btn"
                                 >
                                     Mark all read
@@ -2498,32 +2955,7 @@ export function ChatListPane({
                                             return renderForEachRunGroup(entry, visibleFilteredUnpinned);
                                         }
                                         if (entry.kind === 'ralph-session') {
-                                            const session = entry as RalphSession;
-                                            const ralphSessionContextPayload = sessionContextDragEnabled
-                                                ? createRalphSessionContextDragPayload(session, { activeWorkspaceId: workspaceId })
-                                                : null;
-                                            return (
-                                                <RalphSessionRow
-                                                    key={`${workspaceId ?? '__all'}:${session.sessionId}`}
-                                                    session={session}
-                                                    selectedTaskId={selectedTaskId}
-                                                    selectedSessionId={selectedRalphSessionId}
-                                                    now={now}
-                                                    unseenProcessIds={unseenProcessIds}
-                                                    onSelectTask={onSelectTask}
-                                                    onSelectSession={onSelectRalphSession}
-                                                    sessionContextPayload={ralphSessionContextPayload}
-                                                    onContextMenu={e => {
-                                                        if (e.shiftKey) return;
-                                                        e.preventDefault();
-                                                        e.stopPropagation();
-                                                        const ids = [session.grillingProcess?.id, ...session.iterations.map((i: any) => i.id)].filter(Boolean) as string[];
-                                                        setSelectedHistoryIds(new Set(ids));
-                                                        setContextMenu({ x: e.clientX, y: e.clientY, taskId: ids[0], taskStatus: 'completed', bulkIds: ids, ralphSession: session });
-                                                    }}
-                                                    renderTaskCard={(task) => renderChatListRow(task, visibleFilteredUnpinned, { taskStatus: 'completed', isGroupChild: true })}
-                                                />
-                                            );
+                                            return renderRalphSessionGroup(entry as RalphSession, visibleFilteredUnpinned);
                                         }
                                         if (entry.kind === 'group') {
                                             const expanded = expandedGroupState.workspaceId === workspaceId && expandedGroupState.groups.has(entry.planFilePath);

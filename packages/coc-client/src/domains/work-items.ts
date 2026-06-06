@@ -11,8 +11,6 @@ import type {
   RequestWorkItemChangesRequest,
   RequestWorkItemChangesResponse,
   ResolveWorkItemCommentsRequest,
-  SyncGitHubEpicResponse,
-  SyncAzureBoardsEpicResponse,
   WorkItemSyncProvider,
   WorkItemSyncStatusResponse,
   UpdateWorkItemRequest,
@@ -154,18 +152,6 @@ export class WorkItemsClient {
     return this.transport.request<WorkItem>(path(workspaceId, '/import-from-azure-boards'), {
       method: 'POST',
       body: { ...request },
-    });
-  }
-
-  syncGitHubEpic(workspaceId: string, workItemId: string): Promise<SyncGitHubEpicResponse> {
-    return this.transport.request<SyncGitHubEpicResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/sync-from-github`), {
-      method: 'POST',
-    });
-  }
-
-  syncAzureBoardsEpic(workspaceId: string, workItemId: string): Promise<SyncAzureBoardsEpicResponse> {
-    return this.transport.request<SyncAzureBoardsEpicResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/sync-from-azure-boards`), {
-      method: 'POST',
     });
   }
 

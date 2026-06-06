@@ -618,6 +618,16 @@ function parentWorkItemId(item: Pick<AzureBoardsWorkItem, 'relations'>): number 
         .find((id): id is number => id !== undefined);
 }
 
+/**
+ * Read the parent Azure Boards work item id from a remote work item's
+ * `Hierarchy-Reverse` relation, or `undefined` when the item has no parent
+ * (i.e. it is an Epic-tree root). Exposed for conflict detection so callers can
+ * map the remote parent back to a local mirror id.
+ */
+export function azureBoardsParentWorkItemId(item: Pick<AzureBoardsWorkItem, 'relations'>): number | undefined {
+    return parentWorkItemId(item);
+}
+
 function azureBoardsMirrorForWorkItem(
     item: AzureBoardsWorkItem,
     pulledAt: string,

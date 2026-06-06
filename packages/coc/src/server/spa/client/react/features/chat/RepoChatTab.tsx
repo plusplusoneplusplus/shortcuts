@@ -25,7 +25,7 @@ import { ChatPreferencesProvider, ChatPrefsSync } from '../../contexts/ChatPrefe
 import { useNotifications } from '../../contexts/NotificationContext';
 import { useProcessSearch } from '../../processes/hooks/useProcessSearch';
 import { adaptSearchResults } from '../../utils/search-adapter';
-import type { ForEachRunSummary, ProcessHistoryItem } from '@plusplusoneplusplus/coc-client';
+import type { ForEachRunSummary, ProcessGroupPin, ProcessGroupPinType, ProcessHistoryItem } from '@plusplusoneplusplus/coc-client';
 import { TaskDefs } from '../../../../../tasks/task-types';
 import { isQueueProcessId, toQueueProcessId, toTaskId } from '../../utils/queue-process-id';
 import { parseForEachRunDeepLink, parseRalphSessionDeepLink } from '../../layout/Router';
@@ -87,6 +87,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         (cachedHistory?.items as ProcessHistoryItem[]) ?? [],
     );
     const [forEachRuns, setForEachRuns] = useState<ForEachRunSummary[]>([]);
+    const [groupPins, setGroupPins] = useState<ProcessGroupPin[]>([]);
     const [loading, setLoading] = useState(!cachedHistory && !cachedQueue);
     const [hasMore, setHasMore] = useState<boolean>(cachedHistory?.hasMore ?? false);
     const [loadingMore, setLoadingMore] = useState(false);
@@ -173,10 +174,15 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         // the effect will re-fire once currentAgentId is set.
         if (isContainerMode() && !appState.currentAgentId) return;
         try {
-            const [queueData, historyData, forEachData] = await Promise.all([
-                getSpaCocClient().queue.list({ repoId: workspaceId }).catch(() => null),
-                getSpaCocClient().workspaces.history(workspaceId, { limit: 100, offset: 0 }).catch(() => null),
-                isForEachEnabled() ? getSpaCocClient().forEach.list(workspaceId).catch(() => null) : Promise.resolve(null),
+            const client = getSpaCocClient();
+            const groupPinsRequest = typeof client.processes.listGroupPins === 'function'
+                ? client.processes.listGroupPins(workspaceId).catch(() => null)
+                : Promise.resolve(null);
+            const [queueData, historyData, forEachData, groupPinsData] = await Promise.all([
+                client.queue.list({ repoId: workspaceId }).catch(() => null),
+                client.workspaces.history(workspaceId, { limit: 100, offset: 0 }).catch(() => null),
+                isForEachEnabled() ? client.forEach.list(workspaceId).catch(() => null) : Promise.resolve(null),
+                groupPinsRequest,
             ]);
             // Only update queue/pause state when the queue fetch actually succeeded —
             // a transient network error must not clear the running list out from under
@@ -217,6 +223,9 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             } else {
                 setForEachRuns([]);
             }
+            if (groupPinsData) {
+                setGroupPins(Array.isArray(groupPinsData.pins) ? groupPinsData.pins : []);
+            }
         } catch {
             // Both fetches already have inner `.catch(() => null)`; this outer catch is
             // defensive. Deliberately do NOT clear local lists — keep the cached view.
@@ -239,6 +248,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         // Only show a loading spinner when we have nothing cached for this repo.
         // If a cache hit seeded `history`/`running`, fetch silently in the
         // background so the user never sees a flash of "loading…" on revisit.
+        setGroupPins([]);
         const hasCachedQueue = !!queueState.repoQueueMap[workspaceId];
         const hasCachedHistory = !!queueState.repoHistoryMap?.[workspaceId];
         if (!hasCachedQueue && !hasCachedHistory) {
@@ -549,6 +559,24 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         }
     }, [isRefreshing, fetchQueue]);
 
+    const handleSetGroupPin = useCallback(async (type: ProcessGroupPinType, groupId: string, pinned: boolean) => {
+        const previousPins = groupPins;
+        const nextPinnedAt = new Date().toISOString();
+        setGroupPins(prev => {
+            const remaining = prev.filter(pin => !(pin.type === type && pin.groupId === groupId));
+            return pinned ? [{ type, groupId, pinnedAt: nextPinnedAt }, ...remaining] : remaining;
+        });
+        try {
+            const result = await getSpaCocClient().processes.pinGroup(workspaceId, type, groupId, pinned);
+            setGroupPins(prev => {
+                const remaining = prev.filter(pin => !(pin.type === type && pin.groupId === groupId));
+                return result.pin ? [result.pin, ...remaining] : remaining;
+            });
+        } catch {
+            setGroupPins(previousPins);
+        }
+    }, [groupPins, workspaceId]);
+
     const [selectedRalphSessionId, setSelectedRalphSessionId] = useState<string | null>(null);
     const [selectedRalphFileName, setSelectedRalphFileName] = useState<string | null>(null);
     const [selectedForEachRunId, setSelectedForEachRunId] = useState<string | null>(null);
@@ -731,6 +759,8 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             selectedRalphSessionId={selectedRalphSessionId}
             onSelectRalphSession={handleSelectRalphSession}
             forEachRuns={forEachRuns}
+            groupPins={groupPins}
+            onSetGroupPin={handleSetGroupPin}
             selectedForEachRunId={selectedForEachRunId}
             onSelectForEachRun={handleOpenForEachRun}
             cursorTaskId={cursorTaskId}

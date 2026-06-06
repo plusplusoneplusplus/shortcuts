@@ -247,6 +247,41 @@ describe('PullRequestsClient mock coverage', () => {
     expectEmptyRequest(mock.requests[2], 'DELETE', '/api/repos/repo-1/pull-requests/recent-opened/42', { workspaceId: 'ws-1' });
   });
 
+  it('lists, adds, and removes Team coworker roster entries', async () => {
+    mock = await startMockServer();
+    const now = new Date('2026-06-05T00:00:00.000Z').toISOString();
+    const entry = {
+      id: '123',
+      displayName: 'Mona Dev',
+      email: 'mona@example.invalid',
+      avatarUrl: 'https://avatars.example.invalid/u/123',
+      addedAt: now,
+    };
+    mock.on('GET', '/api/repos/repo-1/pull-requests/coworker-roster', { body: { entries: [entry] } });
+    mock.on('POST', '/api/repos/repo-1/pull-requests/coworker-roster', { body: { entries: [entry] } });
+    mock.on('DELETE', '/api/repos/repo-1/pull-requests/coworker-roster/123', { body: { entries: [] } });
+    const client = createClient(mock);
+
+    await expect(client.pullRequests.listCoworkerRoster('repo-1', 'ws-1')).resolves.toEqual({ entries: [entry] });
+    await expect(client.pullRequests.addCoworkerToRoster('repo-1', 'ws-1', {
+      id: '123',
+      displayName: 'Mona Dev',
+      email: 'mona@example.invalid',
+      avatarUrl: 'https://avatars.example.invalid/u/123',
+    })).resolves.toEqual({ entries: [entry] });
+    await expect(client.pullRequests.removeCoworkerFromRoster('repo-1', 'ws-1', '123')).resolves.toEqual({ entries: [] });
+
+    expectEmptyRequest(mock.requests[0], 'GET', '/api/repos/repo-1/pull-requests/coworker-roster', { workspaceId: 'ws-1' });
+    expectJsonRequest(mock.requests[1], 'POST', '/api/repos/repo-1/pull-requests/coworker-roster', {
+      workspaceId: 'ws-1',
+      id: '123',
+      displayName: 'Mona Dev',
+      email: 'mona@example.invalid',
+      avatarUrl: 'https://avatars.example.invalid/u/123',
+    });
+    expectEmptyRequest(mock.requests[2], 'DELETE', '/api/repos/repo-1/pull-requests/coworker-roster/123', { workspaceId: 'ws-1' });
+  });
+
   it('lists, gets, creates, and deletes pull-request chat bindings', async () => {
     mock = await startMockServer();
     const now = new Date('2026-04-18T00:00:00.000Z').toISOString();

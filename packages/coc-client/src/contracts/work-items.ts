@@ -261,25 +261,6 @@ export interface ImportFromAzureBoardsRequest extends JsonObject {
   workItemId?: number;
 }
 
-export interface SyncGitHubEpicResponse extends JsonObject {
-  root: WorkItem;
-  items: WorkItem[];
-  created: number;
-  updated: number;
-  deleted: number;
-  deletedItemIds: string[];
-}
-
-export interface SyncAzureBoardsEpicResponse extends JsonObject {
-  root: WorkItem;
-  items: WorkItem[];
-  created: number;
-  updated: number;
-  deleted: number;
-  deletedItemIds: string[];
-  warnings: WorkItemSyncWarning[];
-}
-
 export interface WorkItemSyncWarning extends JsonObject {
   provider: WorkItemSyncProvider;
   code: 'remote-wins-conflict' | string;
@@ -293,6 +274,85 @@ export interface WorkItemSyncWarning extends JsonObject {
   remoteRevision?: number;
   previousUpdatedAt?: string;
   remoteUpdatedAt?: string;
+}
+
+/**
+ * Error `code` returned by the work-item PATCH route when a remote-backed save is
+ * blocked because the provider item changed since CoC last synced its mirror.
+ * The error body carries a typed {@link WorkItemSyncConflictDetails} in `details`.
+ */
+export const WORK_ITEM_SYNC_CONFLICT_CODE = 'WORK_ITEM_SYNC_CONFLICT';
+
+/** Provider-owned fields that can diverge and produce a save conflict. */
+export type WorkItemSyncConflictField =
+  | 'title'
+  | 'description'
+  | 'status'
+  | 'priority'
+  | 'tags'
+  | 'parent';
+
+/**
+ * A single provider-owned field whose current provider value diverged from the
+ * local mirror base. Values are normalized strings (or `null` when unset/empty)
+ * so the inline merge UI can render side-by-side cards uniformly.
+ */
+export interface WorkItemSyncConflictFieldDetail {
+  field: WorkItemSyncConflictField;
+  /** The local draft value the user is attempting to save. */
+  draft: string | null;
+  /** The local mirror/base value last synced from the provider. */
+  base: string | null;
+  /** The current value on the provider. */
+  remote: string | null;
+}
+
+/**
+ * Structured, provider-agnostic conflict payload returned from the work-item
+ * PATCH route when a stale remote-backed save is blocked. Shared by the GitHub
+ * (`updatedAt`) and Azure Boards (`revision`) staleness paths so the SPA can show
+ * one inline per-field merge panel regardless of provider.
+ */
+export interface WorkItemSyncConflictDetails extends JsonObject {
+  /** Discriminant so clients can detect the typed conflict from an error body. */
+  kind: 'work-item-sync-conflict';
+  provider: WorkItemSyncProvider;
+  /** Friendly provider name for UI labels, e.g. "GitHub" or "Azure Boards". */
+  providerLabel: string;
+  /** Local work item under edit. */
+  workItemId: string;
+  /** GitHub backing issue number (when provider === 'github'). */
+  issueNumber?: number;
+  /** Azure Boards backing work item id (when provider === 'azure-boards'). */
+  remoteWorkItemId?: number;
+  /** Local mirror timestamp known to CoC before the save (GitHub). */
+  localUpdatedAt?: string;
+  /** Local mirror revision known to CoC before the save (Azure Boards). */
+  localRevision?: number;
+  /** Current provider timestamp at conflict detection (GitHub). */
+  remoteUpdatedAt?: string;
+  /** Current provider revision at conflict detection (Azure Boards). */
+  remoteRevision?: number;
+  /** Provider-owned fields whose current provider value diverged from the local base. */
+  fields: WorkItemSyncConflictFieldDetail[];
+}
+
+/**
+ * Acknowledgement that the user has reviewed a {@link WorkItemSyncConflictDetails}
+ * and resolved it in the inline merge UI. Sent on the retry PATCH so the
+ * remote-first save can proceed against a stale-but-reviewed provider revision.
+ *
+ * The save still re-checks the live provider state: it only proceeds when the
+ * acknowledged revision/timestamp still matches the current provider value, so a
+ * provider change that lands between review and retry produces a fresh conflict
+ * rather than silently overwriting newer remote data.
+ */
+export interface WorkItemSyncConflictResolution extends JsonObject {
+  provider: WorkItemSyncProvider;
+  /** The provider `updatedAt` the user reviewed (GitHub). */
+  acknowledgedRemoteUpdatedAt?: string;
+  /** The provider `revision` the user reviewed (Azure Boards). */
+  acknowledgedRemoteRevision?: number;
 }
 
 export interface ConvertWorkItemTrackerResponse extends JsonObject {
@@ -327,6 +387,12 @@ export interface UpdateWorkItemRequest extends Partial<Pick<WorkItem, 'title' | 
   grillSessionId?: string;
   /** Update parent link (hierarchy). Only accepted when hierarchy flag is enabled. */
   parentId?: string | null;
+  /**
+   * Acknowledge a reviewed remote-sync conflict so a stale-but-reviewed
+   * remote-first save may proceed. Sent by the inline merge UI when retrying the
+   * normal Save after the user resolves each provider-owned field.
+   */
+  syncConflictResolution?: WorkItemSyncConflictResolution;
 }
 
 export interface ExecuteWorkItemRequest extends JsonObject {

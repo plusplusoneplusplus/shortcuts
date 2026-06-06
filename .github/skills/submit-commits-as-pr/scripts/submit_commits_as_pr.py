@@ -175,12 +175,15 @@ def resolve_commits(spec: str) -> list[str]:
         out = git_out("rev-list", "--reverse", spec)
         commits = [line.strip() for line in out.splitlines() if line.strip()]
     elif "," in spec:
-        commits = []
-        for token in spec.split(","):
-            token = token.strip()
-            if not token:
-                continue
-            commits.append(git_out("rev-parse", token))
+        tokens = [t.strip() for t in spec.split(",") if t.strip()]
+        shas = [git_out("rev-parse", t) for t in tokens]
+        wanted = set(shas)
+        # Walk the union of the requested commits' histories in topological,
+        # oldest-first order, then keep only the requested commits. This makes
+        # caller-supplied order (e.g. newest-first from `git log`) irrelevant
+        # and stays correct even when commits share identical timestamps.
+        out = git_out("rev-list", "--reverse", "--topo-order", *shas)
+        commits = [line.strip() for line in out.splitlines() if line.strip() in wanted]
     else:
         commits = [git_out("rev-parse", spec)]
 

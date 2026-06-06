@@ -76,6 +76,28 @@ export interface RecordRecentOpenedPullRequestRequest {
   webUrl?: string;
 }
 
+// ── Team coworker roster ────────────────────────────────────────────
+
+export interface PullRequestCoworkerRosterEntry {
+  id: string;
+  displayName: string;
+  email?: string;
+  avatarUrl?: string;
+  /** ISO 8601 string. */
+  addedAt: string;
+}
+
+export interface PullRequestCoworkerRosterResponse {
+  entries: PullRequestCoworkerRosterEntry[];
+}
+
+export interface AddPullRequestCoworkerRosterEntryRequest {
+  id?: string;
+  displayName: string;
+  email?: string;
+  avatarUrl?: string;
+}
+
 export interface PullRequestThreadsResponse {
   threads: unknown[];
 }

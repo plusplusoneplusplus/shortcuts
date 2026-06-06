@@ -32,16 +32,22 @@ import type {
     WorkItemTrackerMetadata,
     WorkItemPlanVersion,
     WorkItemChange,
+    WorkItemSyncParentReference,
 } from '../work-items/types';
 import { WORK_ITEM_STATUSES, WORK_ITEM_TYPES, WORK_ITEM_TRACKER_KINDS, isValidTransition, HIERARCHY_CONTAINER_TYPES, isValidParentChildTypes, getEffectiveType, isKnownWorkItemStatus } from '../work-items/types';
 import { resolveGitHubWorkItemSyncRepo, type GitHubWorkItemSyncRepo } from '../work-items/work-item-sync-github-repo';
 import {
     GhCliGitHubWorkItemIssueTransport,
     createGitHubIssueForLocalChild,
+    parentReferenceForGitHubMirrorChild,
+    updateGitHubIssueForLocalMirror,
+    type AvailableGitHubWorkItemSyncRepo,
+    type GitHubWorkItemIssue,
     type GitHubWorkItemIssueTransport,
 } from '../work-items/work-item-sync-github-provider';
 import {
     AzureBoardsRestWorkItemTransport,
+    azureBoardsParentWorkItemId,
     azureBoardsProjectFromStatus,
     azureBoardsRemoteWorkItemIdForLocalItem,
     createAzureBoardsWorkItemForLocalChild,
@@ -51,6 +57,12 @@ import {
     type AzureBoardsWorkItemTransport,
     type AvailableAzureBoardsWorkItemSyncProject,
 } from '../work-items/work-item-sync-azure-boards-provider';
+import {
+    WORK_ITEM_SYNC_CONFLICT_CODE,
+    buildAzureBoardsWorkItemSyncConflict,
+    buildGitHubWorkItemSyncConflict,
+    type WorkItemSyncConflictResolution,
+} from '../work-items/work-item-sync-conflict';
 import {
     unavailableWorkItemSyncProviderStatus,
     type WorkItemSyncProviderAdapter,
@@ -78,6 +90,8 @@ export interface WorkItemRouteContext {
     getWsServer?: () => ProcessWebSocketServer;
     /** Returns true when the workItems.hierarchy feature flag is enabled. */
     getHierarchyEnabled?: () => boolean;
+    /** Returns true when remote work-item provider integration is enabled. */
+    getSyncEnabled?: () => boolean;
     /** Base CoC data directory, required to resolve workspace GitHub preferences for GitHub-backed child creation. */
     dataDir?: string;
     /** Override GitHub transport for testing. Defaults to GhCliGitHubWorkItemIssueTransport. */
@@ -90,6 +104,30 @@ export interface WorkItemRouteContext {
 
 function isObject(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseWorkItemSyncConflictResolution(value: unknown): WorkItemSyncConflictResolution | undefined {
+    if (value === undefined) return undefined;
+    if (!isObject(value)) {
+        throw new Error('syncConflictResolution must be an object');
+    }
+    if (value.provider !== 'github' && value.provider !== 'azure-boards') {
+        throw new Error('syncConflictResolution.provider must be github or azure-boards');
+    }
+    const resolution: WorkItemSyncConflictResolution = { provider: value.provider };
+    if (value.acknowledgedRemoteUpdatedAt !== undefined) {
+        if (typeof value.acknowledgedRemoteUpdatedAt !== 'string') {
+            throw new Error('syncConflictResolution.acknowledgedRemoteUpdatedAt must be a string');
+        }
+        resolution.acknowledgedRemoteUpdatedAt = value.acknowledgedRemoteUpdatedAt;
+    }
+    if (value.acknowledgedRemoteRevision !== undefined) {
+        if (typeof value.acknowledgedRemoteRevision !== 'number' || !Number.isFinite(value.acknowledgedRemoteRevision)) {
+            throw new Error('syncConflictResolution.acknowledgedRemoteRevision must be a finite number');
+        }
+        resolution.acknowledgedRemoteRevision = value.acknowledgedRemoteRevision;
+    }
+    return resolution;
 }
 
 function assertAllowedKeys(
@@ -258,6 +296,21 @@ function azureBoardsOperationFailedError(action: string, error: unknown, code: s
     );
 }
 
+function githubProviderError(message: string, code: string, details?: unknown): APIError {
+    return new APIError(409, message, code, details);
+}
+
+function githubOperationFailedError(action: string, error: unknown, code: string): APIError {
+    if (error instanceof APIError) return error;
+    const detail = error instanceof Error ? error.message : String(error);
+    return githubProviderError(`GitHub ${action} failed: ${detail}`, code);
+}
+
+function githubMirrorIsStale(local: WorkItem, remote: GitHubWorkItemIssue): boolean {
+    const localUpdatedAt = local.githubMirror?.updatedAt;
+    return Boolean(localUpdatedAt && remote.updatedAt && localUpdatedAt !== remote.updatedAt);
+}
+
 function azureBoardsMirrorIsStale(local: WorkItem, remote: AzureBoardsWorkItem): boolean {
     const localRevision = local.azureBoardsMirror?.revision
         ?? (local.tracker?.kind === 'azure-boards-backed' ? local.tracker.azureBoards.revision : undefined);
@@ -272,6 +325,7 @@ function azureBoardsMirrorIsStale(local: WorkItem, remote: AzureBoardsWorkItem):
 export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
     const { routes, workItemStore, processStore, enqueue, getWsServer } = ctx;
     const isHierarchyEnabled = () => ctx.getHierarchyEnabled?.() ?? false;
+    const isSyncEnabled = () => ctx.getSyncEnabled?.() ?? true;
     // All valid types when hierarchy is enabled
     const ALL_VALID_TYPES = new Set<string>(WORK_ITEM_TYPES);
 
@@ -285,6 +339,23 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             current = parent;
         }
         return current;
+    }
+
+    /**
+     * Map a stale Azure Boards work item's remote parent back to a local mirror id
+     * for the structured conflict payload. Returns `null` when the remote item has
+     * no parent (Epic root), or `undefined` when the remote parent is not mirrored
+     * locally (so the parent row is omitted from the conflict).
+     */
+    async function azureBoardsRemoteParentLocalId(
+        remote: AzureBoardsWorkItem,
+        repoId: string,
+    ): Promise<string | null | undefined> {
+        const parentRemoteId = azureBoardsParentWorkItemId(remote);
+        if (parentRemoteId === undefined) return null;
+        const entries = (await workItemStore.listWorkItems({ repoId })).items;
+        const match = entries.find(entry => entry.azureBoardsMirror?.workItemId === parentRemoteId);
+        return match?.id;
     }
 
     async function resolveAvailableGitHubRepo(repoId: string): Promise<Extract<GitHubWorkItemSyncRepo, { available: true }>> {
@@ -439,12 +510,146 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
         return parentWorkItemId;
     }
 
+    async function githubParentReferenceForUpdate(
+        current: WorkItem,
+        root: WorkItem,
+        repo: AvailableGitHubWorkItemSyncRepo,
+        parentChanged: boolean,
+        newParent: WorkItem | undefined,
+        repoId: string,
+    ): Promise<WorkItemSyncParentReference | null> {
+        const effectiveParentId = parentChanged ? newParent?.id : current.parentId;
+        if (!effectiveParentId) return null;
+
+        let parentItem: WorkItem | undefined;
+        if (parentChanged) {
+            const newParentRoot = await findTreeRoot(newParent!, repoId);
+            if (newParentRoot.id !== root.id || newParentRoot.tracker?.kind !== 'github-backed') {
+                throw githubProviderError(
+                    `Parent work item '${newParent!.id}' is not in the same GitHub-backed Epic tree as '${current.id}'.`,
+                    'WORK_ITEM_GITHUB_PARENT_NOT_MIRRORED',
+                );
+            }
+            parentItem = newParent;
+        } else {
+            parentItem = await workItemStore.getWorkItem(effectiveParentId, repoId);
+        }
+
+        if (!parentItem?.githubMirror?.issueNumber) {
+            throw githubProviderError(
+                `Parent work item '${effectiveParentId}' is not mirrored to GitHub.`,
+                'WORK_ITEM_GITHUB_PARENT_NOT_MIRRORED',
+            );
+        }
+        return parentReferenceForGitHubMirrorChild(parentItem, repo);
+    }
+
+    async function pushGitHubBackedUpdateIfNeeded(
+        current: WorkItem,
+        updates: Partial<WorkItem>,
+        repoId: string,
+        parentChanged: boolean,
+        newParent: WorkItem | undefined,
+        resolution: WorkItemSyncConflictResolution | undefined,
+    ): Promise<Partial<WorkItem>> {
+        const hasGitHubWritableChange = updates.title !== undefined
+            || updates.description !== undefined
+            || updates.status !== undefined
+            || updates.priority !== undefined
+            || updates.tags !== undefined
+            || parentChanged;
+        if (!hasGitHubWritableChange) return updates;
+        if (!isSyncEnabled()) return updates;
+
+        const root = await findTreeRoot(current, repoId);
+        if (root.tracker?.kind !== 'github-backed' || root.tracker.provider !== 'github') {
+            return updates;
+        }
+
+        const issueNumber = current.githubMirror?.issueNumber;
+        if (issueNumber === undefined) {
+            throw githubProviderError(
+                `Work item '${current.id}' is not mirrored to GitHub.`,
+                'WORK_ITEM_GITHUB_ITEM_NOT_MIRRORED',
+            );
+        }
+
+        const repo = await resolveAvailableGitHubRepo(repoId);
+        const transport = ctx.githubTransport ?? new GhCliGitHubWorkItemIssueTransport();
+        const remote = await transport.getIssue(repo, issueNumber);
+        if (!remote) {
+            throw githubProviderError(
+                `GitHub issue #${issueNumber} no longer exists.`,
+                'WORK_ITEM_GITHUB_ITEM_NOT_FOUND',
+            );
+        }
+        const itemForRemote: WorkItem = {
+            ...current,
+            ...updates,
+            parentId: parentChanged ? newParent?.id : current.parentId,
+        };
+        if (githubMirrorIsStale(current, remote)) {
+            const acknowledged = resolution?.provider === 'github'
+                && resolution.acknowledgedRemoteUpdatedAt !== undefined
+                && resolution.acknowledgedRemoteUpdatedAt === remote.updatedAt;
+            if (!acknowledged) {
+                throw githubProviderError(
+                    `GitHub issue #${issueNumber} changed remotely; resolve the conflict before saving local edits.`,
+                    WORK_ITEM_SYNC_CONFLICT_CODE,
+                    buildGitHubWorkItemSyncConflict({
+                        current,
+                        draft: itemForRemote,
+                        remote,
+                        issueNumber,
+                    }),
+                );
+            }
+            // User reviewed exactly this remote snapshot in the inline merge UI and
+            // chose the per-field values now present in `itemForRemote`; proceed.
+        }
+
+        const parent = await githubParentReferenceForUpdate(current, root, repo, parentChanged, newParent, repoId);
+
+        let result;
+        try {
+            result = await updateGitHubIssueForLocalMirror({
+                repo,
+                transport,
+                item: itemForRemote,
+                issueNumber,
+                existingIssue: remote,
+                parent,
+            });
+        } catch (error) {
+            throw githubOperationFailedError('update', error, 'WORK_ITEM_GITHUB_UPDATE_FAILED');
+        }
+
+        const nextUpdates: Partial<WorkItem> = {
+            ...updates,
+            githubMirror: result.githubMirror,
+        };
+        if (current.id === root.id && current.tracker?.kind === 'github-backed') {
+            nextUpdates.tracker = {
+                ...current.tracker,
+                github: {
+                    ...current.tracker.github,
+                    issueId: result.githubMirror.issueId,
+                    issueNumber: result.githubMirror.issueNumber,
+                    issueUrl: result.githubMirror.issueUrl,
+                    lastPulledAt: result.githubMirror.lastPulledAt,
+                },
+            };
+        }
+        return nextUpdates;
+    }
+
     async function pushAzureBoardsBackedUpdateIfNeeded(
         current: WorkItem,
         updates: Partial<WorkItem>,
         repoId: string,
         parentChanged: boolean,
         newParent: WorkItem | undefined,
+        resolution: WorkItemSyncConflictResolution | undefined,
     ): Promise<Partial<WorkItem>> {
         const hasAzureWritableChange = updates.title !== undefined
             || updates.description !== undefined
@@ -453,6 +658,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             || updates.tags !== undefined
             || parentChanged;
         if (!hasAzureWritableChange) return updates;
+        if (!isSyncEnabled()) return updates;
 
         const root = await findTreeRoot(current, repoId);
         if (root.tracker?.kind !== 'azure-boards-backed' || root.tracker.provider !== 'azure-boards') {
@@ -476,34 +682,47 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 'WORK_ITEM_AZURE_BOARDS_ITEM_NOT_FOUND',
             );
         }
-        if (azureBoardsMirrorIsStale(current, remote)) {
-            throw azureBoardsProviderError(
-                `Azure Boards work item ${remoteWorkItemId} changed remotely; refresh before saving local edits.`,
-                'WORK_ITEM_AZURE_BOARDS_CONFLICT',
-                {
-                    provider: 'azure-boards',
-                    workItemId: remoteWorkItemId,
-                    localRevision: current.azureBoardsMirror?.revision,
-                    remoteRevision: remote.revision,
-                },
-            );
-        }
-
-        const parentWorkItemId = parentChanged
-            ? await azureBoardsParentWorkItemIdForUpdate(current, root, newParent, repoId)
-            : undefined;
         const itemForRemote: WorkItem = {
             ...current,
             ...updates,
             parentId: parentChanged ? newParent?.id : current.parentId,
         };
+        let expectedRevisionOverride: number | undefined;
+        if (azureBoardsMirrorIsStale(current, remote)) {
+            const acknowledged = resolution?.provider === 'azure-boards'
+                && resolution.acknowledgedRemoteRevision !== undefined
+                && resolution.acknowledgedRemoteRevision === remote.revision;
+            if (!acknowledged) {
+                const remoteParentLocalId = await azureBoardsRemoteParentLocalId(remote, repoId);
+                throw azureBoardsProviderError(
+                    `Azure Boards work item ${remoteWorkItemId} changed remotely; resolve the conflict before saving local edits.`,
+                    WORK_ITEM_SYNC_CONFLICT_CODE,
+                    buildAzureBoardsWorkItemSyncConflict({
+                        current,
+                        draft: itemForRemote,
+                        remote,
+                        remoteWorkItemId,
+                        remoteParentLocalId,
+                    }),
+                );
+            }
+            // User reviewed exactly this remote revision in the inline merge UI;
+            // re-base the optimistic concurrency check to the reviewed revision so
+            // the provider `test /rev` op matches the current remote.
+            expectedRevisionOverride = remote.revision;
+        }
+
+        const parentWorkItemId = parentChanged
+            ? await azureBoardsParentWorkItemIdForUpdate(current, root, newParent, repoId)
+            : undefined;
 
         const updateOptions: Parameters<typeof updateAzureBoardsWorkItemForLocalMirror>[0] = {
             project,
             transport,
             item: itemForRemote,
             remoteWorkItemId,
-            expectedRevision: current.azureBoardsMirror?.revision
+            expectedRevision: expectedRevisionOverride
+                ?? current.azureBoardsMirror?.revision
                 ?? (current.tracker?.kind === 'azure-boards-backed' ? current.tracker.azureBoards.revision : undefined),
         };
         if (parentChanged) {
@@ -810,6 +1029,13 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 return handleAPIError(res, notFound('Work item'));
             }
 
+            let syncConflictResolution: WorkItemSyncConflictResolution | undefined;
+            try {
+                syncConflictResolution = parseWorkItemSyncConflictResolution(body.syncConflictResolution);
+            } catch (err) {
+                return handleAPIError(res, badRequest(err instanceof Error ? err.message : 'Invalid syncConflictResolution'));
+            }
+
             // Validate status transition if status is being changed
             if (body.status) {
                 if (!WORK_ITEM_STATUSES.includes(body.status)) {
@@ -923,6 +1149,15 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                     repoId,
                     parentChanged,
                     newParentForRemote,
+                    syncConflictResolution,
+                );
+                remoteReadyUpdates = await pushGitHubBackedUpdateIfNeeded(
+                    current,
+                    remoteReadyUpdates,
+                    repoId,
+                    parentChanged,
+                    newParentForRemote,
+                    syncConflictResolution,
                 );
             } catch (err) {
                 return handleAPIError(res, err);

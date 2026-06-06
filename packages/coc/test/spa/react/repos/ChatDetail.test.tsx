@@ -1578,4 +1578,87 @@ describe('ChatDetail', () => {
             });
         });
     });
+
+    // ── Context-window seeding on cold load ────────────────────────────────
+    // A completed chat never opens the SSE stream (useChatSSE gates on
+    // status === 'running' and is mocked to a no-op here), so the only way the
+    // ctx fuel gauge can show a real percentage is if ChatDetail seeds the
+    // session token state from the freshly-fetched process record. useModels is
+    // mocked to [] in this file, so the model-catalog tokenLimit seed cannot
+    // fire — any tokenLimit/percentage shown originates from the process seed.
+    describe('context-window seeding (cold load)', () => {
+        it('shows real context usage immediately for a completed process (no SSE, no first message)', async () => {
+            const task = makeTask({ status: 'completed', processId: 'proc-1' });
+            const proc = makeProcess({
+                status: 'completed',
+                metadata: { sessionId: 'sess-1' },
+                // Persisted token usage on the completed process record.
+                tokenLimit: 200000,
+                currentTokens: 50000, // → 25%
+                systemTokens: 10000,
+                toolDefinitionsTokens: 5000,
+                conversationTokens: 35000,
+            });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
+
+            // The composer fuel gauge reflects the seeded usage immediately —
+            // 50k / 200k = 25% — with no SSE stream and no follow-up message.
+            await waitFor(() => {
+                expect(screen.getByTestId('composer-ctx-pct').textContent).toBe('25%');
+            });
+
+            // All three breakdown fields were numeric → segmented bar is shown.
+            expect(screen.getByTestId('composer-ctx-segment-system')).toBeTruthy();
+            expect(screen.getByTestId('composer-ctx-segment-tools')).toBeTruthy();
+            expect(screen.getByTestId('composer-ctx-segment-conversation')).toBeTruthy();
+            // (useChatSSE is mocked to a no-op that never sets any session token
+            //  state, so the 25% can only have come from the cold-load seed.)
+        });
+
+        it('seeds usage for a processId-keyed (direct) cold load', async () => {
+            const proc = makeProcess({
+                id: 'queue_abc',
+                status: 'completed',
+                metadata: { sessionId: 'sess-1' },
+                tokenLimit: 100000,
+                currentTokens: 80000, // → 80%
+            });
+            setupFetch({
+                '/skills/all': { body: { merged: [] } },
+                '/processes/queue_abc': { body: { process: proc, conversation: proc } },
+                '/models': { body: [] },
+            });
+            render(<Wrap><ChatDetail taskId="queue_abc" /></Wrap>);
+
+            await waitFor(() => {
+                expect(screen.getByTestId('composer-ctx-pct').textContent).toBe('80%');
+            });
+            // No breakdown fields → single-fill bar, no segments.
+            expect(screen.getByTestId('composer-ctx-fill')).toBeTruthy();
+            expect(screen.queryByTestId('composer-ctx-segment-system')).toBeNull();
+        });
+
+        it('AC-03 non-regression: keeps the 0% fallback when the process has no persisted currentTokens', async () => {
+            const task = makeTask({ status: 'completed', processId: 'proc-1' });
+            const proc = makeProcess({
+                status: 'completed',
+                metadata: { sessionId: 'sess-1' },
+                // tokenLimit present (so the gauge renders) but usage genuinely unknown.
+                tokenLimit: 200000,
+                // currentTokens / breakdown intentionally absent.
+            });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
+
+            // The absent currentTokens is NOT clobbered into anything — the
+            // numeric guard skips it and the existing 0% fallback is preserved.
+            await waitFor(() => {
+                expect(screen.getByTestId('composer-ctx-pct').textContent).toBe('0%');
+            });
+            // Bar is shown (not hidden) with the single-fill fallback.
+            expect(screen.getByTestId('composer-ctx-fill')).toBeTruthy();
+            expect(screen.queryByTestId('composer-ctx-segment-system')).toBeNull();
+        });
+    });
 });

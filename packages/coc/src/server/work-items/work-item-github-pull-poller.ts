@@ -32,6 +32,7 @@ export interface WorkItemGitHubPullPollerOptions {
     now?: () => string;
     timerApi?: WorkItemGitHubPullPollerTimerApi;
     logError?: (message: string) => void;
+    getSyncEnabled?: () => boolean;
 }
 
 export interface WorkItemGitHubPullPollError {
@@ -151,6 +152,10 @@ export class WorkItemGitHubPullPoller {
     }
 
     async configureWorkspace(workspaceId: string): Promise<void> {
+        if (this.options.getSyncEnabled?.() === false) {
+            this.clearWorkspaceTimer(workspaceId);
+            return;
+        }
         const prefs = readRepoPreferences(this.options.dataDir, workspaceId);
         const githubPrefs = prefs.workItems?.sync?.github;
         if (githubPrefs?.pollingEnabled === false) {
@@ -176,6 +181,7 @@ export class WorkItemGitHubPullPoller {
 
     async pollWorkspace(workspaceId: string): Promise<WorkItemGitHubPullWorkspaceResult> {
         const result = blankResult(workspaceId);
+        if (this.options.getSyncEnabled?.() === false) return result;
         const roots = await this.listGitHubBackedEpicRoots(workspaceId);
         result.rootsConsidered = roots.length;
         if (roots.length === 0) return result;

@@ -417,14 +417,13 @@ describe('WorkItemsClient mock coverage', () => {
     });
   });
 
-  it('sends sync status and Epic-scoped GitHub tracker requests to workspace-scoped endpoints', async () => {
+  it('sends sync status, import, and conversion requests to workspace-scoped endpoints', async () => {
     const adapter = createMockAdapter({ provider: 'github' });
     const client = new WorkItemsClient(adapter);
 
     await client.syncStatus('repo/a', 'azure-boards');
     await client.importFromGitHub('repo/a', { issueUrl: 'https://github.com/org/repo/issues/42' });
     await client.importFromGitHub('repo/a', { issueNumber: 42 });
-    await client.syncGitHubEpic('repo/a', 'epic/1');
     await client.convertLocalEpicToGitHub('repo/a', 'epic/1');
     await client.convertGitHubEpicToLocal('repo/a', 'epic/1');
 
@@ -446,10 +445,6 @@ describe('WorkItemsClient mock coverage', () => {
           method: 'POST',
           body: { issueNumber: 42 },
         },
-      },
-      {
-        path: '/workspaces/repo%2Fa/work-items/epic%2F1/sync-from-github',
-        options: { method: 'POST' },
       },
       {
         path: '/workspaces/repo%2Fa/work-items/epic%2F1/convert-to-github',

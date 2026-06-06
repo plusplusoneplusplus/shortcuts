@@ -193,6 +193,8 @@ const WorkItemsSyncGithubSchema = z.object({
 
 const WorkItemsSyncAzureBoardsSchema = z.object({
     project: z.string().trim().min(1).max(200).optional().catch(undefined),
+    pollingEnabled: z.boolean().optional().catch(undefined),
+    pollIntervalMinutes: z.number().int().min(1).max(1440).optional().catch(undefined),
 }).strip().transform(dropIfEmpty);
 
 const WorkItemsSyncSchema = z.object({
@@ -649,7 +651,7 @@ export function writeRepoPreferences(dataDir: string, workspaceId: string, data:
  *   provided, saving sync preferences immediately reconfigures the live engine
  *   without requiring a server restart.
  * @param onRepoPreferencesChanged - Optional callback for infrastructure backed
- *   by per-repo preferences, such as work-item GitHub polling.
+ *   by per-repo preferences, such as work-item provider polling.
  */
 export function registerPreferencesRoutes(
     routes: Route[],

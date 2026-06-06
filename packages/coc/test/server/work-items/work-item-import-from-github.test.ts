@@ -229,10 +229,6 @@ function importUrl(repoId: string = REPO_ID): string {
     return `/api/workspaces/${encodeURIComponent(repoId)}/work-items/import-from-github`;
 }
 
-function syncUrl(workItemId: string, repoId: string = REPO_ID): string {
-    return `/api/workspaces/${encodeURIComponent(repoId)}/work-items/${encodeURIComponent(workItemId)}/sync-from-github`;
-}
-
 beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'import-gh-test-'));
     store = new FileWorkItemStore({ dataDir: tmpDir });
@@ -603,7 +599,7 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
         expect(all.items.map(item => item.githubMirror?.issueNumber).filter(Boolean).sort()).toEqual([80, 81]);
     });
 
-    it('syncs an existing GitHub-backed Epic via route and prunes removed mirrors', async () => {
+    it('does not expose the old route for manually syncing an existing GitHub-backed Epic', async () => {
         const issues = new Map<number, GitHubWorkItemIssue>([
             [90, makeMockIssue(90, 'Route Epic', 'open', {
                 labels: ['coc:type:epic'],
@@ -631,90 +627,18 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
         });
         expect(imported.status).toBe(201);
         const allBefore = await store.listWorkItems({ repoId: REPO_ID });
-        const removedPbi = allBefore.items.find(item => item.githubMirror?.issueNumber === 92)!;
+        expect(allBefore.items.some(item => item.githubMirror?.issueNumber === 92)).toBe(true);
 
-        issues.set(90, makeMockIssue(90, 'Route Epic Updated', 'closed', {
-            labels: ['coc:type:epic', 'route-tag'],
-            body: 'Route epic updated',
-            updatedAt: '2026-01-02T00:00:00.000Z',
-        }));
-        issues.delete(92);
+        const synced = await post(`/api/workspaces/${encodeURIComponent(REPO_ID)}/work-items/${encodeURIComponent(imported.body.id)}/sync-from-github`);
 
-        const synced = await post(syncUrl(imported.body.id));
-
-        expect(synced.status).toBe(200);
-        expect(synced.body).toMatchObject({
-            created: 0,
-            updated: 2,
-            deleted: 1,
-            deletedItemIds: [removedPbi.id],
-            root: {
-                id: imported.body.id,
-                title: 'Route Epic Updated',
-                githubMirror: {
-                    issueNumber: 90,
-                    state: 'closed',
-                    updatedAt: '2026-01-02T00:00:00.000Z',
-                },
-                tracker: {
-                    kind: 'github-backed',
-                    github: {
-                        issueNumber: 90,
-                    },
-                },
-            },
-        });
-        expect(await store.getWorkItem(removedPbi.id, REPO_ID)).toBeUndefined();
+        expect(synced.status).toBe(404);
         const root = await store.getWorkItem(imported.body.id, REPO_ID);
-        expect(root?.title).toBe('Route Epic Updated');
-        expect(root?.tags).toEqual(['route-tag']);
+        expect(root?.title).toBe('Route Epic');
+        const allAfter = await store.listWorkItems({ repoId: REPO_ID });
+        expect(allAfter.items.map(item => item.githubMirror?.issueNumber).filter(Boolean).sort()).toEqual([90, 91, 92]);
     });
 
-    it('sync route deletes the local mirror tree when the GitHub Epic root is deleted', async () => {
-        const issues = new Map<number, GitHubWorkItemIssue>([
-            [93, makeMockIssue(93, 'Deleted Root Epic', 'open', {
-                labels: ['coc:type:epic'],
-                body: 'Deleted root epic',
-            })],
-            [94, makeMockIssue(94, 'Deleted Root Feature', 'open', {
-                body: `Deleted root feature\n\n${metadataBlock({
-                    issueNumber: 94,
-                    type: 'feature',
-                    parent: { owner: CONFIGURED_OWNER, repo: CONFIGURED_REPO, issueNumber: 93 },
-                })}`,
-            })],
-        ]);
-        await startServer(issues);
-
-        const imported = await post(importUrl(), {
-            issueUrl: `https://github.com/${CONFIGURED_OWNER}/${CONFIGURED_REPO}/issues/93`,
-        });
-        expect(imported.status).toBe(201);
-        const allBefore = await store.listWorkItems({ repoId: REPO_ID });
-        const feature = allBefore.items.find(item => item.githubMirror?.issueNumber === 94)!;
-
-        issues.delete(93);
-        issues.delete(94);
-
-        const synced = await post(syncUrl(imported.body.id));
-
-        expect(synced.status).toBe(200);
-        expect(synced.body).toMatchObject({
-            created: 0,
-            updated: 0,
-            deleted: 2,
-            deletedItemIds: [feature.id, imported.body.id],
-            root: {
-                id: imported.body.id,
-                title: 'Deleted Root Epic',
-            },
-            items: [],
-        });
-        expect(await store.getWorkItem(imported.body.id, REPO_ID)).toBeUndefined();
-        expect(await store.getWorkItem(feature.id, REPO_ID)).toBeUndefined();
-    });
-
-    it('rejects per-Epic GitHub sync for local-only items', async () => {
+    it('does not expose the old route for local-only items either', async () => {
         await store.addWorkItem({
             id: 'local-epic',
             repoId: REPO_ID,
@@ -728,9 +652,8 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
         });
         await startServer(new Map());
 
-        const res = await post(syncUrl('local-epic'));
+        const res = await post(`/api/workspaces/${encodeURIComponent(REPO_ID)}/work-items/local-epic/sync-from-github`);
 
-        expect(res.status).toBe(400);
-        expect(res.body.error).toMatch(/not a GitHub-backed Epic root/i);
+        expect(res.status).toBe(404);
     });
 });

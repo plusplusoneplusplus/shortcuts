@@ -14,7 +14,7 @@
 
 import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { fireEvent, screen, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { renderWithProviders } from '../test-utils';
 import { ChatListPane } from '../../../../src/server/spa/client/react/features/chat/ChatListPane';
 import { RALPH_SESSION_CONTEXT_DRAG_MIME } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
@@ -46,13 +46,18 @@ vi.mock('../../../../src/server/spa/client/react/tasks/comments/ContextMenu', ()
 
 let mockPinnedChatIds = new Set<string>();
 let mockArchivedChatIds = new Set<string>();
+const mockPinChat = vi.fn();
+const mockUnpinChat = vi.fn();
 let mockSessionContextAttachmentsEnabled = false;
+let mockForEachEnabled = false;
+let mockLoopsEnabled = false;
+const mockListAllLoops = vi.fn().mockResolvedValue([]);
 vi.mock('../../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
     ChatPrefsSync: () => null,
     useChatPrefs: () => ({
         pinnedChatIds: mockPinnedChatIds,
         archivedChatIds: mockArchivedChatIds,
-        pinChat: vi.fn(), unpinChat: vi.fn(),
+        pinChat: mockPinChat, unpinChat: mockUnpinChat,
         archiveChat: vi.fn(), unarchiveChat: vi.fn(),
         archiveChats: vi.fn(), unarchiveChats: vi.fn(),
     }),
@@ -94,9 +99,18 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '',
     isRalphEnabled: () => true,
-    isLoopsEnabled: () => false,
-    isForEachEnabled: () => false,
+    isLoopsEnabled: () => mockLoopsEnabled,
     isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled,
+    isForEachEnabled: () => mockForEachEnabled,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        loops: { listAll: mockListAllLoops },
+        queue: {
+            summarize: vi.fn().mockResolvedValue({ taskId: null }),
+        },
+    }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
@@ -141,6 +155,23 @@ function makeRalphIteration(iter: number, idMs = iter * 1000): any {
     };
 }
 
+function makeRalphIterationWithGoal(iter: number, originalGoal: string, idMs = iter * 1000): any {
+    const iteration = makeRalphIteration(iter, idMs);
+    return {
+        ...iteration,
+        payload: {
+            ...iteration.payload,
+            context: {
+                ...iteration.payload.context,
+                ralph: {
+                    ...iteration.payload.context.ralph,
+                    originalGoal,
+                },
+            },
+        },
+    };
+}
+
 function makeStandaloneChat(id: string, label: string): any {
     return {
         id,
@@ -151,6 +182,55 @@ function makeStandaloneChat(id: string, label: string): any {
         completedAt: new Date(NOW - 5000).toISOString(),
         lastActivityAt: NOW - 5000,
         payload: { mode: 'ask' },
+    };
+}
+
+function makeOrderedStandaloneChat(id: string, label: string, ageMs: number): any {
+    return {
+        ...makeStandaloneChat(id, label),
+        completedAt: new Date(NOW - ageMs).toISOString(),
+        lastActivityAt: NOW - ageMs,
+    };
+}
+
+function makeOrderedRalphIteration(iter: number, ageMs: number): any {
+    return {
+        ...makeRalphIteration(iter, ageMs),
+        endTime: new Date(NOW - ageMs).toISOString(),
+        completedAt: new Date(NOW - ageMs).toISOString(),
+        lastActivityAt: NOW - ageMs,
+    };
+}
+
+function makeForEachRunSummary(runId = 'run-1'): any {
+    return {
+        runId,
+        workspaceId: 'ws-1',
+        status: 'completed',
+        originalRequest: 'Split pinned parent work',
+        childMode: 'ask',
+        createdAt: new Date(NOW - 7000).toISOString(),
+        updatedAt: new Date(NOW - 7000).toISOString(),
+        itemCount: 1,
+        itemStatusCounts: {
+            pending: 0,
+            running: 0,
+            completed: 1,
+            failed: 0,
+            skipped: 0,
+        },
+    };
+}
+
+function makeForEachChild(runId = 'run-1'): any {
+    return {
+        ...makeStandaloneChat(`child-${runId}`, 'For Each child'),
+        forEach: {
+            kind: 'child',
+            workspaceId: 'ws-1',
+            runId,
+            itemId: 'item-1',
+        },
     };
 }
 
@@ -188,6 +268,9 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
         mockPinnedChatIds = new Set();
         mockArchivedChatIds = new Set();
         mockSessionContextAttachmentsEnabled = false;
+        mockForEachEnabled = false;
+        mockLoopsEnabled = false;
+        mockListAllLoops.mockResolvedValue([]);
         mockDisplaySettings = { taskCardDensity: 'normal', showReportIntent: false, historyGrouping: true };
         try { window.localStorage.removeItem('coc-activity-scope'); } catch { /* ignore */ }
     });
@@ -241,8 +324,8 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
             sourceRalphSessionId: SESSION_ID,
             phase: 'complete',
             status: 'completed',
-            title: 'Ralph iteration 1',
-            displayLabel: 'Ralph iteration 1 - 5 iter',
+            title: 'Ralph Session',
+            displayLabel: 'Ralph Session - 5 iter',
             childProcessIds: [
                 `ralph-${SESSION_ID}-1`,
                 `ralph-${SESSION_ID}-2`,
@@ -253,6 +336,29 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
             processCount: 5,
             iterationCount: 5,
         });
+    });
+
+    it('sets a goal-derived Ralph session drag label when goal metadata is present', () => {
+        mockSessionContextAttachmentsEnabled = true;
+        const originalGoal = '## Goal\nFix Ralph range selection in chat list';
+        const iterations = [1, 2, 3, 4, 5].map(iter => makeRalphIterationWithGoal(iter, originalGoal));
+
+        renderActivity(iterations, { workspaceId: 'ws-1' });
+
+        const body = screen.getByTestId('ralph-session-body');
+        const dataTransfer = { setData: vi.fn(), effectAllowed: 'move' as DataTransfer['effectAllowed'] };
+        fireEvent.dragStart(body, { dataTransfer });
+
+        const [, rawPayload] = dataTransfer.setData.mock.calls.find((call: any[]) => call[0] === RALPH_SESSION_CONTEXT_DRAG_MIME)!;
+        const payload = JSON.parse(rawPayload);
+        expect(payload).toMatchObject({
+            title: 'Fix Ralph range selection in chat list',
+            displayLabel: 'Fix Ralph range selection in chat list - 5 iter',
+        });
+        expect(dataTransfer.setData).toHaveBeenCalledWith(
+            'text/plain',
+            `CoC Ralph session context: Fix Ralph range selection in chat list - 5 iter [complete/completed] ${SESSION_ID}`,
+        );
     });
 
     it('keeps failed Ralph session groups draggable when context attachments are enabled', () => {
@@ -503,6 +609,228 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
         expect(todaySection?.querySelector('.tabular-nums')?.textContent?.trim()).toBe('3');
     });
 
+    it('renders a pinned Ralph session group in Pinned and removes it from Today', () => {
+        const standalone = makeStandaloneChat('standalone', 'Standalone chat');
+        const { container } = renderActivity([makeRalphIteration(1), makeRalphIteration(2), standalone], {
+            groupPins: [{
+                type: 'ralph-session',
+                groupId: SESSION_ID,
+                pinnedAt: new Date(NOW).toISOString(),
+            }],
+        });
+
+        const pinnedSection = container.querySelector('[data-section="pinned"]') as HTMLElement;
+        const todaySection = container.querySelector('[data-section="completed-today"]') as HTMLElement;
+
+        expect(pinnedSection).toBeTruthy();
+        expect(within(pinnedSection).getByTestId('ralph-session-row')).toBeTruthy();
+        expect(within(pinnedSection).getByTestId('ralph-session-body').getAttribute('data-pinned')).toBe('true');
+        expect(todaySection).toBeTruthy();
+        expect(todaySection.querySelector('[data-testid="ralph-session-row"]')).toBeNull();
+        expect(todaySection.textContent).toContain('Standalone chat');
+    });
+
+    it('interleaves pinned chats and pinned Ralph groups by pin time', () => {
+        mockPinnedChatIds = new Set(['older-chat', 'newer-chat']);
+        const olderChat = makeStandaloneChat('older-chat', 'Older pinned chat');
+        olderChat.pinnedAt = '2026-01-01T00:01:00.000Z';
+        const newerChat = makeStandaloneChat('newer-chat', 'Newer pinned chat');
+        newerChat.pinnedAt = '2026-01-01T00:03:00.000Z';
+
+        const { container } = renderActivity([makeRalphIteration(1), olderChat, newerChat], {
+            groupPins: [{
+                type: 'ralph-session',
+                groupId: SESSION_ID,
+                pinnedAt: '2026-01-01T00:02:00.000Z',
+            }],
+        });
+
+        const pinnedSection = container.querySelector('[data-section="pinned"]') as HTMLElement;
+        const rows = Array.from(pinnedSection.querySelectorAll('[data-task-id], [data-testid="ralph-session-row"]'));
+
+        expect(rows.map(row => row.getAttribute('data-task-id') ?? row.getAttribute('data-session-id'))).toEqual([
+            'newer-chat',
+            SESSION_ID,
+            'older-chat',
+        ]);
+    });
+
+    it('renders a pinned For Each run group in Pinned and removes it from Today', () => {
+        mockForEachEnabled = true;
+        const standalone = makeStandaloneChat('standalone-fe', 'Standalone chat');
+        const { container } = renderActivity([makeForEachChild('run-1'), standalone], {
+            forEachRuns: [makeForEachRunSummary('run-1')],
+            groupPins: [{
+                type: 'for-each-run',
+                groupId: 'run-1',
+                pinnedAt: new Date(NOW).toISOString(),
+            }],
+        });
+
+        const pinnedSection = container.querySelector('[data-section="pinned"]') as HTMLElement;
+        const todaySection = container.querySelector('[data-section="completed-today"]') as HTMLElement;
+
+        expect(pinnedSection).toBeTruthy();
+        expect(within(pinnedSection).getByTestId('for-each-run-row')).toBeTruthy();
+        expect(within(pinnedSection).getByTestId('for-each-run-body').getAttribute('data-pinned')).toBe('true');
+        expect(todaySection).toBeTruthy();
+        expect(todaySection.querySelector('[data-testid="for-each-run-row"]')).toBeNull();
+        expect(todaySection.querySelector('[data-task-id="child-run-1"]')).toBeNull();
+        expect(todaySection.textContent).toContain('Standalone chat');
+    });
+
+    it('keeps a pinned running For Each run group in Running instead of Pinned or Today', () => {
+        mockForEachEnabled = true;
+        const runningChild = {
+            ...makeForEachChild('run-1'),
+            status: 'running',
+            startedAt: new Date(NOW - 1000).toISOString(),
+            completedAt: undefined,
+            lastActivityAt: NOW - 1000,
+        };
+        const runningRun = {
+            ...makeForEachRunSummary('run-1'),
+            status: 'running',
+            updatedAt: new Date(NOW - 1000).toISOString(),
+            itemStatusCounts: {
+                pending: 0,
+                running: 1,
+                completed: 0,
+                failed: 0,
+                skipped: 0,
+            },
+        };
+        const standalone = makeStandaloneChat('standalone-running-fe', 'Standalone chat');
+
+        const { container } = renderActivity([standalone], {
+            running: [runningChild],
+            forEachRuns: [runningRun],
+            groupPins: [{
+                type: 'for-each-run',
+                groupId: 'run-1',
+                pinnedAt: new Date(NOW).toISOString(),
+            }],
+        });
+
+        const runningSection = container.querySelector('[data-section="running"]') as HTMLElement;
+        const pinnedSection = container.querySelector('[data-section="pinned"]');
+        const todaySection = container.querySelector('[data-section="completed-today"]') as HTMLElement;
+
+        expect(runningSection).toBeTruthy();
+        expect(within(runningSection).getByTestId('for-each-run-row')).toBeTruthy();
+        expect(within(runningSection).getByTestId('for-each-run-body').getAttribute('data-pinned')).toBe('true');
+        expect(runningSection.querySelector('[data-task-id="child-run-1"]')).toBeNull();
+        expect(pinnedSection).toBeNull();
+        expect(todaySection.querySelector('[data-testid="for-each-run-row"]')).toBeNull();
+        expect(todaySection.textContent).toContain('Standalone chat');
+    });
+
+    it('hides For Each parent groups from Activity Automations while keeping them in Chats and All', () => {
+        mockForEachEnabled = true;
+        const automation = {
+            id: 'script-1',
+            type: 'run-script',
+            status: 'completed',
+            displayName: 'Script automation',
+            customTitle: 'Script automation',
+            title: 'Script automation',
+            completedAt: new Date(NOW - 3000).toISOString(),
+            lastActivityAt: NOW - 3000,
+            payload: {},
+        };
+        renderActivity([makeForEachChild('run-1'), automation], {
+            forEachRuns: [makeForEachRunSummary('run-1')],
+        });
+
+        expect(screen.getByTestId('activity-scope-tab-all').getAttribute('data-active')).toBe('true');
+        expect(screen.getByTestId('for-each-run-row')).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('activity-scope-tab-auto'));
+
+        expect(screen.queryByTestId('for-each-run-row')).toBeNull();
+        expect(screen.queryByText('For Each child')).toBeNull();
+        expect(screen.getByText('Script automation')).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('activity-scope-tab-chat'));
+
+        expect(screen.getByTestId('for-each-run-row')).toBeTruthy();
+    });
+
+    it('hides For Each parent groups from Activity Loops without hiding loop-linked child chats', async () => {
+        mockForEachEnabled = true;
+        mockLoopsEnabled = true;
+        mockListAllLoops.mockResolvedValue([
+            {
+                id: 'loop-1',
+                processId: 'child-run-1',
+                status: 'active',
+                description: '',
+                intervalMs: 60000,
+                createdAt: new Date(NOW).toISOString(),
+                lastTickAt: null,
+                nextTickAt: null,
+                tickCount: 0,
+                consecutiveFailures: 0,
+                expiresAt: new Date(NOW + 60000).toISOString(),
+                pausedReason: null,
+                prompt: '',
+                model: null,
+            },
+        ]);
+
+        renderActivity([makeForEachChild('run-1')], {
+            forEachRuns: [makeForEachRunSummary('run-1')],
+        });
+
+        expect(screen.getByTestId('for-each-run-row')).toBeTruthy();
+        await waitFor(() => expect(screen.getByTestId('activity-scope-count-loops').textContent).toBe('1'));
+
+        fireEvent.click(screen.getByTestId('activity-scope-tab-loops'));
+
+        expect(screen.queryByTestId('for-each-run-row')).toBeNull();
+        expect(screen.getByText('For Each child')).toBeTruthy();
+    });
+
+    it('Ralph group pin button toggles only the parent group and does not select or expand', () => {
+        const onSetGroupPin = vi.fn();
+        const onSelectRalphSession = vi.fn();
+        renderActivity([makeRalphIteration(1), makeRalphIteration(2)], {
+            onSetGroupPin,
+            onSelectRalphSession,
+        });
+
+        const body = screen.getByTestId('ralph-session-body');
+        expect(body.getAttribute('aria-expanded')).toBe('false');
+
+        fireEvent.click(screen.getByTestId('ralph-session-pin'));
+
+        expect(onSetGroupPin).toHaveBeenCalledWith('ralph-session', SESSION_ID, true);
+        expect(onSelectRalphSession).not.toHaveBeenCalled();
+        expect(body.getAttribute('aria-expanded')).toBe('false');
+        expect(mockPinChat).not.toHaveBeenCalled();
+    });
+
+    it('For Each group pin button toggles only the parent group and does not select or expand', () => {
+        mockForEachEnabled = true;
+        const onSetGroupPin = vi.fn();
+        const onSelectForEachRun = vi.fn();
+        renderActivity([makeForEachChild('run-1')], {
+            forEachRuns: [makeForEachRunSummary('run-1')],
+            onSetGroupPin,
+            onSelectForEachRun,
+        });
+
+        const body = screen.getByTestId('for-each-run-body');
+        expect(body.getAttribute('aria-expanded')).toBe('false');
+
+        fireEvent.click(screen.getByTestId('for-each-run-pin'));
+
+        expect(onSetGroupPin).toHaveBeenCalledWith('for-each-run', 'run-1', true);
+        expect(onSelectForEachRun).not.toHaveBeenCalled();
+        expect(body.getAttribute('aria-expanded')).toBe('false');
+        expect(mockPinChat).not.toHaveBeenCalled();
+    });
+
     it('regression: completed ralph session does not pin to top above newer standalone chats', () => {
         // Ralph session ended 8h ago; a standalone chat completed "just now".
         // Before the fix, ChatListPane concatenated [...ralphSessions, ...planned]
@@ -556,6 +884,73 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
         // eslint-disable-next-line no-bitwise
         expect(pos & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
     });
+
+    describe('shift-click range selection across Ralph groups', () => {
+        function rangeFixture() {
+            return [
+                makeOrderedStandaloneChat('regular-above', 'Regular above', 1000),
+                makeOrderedRalphIteration(1, 2000),
+                makeOrderedRalphIteration(2, 2100),
+                makeOrderedStandaloneChat('regular-below', 'Regular below', 3000),
+            ];
+        }
+
+        it('treats a collapsed Ralph session as one range row and selects every child process', () => {
+            renderActivity(rangeFixture(), { activeTab: 'chats' });
+
+            expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('false');
+            fireEvent.click(document.querySelector('[data-task-id="regular-above"]')!);
+            fireEvent.click(document.querySelector('[data-task-id="regular-below"]')!, { shiftKey: true });
+
+            expect(screen.getByTestId('ralph-session-row').getAttribute('data-selected')).toBe('true');
+            expect((document.querySelector('[data-task-id="regular-above"]') as HTMLElement).getAttribute('data-selected')).toBe('true');
+            expect((document.querySelector('[data-task-id="regular-below"]') as HTMLElement).getAttribute('data-selected')).toBe('true');
+            fireEvent.contextMenu(document.querySelector('[data-task-id="regular-above"]')!);
+            expect(screen.getByText(/4 tasks selected/)).toBeTruthy();
+        });
+
+        it('uses individual Ralph child rows when the session is expanded', () => {
+            renderActivity(rangeFixture(), { activeTab: 'chats' });
+
+            fireEvent.click(screen.getByTestId('ralph-session-chevron'));
+            expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('true');
+
+            fireEvent.click(document.querySelector('[data-task-id="regular-above"]')!);
+            fireEvent.click(document.querySelector('[data-task-id="regular-below"]')!, { shiftKey: true });
+
+            expect((document.querySelector(`[data-task-id="ralph-${SESSION_ID}-1"]`) as HTMLElement).getAttribute('data-selected')).toBe('true');
+            expect((document.querySelector(`[data-task-id="ralph-${SESSION_ID}-2"]`) as HTMLElement).getAttribute('data-selected')).toBe('true');
+            fireEvent.contextMenu(document.querySelector('[data-task-id="regular-above"]')!);
+            expect(screen.getByText(/4 tasks selected/)).toBeTruthy();
+        });
+
+        it('normalizes a sub-session anchor to the Ralph group boundary', () => {
+            renderActivity(rangeFixture(), { activeTab: 'chats' });
+
+            fireEvent.click(screen.getByTestId('ralph-session-chevron'));
+            fireEvent.click(document.querySelector(`[data-task-id="ralph-${SESSION_ID}-2"]`)!);
+            fireEvent.click(document.querySelector('[data-task-id="regular-below"]')!, { shiftKey: true });
+
+            expect((document.querySelector(`[data-task-id="ralph-${SESSION_ID}-1"]`) as HTMLElement).getAttribute('data-selected')).toBe('true');
+            expect((document.querySelector(`[data-task-id="ralph-${SESSION_ID}-2"]`) as HTMLElement).getAttribute('data-selected')).toBe('true');
+            expect((document.querySelector('[data-task-id="regular-below"]') as HTMLElement).getAttribute('data-selected')).toBe('true');
+            fireEvent.contextMenu(document.querySelector('[data-task-id="regular-below"]')!);
+            expect(screen.getByText(/3 tasks selected/)).toBeTruthy();
+        });
+
+        it('preserves ctrl-click toggling for expanded Ralph child rows', () => {
+            renderActivity(rangeFixture(), { activeTab: 'chats' });
+
+            fireEvent.click(screen.getByTestId('ralph-session-chevron'));
+            fireEvent.click(document.querySelector(`[data-task-id="ralph-${SESSION_ID}-1"]`)!, { ctrlKey: true });
+            fireEvent.click(document.querySelector(`[data-task-id="ralph-${SESSION_ID}-2"]`)!, { ctrlKey: true });
+
+            expect((document.querySelector(`[data-task-id="ralph-${SESSION_ID}-1"]`) as HTMLElement).getAttribute('data-selected')).toBe('true');
+            expect((document.querySelector(`[data-task-id="ralph-${SESSION_ID}-2"]`) as HTMLElement).getAttribute('data-selected')).toBe('true');
+            fireEvent.contextMenu(document.querySelector(`[data-task-id="ralph-${SESSION_ID}-1"]`)!);
+            expect(screen.getByText(/2 tasks selected/)).toBeTruthy();
+        });
+    });
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -569,6 +964,7 @@ describe('ChatListPane Activity tab — ralph session context menu', () => {
         mockPinnedChatIds = new Set();
         mockArchivedChatIds = new Set();
         mockSessionContextAttachmentsEnabled = false;
+        mockForEachEnabled = false;
         mockDisplaySettings = { taskCardDensity: 'normal', showReportIntent: false, historyGrouping: true };
         try { window.localStorage.removeItem('coc-activity-scope'); } catch { /* ignore */ }
     });
@@ -653,5 +1049,49 @@ describe('ChatListPane Activity tab — ralph session context menu', () => {
         const menu = screen.getByTestId('context-menu');
         // The header should show "3 tasks selected" (1 grilling + 2 iterations).
         expect(menu.textContent).toContain('3 tasks selected');
+    });
+
+    it('context menu Pin to top toggles the Ralph parent group, not child chat pins', () => {
+        const onSetGroupPin = vi.fn();
+        renderActivity(fixtureWithGrilling(), { onSetGroupPin });
+
+        fireEvent.contextMenu(screen.getByTestId('ralph-session-body'), { clientX: 100, clientY: 200 });
+        fireEvent.click(screen.getByTestId('ctx-item-Pin-to-top'));
+
+        expect(onSetGroupPin).toHaveBeenCalledWith('ralph-session', SESSION_ID, true);
+        expect(mockPinChat).not.toHaveBeenCalled();
+    });
+
+    it('context menu Unpin toggles a pinned Ralph parent group', () => {
+        const onSetGroupPin = vi.fn();
+        renderActivity(fixtureWithGrilling(), {
+            onSetGroupPin,
+            groupPins: [{
+                type: 'ralph-session',
+                groupId: SESSION_ID,
+                pinnedAt: new Date(NOW).toISOString(),
+            }],
+        });
+
+        fireEvent.contextMenu(screen.getByTestId('ralph-session-body'), { clientX: 100, clientY: 200 });
+        fireEvent.click(screen.getByTestId('ctx-item-Unpin'));
+
+        expect(onSetGroupPin).toHaveBeenCalledWith('ralph-session', SESSION_ID, false);
+        expect(mockUnpinChat).not.toHaveBeenCalled();
+    });
+
+    it('context menu Pin to top toggles the For Each parent group', () => {
+        mockForEachEnabled = true;
+        const onSetGroupPin = vi.fn();
+        renderActivity([makeForEachChild('run-1')], {
+            forEachRuns: [makeForEachRunSummary('run-1')],
+            onSetGroupPin,
+        });
+
+        fireEvent.contextMenu(screen.getByTestId('for-each-run-body'), { clientX: 100, clientY: 200 });
+        fireEvent.click(screen.getByTestId('ctx-item-Pin-to-top'));
+
+        expect(onSetGroupPin).toHaveBeenCalledWith('for-each-run', 'run-1', true);
+        expect(mockPinChat).not.toHaveBeenCalled();
     });
 });

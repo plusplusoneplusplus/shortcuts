@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as http from 'http';
 import * as fs from 'fs/promises';
 import * as os from 'os';
@@ -11,6 +11,7 @@ import { registerWorkItemSyncRoutes } from '../../../src/server/routes/work-item
 import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
 import {
     createAzureBoardsWorkItemSyncProviderAdapter,
+    importAzureBoardsEpicTreeAsWorkItems,
     type AzureBoardsWorkItem,
     type AzureBoardsWorkItemTransport,
     type AvailableAzureBoardsWorkItemSyncProject,
@@ -122,6 +123,8 @@ function makeServer(
     options: {
         azureBoardsTransport?: AzureBoardsWorkItemTransport;
         workspaces?: WorkspaceInfo[];
+        onGitHubBackedEpicTreeChanged?: (workspaceId: string) => void | Promise<void>;
+        onAzureBoardsBackedEpicTreeChanged?: (workspaceId: string) => void | Promise<void>;
     } = {},
 ): http.Server {
     const routes: Route[] = [];
@@ -160,6 +163,8 @@ function makeServer(
         getSyncEnabled: () => syncEnabled,
         providers,
         azureBoardsTransport: options.azureBoardsTransport,
+        onGitHubBackedEpicTreeChanged: options.onGitHubBackedEpicTreeChanged,
+        onAzureBoardsBackedEpicTreeChanged: options.onAzureBoardsBackedEpicTreeChanged,
     });
     return http.createServer(createRouter({ routes, spaHtml: '' }));
 }
@@ -169,6 +174,8 @@ async function startServer(
     options: {
         azureBoardsTransport?: AzureBoardsWorkItemTransport;
         workspaces?: WorkspaceInfo[];
+        onGitHubBackedEpicTreeChanged?: (workspaceId: string) => void | Promise<void>;
+        onAzureBoardsBackedEpicTreeChanged?: (workspaceId: string) => void | Promise<void>;
     } = {},
 ): Promise<void> {
     server = makeServer(providers, options);
@@ -651,10 +658,15 @@ describe('Work Item Sync Routes', () => {
             },
         ]);
 
-        const synced = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${root.id}/sync-from-azure-boards`);
+        const synced = await importAzureBoardsEpicTreeAsWorkItems(
+            { workspaceId: REPO_ID, workItemStore: store },
+            azureTransport.items.get(100)!,
+            [...azureTransport.items.values()],
+            undefined,
+            { pruneMissing: true },
+        );
 
-        expect(synced.status).toBe(200);
-        expect(synced.body).toMatchObject({
+        expect(synced).toMatchObject({
             created: 1,
             updated: 2,
             deleted: 1,
@@ -671,7 +683,7 @@ describe('Work Item Sync Routes', () => {
                 },
             ],
         });
-        expect(synced.body.root).toMatchObject({
+        expect(synced.root).toMatchObject({
             id: root.id,
             title: 'Remote Epic Updated',
             status: 'done',
@@ -690,6 +702,49 @@ describe('Work Item Sync Routes', () => {
             priority: 'normal',
             tags: ['Ops'],
         });
+    });
+
+    it('notifies Azure Boards poller configuration after Azure Boards import', async () => {
+        await writeProvidersConfig({
+            providers: {
+                ado: { orgUrl: 'https://dev.azure.com/octo-org' },
+            },
+        }, tmpDir);
+        writeRepoPreferences(tmpDir, REPO_ID, {
+            workItems: {
+                sync: {
+                    azureBoards: { project: 'Project Alpha' },
+                },
+            },
+        });
+        const azureTransport = new FakeAzureBoardsTransport();
+        azureTransport.set([
+            {
+                id: 100,
+                revision: 1,
+                title: 'Remote Epic',
+                description: '<p>Epic body</p>',
+                state: 'Active',
+                workItemType: 'Epic',
+                priority: 2,
+                tags: 'Platform',
+                updatedAt: '2026-06-03T01:00:00Z',
+                url: 'https://dev.azure.com/octo-org/Project%20Alpha/_workitems/edit/100',
+                relations: [],
+            },
+        ]);
+        const onAzureBoardsBackedEpicTreeChanged = vi.fn();
+        await startServer([makeFakeProvider(), makeAzureProvider()], {
+            azureBoardsTransport: azureTransport,
+            onAzureBoardsBackedEpicTreeChanged,
+        });
+
+        const imported = await request('POST', `/api/workspaces/${REPO_ID}/work-items/import-from-azure-boards`, {
+            workItemId: 100,
+        });
+
+        expect(imported.status).toBe(201);
+        expect(onAzureBoardsBackedEpicTreeChanged).toHaveBeenCalledWith(REPO_ID);
     });
 
     it('reports GitHub unavailable when no adapter is registered', async () => {
@@ -717,5 +772,15 @@ describe('Work Item Sync Routes', () => {
 
         expect(preview.status).toBe(404);
         expect(apply.status).toBe(404);
+    });
+
+    it('does not register manual per-Epic pull endpoints', async () => {
+        await startServer([makeFakeProvider(), makeAzureProvider()]);
+
+        const github = await request('POST', `/api/workspaces/${REPO_ID}/work-items/root-1/sync-from-github`);
+        const azure = await request('POST', `/api/workspaces/${REPO_ID}/work-items/root-1/sync-from-azure-boards`);
+
+        expect(github.status).toBe(404);
+        expect(azure.status).toBe(404);
     });
 });

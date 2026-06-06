@@ -50,6 +50,7 @@ import { registerHeapRoutes } from '../admin/heap-monitor';
 import { registerSeenStateRoutes } from '../processes/seen-state-handler';
 import { registerPromptSuggestionRoutes } from '../processes/prompt-suggestion-handler';
 import { registerPromptHistoryRoutes } from '../processes/prompt-history-handler';
+import { registerGroupPinRoutes } from '../processes/group-pin-handler';
 import { registerPinArchiveRoutes } from '../processes/pin-archive-handler';
 import { registerTurnActionRoutes } from '../processes/turn-actions-handler';
 import { registerProcessHistoryRoutes } from '../processes/process-history-handler';
@@ -69,6 +70,7 @@ import { createWorkItemAiGenerators } from '../work-items/work-item-ai-generator
 import { FileWorkItemStore } from '../work-items/work-item-store';
 import { createAzureBoardsWorkItemSyncProviderAdapter } from '../work-items/work-item-sync-azure-boards-provider';
 import { createGitHubWorkItemSyncProviderAdapter } from '../work-items/work-item-sync-github-provider';
+import { WorkItemAzureBoardsPullPoller } from '../work-items/work-item-azure-boards-pull-poller';
 import { WorkItemGitHubPullPoller } from '../work-items/work-item-github-pull-poller';
 import { handleWorkItemTaskComplete, autoVersionPlanFromResolvedComments } from '../work-items/work-item-executor';
 import type { EnqueueFunction } from '../work-items/work-item-executor';
@@ -163,7 +165,7 @@ export interface RegisterRoutesOptions {
     syncEngines?: Map<string, SyncEngine>;
 }
 
-export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller } {
+export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller } {
     const {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
@@ -172,6 +174,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         aiInvoker,
     } = opts;
     let workItemGitHubPullPoller: WorkItemGitHubPullPoller | undefined;
+    let workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller | undefined;
 
     // excalidrawEnabled uses a live getter via runtimeConfigService so admin
     // changes take effect without restart. loopsEnabled stays startup-captured
@@ -285,11 +288,17 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         routes,
         dataDir,
         (workspaceId) => opts.syncEngines?.get(workspaceId),
-        (workspaceId) => workItemGitHubPullPoller?.configureWorkspace(workspaceId),
+        async (workspaceId) => {
+            await Promise.all([
+                workItemGitHubPullPoller?.configureWorkspace(workspaceId),
+                workItemAzureBoardsPullPoller?.configureWorkspace(workspaceId),
+            ]);
+        },
     );
     registerSeenStateRoutes(routes, store as any);
     registerPromptSuggestionRoutes(routes, store as any, dataDir, resolvedAiService);
     registerPromptHistoryRoutes(routes, store as any);
+    registerGroupPinRoutes(routes, store, dataDir);
     registerPinArchiveRoutes(routes, store as any);
     registerTurnActionRoutes(routes, store as any, getWsServer);
     registerProcessHistoryRoutes(routes, store as any);
@@ -490,11 +499,6 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     // Work item routes
     const workItemStore = new FileWorkItemStore({ dataDir });
-    workItemGitHubPullPoller = new WorkItemGitHubPullPoller({
-        dataDir,
-        processStore: store,
-        workItemStore,
-    });
     const enqueueForWorkItems = bridge.enqueue.bind(bridge) as EnqueueFunction;
     const getWorkItemsHierarchyEnabled = opts.runtimeConfigService
         ? () => opts.runtimeConfigService!.config.workItems?.hierarchy?.enabled ?? false
@@ -502,6 +506,27 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const getWorkItemsSyncEnabled = opts.runtimeConfigService
         ? () => opts.runtimeConfigService!.config.workItems?.sync?.enabled ?? false
         : () => opts.resolvedConfig?.workItems?.sync?.enabled ?? false;
+    workItemGitHubPullPoller = new WorkItemGitHubPullPoller({
+        dataDir,
+        processStore: store,
+        workItemStore,
+        getSyncEnabled: getWorkItemsSyncEnabled,
+    });
+    workItemAzureBoardsPullPoller = new WorkItemAzureBoardsPullPoller({
+        dataDir,
+        processStore: store,
+        workItemStore,
+        getSyncEnabled: getWorkItemsSyncEnabled,
+    });
+    opts.runtimeConfigService?.onChange?.(() => {
+        void Promise.all([
+            workItemGitHubPullPoller?.refreshWorkspaceTimers(),
+            workItemAzureBoardsPullPoller?.refreshWorkspaceTimers(),
+        ]).catch(error => {
+            const message = error instanceof Error ? error.message : String(error);
+            process.stderr.write(`[work-items/provider-poll] Failed to refresh polling after config change: ${message}\n`);
+        });
+    });
     const getWorkItemsAiAuthoringEnabled = opts.runtimeConfigService
         ? () => opts.runtimeConfigService!.config.workItems?.aiAuthoring?.enabled ?? false
         : () => opts.resolvedConfig?.workItems?.aiAuthoring?.enabled ?? false;
@@ -529,6 +554,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             createAzureBoardsWorkItemSyncProviderAdapter({ dataDir }),
         ],
         onGitHubBackedEpicTreeChanged: (workspaceId) => workItemGitHubPullPoller?.configureWorkspace(workspaceId),
+        onAzureBoardsBackedEpicTreeChanged: (workspaceId) => workItemAzureBoardsPullPoller?.configureWorkspace(workspaceId),
     });
     registerWorkItemRoutes({
         routes,
@@ -537,6 +563,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         enqueue: enqueueForWorkItems,
         getWsServer,
         getHierarchyEnabled: getWorkItemsHierarchyEnabled,
+        getSyncEnabled: getWorkItemsSyncEnabled,
         dataDir,
     });
     registerWorkItemPlanRoutes({ routes, workItemStore, getWsServer });
@@ -672,5 +699,5 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
     );
 
-    return { wikiManager, workItemGitHubPullPoller };
+    return { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller };
 }

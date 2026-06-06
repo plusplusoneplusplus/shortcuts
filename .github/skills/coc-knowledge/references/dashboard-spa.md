@@ -22,7 +22,7 @@ spa/client/react/
 │   ├── chat/           # Chat UI: ChatDetail, ChatListPane, ConversationArea
 │   ├── memory/         # Memory V2 route, facts/review/episodes tabs, repo memory settings section
 │   ├── notes/          # Notes UI: NoteEditor, Mermaid zoom/pan, sidebar, multi-root dropdown (useNotesRoots)
-│   ├── pull-requests/  # PR dashboard: attention groups, provider-derived PR helpers, real diff-stat queue badges/risk, deterministic review summary, BatchCommandPanel
+│   ├── pull-requests/  # PR dashboard: attention groups, provider-derived PR helpers, provider-id/displayName author matching, real diff-stat queue badges/risk, deterministic review summary, BatchCommandPanel
 │   └── terminal/       # Terminal UI: TerminalView, pin/unpin
 ├── processes/          # Process detail, DAG visualization
 ├── queue/              # Queue management (EnqueueDialog, QueueView)
@@ -41,11 +41,23 @@ spa/client/react/
 local to the mounted view. Ralph session groups, For Each run groups, and
 plan-file/history groups render collapsed by default on mount or workspace
 switch; unread dots/count badges and Mark all read controls remain the
-visibility affordances for unread children. For Each run groups are backed by
-workspace-scoped `client.forEach.list(workspaceId)` summaries and nest linked
-generation/child chats by `payload.context.forEach`, persisted `forEach`
-metadata, or `generationProcessId` so child chats do not duplicate as standalone
-rows.
+visibility affordances for unread children. Workspace-scoped group pins from
+`client.processes.listGroupPins(workspaceId)` render non-running Ralph session
+groups and For Each run groups as parent rows in the existing Pinned section,
+interleaved with individually pinned chats by pin time; pinned parent rows are
+removed from their normal recency bucket without mutating child process
+pin/archive state. Running For Each parent rows stay in the Running section even
+when pinned, while retaining the pinned affordance. Parent rows expose the same
+hover pin affordance and context-menu
+Pin to top/Unpin actions as individual chat rows, but those actions call the
+workspace group-pin API instead of changing child process `pinnedAt`.
+The chat-list multi-select range model follows the rendered Ralph rows:
+collapsed sessions count as one row and expand to all child process IDs when
+selected, while expanded sessions range over individual child rows. For Each run
+groups are backed by workspace-scoped `client.forEach.list(workspaceId)`
+summaries and nest linked generation/child chats by `payload.context.forEach`,
+persisted `forEach` metadata, or `generationProcessId` so child chats do not
+duplicate as standalone rows.
 
 ## Key Contexts
 
@@ -181,6 +193,13 @@ Modal job-submission dialogs use `shared/ModalJobAiControls.tsx` when they need 
 When effort-tier mode is enabled, `EffortTierSelector` lists `Very Low`, `Low`, `Medium`, and `High` in that order. Tooltips expose the concrete model and reasoning effort mapped to the selected tier and each configured menu option; empty reasoning effort displays as `Auto`, and unconfigured options remain disabled with an Admin configuration tooltip.
 
 The Admin AI Provider page's `ProviderEffortTiersSection` uses the same tier order (`Very Low`, `Low`, `Medium`, `High`) when editing provider defaults. Rows sourced from hardcoded provider defaults are prefilled and marked with a `Default` badge; saving persists only rows explicitly changed from those defaults, and clearing an override reverts that row to its provider default.
+The provider routing table's quota cell renders Codex and Claude finite
+`quotaTypes[]` snapshots as compact per-window rows with a readable quota-window
+label, remaining percentage, used/entitlement caption, and remaining-usage bar.
+Known provider windows label `five_hour` as `5h` and `seven_day` as `Weekly`;
+unknown ids are converted to readable text. Copilot finite quotas render as the
+single tightest-limit row used by the legacy quota cell. The page-level
+quota-risk summary uses the tightest finite quota across all providers.
 
 The model-picker chip in both `NewChatArea` and `FollowUpInputArea` mirrors the `AgentSelectorChip` style: icon + label + chevron, no inline `✕` clear. When a `modelOverride` is set, `ModelCommandMenu` renders a `Use default` entry at the top of the dropdown that calls `setModelOverride(null)`; clearing flows through the menu rather than a chip-side button. `NoteChatPanel` reuses the same menu without passing `onClearOverride`, so the clear row only appears in the chat composers.
 
@@ -221,9 +240,12 @@ Each tool's internal sub-tab/hash scheme (e.g. `#skills/installed`,
 ## Activity Tab
 
 - Action bar: New chat + refresh + ALL/AP split pause pill
-- 3-column scope segmented control: Chats / Automations / All
+- Scope segmented control: Chats / Loops (when `loops.enabled`) / Automations / All
 - Search box
 - Selection persists in `localStorage['coc-activity-scope']`
+- For Each parent run group rows render in Activity Chats and All, but not in
+  Activity Automations or Loops; loop-linked child chats can still appear in
+  Loops independently of the hidden parent group row.
 
 Ralph activity deep-links mount `RalphWorkflowPane`, which shows the iteration timeline alongside a read-only session file browser. The file browser lists the raw files returned by the Ralph session API, selects the first file by default, renders Markdown files through the shared markdown renderer, and formats JSON files as plain indented text. The pane accepts an optional selected filename from the router and reports file selections back to the host so URL hash wiring can deep-link individual session files with `#repos/{workspaceId}/activity/ralph/{sessionId}/{filename}`; bare and trailing-slash session hashes have no pre-selected file and fall back to the first file.
 
@@ -241,9 +263,10 @@ The top-level `#memory` route is embedded in the Admin shell's Knowledge group a
 
 `WorkItemsTab` presents hierarchy mode as two top-level tracker tabs: **Local** and **Remote**. The Local tab passes `tracker=local-only` to the tree endpoint and shows local creation actions for local-only Epic trees. The Remote tab calls `workItems.syncStatus(...)` without a provider override, uses the workspace repo remote-derived `remoteProvider` as the authoritative visible provider, and only requests the matching `tracker=github-backed` or `tracker=azure-boards-backed` tree. When one supported provider is detected, the Remote tab shows only that provider's icon, the provider chip header shows only that provider (no All chip), the title/subtitle/empty copy and import dialog are provider-specific, and unavailable/auth/setup warnings apply only to the detected provider. Available providers do not render a success/ready banner. Missing, unsupported, or unrecognized workspace remotes show a concise setup message and hide provider chips and import affordances. The Remote import action opens directly in the detected provider mode, then the SPA switches to Remote, selects/highlights the imported root Epic row/card, and keeps the provider filter aligned with the imported provider.
 
-`WorkItemDetail` is an always-editable inline form: title, description, priority, tags, status, parent, success criteria, and plan content remain editable without an Edit-mode toggle. Description and plan use per-field Source/Preview markdown controls. The view tracks a unified dirty draft; Ctrl+S/Cmd+S and the Save button send one `workItems.update` PATCH containing every dirty metadata field plus `plan.content` when changed. There is no instant status save and no standalone plan save from the detail screen. Dirty work-item detail pages show an unsaved-changes indicator, install a `beforeunload` warning, guard the local back breadcrumb, block dirty hash route changes when the user cancels, and intercept hash links before navigation.
+`WorkItemDetail` is an always-editable inline form: title, description, priority, tags, status, parent, success criteria, and plan content remain editable without an Edit-mode toggle. Description and plan use per-field Source/Preview markdown controls. The view tracks a unified dirty draft; Ctrl+S/Cmd+S and the Save button send one `workItems.update` PATCH containing every dirty metadata field plus `plan.content` when changed. There is no instant status save and no standalone plan save from the detail screen. If a remote-backed save returns `WORK_ITEM_SYNC_CONFLICT`, the detail view renders an inline warning panel near the save/error area with per-field "Your draft" versus provider value cards and retries the same PATCH path with `syncConflictResolution` after the user applies choices. Dirty work-item detail pages show an unsaved-changes indicator, install a `beforeunload` warning, guard the local back breadcrumb, block dirty hash route changes when the user cancels, and intercept hash links before navigation.
+Detail fetch and draft state are scoped to the current `workspaceId` + `workItemId`; stale responses from prior selections are ignored, and drafts initialize or save only when the loaded detail item matches the active selection.
 
-The split Local/Remote tracker views do not show the legacy per-item preview/import/export/sync toolbar. Remote-backed Epic roots expose provider-aware context-menu actions (`Sync from GitHub` or `Sync from Azure Boards`) that call the matching per-Epic pull endpoint; Azure sync warnings from remote-wins conflict handling are shown inline in the tree. Adding children under GitHub- or Azure-backed roots still uses the normal create flow, which pushes the new child to the backing provider before storing its mirror metadata. Tree rows and detail headers use provider-specific mirror badges that link to the GitHub issue or Azure Boards work item when the remote URL is available.
+The split Local/Remote tracker views do not show the legacy per-item preview/import/export/sync toolbar, and remote-backed Epic roots do not expose manual provider pull actions. Initial import remains the user-facing Remote tracker seeding action; subsequent remote-to-local refreshes are owned by background provider polling. Adding children under GitHub- or Azure-backed roots still uses the normal create flow, which pushes the new child to the backing provider before storing its mirror metadata. Tree rows and detail headers use provider-specific mirror badges that link to the GitHub issue or Azure Boards work item when the remote URL is available.
 
 ## coc-client Integration
 
@@ -254,6 +277,8 @@ Local React hooks (`fetchApi`, `useWebSocket`, `seenStateApi`) wrap the client f
 ## Pull Requests Tab
 
 The Pull Requests tab is enabled by default through `pullRequests.enabled`. The left queue rail starts with the "Open PR by # or URL" input; successful opens from that input are validated through the PR detail API, recorded through the repo-scoped recent-opened PR API, and shown in a compact "Recently opened" list directly below the input. Recent entries stay hidden when empty or when the rail is collapsed, open through the same overview navigation path, and confirmed 404s remove the stale entry from the list.
+
+Queue filters include All, Mine, Team, Blocked, Ready, and the optional For You pill. Team reads the repo-scoped coworker roster through `coc-client`, maps to the existing `scope=all` PR list fetch, and filters the loaded open PRs client-side by provider author id with a displayName fallback. When Team is active, the rail shows roster chips that can be toggled for transient in-session narrowing, removed through the roster API, and extended with an Add coworker picker sourced from distinct authors in the loaded `scope=all` PRs. Its count badge reflects the loaded PR set, so additional roster matches beyond the current page appear after Load more fetches them.
 
 Queue rows use server-enriched provider/git diff stats for file count, review-minute estimates, and deterministic risk tiers: low below 200 changed lines, medium from 200 through 800, and high above 800. Missing diff stats render unavailable queue metadata instead of falling back to mock data.
 

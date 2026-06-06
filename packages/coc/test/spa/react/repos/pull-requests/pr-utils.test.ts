@@ -5,12 +5,18 @@
 import { describe, it, expect } from 'vitest';
 import { AttentionGroup } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-attention-groups';
 import {
+    authorMatchesCoworkerRosterEntry,
+    buildCoworkerRosterCandidates,
     deriveQueueRisk,
+    filterPullRequestsByCoworkerRoster,
     formatRelativeTime,
     formatTimestamp,
     getGroupBadgeStyle,
+    pullRequestMatchesCoworkerRoster,
     prStatusBadge,
     prStatusColor,
+    type PrCoworkerRosterEntry,
+    type PullRequest,
 } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-utils';
 
 describe('formatTimestamp', () => {
@@ -172,5 +178,103 @@ describe('deriveQueueRisk', () => {
             { additions: 900, deletions: 50, changedFiles: 10 },
             { hasFailingCheck: true, hasUnresolvedBlockingThread: true },
         )).toBe('high');
+    });
+});
+
+describe('coworker roster author matching', () => {
+    const rosterEntry = (overrides: Partial<PrCoworkerRosterEntry> = {}): PrCoworkerRosterEntry => ({
+        id: '12345',
+        displayName: 'Coworker One',
+        addedAt: '2024-01-01T00:00:00.000Z',
+        ...overrides,
+    });
+
+    const pr = (overrides: Partial<PullRequest> = {}): PullRequest => ({
+        id: overrides.number ?? 1,
+        number: 1,
+        title: 'Test PR',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        status: 'open',
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-02T00:00:00.000Z',
+        author: { id: '999', displayName: 'Someone Else' },
+        ...overrides,
+    });
+
+    it('matches GitHub numeric author IDs before display names', () => {
+        expect(authorMatchesCoworkerRosterEntry(
+            { id: 12345, displayName: 'Renamed GitHub User' },
+            rosterEntry({ id: '12345', displayName: 'Original GitHub User' }),
+        )).toBe(true);
+    });
+
+    it('matches ADO GUID author IDs independent of casing', () => {
+        expect(authorMatchesCoworkerRosterEntry(
+            { id: 'A19F35A1-42DB-4C6A-A87D-4A7D7218E7E5', displayName: 'Ado User' },
+            rosterEntry({ id: 'a19f35a1-42db-4c6a-a87d-4a7d7218e7e5', displayName: 'Other Name' }),
+        )).toBe(true);
+    });
+
+    it('does not fall back to displayName when both provider IDs are present and different', () => {
+        expect(authorMatchesCoworkerRosterEntry(
+            { id: 'github-user-1', displayName: 'Shared Name' },
+            rosterEntry({ id: 'github-user-2', displayName: 'Shared Name' }),
+        )).toBe(false);
+    });
+
+    it('falls back to case-insensitive displayName matching when an ID is unavailable', () => {
+        expect(authorMatchesCoworkerRosterEntry(
+            { displayName: '  COWORKER ONE  ' },
+            rosterEntry({ id: '', displayName: 'coworker one' }),
+        )).toBe(true);
+    });
+
+    it('matches the union of roster authors across loaded pull requests', () => {
+        const pullRequests = [
+            pr({ number: 1, author: { id: '12345', displayName: 'Coworker One' } }),
+            pr({ number: 2, author: { id: '99999', displayName: 'Outside Author' } }),
+            pr({ number: 3, author: { displayName: 'Coworker Two' } }),
+        ];
+        const roster = [
+            rosterEntry({ id: '12345', displayName: 'Coworker One' }),
+            rosterEntry({ id: '', displayName: 'coworker two' }),
+        ];
+
+        expect(pullRequestMatchesCoworkerRoster(pullRequests[0], roster)).toBe(true);
+        expect(pullRequestMatchesCoworkerRoster(pullRequests[1], roster)).toBe(false);
+        expect(filterPullRequestsByCoworkerRoster(pullRequests, roster).map(item => item.number)).toEqual([1, 3]);
+    });
+
+    it('dedupes add-picker author candidates by provider id first and displayName fallback', () => {
+        const candidates = buildCoworkerRosterCandidates([
+            pr({
+                number: 1,
+                author: { id: 12345, displayName: 'Bob Dev', email: 'bob@example.invalid' },
+            }),
+            pr({
+                number: 2,
+                author: { id: '12345', displayName: 'Robert Dev', avatarUrl: 'https://avatars.example.invalid/bob' },
+            }),
+            pr({ number: 3, author: { displayName: '  Casey Dev  ' } }),
+            pr({ number: 4, author: { displayName: 'casey dev' } }),
+            pr({ number: 5, author: { id: '', displayName: '   ' } }),
+            pr({ number: 6, author: undefined }),
+        ]);
+
+        expect(candidates).toEqual([
+            {
+                id: '12345',
+                displayName: 'Bob Dev',
+                email: 'bob@example.invalid',
+                avatarUrl: 'https://avatars.example.invalid/bob',
+                prCount: 2,
+            },
+            {
+                id: '',
+                displayName: 'Casey Dev',
+                prCount: 2,
+            },
+        ]);
     });
 });

@@ -180,14 +180,12 @@ describe('WorkItemHierarchyTree — Remote tracker workflow', () => {
         expect(src).toContain('Azure CLI authentication is unavailable');
     });
 
-    it('keeps manual provider pulls as per-Epic context actions', () => {
-        expect(src).toContain('Sync from GitHub');
-        expect(src).toContain('workItems.syncGitHubEpic');
-        expect(src).toContain("node.item.tracker?.kind === 'github-backed'");
-        expect(src).toContain('Sync from Azure Boards');
-        expect(src).toContain('workItems.syncAzureBoardsEpic');
-        expect(src).toContain("node.item.tracker?.kind === 'azure-boards-backed'");
-        expect(src).toContain('hierarchy-sync-warning');
+    it('does not expose manual provider pulls as per-Epic context actions', () => {
+        expect(src).not.toContain('Sync from GitHub');
+        expect(src).not.toContain('workItems.syncGitHubEpic');
+        expect(src).not.toContain('Sync from Azure Boards');
+        expect(src).not.toContain('workItems.syncAzureBoardsEpic');
+        expect(src).not.toContain('hierarchy-sync-warning');
     });
 });
 

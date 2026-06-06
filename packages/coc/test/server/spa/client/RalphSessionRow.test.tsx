@@ -48,6 +48,7 @@ function makeSession(overrides: Partial<RalphSession> = {}): RalphSession {
     return {
         kind: 'ralph-session',
         sessionId: 'sess-1',
+        title: 'Ralph Session',
         grillingProcess: { id: 'grilling-1', type: 'chat' },
         iterations: [],
         latestTimestamp: FIXED_TS,
@@ -109,6 +110,36 @@ describe('RalphSessionRow', () => {
     it('shows the title "Ralph Session"', () => {
         const { container } = render(<RalphSessionRow session={makeSession()} {...defaultProps} />);
         expect(container.textContent).toContain('Ralph Session');
+    });
+
+    it('renders the goal-derived session title instead of the generic label', () => {
+        const session = makeSession({ title: 'Reviewing Codex skill access', phase: 'executing', iterations: [{ id: 'i1' }] });
+        render(<RalphSessionRow session={session} {...defaultProps} />);
+        const title = screen.getByTestId('ralph-session-title');
+        expect(title.textContent).toContain('Reviewing Codex skill access');
+        // The existing muted iteration suffix is preserved alongside the title.
+        expect(title.textContent).toContain('1 iter');
+    });
+
+    it('preserves the "Clarifying" suffix alongside a goal-derived title in grilling phase', () => {
+        const session = makeSession({ title: 'Improve Ralph session titles', phase: 'grilling' });
+        render(<RalphSessionRow session={session} {...defaultProps} />);
+        const title = screen.getByTestId('ralph-session-title');
+        expect(title.textContent).toContain('Improve Ralph session titles');
+        expect(title.textContent).toContain('Clarifying');
+    });
+
+    it('exposes the resolved title plus suffix on the title tooltip/accessibility label', () => {
+        const session = makeSession({ title: 'Reviewing Codex skill access', phase: 'executing', iterations: [{ id: 'i1' }] });
+        render(<RalphSessionRow session={session} {...defaultProps} />);
+        const title = screen.getByTestId('ralph-session-title');
+        expect(title.getAttribute('title')).toBe('Reviewing Codex skill access · 1 iter');
+        expect(title.getAttribute('aria-label')).toBe('Ralph session: Reviewing Codex skill access · 1 iter');
+    });
+
+    it('falls back to the generic "Ralph Session" title when no goal is available', () => {
+        render(<RalphSessionRow session={makeSession({ title: 'Ralph Session' })} {...defaultProps} />);
+        expect(screen.getByTestId('ralph-session-title').textContent).toContain('Ralph Session');
     });
 
     it('renders a phase status dot', () => {

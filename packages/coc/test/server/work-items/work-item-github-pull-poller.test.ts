@@ -195,6 +195,61 @@ describe('WorkItemGitHubPullPoller', () => {
         expect(cleared).toEqual([1]);
     });
 
+    it('suppresses and clears timers when global work item sync is disabled', async () => {
+        const issues = new Map<number, GitHubWorkItemIssue>([
+            [100, makeIssue(100, 'Polling Epic', {
+                labels: ['coc:type:epic'],
+                body: 'Polling epic',
+            })],
+        ]);
+        await importTree(store, issues);
+        writeRepoPreferences(tmpDir, REPO_ID, {
+            workItems: {
+                sync: {
+                    github: {
+                        owner: OWNER,
+                        repo: REPO,
+                        pollingEnabled: true,
+                        pollIntervalMinutes: 1,
+                    },
+                },
+            },
+        });
+        const scheduled: Array<{ handler: () => void | Promise<void>; ms: number; id: number }> = [];
+        const cleared: unknown[] = [];
+        const timerApi: WorkItemGitHubPullPollerTimerApi = {
+            setInterval(handler, ms) {
+                const id = scheduled.length + 1;
+                scheduled.push({ handler, ms, id });
+                return id;
+            },
+            clearInterval(timer) {
+                cleared.push(timer);
+            },
+        };
+        let syncEnabled = false;
+        const poller = new WorkItemGitHubPullPoller({
+            dataDir: tmpDir,
+            processStore: processStore(tmpDir),
+            workItemStore: store,
+            transport: makeTransport(issues),
+            timerApi,
+            getSyncEnabled: () => syncEnabled,
+        });
+
+        await poller.start();
+
+        expect(scheduled).toHaveLength(0);
+
+        syncEnabled = true;
+        await poller.configureWorkspace(REPO_ID);
+        expect(scheduled).toHaveLength(1);
+
+        syncEnabled = false;
+        await poller.configureWorkspace(REPO_ID);
+        expect(cleared).toEqual([1]);
+    });
+
     it('polls GitHub-backed Epic roots, prunes missing descendants, and deletes missing roots', async () => {
         const issues = new Map<number, GitHubWorkItemIssue>([
             [100, makeIssue(100, 'Remote Epic', {
