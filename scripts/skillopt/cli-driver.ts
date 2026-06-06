@@ -11,6 +11,8 @@
 
 import { spawn } from 'child_process';
 import { execSync } from 'child_process';
+import { existsSync } from 'fs';
+import * as path from 'path';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -40,6 +42,46 @@ export class CliError extends Error {
 }
 
 // ─── Implementation ───────────────────────────────────────────────────────────
+
+/**
+ * Resolves how to invoke the Copilot CLI for the current platform.
+ *
+ * On Windows the `copilot` command is an npm shim (`copilot.cmd`), not a real
+ * executable. Node's `spawn` cannot launch a `.cmd` without `shell: true`, and
+ * `shell: true` would mangle multi-line / special-character prompts. To stay
+ * robust we instead locate the npm package's Node entrypoint
+ * (`node_modules/@github/copilot/npm-loader.js`, a sibling of the shim on the
+ * Windows global prefix) and run it directly with the current `node` binary —
+ * no shell, no argument escaping.
+ *
+ * If the loader cannot be found (or on non-Windows platforms, where `copilot`
+ * is directly spawnable), we fall back to invoking `copilot` on PATH.
+ */
+export function resolveCopilotInvocation(
+    baseArgs: string[],
+    deps: {
+        platform?: NodeJS.Platform;
+        pathEnv?: string;
+        nodePath?: string;
+        fileExists?: (p: string) => boolean;
+    } = {}
+): { command: string; args: string[] } {
+    const platform = deps.platform ?? process.platform;
+    const pathEnv = deps.pathEnv ?? process.env.PATH ?? '';
+    const nodePath = deps.nodePath ?? process.execPath;
+    const fileExists = deps.fileExists ?? existsSync;
+
+    if (platform === 'win32') {
+        for (const dir of pathEnv.split(path.delimiter).filter(Boolean)) {
+            const loader = path.join(dir, 'node_modules', '@github', 'copilot', 'npm-loader.js');
+            if (fileExists(loader)) {
+                return { command: nodePath, args: [loader, ...baseArgs] };
+            }
+        }
+    }
+
+    return { command: 'copilot', args: baseArgs };
+}
 
 /**
  * Runs the Copilot CLI non-interactively with the given prompt.
@@ -78,7 +120,8 @@ async function spawnCopilot(args: string[], cwd: string, timeoutMs: number): Pro
     return new Promise<string>((resolve, reject) => {
         let proc: ReturnType<typeof spawn>;
         try {
-            proc = spawn('copilot', args, { cwd });
+            const { command, args: spawnArgs } = resolveCopilotInvocation(args);
+            proc = spawn(command, spawnArgs, { cwd });
         } catch (err) {
             reject(new CliError(
                 'copilot binary not found on PATH. Install the GitHub Copilot CLI and authenticate before running skillopt.',

@@ -59,7 +59,8 @@ Optional:
   --optimizer-model <m>   Copilot model for optimizer      (default: same as --target-model)
   --max-steps <n>         Max optimization steps           (default: 10)
   --w1 <weight>           Hidden-test pass-rate weight     (default: 0.7)
-  --w2 <weight>           LLM-judge weight                 (default: 0.3)
+  --w2 <weight>           LLM-judge / reference weight     (default: 0.3)
+  --judge-samples <n>     Judge samples to average         (default: 1)
   --timeout-ms <ms>       Per-CLI-call timeout             (default: 300000)
   --help / -h             Show help and exit
 ```
@@ -90,6 +91,8 @@ The corpus is a `tasks.json` file (or a directory containing one):
       "visibleTests": "shell command the agent CAN run to verify its work",
       "hiddenTests": "shell command used ONLY for scoring (NEVER shown to agent)",
       "judgeRubric": "plain-text rubric for the LLM judge",
+      "judgeTarget": "diff | stdout (optional, default diff)",
+      "idealOutput": "reference answer (required when judgeTarget is stdout)",
       "split": "train | selection"
     }
   ]
@@ -104,9 +107,30 @@ The corpus is a `tasks.json` file (or a directory containing one):
 | `seedRef` | ○ | Git ref or directory to seed the worktree. |
 | `visibleTests` | ○ | Shell command the agent sees and may run for self-verification. |
 | `hiddenTests` | ○ | Shell command run **after** the rollout (not visible to agent) for scoring. |
-| `judgeRubric` | ○ | Rubric given to the LLM judge CLI call. |
+| `judgeRubric` | ○ | Rubric given to the LLM judge CLI call (diff mode). |
+| `judgeTarget` | ○ | `"diff"` (default) or `"stdout"`. Selects the evaluation path (see below). |
+| `idealOutput` | ○ | Reference answer. **Required** when `judgeTarget="stdout"`. |
 
 The corpus must have **at least one `train` task** and **at least one `selection` task**. IDs must be unique.
+
+### Evaluation modes (`judgeTarget`)
+
+- **`"diff"` (default):** the LLM judge reviews the produced **git diff** against
+  `judgeRubric`, blended with `hiddenTests` pass rate. This is the original behavior and is
+  unchanged for tasks that omit `judgeTarget`.
+- **`"stdout"` (generic reference-based):** the rollout's **stdout** is compared to the
+  task's `idealOutput` by similarity — useful for skills whose output is a plan/answer
+  rather than a code change (e.g. the **break-down** commit-split skill). The pipeline is
+  skill-agnostic:
+  1. **Extract** (`extract.ts`): an LLM normalizes both the candidate stdout and the
+     `idealOutput` into a structured list of atomic "points".
+  2. **Score** (`reference-judge.ts`): `referenceScore = 0.7·pointF1 + 0.3·holistic`, where
+     `pointF1` is the F1 of LLM-matched (by meaning) candidate↔ideal points and `holistic`
+     is a single 0–1 substance-similarity judgment. This `referenceScore` takes the place
+     of the LLM-judge component in the outer `w1·hidden + w2·reference` blend, so running
+     with `--w1 0 --w2 1` makes the reward purely the reference similarity.
+
+  `--judge-samples <n>` averages the judge over `n` runs for self-consistency.
 
 ---
 

@@ -11,7 +11,7 @@ import { getLanguageFromFileName, highlightLine } from '../hooks/useSyntaxHighli
 import { DiffContextMenu } from '../../../tasks/comments/DiffContextMenu';
 import type { DiffCommentSelection, DiffComment } from '../../../../comments/diff-comment-types';
 import type { HunkCategory, HunkClassification } from '../../pull-requests/classification-types';
-import { CATEGORY_LABELS, HUNK_CATEGORIES } from '../../pull-requests/classification-types';
+import { CATEGORY_LABELS, HUNK_CATEGORIES, pickDominantClassification } from '../../pull-requests/classification-types';
 
 export interface UnifiedDiffViewerProps {
     diff: string;
@@ -67,6 +67,15 @@ export interface HunkRange {
  * Walk diffLines and produce one HunkRange per `@@` hunk header.
  * If filePath/getHunkClassification are omitted, returns ranges without
  * classifications so callers can use the geometry without filtering.
+ *
+ * Robustness guard: a classifier may emit MORE classification entries than the
+ * diff has physical `@@` hunks (e.g. it conceptually split one contiguous block
+ * into "imports" + "logic"). Such orphan entries (hunkIndex >= number of `@@`
+ * hunks) have no `@@` header to attach to and would otherwise be silently
+ * dropped from the rendered diff — even though the file-tree badge still counts
+ * them, producing a badge/diff mismatch. We fold every orphan into the last
+ * real hunk, keeping the most review-worthy classification (max priority), so a
+ * logic edit can never disappear while the badge claims logic.
  */
 export function computeHunkRanges(
     diffLines: DiffLine[],
@@ -95,6 +104,22 @@ export function computeHunkRanges(
         }
     }
     flush(diffLines.length);
+
+    // Fold orphan classifications (hunkIndex >= physical `@@` hunk count) into
+    // the last real hunk so they are never silently dropped.
+    if (filePath && getHunkClassification && result.length > 0) {
+        const realHunkCount = result.length;
+        const last = result[realHunkCount - 1];
+        let dominant = last.classification;
+        const SAFETY_CAP = realHunkCount + 10_000;
+        for (let idx = realHunkCount; idx < SAFETY_CAP; idx++) {
+            const orphan = getHunkClassification(filePath, idx);
+            if (!orphan) break;
+            dominant = pickDominantClassification(dominant, orphan);
+        }
+        last.classification = dominant;
+    }
+
     return result;
 }
 

@@ -20,6 +20,7 @@ import type {
     HunkClassification,
     HunkIntensity,
 } from '../../pull-requests/classification-types';
+import { classificationPriority } from '../../pull-requests/classification-types';
 import { requestSpaApi } from '../../../api/cocClient';
 import type { ClassificationKey } from './diffSource';
 import type { ResolvedModalJobAiSelection } from '../../../shared/ModalJobAiControls';
@@ -71,14 +72,8 @@ export interface UseClassificationReturn {
 }
 
 // ── Category priority for badge display ───────────────────────────────
-
-const CATEGORY_PRIORITY: Record<HunkCategory, number> = {
-    logic: 4,
-    test: 3,
-    mechanical: 2,
-    simple: 1,
-    generated: 0,
-};
+// Shared with the diff viewer via `classificationPriority` so the file-tree
+// badge and the rendered hunk always agree on the dominant classification.
 
 // ── API response shapes ───────────────────────────────────────────────
 
@@ -156,7 +151,7 @@ export function useClassification(
                 let badge: FileBadge = { category: 'mechanical', intensity: 'low' };
                 const hasCritical = hunks.some(h => h.critical !== undefined);
                 for (const h of hunks) {
-                    const pri = CATEGORY_PRIORITY[h.category] * 2 + (h.intensity === 'high' ? 1 : 0);
+                    const pri = classificationPriority(h);
                     if (pri > maxPri) {
                         maxPri = pri;
                         badge = { category: h.category, intensity: h.intensity };

@@ -97,3 +97,37 @@ export const CATEGORY_LABELS: Record<HunkCategory, string> = {
     simple: 'Simple function',
     generated: 'Generated',
 };
+
+/**
+ * Relative importance of each category for "dominant classification" selection.
+ * Higher wins. Logic is the most review-worthy, generated the least.
+ */
+export const CATEGORY_PRIORITY: Record<HunkCategory, number> = {
+    logic: 3,
+    test: 2,
+    simple: 1,
+    mechanical: 1,
+    generated: 0,
+};
+
+/**
+ * Numeric priority of a classification: category dominates, intensity breaks ties.
+ * Used by both the file-tree badge and the diff viewer so they always agree on
+ * which classification is "dominant" for a file or a folded `@@` hunk.
+ */
+export function classificationPriority(c: HunkClassification): number {
+    return CATEGORY_PRIORITY[c.category] * 2 + (c.intensity === 'high' ? 1 : 0);
+}
+
+/**
+ * Pick the more review-worthy of two classifications (higher priority wins,
+ * `a` wins ties). Either argument may be undefined.
+ */
+export function pickDominantClassification(
+    a: HunkClassification | undefined,
+    b: HunkClassification | undefined,
+): HunkClassification | undefined {
+    if (!a) return b;
+    if (!b) return a;
+    return classificationPriority(b) > classificationPriority(a) ? b : a;
+}
