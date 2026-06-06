@@ -104,6 +104,7 @@ import { registerMcpOauthRoutes } from '../mcp-oauth';
 import type { McpOauthManager } from '../mcp-oauth';
 import { registerAgentProvidersRoutes } from '../agent-providers/agent-providers-routes';
 import { AgentProvidersQuotaCache } from '../agent-providers/quota-cache';
+import { resolveDefaultAgentProvider, type AutoProviderAvailabilityMap, type AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 import { registerProviderInstallRoutes } from '../providers/provider-install-routes';
 import { registerDiagramRoutes } from '../diagrams/diagrams-handler';
 import { registerRuntimeConfigRoutes } from '../config/runtime-config-handler';
@@ -177,6 +178,76 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     let workItemGitHubPullPoller: WorkItemGitHubPullPoller | undefined;
     let workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller | undefined;
     let agentProvidersQuotaCache: AgentProvidersQuotaCache | undefined;
+    const concreteDefaultProvider = (): ChatProvider => {
+        const defaultProvider = opts.runtimeConfigService?.config.defaultProvider
+            ?? opts.resolvedConfig?.defaultProvider;
+        if (defaultProvider === 'codex') return 'codex';
+        if (defaultProvider === 'claude') return 'claude';
+        return 'copilot';
+    };
+    const concreteDefaultProviderResolution = (): AutoProviderResolutionResult => ({
+        provider: concreteDefaultProvider(),
+        selectedByAuto: false,
+        fallbackUsed: false,
+        decisions: [],
+        warnings: [],
+    });
+    const getAutoProviderAvailability = async (): Promise<AutoProviderAvailabilityMap> => {
+        const config = opts.runtimeConfigService?.config ?? opts.resolvedConfig;
+        const codexEnabled = config?.codex?.enabled ?? false;
+        const claudeEnabled = config?.claude?.enabled ?? false;
+        const availability: AutoProviderAvailabilityMap = {
+            copilot: { enabled: true, available: true },
+        };
+
+        if (!codexEnabled) {
+            availability.codex = { enabled: false, available: false, reason: 'Codex provider is disabled.' };
+        } else {
+            const svc = sdkServiceRegistry.get(SDK_PROVIDER_CODEX);
+            availability.codex = svc
+                ? { enabled: true, ...(await svc.isAvailable()) }
+                : { enabled: true, available: false, reason: 'Codex SDK service is not registered.' };
+        }
+
+        if (!claudeEnabled) {
+            availability.claude = { enabled: false, available: false, reason: 'Claude provider is disabled.' };
+        } else {
+            const svc = sdkServiceRegistry.get(SDK_PROVIDER_CLAUDE);
+            availability.claude = svc
+                ? { enabled: true, ...(await svc.isAvailable()) }
+                : { enabled: true, available: false, reason: 'Claude SDK service is not registered.' };
+        }
+
+        return availability;
+    };
+    const resolveDefaultProvider = async (): Promise<AutoProviderResolutionResult> => {
+        const config = opts.runtimeConfigService?.config ?? opts.resolvedConfig;
+        if (!config || config.defaultProvider !== 'auto') {
+            return concreteDefaultProviderResolution();
+        }
+        if (!agentProvidersQuotaCache) {
+            return {
+                selectedByAuto: true,
+                fallbackUsed: false,
+                decisions: [],
+                warnings: [],
+                error: 'Auto provider routing requires the provider quota cache.',
+            };
+        }
+        const quotaData = await agentProvidersQuotaCache.get({ refreshIfStale: true });
+        return resolveDefaultAgentProvider(config, {
+            providerAvailability: await getAutoProviderAvailability(),
+            quotaData,
+            quotaStale: agentProvidersQuotaCache.isStale(),
+        });
+    };
+    const resolveConcreteDefaultProvider = async (): Promise<ChatProvider> => {
+        const resolution = await resolveDefaultProvider();
+        if (!resolution.provider) {
+            throw new Error(resolution.error ?? 'Default provider resolution did not select a concrete provider.');
+        }
+        return resolution.provider;
+    };
 
     // excalidrawEnabled uses a live getter via runtimeConfigService so admin
     // changes take effect without restart. loopsEnabled stays startup-captured
@@ -218,25 +289,14 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     registerProcessResumeRoutes(routes, store);
     registerFreshChatTerminalRoutes(routes, undefined, {
-        getProvider: () => {
-            const defaultProvider = opts.runtimeConfigService?.config.defaultProvider
-                ?? opts.resolvedConfig?.defaultProvider;
-            if (defaultProvider === 'codex') return 'codex';
-            if (defaultProvider === 'claude') return 'claude';
-            return 'copilot';
-        },
+        getProvider: resolveConcreteDefaultProvider,
     });
     registerTerminalRoutes(routes, store, opts.getTerminalSessionManager ?? (() => undefined), opts.resolvedConfig, opts.runtimeConfigService);
 
     // Queue routes receive the bridge directly for per-repo routing
     registerQueueRoutes(routes, bridge, store, globalWorkspaceRootPath, {
-        getDefaultProvider: () => {
-            const defaultProvider = opts.runtimeConfigService?.config.defaultProvider
-                ?? opts.resolvedConfig?.defaultProvider;
-            if (defaultProvider === 'codex') return 'codex';
-            if (defaultProvider === 'claude') return 'claude';
-            return 'copilot';
-        },
+        getDefaultProvider: concreteDefaultProvider,
+        resolveDefaultProvider,
         getEffortTiersForProvider: (provider) => (
             loadConfigFile(opts.runtimeConfigService?.configPath ?? opts.configPath)?.models?.providers?.[provider]?.effortTiers
             ?? opts.runtimeConfigService?.config.models?.providers?.[provider]?.effortTiers

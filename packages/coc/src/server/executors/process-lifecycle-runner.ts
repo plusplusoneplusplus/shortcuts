@@ -368,6 +368,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     : undefined,
                 forEach: serializeForEachMetadata(task.payload),
                 ralph: serializeRalphMetadata(task.payload),
+                autoProviderRouting: isChatPayload(task.payload)
+                    ? task.payload.context?.autoProviderRouting
+                    : undefined,
             },
         };
 

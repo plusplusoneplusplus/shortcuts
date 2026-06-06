@@ -18,8 +18,9 @@ import type {
 } from '@plusplusoneplusplus/forge';
 import { getLogger, LogCategory, resolveModelForProvider } from '@plusplusoneplusplus/forge';
 import { truncateDisplayName } from '../shared/queue-utils';
-import { TaskDefs, VALID_ENQUEUE_TYPES, VISIBLE_TASK_TYPE_LABELS, VALID_CHAT_PROVIDERS, normalizeChatMode } from '../tasks/task-types';
+import { TaskDefs, VALID_ENQUEUE_TYPES, VISIBLE_TASK_TYPE_LABELS, VALID_CHAT_PROVIDERS, normalizeChatMode, type ChatProvider } from '../tasks/task-types';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
+import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 import * as path from 'path';
 import type { ParsedUrlQuery } from 'querystring';
 
@@ -78,8 +79,9 @@ export interface QueueRouteContext {
     store: ProcessStore | undefined;
     globalWorkspaceRootPath: string | undefined;
     state: QueueGlobalState;
-    getDefaultProvider?: () => 'copilot' | 'codex' | 'claude';
-    getEffortTiersForProvider?: (provider: 'copilot' | 'codex' | 'claude') => StoredEffortTiersMap | undefined;
+    getDefaultProvider?: () => ChatProvider;
+    resolveDefaultProvider?: () => Promise<AutoProviderResolutionResult>;
+    getEffortTiersForProvider?: (provider: ChatProvider) => StoredEffortTiersMap | undefined;
 }
 
 export function getRepoIdentifierFromQuery(query: ParsedUrlQuery): string | undefined {

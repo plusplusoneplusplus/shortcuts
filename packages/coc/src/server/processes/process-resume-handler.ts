@@ -236,6 +236,7 @@ export interface LaunchFreshChatInput {
 }
 
 export type FreshChatTerminalLauncher = (input: LaunchFreshChatInput) => Promise<LaunchResumeResult>;
+type MaybePromise<T> = T | Promise<T>;
 
 function buildFreshChatCommand(
     workingDirectory: string,
@@ -305,7 +306,7 @@ export async function launchFreshChatInTerminal(input: LaunchFreshChatInput): Pr
 export function registerFreshChatTerminalRoutes(
     routes: Route[],
     launcher: FreshChatTerminalLauncher = launchFreshChatInTerminal,
-    options?: { getProvider?: () => 'copilot' | 'codex' | 'claude' }
+    options?: { getProvider?: () => MaybePromise<'copilot' | 'codex' | 'claude'> }
 ): void {
     routes.push({
         method: 'POST',
@@ -318,12 +319,12 @@ export function registerFreshChatTerminalRoutes(
                 // Empty body is fine — workingDirectory falls back to cwd
             }
             const workingDirectory = toNonEmptyString(body?.workingDirectory) ?? process.cwd();
-            const rawProvider = options?.getProvider?.();
-            const provider: 'copilot' | 'codex' | 'claude' =
-                rawProvider === 'codex' ? 'codex' :
-                rawProvider === 'claude' ? 'claude' :
-                'copilot';
             try {
+                const rawProvider = await options?.getProvider?.();
+                const provider: 'copilot' | 'codex' | 'claude' =
+                    rawProvider === 'codex' ? 'codex' :
+                    rawProvider === 'claude' ? 'claude' :
+                    'copilot';
                 const result = await launcher({ workingDirectory, provider });
                 process.stderr.write(`[Chat] launch-terminal workingDirectory=${workingDirectory} provider=${provider} launched=${result.launched}\n`);
                 return sendJSON(res, 200, {
@@ -389,4 +390,3 @@ export function registerProcessResumeRoutes(
         },
     });
 }
-

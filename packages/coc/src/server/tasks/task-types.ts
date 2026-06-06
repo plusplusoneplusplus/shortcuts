@@ -234,6 +234,15 @@ export interface ChatContext {
     ralph?: RalphContext;
     /** For Each generation or parent-run linkage. */
     forEach?: ForEachContext;
+    /** Auto provider selection details captured before execution. */
+    autoProviderRouting?: {
+        selectedByAuto: boolean;
+        provider: ChatProvider;
+        fallbackUsed: boolean;
+        warnings: string[];
+        decisions: unknown[];
+        fallback?: unknown;
+    };
     /** PR diff classification context — dispatches to ClassificationExecutor. */
     classifyDiff?: {
         repoId: string;

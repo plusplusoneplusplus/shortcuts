@@ -1359,6 +1359,37 @@ describe('ProcessLifecycleRunner — provider attribution', () => {
         expect(proc?.metadata?.provider).toBe('copilot');
     });
 
+    it('records Auto provider routing metadata from the resolved chat payload', async () => {
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'copilot');
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Use auto',
+                workspaceId: 'ws-abc',
+                provider: 'codex',
+                context: {
+                    autoProviderRouting: {
+                        selectedByAuto: true,
+                        provider: 'codex',
+                        fallbackUsed: false,
+                        warnings: ['Weekly guard missing.'],
+                        decisions: [{ provider: 'codex', selected: true }],
+                    },
+                },
+            } as any,
+        });
+
+        await runner.run(task, makeOpts());
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        expect(proc?.metadata?.provider).toBe('codex');
+        expect(proc?.metadata?.autoProviderRouting).toMatchObject({
+            selectedByAuto: true,
+            provider: 'codex',
+            fallbackUsed: false,
+        });
+    });
+
     it('records the SDK effective model on assistant turn and metadata', async () => {
         const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'codex');
         const task = makeTask({

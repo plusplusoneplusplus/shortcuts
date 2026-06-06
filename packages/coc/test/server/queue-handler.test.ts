@@ -597,6 +597,39 @@ describe('Queue Handler', () => {
                 });
             }
         });
+
+        it('should await the async default provider resolver for model list routing', async () => {
+            const routes: any[] = [];
+            let providerLookups = 0;
+            registerQueueRoutes(routes, {} as any, undefined, undefined, {
+                resolveDefaultProvider: async () => {
+                    providerLookups += 1;
+                    return {
+                        provider: 'copilot',
+                        selectedByAuto: true,
+                        fallbackUsed: false,
+                        decisions: [],
+                        warnings: [],
+                    };
+                },
+            });
+            const bareServer = http.createServer(createRouter({ routes, spaHtml: '' }));
+            await new Promise<void>((resolve) => bareServer.listen(0, 'localhost', resolve));
+            const address = bareServer.address();
+            const url = `http://localhost:${typeof address === 'object' && address ? address.port : 0}`;
+
+            try {
+                const res = await request(`${url}/api/queue/models`);
+                expect(res.status).toBe(200);
+                const body = JSON.parse(res.body);
+                expect(body.provider).toBe('copilot');
+                expect(providerLookups).toBe(1);
+            } finally {
+                await new Promise<void>((resolve, reject) => {
+                    bareServer.close((err) => err ? reject(err) : resolve());
+                });
+            }
+        });
     });
 
     // ========================================================================

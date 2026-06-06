@@ -32,6 +32,7 @@ import {
 import { NoteChatBindingStore } from '../notes/note-chat-binding-store';
 import { normalizeRelativeNotePath } from '../notes/note-chat-bindings-handler';
 import type { ChatProvider } from '../tasks/task-types';
+import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 
 const EFFORT_TIER_KEYS = new Set(['very-low', 'low', 'medium', 'high']);
 
@@ -82,7 +83,12 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
         method: 'GET',
         pattern: '/api/queue/models',
         handler: async (_req, res) => {
-            const activeProvider = ctx.getDefaultProvider?.() ?? 'copilot';
+            let activeProvider: ChatProvider;
+            try {
+                activeProvider = await resolveDefaultProviderForQueue(ctx);
+            } catch (err) {
+                return sendError(res, 500, err instanceof Error ? err.message : 'Failed to resolve default provider');
+            }
             if (activeProvider === 'copilot') {
                 const live = modelMetadataStore.getCachedModels()
                     .filter(m => m.policy?.state !== 'disabled');
@@ -122,10 +128,10 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
             return sendError(res, 400, validation.error!);
         }
         try {
-            resolveEffortTierConfig(validation.input!, ctx);
+            await prepareTaskForEnqueue(validation.input!, ctx);
         } catch (err) {
-            const message = err instanceof Error ? err.message : 'Failed to resolve effort tier';
-            return sendError(res, 500, message);
+            const message = err instanceof Error ? err.message : 'Failed to resolve provider or effort tier';
+            return sendError(res, 400, message);
         }
 
         // For brand-new chat tasks, the SPA sends raw data-URL attachments on
@@ -223,10 +229,10 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
             }
 
             try {
-                resolveEffortTierConfig(validation.input!, ctx);
+                await prepareTaskForEnqueue(validation.input!, ctx);
             } catch (err) {
-                const message = err instanceof Error ? err.message : 'Failed to resolve effort tier';
-                return sendError(res, 500, message);
+                const message = err instanceof Error ? err.message : 'Failed to resolve provider or effort tier';
+                return sendError(res, 400, message);
             }
 
             try {
@@ -301,7 +307,7 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
                 const taskSpec = body.tasks[i];
 
                 try {
-                    resolveEffortTierConfig(validation.input!, ctx);
+                    await prepareTaskForEnqueue(validation.input!, ctx);
                     const taskId = await enqueueViaBridge(validation.input!, bridge, state, globalWorkspaceRootPath, store);
                     const task = bridge.findManagerForTask(taskId)?.getTask(taskId);
 
@@ -413,6 +419,7 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
             }
 
             try {
+                await prepareTaskForEnqueue(validation.input!, ctx);
                 const taskId = await enqueueViaBridge(validation.input!, bridge, state, globalWorkspaceRootPath, store);
                 process.stderr.write(
                     `[Queue] summarize processIds=${body.processIds.length} taskId=${taskId}\n`
@@ -429,6 +436,71 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * @internal exported for tests
+ */
+export async function prepareTaskForEnqueue(input: CreateTaskInput, ctx: Pick<QueueRouteContext, 'getDefaultProvider' | 'resolveDefaultProvider' | 'getEffortTiersForProvider'>): Promise<void> {
+    await resolveDefaultProviderForTask(input, ctx);
+    resolveEffortTierConfig(input, ctx);
+}
+
+/**
+ * @internal exported for tests
+ */
+export async function resolveDefaultProviderForTask(input: CreateTaskInput, ctx: Pick<QueueRouteContext, 'getDefaultProvider' | 'resolveDefaultProvider'>): Promise<void> {
+    if (input.type !== 'chat') return;
+    const payload = input.payload as Record<string, unknown>;
+    if (payload.kind !== 'chat') return;
+    if (isChatProvider(payload.provider)) return;
+    if (typeof payload.processId === 'string' && payload.processId.trim()) return;
+
+    const resolution = await resolveDefaultProviderResolution(ctx);
+    if (!resolution.selectedByAuto) return;
+
+    payload.provider = resolution.provider;
+    const context = payload.context && typeof payload.context === 'object' && !Array.isArray(payload.context)
+        ? payload.context as Record<string, unknown>
+        : {};
+    payload.context = {
+        ...context,
+        autoProviderRouting: {
+            selectedByAuto: true,
+            provider: resolution.provider,
+            fallbackUsed: resolution.fallbackUsed,
+            warnings: resolution.warnings,
+            decisions: resolution.decisions,
+            ...(resolution.fallback ? { fallback: resolution.fallback } : {}),
+        },
+    };
+}
+
+/**
+ * @internal exported for tests
+ */
+export async function resolveDefaultProviderForQueue(ctx: Pick<QueueRouteContext, 'getDefaultProvider' | 'resolveDefaultProvider'>): Promise<ChatProvider> {
+    return (await resolveDefaultProviderResolution(ctx)).provider!;
+}
+
+async function resolveDefaultProviderResolution(ctx: Pick<QueueRouteContext, 'getDefaultProvider' | 'resolveDefaultProvider'>): Promise<AutoProviderResolutionResult> {
+    const resolution = ctx.resolveDefaultProvider
+        ? await ctx.resolveDefaultProvider()
+        : concreteDefaultProviderResolution(ctx.getDefaultProvider?.() ?? 'copilot');
+    if (!isChatProvider(resolution.provider)) {
+        throw new Error(resolution.error ?? 'Default provider resolution did not select a concrete provider.');
+    }
+    return resolution;
+}
+
+function concreteDefaultProviderResolution(provider: ChatProvider): AutoProviderResolutionResult {
+    return {
+        provider,
+        selectedByAuto: false,
+        fallbackUsed: false,
+        decisions: [],
+        warnings: [],
+    };
+}
 
 /**
  * @internal exported for tests

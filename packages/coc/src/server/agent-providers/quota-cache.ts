@@ -31,6 +31,11 @@ export interface AgentProvidersQuotaCacheOptions {
     now?: () => Date;
 }
 
+export interface AgentProvidersQuotaGetOptions {
+    force?: boolean;
+    refreshIfStale?: boolean;
+}
+
 export function quotaResultToProviderQuotaTypes(result: IAccountQuotaResult): ProviderQuotaType[] {
     return Object.entries(result.quotaSnapshots).map(
         ([type, snap]) => ({
@@ -143,11 +148,26 @@ export class AgentProvidersQuotaCache {
         this.refreshTimer = null;
     }
 
-    async get(options: { force?: boolean } = {}): Promise<AgentProvidersQuotaResponse> {
-        if (!options.force && this.cachedResponse) {
+    async get(options: AgentProvidersQuotaGetOptions = {}): Promise<AgentProvidersQuotaResponse> {
+        if (!options.force && this.cachedResponse && !(options.refreshIfStale && this.isStale())) {
             return this.cachedResponse;
         }
         return this.refresh();
+    }
+
+    getCached(): AgentProvidersQuotaResponse | null {
+        return this.cachedResponse;
+    }
+
+    isStale(): boolean {
+        if (!this.cachedResponse?.lastUpdated) {
+            return true;
+        }
+        const lastUpdatedMs = Date.parse(this.cachedResponse.lastUpdated);
+        if (!Number.isFinite(lastUpdatedMs)) {
+            return true;
+        }
+        return this.now().getTime() - lastUpdatedMs >= this.refreshIntervalMs;
     }
 
     refresh(): Promise<AgentProvidersQuotaResponse> {
