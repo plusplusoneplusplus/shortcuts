@@ -85,29 +85,31 @@ const TAB_DESCRIPTIONS: Record<AdminSubTab, string> = {
     server: 'Inspect the running CoC process, change its display name, or restart it.',
     prompts: 'Read-only view of the system prompts the assistant uses.',
     database: 'Browse the underlying SQLite tables that back CoC.',
-    agents: isContainerMode() ? 'View and manage agents connected to this container.' : 'Choose the AI provider used for chat and task requests.',
+    agents: isContainerMode() ? 'View and manage agents connected to this container.' : '',
     messaging: 'Configure container messaging integrations (e.g. WhatsApp).',
 };
 // ── Settings sections promoted into the sidebar. Each entry maps 1:1 to a
 // `SettingsCard` further down. Selection is kept in component state and synced
 // to the URL fragment so refreshes land on the same section.
-type SettingsSubTab = 'ai' | 'chat' | 'appearance' | 'features' | 'integrations' | 'advanced';
+type SettingsSubTab = 'ai' | 'chat' | 'appearance' | 'features' | 'integrations' | 'providers' | 'advanced';
 const SETTINGS_SUBTABS: { id: SettingsSubTab; label: string; icon: string }[] = [
     { id: 'ai', label: 'AI & Execution', icon: '✦' },
     { id: 'chat', label: 'Chat', icon: '◌' },
     { id: 'appearance', label: 'Appearance', icon: '◐' },
     { id: 'features', label: 'Features', icon: '◫' },
     { id: 'integrations', label: 'Integrations', icon: '⇄' },
+    { id: 'providers', label: 'Providers', icon: '◇' },
     { id: 'advanced', label: 'Advanced', icon: '⚙' },
 ];
 const DEFAULT_SETTINGS_SUBTAB: SettingsSubTab = 'ai';
 const VALID_SETTINGS_SUBTABS = new Set<SettingsSubTab>(SETTINGS_SUBTABS.map(t => t.id));
 const SETTINGS_SUBTAB_DESCRIPTIONS: Record<SettingsSubTab, string> = {
-    ai: 'Default model, execution limits, timeout, and output format for AI tasks.',
+    ai: '',
     chat: 'Conversation behavior, follow-up suggestions, and transcript detail.',
     appearance: 'Theme, layout density, navigation, and prompt autocomplete preferences.',
     features: 'Enable or disable optional workspace and dashboard features.',
     integrations: 'Desktop link handlers and local integration preferences.',
+    providers: 'Manage credentials for GitHub, Azure DevOps, and other connected providers.',
     advanced: 'Read-only diagnostics and recovery actions.',
 };
 
@@ -171,7 +173,6 @@ interface AdminNavGroup {
 }
 
 const ADMIN_TAB_GROUP_LABELS: Partial<Record<AdminSubTab, string>> = {
-    providers: 'Configure',
     messaging: 'Connections',
     server: 'Operations',
     data: 'Operations',
@@ -1121,7 +1122,6 @@ export function AdminPanel() {
                     action: { kind: 'settings', subTab: DEFAULT_SETTINGS_SUBTAB } as AdminNavAction,
                 },
                 ...nonContainerAgentsNavItem,
-                adminNavItem('providers'),
                 ...serversNavItems,
             ],
         },
@@ -1308,6 +1308,7 @@ export function AdminPanel() {
                         </div>
                     ) : (
                     <div className="ar-page">
+                        {activePageDescription && (
                         <header className="ar-page-header">
                             <div className="ar-page-header-row">
                                 <div>
@@ -1315,13 +1316,14 @@ export function AdminPanel() {
                                 </div>
                             </div>
                         </header>
+                        )}
 
                         <FeatureTip tipId="admin-intro" />
 
                         {/* ── Settings tab ── */}
                 {activeTab === 'settings' && (
                     <div className="space-y-3" data-testid="settings-cards">
-                        {/* Sub-tab bar — shown for the 5 main settings sections (not advanced) */}
+                        {/* Sub-tab bar — shown for the main settings sections (not advanced) */}
                         {settingsSubTab !== 'advanced' && (
                             <nav className="ar-subtab-row" role="tablist" aria-label="Settings sections">
                                 {SETTINGS_SUBTABS.filter(t => t.id !== 'advanced').map(tab => (
@@ -1782,6 +1784,18 @@ export function AdminPanel() {
                                 </SettingsCard>
                                 )}
 
+                                {/* ── Providers (credentials) ── */}
+                                {settingsSubTab === 'providers' && (
+                                <section className="ar-card" data-testid="settings-providers">
+                                    <div style={{ padding: 4 }}>
+                                        <ProviderTokensSection
+                                            onError={msg => addToast(msg, 'error')}
+                                            onSuccess={msg => addToast(msg, 'success')}
+                                        />
+                                    </div>
+                                </section>
+                                )}
+
                                 {/* ── Advanced & Recovery ── */}
                                 {settingsSubTab === 'advanced' && (
                                 <SettingsCard
@@ -1824,18 +1838,6 @@ export function AdminPanel() {
                             </>
                         )}
                     </div>
-                )}
-
-                {/* ── Providers tab ── */}
-                {activeTab === 'providers' && (
-                    <section className="ar-card" data-testid="provider-tokens-section">
-                        <div style={{ padding: 4 }}>
-                            <ProviderTokensSection
-                                onError={msg => addToast(msg, 'error')}
-                                onSuccess={msg => addToast(msg, 'success')}
-                            />
-                        </div>
-                    </section>
                 )}
 
                 {/* ── Data tab ── */}

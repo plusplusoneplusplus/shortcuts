@@ -17,13 +17,14 @@ import { test, expect } from './fixtures/server-fixture';
 // Helpers
 // ================================================================
 
-/** Navigate to admin page and wait for it to render. */
+/** Navigate to admin page, open Configure, then switch to the Providers subtab. */
 async function navigateToAdmin(page: import('@playwright/test').Page, serverUrl: string): Promise<void> {
     await page.goto(serverUrl);
     await page.click('#admin-toggle');
     await expect(page.locator('#view-admin')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('#admin-page-content')).not.toBeEmpty({ timeout: 5000 });
-    await page.click('[data-testid="admin-tab-providers"]');
+    await page.click('[data-testid="settings-subtab-providers"]');
+    await expect(page.locator('[data-testid="settings-providers"]')).toBeVisible({ timeout: 5000 });
 }
 
 /** Intercept GET /api/providers/config to return the given providers shape,
@@ -78,7 +79,7 @@ test.describe('Admin: Provider Tokens section', () => {
         await mockGetProviders(page, {});
         await navigateToAdmin(page, serverUrl);
 
-        await expect(page.locator('[data-testid="provider-tokens-section"]')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('[data-testid="provider-tokens-section-inner"]')).toBeVisible({ timeout: 5000 });
 
         // GitHub subsection visible
         await expect(page.locator('[data-testid="github-subsection"]')).toBeVisible();

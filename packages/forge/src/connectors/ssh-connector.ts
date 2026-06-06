@@ -1,5 +1,6 @@
 import type { RemoteServer, SshRemoteServer, SshConnectionState, ManagedChildProcess, ProcessStarter, HealthChecker } from './types';
 import { startProcess as defaultProcessStarter, defaultHealthChecker, waitForHealth } from './health';
+import { getLogger, LogCategory } from '../logger';
 
 export interface SshConnectorOptions {
     processStarter?: ProcessStarter;
@@ -220,6 +221,12 @@ export class SshConnector {
                 .then(state => {
                     entry.reconnectBackoffMs = this.initialReconnectBackoffMs;
                     return state;
+                })
+                .catch(() => {
+                    getLogger().error(LogCategory.GENERAL, `SSH reconnect failed for ${server.id} (${server.host}): ${entry.state.lastError ?? 'unknown error'}`);
+                    entry.intentionalStop = false;
+                    this.scheduleReconnect(server, entry);
+                    return entry.state;
                 })
                 .finally(() => {
                     entry.pending = undefined;

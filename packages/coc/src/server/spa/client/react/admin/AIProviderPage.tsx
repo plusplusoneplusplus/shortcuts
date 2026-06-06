@@ -278,6 +278,12 @@ function Toggle({ checked, onChange, disabled, label, testId }: {
     );
 }
 
+type AIProviderSubTab = 'routing' | 'models';
+const AI_PROVIDER_SUBTABS: { id: AIProviderSubTab; label: string; icon: string }[] = [
+    { id: 'routing', label: 'Provider routing', icon: '◇' },
+    { id: 'models', label: 'Model catalog', icon: '◉' },
+];
+
 export function AIProviderPage(props: AIProviderPageProps) {
     const {
         defaultProvider, setDefaultProvider,
@@ -289,6 +295,7 @@ export function AIProviderPage(props: AIProviderPageProps) {
     } = props;
 
     const [activeModelProvider, setActiveModelProvider] = useState<Provider>(defaultProvider);
+    const [activeSubTab, setActiveSubTab] = useState<AIProviderSubTab>('routing');
 
     const providers: Array<{
         id: Provider;
@@ -369,6 +376,26 @@ export function AIProviderPage(props: AIProviderPageProps) {
                 <span className="ar-badge ar-badge-accent"><span className="aip-dot" /> Restart-aware</span>
             </div>
 
+            {/* Sub-tab bar */}
+            <nav className="ar-subtab-row" role="tablist" aria-label="AI Provider sections" data-testid="aip-subtab-row">
+                {AI_PROVIDER_SUBTABS.map(tab => (
+                    <button
+                        key={tab.id}
+                        type="button"
+                        role="tab"
+                        className={`ar-subtab${activeSubTab === tab.id ? ' is-active' : ''}`}
+                        onClick={() => setActiveSubTab(tab.id)}
+                        data-testid={`aip-subtab-${tab.id}`}
+                        aria-selected={activeSubTab === tab.id}
+                    >
+                        <span className="ar-subtab-icon">{tab.icon}</span>
+                        {tab.label}
+                    </button>
+                ))}
+            </nav>
+
+            {activeSubTab === 'routing' && (
+            <>
             {/* Summary grid */}
             <section className="aip-summary-grid" aria-label="Provider summary" data-testid="aip-summary-grid">
                 <SummaryCard
@@ -542,7 +569,11 @@ export function AIProviderPage(props: AIProviderPageProps) {
                     </button>
                 </footer>
             </section>
+            </>
+            )}
 
+            {activeSubTab === 'models' && (
+            <>
             {/* Provider-scoped model catalog and query */}
             <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading models…</div>}>
                 <ProviderModelsSection
@@ -567,6 +598,8 @@ export function AIProviderPage(props: AIProviderPageProps) {
             <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading effort tiers…</div>}>
                 <ProviderEffortTiersSection provider={activeModelProvider} />
             </Suspense>
+            </>
+            )}
         </div>
     );
 }
