@@ -52,6 +52,8 @@ let mockSessionContextAttachmentsEnabled = false;
 let mockForEachEnabled = false;
 let mockLoopsEnabled = false;
 const mockListAllLoops = vi.fn().mockResolvedValue([]);
+const mockDeleteHistory = vi.fn().mockResolvedValue(undefined);
+const mockDeleteHistoryEntry = vi.fn().mockResolvedValue(undefined);
 vi.mock('../../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
     ChatPrefsSync: () => null,
     useChatPrefs: () => ({
@@ -109,7 +111,9 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
         loops: { listAll: mockListAllLoops },
         queue: {
             summarize: vi.fn().mockResolvedValue({ taskId: null }),
+            deleteHistoryEntry: mockDeleteHistoryEntry,
         },
+        workspaces: { deleteHistory: mockDeleteHistory },
     }),
 }));
 
@@ -966,6 +970,20 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
             expect(onSelectRalphSession).toHaveBeenCalledWith(SESSION_ID);
         });
 
+        it('uses a collapsed Ralph parent row as the range anchor when selecting a later row', () => {
+            const onSelectRalphSession = vi.fn();
+            renderActivity(rangeFixture(), { activeTab: 'chats', onSelectRalphSession });
+
+            fireEvent.click(screen.getByTestId('ralph-session-body'));
+            fireEvent.click(document.querySelector('[data-task-id="regular-below"]')!, { shiftKey: true });
+
+            expect(onSelectRalphSession).toHaveBeenCalledTimes(1);
+            expect(screen.getByTestId('ralph-session-row').getAttribute('data-selected')).toBe('true');
+            expect((document.querySelector('[data-task-id="regular-below"]') as HTMLElement).getAttribute('data-selected')).toBe('true');
+            fireEvent.contextMenu(document.querySelector('[data-task-id="regular-below"]')!);
+            expect(screen.getByText(/3 tasks selected/)).toBeTruthy();
+        });
+
         it('uses individual Ralph child rows when the session is expanded', () => {
             renderActivity(rangeFixture(), { activeTab: 'chats' });
 
@@ -979,6 +997,22 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
             expect((document.querySelector(`[data-task-id="ralph-${SESSION_ID}-2"]`) as HTMLElement).getAttribute('data-selected')).toBe('true');
             fireEvent.contextMenu(document.querySelector('[data-task-id="regular-above"]')!);
             expect(screen.getByText(/4 tasks selected/)).toBeTruthy();
+        });
+
+        it('uses an expanded Ralph parent row as a full-group range anchor when selecting a later row', () => {
+            const onSelectRalphSession = vi.fn();
+            renderActivity(rangeFixture(), { activeTab: 'chats', onSelectRalphSession });
+
+            fireEvent.click(screen.getByTestId('ralph-session-chevron'));
+            fireEvent.click(screen.getByTestId('ralph-session-body'));
+            fireEvent.click(document.querySelector('[data-task-id="regular-below"]')!, { shiftKey: true });
+
+            expect(onSelectRalphSession).toHaveBeenCalledTimes(1);
+            expect((document.querySelector(`[data-task-id="ralph-${SESSION_ID}-1"]`) as HTMLElement).getAttribute('data-selected')).toBe('true');
+            expect((document.querySelector(`[data-task-id="ralph-${SESSION_ID}-2"]`) as HTMLElement).getAttribute('data-selected')).toBe('true');
+            expect((document.querySelector('[data-task-id="regular-below"]') as HTMLElement).getAttribute('data-selected')).toBe('true');
+            fireEvent.contextMenu(document.querySelector('[data-task-id="regular-below"]')!);
+            expect(screen.getByText(/3 tasks selected/)).toBeTruthy();
         });
 
         it('normalizes a sub-session anchor to the Ralph group boundary', () => {
@@ -1026,6 +1060,23 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
             expect(screen.getByText(/3 tasks selected/)).toBeTruthy();
         });
 
+        it('treats a collapsed For Each run as one range row when a range spans across it', () => {
+            mockForEachEnabled = true;
+            const fixture = forEachRangeFixture();
+            renderActivity(fixture.history, {
+                activeTab: 'chats',
+                forEachRuns: fixture.runs,
+            });
+
+            expect(screen.getByTestId('for-each-run-body').getAttribute('aria-expanded')).toBe('false');
+            fireEvent.click(document.querySelector('[data-task-id="regular-above-fe"]')!);
+            fireEvent.click(document.querySelector('[data-task-id="regular-below-fe"]')!, { shiftKey: true });
+
+            expect(screen.getByTestId('for-each-run-row').getAttribute('data-selected')).toBe('true');
+            fireEvent.contextMenu(document.querySelector('[data-task-id="regular-above-fe"]')!);
+            expect(screen.getByText(/4 tasks selected/)).toBeTruthy();
+        });
+
         it('plain-clicking a For Each parent row still opens the run detail', () => {
             mockForEachEnabled = true;
             const onSelectForEachRun = vi.fn();
@@ -1039,6 +1090,26 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
 
             expect(onSelectForEachRun).toHaveBeenCalledWith('run-1');
             expect(screen.getByTestId('for-each-run-body').getAttribute('aria-expanded')).toBe('false');
+        });
+
+        it('uses a collapsed For Each parent row as the range anchor when selecting a later row', () => {
+            mockForEachEnabled = true;
+            const onSelectForEachRun = vi.fn();
+            const fixture = forEachRangeFixture();
+            renderActivity(fixture.history, {
+                activeTab: 'chats',
+                forEachRuns: fixture.runs,
+                onSelectForEachRun,
+            });
+
+            fireEvent.click(screen.getByTestId('for-each-run-body'));
+            fireEvent.click(document.querySelector('[data-task-id="regular-below-fe"]')!, { shiftKey: true });
+
+            expect(onSelectForEachRun).toHaveBeenCalledTimes(1);
+            expect(screen.getByTestId('for-each-run-row').getAttribute('data-selected')).toBe('true');
+            expect((document.querySelector('[data-task-id="regular-below-fe"]') as HTMLElement).getAttribute('data-selected')).toBe('true');
+            fireEvent.contextMenu(document.querySelector('[data-task-id="regular-below-fe"]')!);
+            expect(screen.getByText(/3 tasks selected/)).toBeTruthy();
         });
 
         it('uses expanded For Each child rows when a range spans across the group', () => {
@@ -1081,6 +1152,108 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
             expect((document.querySelector('[data-task-id="fe-child-1"]') as HTMLElement).getAttribute('data-selected')).toBe('true');
             fireEvent.contextMenu(document.querySelector('[data-task-id="regular-above-fe"]')!);
             expect(screen.getByText(/3 tasks selected/)).toBeTruthy();
+        });
+
+        it('uses an expanded For Each parent row as a full-group range anchor when selecting a later row', () => {
+            mockForEachEnabled = true;
+            const onSelectForEachRun = vi.fn();
+            const fixture = forEachRangeFixture();
+            renderActivity(fixture.history, {
+                activeTab: 'chats',
+                forEachRuns: fixture.runs,
+                onSelectForEachRun,
+            });
+
+            fireEvent.click(screen.getByTestId('for-each-run-chevron'));
+            fireEvent.click(screen.getByTestId('for-each-run-body'));
+            fireEvent.click(document.querySelector('[data-task-id="regular-below-fe"]')!, { shiftKey: true });
+
+            expect(onSelectForEachRun).toHaveBeenCalledTimes(1);
+            expect((document.querySelector('[data-task-id="fe-generation"]') as HTMLElement).getAttribute('data-selected')).toBe('true');
+            expect((document.querySelector('[data-task-id="fe-child-1"]') as HTMLElement).getAttribute('data-selected')).toBe('true');
+            expect((document.querySelector('[data-task-id="regular-below-fe"]') as HTMLElement).getAttribute('data-selected')).toBe('true');
+            fireEvent.contextMenu(document.querySelector('[data-task-id="regular-below-fe"]')!);
+            expect(screen.getByText(/3 tasks selected/)).toBeTruthy();
+        });
+
+        it('keeps hidden selected For Each child ids when the collapsed parent row is pinned', async () => {
+            mockForEachEnabled = true;
+            vi.spyOn(window, 'confirm').mockReturnValue(true);
+            const fixture = forEachRangeFixture();
+            renderActivity(fixture.history, {
+                forEachRuns: fixture.runs,
+                workspaceId: 'ws-1',
+                groupPins: [{
+                    type: 'for-each-run',
+                    groupId: 'run-1',
+                    pinnedAt: new Date(NOW).toISOString(),
+                }],
+            });
+
+            fireEvent.click(document.querySelector('[data-task-id="regular-above-fe"]')!);
+            fireEvent.click(screen.getByTestId('for-each-run-body'), { shiftKey: true });
+
+            await waitFor(() => expect(screen.getByTestId('selection-count-pill').textContent).toContain('3 selected'));
+            fireEvent.contextMenu(document.querySelector('[data-task-id="regular-above-fe"]')!);
+            expect(screen.getByText(/3 tasks selected/)).toBeTruthy();
+            fireEvent.click(screen.getByTestId('ctx-item-Delete-3-chats…'));
+
+            await waitFor(() => {
+                expect(mockDeleteHistory).toHaveBeenCalledWith('ws-1', 'regular-above-fe');
+                expect(mockDeleteHistory).toHaveBeenCalledWith('ws-1', 'fe-generation');
+                expect(mockDeleteHistory).toHaveBeenCalledWith('ws-1', 'fe-child-1');
+                expect(mockDeleteHistory).not.toHaveBeenCalledWith('ws-1', 'run-1');
+            });
+        });
+
+        it('keeps hidden selected For Each child ids when the collapsed parent row is running', async () => {
+            mockForEachEnabled = true;
+            vi.spyOn(window, 'confirm').mockReturnValue(true);
+            const fixture = forEachRangeFixture();
+            const generation = fixture.history.find((task: any) => task.id === 'fe-generation');
+            const runningChild = {
+                ...fixture.history.find((task: any) => task.id === 'fe-child-1'),
+                status: 'running',
+                startedAt: new Date(NOW - 1500).toISOString(),
+                completedAt: undefined,
+                lastActivityAt: NOW - 1500,
+            };
+            const run = {
+                ...fixture.runs[0],
+                status: 'running',
+                updatedAt: new Date(NOW - 1500).toISOString(),
+                itemStatusCounts: {
+                    pending: 0,
+                    running: 1,
+                    completed: 1,
+                    failed: 0,
+                    skipped: 0,
+                },
+            };
+            renderActivity([
+                fixture.history[0],
+                generation,
+                fixture.history[3],
+            ], {
+                running: [runningChild],
+                forEachRuns: [run],
+                workspaceId: 'ws-1',
+            });
+
+            fireEvent.click(document.querySelector('[data-task-id="regular-above-fe"]')!);
+            fireEvent.click(screen.getByTestId('for-each-run-body'), { shiftKey: true });
+
+            await waitFor(() => expect(screen.getByTestId('selection-count-pill').textContent).toContain('3 selected'));
+            fireEvent.contextMenu(document.querySelector('[data-task-id="regular-above-fe"]')!);
+            expect(screen.getByText(/3 tasks selected/)).toBeTruthy();
+            fireEvent.click(screen.getByTestId('ctx-item-Delete-3-chats…'));
+
+            await waitFor(() => {
+                expect(mockDeleteHistory).toHaveBeenCalledWith('ws-1', 'regular-above-fe');
+                expect(mockDeleteHistory).toHaveBeenCalledWith('ws-1', 'fe-generation');
+                expect(mockDeleteHistory).toHaveBeenCalledWith('ws-1', 'fe-child-1');
+                expect(mockDeleteHistory).not.toHaveBeenCalledWith('ws-1', 'run-1');
+            });
         });
     });
 });
