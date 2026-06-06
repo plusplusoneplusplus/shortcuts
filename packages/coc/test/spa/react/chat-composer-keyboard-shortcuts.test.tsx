@@ -382,6 +382,22 @@ describe('chat composer keyboard shortcuts', () => {
         expect(screen.getByTestId('effort-pill-selector').getAttribute('data-effort-value')).toBe('auto');
     });
 
+    it('lets the NewChatArea slash menu own modified arrow shortcuts', () => {
+        mockSlashCommands.menuVisible = true;
+        mockSlashCommands.handleKeyDown.mockReturnValue(true);
+        render(<NewChatArea workspaceId="ws-1" />);
+
+        const input = screen.getByTestId('new-chat-input');
+        fireEvent.keyDown(input, { key: 'ArrowDown', shiftKey: true });
+        fireEvent.keyDown(input, { key: 'ArrowDown', ctrlKey: true });
+
+        expect(mockSlashCommands.handleKeyDown).toHaveBeenCalledTimes(2);
+        expect(screen.getByTestId('effort-pill-selector').getAttribute('data-effort-value')).toBe('auto');
+        expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Copilot');
+        expect(mockPromptHistoryHandleKeyDown).not.toHaveBeenCalled();
+        expect(mockClient.preferences.patchRepo).not.toHaveBeenCalled();
+    });
+
     it('lets the NewChatArea model menu own Shift+Tab before mode cycling', () => {
         mockModelCommand.modelMenuVisible = true;
         mockModelCommand.filteredModels = mockModels.models;
@@ -477,6 +493,56 @@ describe('chat composer keyboard shortcuts', () => {
         fireEvent.keyDown(screen.getByTestId('activity-chat-input'), { key: 'ArrowDown', shiftKey: true });
 
         expect(onEffortTierChange).toHaveBeenCalledWith('high');
+    });
+
+    it('lets the FollowUpInputArea slash menu own effort arrow shortcuts', () => {
+        const onEffortChange = vi.fn();
+        const slashCommands = {
+            ...makeFollowUpProps().slashCommands,
+            menuVisible: true,
+            handleKeyDown: vi.fn(() => true),
+        };
+        render(<FollowUpInputArea {...makeFollowUpProps({
+            slashCommands,
+            effortOverride: 'low',
+            onEffortChange,
+            effortOptions: [{ value: 'low', label: 'Low', title: 'Low', barClass: '', filled: 1 }, { value: 'high', label: 'High', title: 'High', barClass: '', filled: 3 }],
+        })} />);
+
+        fireEvent.keyDown(screen.getByTestId('activity-chat-input'), { key: 'ArrowDown', shiftKey: true });
+
+        expect(slashCommands.handleKeyDown).toHaveBeenCalled();
+        expect(onEffortChange).not.toHaveBeenCalled();
+        expect(mockPromptHistoryHandleKeyDown).not.toHaveBeenCalled();
+    });
+
+    it('lets the FollowUpInputArea model menu own effort arrow shortcuts', () => {
+        const onEffortChange = vi.fn();
+        const handleModelKeyDown = vi.fn(() => true);
+        render(<FollowUpInputArea {...makeFollowUpProps({
+            modelCommand: {
+                modelMenuVisible: true,
+                modelFilter: '',
+                filteredModels: [],
+                modelHighlightIndex: 0,
+                modelOverride: null,
+                setModelOverride: vi.fn(),
+                handleModelSelect: vi.fn(),
+                showModelMenu: vi.fn(),
+                dismissModelMenu: vi.fn(),
+                handleModelKeyDown,
+                setModelFilter: vi.fn(),
+            },
+            effortOverride: 'low',
+            onEffortChange,
+            effortOptions: [{ value: 'low', label: 'Low', title: 'Low', barClass: '', filled: 1 }, { value: 'high', label: 'High', title: 'High', barClass: '', filled: 3 }],
+        })} />);
+
+        fireEvent.keyDown(screen.getByTestId('activity-chat-input'), { key: 'ArrowDown', shiftKey: true });
+
+        expect(handleModelKeyDown).toHaveBeenCalled();
+        expect(onEffortChange).not.toHaveBeenCalled();
+        expect(mockPromptHistoryHandleKeyDown).not.toHaveBeenCalled();
     });
 
     it('leaves follow-up provider locked when Ctrl+Down is pressed', () => {
