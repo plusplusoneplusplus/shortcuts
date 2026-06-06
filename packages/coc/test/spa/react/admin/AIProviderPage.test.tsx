@@ -533,10 +533,10 @@ describe('AIProviderPage', () => {
         expect(screen.getByTestId('btn-refresh-quota')).toBeDefined();
     });
 
-    it('calls onRefreshQuota when refresh button is clicked', () => {
+    it('calls onRefreshQuota with force when refresh button is clicked', () => {
         const { props } = renderPage();
         fireEvent.click(screen.getByTestId('btn-refresh-quota'));
-        expect(props.onRefreshQuota).toHaveBeenCalled();
+        expect(props.onRefreshQuota).toHaveBeenCalledWith({ force: true });
     });
 
     it('disables refresh quota button while loading', () => {
