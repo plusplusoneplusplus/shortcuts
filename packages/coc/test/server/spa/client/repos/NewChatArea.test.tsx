@@ -168,6 +168,12 @@ vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
         },
     ],
     DEFAULT_CHAT_MODES: ['ask', 'autopilot'],
+    getVisibleChatModes: ({ category, featureFlags }: { category?: string; featureFlags?: Record<string, boolean> }) => {
+        if (category === 'workflow') {
+            return featureFlags?.['for-each'] ? ['for-each'] : [];
+        }
+        return ['ask', 'autopilot'];
+    },
     MODE_BORDER_COLORS: {
         autopilot: { border: 'border-green-500', ring: 'ring-green-500' },
         ask: { border: 'border-yellow-500', ring: 'ring-yellow-500' },

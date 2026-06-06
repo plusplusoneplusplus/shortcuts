@@ -377,6 +377,7 @@ describe('NewChatArea', () => {
         expect(screen.queryByTestId('mode-pill-ralph')).toBeNull();
         expect(screen.queryByTestId('mode-pill-for-each')).toBeNull();
 
+        expect(screen.getByTestId('mode-selector').contains(screen.getByTestId('workflow-mode-trigger'))).toBe(true);
         fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
 
         expect(screen.getByTestId('workflow-mode-option-ralph').textContent).toContain('Ralph');
