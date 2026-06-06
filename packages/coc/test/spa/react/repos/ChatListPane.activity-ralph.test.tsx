@@ -155,6 +155,23 @@ function makeRalphIteration(iter: number, idMs = iter * 1000): any {
     };
 }
 
+function makeRalphIterationWithGoal(iter: number, originalGoal: string, idMs = iter * 1000): any {
+    const iteration = makeRalphIteration(iter, idMs);
+    return {
+        ...iteration,
+        payload: {
+            ...iteration.payload,
+            context: {
+                ...iteration.payload.context,
+                ralph: {
+                    ...iteration.payload.context.ralph,
+                    originalGoal,
+                },
+            },
+        },
+    };
+}
+
 function makeStandaloneChat(id: string, label: string): any {
     return {
         id,
@@ -307,8 +324,8 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
             sourceRalphSessionId: SESSION_ID,
             phase: 'complete',
             status: 'completed',
-            title: 'Ralph iteration 1',
-            displayLabel: 'Ralph iteration 1 - 5 iter',
+            title: 'Ralph Session',
+            displayLabel: 'Ralph Session - 5 iter',
             childProcessIds: [
                 `ralph-${SESSION_ID}-1`,
                 `ralph-${SESSION_ID}-2`,
@@ -319,6 +336,29 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
             processCount: 5,
             iterationCount: 5,
         });
+    });
+
+    it('sets a goal-derived Ralph session drag label when goal metadata is present', () => {
+        mockSessionContextAttachmentsEnabled = true;
+        const originalGoal = '## Goal\nFix Ralph range selection in chat list';
+        const iterations = [1, 2, 3, 4, 5].map(iter => makeRalphIterationWithGoal(iter, originalGoal));
+
+        renderActivity(iterations, { workspaceId: 'ws-1' });
+
+        const body = screen.getByTestId('ralph-session-body');
+        const dataTransfer = { setData: vi.fn(), effectAllowed: 'move' as DataTransfer['effectAllowed'] };
+        fireEvent.dragStart(body, { dataTransfer });
+
+        const [, rawPayload] = dataTransfer.setData.mock.calls.find((call: any[]) => call[0] === RALPH_SESSION_CONTEXT_DRAG_MIME)!;
+        const payload = JSON.parse(rawPayload);
+        expect(payload).toMatchObject({
+            title: 'Fix Ralph range selection in chat list',
+            displayLabel: 'Fix Ralph range selection in chat list - 5 iter',
+        });
+        expect(dataTransfer.setData).toHaveBeenCalledWith(
+            'text/plain',
+            `CoC Ralph session context: Fix Ralph range selection in chat list - 5 iter [complete/completed] ${SESSION_ID}`,
+        );
     });
 
     it('keeps failed Ralph session groups draggable when context attachments are enabled', () => {
