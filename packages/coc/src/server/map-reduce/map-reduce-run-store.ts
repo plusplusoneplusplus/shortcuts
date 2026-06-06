@@ -117,6 +117,7 @@ function clearMapItemExecutionState(item: MapReduceItem, now: string): void {
     item.startedAt = now;
     item.completedAt = undefined;
     item.error = undefined;
+    item.output = undefined;
     item.childTaskId = undefined;
     item.childProcessId = undefined;
 }
@@ -471,7 +472,13 @@ export class FileMapReduceRunStore {
         });
     }
 
-    async markRunningItemCompleted(workspaceId: string, runId: string, itemId: string, childTaskId?: string): Promise<MapReduceRun> {
+    async markRunningItemCompleted(
+        workspaceId: string,
+        runId: string,
+        itemId: string,
+        childTaskId?: string,
+        output?: unknown,
+    ): Promise<MapReduceRun> {
         return this.enqueueWrite(async () => {
             const current = await this.getRun(workspaceId, runId);
             if (!current) {
@@ -492,6 +499,7 @@ export class FileMapReduceRunStore {
             item.status = 'completed';
             item.completedAt = now;
             item.error = undefined;
+            item.output = output;
             const nextRun: MapReduceRun = {
                 ...current,
                 status: mapPhaseStatusAfterTerminalChange(current.items),

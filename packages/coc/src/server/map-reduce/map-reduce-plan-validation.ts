@@ -140,6 +140,9 @@ export function normalizeMapReducePlanItems(rawItems: unknown): MapReduceItem[] 
         if (metadata) {
             item.metadata = metadata;
         }
+        if (raw.output !== undefined) {
+            item.output = raw.output;
+        }
         copyOptionalString(item, 'childProcessId', raw);
         copyOptionalString(item, 'childTaskId', raw);
         copyOptionalString(item, 'startedAt', raw);

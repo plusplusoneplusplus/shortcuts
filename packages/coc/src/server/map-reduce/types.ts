@@ -34,6 +34,7 @@ export interface MapReduceItem {
     status: MapReduceItemStatus;
     childProcessId?: string;
     childTaskId?: string;
+    output?: unknown;
     startedAt?: string;
     completedAt?: string;
     error?: string;

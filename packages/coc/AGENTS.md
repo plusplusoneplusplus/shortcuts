@@ -31,7 +31,7 @@ all have their own `references/*.md`.
 
 ## Local Invariants
 
-- **627+ Vitest test files** live under `packages/coc/test/server/`. Any
+- **Server Vitest tests** live under `packages/coc/test/server/`. Any
   server change should add or update tests there.
 - **Codex skill mirroring** runs once at server startup (when
   `resolvedConfig.codex?.enabled === true`), not per-install. The

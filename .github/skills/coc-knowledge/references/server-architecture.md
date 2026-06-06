@@ -101,7 +101,7 @@ The `src/server/` tree is grouped by feature domain. Cross-cutting plumbing stay
 | `memory/` | Memory config, bounded-memory REST, repo-memory, promote, background-review |
 | `ralph/` | Iterative execution sessions and file-backed journal (see [ralph.md](ralph.md)) |
 | `for-each/` | Dedicated For Each run records, item-plan validation, file-backed repo-scoped draft/approval storage, and sequential child-chat orchestration |
-| `map-reduce/` | Dedicated Map Reduce run records, map-plan validation, reduce-step state, per-run parallelism configuration, and file-backed repo-scoped draft/approval/execution storage with parallel map claiming |
+| `map-reduce/` | Dedicated Map Reduce run records, map-plan validation, reduce-step state, per-run parallelism configuration, file-backed repo-scoped draft/approval/execution storage with parallel map claiming, and child-chat orchestration that auto-chains reduce after successful map completion |
 | `models/` | Model registry endpoints |
 | `agent-providers/` | Agent-provider quota cache, provider status routes, SDK install helpers, and the pure Auto provider router that evaluates configured priority, availability, normal quota thresholds, weekly guards, fallback, and selection warnings before callers expand effort tiers. Queue/fresh-terminal defaults and direct Ralph, For Each, and work-item enqueue surfaces use the shared quota cache and refresh it only when missing or stale. |
 | `messaging/` | Teams bot integration: manager, command router, per-user state |
