@@ -193,7 +193,7 @@ describe('UsageStatsView', () => {
         expect(screen.getByText(/Generated at:/)).toBeTruthy();
     });
 
-    it('shows premium units only in cost-details cells (All models summary)', () => {
+    it('shows displayed USD in every populated usage cell and never premium units', () => {
         (useTokenUsageStats as ReturnType<typeof vi.fn>).mockReturnValue(
             makeHookResult({
                 data: {
@@ -205,6 +205,8 @@ describe('UsageStatsView', () => {
                             cacheWriteTokens: 18200,
                             totalTokens: 14225400,
                             cost: 416.375,
+                            displayedUsdCost: 4.25,
+                            displayedUsdCostSource: 'estimated',
                         }),
                     ],
                     models: ['gpt-4o'],
@@ -216,10 +218,17 @@ describe('UsageStatsView', () => {
 
         render(<UsageStatsView />);
 
-        expect(screen.getAllByText('Premium units: 416.38').length).toBe(2);
+        expect(screen.getAllByText('↓14.1M total').length).toBe(4);
+        expect(screen.getAllByText('· 9.5M cached').length).toBe(4);
+        expect(screen.getAllByText('· 4.6M new').length).toBe(4);
+        expect(screen.getAllByText('↑125.4k out').length).toBe(4);
+        expect(screen.getAllByText('· 18.2k cache write').length).toBe(4);
+        expect(screen.getAllByText('· USD $4.25').length).toBe(4);
+        expect(document.body.textContent).not.toMatch(/premium\s+units/i);
+        expect(document.body.textContent).not.toContain('416.38');
     });
 
-    it('renders estimated token cost only in cost-details cells', () => {
+    it('renders pricing-table estimate details alongside displayed USD in every usage cell', () => {
         (useTokenUsageStats as ReturnType<typeof vi.fn>).mockReturnValue(
             makeHookResult({
                 data: {
@@ -231,6 +240,8 @@ describe('UsageStatsView', () => {
                             cacheWriteTokens: 0,
                             totalTokens: 3_000_000,
                             estimatedUsdCost: 42.31,
+                            displayedUsdCost: 42.31,
+                            displayedUsdCostSource: 'estimated',
                             costBreakdown: {
                                 inputUsd: 7.5,
                                 cachedInputUsd: 0.25,
@@ -249,12 +260,14 @@ describe('UsageStatsView', () => {
 
         render(<UsageStatsView />);
 
-        expect(screen.getAllByText('· est $42.31').length).toBe(2);
+        expect(screen.getAllByText('· USD $42.31').length).toBe(4);
+        const cellsWithDisplayedCost = screen.getAllByTitle(/Displayed USD: \$42\.31 \(pricing estimate\)/);
+        expect(cellsWithDisplayedCost).toHaveLength(4);
         const cellsWithPricingSource = screen.getAllByTitle(/Pricing source: https:\/\/docs\.github\.com\/example/);
-        expect(cellsWithPricingSource).toHaveLength(2);
+        expect(cellsWithPricingSource).toHaveLength(4);
     });
 
-    it('does not render a dollar sign for SDK premium units', () => {
+    it('does not treat SDK premium units as USD', () => {
         (useTokenUsageStats as ReturnType<typeof vi.fn>).mockReturnValue(
             makeHookResult({
                 data: {
@@ -272,8 +285,89 @@ describe('UsageStatsView', () => {
 
         render(<UsageStatsView />);
 
-        expect(screen.getAllByText('Premium units: 12.50').length).toBe(2);
         expect(document.body.textContent).not.toContain('$12.50');
+        expect(document.body.textContent).not.toMatch(/premium\s+units/i);
+        expect(screen.getAllByText('· USD pricing unavailable')).toHaveLength(4);
+    });
+
+    it('shows native Claude USD, estimated Codex USD, and explicit unavailable pricing', () => {
+        const claude = makeUsage({
+            inputTokens: 2000,
+            outputTokens: 1000,
+            totalTokens: 3000,
+            actualUsdCost: 0.1234,
+            estimatedUsdCost: 0.45,
+            displayedUsdCost: 0.1234,
+            displayedUsdCostSource: 'native',
+            costBreakdown: {
+                inputUsd: 0.05,
+                cachedInputUsd: 0,
+                cacheWriteUsd: 0,
+                outputUsd: 0.4,
+            },
+            pricingSource: 'https://docs.github.com/claude',
+        });
+        const codex = makeUsage({
+            inputTokens: 3000,
+            outputTokens: 1000,
+            totalTokens: 4000,
+            estimatedUsdCost: 1.5,
+            displayedUsdCost: 1.5,
+            displayedUsdCostSource: 'estimated',
+            costBreakdown: {
+                inputUsd: 0.5,
+                cachedInputUsd: 0,
+                cacheWriteUsd: 0,
+                outputUsd: 1,
+            },
+            pricingSource: 'https://docs.github.com/codex',
+        });
+        const unknown = makeUsage({
+            inputTokens: 500,
+            outputTokens: 100,
+            totalTokens: 600,
+            pricingUnavailable: true,
+        });
+        const dayTotal = makeUsage({
+            inputTokens: claude.inputTokens + codex.inputTokens + unknown.inputTokens,
+            outputTokens: claude.outputTokens + codex.outputTokens + unknown.outputTokens,
+            totalTokens: claude.totalTokens + codex.totalTokens + unknown.totalTokens,
+            actualUsdCost: claude.actualUsdCost,
+            estimatedUsdCost: (claude.estimatedUsdCost ?? 0) + (codex.estimatedUsdCost ?? 0),
+            displayedUsdCost: (claude.displayedUsdCost ?? 0) + (codex.displayedUsdCost ?? 0),
+            displayedUsdCostSource: 'mixed',
+            pricingUnavailable: true,
+        });
+
+        (useTokenUsageStats as ReturnType<typeof vi.fn>).mockReturnValue(
+            makeHookResult({
+                data: {
+                    entries: [{
+                        date: '2025-07-10',
+                        byModel: {
+                            'claude-sonnet-4.6': claude,
+                            'gpt-5.3-codex': codex,
+                            'missing-model': unknown,
+                        },
+                        dayTotal,
+                    }],
+                    models: ['claude-sonnet-4.6', 'gpt-5.3-codex', 'missing-model'],
+                    generatedAt: '2025-07-10T12:00:00Z',
+                    totalDays: 1,
+                },
+            })
+        );
+
+        render(<UsageStatsView />);
+
+        expect(screen.getAllByText('· USD $0.12')).toHaveLength(2);
+        expect(screen.getAllByTitle(/Displayed USD: \$0\.12 \(native reported\)/)).toHaveLength(2);
+        expect(screen.getAllByText('· USD $1.50')).toHaveLength(2);
+        expect(screen.getAllByTitle(/Displayed USD: \$1\.50 \(pricing estimate\)/)).toHaveLength(2);
+        expect(screen.getAllByText('· USD $1.62')).toHaveLength(2);
+        expect(screen.getAllByTitle(/Displayed USD: \$1\.62 \(mixed native\/estimate\)/)).toHaveLength(2);
+        expect(screen.getAllByText('· USD pricing unavailable')).toHaveLength(2);
+        expect(screen.getAllByTitle(/Displayed USD: pricing unavailable/)).toHaveLength(2);
     });
 
     it('fits within a fixed number of columns regardless of model count', () => {

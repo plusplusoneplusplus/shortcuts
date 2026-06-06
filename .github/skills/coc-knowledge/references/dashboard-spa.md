@@ -112,13 +112,20 @@ for wrapping and log links, while short categorical fields render as a compact
 summary chip strip and related fields collapse into `Time`, `Workspace`,
 `Ralph`, `Goal`, and `System` rows. When a process exposes
 `cumulativeTokenUsage`, the popover also renders live conversation-level
-`Tokens` and `Est. cost` rows: token totals expand to input/output/cache
+`Tokens` and `USD cost` rows: token totals expand to input/output/cache
 breakdowns, and cost uses the server-derived `conversationCostEstimate` with
 compact URL-backed pricing-source links plus partial/unavailable-pricing caveats. While a conversation is
 running, `useChatSSE` mirrors `token-usage` event `cumulativeTokenUsage` and
 `conversationCostEstimate` snapshots into the cached process details that feed
 the popover; after completion, the normal process refresh replaces that live
 snapshot with the final server read model.
+
+`UsageStatsView` renders token totals per model/day plus USD-only cost metadata
+for every populated usage cell. The displayed cost uses the native-first
+`displayedUsdCost` field (`actualUsdCost ?? estimatedUsdCost` as computed by the
+server/Forge layer); cells without a displayable USD value show explicit
+`USD pricing unavailable` copy instead of silently leaving cost blank. The UI
+does not render Copilot premium request units.
 
 ## Tool Call Rendering
 
