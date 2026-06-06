@@ -8,7 +8,9 @@ export const WORKFLOW_REGISTRY = [
         border: 'border-yellow-500 dark:border-yellow-400',
         ring: 'focus-within:ring-yellow-500/30',
         text: 'text-yellow-600 dark:text-yellow-400',
+        category: 'primary',
         defaultVisible: true,
+        surfaces: ['new-chat', 'follow-up'],
     },
     {
         mode: 'autopilot',
@@ -19,7 +21,9 @@ export const WORKFLOW_REGISTRY = [
         border: 'border-green-500 dark:border-green-400',
         ring: 'focus-within:ring-green-500/30',
         text: 'text-green-600 dark:text-green-400',
+        category: 'primary',
         defaultVisible: true,
+        surfaces: ['new-chat', 'follow-up'],
     },
     {
         mode: 'ralph',
@@ -32,6 +36,7 @@ export const WORKFLOW_REGISTRY = [
         text: 'text-purple-600 dark:text-purple-400',
         category: 'workflow',
         featureFlag: 'ralph',
+        surfaces: ['new-chat'],
     },
     {
         mode: 'for-each',
@@ -44,11 +49,23 @@ export const WORKFLOW_REGISTRY = [
         text: 'text-sky-600 dark:text-sky-400',
         category: 'workflow',
         featureFlag: 'for-each',
+        surfaces: ['new-chat'],
     },
 ] as const;
 
 export type WorkflowRegistryEntry = typeof WORKFLOW_REGISTRY[number];
 export type ChatMode = WorkflowRegistryEntry['mode'];
+export type ChatModeCategory = WorkflowRegistryEntry['category'];
+export type ChatModeSurface = WorkflowRegistryEntry['surfaces'][number];
+export type ChatModeFeatureFlag = NonNullable<WorkflowRegistryEntry['featureFlag']>;
+export type ChatModeFeatureFlags = Partial<Record<ChatModeFeatureFlag, boolean>>;
+
+export interface VisibleChatModeOptions {
+    surface: ChatModeSurface;
+    category?: ChatModeCategory;
+    featureFlags?: ChatModeFeatureFlags;
+    allowedModes?: readonly ChatMode[];
+}
 
 export const DEFAULT_CHAT_MODES: readonly ChatMode[] = WORKFLOW_REGISTRY
     .filter(entry => entry.defaultVisible === true)
@@ -57,6 +74,30 @@ export const DEFAULT_CHAT_MODES: readonly ChatMode[] = WORKFLOW_REGISTRY
 export function normalizeChatMode(mode: unknown): ChatMode | undefined {
     if (mode === 'plan') return 'ask';
     return WORKFLOW_REGISTRY.find(entry => entry.mode === mode)?.mode;
+}
+
+function isFeatureEnabled(entry: WorkflowRegistryEntry, featureFlags: ChatModeFeatureFlags | undefined): boolean {
+    return !entry.featureFlag || featureFlags?.[entry.featureFlag] === true;
+}
+
+function isSurfaceVisible(entry: WorkflowRegistryEntry, surface: ChatModeSurface, allowedModes: readonly ChatMode[] | undefined): boolean {
+    if (allowedModes) {
+        return allowedModes.includes(entry.mode);
+    }
+    return entry.surfaces.includes(surface);
+}
+
+export function getVisibleChatModes({
+    surface,
+    category,
+    featureFlags,
+    allowedModes,
+}: VisibleChatModeOptions): readonly ChatMode[] {
+    return WORKFLOW_REGISTRY
+        .filter(entry => (!category || entry.category === category)
+            && isFeatureEnabled(entry, featureFlags)
+            && isSurfaceVisible(entry, surface, allowedModes))
+        .map(entry => entry.mode);
 }
 
 /**

@@ -11,8 +11,8 @@
  */
 
 import { cn } from '../../ui/cn';
-import { DEFAULT_CHAT_MODES, MODE_TOOLTIPS, WORKFLOW_REGISTRY } from '../../repos/modeConfig';
-import type { ChatMode } from '../../repos/modeConfig';
+import { DEFAULT_CHAT_MODES, MODE_TOOLTIPS, WORKFLOW_REGISTRY, getVisibleChatModes } from '../../repos/modeConfig';
+import type { ChatMode, VisibleChatModeOptions } from '../../repos/modeConfig';
 
 export interface ModePillOption {
     /** Mode value. Must be one of the registered ChatMode strings. */
@@ -44,6 +44,10 @@ export function getModePillOption(mode: ChatMode): ModePillOption {
         dotClass: entry.dotClass,
         title: entry.tooltip,
     };
+}
+
+export function getVisibleModePillOptions(options: VisibleChatModeOptions): readonly ModePillOption[] {
+    return getVisibleChatModes(options).map(getModePillOption);
 }
 
 const DEFAULT_OPTIONS: readonly ModePillOption[] = DEFAULT_CHAT_MODES.map(getModePillOption);

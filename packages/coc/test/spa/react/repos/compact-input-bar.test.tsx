@@ -16,12 +16,14 @@ import React, { createRef } from 'react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const { tracker, mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch } = vi.hoisted(() => ({
+const { tracker, mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockRalphEnabled, mockForEachEnabled } = vi.hoisted(() => ({
     tracker: { calls: [] as Array<[string, number?]>, domValue: '' },
     mockQueueDispatch: vi.fn(),
     mockAppState: { workspaces: [{ id: 'ws-1', rootPath: '/repo' }], onboardingProgress: { hasUsedChat: true } } as Record<string, any>,
     mockFetch: vi.fn(),
     mockAppDispatch: vi.fn(),
+    mockRalphEnabled: { value: false },
+    mockForEachEnabled: { value: false },
 }));
 
 vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async () => {
@@ -57,8 +59,8 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '/api',
     getConfig: () => ({ apiBasePath: '/api' }),
-    isRalphEnabled: () => false,
-    isForEachEnabled: () => false,
+    isRalphEnabled: () => mockRalphEnabled.value,
+    isForEachEnabled: () => mockForEachEnabled.value,
     isLoopsEnabled: () => false,
     isCodexEnabled: () => false,
     getDefaultProvider: () => 'copilot',
@@ -138,6 +140,8 @@ beforeEach(() => {
     vi.clearAllMocks();
     tracker.calls = [];
     tracker.domValue = '';
+    mockRalphEnabled.value = false;
+    mockForEachEnabled.value = false;
     globalThis.fetch = mockFetch;
     Element.prototype.scrollIntoView = vi.fn();
 });
@@ -267,6 +271,26 @@ describe('FollowUpInputArea — stacked input card layout', () => {
         expect(screen.getByTestId('mode-pill-ask')).toBeTruthy();
         expect(screen.getByTestId('mode-pill-autopilot')).toBeTruthy();
         expect(screen.queryByTestId('mode-pill-plan')).toBeNull();
+    });
+
+    it('does not expose For Each in follow-up composers unless explicitly allowed', () => {
+        mockForEachEnabled.value = true;
+
+        render(<FollowUpInputArea {...makeFollowUpProps({ selectedMode: 'ask' })} />);
+
+        expect(screen.queryByTestId('mode-pill-for-each')).toBeNull();
+    });
+
+    it('exposes For Each in follow-up composers only when explicitly allowed and feature-enabled', () => {
+        mockForEachEnabled.value = true;
+
+        render(<FollowUpInputArea {...makeFollowUpProps({
+            selectedMode: 'for-each',
+            allowedModes: ['ask', 'for-each'],
+        })} />);
+
+        expect(screen.getByTestId('mode-pill-for-each')).toBeTruthy();
+        expect(screen.getByTestId('mode-pill-for-each').getAttribute('aria-checked')).toBe('true');
     });
 
     it('renders the bottom toolbar with attach + slash trigger buttons', () => {

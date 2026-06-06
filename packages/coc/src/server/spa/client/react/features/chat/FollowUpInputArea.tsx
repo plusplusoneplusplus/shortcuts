@@ -9,7 +9,7 @@ import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
 import { AgentSelectorChip } from './AgentSelectorChip';
-import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION } from './ModePillSelector';
+import { ModePillSelector, getVisibleModePillOptions } from './ModePillSelector';
 import type { ModePillOption } from './ModePillSelector';
 import { EffortPillSelector } from './EffortPillSelector';
 import type { EffortLevel, EffortPillOption } from './EffortPillSelector';
@@ -33,7 +33,7 @@ import {
 } from '../../utils/composerKeyboardShortcuts';
 import type { AttachedContextItem } from './hooks/useAttachedContext';
 import type { ChatAttachment } from '../../types/attachments';
-import { isSessionContextAttachmentsEnabled } from '../../utils/config';
+import { isForEachEnabled, isRalphEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
 import type { SessionContextAttachmentDragPayload } from './sessionContextDrag';
 import {
     dataTransferHasAnyData,
@@ -290,13 +290,14 @@ export function FollowUpInputArea({
     });
 
     const pillOptions: ModePillOption[] = (() => {
-        const base: ModePillOption[] = [...DEFAULT_MODE_PILL_OPTIONS];
-        // Append Ralph pill on eligible chats. Caller signals eligibility by
-        // including 'ralph' in `allowedModes`. On chats that already have a
-        // ralph context, the parent omits it and the pill stays hidden.
-        const ralphAllowed = allowedModes ? allowedModes.includes('ralph') : false;
-        if (ralphAllowed) base.push(RALPH_MODE_PILL_OPTION);
-        return allowedModes ? base.filter(opt => allowedModes.includes(opt.value)) : base;
+        return [...getVisibleModePillOptions({
+            surface: 'follow-up',
+            featureFlags: {
+                ralph: isRalphEnabled(),
+                'for-each': isForEachEnabled(),
+            },
+            allowedModes,
+        })];
     })();
 
     // ── Bash-style up/down history navigation through past user prompts ──

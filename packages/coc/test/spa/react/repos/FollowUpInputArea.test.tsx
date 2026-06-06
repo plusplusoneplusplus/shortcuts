@@ -11,11 +11,13 @@ import { render, screen, act, fireEvent } from '@testing-library/react';
 import React, { createRef } from 'react';
 
 // Hoist a call tracker so the mock factory can reference it before imports
-const { tracker, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig } = vi.hoisted(() => ({
+const { tracker, mockRalphEnabled, mockForEachEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig } = vi.hoisted(() => ({
     tracker: {
         calls: [] as Array<[string, number?]>,
         domValue: '',
     },
+    mockRalphEnabled: { value: false },
+    mockForEachEnabled: { value: false },
     mockSessionContextAttachmentsEnabled: { value: false },
     mockGetLlmToolsConfig: vi.fn(),
 }));
@@ -42,6 +44,8 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
 });
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isRalphEnabled: () => mockRalphEnabled.value,
+    isForEachEnabled: () => mockForEachEnabled.value,
     isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled.value,
 }));
 
@@ -72,6 +76,8 @@ afterEach(() => {
 beforeEach(() => {
     tracker.calls = [];
     tracker.domValue = '';
+    mockRalphEnabled.value = false;
+    mockForEachEnabled.value = false;
     mockSessionContextAttachmentsEnabled.value = false;
     mockGetLlmToolsConfig.mockResolvedValue({
         tools: [{ name: 'get_conversation', label: 'Get Conversation', description: '', enabledByDefault: true }],

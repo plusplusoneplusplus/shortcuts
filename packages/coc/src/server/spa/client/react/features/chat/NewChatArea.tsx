@@ -25,7 +25,7 @@ import { useSlashCommands } from './hooks/useSlashCommands';
 import { useModelCommand, selectPickableModels } from './hooks/useModelCommand';
 import { SlashCommandMenu, getMetaSkillItems, mergeSkillsWithMeta, type SkillItem } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
-import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, getModePillOption } from './ModePillSelector';
+import { ModePillSelector, getModePillOption, getVisibleModePillOptions } from './ModePillSelector';
 import { EffortPillSelector, buildEffortOptionsForModel } from './EffortPillSelector';
 import type { EffortLevel } from './EffortPillSelector';
 import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
@@ -217,13 +217,28 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         return pickableModels.some(model => model.id === override) ? override : null;
     }, [modelCommand.modelOverride, pickableModels]);
 
-    const modePillOptions = DEFAULT_MODE_PILL_OPTIONS;
-    const workflowModeOptions = useMemo(
-        () => [
-            ...(isRalphEnabled() ? [getModePillOption('ralph')] : []),
-            ...(isForEachEnabled() ? [getModePillOption('for-each')] : []),
-        ],
+    const modeFeatureFlags = useMemo(
+        () => ({
+            ralph: isRalphEnabled(),
+            'for-each': isForEachEnabled(),
+        }),
         [],
+    );
+    const modePillOptions = useMemo(
+        () => getVisibleModePillOptions({
+            surface: 'new-chat',
+            category: 'primary',
+            featureFlags: modeFeatureFlags,
+        }),
+        [modeFeatureFlags],
+    );
+    const workflowModeOptions = useMemo(
+        () => getVisibleModePillOptions({
+            surface: 'new-chat',
+            category: 'workflow',
+            featureFlags: modeFeatureFlags,
+        }),
+        [modeFeatureFlags],
     );
     const visibleModes = useMemo(
         () => [...modePillOptions, ...workflowModeOptions].map(opt => opt.value),

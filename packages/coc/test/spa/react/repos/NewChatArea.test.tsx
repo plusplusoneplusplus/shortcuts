@@ -383,6 +383,28 @@ describe('NewChatArea', () => {
         expect(screen.getByTestId('workflow-mode-option-for-each').textContent).toContain('For Each');
     });
 
+    it('shows only the Ralph workflow option when only Ralph is feature-enabled', () => {
+        mockRalphEnabled.value = true;
+        mockForEachEnabled.value = false;
+
+        render(<NewChatArea workspaceId="ws-1" />);
+        fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
+
+        expect(screen.getByTestId('workflow-mode-option-ralph').textContent).toContain('Ralph');
+        expect(screen.queryByTestId('workflow-mode-option-for-each')).toBeNull();
+    });
+
+    it('shows only the For Each workflow option when only For Each is feature-enabled', () => {
+        mockRalphEnabled.value = false;
+        mockForEachEnabled.value = true;
+
+        render(<NewChatArea workspaceId="ws-1" />);
+        fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
+
+        expect(screen.queryByTestId('workflow-mode-option-ralph')).toBeNull();
+        expect(screen.getByTestId('workflow-mode-option-for-each').textContent).toContain('For Each');
+    });
+
     it('selects Ralph from the Workflow submenu and preserves the Ralph split submit', () => {
         mockRalphEnabled.value = true;
 
