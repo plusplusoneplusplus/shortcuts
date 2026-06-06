@@ -169,6 +169,12 @@ For Codex `file_change` calls normalized to `apply_patch`, `ToolCallView`
 continues to summarize from `args.changes`; when the backend enriches the
 parameters with a unified `args.diff`, expanded tool details and hover previews
 render that patch text instead of the short result summary.
+`utils/conversationScan.ts` powers chat References and goal-file detection by
+scanning completed file-writing tool calls for pinned document extensions
+(`.md`, `.txt`, `.yaml`, `.yml`, `.json`). It detects direct create/write/edit
+paths, `apply_patch` added files, and conservative shell `mv`/`move` command
+destinations from command arguments, including `bash -c`/`bash -lc` wrappers.
+It does not infer created files from arbitrary shell output.
 
 ## Input Area
 

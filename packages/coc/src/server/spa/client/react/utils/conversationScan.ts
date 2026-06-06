@@ -11,6 +11,9 @@ const CREATED_FILE_RE = /Created file (.+\.\w+)/;
 /** Regex to extract file paths from apply_patch result: "Added N file(s): path1, path2" */
 const ADDED_FILES_RE = /Added \d+ file\(s\): (.+)/;
 
+/** Shell tool names whose command args may contain file moves. */
+const SHELL_MOVE_TOOLS = new Set(['shell', 'bash']);
+
 export interface CreatedFileRecord {
     filePath: string;
     toolCall: ClientToolCall;
@@ -65,6 +68,123 @@ function parseFilePathFromResult(result: string | undefined): string {
     if (!result) return '';
     const match = CREATED_FILE_RE.exec(result);
     return match?.[1] ?? '';
+}
+
+function getCommandText(args: unknown): string {
+    if (!args || typeof args !== 'object') return '';
+    const record = args as Record<string, unknown>;
+    const value = record.command ?? record.cmd;
+    return typeof value === 'string' ? value : '';
+}
+
+function splitShellCommands(command: string): string[] {
+    const parts: string[] = [];
+    let current = '';
+    let quote: '"' | "'" | null = null;
+    let escaped = false;
+
+    for (let i = 0; i < command.length; i++) {
+        const ch = command[i];
+        if (escaped) {
+            current += ch;
+            escaped = false;
+            continue;
+        }
+        if (ch === '\\' && quote !== "'") {
+            current += ch;
+            escaped = true;
+            continue;
+        }
+        if ((ch === '"' || ch === "'") && !quote) {
+            quote = ch;
+            current += ch;
+            continue;
+        }
+        if (quote === ch) {
+            quote = null;
+            current += ch;
+            continue;
+        }
+        if (!quote && (ch === '\n' || ch === ';' || (ch === '&' && command[i + 1] === '&'))) {
+            const trimmed = current.trim();
+            if (trimmed) parts.push(trimmed);
+            current = '';
+            if (ch === '&') i++;
+            continue;
+        }
+        current += ch;
+    }
+
+    const trimmed = current.trim();
+    if (trimmed) parts.push(trimmed);
+    return parts;
+}
+
+function parseShellWords(command: string): string[] {
+    const words: string[] = [];
+    let current = '';
+    let quote: '"' | "'" | null = null;
+    let escaped = false;
+
+    for (let i = 0; i < command.length; i++) {
+        const ch = command[i];
+        if (escaped) {
+            current += ch;
+            escaped = false;
+            continue;
+        }
+        if (ch === '\\' && quote !== "'") {
+            escaped = true;
+            continue;
+        }
+        if ((ch === '"' || ch === "'") && !quote) {
+            quote = ch;
+            continue;
+        }
+        if (quote === ch) {
+            quote = null;
+            continue;
+        }
+        if (!quote && /\s/.test(ch)) {
+            if (current) {
+                words.push(current);
+                current = '';
+            }
+            continue;
+        }
+        current += ch;
+    }
+
+    if (current) words.push(current);
+    return words;
+}
+
+function extractMovedFilePathsFromCommand(command: string, depth = 0): string[] {
+    if (!command || depth > 2) return [];
+    const paths: string[] = [];
+
+    for (const part of splitShellCommands(command)) {
+        const words = parseShellWords(part);
+        if (words.length === 0) continue;
+
+        const executable = words[0].replace(/\\/g, '/').split('/').pop() ?? words[0];
+        if ((executable === 'bash' || executable === 'sh') && words.length >= 3) {
+            const commandIndex = words.findIndex(word => word === '-c' || word === '-lc');
+            if (commandIndex >= 0 && words[commandIndex + 1]) {
+                paths.push(...extractMovedFilePathsFromCommand(words[commandIndex + 1], depth + 1));
+            }
+            continue;
+        }
+
+        if (executable !== 'mv' && executable !== 'move') continue;
+        const operands = words.slice(1).filter(word => word === '--' || !word.startsWith('-'));
+        const dashDashIndex = operands.indexOf('--');
+        const fileOperands = dashDashIndex >= 0 ? operands.slice(dashDashIndex + 1) : operands;
+        if (fileOperands.length < 2) continue;
+        paths.push(fileOperands[fileOperands.length - 1]);
+    }
+
+    return paths;
 }
 
 /** Extract created file paths from an apply_patch tool call. */
@@ -159,6 +279,21 @@ export function scanTurnsForCreatedFiles(
             const effectiveName = resolveToolName(tc) !== 'unknown'
                 ? resolveToolName(tc)
                 : (tc.id && toolStartNames.get(tc.id)) || resolveToolName(tc);
+
+            if (SHELL_MOVE_TOOLS.has(effectiveName)) {
+                const args = typeof tc.args === 'object' ? tc.args ?? {} : {};
+                const command = getCommandText(args)
+                    || (tc.id ? getCommandText(toolStartArgs.get(tc.id)) : '');
+                const filePaths = extractMovedFilePathsFromCommand(command);
+                for (const filePath of filePaths) {
+                    if (seen.has(filePath)) continue;
+                    const ext = filePath.slice(filePath.lastIndexOf('.'));
+                    if (!PINNED_EXTENSIONS.includes(ext)) continue;
+                    seen.add(filePath);
+                    results.push({ filePath, toolCall: tc, turnIndex: i });
+                }
+                continue;
+            }
 
             if (!FILE_WRITE_TOOLS.has(effectiveName)) continue;
 
