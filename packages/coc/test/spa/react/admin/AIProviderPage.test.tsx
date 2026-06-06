@@ -112,6 +112,44 @@ describe('AIProviderPage', () => {
         expect(screen.getByText('Restart-aware')).toBeDefined();
     });
 
+    // ────────────── Sub-tab bar ──────────────
+    it('renders the sub-tab bar with routing and models tabs', () => {
+        renderPage();
+        expect(screen.getByTestId('aip-subtab-row')).toBeDefined();
+        expect(screen.getByTestId('aip-subtab-routing')).toBeDefined();
+        expect(screen.getByTestId('aip-subtab-models')).toBeDefined();
+    });
+
+    it('defaults to the routing sub-tab', () => {
+        renderPage();
+        const routingTab = screen.getByTestId('aip-subtab-routing');
+        expect(routingTab.getAttribute('aria-selected')).toBe('true');
+        expect(routingTab.className).toContain('is-active');
+    });
+
+    it('switches to models sub-tab when clicked', () => {
+        renderPage();
+        fireEvent.click(screen.getByTestId('aip-subtab-models'));
+        const modelsTab = screen.getByTestId('aip-subtab-models');
+        expect(modelsTab.getAttribute('aria-selected')).toBe('true');
+        expect(modelsTab.className).toContain('is-active');
+        expect(screen.getByTestId('aip-subtab-routing').getAttribute('aria-selected')).toBe('false');
+    });
+
+    it('hides routing content when models tab is active', () => {
+        renderPage();
+        expect(screen.getByTestId('aip-summary-grid')).toBeDefined();
+        fireEvent.click(screen.getByTestId('aip-subtab-models'));
+        expect(screen.queryByTestId('aip-summary-grid')).toBeNull();
+    });
+
+    it('hides models content when routing tab is active', () => {
+        renderPage();
+        expect(screen.queryByTestId('mock-provider-models-section')).toBeNull();
+        fireEvent.click(screen.getByTestId('aip-subtab-models'));
+        expect(screen.getByTestId('mock-provider-models-section')).toBeDefined();
+    });
+
     // ────────────── Summary grid ──────────────
     it('renders the summary grid with four cards', () => {
         renderPage();
@@ -595,12 +633,14 @@ describe('AIProviderPage', () => {
     // ────────────── ProviderModelsSection integration ──────────────
     it('passes defaultProvider to ProviderModelsSection', () => {
         renderPage({ defaultProvider: 'codex' });
+        fireEvent.click(screen.getByTestId('aip-subtab-models'));
         const section = screen.getByTestId('mock-provider-models-section');
         expect(section.getAttribute('data-provider')).toBe('codex');
     });
 
     it('passes available=true for copilot provider', () => {
         renderPage({ defaultProvider: 'copilot' });
+        fireEvent.click(screen.getByTestId('aip-subtab-models'));
         const section = screen.getByTestId('mock-provider-models-section');
         expect(section.getAttribute('data-available')).toBe('true');
     });
@@ -611,6 +651,7 @@ describe('AIProviderPage', () => {
             claudeEnabled: false,
             providerAvailability: { codex: { available: true }, claude: { available: true } },
         });
+        fireEvent.click(screen.getByTestId('aip-subtab-models'));
         const section = screen.getByTestId('mock-provider-models-section');
         expect(section.getAttribute('data-available')).toBe('false');
     });
@@ -621,6 +662,7 @@ describe('AIProviderPage', () => {
             codexEnabled: false,
             providerAvailability: { codex: { available: true }, claude: { available: true } },
         });
+        fireEvent.click(screen.getByTestId('aip-subtab-models'));
         const msg = screen.getByTestId('mock-unavailable-msg');
         expect(msg.textContent).toContain('Enable the Codex provider');
     });
@@ -723,7 +765,8 @@ describe('AIProviderPage', () => {
     // ────────────── Panel header ──────────────
     it('renders provider routing panel title and description', () => {
         renderPage();
-        expect(screen.getByText('Provider routing')).toBeDefined();
+        const allMatches = screen.getAllByText('Provider routing');
+        expect(allMatches.length).toBeGreaterThanOrEqual(1);
         expect(screen.getByText(/Availability, quota, install state/)).toBeDefined();
     });
 
@@ -735,6 +778,7 @@ describe('AIProviderPage', () => {
     // ────────────── Model provider tabs ──────────────
     it('passes allProviders to ProviderModelsSection', () => {
         renderPage();
+        fireEvent.click(screen.getByTestId('aip-subtab-models'));
         expect(screen.getByTestId('mock-provider-tabs')).toBeDefined();
         expect(screen.getByTestId('mock-provider-tab-copilot')).toBeDefined();
         expect(screen.getByTestId('mock-provider-tab-codex')).toBeDefined();
@@ -743,12 +787,14 @@ describe('AIProviderPage', () => {
 
     it('defaults model provider tab to defaultProvider', () => {
         renderPage({ defaultProvider: 'codex' });
+        fireEvent.click(screen.getByTestId('aip-subtab-models'));
         const section = screen.getByTestId('mock-provider-models-section');
         expect(section.getAttribute('data-provider')).toBe('codex');
     });
 
     it('switches model provider when tab is clicked', () => {
         renderPage({ defaultProvider: 'copilot' });
+        fireEvent.click(screen.getByTestId('aip-subtab-models'));
         expect(screen.getByTestId('mock-provider-models-section').getAttribute('data-provider')).toBe('copilot');
 
         fireEvent.click(screen.getByTestId('mock-provider-tab-claude'));
@@ -763,6 +809,7 @@ describe('AIProviderPage', () => {
             providerAvailability: { codex: { available: true }, claude: { available: true } },
         });
 
+        fireEvent.click(screen.getByTestId('aip-subtab-models'));
         fireEvent.click(screen.getByTestId('mock-provider-tab-claude'));
 
         const section = screen.getByTestId('mock-provider-models-section');
