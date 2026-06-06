@@ -204,6 +204,10 @@ vi.mock('../../../../../src/server/spa/client/react/features/chat/ModePillSelect
         { value: 'autopilot', label: 'Autopilot' },
     ],
     RALPH_MODE_PILL_OPTION: { value: 'ralph', label: 'Ralph' },
+    getVisibleModePillOptions: () => [
+        { value: 'ask', label: 'Ask', dotClass: 'bg-yellow-500' },
+        { value: 'autopilot', label: 'Autopilot', dotClass: 'bg-green-500' },
+    ],
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useModifierKey', () => ({

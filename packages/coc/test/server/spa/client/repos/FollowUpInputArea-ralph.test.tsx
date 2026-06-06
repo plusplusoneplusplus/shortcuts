@@ -73,6 +73,14 @@ vi.mock('../../../../../src/server/spa/client/react/features/chat/ModePillSelect
         { value: 'autopilot', label: 'Autopilot', dotClass: 'bg-green-500' },
     ],
     RALPH_MODE_PILL_OPTION: { value: 'ralph', label: 'Ralph', dotClass: 'bg-purple-500' },
+    getVisibleModePillOptions: ({ allowedModes }: { allowedModes?: readonly string[] } = {}) => {
+        const all = [
+            { value: 'ask', label: 'Ask', dotClass: 'bg-yellow-500' },
+            { value: 'autopilot', label: 'Autopilot', dotClass: 'bg-green-500' },
+            { value: 'ralph', label: 'Ralph', dotClass: 'bg-purple-500' },
+        ];
+        return allowedModes ? all.filter(o => allowedModes.includes(o.value)) : all.filter(o => o.value !== 'ralph');
+    },
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({

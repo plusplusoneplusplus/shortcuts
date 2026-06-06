@@ -396,6 +396,7 @@ describe('CodexSDKService — SDK mocked', () => {
                 type: 'tool-complete',
                 toolCallId: 'cmd-1',
                 toolName: 'shell',
+                parameters: { command: 'git status --short' },
                 result: ' M file.ts\n',
             },
         ]);
