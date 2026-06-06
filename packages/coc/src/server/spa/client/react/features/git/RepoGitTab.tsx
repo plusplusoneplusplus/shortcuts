@@ -472,7 +472,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     }, [searchQuery, workspaceId]);
 
     // Refresh all data (non-blocking, keeps current content visible)
-    const refreshAll = useCallback(() => {
+    const refreshAll = useCallback((options?: { selectHash?: string; selectFallbackToHead?: boolean }) => {
         if (refreshing) return;
         setRefreshing(true);
         setRefreshError(null);
@@ -487,6 +487,17 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         Promise.all([fetchCommits(true, 0, searchQuery), fetchBranchRange(true)])
             .then(([loaded]) => {
                 setLastRefreshedAt(Date.now());
+                if (options?.selectHash || options?.selectFallbackToHead) {
+                    const found = options.selectHash
+                        ? loaded.find((c: GitCommitItem) => c.hash === options.selectHash)
+                        : null;
+                    setRightPanelView(found
+                        ? { type: 'commit', commit: found }
+                        : loaded.length > 0
+                            ? { type: 'commit', commit: loaded[0] }
+                            : null);
+                    return;
+                }
                 // Retain selection if the commit still exists
                 if (prevSelectedHash) {
                     const found = loaded.find((c: GitCommitItem) => c.hash === prevSelectedHash);
@@ -966,7 +977,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             if (result.hash && result.hash !== amendingCommit.hash) {
                 rebindCommitChat(workspaceId, amendingCommit.hash, result.hash);
             }
-            refreshAll();
+            refreshAll({ selectHash: result.hash, selectFallbackToHead: true });
             setEnqueueToast('Commit message amended.');
             setTimeout(() => setEnqueueToast(null), 3000);
         } catch (err: any) {
