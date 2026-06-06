@@ -448,6 +448,37 @@ describe('NewChatArea', () => {
         expect(screen.getByTestId('chat-input-bar').className).toContain('border-sky-500');
     });
 
+    it('shows the generic Workflow label on the trigger when no workflow mode is selected', () => {
+        mockRalphEnabled.value = true;
+        mockForEachEnabled.value = true;
+
+        render(<NewChatArea workspaceId="ws-1" />);
+
+        expect(screen.getByTestId('workflow-mode-trigger').textContent?.trim()).toBe('Workflow');
+    });
+
+    it('shows the selected workflow option label on the trigger after selecting Ralph', () => {
+        mockRalphEnabled.value = true;
+        mockForEachEnabled.value = true;
+
+        render(<NewChatArea workspaceId="ws-1" />);
+        fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
+        fireEvent.click(screen.getByTestId('workflow-mode-option-ralph'));
+
+        expect(screen.getByTestId('workflow-mode-trigger').textContent?.trim()).toBe('Ralph');
+    });
+
+    it('shows the selected workflow option label on the trigger after selecting For Each', () => {
+        mockRalphEnabled.value = true;
+        mockForEachEnabled.value = true;
+
+        render(<NewChatArea workspaceId="ws-1" />);
+        fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
+        fireEvent.click(screen.getByTestId('workflow-mode-option-for-each'));
+
+        expect(screen.getByTestId('workflow-mode-trigger').textContent?.trim()).toBe('For Each');
+    });
+
     it('sends with default ask mode', async () => {
         mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'task-ask' } });
 

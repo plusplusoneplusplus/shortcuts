@@ -113,7 +113,7 @@ function WorkflowModeMenu({ options, value, onChange }: WorkflowModeMenuProps) {
                     aria-hidden="true"
                     className={cn('inline-block h-[4px] w-[4px] rounded-full', activeOption?.dotClass ?? 'bg-purple-500')}
                 />
-                <span>Workflow</span>
+                <span>{activeOption?.label ?? 'Workflow'}</span>
                 <svg
                     width="7"
                     height="7"
