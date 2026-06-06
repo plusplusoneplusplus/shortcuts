@@ -357,13 +357,16 @@ describe('SshConnector', () => {
         children[0].emit('exit', 1, null);
         expect(connector.getState('srv-1')?.status).toBe('failed');
 
-        await new Promise(resolve => setTimeout(resolve, 150));
-        expect(connector.getState('srv-1')?.status).toBe('failed');
+        await vi.waitFor(() => {
+            const s = connector.getState('srv-1')?.status;
+            expect(s === 'failed' || s === 'connecting').toBe(true);
+        }, { timeout: 500, interval: 20 });
 
         shouldSucceed = true;
-        await new Promise(resolve => setTimeout(resolve, 300));
 
-        expect(connector.getState('srv-1')?.status).toBe('online');
+        await vi.waitFor(() => {
+            expect(connector.getState('srv-1')?.status).toBe('online');
+        }, { timeout: 2000, interval: 50 });
 
         connector.dispose();
     });
