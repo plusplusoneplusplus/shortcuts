@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import { describe, it, expect, vi } from 'vitest';
 import { SshConnector } from '../../src/connectors/ssh-connector';
 import type { SshRemoteServer, ManagedChildProcess } from '../../src/connectors/types';
+import * as loggerModule from '../../src/logger';
 
 function makeServer(overrides?: Partial<SshRemoteServer>): SshRemoteServer {
     return {
@@ -290,5 +291,80 @@ describe('SshConnector', () => {
 
         await connector.connect(server);
         expect(healthCalls).toBe(callsAfterFirst);
+    });
+
+    it('auto-reconnect failure logs error and reschedules instead of crashing', async () => {
+        const child1 = new FakeChild();
+        const child2 = new FakeChild();
+        const child3 = new FakeChild();
+        let childIdx = 0;
+        const children = [child1, child2, child3];
+        const processStarter = vi.fn(() => children[childIdx++]);
+
+        let healthCallCount = 0;
+        const connector = new SshConnector({
+            processStarter,
+            healthChecker: async () => {
+                healthCallCount++;
+                if (healthCallCount <= 1) return true;
+                return false;
+            },
+            readinessTimeoutMs: 15,
+            readinessPollMs: 5,
+            initialReconnectBackoffMs: 10,
+        });
+
+        const errorSpy = vi.spyOn(loggerModule.getLogger(), 'error');
+
+        const server = makeServer();
+        await connector.connect(server);
+        expect(connector.getState('srv-1')?.status).toBe('online');
+
+        child1.emit('exit', 1, null);
+        expect(connector.getState('srv-1')?.status).toBe('failed');
+
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        expect(errorSpy).toHaveBeenCalledWith(
+            loggerModule.LogCategory.GENERAL,
+            expect.stringContaining('SSH reconnect failed for srv-1'),
+        );
+        expect(connector.getState('srv-1')?.status).toBe('failed');
+
+        connector.dispose();
+    });
+
+    it('auto-reconnect failure eventually recovers when health comes back', async () => {
+        const children = Array.from({ length: 10 }, () => new FakeChild());
+        let childIdx = 0;
+        const processStarter = vi.fn(() => children[childIdx++]);
+
+        let shouldSucceed = true;
+        const connector = new SshConnector({
+            processStarter,
+            healthChecker: async () => shouldSucceed,
+            readinessTimeoutMs: 50,
+            readinessPollMs: 5,
+            initialReconnectBackoffMs: 10,
+            maxReconnectBackoffMs: 20,
+        });
+
+        const server = makeServer();
+        await connector.connect(server);
+        expect(connector.getState('srv-1')?.status).toBe('online');
+
+        shouldSucceed = false;
+        children[0].emit('exit', 1, null);
+        expect(connector.getState('srv-1')?.status).toBe('failed');
+
+        await new Promise(resolve => setTimeout(resolve, 150));
+        expect(connector.getState('srv-1')?.status).toBe('failed');
+
+        shouldSucceed = true;
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        expect(connector.getState('srv-1')?.status).toBe('online');
+
+        connector.dispose();
     });
 });
