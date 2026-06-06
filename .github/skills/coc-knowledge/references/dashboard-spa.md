@@ -178,7 +178,9 @@ required only for single-session and Ralph pointers. Single
 sessions render as neutral **Session** chips, Ralph groups render as purple
 **RALPH** chips, and Work Item/Commit/Range/PR pointers render as sky chips with
 stable labels such as `Work Item #123`, `Commit abc1234`, `Range base..head`,
-and `PR #45` plus short safe metadata.
+and `PR #45` plus short safe metadata. Git commit row body drags are copy-only
+context drags; the existing unpushed-commit reorder path remains isolated to the
+row's grab handle so context dragging does not trigger commit reordering.
 
 The header buttons validate the drop, open the queue dialog in task or ask mode,
 and seed a removable context chip without submitting. Send paths re-check the same constraints before formatting already-attached

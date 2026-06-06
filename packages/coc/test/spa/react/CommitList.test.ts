@@ -504,8 +504,17 @@ describe('CommitList', () => {
 
         it('preserves unpushed commit reordering while adding pointer MIME data', () => {
             expect(source).toContain('writePointerContextDragData(e.dataTransfer, sessionContextPayload)');
-            expect(source).toContain('if (canReorder) e.dataTransfer.effectAllowed = \'copyMove\';');
+            expect(source).toContain('handleCommitContextDragStart');
+            expect(source).toContain('draggable={isContextDragSource}');
             expect(source).toContain('e.dataTransfer.setData(\'text/plain\', String(index))');
+        });
+
+        it('keeps commit context dragging copy-only by isolating reordering to the grab handle', () => {
+            expect(source).toContain('handleReorderDragStart');
+            expect(source).toContain('data-testid={`commit-reorder-handle-${commit.shortHash}`}');
+            expect(source).toContain('draggable={canDrag}');
+            expect(source).not.toContain('const isDraggable = canDrag || isContextDragSource');
+            expect(source).toContain('if (dragIndex === null) return;');
         });
     });
 
