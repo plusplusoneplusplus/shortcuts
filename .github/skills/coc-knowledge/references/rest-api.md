@@ -124,7 +124,7 @@ All For Each routes are workspace-scoped and gated by `forEach.enabled` (default
 
 ## Map Reduce Runs
 
-All Map Reduce routes are workspace-scoped and gated by `mapReduce.enabled` (default `false`); disabled routes return unavailable/not-found behavior. Parent run state is stored under `~/.coc/repos/<workspaceId>/map-reduce-runs/<runId>/` as `run.json`, `items.json`, and `reduce-step.json`. Map items run as normal Ask/Autopilot child chats in parallel up to `maxParallel`, and the reduce step runs as a single child chat after all map items are completed or skipped. Omitted providers resolve through Auto when `defaultProvider: auto` is enabled, and the resolved concrete provider is stored on the run for map and reduce child orchestration.
+All Map Reduce routes are workspace-scoped and gated by `mapReduce.enabled` (default `false`); disabled routes return unavailable/not-found behavior. Parent run state is stored under `~/.coc/repos/<workspaceId>/map-reduce-runs/<runId>/` as `run.json`, `items.json`, and `reduce-step.json`. Map items run as normal Ask/Autopilot child chats in parallel up to `maxParallel`, and the reduce step runs as a single child chat after all map items are completed or skipped. Omitted providers resolve through Auto when `defaultProvider: auto` is enabled, and the resolved concrete provider is stored on the run for map and reduce child orchestration. `@plusplusoneplusplus/coc-client` exposes these routes through `client.mapReduce`.
 
 | Method | Path | Description |
 |--------|------|-------------|

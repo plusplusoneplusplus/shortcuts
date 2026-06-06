@@ -9,12 +9,15 @@
 import { describe, it, expect } from 'vitest';
 import {
     getForEachContext,
+    getMapReduceContext,
     getRalphContext,
     isForEachGenerationContext,
     isRalphTask,
     serializeForEachMetadata,
+    serializeMapReduceMetadata,
     serializeRalphMetadata,
     type ForEachGenerationContext,
+    type MapReduceContext,
     type RalphContext,
 } from '../../../src/server/tasks/task-types';
 
@@ -149,6 +152,21 @@ const sampleForEachGeneration: ForEachGenerationContext = {
     status: 'draft',
 };
 
+const sampleMapReduceMapChild: MapReduceContext = {
+    workspaceId: 'ws-1',
+    runId: 'map-reduce-run-1',
+    phase: 'map',
+    itemId: 'item-1',
+    childMode: 'ask',
+};
+
+const sampleMapReduceReduceChild: MapReduceContext = {
+    workspaceId: 'ws-1',
+    runId: 'map-reduce-run-1',
+    phase: 'reduce',
+    childMode: 'autopilot',
+};
+
 describe('For Each context accessors', () => {
     it('reads generation context from payload or metadata', () => {
         expect(getForEachContext({
@@ -174,5 +192,31 @@ describe('For Each context accessors', () => {
             prompt: 'Split',
             context: { forEach: sampleForEachGeneration },
         })).toBe(sampleForEachGeneration);
+    });
+});
+
+describe('Map Reduce context accessors', () => {
+    it('reads map/reduce child context from payload or metadata', () => {
+        expect(getMapReduceContext({
+            payload: { kind: 'chat', context: { mapReduce: sampleMapReduceMapChild } },
+        })).toBe(sampleMapReduceMapChild);
+        expect(getMapReduceContext({ metadata: { mapReduce: sampleMapReduceReduceChild } })).toBe(sampleMapReduceReduceChild);
+    });
+
+    it('serializes Map Reduce metadata from chat payload context', () => {
+        expect(serializeMapReduceMetadata({
+            kind: 'chat',
+            mode: 'autopilot',
+            prompt: 'Reduce',
+            context: { mapReduce: sampleMapReduceReduceChild },
+        })).toBe(sampleMapReduceReduceChild);
+    });
+
+    it('does not serialize Map Reduce metadata from non-chat payloads', () => {
+        expect(serializeMapReduceMetadata({
+            kind: 'run-workflow',
+            workflowPath: '/tmp/workflow.yaml',
+            context: { mapReduce: sampleMapReduceMapChild },
+        })).toBeUndefined();
     });
 });

@@ -56,6 +56,7 @@ import {
     isRalphMode,
     normalizeChatMode,
     serializeForEachMetadata,
+    serializeMapReduceMetadata,
     serializeRalphMetadata,
 } from '../tasks/task-types';
 import { deriveScriptTitle } from './title-generator';
@@ -367,6 +368,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     ? task.payload.context?.noteChat?.noteTitle
                     : undefined,
                 forEach: serializeForEachMetadata(task.payload),
+                mapReduce: serializeMapReduceMetadata(task.payload),
                 ralph: serializeRalphMetadata(task.payload),
                 autoProviderRouting: isChatPayload(task.payload)
                     ? task.payload.context?.autoProviderRouting

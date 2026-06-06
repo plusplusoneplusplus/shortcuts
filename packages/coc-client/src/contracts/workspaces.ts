@@ -1,4 +1,5 @@
 import type { ForEachChildMode, ForEachItem } from './for-each';
+import type { MapReduceProcessContext } from './map-reduce';
 
 export interface WorkspaceInfo {
   id: string;
@@ -216,6 +217,7 @@ export interface ProcessHistoryItem {
     lastPlanError?: string;
     lastPlanErrorTurnIndex?: number;
   };
+  mapReduce?: MapReduceProcessContext;
 }
 
 export interface ProcessHistoryResponse {
