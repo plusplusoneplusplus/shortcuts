@@ -132,8 +132,8 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isRalphEnabled: () => false,
     isLoopsEnabled: () => false,
     isForEachEnabled: () => false,
+    isMapReduceEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled,
-    isForEachEnabled: () => false,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({

@@ -69,6 +69,7 @@ const mockBuildChatToolBundle = vi.fn().mockReturnValue(makeMockToolBundle());
 vi.mock('../../../src/server/executors/prompt-builder', () => ({
     buildModeSystemMessage: (...args: any[]) => mockBuildModeSystemMessage(...args),
     buildForEachGenerationSystemMessage: () => undefined,
+    buildMapReduceGenerationSystemMessage: () => undefined,
     appendAutoFolderBlock: (msg: any, _ctx: any) => msg,
     appendBoundedMemoryContext: (msg: any, _addon: any) => msg,
     buildBoundedMemoryAddon: () => Promise.resolve({ systemMessageSuffix: undefined, tools: [], suffix: '' }),

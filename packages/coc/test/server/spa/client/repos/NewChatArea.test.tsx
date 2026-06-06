@@ -23,6 +23,7 @@ let mockModelOverride: string | null = null;
 let mockUseModelsProviders: Array<string | undefined> = [];
 let mockUseDefaultModelArgs: Array<[string | undefined, string, string | undefined]> = [];
 let mockForEachEnabled = false;
+let mockMapReduceEnabled = false;
 let mockSessionContextAttachmentsEnabled = false;
 let mockAttachments: any[] = [];
 let mockAttachmentPayload: any[] = [];
@@ -57,6 +58,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => 'http://localhost:4000/api',
     isRalphEnabled: () => false,
     isForEachEnabled: () => mockForEachEnabled,
+    isMapReduceEnabled: () => mockMapReduceEnabled,
     isLoopsEnabled: () => false,
     getDefaultProvider: () => mockDefaultProvider,
     isEffortLevelsEnabled: () => mockEffortLevelsEnabled,
@@ -166,11 +168,27 @@ vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
             category: 'workflow',
             featureFlag: 'for-each',
         },
+        {
+            mode: 'map-reduce',
+            icon: '🧩',
+            label: 'Map Reduce',
+            tooltip: 'Map Reduce — fan out parallel map work, then aggregate with one reduce step',
+            dotClass: 'bg-indigo-500',
+            border: 'border-indigo-500',
+            ring: 'ring-indigo-500',
+            text: 'text-indigo-600',
+            category: 'workflow',
+            featureFlag: 'map-reduce',
+        },
     ],
     DEFAULT_CHAT_MODES: ['ask', 'autopilot'],
     getVisibleChatModes: ({ category, featureFlags }: { category?: string; featureFlags?: Record<string, boolean> }) => {
         if (category === 'workflow') {
-            return featureFlags?.['for-each'] ? ['for-each'] : [];
+            const modes = [];
+            if (featureFlags?.ralph) modes.push('ralph');
+            if (featureFlags?.['for-each']) modes.push('for-each');
+            if (featureFlags?.['map-reduce']) modes.push('map-reduce');
+            return modes;
         }
         return ['ask', 'autopilot'];
     },
@@ -180,6 +198,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
         plan: { border: 'border-blue-500', ring: 'ring-blue-500' },
         ralph: { border: 'border-purple-500', ring: 'ring-purple-500' },
         'for-each': { border: 'border-sky-500', ring: 'ring-sky-500' },
+        'map-reduce': { border: 'border-indigo-500', ring: 'ring-indigo-500' },
     },
     MODE_ICONS: {
         ask: '💡',
@@ -187,6 +206,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
         autopilot: '🤖',
         ralph: '🔄',
         'for-each': '🔁',
+        'map-reduce': '🧩',
     },
     MODE_LABELS: {
         ask: '💡 Ask',
@@ -194,6 +214,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
         autopilot: '🤖 Autopilot',
         ralph: '🔄 Ralph',
         'for-each': '🔁 For Each',
+        'map-reduce': '🧩 Map Reduce',
     },
     MODE_TOOLTIPS: {
         ask: 'Ask — get answers without making changes',
@@ -201,9 +222,10 @@ vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
         autopilot: 'Autopilot — execute changes automatically',
         ralph: 'Ralph — iterative AI coding loop with guided goal setting',
         'for-each': 'For Each — generate a reviewed item plan, then run each item separately',
+        'map-reduce': 'Map Reduce — fan out parallel map work, then aggregate with one reduce step',
     },
     cycleMode: (current: string) => {
-        const next: Record<string, string> = { autopilot: 'ask', ask: 'autopilot', plan: 'autopilot', 'for-each': 'ask' };
+        const next: Record<string, string> = { autopilot: 'ask', ask: 'autopilot', plan: 'autopilot', 'for-each': 'ask', 'map-reduce': 'ask' };
         return next[current];
     },
     normalizeChatMode: (mode: string) => mode === 'plan' ? 'ask' : mode,

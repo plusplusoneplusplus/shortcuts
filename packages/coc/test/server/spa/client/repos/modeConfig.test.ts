@@ -8,7 +8,7 @@ import type { ChatMode } from '../../../../../src/server/spa/client/react/repos/
 describe('modeConfig', () => {
     describe('WORKFLOW_REGISTRY', () => {
         it('is the single source for supported chat modes and default visible modes', () => {
-            expect(WORKFLOW_REGISTRY.map(entry => entry.mode)).toEqual(['ask', 'autopilot', 'ralph', 'for-each']);
+            expect(WORKFLOW_REGISTRY.map(entry => entry.mode)).toEqual(['ask', 'autopilot', 'ralph', 'for-each', 'map-reduce']);
             expect(DEFAULT_CHAT_MODES).toEqual(['ask', 'autopilot']);
         });
 
@@ -53,20 +53,25 @@ describe('modeConfig', () => {
                 category: 'workflow',
                 featureFlags: { ralph: true, 'for-each': true },
             })).toEqual(['ralph', 'for-each']);
+            expect(getVisibleChatModes({
+                surface: 'new-chat',
+                category: 'workflow',
+                featureFlags: { ralph: true, 'for-each': true, 'map-reduce': true },
+            })).toEqual(['ralph', 'for-each', 'map-reduce']);
         });
 
         it('keeps workflow modes hidden from follow-up composers unless explicitly allowed', () => {
             expect(getVisibleChatModes({
                 surface: 'follow-up',
                 category: 'workflow',
-                featureFlags: { ralph: true, 'for-each': true },
+                featureFlags: { ralph: true, 'for-each': true, 'map-reduce': true },
             })).toEqual([]);
             expect(getVisibleChatModes({
                 surface: 'follow-up',
                 category: 'workflow',
-                featureFlags: { ralph: true, 'for-each': true },
-                allowedModes: ['ask', 'for-each'],
-            })).toEqual(['for-each']);
+                featureFlags: { ralph: true, 'for-each': true, 'map-reduce': true },
+                allowedModes: ['ask', 'for-each', 'map-reduce'],
+            })).toEqual(['for-each', 'map-reduce']);
         });
 
         it('still requires feature flags when follow-up composers explicitly allow workflow modes', () => {

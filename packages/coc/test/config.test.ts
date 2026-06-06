@@ -62,6 +62,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.scratchpad).toEqual({ enabled: true, layout: 'vertical' });
             expect(DEFAULT_CONFIG.workflows).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.forEach).toEqual({ enabled: false });
+            expect(DEFAULT_CONFIG.mapReduce).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.features.gitCrossCloneCherryPick).toBe(true);
             expect(DEFAULT_CONFIG.features.autoAgentProviderRouting).toBe(false);
             expect(DEFAULT_CONFIG.defaultProvider).toBe('copilot');
@@ -905,6 +906,8 @@ timeout: 300
                 '    maxGapFixLoops: 5',
                 'forEach:',
                 '  enabled: true',
+                'mapReduce:',
+                '  enabled: true',
                 'vimNavigation:',
                 '  enabled: true',
                 'loops:',
@@ -1039,6 +1042,8 @@ timeout: 300
                 '  enabled: true',
                 'forEach:',
                 '  enabled: false',
+                'mapReduce:',
+                '  enabled: true',
                 'vimNavigation:',
                 '  enabled: true',
                 'loops:',
@@ -1161,6 +1166,9 @@ timeout: 300
                     },
                   },
                   "loops": {
+                    "enabled": true,
+                  },
+                  "mapReduce": {
                     "enabled": true,
                   },
                   "mcpConfig": "\${HOME}/mcp.json",
@@ -1291,6 +1299,7 @@ timeout: 300
                   "forEach.enabled": "file",
                   "groupSingleLineMessages": "file",
                   "loops.enabled": "file",
+                  "mapReduce.enabled": "file",
                   "mcpConfig": "file",
                   "mcpOauth.autoRefresh.enabled": "default",
                   "mcpOauth.enabled": "default",
