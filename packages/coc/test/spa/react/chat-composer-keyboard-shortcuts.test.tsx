@@ -431,6 +431,23 @@ describe('chat composer keyboard shortcuts', () => {
         expect(mockClient.queue.enqueue.mock.calls[0][0].payload.provider).toBe('claude');
     });
 
+    it('uses Cmd+Down, not Ctrl+Down, for NewChatArea provider cycling on macOS', async () => {
+        Object.defineProperty(window.navigator, 'platform', { value: 'MacIntel', configurable: true });
+        render(<NewChatArea workspaceId="ws-1" />);
+        await waitFor(() => expect(mockClient.preferences.getRepo).toHaveBeenCalledWith('ws-1'));
+
+        const input = screen.getByTestId('new-chat-input');
+        fireEvent.keyDown(input, { key: 'ArrowDown', ctrlKey: true });
+
+        expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Copilot');
+        expect(mockClient.preferences.patchRepo).not.toHaveBeenCalled();
+
+        fireEvent.keyDown(input, { key: 'ArrowDown', metaKey: true });
+
+        expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Codex');
+        expect(mockClient.preferences.patchRepo).toHaveBeenCalledWith('ws-1', { lastChatProvider: 'codex' });
+    });
+
     it('cycles FollowUpInputArea legacy reasoning effort with Shift+Down before prompt history', () => {
         const onEffortChange = vi.fn();
         render(<FollowUpInputArea {...makeFollowUpProps({
