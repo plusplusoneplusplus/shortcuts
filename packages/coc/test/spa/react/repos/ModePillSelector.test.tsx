@@ -264,6 +264,40 @@ describe('ModePillSelector', () => {
         expect(screen.queryByTestId('workflow-mode-menu')).toBeNull();
     });
 
+    it('dismisses the workflow menu when clicking outside the dropdown', () => {
+        render(
+            <ModePillSelector
+                options={DEFAULT_MODE_PILL_OPTIONS}
+                workflowOptions={[RALPH_MODE_PILL_OPTION, FOR_EACH_MODE_PILL_OPTION]}
+                value="ask"
+                onChange={() => {}}
+            />,
+        );
+
+        fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
+        expect(screen.getByTestId('workflow-mode-menu')).toBeTruthy();
+
+        fireEvent.mouseDown(document.body);
+        expect(screen.queryByTestId('workflow-mode-menu')).toBeNull();
+    });
+
+    it('does not dismiss the workflow menu when clicking inside the dropdown', () => {
+        render(
+            <ModePillSelector
+                options={DEFAULT_MODE_PILL_OPTIONS}
+                workflowOptions={[RALPH_MODE_PILL_OPTION, FOR_EACH_MODE_PILL_OPTION]}
+                value="ask"
+                onChange={() => {}}
+            />,
+        );
+
+        fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
+        expect(screen.getByTestId('workflow-mode-menu')).toBeTruthy();
+
+        fireEvent.mouseDown(screen.getByTestId('workflow-mode-menu'));
+        expect(screen.getByTestId('workflow-mode-menu')).toBeTruthy();
+    });
+
     it('derives built-in pill options from the workflow registry metadata', () => {
         expect(DEFAULT_MODE_PILL_OPTIONS).toEqual([
             expect.objectContaining({ value: 'ask', label: 'Ask', dotClass: 'bg-yellow-500' }),

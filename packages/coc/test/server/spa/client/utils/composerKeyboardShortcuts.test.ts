@@ -22,14 +22,14 @@ describe('composerKeyboardShortcuts', () => {
             expect(cycleConfiguredEffortTier('medium', tiers, -1)).toEqual({ changed: true, value: 'very-low' });
         });
 
-        it('wraps at the ends', () => {
+        it('clamps at the ends without wrapping', () => {
             const tiers: LocalEffortTiersMap = {
                 low: { model: 'fast', reasoningEffort: '', source: 'config' },
                 high: { model: 'deep', reasoningEffort: 'high', source: 'config' },
             };
 
-            expect(cycleConfiguredEffortTier('high', tiers, 1)).toEqual({ changed: true, value: 'low' });
-            expect(cycleConfiguredEffortTier('low', tiers, -1)).toEqual({ changed: true, value: 'high' });
+            expect(cycleConfiguredEffortTier('high', tiers, 1)).toEqual({ changed: false, value: 'high' });
+            expect(cycleConfiguredEffortTier('low', tiers, -1)).toEqual({ changed: false, value: 'low' });
         });
 
         it('is a quiet no-op when there is no selectable alternative', () => {
@@ -48,13 +48,13 @@ describe('composerKeyboardShortcuts', () => {
 
             expect(cycleReasoningEffort(null, options, 1)).toEqual({ changed: true, value: 'low' });
             expect(cycleReasoningEffort('low', options, 1)).toEqual({ changed: true, value: 'high' });
-            expect(cycleReasoningEffort('high', options, 1)).toEqual({ changed: true, value: null });
+            expect(cycleReasoningEffort('high', options, 1)).toEqual({ changed: false, value: 'high' });
         });
 
-        it('skips unavailable reasoning-effort options and wraps upward', () => {
+        it('skips unavailable reasoning-effort options and clamps at the boundary', () => {
             const options = [{ value: 'medium' as const }, { value: 'xhigh' as const }];
 
-            expect(cycleReasoningEffort(null, options, -1)).toEqual({ changed: true, value: 'xhigh' });
+            expect(cycleReasoningEffort(null, options, -1)).toEqual({ changed: false, value: null });
             expect(cycleReasoningEffort('xhigh', options, -1)).toEqual({ changed: true, value: 'medium' });
         });
 
@@ -75,8 +75,12 @@ describe('composerKeyboardShortcuts', () => {
             expect(cycleChatProvider('claude', providers, -1)).toEqual({ changed: true, value: 'copilot' });
         });
 
-        it('wraps and no-ops when no alternative provider is selectable', () => {
-            expect(cycleChatProvider('claude', providers, 1)).toEqual({ changed: true, value: 'copilot' });
+        it('clamps at the boundary without wrapping', () => {
+            expect(cycleChatProvider('claude', providers, 1)).toEqual({ changed: false, value: 'claude' });
+            expect(cycleChatProvider('copilot', providers, -1)).toEqual({ changed: false, value: 'copilot' });
+        });
+
+        it('no-ops when no alternative provider is selectable', () => {
             expect(cycleChatProvider('copilot', [providers[0]], 1)).toEqual({ changed: false, value: 'copilot' });
         });
     });
