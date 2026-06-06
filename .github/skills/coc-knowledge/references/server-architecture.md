@@ -101,6 +101,7 @@ The `src/server/` tree is grouped by feature domain. Cross-cutting plumbing stay
 | `memory/` | Memory config, bounded-memory REST, repo-memory, promote, background-review |
 | `ralph/` | Iterative execution sessions and file-backed journal (see [ralph.md](ralph.md)) |
 | `for-each/` | Dedicated For Each run records, item-plan validation, file-backed repo-scoped draft/approval storage, and sequential child-chat orchestration |
+| `map-reduce/` | Dedicated Map Reduce run records, map-plan validation, reduce-step state, per-run parallelism configuration, and file-backed repo-scoped draft/approval storage |
 | `models/` | Model registry endpoints |
 | `agent-providers/` | Agent-provider quota cache, provider status routes, SDK install helpers, and the pure Auto provider router that evaluates configured priority, availability, normal quota thresholds, weekly guards, fallback, and selection warnings before callers expand effort tiers. Queue/fresh-terminal defaults and direct Ralph, For Each, and work-item enqueue surfaces use the shared quota cache and refresh it only when missing or stale. |
 | `messaging/` | Teams bot integration: manager, command router, per-user state |
@@ -226,6 +227,7 @@ Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT.
 - `memory/MEMORY.md` — per-repo bounded memory
 - `ralph-sessions/<sessionId>/` — Ralph `session.json` metadata and `progress.md` journal
 - `for-each-runs/<runId>/` — For Each `run.json` metadata and `items.json` reviewed item plan/state
+- `map-reduce-runs/<runId>/` — Map Reduce `run.json` metadata, `items.json` reviewed map item plan/state, and tracked reduce-step state
 - `paste-context/` — temp files for large pasted content
 
 Use `getRepoDataPath(dataDir, workspaceId, filename)` for all per-repo path construction.
