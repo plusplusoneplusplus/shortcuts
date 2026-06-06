@@ -77,8 +77,8 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | PATCH | `/api/processes/:id/turns/:idx/restore` | Restore deleted turn |
 | PATCH | `/api/processes/:id/turns/:idx/pin` | Pin a turn |
 | PATCH | `/api/processes/:id/turns/:idx/archive` | Archive a turn |
-| GET | `/api/workspaces/:id/group-pins` | List workspace-scoped parent-row group pins for Ralph session groups and For Each run groups, sorted newest pin first |
-| PATCH | `/api/workspaces/:id/group-pins/:type/:groupId` | Pin/unpin a parent group row. `type` is `ralph-session` or `for-each-run`; body `{ pinned: boolean }`. This updates only the group pin record and does not mutate child process pin/archive metadata |
+| GET | `/api/workspaces/:id/group-pins` | List workspace-scoped parent-row group pins for Ralph session groups, For Each run groups, and Map Reduce run groups, sorted newest pin first |
+| PATCH | `/api/workspaces/:id/group-pins/:type/:groupId` | Pin/unpin a parent group row. `type` is `ralph-session`, `for-each-run`, or `map-reduce-run`; body `{ pinned: boolean }`. This updates only the group pin record and does not mutate child process pin/archive metadata |
 
 ## Queue
 

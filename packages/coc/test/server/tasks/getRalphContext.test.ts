@@ -12,11 +12,13 @@ import {
     getMapReduceContext,
     getRalphContext,
     isForEachGenerationContext,
+    isMapReduceGenerationContext,
     isRalphTask,
     serializeForEachMetadata,
     serializeMapReduceMetadata,
     serializeRalphMetadata,
     type ForEachGenerationContext,
+    type MapReduceGenerationContext,
     type MapReduceContext,
     type RalphContext,
 } from '../../../src/server/tasks/task-types';
@@ -167,6 +169,15 @@ const sampleMapReduceReduceChild: MapReduceContext = {
     childMode: 'autopilot',
 };
 
+const sampleMapReduceGeneration: MapReduceGenerationContext = {
+    kind: 'generation',
+    workspaceId: 'ws-1',
+    generationId: 'map-reduce-gen-1',
+    childMode: 'ask',
+    originalRequest: 'Split and aggregate this work',
+    status: 'draft',
+};
+
 describe('For Each context accessors', () => {
     it('reads generation context from payload or metadata', () => {
         expect(getForEachContext({
@@ -210,6 +221,20 @@ describe('Map Reduce context accessors', () => {
             prompt: 'Reduce',
             context: { mapReduce: sampleMapReduceReduceChild },
         })).toBe(sampleMapReduceReduceChild);
+    });
+
+    it('reads, identifies, and serializes Map Reduce generation context', () => {
+        expect(getMapReduceContext({
+            payload: { kind: 'chat', context: { mapReduce: sampleMapReduceGeneration } },
+        })).toBe(sampleMapReduceGeneration);
+        expect(isMapReduceGenerationContext(sampleMapReduceGeneration)).toBe(true);
+        expect(isMapReduceGenerationContext(sampleMapReduceMapChild)).toBe(false);
+        expect(serializeMapReduceMetadata({
+            kind: 'chat',
+            mode: 'ask',
+            prompt: 'Map reduce',
+            context: { mapReduce: sampleMapReduceGeneration },
+        })).toBe(sampleMapReduceGeneration);
     });
 
     it('does not serialize Map Reduce metadata from non-chat payloads', () => {

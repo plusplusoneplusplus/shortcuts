@@ -62,6 +62,7 @@ import {
 import { deriveScriptTitle } from './title-generator';
 import { BaseExecutor } from './base-executor';
 import { updateForEachGenerationMetadataFromAssistantTurn } from '../for-each/for-each-generation-metadata';
+import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduce/map-reduce-generation-metadata';
 
 // ============================================================================
 // Constants
@@ -508,11 +509,16 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                     type: current.metadata?.type ?? task.type,
                                     model: effectiveModel,
                                 };
-                                const metadata = updateForEachGenerationMetadataFromAssistantTurn(
+                                const forEachMetadata = updateForEachGenerationMetadataFromAssistantTurn(
                                     baseMetadata,
                                     responseText,
                                     assistantTurnIndex,
                                 ) ?? baseMetadata;
+                                const metadata = updateMapReduceGenerationMetadataFromAssistantTurn(
+                                    forEachMetadata,
+                                    responseText,
+                                    assistantTurnIndex,
+                                ) ?? forEachMetadata;
                                 return {
                                     status: 'cancelled' as const,
                                     endTime: new Date(),
@@ -532,11 +538,16 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                 type: current.metadata?.type ?? task.type,
                                 model: effectiveModel,
                             };
-                            const metadata = updateForEachGenerationMetadataFromAssistantTurn(
+                            const forEachMetadata = updateForEachGenerationMetadataFromAssistantTurn(
                                 baseMetadata,
                                 responseText,
                                 assistantTurnIndex,
                             ) ?? baseMetadata;
+                            const metadata = updateMapReduceGenerationMetadataFromAssistantTurn(
+                                forEachMetadata,
+                                responseText,
+                                assistantTurnIndex,
+                            ) ?? forEachMetadata;
                             return {
                                 status: 'completed' as const,
                                 endTime: new Date(),

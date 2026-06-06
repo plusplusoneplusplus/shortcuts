@@ -29,9 +29,11 @@ export interface ChatDetailPaneProps {
     hideModeSelector?: boolean;
     /** Opens the existing For Each run pane. */
     onOpenForEachRun?: (runId: string) => void;
+    /** Opens the existing Map Reduce run pane. */
+    onOpenMapReduceRun?: (runId: string) => void;
 }
 
-export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, readOnly, hideModeSelector, onOpenForEachRun }: ChatDetailPaneProps) {
+export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, readOnly, hideModeSelector, onOpenForEachRun, onOpenMapReduceRun }: ChatDetailPaneProps) {
     const { poppedOutTasks, markRestored } = usePopOut();
     const { floatingChats, unfloatChat } = useFloatingChats();
 
@@ -85,5 +87,5 @@ export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, readOnly, 
         );
     }
 
-    return <ChatDetail key={selectedTaskId} taskId={selectedTaskId} onBack={onBack} workspaceId={workspaceId} readOnly={readOnly} hideModeSelector={hideModeSelector} onOpenForEachRun={onOpenForEachRun} />;
+    return <ChatDetail key={selectedTaskId} taskId={selectedTaskId} onBack={onBack} workspaceId={workspaceId} readOnly={readOnly} hideModeSelector={hideModeSelector} onOpenForEachRun={onOpenForEachRun} onOpenMapReduceRun={onOpenMapReduceRun} />;
 }

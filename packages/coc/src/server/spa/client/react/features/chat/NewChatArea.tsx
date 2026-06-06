@@ -32,7 +32,7 @@ import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
 import { useChatPromptHistory } from '../../hooks/useChatPromptHistory';
-import { getDefaultProvider, isRalphEnabled, isForEachEnabled, isLoopsEnabled, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
+import { getDefaultProvider, isRalphEnabled, isForEachEnabled, isMapReduceEnabled, isLoopsEnabled, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
 import type { EffortTierKey } from '../../hooks/useProviderEffortTiers';
 import { EffortTierSelector } from './EffortTierSelector';
@@ -140,6 +140,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         () => ({
             ralph: isRalphEnabled(),
             'for-each': isForEachEnabled(),
+            'map-reduce': isMapReduceEnabled(),
         }),
         [],
     );
@@ -449,9 +450,11 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         const trimmed = input.trim();
         const contextItems = attachedContext.getItems();
         if ((!trimmed && attachments.length === 0 && contextItems.length === 0) || sending) return;
-        if (selectedMode === 'for-each') {
+        if (selectedMode === 'for-each' || selectedMode === 'map-reduce') {
             if (!workspaceId) {
-                setError('Select a workspace before starting a For Each run.');
+                setError(selectedMode === 'for-each'
+                    ? 'Select a workspace before starting a For Each run.'
+                    : 'Select a workspace before starting a Map Reduce run.');
                 setSessionContextDropError(null);
                 return;
             }
@@ -503,6 +506,19 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         kind: 'generation',
                         workspaceId,
                         generationId: `for-each-gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                        childMode: 'ask',
+                        originalRequest: promptAfterSkillExtraction,
+                        status: 'draft',
+                    },
+                };
+            } else if (selectedMode === 'map-reduce') {
+                mode = 'ask';
+                contextOverride = {
+                    ...(extractedSkills.length > 0 ? { skills: extractedSkills } : {}),
+                    mapReduce: {
+                        kind: 'generation',
+                        workspaceId,
+                        generationId: `map-reduce-gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                         childMode: 'ask',
                         originalRequest: promptAfterSkillExtraction,
                         status: 'draft',

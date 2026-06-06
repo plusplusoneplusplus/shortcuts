@@ -3,7 +3,7 @@ import { sendJSON } from '../core/api-handler';
 import { badRequest, handleAPIError } from '../errors';
 import { parseBodyOrReject, resolveWorkspaceOrFail } from '../shared/handler-utils';
 import type { Route } from '../types';
-import { GroupPinStore, isGroupPinType, normalizeGroupId } from './group-pin-store';
+import { GROUP_PIN_TYPES, GroupPinStore, isGroupPinType, normalizeGroupId } from './group-pin-store';
 
 export function registerGroupPinRoutes(routes: Route[], store: ProcessStore, dataDir: string): void {
     const groupPinStore = new GroupPinStore(dataDir);
@@ -28,7 +28,7 @@ export function registerGroupPinRoutes(routes: Route[], store: ProcessStore, dat
 
             const type = decodeURIComponent(match![2]);
             if (!isGroupPinType(type)) {
-                handleAPIError(res, badRequest('Invalid group pin type', { allowedTypes: ['ralph-session', 'for-each-run'] }));
+                handleAPIError(res, badRequest('Invalid group pin type', { allowedTypes: GROUP_PIN_TYPES }));
                 return;
             }
 

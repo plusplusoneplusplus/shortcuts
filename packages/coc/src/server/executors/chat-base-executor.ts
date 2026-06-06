@@ -44,7 +44,7 @@ import {
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
 import type { ChatPayload, ChatProvider, PrClassificationPayload } from '../tasks/task-types';
-import { getForEachContext, isForEachGenerationContext, normalizeChatModeOrDefault } from '../tasks/task-types';
+import { getForEachContext, getMapReduceContext, isForEachGenerationContext, isMapReduceGenerationContext, normalizeChatModeOrDefault } from '../tasks/task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
 import type { BroadcastWorkItemFn } from '../llm-tools/create-work-item-tool';
 import { BaseExecutor } from './base-executor';
@@ -53,6 +53,7 @@ import { loadConfigFile } from '../../config';
 import {
     assertNoAskUserConflict,
     buildForEachGenerationSystemMessage,
+    buildMapReduceGenerationSystemMessage,
     buildModeSystemMessage,
     prependSelectedSkillsDirective,
     resolveSelectedSkillReferences,
@@ -422,6 +423,10 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             const context = getForEachContext({ payload });
             return isForEachGenerationContext(context) ? context : null;
         })();
+        const mapReduceGeneration = (() => {
+            const context = getMapReduceContext({ payload });
+            return isMapReduceGenerationContext(context) ? context : null;
+        })();
 
         // During grilling the goal-file save location is injected into the user
         // message (see effectivePrompt below) with an explicit `*.goal.md`
@@ -430,6 +435,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         const systemMessage = await systemMessageBuilder()
             .append(buildModeSystemMessage(mode)?.content)
             .append(buildForEachGenerationSystemMessage(forEachGeneration)?.content)
+            .append(buildMapReduceGenerationSystemMessage(mapReduceGeneration)?.content)
             .withRepoInstructions(workingDirectory, mode)
             .appendMemoryV2(ctx.memoryV2)
             .appendToolGuidance(ctx.toolGuidance)

@@ -9,7 +9,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { cn } from '../../ui';
 import { getSpaCocClient } from '../../api/cocClient';
-import { isContainerMode, isForEachEnabled } from '../../utils/config';
+import { isContainerMode, isForEachEnabled, isMapReduceEnabled } from '../../utils/config';
 import { useQueue } from '../../contexts/QueueContext';
 import { useApp } from '../../contexts/AppContext';
 import { useRepos } from '../../contexts/ReposContext';
@@ -19,16 +19,17 @@ import { ChatListPane } from './ChatListPane';
 import { ChatDetailPane } from './ChatDetailPane';
 import { RalphWorkflowPaneContainer } from './RalphWorkflowPaneContainer';
 import { ForEachRunPane } from './ForEachRunPane';
+import { MapReduceRunPane } from './MapReduceRunPane';
 import { useUnseenChat } from './hooks/useUnseenChat';
 import { useChatPaneNavigation } from './hooks/useChatPaneNavigation';
 import { ChatPreferencesProvider, ChatPrefsSync } from '../../contexts/ChatPreferencesContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { useProcessSearch } from '../../processes/hooks/useProcessSearch';
 import { adaptSearchResults } from '../../utils/search-adapter';
-import type { ForEachRunSummary, ProcessGroupPin, ProcessGroupPinType, ProcessHistoryItem } from '@plusplusoneplusplus/coc-client';
+import type { ForEachRunSummary, MapReduceRunSummary, ProcessGroupPin, ProcessGroupPinType, ProcessHistoryItem } from '@plusplusoneplusplus/coc-client';
 import { TaskDefs } from '../../../../../tasks/task-types';
 import { isQueueProcessId, toQueueProcessId, toTaskId } from '../../utils/queue-process-id';
-import { parseForEachRunDeepLink, parseRalphSessionDeepLink } from '../../layout/Router';
+import { parseForEachRunDeepLink, parseMapReduceRunDeepLink, parseRalphSessionDeepLink } from '../../layout/Router';
 
 export interface RepoChatTabProps {
     workspaceId: string;
@@ -61,6 +62,16 @@ function buildForEachRunHash(
         + '/for-each/' + encodeURIComponent(runId);
 }
 
+function buildMapReduceRunHash(
+    workspaceId: string,
+    mode: RepoChatTabProps['mode'],
+    runId: string,
+): string {
+    return '#repos/' + encodeURIComponent(workspaceId)
+        + '/' + getActivityTabSegment(mode)
+        + '/map-reduce/' + encodeURIComponent(runId);
+}
+
 type QueuePauseOptions = { durationHours?: 1 | 2 | 3 | 4 | 8; until?: number | string };
 
 function isQueuePauseOptions(value: unknown): value is QueuePauseOptions {
@@ -87,6 +98,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         (cachedHistory?.items as ProcessHistoryItem[]) ?? [],
     );
     const [forEachRuns, setForEachRuns] = useState<ForEachRunSummary[]>([]);
+    const [mapReduceRuns, setMapReduceRuns] = useState<MapReduceRunSummary[]>([]);
     const [groupPins, setGroupPins] = useState<ProcessGroupPin[]>([]);
     const [loading, setLoading] = useState(!cachedHistory && !cachedQueue);
     const [hasMore, setHasMore] = useState<boolean>(cachedHistory?.hasMore ?? false);
@@ -178,10 +190,11 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             const groupPinsRequest = typeof client.processes.listGroupPins === 'function'
                 ? client.processes.listGroupPins(workspaceId).catch(() => null)
                 : Promise.resolve(null);
-            const [queueData, historyData, forEachData, groupPinsData] = await Promise.all([
+            const [queueData, historyData, forEachData, mapReduceData, groupPinsData] = await Promise.all([
                 client.queue.list({ repoId: workspaceId }).catch(() => null),
                 client.workspaces.history(workspaceId, { limit: 100, offset: 0 }).catch(() => null),
                 isForEachEnabled() ? client.forEach.list(workspaceId).catch(() => null) : Promise.resolve(null),
+                isMapReduceEnabled() ? client.mapReduce.list(workspaceId).catch(() => null) : Promise.resolve(null),
                 groupPinsRequest,
             ]);
             // Only update queue/pause state when the queue fetch actually succeeded —
@@ -222,6 +235,11 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                 setForEachRuns(Array.isArray(forEachData) ? forEachData : []);
             } else {
                 setForEachRuns([]);
+            }
+            if (isMapReduceEnabled()) {
+                setMapReduceRuns(Array.isArray(mapReduceData) ? mapReduceData : []);
+            } else {
+                setMapReduceRuns([]);
             }
             if (groupPinsData) {
                 setGroupPins(Array.isArray(groupPinsData.pins) ? groupPinsData.pins : []);
@@ -580,6 +598,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     const [selectedRalphSessionId, setSelectedRalphSessionId] = useState<string | null>(null);
     const [selectedRalphFileName, setSelectedRalphFileName] = useState<string | null>(null);
     const [selectedForEachRunId, setSelectedForEachRunId] = useState<string | null>(null);
+    const [selectedMapReduceRunId, setSelectedMapReduceRunId] = useState<string | null>(null);
 
     // When a chat task is selected, drop any active parent-run selection so
     // the right pane consistently reflects the user's most recent click.
@@ -592,8 +611,11 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             if (selectedForEachRunId) {
                 setSelectedForEachRunId(null);
             }
+            if (selectedMapReduceRunId) {
+                setSelectedMapReduceRunId(null);
+            }
         }
-    }, [selectedTaskId, selectedRalphSessionId, selectedForEachRunId]);
+    }, [selectedTaskId, selectedRalphSessionId, selectedForEachRunId, selectedMapReduceRunId]);
 
     const handleSelectRalphSession = useCallback((sessionId: string) => {
         // Selecting a Ralph session clears the chat-task selection.
@@ -605,6 +627,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         setSelectedRalphSessionId(sessionId);
         setSelectedRalphFileName(null);
         setSelectedForEachRunId(null);
+        setSelectedMapReduceRunId(null);
         // Write a refresh-survivable hash. `mode === 'tasks' ? 'tasks' : ...`
         // mirrors the convention in `selectTask` so layout mode round-trips.
         const next = buildRalphSessionHash(workspaceId, mode, sessionId);
@@ -652,6 +675,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                 setSelectedRalphSessionId((prev) => (prev === null ? prev : null));
                 setSelectedRalphFileName((prev) => (prev === null ? prev : null));
                 setSelectedForEachRunId((prev) => (prev === parsed.runId ? prev : parsed.runId));
+                setSelectedMapReduceRunId((prev) => (prev === null ? prev : null));
                 if (isMobile) setMobileShowDetail(true);
             } else {
                 setSelectedForEachRunId((prev) => (prev === null ? prev : null));
@@ -667,6 +691,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         setSelectedRalphSessionId(null);
         setSelectedRalphFileName(null);
         setSelectedForEachRunId(null);
+        setSelectedMapReduceRunId(null);
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: workspaceId });
         if (isMobile) setMobileShowDetail(true);
     }, [queueDispatch, workspaceId, isMobile]);
@@ -681,6 +706,16 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         selectTask(processId);
     }, [selectTask]);
 
+    const handleSelectMapReduceChildProcess = useCallback((processId: string) => {
+        setSelectedMapReduceRunId(null);
+        selectTask(processId);
+    }, [selectTask]);
+
+    const handleSelectMapReduceGenerationProcess = useCallback((processId: string) => {
+        setSelectedMapReduceRunId(null);
+        selectTask(processId);
+    }, [selectTask]);
+
     const handleOpenForEachRun = useCallback((runId: string) => {
         if (!isForEachEnabled()) return;
         if (selectedTaskId) {
@@ -691,7 +726,47 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         setSelectedRalphSessionId(null);
         setSelectedRalphFileName(null);
         setSelectedForEachRunId(runId);
+        setSelectedMapReduceRunId(null);
         const next = buildForEachRunHash(workspaceId, mode, runId);
+        if (location.hash !== next) location.hash = next;
+        if (isMobile) setMobileShowDetail(true);
+    }, [isMobile, mode, queueDispatch, selectedTaskId, workspaceId]);
+
+    useEffect(() => {
+        const apply = () => {
+            const parsed = parseMapReduceRunDeepLink(location.hash);
+            if (parsed && parsed.workspaceId === workspaceId && isMapReduceEnabled()) {
+                if (selectedTaskId) {
+                    queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
+                }
+                setSelectedTask(null);
+                selectedTaskRef.current = null;
+                setSelectedRalphSessionId((prev) => (prev === null ? prev : null));
+                setSelectedRalphFileName((prev) => (prev === null ? prev : null));
+                setSelectedForEachRunId((prev) => (prev === null ? prev : null));
+                setSelectedMapReduceRunId((prev) => (prev === parsed.runId ? prev : parsed.runId));
+                if (isMobile) setMobileShowDetail(true);
+            } else {
+                setSelectedMapReduceRunId((prev) => (prev === null ? prev : null));
+            }
+        };
+        apply();
+        window.addEventListener('hashchange', apply);
+        return () => window.removeEventListener('hashchange', apply);
+    }, [workspaceId, selectedTaskId, queueDispatch, isMobile]);
+
+    const handleOpenMapReduceRun = useCallback((runId: string) => {
+        if (!isMapReduceEnabled()) return;
+        if (selectedTaskId) {
+            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
+            setSelectedTask(null);
+            selectedTaskRef.current = null;
+        }
+        setSelectedRalphSessionId(null);
+        setSelectedRalphFileName(null);
+        setSelectedForEachRunId(null);
+        setSelectedMapReduceRunId(runId);
+        const next = buildMapReduceRunHash(workspaceId, mode, runId);
         if (location.hash !== next) location.hash = next;
         if (isMobile) setMobileShowDetail(true);
     }, [isMobile, mode, queueDispatch, selectedTaskId, workspaceId]);
@@ -759,10 +834,13 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             selectedRalphSessionId={selectedRalphSessionId}
             onSelectRalphSession={handleSelectRalphSession}
             forEachRuns={forEachRuns}
+            mapReduceRuns={mapReduceRuns}
             groupPins={groupPins}
             onSetGroupPin={handleSetGroupPin}
             selectedForEachRunId={selectedForEachRunId}
             onSelectForEachRun={handleOpenForEachRun}
+            selectedMapReduceRunId={selectedMapReduceRunId}
+            onSelectMapReduceRun={handleOpenMapReduceRun}
             cursorTaskId={cursorTaskId}
             onNewChat={() => {
                 if (isMobile) {
@@ -775,6 +853,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                 setSelectedRalphSessionId(null);
                 setSelectedRalphFileName(null);
                 setSelectedForEachRunId(null);
+                setSelectedMapReduceRunId(null);
                 const tabSegment = getActivityTabSegment(mode);
                 location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/' + tabSegment;
                 if (isMobile) setMobileShowDetail(true);
@@ -825,6 +904,17 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                                     onSelectGenerationProcess={handleSelectForEachGenerationProcess}
                                     onSelectChildProcess={handleSelectForEachChildProcess}
                                 />
+                            ) : selectedMapReduceRunId ? (
+                                <MapReduceRunPane
+                                    workspaceId={workspaceId}
+                                    runId={selectedMapReduceRunId}
+                                    onClose={() => {
+                                        setSelectedMapReduceRunId(null);
+                                        setMobileShowDetail(false);
+                                    }}
+                                    onSelectGenerationProcess={handleSelectMapReduceGenerationProcess}
+                                    onSelectChildProcess={handleSelectMapReduceChildProcess}
+                                />
                             ) : (
                                 <ChatDetailPane
                                     selectedTaskId={selectedTaskId}
@@ -833,7 +923,8 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                                      workspaceId={workspaceId}
                                      readOnly={mode === 'tasks'}
                                      onOpenForEachRun={handleOpenForEachRun}
-                                 />
+                                     onOpenMapReduceRun={handleOpenMapReduceRun}
+                                  />
                             )}
                         </div>
                     ) : (
@@ -924,6 +1015,14 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                         onSelectGenerationProcess={handleSelectForEachGenerationProcess}
                         onSelectChildProcess={handleSelectForEachChildProcess}
                     />
+                ) : selectedMapReduceRunId ? (
+                    <MapReduceRunPane
+                        workspaceId={workspaceId}
+                        runId={selectedMapReduceRunId}
+                        onClose={() => setSelectedMapReduceRunId(null)}
+                        onSelectGenerationProcess={handleSelectMapReduceGenerationProcess}
+                        onSelectChildProcess={handleSelectMapReduceChildProcess}
+                    />
                 ) : (
                     <ChatDetailPane
                         selectedTaskId={selectedTaskId}
@@ -931,6 +1030,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                         workspaceId={workspaceId}
                         readOnly={mode === 'tasks'}
                         onOpenForEachRun={handleOpenForEachRun}
+                        onOpenMapReduceRun={handleOpenMapReduceRun}
                     />
                 )}
             </div>

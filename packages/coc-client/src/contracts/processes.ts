@@ -176,7 +176,7 @@ export interface PinnedTurnsResponse {
   turns: ConversationTurn[];
 }
 
-export type ProcessGroupPinType = 'ralph-session' | 'for-each-run';
+export type ProcessGroupPinType = 'ralph-session' | 'for-each-run' | 'map-reduce-run';
 
 export interface ProcessGroupPin {
   type: ProcessGroupPinType;

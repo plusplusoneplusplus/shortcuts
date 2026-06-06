@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   CocClient,
   DEFAULT_MAP_REDUCE_MAX_PARALLEL,
+  normalizeMapReducePlanItems,
+  scanMapReducePlanArtifacts,
+  validateMapReduceDraftPlan,
   type MapReduceRun,
   type ProcessHistoryItem,
 } from '../src';
@@ -176,6 +179,112 @@ describe('MapReduceClient', () => {
   });
 });
 
+describe('Map Reduce plan validation', () => {
+  it('normalizes items, reduce instructions, maxParallel, and validates dependencies', () => {
+    const items = normalizeMapReducePlanItems([
+      { id: ' item-1 ', title: ' First ', prompt: ' Map first ', status: 'pending' },
+      { id: 'item-2', title: 'Second', prompt: 'Map second', status: 'pending', dependsOn: [' item-1 '] },
+    ]);
+
+    expect(items).toEqual([
+      { id: 'item-1', title: 'First', prompt: 'Map first', status: 'pending' },
+      { id: 'item-2', title: 'Second', prompt: 'Map second', status: 'pending', dependsOn: ['item-1'] },
+    ]);
+
+    expect(validateMapReduceDraftPlan({
+      maxParallel: 2,
+      reduceInstructions: 'Aggregate outputs.',
+      items,
+    })).toMatchObject({
+      plan: {
+        maxParallel: 2,
+        reduceInstructions: 'Aggregate outputs.',
+        items,
+      },
+      error: null,
+    });
+  });
+
+  it('reports dependency, duplicate id, non-pending status, and missing reduce errors', () => {
+    expect(validateMapReduceDraftPlan({
+      reduceInstructions: 'Reduce',
+      items: [
+        { id: 'item-1', title: 'First', prompt: 'Do first', status: 'pending', dependsOn: ['missing'] },
+      ],
+    })).toMatchObject({ plan: null, error: "Map Reduce item 'item-1' depends on unknown item 'missing'" });
+
+    expect(validateMapReduceDraftPlan({
+      reduceInstructions: 'Reduce',
+      items: [
+        { id: 'item-1', title: 'First', prompt: 'Do first', status: 'pending' },
+        { id: 'item-1', title: 'Duplicate', prompt: 'Do duplicate', status: 'pending' },
+      ],
+    })).toMatchObject({ plan: null, error: 'Duplicate Map Reduce item id: item-1' });
+
+    expect(validateMapReduceDraftPlan({
+      reduceInstructions: 'Reduce',
+      items: [
+        { id: 'item-1', title: 'First', prompt: 'Do first', status: 'running' },
+      ],
+    })).toMatchObject({ plan: null, error: "Generated Map Reduce item 'item-1' must have initial status 'pending'" });
+
+    expect(validateMapReduceDraftPlan({
+      items: [
+        { id: 'item-1', title: 'First', prompt: 'Do first', status: 'pending' },
+      ],
+    })).toMatchObject({ plan: null, error: 'Map Reduce reduceInstructions is required' });
+  });
+
+  it('extracts the newest valid Advanced JSON plan and preserves the previous valid plan when latest output is invalid', () => {
+    const firstItems = makeRun().items;
+    const refinedItems = [
+      { id: 'item-1', title: 'Refined item', prompt: 'Map refined work', status: 'pending' as const },
+    ];
+
+    expect(scanMapReducePlanArtifacts([
+      {
+        role: 'assistant',
+        turnIndex: 1,
+        content: `Readable plan\n\n\`\`\`json\n${JSON.stringify({ maxParallel: 3, reduceInstructions: 'Reduce first', items: firstItems }, null, 2)}\n\`\`\``,
+      },
+      {
+        role: 'assistant',
+        turnIndex: 3,
+        content: `Refined plan\n\n\`\`\`json\n${JSON.stringify({ childMode: 'autopilot', sharedInstructions: 'Be safe', maxParallel: 4, reduceInstructions: 'Reduce refined outputs', items: refinedItems }, null, 2)}\n\`\`\``,
+      },
+    ])).toMatchObject({
+      plan: {
+        turnIndex: 3,
+        childMode: 'autopilot',
+        sharedInstructions: 'Be safe',
+        maxParallel: 4,
+        reduceInstructions: 'Reduce refined outputs',
+        items: refinedItems,
+      },
+      error: null,
+    });
+
+    const invalidLatest = scanMapReducePlanArtifacts([
+      {
+        role: 'assistant',
+        turnIndex: 1,
+        content: `Readable plan\n\n\`\`\`json\n${JSON.stringify({ maxParallel: 3, reduceInstructions: 'Reduce first', items: firstItems }, null, 2)}\n\`\`\``,
+      },
+      {
+        role: 'assistant',
+        turnIndex: 3,
+        content: 'I cannot produce a valid plan yet.',
+      },
+    ]);
+
+    expect(invalidLatest.plan?.items).toEqual(firstItems);
+    expect(invalidLatest.error).toMatchObject({
+      turnIndex: 3,
+      message: 'Assistant output did not include an Advanced JSON Map Reduce plan',
+    });
+  });
+});
+
 describe('Map Reduce process history contract', () => {
   it('accepts map and reduce metadata on ProcessHistoryItem', () => {
     const mapHistoryItem: ProcessHistoryItem = {
@@ -212,7 +321,48 @@ describe('Map Reduce process history contract', () => {
       },
     };
 
-    expect(mapHistoryItem.mapReduce?.phase).toBe('map');
-    expect(reduceHistoryItem.mapReduce?.phase).toBe('reduce');
+    expect(mapHistoryItem.mapReduce).toMatchObject({ phase: 'map' });
+    expect(reduceHistoryItem.mapReduce).toMatchObject({ phase: 'reduce' });
+  });
+
+  it('accepts generation metadata on ProcessHistoryItem', () => {
+    const generationHistoryItem: ProcessHistoryItem = {
+      id: 'queue_generation-1',
+      type: 'chat',
+      status: 'completed',
+      title: 'Generate Map Reduce plan',
+      startTime: 3,
+      mode: 'ask',
+      workspaceId: 'ws-1',
+      turnCount: 4,
+      mapReduce: {
+        kind: 'generation',
+        workspaceId: 'ws-1',
+        generationId: 'map-reduce-gen-1',
+        runId: 'map-reduce-run-1',
+        childMode: 'autopilot',
+        originalRequest: 'Split this work',
+        status: 'approved',
+        latestItemCount: 1,
+        latestPlanTurnIndex: 3,
+        latestPlan: {
+          turnIndex: 3,
+          childMode: 'autopilot',
+          sharedInstructions: 'Keep map outputs concise',
+          reduceInstructions: 'Aggregate final answer',
+          maxParallel: 3,
+          items: [
+            {
+              id: 'item-1',
+              title: 'First item',
+              prompt: 'Map item one',
+              status: 'pending',
+            },
+          ],
+        },
+      },
+    };
+
+    expect(generationHistoryItem.mapReduce?.kind).toBe('generation');
   });
 });

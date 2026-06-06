@@ -7,9 +7,10 @@
 
 import type { ProcessGroupPin, ProcessGroupPinType } from '@plusplusoneplusplus/coc-client';
 import type { ForEachRunGroup } from './for-each-run-grouping';
+import type { MapReduceRunGroup } from './map-reduce-run-grouping';
 import type { RalphSession } from './ralph-session-grouping';
 
-export type GroupPinnableEntry = RalphSession | ForEachRunGroup;
+export type GroupPinnableEntry = RalphSession | ForEachRunGroup | MapReduceRunGroup;
 
 export type PinnedGroupEntry<T extends GroupPinnableEntry = GroupPinnableEntry> = T & {
     groupPinnedAt: string;
@@ -30,6 +31,9 @@ export function getGroupPinTarget(entry: GroupPinnableEntry): { type: ProcessGro
     if (entry.kind === 'ralph-session') {
         return { type: 'ralph-session', groupId: entry.sessionId };
     }
+    if (entry.kind === 'map-reduce-run') {
+        return { type: 'map-reduce-run', groupId: entry.runId };
+    }
     return { type: 'for-each-run', groupId: entry.runId };
 }
 
@@ -42,7 +46,9 @@ export function isPinnedGroupEntry(value: unknown): value is PinnedGroupEntry {
     return !!value
         && typeof value === 'object'
         && typeof (value as { groupPinnedAt?: unknown }).groupPinnedAt === 'string'
-        && ((value as { kind?: unknown }).kind === 'ralph-session' || (value as { kind?: unknown }).kind === 'for-each-run');
+        && ((value as { kind?: unknown }).kind === 'ralph-session'
+            || (value as { kind?: unknown }).kind === 'for-each-run'
+            || (value as { kind?: unknown }).kind === 'map-reduce-run');
 }
 
 export function partitionPinnedGroups<T extends GroupPinnableEntry>(

@@ -24,7 +24,7 @@ import type {
     TurnSource,
 } from '@plusplusoneplusplus/forge';
 import type { ChatMode, ChatProvider } from '../tasks/task-types';
-import { getForEachContext, isForEachGenerationContext, normalizeChatModeOrDefault } from '../tasks/task-types';
+import { getForEachContext, getMapReduceContext, isForEachGenerationContext, isMapReduceGenerationContext, normalizeChatModeOrDefault } from '../tasks/task-types';
 import {
     approveAllPermissions,
     getLogger,
@@ -35,6 +35,7 @@ import {
 } from '@plusplusoneplusplus/forge';
 import {
     buildForEachGenerationSystemMessage,
+    buildMapReduceGenerationSystemMessage,
     buildModeSystemMessage,
     buildConversationHistoryContext,
     prependSelectedSkillsDirective,
@@ -50,6 +51,7 @@ import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import type { ChatTurnContext } from './chat-turn-context-builder';
 import { updateForEachGenerationMetadataFromAssistantTurn } from '../for-each/for-each-generation-metadata';
+import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduce/map-reduce-generation-metadata';
 // ============================================================================
 // Types
 // ============================================================================
@@ -200,6 +202,10 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             const context = getForEachContext({ metadata: process.metadata });
             return isForEachGenerationContext(context) ? context : null;
         })();
+        const mapReduceGeneration = (() => {
+            const context = getMapReduceContext({ metadata: process.metadata });
+            return isMapReduceGenerationContext(context) ? context : null;
+        })();
 
         // Capture pre-edit note content for snapshot (note-chat follow-ups only)
         let preEditContent: string | undefined;
@@ -289,6 +295,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             const systemMessage = await systemMessageBuilder()
                 .append(buildModeSystemMessage(currentMode)?.content)
                 .append(buildForEachGenerationSystemMessage(forEachGeneration)?.content)
+                .append(buildMapReduceGenerationSystemMessage(mapReduceGeneration)?.content)
                 .withRepoInstructions(workingDirectory, currentMode)
                 .appendMemoryV2(chatCtx.memoryV2)
                 .appendToolGuidance(chatCtx.toolGuidance)
@@ -463,11 +470,16 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                             type: current.metadata?.type ?? 'chat',
                             model: result.effectiveModel,
                         };
-                        const metadata = updateForEachGenerationMetadataFromAssistantTurn(
+                        const forEachMetadata = updateForEachGenerationMetadataFromAssistantTurn(
                             baseMetadata,
                             assistantContent,
                             assistantTurnIndex,
                         ) ?? baseMetadata;
+                        const metadata = updateMapReduceGenerationMetadataFromAssistantTurn(
+                            forEachMetadata,
+                            assistantContent,
+                            assistantTurnIndex,
+                        ) ?? forEachMetadata;
                         return {
                             status: 'completed' as const,
                             endTime: new Date(),

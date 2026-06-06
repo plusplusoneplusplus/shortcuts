@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import { atomicWriteJson } from '../shared/fs-utils';
 import { getRepoDataPath } from '../paths';
 
-export const GROUP_PIN_TYPES = ['ralph-session', 'for-each-run'] as const;
+export const GROUP_PIN_TYPES = ['ralph-session', 'for-each-run', 'map-reduce-run'] as const;
 
 export type GroupPinType = typeof GROUP_PIN_TYPES[number];
 

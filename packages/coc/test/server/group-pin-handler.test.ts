@@ -131,6 +131,10 @@ describe('Group Pin REST API', () => {
 
         const forEachRes = await patchJSON(groupPinsUrl(wsA, 'for-each-run', 'for-each-run-1'), { pinned: true });
         expect(forEachRes.status).toBe(200);
+        await new Promise(resolve => setTimeout(resolve, 5));
+
+        const mapReduceRes = await patchJSON(groupPinsUrl(wsA, 'map-reduce-run', 'map-reduce-run-1'), { pinned: true });
+        expect(mapReduceRes.status).toBe(200);
 
         const childAfterPins = await store!.getProcess('child-process');
         expect(childAfterPins!.pinnedAt).toBe('2026-01-02T00:00:00.000Z');
@@ -139,6 +143,7 @@ describe('Group Pin REST API', () => {
         const listA = await getJSON(groupPinsUrl(wsA));
         expect(listA.status).toBe(200);
         expect(JSON.parse(listA.body).pins).toEqual([
+            expect.objectContaining({ type: 'map-reduce-run', groupId: 'map-reduce-run-1' }),
             expect.objectContaining({ type: 'for-each-run', groupId: 'for-each-run-1' }),
             expect.objectContaining({ type: 'ralph-session', groupId: 'ralph-session-1' }),
         ]);
@@ -152,6 +157,7 @@ describe('Group Pin REST API', () => {
         const persisted = await getJSON(groupPinsUrl(wsA));
         expect(persisted.status).toBe(200);
         expect(JSON.parse(persisted.body).pins.map((pin: { type: string; groupId: string }) => [pin.type, pin.groupId])).toEqual([
+            ['map-reduce-run', 'map-reduce-run-1'],
             ['for-each-run', 'for-each-run-1'],
             ['ralph-session', 'ralph-session-1'],
         ]);
@@ -162,6 +168,7 @@ describe('Group Pin REST API', () => {
 
         const afterClear = await getJSON(groupPinsUrl(wsA));
         expect(JSON.parse(afterClear.body).pins.map((pin: { type: string; groupId: string }) => [pin.type, pin.groupId])).toEqual([
+            ['map-reduce-run', 'map-reduce-run-1'],
             ['for-each-run', 'for-each-run-1'],
         ]);
 
@@ -169,8 +176,12 @@ describe('Group Pin REST API', () => {
         expect(clearForEachRes.status).toBe(200);
         expect(JSON.parse(clearForEachRes.body)).toEqual({ pin: null });
 
-        const afterClearingBoth = await getJSON(groupPinsUrl(wsA));
-        expect(JSON.parse(afterClearingBoth.body).pins).toEqual([]);
+        const clearMapReduceRes = await patchJSON(groupPinsUrl(wsA, 'map-reduce-run', 'map-reduce-run-1'), { pinned: false });
+        expect(clearMapReduceRes.status).toBe(200);
+        expect(JSON.parse(clearMapReduceRes.body)).toEqual({ pin: null });
+
+        const afterClearingAll = await getJSON(groupPinsUrl(wsA));
+        expect(JSON.parse(afterClearingAll.body).pins).toEqual([]);
 
         const childAfterClear = await store!.getProcess('child-process');
         expect(childAfterClear!.pinnedAt).toBe('2026-01-02T00:00:00.000Z');

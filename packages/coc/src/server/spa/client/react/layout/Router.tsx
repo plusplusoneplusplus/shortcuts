@@ -183,7 +183,7 @@ export function parseActivityDeepLink(hash: string): string | null {
     const cleaned = hash.replace(/^#/, '');
     const parts = cleaned.split('/');
     if (parts[0] === 'repos' && parts[1] && (parts[2] === 'chats' || parts[2] === 'activity') && parts[3]) {
-        if (parts[3] === 'ralph' || parts[3] === 'for-each') return null;
+        if (parts[3] === 'ralph' || parts[3] === 'for-each' || parts[3] === 'map-reduce') return null;
         return decodeURIComponent(parts[3]);
     }
     return null;
@@ -194,7 +194,7 @@ export function parseTasksDeepLink(hash: string): string | null {
     const cleaned = hash.replace(/^#/, '');
     const parts = cleaned.split('/');
     if (parts[0] === 'repos' && parts[1] && parts[2] === 'tasks' && parts[3]) {
-        if (parts[3] === 'ralph' || parts[3] === 'for-each') return null;
+        if (parts[3] === 'ralph' || parts[3] === 'for-each' || parts[3] === 'map-reduce') return null;
         return decodeURIComponent(parts[3]);
     }
     return null;
@@ -248,6 +248,30 @@ export function parseForEachRunDeepLink(
         parts[1] &&
         (parts[2] === 'chats' || parts[2] === 'activity' || parts[2] === 'tasks') &&
         parts[3] === 'for-each' &&
+        parts[4]
+    ) {
+        return {
+            workspaceId: decodeURIComponent(parts[1]),
+            runId: decodeURIComponent(parts[4]),
+        };
+    }
+    return null;
+}
+
+/**
+ * Parse a Map Reduce run deep-link:
+ *   `#repos/{wsId}/(activity|chats|tasks)/map-reduce/{runId}`
+ */
+export function parseMapReduceRunDeepLink(
+    hash: string,
+): { workspaceId: string; runId: string } | null {
+    const cleaned = hash.replace(/^#/, '');
+    const parts = cleaned.split('/');
+    if (
+        parts[0] === 'repos' &&
+        parts[1] &&
+        (parts[2] === 'chats' || parts[2] === 'activity' || parts[2] === 'tasks') &&
+        parts[3] === 'map-reduce' &&
         parts[4]
     ) {
         return {

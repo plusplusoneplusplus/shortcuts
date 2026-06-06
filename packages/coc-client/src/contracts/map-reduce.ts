@@ -140,6 +140,32 @@ export interface MapReduceReduceProcessContext {
   childMode: MapReduceChildMode;
 }
 
-export type MapReduceProcessContext = MapReduceMapProcessContext | MapReduceReduceProcessContext;
+export interface MapReduceGenerationLatestPlan {
+  turnIndex: number;
+  items: MapReduceItem[];
+  childMode: MapReduceChildMode;
+  sharedInstructions?: string;
+  reduceInstructions: string;
+  maxParallel: number;
+  rawJson?: string;
+  updatedAt?: string;
+}
+
+export interface MapReduceGenerationContext {
+  kind: 'generation';
+  workspaceId: string;
+  generationId: string;
+  childMode: MapReduceChildMode;
+  originalRequest: string;
+  status: 'draft' | 'approved';
+  runId?: string;
+  latestItemCount?: number;
+  latestPlanTurnIndex?: number;
+  latestPlan?: MapReduceGenerationLatestPlan;
+  lastPlanError?: string;
+  lastPlanErrorTurnIndex?: number;
+}
+
+export type MapReduceProcessContext = MapReduceMapProcessContext | MapReduceReduceProcessContext | MapReduceGenerationContext;
 
 export const DEFAULT_MAP_REDUCE_MAX_PARALLEL = 3;

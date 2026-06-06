@@ -21,7 +21,7 @@
  */
 
 import type { Attachment, MCPServerConfig } from '@plusplusoneplusplus/forge';
-import type { ForEachItem, MapReduceChildMode } from '@plusplusoneplusplus/coc-client';
+import type { ForEachItem, MapReduceChildMode, MapReduceItem } from '@plusplusoneplusplus/coc-client';
 
 // ============================================================================
 // Target Type
@@ -234,7 +234,7 @@ export interface ChatContext {
     ralph?: RalphContext;
     /** For Each generation or parent-run linkage. */
     forEach?: ForEachContext;
-    /** Map Reduce map/reduce child linkage. */
+    /** Map Reduce generation or parent-run linkage. */
     mapReduce?: MapReduceContext;
     /** Auto provider selection details captured before execution. */
     autoProviderRouting?: {
@@ -292,6 +292,33 @@ export interface ForEachGenerationContext {
 
 export type ForEachContext = ForEachChildContext | ForEachGenerationContext;
 
+export interface MapReduceGenerationLatestPlan {
+    turnIndex: number;
+    items: MapReduceItem[];
+    childMode: MapReduceChildMode;
+    sharedInstructions?: string;
+    reduceInstructions: string;
+    maxParallel: number;
+    rawJson?: string;
+    updatedAt?: string;
+}
+
+/** Visible Map Reduce plan-generation chat metadata. */
+export interface MapReduceGenerationContext {
+    kind: 'generation';
+    workspaceId: string;
+    generationId: string;
+    childMode: MapReduceChildMode;
+    originalRequest: string;
+    status: 'draft' | 'approved';
+    runId?: string;
+    latestItemCount?: number;
+    latestPlanTurnIndex?: number;
+    latestPlan?: MapReduceGenerationLatestPlan;
+    lastPlanError?: string;
+    lastPlanErrorTurnIndex?: number;
+}
+
 /** Map Reduce map child chat linkage (mirrored verbatim into AIProcess.metadata.mapReduce). */
 export interface MapReduceMapChildContext {
     workspaceId: string;
@@ -309,7 +336,7 @@ export interface MapReduceReduceChildContext {
     childMode: MapReduceChildMode;
 }
 
-export type MapReduceContext = MapReduceMapChildContext | MapReduceReduceChildContext;
+export type MapReduceContext = MapReduceMapChildContext | MapReduceReduceChildContext | MapReduceGenerationContext;
 
 /** Ralph-mode orchestration context (mirrored verbatim into AIProcess.metadata.ralph). */
 export interface RalphContext {
@@ -597,6 +624,10 @@ export function getMapReduceContext(
 
 export function isForEachGenerationContext(context: ForEachContext | null | undefined): context is ForEachGenerationContext {
     return context?.kind === 'generation';
+}
+
+export function isMapReduceGenerationContext(context: MapReduceContext | null | undefined): context is MapReduceGenerationContext {
+    return (context as { kind?: unknown } | null | undefined)?.kind === 'generation';
 }
 
 /**
