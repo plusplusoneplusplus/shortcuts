@@ -78,6 +78,17 @@ function formatUsdCost(usd: number): string {
     return '$' + usd.toFixed(6).replace(/0+$/, '').replace(/\.$/, '');
 }
 
+function getHttpUrl(value: string | undefined): string | null {
+    if (!value) return null;
+    try {
+        const url = new URL(value);
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+        return url.href;
+    } catch {
+        return null;
+    }
+}
+
 function pluralizeTurns(count: number): string {
     return `${count.toLocaleString()} ${count === 1 ? 'turn' : 'turns'}`;
 }
@@ -281,6 +292,8 @@ function TokenUsageRows({ process }: { process: any }) {
     const estimate = readCostEstimate(process?.conversationCostEstimate);
     const costBreakdown = estimate?.costBreakdown;
     const unpricedTurnCount = estimate?.unpricedTurnCount ?? 0;
+    const pricingSource = estimate?.pricingSource;
+    const pricingSourceUrl = getHttpUrl(pricingSource);
     const costSummaryParts: string[] = [];
 
     if (!estimate || estimate.pricingUnavailable) {
@@ -302,7 +315,7 @@ function TokenUsageRows({ process }: { process: any }) {
         `Cache write: ${formatUsdCost(costBreakdown.cacheWriteUsd)}`,
         `Output: ${formatUsdCost(costBreakdown.outputUsd)}`,
     ] : [];
-    if (estimate?.pricingSource) costDetailParts.push(`Source: ${estimate.pricingSource}`);
+    if (pricingSource) costDetailParts.push(`Source: ${pricingSource}`);
 
     return (
         <>
@@ -328,8 +341,23 @@ function TokenUsageRows({ process }: { process: any }) {
                 <span className="text-[#848484]">Est. cost</span>
                 <span className="text-[#1e1e1e] dark:text-[#cccccc] break-words" title={costDetailParts.join(' · ') || undefined}>
                     {costSummaryParts.join(' · ')}
-                    {estimate?.pricingSource && (
-                        <span className="text-[#848484]"> · Source: {estimate.pricingSource}</span>
+                    {pricingSource && (
+                        <span className="text-[#848484]">
+                            {' · '}
+                            {pricingSourceUrl ? (
+                                <a
+                                    href={pricingSourceUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[#0078d4] dark:text-[#3794ff] hover:underline"
+                                    title={pricingSource}
+                                >
+                                    Source
+                                </a>
+                            ) : (
+                                <>Source: {pricingSource}</>
+                            )}
+                        </span>
                     )}
                 </span>
             </div>

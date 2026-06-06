@@ -284,7 +284,7 @@ describe('ConversationMetadataPopover – token and cost rows', () => {
         expect(screen.getByText(/Total: 1,801/)).toBeDefined();
     });
 
-    it('shows a priced estimated cost with Stats-page USD formatting and pricing source', async () => {
+    it('shows a priced estimated cost with Stats-page USD formatting and text pricing source', async () => {
         renderPopover({
             ...BASE_PROCESS,
             cumulativeTokenUsage: TOKEN_USAGE,
@@ -305,6 +305,32 @@ describe('ConversationMetadataPopover – token and cost rows', () => {
         expect(screen.getByText('Est. cost')).toBeDefined();
         expect(screen.getByText(/Est\. \$42\.31/)).toBeDefined();
         expect(screen.getByText(/Source: Copilot pricing table/)).toBeDefined();
+    });
+
+    it('renders URL pricing sources as compact links without showing the full URL', async () => {
+        const pricingSource = 'https://docs.github.com/en/enterprise-cloud@latest/copilot/reference/copilot-billing/models-and-pricing';
+        renderPopover({
+            ...BASE_PROCESS,
+            cumulativeTokenUsage: TOKEN_USAGE,
+            conversationCostEstimate: {
+                estimatedUsdCost: 1.72,
+                costBreakdown: { inputUsd: 0.5, cachedInputUsd: 0.02, cacheWriteUsd: 0, outputUsd: 1.2 },
+                pricingSource,
+                unpricedTurnCount: 0,
+                pricingUnavailable: false,
+            },
+        });
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+
+        await act(async () => {
+            fireEvent.click(trigger);
+        });
+
+        expect(screen.getByText(/Est\. \$1\.72/)).toBeDefined();
+        expect(document.body.textContent).not.toContain(pricingSource);
+        const link = screen.getByRole('link', { name: 'Source' }) as HTMLAnchorElement;
+        expect(link.href).toBe(pricingSource);
+        expect(link.title).toBe(pricingSource);
     });
 
     it('uses sub-cent USD formatting for small estimated costs', async () => {
