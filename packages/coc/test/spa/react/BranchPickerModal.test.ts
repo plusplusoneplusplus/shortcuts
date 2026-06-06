@@ -48,7 +48,13 @@ describe('BranchPickerModal', () => {
         });
 
         it('accepts onSwitched prop', () => {
-            expect(source).toContain('onSwitched: (newBranch: string) => void');
+            expect(source).toContain('onSwitched?: (newBranch: string) => void');
+        });
+
+        it('accepts optional onSelected prop for branch selection without switching', () => {
+            expect(source).toContain('onSelected?: (branchName: string) => void | Promise<void>');
+            expect(source).toContain('typeof onSelected === \'function\'');
+            expect(source).toContain('await onSelected(branchName)');
         });
     });
 
@@ -195,7 +201,7 @@ describe('BranchPickerModal', () => {
         });
 
         it('calls onSwitched on success', () => {
-            expect(source).toContain('onSwitched(branchName)');
+            expect(source).toContain('onSwitched?.(branchName)');
         });
 
         it('calls onClose after successful switch', () => {
@@ -216,7 +222,12 @@ describe('BranchPickerModal', () => {
         });
 
         it('guards against switching to current branch', () => {
-            expect(source).toContain('branchName === currentBranch');
+            expect(source).toContain('!isSelectionMode && branchName === currentBranch');
+        });
+
+        it('keeps current branch selectable in selection mode', () => {
+            expect(source).toContain('isSelectionMode');
+            expect(source).toContain('onSelected');
         });
 
         it('delegates JSON request details to the client', () => {

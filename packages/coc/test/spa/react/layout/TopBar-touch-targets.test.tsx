@@ -36,6 +36,10 @@ vi.mock('../../../../src/server/spa/client/react/shared/NotificationBell', () =>
     NotificationBell: () => null,
 }));
 
+vi.mock('../../../../src/server/spa/client/react/shared/AgentProviderQuotaIndicator', () => ({
+    agentProviderQuotaIndicator: () => null,
+}));
+
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     QueueProvider: ({ children }: any) => children,
     useQueue: () => ({ state: { repoQueueMap: {}, queued: [], running: [], history: [] }, dispatch: vi.fn() }),

@@ -25,7 +25,7 @@ import { useSlashCommands } from './hooks/useSlashCommands';
 import { useModelCommand, selectPickableModels } from './hooks/useModelCommand';
 import { SlashCommandMenu, getMetaSkillItems, mergeSkillsWithMeta, type SkillItem } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
-import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION, FOR_EACH_MODE_PILL_OPTION } from './ModePillSelector';
+import { ModePillSelector, getVisibleModePillOptions } from './ModePillSelector';
 import { EffortPillSelector, buildEffortOptionsForModel } from './EffortPillSelector';
 import type { EffortLevel } from './EffortPillSelector';
 import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
@@ -43,11 +43,20 @@ import { AgentSelectorChip } from './AgentSelectorChip';
 import type { ChatProvider } from './AgentSelectorChip';
 import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
 import { deriveEffort } from '../../utils/effortUtils';
+import {
+    cycleChatProvider,
+    cycleConfiguredEffortTier,
+    cycleReasoningEffort,
+    getComposerArrowCycleDirection,
+    isEffortCycleShortcut,
+    isProviderCycleShortcut,
+} from '../../utils/composerKeyboardShortcuts';
 import { RalphLaunchDialog } from '../../shared/RalphLaunchDialog';
 import type { ResolvedModalJobAiSelection } from '../../shared/ModalJobAiControls';
 import { AttachedContextPreviews } from '../../ui/AttachedContextPreviews';
 import { formatAttachedContext, useAttachedContext } from './hooks/useAttachedContext';
 import {
+    dataTransferHasAnyData,
     dataTransferHasSessionContext,
     readSessionContextDropPayload,
     useConversationRetrievalCapability,
@@ -77,6 +86,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [sessionContextDropError, setSessionContextDropError] = useState<string | null>(null);
+    const [sessionContextDragActive, setSessionContextDragActive] = useState(false);
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [selectedProvider, setSelectedProvider] = useState<ChatProvider>(() => getDefaultProvider());
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
@@ -85,6 +95,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const richTextRef = useRef<RichTextInputHandle>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
+    const sessionContextDragDepthRef = useRef(0);
     /** Tracks the (provider, modelId) for which the user last explicitly picked an effort.
      *  When set, prevents auto-derive from overwriting the user's pick for the same model.
      *  Cleared on provider or model change (triggering re-derive for the new model). */
@@ -125,17 +136,32 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         return pickableModels.some(model => model.id === override) ? override : null;
     }, [modelCommand.modelOverride, pickableModels]);
 
-    const modePillOptions = useMemo(
-        () => [
-            ...DEFAULT_MODE_PILL_OPTIONS,
-            ...(isRalphEnabled() ? [RALPH_MODE_PILL_OPTION] : []),
-            ...(isForEachEnabled() ? [FOR_EACH_MODE_PILL_OPTION] : []),
-        ],
+    const modeFeatureFlags = useMemo(
+        () => ({
+            ralph: isRalphEnabled(),
+            'for-each': isForEachEnabled(),
+        }),
         [],
     );
+    const modePillOptions = useMemo(
+        () => getVisibleModePillOptions({
+            surface: 'new-chat',
+            category: 'primary',
+            featureFlags: modeFeatureFlags,
+        }),
+        [modeFeatureFlags],
+    );
+    const workflowModeOptions = useMemo(
+        () => getVisibleModePillOptions({
+            surface: 'new-chat',
+            category: 'workflow',
+            featureFlags: modeFeatureFlags,
+        }),
+        [modeFeatureFlags],
+    );
     const visibleModes = useMemo(
-        () => modePillOptions.map(opt => opt.value),
-        [modePillOptions],
+        () => [...modePillOptions, ...workflowModeOptions].map(opt => opt.value),
+        [modePillOptions, workflowModeOptions],
     );
 
     // Restore draft from localStorage on mount / workspace switch.
@@ -319,6 +345,59 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     function handleEffortTierChange(tier: EffortTierKey) {
         setSelectedEffortTier(tier);
         localStorage.setItem(`coc:effort-tier:${workspaceId ?? 'default'}`, tier);
+    }
+
+    function handleEffortShortcut(e: React.KeyboardEvent<HTMLElement>): boolean {
+        if (!isEffortCycleShortcut(e)) {
+            return false;
+        }
+        if (slashCommands.menuVisible || modelCommand.modelMenuVisible) {
+            return false;
+        }
+
+        const direction = getComposerArrowCycleDirection(e.key);
+        if (direction === null) {
+            return false;
+        }
+
+        if (useEffortTierMode) {
+            const next = cycleConfiguredEffortTier(selectedEffortTier, effortTierMap, direction);
+            if (next.changed) {
+                handleEffortTierChange(next.value);
+            }
+            e.preventDefault();
+            return true;
+        }
+
+        if (!effortPickerDisabled) {
+            const next = cycleReasoningEffort(effortOverride, effortOptions, direction);
+            if (next.changed) {
+                handleEffortChange(next.value);
+            }
+        }
+        e.preventDefault();
+        return true;
+    }
+
+    function handleProviderShortcut(e: React.KeyboardEvent<HTMLElement>): boolean {
+        if (!isProviderCycleShortcut(e)) {
+            return false;
+        }
+        if (slashCommands.menuVisible || modelCommand.modelMenuVisible) {
+            return false;
+        }
+
+        const direction = getComposerArrowCycleDirection(e.key);
+        if (direction === null) {
+            return false;
+        }
+
+        const next = cycleChatProvider(selectedProvider, agentProviders, direction);
+        if (next.changed) {
+            handleProviderChange(next.value);
+        }
+        e.preventDefault();
+        return true;
     }
 
     function getSelectedWorkspaceRoot(): string | undefined {
@@ -511,15 +590,58 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         setSending(false);
     }
 
+    function resetSessionContextDragState() {
+        sessionContextDragDepthRef.current = 0;
+        setSessionContextDragActive(false);
+    }
+
+    function getUnsupportedSessionContextDropError(): string {
+        const validation = validateSessionContextDrop({
+            payload: null,
+            featureEnabled: sessionContextAttachmentsEnabled,
+            activeWorkspaceId: workspaceId,
+            currentProcessId: null,
+            existingItems: attachedContext.getItems(),
+            canRetrieveConversations,
+        });
+        return validation.ok ? 'Drop a supported CoC context item from this workspace to attach it as context.' : validation.error;
+    }
+
+    function handleSessionContextDragEnter(e: React.DragEvent<HTMLElement>) {
+        if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        sessionContextDragDepthRef.current += 1;
+        setSessionContextDragActive(true);
+    }
+
     function handleSessionContextDragOver(e: React.DragEvent<HTMLElement>) {
         if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
+        setSessionContextDragActive(true);
+    }
+
+    function handleSessionContextDragLeave(e: React.DragEvent<HTMLElement>) {
+        if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        sessionContextDragDepthRef.current = Math.max(0, sessionContextDragDepthRef.current - 1);
+        if (sessionContextDragDepthRef.current === 0) {
+            setSessionContextDragActive(false);
+        }
     }
 
     function handleSessionContextDrop(e: React.DragEvent<HTMLElement>) {
-        if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        if (!sessionContextAttachmentsEnabled) return;
+        if (!dataTransferHasSessionContext(e.dataTransfer)) {
+            if (dataTransferHasAnyData(e.dataTransfer)) {
+                e.preventDefault();
+                resetSessionContextDragState();
+                setSessionContextDropError(getUnsupportedSessionContextDropError());
+            }
+            return;
+        }
         e.preventDefault();
+        resetSessionContextDragState();
         const validation = validateSessionContextDrop({
             payload: readSessionContextDropPayload(e.dataTransfer),
             featureEnabled: sessionContextAttachmentsEnabled,
@@ -622,7 +744,10 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                 <div
                     data-testid="chat-input-stack"
                     className="space-y-1"
+                    onDragEnter={handleSessionContextDragEnter}
                     onDragOver={handleSessionContextDragOver}
+                    onDragLeave={handleSessionContextDragLeave}
+                    onDragEnd={resetSessionContextDragState}
                     onDrop={handleSessionContextDrop}
                 >
                 <div
@@ -631,8 +756,17 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         'relative flex flex-col rounded-lg border bg-white dark:bg-[#1f1f1f] focus-within:ring-2 transition-[box-shadow,border-color]',
                         MODE_BORDER_COLORS[selectedMode].border,
                         MODE_BORDER_COLORS[selectedMode].ring,
+                        sessionContextDragActive && 'border-[#0078d4] ring-2 ring-[#0078d4]/60 shadow-sm',
                     )}
                 >
+                    {sessionContextDragActive && (
+                        <div
+                            className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-[#0078d4]/70 bg-[#eaf4ff]/80 text-xs font-medium text-[#005a9e] dark:bg-[#06314f]/80 dark:text-[#9cdcfe]"
+                            data-testid="session-context-drop-hint"
+                        >
+                            Drop to copy context
+                        </div>
+                    )}
                     <RichTextInput
                         ref={richTextRef}
                         disabled={sending}
@@ -656,11 +790,6 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                             }
                         }}
                         onKeyDown={(e) => {
-                            if (e.key === 'Tab' && e.shiftKey) {
-                                e.preventDefault();
-                                setSelectedMode(cycleMode(selectedMode, visibleModes));
-                                return;
-                            }
                             // Priority 1: model command menu
                             if (modelCommand.handleModelKeyDown(e)) {
                                 if (e.key === 'Enter' || e.key === 'Tab') {
@@ -690,6 +819,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                             // Priority 3: inline ghost-text accept (Tab, no modifiers).
                             if (
                                 e.key === 'Tab'
+                                && !e.shiftKey
                                 && !e.ctrlKey && !e.metaKey && !e.altKey
                                 && autocomplete.completion
                             ) {
@@ -706,8 +836,17 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                 autocomplete.dismiss();
                                 return;
                             }
-                            // Priority 4: bash-style up/down history navigation.
+                            // Priority 4: modified-arrow composer shortcuts.
+                            if (handleEffortShortcut(e) || handleProviderShortcut(e)) {
+                                return;
+                            }
+                            // Priority 5: bash-style up/down history navigation.
                             if (promptHistory.handleKeyDown(e)) {
+                                return;
+                            }
+                            if (e.key === 'Tab' && e.shiftKey) {
+                                e.preventDefault();
+                                setSelectedMode(cycleMode(selectedMode, visibleModes));
                                 return;
                             }
                             if (e.key === 'Enter' && !e.shiftKey) {
@@ -737,6 +876,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         <div data-testid="mode-selector" className="shrink-0 mr-0.5">
                             <ModePillSelector
                                 options={modePillOptions}
+                                workflowOptions={workflowModeOptions}
                                 value={selectedMode}
                                 onChange={setSelectedMode}
                             />

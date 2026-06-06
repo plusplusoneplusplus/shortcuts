@@ -171,9 +171,17 @@ test.describe('AmendMessageModal — successful amend', () => {
             const repoDir = createMultiCommitRepo(tmpDir);
             await openAmendMessageModal(page, serverUrl, 'ws-amd-7', repoDir);
 
+            const amendedTitle = 'fix: amended by E2E test';
+            const amendedBody = [
+                'First amended body line from E2E.',
+                'Second line keeps spaces, quotes "and" ampersand & characters.',
+                'Third line includes Windows-ish C:\\temp\\repo path text.',
+            ].join('\n');
+
             const titleInput = page.getByTestId('amend-title-input');
             await titleInput.clear();
-            await titleInput.fill('fix: amended by E2E test');
+            await titleInput.fill(amendedTitle);
+            await page.getByTestId('amend-body-textarea').fill(amendedBody);
 
             const [response] = await Promise.all([
                 page.waitForResponse(
@@ -192,11 +200,15 @@ test.describe('AmendMessageModal — successful amend', () => {
                 timeout: 10_000,
             });
 
-            // Commit list refreshes with the new subject
-            await expect(page.getByTestId('git-commit-list-panel')).toContainText(
-                'fix: amended by E2E test',
-                { timeout: 10_000 },
-            );
+            // Commit list refreshes with the new subject, keeps the amended HEAD selected,
+            // and shows the exact amended title/body in the detail panel.
+            await expect(page.getByTestId('git-commit-list-panel')).toContainText(amendedTitle, {
+                timeout: 10_000,
+            });
+            const amendedHeadRow = page.locator('[data-testid^="commit-row-"]').first();
+            await expect(amendedHeadRow).toHaveAttribute('aria-selected', 'true');
+            await expect(page.getByTestId('commit-info-subject')).toHaveText(amendedTitle);
+            await expect(page.getByTestId('commit-info-body')).toHaveText(amendedBody);
         } finally {
             safeRmSync(tmpDir);
         }

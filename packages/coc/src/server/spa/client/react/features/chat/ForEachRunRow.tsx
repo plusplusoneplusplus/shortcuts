@@ -8,8 +8,11 @@ import type { ForEachRunGroup } from './for-each-run-grouping';
 interface ForEachRunRowProps {
     group: ForEachRunGroup;
     selectedRunId?: string | null;
+    isRangeSelected?: boolean;
+    expanded?: boolean;
+    onToggleExpanded?: () => void;
     now: number;
-    onSelectRun?: (runId: string) => void;
+    onSelectRun?: (runId: string, event: React.MouseEvent<HTMLDivElement>) => void;
     onContextMenu?: (e: React.MouseEvent) => void;
     onTouchStart?: (e: React.TouchEvent) => void;
     onTouchEnd?: (e: React.TouchEvent) => void;
@@ -60,6 +63,9 @@ function titlePreview(text: string): string {
 export function ForEachRunRow({
     group,
     selectedRunId,
+    isRangeSelected,
+    expanded: controlledExpanded,
+    onToggleExpanded,
     now: _now,
     onSelectRun,
     onContextMenu,
@@ -72,13 +78,20 @@ export function ForEachRunRow({
     renderTaskCard,
 }: ForEachRunRowProps) {
     const [expanded, setExpanded] = useState(false);
-    const isSelected = selectedRunId === group.runId;
+    const isExpanded = controlledExpanded ?? expanded;
+    const isSelected = selectedRunId === group.runId || !!isRangeSelected;
     const childCount = group.children.length;
     const timestamp = group.latestTimestamp
         ? formatRelativeTime(new Date(group.latestTimestamp).toISOString())
         : '';
 
-    const toggle = () => setExpanded(value => !value);
+    const toggle = () => {
+        if (onToggleExpanded) {
+            onToggleExpanded();
+            return;
+        }
+        setExpanded(value => !value);
+    };
 
     return (
         <div
@@ -86,7 +99,7 @@ export function ForEachRunRow({
             data-run-id={group.runId}
             data-selected={isSelected ? 'true' : 'false'}
             className={cn(
-                expanded && 'bg-[#f7f7f8] dark:bg-[#1f1f20]/80',
+                isExpanded && 'bg-[#f7f7f8] dark:bg-[#1f1f20]/80',
                 isSelected && 'ring-1 ring-sky-500/45',
             )}
             data-pinned={isPinned ? 'true' : undefined}
@@ -101,8 +114,8 @@ export function ForEachRunRow({
                     'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2b]',
                     isPinned && 'border-l-2 border-l-amber-400 dark:border-l-amber-500',
                 )}
-                onClick={() => {
-                    if (onSelectRun) onSelectRun(group.runId);
+                onClick={e => {
+                    if (onSelectRun) onSelectRun(group.runId, e);
                     else toggle();
                 }}
                 onContextMenu={onContextMenu}
@@ -111,9 +124,9 @@ export function ForEachRunRow({
                 onTouchMove={onTouchMove}
                 data-testid="for-each-run-body"
                 data-run-status={group.run.status}
-                data-expanded={expanded ? 'true' : 'false'}
+                data-expanded={isExpanded ? 'true' : 'false'}
                 data-pinned={isPinned ? 'true' : undefined}
-                aria-expanded={expanded}
+                aria-expanded={isExpanded}
             >
                 <span
                     className={cn('w-2 h-2 rounded-full justify-self-center transition-shadow', STATUS_DOT_CLASSES[group.run.status])}
@@ -138,12 +151,12 @@ export function ForEachRunRow({
                             'shrink-0 inline-flex items-center justify-center w-4 h-4 -ml-1 rounded',
                             'text-[#848484] dark:text-[#a0a0a0] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]',
                             'transition-transform',
-                            expanded && 'rotate-90',
+                            isExpanded && 'rotate-90',
                         )}
                         onClick={e => { e.stopPropagation(); toggle(); }}
                         data-testid="for-each-run-chevron"
-                        aria-label={expanded ? 'Collapse For Each run' : 'Expand For Each run'}
-                        aria-expanded={expanded}
+                        aria-label={isExpanded ? 'Collapse For Each run' : 'Expand For Each run'}
+                        aria-expanded={isExpanded}
                     >
                         <span className="text-[12px] leading-none" aria-hidden="true">›</span>
                     </button>
@@ -217,7 +230,7 @@ export function ForEachRunRow({
                 </span>
             </div>
 
-            {expanded && (
+            {isExpanded && (
                 <div
                     className="flex flex-col ml-3 pl-2 border-l border-[#e0e0e0] dark:border-[#3c3c3c]"
                     data-testid="for-each-run-children"

@@ -65,6 +65,10 @@ vi.mock('../../../../src/server/spa/client/react/shared/NotificationBell', () =>
     NotificationBell: () => null,
 }));
 
+vi.mock('../../../../src/server/spa/client/react/shared/AgentProviderQuotaIndicator', () => ({
+    agentProviderQuotaIndicator: () => null,
+}));
+
 vi.mock('../../../../src/server/spa/client/react/repos/RepoManagementPopover', () => ({
     RepoManagementPopover: () => null,
 }));

@@ -20,6 +20,7 @@ import * as path from 'path';
 import { PassThrough, Writable } from 'stream';
 import {
     ClaudeSDKService,
+    addClaudeContextUsage,
     extractClaudeAccessToken,
     mapClaudeAccountInfoToQuota,
     mapClaudeRateLimitInfoToQuota,
@@ -585,7 +586,7 @@ describe('ClaudeSDKService.sendMessage', () => {
             cacheReadTokens: 50,
             cacheWriteTokens: 12,
             totalTokens: 135,
-            cost: 0.0123,
+            actualUsdCost: 0.0123,
             duration: 1400,
             turnCount: 2,
         });
@@ -669,6 +670,39 @@ describe('ClaudeSDKService.sendMessage', () => {
             turnCount: 1,
             tokenLimit: 1000,
             currentTokens: 300,
+        });
+    });
+
+    it('returns Claude context-window quota fields when getContextUsage has no token totals', async () => {
+        queryFn.mockReturnValueOnce(makeQueryHandle([
+            { type: 'result', subtype: 'success', result: 'done' },
+        ], undefined, undefined, async () => ({
+            totalTokens: 400,
+            maxTokens: 2000,
+            systemPromptSections: [{ tokens: 50 }],
+            systemTools: [{ tokens: 20 }],
+            mcpTools: [{ tokens: 10 }],
+            messageBreakdown: {
+                assistantMessageTokens: 120,
+                userMessageTokens: 80,
+            },
+        })));
+
+        const result = await svc.sendMessage({ prompt: 'test' });
+
+        expect(result.success).toBe(true);
+        expect(result.tokenUsage).toEqual({
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            totalTokens: 0,
+            turnCount: 0,
+            tokenLimit: 2000,
+            currentTokens: 400,
+            systemTokens: 50,
+            toolDefinitionsTokens: 30,
+            conversationTokens: 200,
         });
     });
 
@@ -1372,6 +1406,69 @@ describe('ClaudeSDKService.sendMessage', () => {
         }
     });
 
+    it('keeps successful opus alias calls on the same response shape', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'system', subtype: 'init', session_id: 'provider-session' },
+            {
+                type: 'assistant',
+                message: { content: [{ type: 'text', text: 'CLAUDE_SDK_SMOKE_OK' }] },
+            },
+            {
+                type: 'result',
+                subtype: 'success',
+                result: 'CLAUDE_SDK_SMOKE_OK',
+                session_id: 'provider-session',
+                duration_ms: 42,
+                num_turns: 1,
+                total_cost_usd: 0,
+                usage: {
+                    input_tokens: 2,
+                    output_tokens: 3,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 1,
+                },
+            },
+        ]));
+
+        const chunks: string[] = [];
+        const createdSessionIds: string[] = [];
+        const result = await svc.sendMessage({
+            prompt: 'Reply exactly: CLAUDE_SDK_SMOKE_OK',
+            model: 'opus',
+            mode: 'ask',
+            onStreamingChunk: (chunk) => chunks.push(chunk),
+            onSessionCreated: (sessionId) => createdSessionIds.push(sessionId),
+        });
+
+        expect(result).toMatchObject({
+            success: true,
+            response: 'CLAUDE_SDK_SMOKE_OK',
+            sessionId: 'provider-session',
+            effectiveModel: 'opus',
+            tokenUsage: {
+                inputTokens: 2,
+                outputTokens: 3,
+                cacheReadTokens: 1,
+                cacheWriteTokens: 0,
+                totalTokens: 5,
+                actualUsdCost: 0,
+                duration: 42,
+                turnCount: 1,
+            },
+        });
+        expect(chunks).toEqual(['CLAUDE_SDK_SMOKE_OK', '']);
+        expect(createdSessionIds[0]).toBeTruthy();
+        expect(createdSessionIds[1]).toBe('provider-session');
+        expect(queryFn).toHaveBeenCalledWith(
+            expect.objectContaining({
+                options: expect.objectContaining({
+                    model: 'opus',
+                    permissionMode: 'acceptEdits',
+                }),
+            }),
+        );
+    });
+
     it('drops non-Claude short words that are not valid aliases', async () => {
         queryFn.mockReturnValue(makeMessages([{ type: 'result', subtype: 'success' }]));
 
@@ -1469,6 +1566,42 @@ describe('ClaudeSDKService.sendMessage', () => {
         } finally {
             restorePlatform();
         }
+    });
+});
+
+describe('addClaudeContextUsage', () => {
+    it('creates a context-only token usage envelope for Claude quota snapshots', () => {
+        const usage = addClaudeContextUsage(undefined, {
+            totalTokens: 1200,
+            maxTokens: 200000,
+            systemPromptSections: [{ tokens: 100 }, { tokens: 25 }],
+            systemTools: [{ tokens: 40 }],
+            mcpTools: [{ tokens: 30 }],
+            deferredBuiltinTools: [{ tokens: 5 }],
+            messageBreakdown: {
+                toolCallTokens: 11,
+                toolResultTokens: 12,
+                attachmentTokens: 13,
+                assistantMessageTokens: 14,
+                userMessageTokens: 15,
+                redirectedContextTokens: 16,
+                unattributedTokens: 17,
+            },
+        });
+
+        expect(usage).toEqual({
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            totalTokens: 0,
+            turnCount: 0,
+            tokenLimit: 200000,
+            currentTokens: 1200,
+            systemTokens: 125,
+            toolDefinitionsTokens: 75,
+            conversationTokens: 98,
+        });
     });
 });
 

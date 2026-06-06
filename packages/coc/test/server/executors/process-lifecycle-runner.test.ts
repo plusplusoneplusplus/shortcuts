@@ -1551,11 +1551,16 @@ describe('ProcessLifecycleRunner — token usage persistence', () => {
             turnCount: 2 + 1,
             cost: 0.004 + 0.002,
             duration: 2400 + 1200,
+            tokenLimit: sampleTokenUsage.tokenLimit,
+            currentTokens: sampleTokenUsage.currentTokens,
+            systemTokens: sampleTokenUsage.systemTokens,
+            toolDefinitionsTokens: sampleTokenUsage.toolDefinitionsTokens,
+            conversationTokens: sampleTokenUsage.conversationTokens,
         });
     });
 
     it('emits a token-usage process event after a successful turn', async () => {
-        const task = makeTask();
+        const task = makeTask({ config: { model: 'gpt-5.5' } as any });
         const opts = makeOpts({
             executeByTypeFn: vi.fn().mockResolvedValue({
                 response: 'done',
@@ -1571,6 +1576,21 @@ describe('ProcessLifecycleRunner — token usage persistence', () => {
             expect.objectContaining({
                 type: 'token-usage',
                 tokenUsage: sampleTokenUsage,
+                cumulativeTokenUsage: expect.objectContaining({
+                    inputTokens: 100,
+                    outputTokens: 50,
+                    totalTokens: 165,
+                    turnCount: 1,
+                    tokenLimit: sampleTokenUsage.tokenLimit,
+                    currentTokens: sampleTokenUsage.currentTokens,
+                    systemTokens: sampleTokenUsage.systemTokens,
+                    toolDefinitionsTokens: sampleTokenUsage.toolDefinitionsTokens,
+                    conversationTokens: sampleTokenUsage.conversationTokens,
+                }),
+                conversationCostEstimate: expect.objectContaining({
+                    pricingUnavailable: false,
+                    unpricedTurnCount: 0,
+                }),
                 sessionTokenLimit: sampleTokenUsage.tokenLimit,
                 sessionCurrentTokens: sampleTokenUsage.currentTokens,
                 sessionSystemTokens: sampleTokenUsage.systemTokens,

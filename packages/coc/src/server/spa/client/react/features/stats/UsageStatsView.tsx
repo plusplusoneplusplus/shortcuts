@@ -15,14 +15,25 @@ function fmt(n: number): string {
     return String(n);
 }
 
-function fmtPremiumUnits(units: number | undefined): string | null {
-    if (units === undefined || units === null) return null;
-    return units.toFixed(2);
-}
-
 function fmtUsdCost(usd: number): string {
     if (usd >= 0.01) return '$' + usd.toFixed(2);
     return '$' + usd.toFixed(6).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function describeUsdCostSource(source: ClientTokenUsage['displayedUsdCostSource']): string {
+    if (source === 'native') return 'native reported';
+    if (source === 'estimated') return 'pricing estimate';
+    if (source === 'mixed') return 'mixed native/estimate';
+    return 'unknown source';
+}
+
+function combineUsdCostSource(
+    a: ClientTokenUsage['displayedUsdCostSource'],
+    b: ClientTokenUsage['displayedUsdCostSource']
+): ClientTokenUsage['displayedUsdCostSource'] {
+    if (!a) return b;
+    if (!b) return a;
+    return a === b ? a : 'mixed';
 }
 
 function addUsage(acc: ClientTokenUsage, usage: ClientTokenUsage): ClientTokenUsage {
@@ -50,6 +61,15 @@ function addUsage(acc: ClientTokenUsage, usage: ClientTokenUsage): ClientTokenUs
             acc.estimatedUsdCost !== undefined && usage.estimatedUsdCost !== undefined
                 ? acc.estimatedUsdCost + usage.estimatedUsdCost
                 : acc.estimatedUsdCost ?? usage.estimatedUsdCost,
+        actualUsdCost:
+            acc.actualUsdCost !== undefined && usage.actualUsdCost !== undefined
+                ? acc.actualUsdCost + usage.actualUsdCost
+                : acc.actualUsdCost ?? usage.actualUsdCost,
+        displayedUsdCost:
+            acc.displayedUsdCost !== undefined && usage.displayedUsdCost !== undefined
+                ? acc.displayedUsdCost + usage.displayedUsdCost
+                : acc.displayedUsdCost ?? usage.displayedUsdCost,
+        displayedUsdCostSource: combineUsdCostSource(acc.displayedUsdCostSource, usage.displayedUsdCostSource),
         costBreakdown,
         pricingSource: acc.pricingSource ?? usage.pricingSource,
         pricingUnavailable: acc.pricingUnavailable || usage.pricingUnavailable,
@@ -73,9 +93,13 @@ function sumByModel(entries: ClientTokenUsageStatsEntry[], model: string): Clien
 }
 
 function buildTooltip(usage: ClientTokenUsage, showCostDetails: boolean): string {
+    const displayedCost = showCostDetails && usage.displayedUsdCost !== undefined
+        ? fmtUsdCost(usage.displayedUsdCost)
+        : null;
+    const displaySource = usage.displayedUsdCostSource ?? (usage.displayedUsdCost !== undefined ? 'estimated' : undefined);
+    const pricingUnavailable = showCostDetails && displayedCost === null;
     const cachedInputTokens = usage.cacheReadTokens;
     const newInputTokens = Math.max(usage.inputTokens - cachedInputTokens - usage.cacheWriteTokens, 0);
-    const premiumUnits = showCostDetails ? fmtPremiumUnits(usage.cost) : null;
 
     return [
         `Input total:   ${usage.inputTokens.toLocaleString()}`,
@@ -84,15 +108,18 @@ function buildTooltip(usage: ClientTokenUsage, showCostDetails: boolean): string
         `Cache write:   ${usage.cacheWriteTokens.toLocaleString()}`,
         `Output:        ${usage.outputTokens.toLocaleString()}`,
         `Turns:         ${usage.turnCount}`,
+        ...(showCostDetails && displayedCost ? [
+            `Displayed USD: ${displayedCost} (${describeUsdCostSource(displaySource)})`,
+        ] : []),
+        ...(pricingUnavailable ? ['Displayed USD: pricing unavailable'] : []),
         ...(showCostDetails && usage.costBreakdown ? [
-            `Estimated token cost: ${fmtUsdCost(usage.estimatedUsdCost ?? 0)}`,
+            `Pricing-table estimate: ${fmtUsdCost(usage.estimatedUsdCost ?? 0)}`,
             `  Input:        ${fmtUsdCost(usage.costBreakdown.inputUsd)}`,
             `  Cached input: ${fmtUsdCost(usage.costBreakdown.cachedInputUsd)}`,
             `  Cache write:  ${fmtUsdCost(usage.costBreakdown.cacheWriteUsd)}`,
             `  Output:       ${fmtUsdCost(usage.costBreakdown.outputUsd)}`,
         ] : []),
-        ...(showCostDetails && usage.pricingUnavailable ? ['No pricing table entry for this model'] : []),
-        ...(showCostDetails && premiumUnits ? [`Premium units: ${premiumUnits}`] : []),
+        ...(showCostDetails && usage.pricingUnavailable ? ['Pricing unavailable for some usage'] : []),
         ...(showCostDetails && usage.pricingSource ? [`Pricing source: ${usage.pricingSource}`] : []),
     ].join('\n');
 }
@@ -104,10 +131,10 @@ function UsageCell({
     usage: ClientTokenUsage;
     showCostDetails?: boolean;
 }) {
-    const premiumUnits = showCostDetails ? fmtPremiumUnits(usage.cost) : null;
-    const estimatedCost = showCostDetails && usage.estimatedUsdCost !== undefined
-        ? fmtUsdCost(usage.estimatedUsdCost)
+    const displayedCost = showCostDetails && usage.displayedUsdCost !== undefined
+        ? fmtUsdCost(usage.displayedUsdCost)
         : null;
+    const pricingUnavailable = showCostDetails && displayedCost === null;
     const cachedInputTokens = usage.cacheReadTokens;
     const newInputTokens = Math.max(usage.inputTokens - cachedInputTokens - usage.cacheWriteTokens, 0);
     const tooltip = buildTooltip(usage, showCostDetails);
@@ -122,13 +149,13 @@ function UsageCell({
             <span>
                 <span className="text-[var(--vscode-foreground)]">↑{fmt(usage.outputTokens)} out</span>
                 <span className="text-[var(--vscode-descriptionForeground)]"> · {fmt(usage.cacheWriteTokens)} cache write</span>
-                {estimatedCost && (
-                    <span className="text-[var(--vscode-descriptionForeground)]"> · est {estimatedCost}</span>
+                {displayedCost && (
+                    <span className="text-[var(--vscode-descriptionForeground)]"> · USD {displayedCost}</span>
+                )}
+                {pricingUnavailable && (
+                    <span className="text-[var(--vscode-descriptionForeground)]"> · USD pricing unavailable</span>
                 )}
             </span>
-            {premiumUnits && (
-                <span className="text-[var(--vscode-descriptionForeground)]">Premium units: {premiumUnits}</span>
-            )}
         </span>
     );
 }
@@ -172,7 +199,7 @@ function DateGroupRow({
                         {model}
                     </td>
                     <td className={tdClass}>
-                        <UsageCell usage={entry.byModel[model]} />
+                        <UsageCell usage={entry.byModel[model]} showCostDetails />
                     </td>
                 </tr>
             ))}
@@ -281,7 +308,7 @@ export function UsageStatsView() {
                                         </td>
                                         <td className={tdClass}>
                                             {total ? (
-                                                <UsageCell usage={total} />
+                                                <UsageCell usage={total} showCostDetails />
                                             ) : (
                                                 <span className="text-[var(--vscode-descriptionForeground)]">—</span>
                                             )}

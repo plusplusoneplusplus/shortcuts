@@ -525,6 +525,7 @@ export function ToolCallView({
     const resultText = typeof normalizedToolCall.result === 'string' ? normalizedToolCall.result : '';
     const isResultTruncated = resultText.length > MAX_RESULT_LENGTH;
     const visibleResult = isResultTruncated ? `${resultText.slice(0, TRUNCATED_RESULT_LENGTH)}\n... (output truncated)` : resultText;
+    const popoverResultText = name === 'apply_patch' && applyPatchText ? applyPatchText : resultText;
 
     const isShellLike = name === 'bash' || name === 'shell' || name === 'powershell';
     const isSql = name === 'sql';
@@ -574,7 +575,7 @@ export function ToolCallView({
         return renderMarkdownToHtml(taskCompleteSummary);
     }, [isTaskComplete, taskCompleteSummary]);
 
-    const hasHoverResult = (name === 'task' || name === 'read_agent' || name === 'view' || isShellLike || isSql || name === 'glob' || name === 'grep' || name === 'create' || name === 'edit' || name === 'apply_patch') && !!resultText;
+    const hasHoverResult = (name === 'task' || name === 'read_agent' || name === 'view' || isShellLike || isSql || name === 'glob' || name === 'grep' || name === 'create' || name === 'edit' || name === 'apply_patch') && !!popoverResultText;
 
     const clearTimers = useCallback(() => {
         if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null; }
@@ -830,7 +831,7 @@ export function ToolCallView({
                 )}
                 {hoverVisible && anchorRect && hasHoverResult && (
                     <ToolResultPopover
-                        result={resultText}
+                        result={popoverResultText}
                         toolName={name}
                         args={argsObj ?? undefined}
                         anchorRect={anchorRect}
@@ -1033,7 +1034,7 @@ export function ToolCallView({
             )}
             {hoverVisible && anchorRect && hasHoverResult && (
                 <ToolResultPopover
-                    result={resultText}
+                    result={popoverResultText}
                     toolName={name}
                     args={argsObj ?? undefined}
                     anchorRect={anchorRect}

@@ -484,4 +484,51 @@ describe('CommitList', () => {
             expect(source).toContain('e.stopPropagation()');
         });
     });
+
+    describe('context drag source support', () => {
+        it('imports shared pointer context drag helpers', () => {
+            expect(source).toContain('createGitCommitContextDragPayload');
+            expect(source).toContain('writePointerContextDragData');
+            expect(source).toContain('isSessionContextAttachmentsEnabled');
+        });
+
+        it('builds commit payloads from the active workspace only when enabled', () => {
+            expect(source).toContain('sessionContextDragEnabled && workspaceId');
+            expect(source).toContain('createGitCommitContextDragPayload(commit, { activeWorkspaceId: workspaceId })');
+        });
+
+        it('marks commit rows as shared context drag sources', () => {
+            expect(source).toContain('data-session-context-kind={isContextDragSource ? \'commit\' : undefined}');
+            expect(source).toContain('drag to attach as commit context');
+        });
+
+        it('preserves unpushed commit reordering while adding pointer MIME data', () => {
+            expect(source).toContain('writePointerContextDragData(e.dataTransfer, sessionContextPayload)');
+            expect(source).toContain('handleCommitContextDragStart');
+            expect(source).toContain('draggable={isContextDragSource}');
+            expect(source).toContain('e.dataTransfer.setData(\'text/plain\', String(index))');
+        });
+
+        it('keeps commit context dragging copy-only by isolating reordering to the grab handle', () => {
+            expect(source).toContain('handleReorderDragStart');
+            expect(source).toContain('data-testid={`commit-reorder-handle-${commit.shortHash}`}');
+            expect(source).toContain('draggable={canDrag}');
+            expect(source).not.toContain('const isDraggable = canDrag || isContextDragSource');
+            expect(source).toContain('if (dragIndex === null) return;');
+        });
+    });
+
+    describe('double-click to pop out', () => {
+        it('accepts optional onDoubleClick callback', () => {
+            expect(source).toContain('onDoubleClick?: (commit: GitCommitItem) => void');
+        });
+
+        it('attaches onDoubleClick handler to commit rows', () => {
+            expect(source).toContain('onDoubleClick=');
+        });
+
+        it('calls onDoubleClick with the commit when the row is double-clicked', () => {
+            expect(source).toContain('onDoubleClick?.(commit)');
+        });
+    });
 });

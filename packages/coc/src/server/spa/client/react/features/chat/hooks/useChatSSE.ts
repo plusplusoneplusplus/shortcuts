@@ -319,6 +319,16 @@ export function useChatSSE({
                             : t
                     ));
                 }
+                const processUpdates: Record<string, unknown> = {};
+                if (data.cumulativeTokenUsage && typeof data.cumulativeTokenUsage === 'object') {
+                    processUpdates.cumulativeTokenUsage = data.cumulativeTokenUsage;
+                }
+                if (data.conversationCostEstimate && typeof data.conversationCostEstimate === 'object') {
+                    processUpdates.conversationCostEstimate = data.conversationCostEstimate;
+                }
+                if (Object.keys(processUpdates).length > 0) {
+                    setProcessDetails?.(prev => prev ? { ...prev, ...processUpdates } : prev);
+                }
             } catch { /* ignore */ }
         });
 

@@ -77,6 +77,10 @@ vi.mock('../../../../../src/server/spa/client/react/features/chat/ModePillSelect
         { value: 'plan', label: 'Plan', dotClass: 'bg-blue-500' },
         { value: 'autopilot', label: 'Autopilot', dotClass: 'bg-orange-500' },
     ],
+    getVisibleModePillOptions: () => [
+        { value: 'ask', label: 'Ask', dotClass: 'bg-blue-500' },
+        { value: 'autopilot', label: 'Autopilot', dotClass: 'bg-orange-500' },
+    ],
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({

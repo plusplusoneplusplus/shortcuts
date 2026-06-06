@@ -85,6 +85,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isWorkItemsHierarchyEnabled: () => true,
     isWorkItemsAiAuthoringEnabled: () => false,
     isWorkItemsSyncEnabled: () => true,
+    isSessionContextAttachmentsEnabled: () => false,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({

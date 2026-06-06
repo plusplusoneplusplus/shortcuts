@@ -93,4 +93,12 @@ describe('WorkItemSection — grouped endpoint and infinite scroll', () => {
         // StatusGroupSentinel should check hasMore
         expect(src).toContain('if (!hasMore) return null');
     });
+
+    it('wires grouped work item cards as shared pointer context drag sources', () => {
+        expect(src).toContain('createWorkItemContextDragPayload');
+        expect(src).toContain('writePointerContextDragData');
+        expect(src).toContain('isSessionContextAttachmentsEnabled');
+        expect(src).toContain('data-session-context-kind={sessionContextPayload ? \'work-item\' : undefined}');
+        expect(src).toContain('drag to attach as work item context');
+    });
 });

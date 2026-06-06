@@ -727,11 +727,14 @@ export function AdminPanel() {
     // Stop polling when the component unmounts.
     useEffect(() => () => { if (sdkPollRef.current) clearInterval(sdkPollRef.current); }, []);
 
-    const handleRefreshQuota = useCallback(async () => {
+    const handleRefreshQuota = useCallback(async (options: { force?: boolean } = {}) => {
         setQuotaLoading(true);
         setQuotaError(null);
         try {
-            const data = await getSpaCocClient().admin.getAgentProvidersQuota();
+            const data = await getSpaCocClient().admin.getAgentProvidersQuota({ force: options.force });
+            if (!Array.isArray(data.providers)) {
+                throw new Error('Quota response missing providers');
+            }
             setQuotaData(data);
         } catch (err: unknown) {
             setQuotaError(getSpaCocClientErrorMessage(err, 'Failed to fetch quota'));
@@ -739,6 +742,13 @@ export function AdminPanel() {
             setQuotaLoading(false);
         }
     }, []);
+
+    useEffect(() => {
+        if (activeTab !== 'agents' || isContainerMode()) {
+            return;
+        }
+        void handleRefreshQuota();
+    }, [activeTab, handleRefreshQuota]);
 
     // ── Chat Experience card ──
     const handleSaveChat = useCallback(async () => {

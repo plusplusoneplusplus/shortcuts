@@ -59,6 +59,7 @@ Use this skill when the user asks you to **implement** a change in the codebase 
 
 10. **Commit when clean**
    - Only create a commit after the build succeeds and all related tests pass (step 6).
+   - **Stay on the current branch — do NOT checkout or create a new branch.** Commit directly to whatever branch is currently checked out, even if it is the default branch.
    - Write a clear commit message describing the change and the test additions.
 
 11. **Archive the task file**
@@ -73,6 +74,7 @@ Use this skill when the user asks you to **implement** a change in the codebase 
 - For monorepos, prefer the smallest existing validation command that covers the changed package, then run documented aggregate commands when broader confidence is needed.
 - If the change impacts multiple packages/workspaces, ensure the build and tests for each affected package pass — not just the root-level command.
 - Pause commits if the build or any tests are failing. Resolve the issues first, verify that the build and tests pass, and then proceed with committing the changes.
+- Never create or switch to a new branch. Always stay on the current branch and commit there.
 
 ## Scripts
 

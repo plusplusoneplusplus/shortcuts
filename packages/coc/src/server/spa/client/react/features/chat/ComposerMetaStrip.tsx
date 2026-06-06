@@ -35,11 +35,11 @@ export interface ComposerMetaStripProps {
      */
     activeProvider?: 'copilot' | 'codex' | 'claude';
     className?: string;
-    /** System-prompt token count (Copilot SDK only). */
+    /** System-prompt token count when the provider reports a breakdown. */
     sessionSystemTokens?: number;
-    /** Tool-definition token count (Copilot SDK only). */
+    /** Tool-definition token count when the provider reports a breakdown. */
     sessionToolTokens?: number;
-    /** Conversation-history token count (Copilot SDK only). */
+    /** Conversation-history token count when the provider reports a breakdown. */
     sessionConversationTokens?: number;
 }
 
@@ -92,7 +92,7 @@ export function ComposerMetaStrip({
         ? `Context window: ${formatTokenCount(ctxUsed)} / ${formatTokenCount(ctxLimit)} (${ctxPct.toFixed(1)}%)${sessionModel ? ` · ${sessionModel}` : ''}`
         : 'Context window: not yet known';
 
-    // Breakdown availability (Copilot SDK only)
+    // Breakdown availability (when the active provider reports it)
     const hasBreakdown =
         sessionSystemTokens != null &&
         sessionToolTokens != null &&

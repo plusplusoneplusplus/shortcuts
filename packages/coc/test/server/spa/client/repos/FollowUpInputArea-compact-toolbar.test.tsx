@@ -65,6 +65,10 @@ vi.mock('../../../../../src/server/spa/client/react/features/chat/ModePillSelect
     ModePillSelector: () => <div data-testid="mode-pill-selector-inner" />,
     DEFAULT_MODE_PILL_OPTIONS: [],
     RALPH_MODE_PILL_OPTION: { value: 'ralph', label: 'Ralph' },
+    getVisibleModePillOptions: () => [
+        { value: 'ask', label: 'Ask', dotClass: 'bg-yellow-500' },
+        { value: 'autopilot', label: 'Autopilot', dotClass: 'bg-green-500' },
+    ],
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/features/chat/EffortPillSelector', () => ({

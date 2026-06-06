@@ -6,8 +6,25 @@ import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { BottomSheet } from '../../../ui/BottomSheet';
 import { Dialog } from '../../../ui/Dialog';
 import { getRalphContext } from '../../../../../../tasks/task-types';
+import type { ClientTokenUsage } from '../../../types/dashboard';
 
 const RALPH_FIELD_TRUNCATE = 200;
+
+interface ClientConversationCostEstimate {
+    actualUsdCost?: number;
+    estimatedUsdCost?: number;
+    displayedUsdCost?: number;
+    displayedUsdCostSource?: ClientTokenUsage['displayedUsdCostSource'];
+    costBreakdown?: {
+        inputUsd: number;
+        cachedInputUsd: number;
+        cacheWriteUsd: number;
+        outputUsd: number;
+    };
+    pricingSource?: string;
+    unpricedTurnCount?: number;
+    pricingUnavailable?: boolean;
+}
 
 function truncate(value: string, max: number): string {
     if (value.length <= max) return value;
@@ -53,6 +70,130 @@ function formatTimestamp(value: unknown): string | null {
     const date = new Date(raw);
     if (Number.isNaN(date.getTime())) return raw;
     return date.toLocaleString();
+}
+
+function formatInteger(value: number): string {
+    return Math.max(0, value).toLocaleString();
+}
+
+function formatUsdCost(usd: number): string {
+    if (usd >= 0.01) return '$' + usd.toFixed(2);
+    return '$' + usd.toFixed(6).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function finiteUsd(value: number | undefined): number | undefined {
+    return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function describeUsdCostSource(source: ClientTokenUsage['displayedUsdCostSource']): string {
+    if (source === 'native') return 'native reported';
+    if (source === 'estimated') return 'pricing estimate';
+    if (source === 'mixed') return 'mixed native/estimate';
+    return 'unknown source';
+}
+
+function getHttpUrl(value: string | undefined): string | null {
+    if (!value) return null;
+    try {
+        const url = new URL(value);
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+        return url.href;
+    } catch {
+        return null;
+    }
+}
+
+function pluralizeTurns(count: number): string {
+    return `${count.toLocaleString()} ${count === 1 ? 'turn' : 'turns'}`;
+}
+
+function readTokenUsage(value: unknown): ClientTokenUsage | null {
+    if (!value || typeof value !== 'object') return null;
+    const usage = value as Partial<ClientTokenUsage>;
+    const inputTokens = usage.inputTokens ?? 0;
+    const outputTokens = usage.outputTokens ?? 0;
+    const cacheReadTokens = usage.cacheReadTokens ?? 0;
+    const cacheWriteTokens = usage.cacheWriteTokens ?? 0;
+    const totalTokens = usage.totalTokens ?? inputTokens + outputTokens;
+    if (inputTokens <= 0 && outputTokens <= 0 && cacheReadTokens <= 0 && cacheWriteTokens <= 0 && totalTokens <= 0) {
+        return null;
+    }
+    return {
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
+        cacheWriteTokens,
+        totalTokens,
+        turnCount: usage.turnCount ?? 0,
+        cost: usage.cost,
+        actualUsdCost: usage.actualUsdCost,
+        estimatedUsdCost: usage.estimatedUsdCost,
+        displayedUsdCost: usage.displayedUsdCost,
+        displayedUsdCostSource: usage.displayedUsdCostSource,
+        costBreakdown: usage.costBreakdown,
+        pricingSource: usage.pricingSource,
+        pricingUnavailable: usage.pricingUnavailable,
+        duration: usage.duration,
+        tokenLimit: usage.tokenLimit,
+        currentTokens: usage.currentTokens,
+        systemTokens: usage.systemTokens,
+        toolDefinitionsTokens: usage.toolDefinitionsTokens,
+        conversationTokens: usage.conversationTokens,
+    };
+}
+
+function readCostEstimate(value: unknown): ClientConversationCostEstimate | null {
+    if (!value || typeof value !== 'object') return null;
+    return value as ClientConversationCostEstimate;
+}
+
+function resolveDisplayedUsdCost(
+    usage: ClientTokenUsage,
+    estimate: ClientConversationCostEstimate | null
+): { usd: number; source: ClientTokenUsage['displayedUsdCostSource'] } | null {
+    const estimateDisplayedUsd = finiteUsd(estimate?.displayedUsdCost);
+    if (estimateDisplayedUsd !== undefined) {
+        return {
+            usd: estimateDisplayedUsd,
+            source: estimate?.displayedUsdCostSource
+                ?? (finiteUsd(estimate?.actualUsdCost) !== undefined ? 'native' : 'estimated'),
+        };
+    }
+
+    const usageDisplayedUsd = finiteUsd(usage.displayedUsdCost);
+    if (usageDisplayedUsd !== undefined) {
+        return {
+            usd: usageDisplayedUsd,
+            source: usage.displayedUsdCostSource
+                ?? (finiteUsd(usage.actualUsdCost) !== undefined ? 'native' : 'estimated'),
+        };
+    }
+
+    const estimateActualUsd = finiteUsd(estimate?.actualUsdCost);
+    if (estimateActualUsd !== undefined) {
+        return { usd: estimateActualUsd, source: 'native' };
+    }
+
+    const usageActualUsd = finiteUsd(usage.actualUsdCost);
+    if (usageActualUsd !== undefined) {
+        return { usd: usageActualUsd, source: 'native' };
+    }
+
+    const estimateEstimatedUsd = estimate?.pricingUnavailable
+        ? undefined
+        : finiteUsd(estimate?.estimatedUsdCost);
+    if (estimateEstimatedUsd !== undefined) {
+        return { usd: estimateEstimatedUsd, source: 'estimated' };
+    }
+
+    const usageEstimatedUsd = usage.pricingUnavailable
+        ? undefined
+        : finiteUsd(usage.estimatedUsdCost);
+    if (usageEstimatedUsd !== undefined) {
+        return { usd: usageEstimatedUsd, source: 'estimated' };
+    }
+
+    return null;
 }
 
 function parseSessionIdFromResult(result: unknown): string | null {
@@ -210,6 +351,99 @@ function buildRalphRow(rows: MetaRow[]): MetaRow | null {
         value: parts.join(' · '),
         breakAll: Boolean(sessionId),
     };
+}
+
+function TokenUsageRows({ process }: { process: any }) {
+    const [tokensExpanded, setTokensExpanded] = useState(false);
+    const usage = readTokenUsage(process?.cumulativeTokenUsage);
+    if (!usage) return null;
+
+    const estimate = readCostEstimate(process?.conversationCostEstimate);
+    const displayedUsd = resolveDisplayedUsdCost(usage, estimate);
+    const costBreakdown = estimate?.costBreakdown ?? usage.costBreakdown;
+    const unpricedTurnCount = estimate?.unpricedTurnCount ?? 0;
+    const pricingSource = estimate?.pricingSource ?? usage.pricingSource;
+    const pricingSourceUrl = getHttpUrl(pricingSource);
+    const costSummaryParts: string[] = [];
+    const estimatedUsd = estimate?.pricingUnavailable || usage.pricingUnavailable
+        ? undefined
+        : finiteUsd(estimate?.estimatedUsdCost) ?? finiteUsd(usage.estimatedUsdCost);
+
+    if (displayedUsd) {
+        costSummaryParts.push(`${formatUsdCost(displayedUsd.usd)} (${describeUsdCostSource(displayedUsd.source)})`);
+    } else {
+        costSummaryParts.push('pricing unavailable');
+    }
+    if (unpricedTurnCount > 0) {
+        costSummaryParts.push(estimate?.pricingUnavailable || !displayedUsd
+            ? `${pluralizeTurns(unpricedTurnCount)} unpriced`
+            : `partial — ${pluralizeTurns(unpricedTurnCount)} unpriced`);
+    }
+
+    const costDetailParts = [
+        ...(displayedUsd ? [
+            `Displayed USD: ${formatUsdCost(displayedUsd.usd)} (${describeUsdCostSource(displayedUsd.source)})`,
+        ] : ['Displayed USD: pricing unavailable']),
+        ...(estimatedUsd !== undefined ? [
+            `Pricing-table estimate: ${formatUsdCost(estimatedUsd)}`,
+        ] : []),
+    ];
+    if (costBreakdown) {
+        costDetailParts.push(
+            `Input: ${formatUsdCost(costBreakdown.inputUsd)}`,
+            `Cached input: ${formatUsdCost(costBreakdown.cachedInputUsd)}`,
+            `Cache write: ${formatUsdCost(costBreakdown.cacheWriteUsd)}`,
+            `Output: ${formatUsdCost(costBreakdown.outputUsd)}`,
+        );
+    }
+    if (pricingSource) costDetailParts.push(`Source: ${pricingSource}`);
+
+    return (
+        <>
+            <div className="contents">
+                <span className="text-[#848484]">Tokens</span>
+                <button
+                    type="button"
+                    className="text-left text-[#1e1e1e] dark:text-[#cccccc] hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors"
+                    aria-expanded={tokensExpanded}
+                    title={tokensExpanded ? 'Collapse token breakdown' : 'Expand token breakdown'}
+                    onClick={() => setTokensExpanded(value => !value)}
+                >
+                    {tokensExpanded ? (
+                        <span className="break-words">
+                            Input: {formatInteger(usage.inputTokens)} · Output: {formatInteger(usage.outputTokens)} · Cache read: {formatInteger(usage.cacheReadTokens)} · Cache write: {formatInteger(usage.cacheWriteTokens)} · Total: {formatInteger(usage.totalTokens)}
+                        </span>
+                    ) : (
+                        <span>Total: {formatInteger(usage.totalTokens)}</span>
+                    )}
+                </button>
+            </div>
+            <div className="contents">
+                <span className="text-[#848484]">USD cost</span>
+                <span className="text-[#1e1e1e] dark:text-[#cccccc] break-words" title={costDetailParts.join(' · ') || undefined}>
+                    {costSummaryParts.join(' · ')}
+                    {pricingSource && (
+                        <span className="text-[#848484]">
+                            {' · '}
+                            {pricingSourceUrl ? (
+                                <a
+                                    href={pricingSourceUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[#0078d4] dark:text-[#3794ff] hover:underline"
+                                    title={pricingSource}
+                                >
+                                    Source
+                                </a>
+                            ) : (
+                                <>Source: {pricingSource}</>
+                            )}
+                        </span>
+                    )}
+                </span>
+            </div>
+        </>
+    );
 }
 
 export function buildCompactRows(rows: MetaRow[]): MetaRow[] {
@@ -403,6 +637,7 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
                         )}
                     </div>
                 ))}
+                <TokenUsageRows process={process} />
                 {process?.metadata?.systemPrompt && (
                     <div className="contents">
                         <span className="text-[#848484]">System</span>

@@ -56,6 +56,11 @@ export interface GitLatestOperationQuery {
   op?: string;
 }
 
+export interface GitCherryPickOptions {
+  hashes?: string[];
+  targetBranch?: string;
+}
+
 export interface GitWorkingTreeDiffQuery extends GitFileDiffQuery {
   stage?: 'staged' | 'unstaged' | 'untracked' | string;
 }
@@ -342,8 +347,11 @@ export class GitClient {
     return this.transport.request<GitOperationResult>(workspaceGitPath(workspaceId, '/reset'), jsonRequest('POST', { hash, mode }));
   }
 
-  cherryPick(workspaceId: string, hash: string): Promise<GitOperationResult> {
-    return this.transport.request<GitOperationResult>(workspaceGitPath(workspaceId, '/cherry-pick'), jsonRequest('POST', { hash }));
+  cherryPick(workspaceId: string, hash: string, options?: GitCherryPickOptions): Promise<GitOperationResult> {
+    return this.transport.request<GitOperationResult>(
+      workspaceGitPath(workspaceId, '/cherry-pick'),
+      jsonRequest('POST', { hash, hashes: options?.hashes, targetBranch: options?.targetBranch }),
+    );
   }
 
   exportCommitPatch(workspaceId: string, hash: string): Promise<GitPatchExportResponse> {
@@ -360,6 +368,10 @@ export class GitClient {
 
   reword(workspaceId: string, hash: string, title: string): Promise<GitAsyncJobResponse> {
     return this.transport.request<GitAsyncJobResponse>(workspaceGitPath(workspaceId, '/reword'), jsonRequest('POST', { hash, title }));
+  }
+
+  dropCommit(workspaceId: string, hash: string): Promise<GitAsyncJobResponse> {
+    return this.transport.request<GitAsyncJobResponse>(workspaceGitPath(workspaceId, '/drop-commit'), jsonRequest('POST', { hash }));
   }
 
   rebaseContinue(workspaceId: string): Promise<GitAsyncJobResponse> {

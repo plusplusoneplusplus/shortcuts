@@ -9,7 +9,7 @@ import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
 import { AgentSelectorChip } from './AgentSelectorChip';
-import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION } from './ModePillSelector';
+import { ModePillSelector, getVisibleModePillOptions } from './ModePillSelector';
 import type { ModePillOption } from './ModePillSelector';
 import { EffortPillSelector } from './EffortPillSelector';
 import type { EffortLevel, EffortPillOption } from './EffortPillSelector';
@@ -25,11 +25,18 @@ import type { ChatMode } from '../../repos/modeConfig';
 import type { SkillItem } from './SlashCommandMenu';
 import type { ModelInfo } from '../../hooks/useModels';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
+import {
+    cycleConfiguredEffortTier,
+    cycleReasoningEffort,
+    getComposerArrowCycleDirection,
+    isEffortCycleShortcut,
+} from '../../utils/composerKeyboardShortcuts';
 import type { AttachedContextItem } from './hooks/useAttachedContext';
 import type { ChatAttachment } from '../../types/attachments';
-import { isSessionContextAttachmentsEnabled } from '../../utils/config';
+import { isForEachEnabled, isRalphEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
 import type { SessionContextAttachmentDragPayload } from './sessionContextDrag';
 import {
+    dataTransferHasAnyData,
     dataTransferHasSessionContext,
     readSessionContextDropPayload,
     useConversationRetrievalCapability,
@@ -138,6 +145,8 @@ export interface FollowUpInputAreaProps {
     effortOverride?: EffortLevel | null;
     /** Called when the user picks (or clears) a reasoning-effort level. */
     onEffortChange?: (value: EffortLevel | null) => void;
+    /** When true, the reasoning-effort pill is visible but not selectable. */
+    effortDisabled?: boolean;
     /**
      * Model-specific effort options. Pass `buildEffortOptionsForModel(model.supportedReasoningEfforts)`
      * to show only the efforts supported by the active session model.
@@ -219,6 +228,8 @@ export function FollowUpInputArea({
 
     const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
     const [sessionContextDropError, setSessionContextDropError] = useState<string | null>(null);
+    const [sessionContextDragActive, setSessionContextDragActive] = useState(false);
+    const sessionContextDragDepthRef = useRef(0);
     const activeWorkspaceId = workspaceId ?? task?.metadata?.workspaceId ?? task?.workspaceId ?? task?.payload?.workspaceId;
     const activeProcessId = currentProcessId ?? task?.processId ?? task?.id ?? null;
     const sessionContextAttachmentsEnabled = sessionContextAttachmentsEnabledProp ?? isSessionContextAttachmentsEnabled();
@@ -279,13 +290,14 @@ export function FollowUpInputArea({
     });
 
     const pillOptions: ModePillOption[] = (() => {
-        const base: ModePillOption[] = [...DEFAULT_MODE_PILL_OPTIONS];
-        // Append Ralph pill on eligible chats. Caller signals eligibility by
-        // including 'ralph' in `allowedModes`. On chats that already have a
-        // ralph context, the parent omits it and the pill stays hidden.
-        const ralphAllowed = allowedModes ? allowedModes.includes('ralph') : false;
-        if (ralphAllowed) base.push(RALPH_MODE_PILL_OPTION);
-        return allowedModes ? base.filter(opt => allowedModes.includes(opt.value)) : base;
+        return [...getVisibleModePillOptions({
+            surface: 'follow-up',
+            featureFlags: {
+                ralph: isRalphEnabled(),
+                'for-each': isForEachEnabled(),
+            },
+            allowedModes,
+        })];
     })();
 
     // ── Bash-style up/down history navigation through past user prompts ──
@@ -351,7 +363,11 @@ export function FollowUpInputArea({
             autocomplete.dismiss();
             return;
         }
-        // Priority 4: bash-style up/down history navigation.
+        // Priority 4: modified-arrow composer shortcuts.
+        if (handleEffortShortcut(e)) {
+            return;
+        }
+        // Priority 5: bash-style up/down history navigation.
         if (promptHistory.handleKeyDown(e)) {
             return;
         }
@@ -369,6 +385,44 @@ export function FollowUpInputArea({
                 void onSend(undefined, 'enqueue');
             }
         }
+    }
+
+    function handleEffortShortcut(e: React.KeyboardEvent<HTMLElement>): boolean {
+        if (!isEffortCycleShortcut(e)) {
+            return false;
+        }
+        if (slashCommands.menuVisible || (modelCommand?.modelMenuVisible ?? false)) {
+            return false;
+        }
+
+        const direction = getComposerArrowCycleDirection(e.key);
+        if (direction === null) {
+            return false;
+        }
+
+        if (useEffortTierMode) {
+            if (!selectedEffortTier || !onEffortTierChange || !effortTierMap) {
+                return false;
+            }
+            const next = cycleConfiguredEffortTier(selectedEffortTier, effortTierMap, direction);
+            if (next.changed) {
+                onEffortTierChange(next.value);
+            }
+            e.preventDefault();
+            return true;
+        }
+
+        if (!onEffortChange) {
+            return false;
+        }
+        if (!effortDisabled) {
+            const next = cycleReasoningEffort(effortOverride, effortOptions, direction);
+            if (next.changed) {
+                onEffortChange(next.value);
+            }
+        }
+        e.preventDefault();
+        return true;
     }
 
     function handleEditorChange(val: string, cursorPos: number) {
@@ -395,15 +449,58 @@ export function FollowUpInputArea({
         }
     }
 
+    function resetSessionContextDragState() {
+        sessionContextDragDepthRef.current = 0;
+        setSessionContextDragActive(false);
+    }
+
+    function getUnsupportedSessionContextDropError(): string {
+        const validation = validateSessionContextDrop({
+            payload: null,
+            featureEnabled: sessionContextAttachmentsEnabled,
+            activeWorkspaceId,
+            currentProcessId: activeProcessId,
+            existingItems: attachedContext ?? [],
+            canRetrieveConversations,
+        });
+        return validation.ok ? 'Drop a supported CoC context item from this workspace to attach it as context.' : validation.error;
+    }
+
+    function handleSessionContextDragEnter(e: React.DragEvent<HTMLElement>) {
+        if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        sessionContextDragDepthRef.current += 1;
+        setSessionContextDragActive(true);
+    }
+
     function handleSessionContextDragOver(e: React.DragEvent<HTMLElement>) {
         if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
+        setSessionContextDragActive(true);
+    }
+
+    function handleSessionContextDragLeave(e: React.DragEvent<HTMLElement>) {
+        if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        sessionContextDragDepthRef.current = Math.max(0, sessionContextDragDepthRef.current - 1);
+        if (sessionContextDragDepthRef.current === 0) {
+            setSessionContextDragActive(false);
+        }
     }
 
     function handleSessionContextDrop(e: React.DragEvent<HTMLElement>) {
-        if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        if (!sessionContextAttachmentsEnabled) return;
+        if (!dataTransferHasSessionContext(e.dataTransfer)) {
+            if (dataTransferHasAnyData(e.dataTransfer)) {
+                e.preventDefault();
+                resetSessionContextDragState();
+                setSessionContextDropError(getUnsupportedSessionContextDropError());
+            }
+            return;
+        }
         e.preventDefault();
+        resetSessionContextDragState();
         const validation = validateSessionContextDrop({
             payload: readSessionContextDropPayload(e.dataTransfer),
             featureEnabled: sessionContextAttachmentsEnabled,
@@ -545,11 +642,25 @@ export function FollowUpInputArea({
             {compactModeSelector ? (
                 /* ── Legacy compact single-row layout for narrow side panels ── */
                 <div
-                    className="flex flex-row items-center gap-2"
+                    className={cn(
+                        'relative flex flex-row items-center gap-2',
+                        sessionContextDragActive && 'border-[#0078d4] ring-2 ring-[#0078d4]/60 shadow-sm',
+                    )}
                     data-testid="chat-input-bar"
+                    onDragEnter={handleSessionContextDragEnter}
                     onDragOver={handleSessionContextDragOver}
+                    onDragLeave={handleSessionContextDragLeave}
+                    onDragEnd={resetSessionContextDragState}
                     onDrop={handleSessionContextDrop}
                 >
+                    {sessionContextDragActive && (
+                        <div
+                            className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded border-2 border-dashed border-[#0078d4]/70 bg-[#eaf4ff]/80 text-xs font-medium text-[#005a9e] dark:bg-[#06314f]/80 dark:text-[#9cdcfe]"
+                            data-testid="session-context-drop-hint"
+                        >
+                            Drop to copy context
+                        </div>
+                    )}
                     {hiddenFileInput}
                     <button
                         type="button"
@@ -667,14 +778,26 @@ export function FollowUpInputArea({
                     <div
                         ref={inputWrapperRef}
                         data-testid="chat-input-bar"
+                        onDragEnter={handleSessionContextDragEnter}
                         onDragOver={handleSessionContextDragOver}
+                        onDragLeave={handleSessionContextDragLeave}
+                        onDragEnd={resetSessionContextDragState}
                         onDrop={handleSessionContextDrop}
                         className={cn(
                             'relative flex flex-col rounded-lg border bg-white dark:bg-[#1f1f1f] focus-within:ring-2 transition-[box-shadow,border-color]',
                             MODE_BORDER_COLORS[selectedMode].border,
                             MODE_BORDER_COLORS[selectedMode].ring,
+                            sessionContextDragActive && 'border-[#0078d4] ring-2 ring-[#0078d4]/60 shadow-sm',
                         )}
                     >
+                        {sessionContextDragActive && (
+                            <div
+                                className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-[#0078d4]/70 bg-[#eaf4ff]/80 text-xs font-medium text-[#005a9e] dark:bg-[#06314f]/80 dark:text-[#9cdcfe]"
+                                data-testid="session-context-drop-hint"
+                            >
+                                Drop to copy context
+                            </div>
+                        )}
                         <RichTextInput
                             ref={richTextRef}
                             disabled={inputDisabled}

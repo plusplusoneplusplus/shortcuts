@@ -115,11 +115,11 @@ interface ClaudeResultMessage {
     session_id?: string;
 }
 
-interface ClaudeTokenEntry {
+export interface ClaudeTokenEntry {
     tokens?: number;
 }
 
-interface ClaudeMessageBreakdown {
+export interface ClaudeMessageBreakdown {
     toolCallTokens?: number;
     toolResultTokens?: number;
     attachmentTokens?: number;
@@ -129,7 +129,7 @@ interface ClaudeMessageBreakdown {
     unattributedTokens?: number;
 }
 
-interface ClaudeContextUsage {
+export interface ClaudeContextUsage {
     totalTokens?: number;
     maxTokens?: number;
     systemPromptSections?: ClaudeTokenEntry[];
@@ -137,7 +137,12 @@ interface ClaudeContextUsage {
     mcpTools?: ClaudeTokenEntry[];
     deferredBuiltinTools?: ClaudeTokenEntry[];
     messageBreakdown?: ClaudeMessageBreakdown;
-    apiUsage?: ClaudeResultMessage['usage'] | null;
+    apiUsage?: {
+        input_tokens?: number;
+        output_tokens?: number;
+        cache_creation_input_tokens?: number;
+        cache_read_input_tokens?: number;
+    } | null;
 }
 
 interface ClaudeSystemMessage {
@@ -1543,7 +1548,7 @@ function addClaudeUsage(current: TokenUsage | undefined, msg: Pick<ClaudeResultM
     result.totalTokens = result.inputTokens + result.outputTokens;
     result.turnCount += Math.max(1, claudeUsageNumber(msg.num_turns));
     if (msg.total_cost_usd != null && Number.isFinite(msg.total_cost_usd)) {
-        result.cost = (result.cost ?? 0) + msg.total_cost_usd;
+        result.actualUsdCost = (result.actualUsdCost ?? 0) + msg.total_cost_usd;
     }
     if (msg.duration_ms != null && Number.isFinite(msg.duration_ms)) {
         result.duration = (result.duration ?? 0) + msg.duration_ms;
@@ -1589,20 +1594,15 @@ function sumClaudeMessageBreakdown(breakdown: ClaudeMessageBreakdown | undefined
     ]);
 }
 
-function addClaudeContextUsage(current: TokenUsage | undefined, context: ClaudeContextUsage | undefined): TokenUsage | undefined {
+export function addClaudeContextUsage(current: TokenUsage | undefined, context: ClaudeContextUsage | undefined): TokenUsage | undefined {
     if (!context) return current;
 
     let result = current;
     if (!result && context.apiUsage) {
         result = addClaudeUsage(undefined, { usage: context.apiUsage, num_turns: 1 });
     }
-    if (!result) return undefined;
-
     const tokenLimit = positiveClaudeUsageNumber(context.maxTokens);
     const currentTokens = positiveClaudeUsageNumber(context.totalTokens);
-    if (tokenLimit != null) result.tokenLimit = tokenLimit;
-    if (currentTokens != null) result.currentTokens = currentTokens;
-
     const systemTokens = sumClaudeTokenEntries(context.systemPromptSections);
     const toolDefinitionsTokens = sumClaudeOptionalNumbers([
         sumClaudeTokenEntries(context.systemTools),
@@ -1610,7 +1610,19 @@ function addClaudeContextUsage(current: TokenUsage | undefined, context: ClaudeC
         sumClaudeTokenEntries(context.deferredBuiltinTools),
     ]);
     const conversationTokens = sumClaudeMessageBreakdown(context.messageBreakdown);
+    const hasContextSnapshot = tokenLimit != null
+        || currentTokens != null
+        || systemTokens != null
+        || toolDefinitionsTokens != null
+        || conversationTokens != null;
 
+    if (!result && hasContextSnapshot) {
+        result = emptyClaudeTokenUsage();
+    }
+    if (!result) return undefined;
+
+    if (tokenLimit != null) result.tokenLimit = tokenLimit;
+    if (currentTokens != null) result.currentTokens = currentTokens;
     if (systemTokens != null) result.systemTokens = systemTokens;
     if (toolDefinitionsTokens != null) result.toolDefinitionsTokens = toolDefinitionsTokens;
     if (conversationTokens != null) result.conversationTokens = conversationTokens;

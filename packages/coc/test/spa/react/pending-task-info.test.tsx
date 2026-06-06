@@ -35,6 +35,7 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     isRalphEnabled: () => true,
     isLoopsEnabled: () => false,
     isEffortLevelsEnabled: () => false,
+    isForEachEnabled: () => false,
     getDefaultProvider: () => 'copilot' as const,
     getActiveProvider: () => 'copilot' as const,
     isSessionContextAttachmentsEnabled: () => false,

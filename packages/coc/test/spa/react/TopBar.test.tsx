@@ -20,6 +20,10 @@ vi.mock('../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({ state: { repoQueueMap: {}, queued: [], running: [], history: [] }, dispatch: vi.fn() }),
 }));
 
+vi.mock('../../../src/server/spa/client/react/shared/AgentProviderQuotaIndicator', () => ({
+    agentProviderQuotaIndicator: () => null,
+}));
+
 vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true }),
 }));

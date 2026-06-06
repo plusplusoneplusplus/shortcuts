@@ -17,6 +17,7 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
         dialogInitialFolderPath: null,
         dialogInitialWorkspaceId: null,
         dialogInitialPrompt: null,
+        dialogAttachedContext: null,
         dialogMode: 'task' as const,
         dialogLaunchMode: 'default' as const,
         dialogContextFiles: null,
@@ -281,6 +282,20 @@ describe('QueueContext reducer', () => {
             expect(result.dialogBulkMode).toBe(false);
         });
 
+        it('sets attached context when provided', () => {
+            const attachedContext = [{
+                kind: 'coc.work-item-context' as const,
+                version: 1 as const,
+                sourceWorkspaceId: 'ws1',
+                workItemId: 'wi-123',
+                workItemNumber: 123,
+                label: 'Work Item #123',
+                title: 'Investigate drag context',
+            }];
+            const result = queueReducer(makeState(), { type: 'OPEN_DIALOG', workspaceId: 'ws1', attachedContext });
+            expect(result.dialogAttachedContext).toEqual(attachedContext);
+        });
+
         it('sets bulkMode when provided', () => {
             const result = queueReducer(makeState(), {
                 type: 'OPEN_DIALOG',
@@ -343,12 +358,21 @@ describe('QueueContext reducer', () => {
                 dialogContextFiles: ['/a.md'],
                 dialogContextTaskName: 'feature',
                 dialogBulkMode: true,
+                dialogAttachedContext: [{
+                    kind: 'coc.git-commit-context',
+                    version: 1,
+                    sourceWorkspaceId: 'ws1',
+                    commitHash: 'abcdef1234567890',
+                    shortHash: 'abcdef1',
+                    label: 'Commit abcdef1',
+                }],
                 dialogResolveContext: { title: 'Resolve', commentCount: 1, onSubmit: () => {} },
             });
             const result = queueReducer(state, { type: 'CLOSE_DIALOG' });
             expect(result.dialogContextFiles).toBeNull();
             expect(result.dialogContextTaskName).toBeNull();
             expect(result.dialogBulkMode).toBe(false);
+            expect(result.dialogAttachedContext).toBeNull();
             expect(result.dialogResolveContext).toBeNull();
         });
 

@@ -35,7 +35,7 @@ interface RalphSessionRowProps {
      * pane uses this to switch to the workflow visualization for this
      * session. Optional so older callers compile unchanged.
      */
-    onSelectSession?: (sessionId: string) => void;
+    onSelectSession?: (sessionId: string, event: React.MouseEvent<HTMLDivElement>) => void;
     /** Right-click handler for the group row (context menu). */
     onContextMenu?: (e: React.MouseEvent) => void;
     /** Mobile long-press handlers supplied by the list pane. */
@@ -156,8 +156,8 @@ export function RalphSessionRow({
                     'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2b]',
                     isPinned && 'border-l-2 border-l-amber-400 dark:border-l-amber-500',
                 )}
-                onClick={() => {
-                    if (onSelectSession) onSelectSession(session.sessionId);
+                onClick={e => {
+                    if (onSelectSession) onSelectSession(session.sessionId, e);
                     else toggle();
                 }}
                 onContextMenu={onContextMenu}

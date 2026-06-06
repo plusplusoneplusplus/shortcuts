@@ -292,6 +292,27 @@ describe('RepoDetail Resume Queue button in header', () => {
     });
 });
 
+describe('RepoDetail header context drop targets', () => {
+    it('wraps Queue Task and Ask header buttons in context drop targets', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-queue-task-drop-target"');
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-ask-drop-target"');
+    });
+
+    it('opens the queue dialog with attached context instead of submitting on drop', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('handleHeaderContextDrop');
+        expect(REPO_DETAIL_SOURCE).toContain("type: 'OPEN_DIALOG'");
+        expect(REPO_DETAIL_SOURCE).toContain('attachedContext: [validation.payload]');
+        expect(REPO_DETAIL_SOURCE).not.toContain('queue.enqueue');
+    });
+
+    it('uses shared session-context drop validation for header drops', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('validateSessionContextDrop');
+        expect(REPO_DETAIL_SOURCE).toContain('readSessionContextDropPayload');
+        expect(REPO_DETAIL_SOURCE).toContain('dataTransferHasSessionContext');
+        expect(REPO_DETAIL_SOURCE).toContain('repo-header-context-drop-feedback');
+    });
+});
+
 describe('RepoDetail Run Script button in header', () => {
     it('renders Run Script button with data-testid', () => {
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-run-script-btn"');

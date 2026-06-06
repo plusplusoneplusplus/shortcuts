@@ -19,6 +19,8 @@ import { formatRelativeTime } from '../../utils/format';
 import { ContextMenu } from '../../tasks/comments/ContextMenu';
 import type { ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import { getSpaCocClient } from '../../api/cocClient';
+import { createWorkItemContextDragPayload, writePointerContextDragData } from '../chat/sessionContextDrag';
+import { isSessionContextAttachmentsEnabled } from '../../utils/config';
 
 const PAGE_SIZE = 20;
 
@@ -97,6 +99,7 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
     const { searchInput, searchQuery, searchInputRef, onSearchChange, onSearchClear } = useWorkItemSearch();
     const prevSearchRef = useRef(searchQuery);
     const loadingStatusesRef = useRef(new Set<string>());
+    const sessionContextDragEnabled = isSessionContextAttachmentsEnabled();
 
     // Context menu state
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: WorkItemSummary } | null>(null);
@@ -374,58 +377,69 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
                             {/* Group items */}
                             {!isCollapsed && (
                                 <div className="flex flex-col gap-1 pl-3">
-                                    {group.map(item => (
-                                        <Card
-                                            key={item.id}
-                                            className={cn(
-                                                'p-2 cursor-pointer',
-                                                selectedWorkItemId === item.id && 'ring-2 ring-[#0078d4]',
-                                                item.archivedAt && 'opacity-50',
-                                                highlightedWorkItemId === item.id && 'animate-pulse ring-2 ring-[#0078d4]/50',
-                                            )}
-                                            onClick={() => onSelectWorkItem(item.id)}
-                                            onContextMenu={(e) => handleContextMenu(e, item)}
-                                            data-testid={`work-item-card-${item.id}`}
-                                            data-work-item-id={item.id}
-                                        >
-                                            <div className="flex items-center gap-1 min-w-0 text-xs">
-                                                {item.pinnedAt && (
-                                                    <span className="shrink-0 text-[10px]" title="Pinned" data-testid={`work-item-pin-${item.id}`}>📌</span>
+                                    {group.map(item => {
+                                        const sessionContextPayload = sessionContextDragEnabled
+                                            ? createWorkItemContextDragPayload(item, { activeWorkspaceId: workspaceId })
+                                            : null;
+                                        return (
+                                            <Card
+                                                key={item.id}
+                                                className={cn(
+                                                    'p-2 cursor-pointer',
+                                                    sessionContextPayload && 'cursor-grab active:cursor-grabbing hover:ring-1 hover:ring-sky-300 dark:hover:ring-sky-700',
+                                                    selectedWorkItemId === item.id && 'ring-2 ring-[#0078d4]',
+                                                    item.archivedAt && 'opacity-50',
+                                                    highlightedWorkItemId === item.id && 'animate-pulse ring-2 ring-[#0078d4]/50',
                                                 )}
-                                                {item.workItemNumber != null && (
-                                                    <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999] font-mono" data-testid={`work-item-number-${item.id}`}>WI-{item.workItemNumber}</span>
-                                                )}
-                                                {item.type === 'bug' && (
-                                                    <span className="shrink-0 text-[10px]" title="Bug">🐛</span>
-                                                )}
-                                                {item.priority && PRIORITY_ICON[item.priority] && (
-                                                    <span className="shrink-0 text-[10px]">{PRIORITY_ICON[item.priority]}</span>
-                                                )}
-                                                <span className={cn('truncate', item.archivedAt && 'line-through')} title={item.title}>{item.title}</span>
-                                                {(() => {
-                                                    const ts = item.lastRunAt || item.updatedAt;
-                                                    const label = formatRelativeTime(ts);
-                                                    return label ? (
-                                                        <span className="ml-auto shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title={ts}>
-                                                            {label}
-                                                        </span>
-                                                    ) : null;
-                                                })()}
-                                            </div>
-                                            {item.plan && (
-                                                <div className="text-[10px] text-[#848484] dark:text-[#999] mt-0.5">
-                                                    Plan v{item.plan.version}
+                                                onClick={() => onSelectWorkItem(item.id)}
+                                                onContextMenu={(e) => handleContextMenu(e, item)}
+                                                draggable={!!sessionContextPayload}
+                                                onDragStart={sessionContextPayload ? (e) => writePointerContextDragData(e.dataTransfer, sessionContextPayload) : undefined}
+                                                title={sessionContextPayload ? `${sessionContextPayload.label} - drag to attach as work item context` : item.title}
+                                                data-testid={`work-item-card-${item.id}`}
+                                                data-work-item-id={item.id}
+                                                data-session-context-source={sessionContextPayload ? 'true' : undefined}
+                                                data-session-context-kind={sessionContextPayload ? 'work-item' : undefined}
+                                            >
+                                                <div className="flex items-center gap-1 min-w-0 text-xs">
+                                                    {item.pinnedAt && (
+                                                        <span className="shrink-0 text-[10px]" title="Pinned" data-testid={`work-item-pin-${item.id}`}>📌</span>
+                                                    )}
+                                                    {item.workItemNumber != null && (
+                                                        <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999] font-mono" data-testid={`work-item-number-${item.id}`}>WI-{item.workItemNumber}</span>
+                                                    )}
+                                                    {item.type === 'bug' && (
+                                                        <span className="shrink-0 text-[10px]" title="Bug">🐛</span>
+                                                    )}
+                                                    {item.priority && PRIORITY_ICON[item.priority] && (
+                                                        <span className="shrink-0 text-[10px]">{PRIORITY_ICON[item.priority]}</span>
+                                                    )}
+                                                    <span className={cn('truncate', item.archivedAt && 'line-through')} title={item.title}>{item.title}</span>
+                                                    {(() => {
+                                                        const ts = item.lastRunAt || item.updatedAt;
+                                                        const label = formatRelativeTime(ts);
+                                                        return label ? (
+                                                            <span className="ml-auto shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title={ts}>
+                                                                {label}
+                                                            </span>
+                                                        ) : null;
+                                                    })()}
                                                 </div>
-                                            )}
-                                            {item.tags && item.tags.length > 0 && (
-                                                <div className="flex gap-1 mt-1 flex-wrap">
-                                                    {item.tags.slice(0, 3).map(tag => (
-                                                        <span key={tag} className="text-[9px] px-1 py-0.5 rounded bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#606060] dark:text-[#aaa]">{tag}</span>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </Card>
-                                    ))}
+                                                {item.plan && (
+                                                    <div className="text-[10px] text-[#848484] dark:text-[#999] mt-0.5">
+                                                        Plan v{item.plan.version}
+                                                    </div>
+                                                )}
+                                                {item.tags && item.tags.length > 0 && (
+                                                    <div className="flex gap-1 mt-1 flex-wrap">
+                                                        {item.tags.slice(0, 3).map(tag => (
+                                                            <span key={tag} className="text-[9px] px-1 py-0.5 rounded bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#606060] dark:text-[#aaa]">{tag}</span>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </Card>
+                                        );
+                                    })}
                                     {/* Per-status infinite scroll sentinel */}
                                     <StatusGroupSentinel
                                         status={status}

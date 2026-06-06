@@ -86,10 +86,9 @@ describe('ChatListPane pinned chats', () => {
             expect(source).toContain('filteredUnpinned');
         });
 
-        it('uses visibleFilteredUnpinned for the completed tasks section', () => {
+        it('uses activityCompletedEntries for the completed tasks section', () => {
             const historySection = getSourceBlock('data-section="completed"', 'data-section={`completed-${section.id}`}');
             expect(historySection).toContain('activityCompletedEntries');
-            expect(historySection).toContain('visibleFilteredUnpinned');
         });
     });
 

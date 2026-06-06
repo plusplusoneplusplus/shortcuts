@@ -94,7 +94,7 @@ describe('GitClient', () => {
     await client.pushTo('repo/a', 'abc123');
     await client.rebaseAutosquash('repo/a');
     await client.reset('repo/a', 'abc123', 'hard');
-    await client.cherryPick('repo/a', 'def456');
+    await client.cherryPick('repo/a', 'def456', { hashes: ['abc123', 'def456'], targetBranch: 'release' });
     await client.exportCommitPatch('repo/a', 'def456');
     await client.applyCommitPatch('repo/a', {
       patch: { format: 'format-patch', body: 'From abc123 Mon Sep 17 00:00:00 2001\n' },
@@ -146,6 +146,10 @@ describe('GitClient', () => {
     expect(adapter.calls[3].options).toMatchObject({ method: 'POST', body: { remote: 'origin' } });
     expect(adapter.calls[4].options).toMatchObject({ method: 'POST', body: { rebase: true } });
     expect(adapter.calls[8].options).toMatchObject({ method: 'POST', body: { hash: 'abc123', mode: 'hard' } });
+    expect(adapter.calls[9].options).toMatchObject({
+      method: 'POST',
+      body: { hash: 'def456', hashes: ['abc123', 'def456'], targetBranch: 'release' },
+    });
     expect(adapter.calls[10].options).toMatchObject({ method: 'POST', body: { hash: 'def456' } });
     expect(adapter.calls[11].options).toMatchObject({
       method: 'POST',

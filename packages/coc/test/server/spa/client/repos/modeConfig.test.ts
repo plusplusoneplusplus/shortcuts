@@ -2,10 +2,83 @@
  * @vitest-environment node
  */
 import { describe, it, expect } from 'vitest';
-import { cycleMode, MODE_LABELS, MODE_ICONS, MODE_BORDER_COLORS, normalizeChatMode } from '../../../../../src/server/spa/client/react/repos/modeConfig';
+import { cycleMode, DEFAULT_CHAT_MODES, MODE_LABELS, MODE_ICONS, MODE_BORDER_COLORS, MODE_TEXT_COLORS, MODE_TOOLTIPS, getVisibleChatModes, normalizeChatMode, WORKFLOW_REGISTRY } from '../../../../../src/server/spa/client/react/repos/modeConfig';
 import type { ChatMode } from '../../../../../src/server/spa/client/react/repos/modeConfig';
 
 describe('modeConfig', () => {
+    describe('WORKFLOW_REGISTRY', () => {
+        it('is the single source for supported chat modes and default visible modes', () => {
+            expect(WORKFLOW_REGISTRY.map(entry => entry.mode)).toEqual(['ask', 'autopilot', 'ralph', 'for-each']);
+            expect(DEFAULT_CHAT_MODES).toEqual(['ask', 'autopilot']);
+        });
+
+        it('derives labels, icons, accents, and tooltips from registry entries', () => {
+            for (const entry of WORKFLOW_REGISTRY) {
+                expect(MODE_LABELS[entry.mode]).toBe(`${entry.icon} ${entry.label}`);
+                expect(MODE_ICONS[entry.mode]).toBe(entry.icon);
+                expect(MODE_BORDER_COLORS[entry.mode]).toEqual({ border: entry.border, ring: entry.ring });
+                expect(MODE_TEXT_COLORS[entry.mode]).toBe(entry.text);
+                expect(MODE_TOOLTIPS[entry.mode]).toBe(entry.tooltip);
+            }
+        });
+    });
+
+    describe('getVisibleChatModes', () => {
+        it('derives New Chat primary modes from registry surface and category metadata', () => {
+            expect(getVisibleChatModes({
+                surface: 'new-chat',
+                category: 'primary',
+                featureFlags: {},
+            })).toEqual(['ask', 'autopilot']);
+        });
+
+        it('gates New Chat workflow modes by registry feature flags', () => {
+            expect(getVisibleChatModes({
+                surface: 'new-chat',
+                category: 'workflow',
+                featureFlags: {},
+            })).toEqual([]);
+            expect(getVisibleChatModes({
+                surface: 'new-chat',
+                category: 'workflow',
+                featureFlags: { ralph: true },
+            })).toEqual(['ralph']);
+            expect(getVisibleChatModes({
+                surface: 'new-chat',
+                category: 'workflow',
+                featureFlags: { 'for-each': true },
+            })).toEqual(['for-each']);
+            expect(getVisibleChatModes({
+                surface: 'new-chat',
+                category: 'workflow',
+                featureFlags: { ralph: true, 'for-each': true },
+            })).toEqual(['ralph', 'for-each']);
+        });
+
+        it('keeps workflow modes hidden from follow-up composers unless explicitly allowed', () => {
+            expect(getVisibleChatModes({
+                surface: 'follow-up',
+                category: 'workflow',
+                featureFlags: { ralph: true, 'for-each': true },
+            })).toEqual([]);
+            expect(getVisibleChatModes({
+                surface: 'follow-up',
+                category: 'workflow',
+                featureFlags: { ralph: true, 'for-each': true },
+                allowedModes: ['ask', 'for-each'],
+            })).toEqual(['for-each']);
+        });
+
+        it('still requires feature flags when follow-up composers explicitly allow workflow modes', () => {
+            expect(getVisibleChatModes({
+                surface: 'follow-up',
+                category: 'workflow',
+                featureFlags: { ralph: true },
+                allowedModes: ['ask', 'for-each'],
+            })).toEqual([]);
+        });
+    });
+
     describe('cycleMode', () => {
         it('cycles through visible default modes: ask → autopilot → ask', () => {
             expect(cycleMode('ask')).toBe('autopilot');

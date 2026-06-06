@@ -22,6 +22,8 @@ import { buildFixupGroups, FIXUP_GROUP_COLORS_LIGHT, FIXUP_GROUP_COLORS_DARK } f
 import type { FixupGroupMap } from '../fixup-utils';
 import { useLongPress } from '../../../hooks/ui/useLongPress';
 import { useSwipeReveal, SWIPE_LEFT_MAX, SWIPE_DETECT_THRESHOLD } from '../../../hooks/ui/useSwipeReveal';
+import { createGitCommitContextDragPayload, type GitCommitContextDragPayload, writePointerContextDragData } from '../../chat/sessionContextDrag';
+import { isSessionContextAttachmentsEnabled } from '../../../utils/config';
 
 export interface GitCommitItem {
     hash: string;
@@ -225,9 +227,11 @@ export interface CommitListProps {
     onSwipeAction?: (action: 'review' | 'ask-ai' | 'more', commitHash: string) => void;
     /** Set of commit hashes that have a stored classification result. When provided, a ✓ badge is shown. */
     classifiedHashes?: ReadonlySet<string>;
+    /** Called when a commit row is double-clicked. Opens the commit in a pop-out window. */
+    onDoubleClick?: (commit: GitCommitItem) => void;
 }
 
-export function CommitList({ title, commits, selectedHash, selectedHashes, onMultiSelect, selectedFile, initialExpandedHash, onSelect, onFileSelect, onCommitContextMenu, workspaceId, loading, defaultCollapsed = false, showEmpty = false, emptyMessage, unpushedCount = 0, reorderable = false, onReorder, repoRoot, isMobileSelecting = false, onMobileSelectingChange, onSwipeAction, classifiedHashes }: CommitListProps) {
+export function CommitList({ title, commits, selectedHash, selectedHashes, onMultiSelect, selectedFile, initialExpandedHash, onSelect, onFileSelect, onCommitContextMenu, workspaceId, loading, defaultCollapsed = false, showEmpty = false, emptyMessage, unpushedCount = 0, reorderable = false, onReorder, repoRoot, isMobileSelecting = false, onMobileSelectingChange, onSwipeAction, classifiedHashes, onDoubleClick }: CommitListProps) {
     const [collapsed, setCollapsed] = useState(defaultCollapsed);
     const listRef = useRef<HTMLDivElement>(null);
     const [anchorHash, setAnchorHash] = useState<string | null>(null);
@@ -276,6 +280,7 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
     const isDarkMode = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
     const groupColors = isDarkMode ? FIXUP_GROUP_COLORS_DARK : FIXUP_GROUP_COLORS_LIGHT;
     const touchOnly = isTouchOnly();
+    const sessionContextDragEnabled = isSessionContextAttachmentsEnabled();
 
     const selectedCommitList = useMemo(() => {
         const currentSet = selectedHashes ?? (selectedHash ? new Set([selectedHash]) : new Set<string>());
@@ -571,17 +576,24 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
     }, []);
 
     // Drag-and-drop handlers for commit reordering
-    const handleDragStart = useCallback((e: React.DragEvent, index: number) => {
+    const handleReorderDragStart = useCallback((e: React.DragEvent, index: number) => {
+        e.stopPropagation();
         setDragIndex(index);
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', String(index));
     }, []);
 
+    const handleCommitContextDragStart = useCallback((e: React.DragEvent, sessionContextPayload: GitCommitContextDragPayload) => {
+        e.stopPropagation();
+        writePointerContextDragData(e.dataTransfer, sessionContextPayload);
+    }, []);
+
     const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
+        if (dragIndex === null) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
         setDragOverIndex(index);
-    }, []);
+    }, [dragIndex]);
 
     const handleDragEnd = useCallback(() => {
         setDragIndex(null);
@@ -722,6 +734,10 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                         const isMerge = (commit.parentHashes?.length ?? 0) > 1;
                         const group = commitGroupsByStart.get(index);
                         const canDrag = reorderable && isUnpushed;
+                        const sessionContextPayload = sessionContextDragEnabled && workspaceId
+                            ? createGitCommitContextDragPayload(commit, { activeWorkspaceId: workspaceId })
+                            : null;
+                        const isContextDragSource = !!sessionContextPayload;
                         const isDragOver = dragOverIndex === index && dragIndex !== index;
 
                         // Fixup group visual treatment
@@ -745,8 +761,6 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                             <div
                                 key={commit.hash}
                                 className={`relative ${dragIndex === index ? 'opacity-40' : isDragOver ? 'border-t-2 border-t-[#007acc]' : ''}`}
-                                draggable={canDrag}
-                                onDragStart={canDrag ? (e) => handleDragStart(e, index) : undefined}
                                 onDragOver={canDrag ? (e) => handleDragOver(e, index) : undefined}
                                 onDrop={canDrag ? (e) => handleDrop(e, index) : undefined}
                                 onDragEnd={canDrag ? handleDragEnd : undefined}
@@ -776,8 +790,11 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                             role="option"
                                             aria-selected={isSelected}
                                             data-hash={commit.hash}
-                                            className={`commit-row w-full grid grid-cols-[14px_minmax(0,1fr)_auto] items-start gap-2 px-3 py-1.5 text-left transition-colors border-b border-[#e0e0e0] dark:border-[#3c3c3c] ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20 shadow-[inset_3px_0_0_#0078d4] dark:shadow-[inset_3px_0_0_#3794ff]' : 'hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e]'}${isFixup ? ' opacity-70' : ''}`}
+                                            className={`commit-row w-full grid grid-cols-[14px_minmax(0,1fr)_auto] items-start gap-2 px-3 py-1.5 text-left transition-colors border-b border-[#e0e0e0] dark:border-[#3c3c3c] ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20 shadow-[inset_3px_0_0_#0078d4] dark:shadow-[inset_3px_0_0_#3794ff]' : 'hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e]'}${isFixup ? ' opacity-70' : ''}${isContextDragSource ? ' cursor-grab active:cursor-grabbing hover:ring-1 hover:ring-sky-300 dark:hover:ring-sky-700' : ''}`}
                                             onClick={(e) => handleCommitClick(commit, e)}
+                                            onDoubleClick={() => onDoubleClick?.(commit)}
+                                            draggable={isContextDragSource}
+                                            onDragStart={sessionContextPayload ? (e) => handleCommitContextDragStart(e, sessionContextPayload) : undefined}
                                             onMouseEnter={isTouchOnly() ? undefined : (e) => handleRowMouseEnter(commit, e)}
                                             onMouseLeave={isTouchOnly() ? undefined : handleRowMouseLeave}
                                             onTouchStart={touchOnly && onCommitContextMenu ? (e) => { longPressCommitHashRef.current = commit.hash; mobileLongPress.onTouchStart(e); } : undefined}
@@ -785,8 +802,11 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                             onTouchMove={touchOnly && onCommitContextMenu ? mobileLongPress.onTouchMove : undefined}
                                             onContextMenu={(e) => { if (e.shiftKey) return; e.preventDefault(); e.stopPropagation(); onCommitContextMenu?.(e, commit.hash); }}
                                             data-testid={`commit-row-${commit.shortHash}`}
+                                            data-session-context-source={isContextDragSource ? 'true' : undefined}
+                                            data-session-context-kind={isContextDragSource ? 'commit' : undefined}
                                             data-fixup-type={fixupEntry?.type}
                                             data-fixup-target={fixupEntry?.targetHash}
+                                            title={sessionContextPayload ? `${sessionContextPayload.label} - drag to attach as commit context` : undefined}
                                         >
                                     {/* Graph column: dot + connector line down to the next commit */}
                                     <span className="flex flex-col items-center self-stretch pt-1 leading-none">
@@ -807,7 +827,16 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                     <span className="min-w-0 flex flex-col gap-0.5">
                                         <span className="flex items-start gap-1.5 min-w-0">
                                             {canDrag && (
-                                                <span className="text-[10px] flex-shrink-0 cursor-grab text-[#848484] hover:text-[#333] dark:hover:text-[#ccc]" title="Drag to reorder" aria-hidden="true">⠿</span>
+                                                <span
+                                                    className="text-[10px] flex-shrink-0 cursor-grab text-[#848484] hover:text-[#333] dark:hover:text-[#ccc]"
+                                                    title="Drag to reorder"
+                                                    aria-hidden="true"
+                                                    draggable={canDrag}
+                                                    onDragStart={(e) => handleReorderDragStart(e, index)}
+                                                    data-testid={`commit-reorder-handle-${commit.shortHash}`}
+                                                >
+                                                    ⠿
+                                                </span>
                                             )}
                                             {isMobileSelecting && (
                                                 <span

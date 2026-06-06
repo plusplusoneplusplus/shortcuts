@@ -5,6 +5,11 @@ export const SESSION_CONTEXT_DRAG_MIME = 'application/vnd.coc.session-context+js
 export const SESSION_CONTEXT_DRAG_KIND = 'coc.session-context';
 export const RALPH_SESSION_CONTEXT_DRAG_MIME = 'application/vnd.coc.ralph-session-context+json';
 export const RALPH_SESSION_CONTEXT_DRAG_KIND = 'coc.ralph-session-context';
+export const POINTER_CONTEXT_DRAG_MIME = 'application/vnd.coc.pointer-context+json';
+export const WORK_ITEM_CONTEXT_DRAG_KIND = 'coc.work-item-context';
+export const GIT_COMMIT_CONTEXT_DRAG_KIND = 'coc.git-commit-context';
+export const GIT_RANGE_CONTEXT_DRAG_KIND = 'coc.git-range-context';
+export const PULL_REQUEST_CONTEXT_DRAG_KIND = 'coc.pull-request-context';
 
 export type SessionContextSourceStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export type RalphSessionContextPhase = 'grilling' | 'executing' | 'complete' | 'failed';
@@ -34,7 +39,55 @@ export interface RalphSessionContextDragPayload {
     iterationCount: number;
 }
 
-export type SessionContextAttachmentDragPayload = SessionContextDragPayload | RalphSessionContextDragPayload;
+interface BasePointerContextDragPayload {
+    version: 1;
+    sourceWorkspaceId: string;
+    label: string;
+    title?: string;
+}
+
+export interface WorkItemContextDragPayload extends BasePointerContextDragPayload {
+    kind: typeof WORK_ITEM_CONTEXT_DRAG_KIND;
+    workItemId: string;
+    workItemNumber?: number;
+    status?: string;
+    type?: string;
+}
+
+export interface GitCommitContextDragPayload extends BasePointerContextDragPayload {
+    kind: typeof GIT_COMMIT_CONTEXT_DRAG_KIND;
+    commitHash: string;
+    shortHash: string;
+    subject?: string;
+}
+
+export interface GitRangeContextDragPayload extends BasePointerContextDragPayload {
+    kind: typeof GIT_RANGE_CONTEXT_DRAG_KIND;
+    baseRef: string;
+    headRef: string;
+    mergeBase?: string;
+    branchName?: string;
+    commitCount?: number;
+    fileCount?: number;
+}
+
+export interface PullRequestContextDragPayload extends BasePointerContextDragPayload {
+    kind: typeof PULL_REQUEST_CONTEXT_DRAG_KIND;
+    pullRequestId: string;
+    number?: number;
+    status?: string;
+}
+
+export type PointerContextDragPayload =
+    | WorkItemContextDragPayload
+    | GitCommitContextDragPayload
+    | GitRangeContextDragPayload
+    | PullRequestContextDragPayload;
+
+export type SessionContextAttachmentDragPayload =
+    | SessionContextDragPayload
+    | RalphSessionContextDragPayload
+    | PointerContextDragPayload;
 
 export interface CreateSessionContextDragPayloadOptions {
     activeWorkspaceId?: string | null;
@@ -42,6 +95,10 @@ export interface CreateSessionContextDragPayloadOptions {
 }
 
 export interface CreateRalphSessionContextDragPayloadOptions {
+    activeWorkspaceId?: string | null;
+}
+
+export interface CreatePointerContextDragPayloadOptions {
     activeWorkspaceId?: string | null;
 }
 
@@ -85,6 +142,18 @@ function stringFrom(source: any, paths: string[][]): string | null {
     return null;
 }
 
+function numberFrom(source: any, paths: string[][]): number | undefined {
+    for (const path of paths) {
+        const value = getNestedValue(source, path);
+        if (typeof value === 'number' && Number.isInteger(value) && value >= 0) return value;
+        if (typeof value === 'string' && value.trim()) {
+            const parsed = Number.parseInt(value.trim(), 10);
+            if (Number.isInteger(parsed) && parsed >= 0) return parsed;
+        }
+    }
+    return undefined;
+}
+
 function looksLikeLocalPath(value: string): boolean {
     return value.startsWith('/')
         || value.startsWith('~/')
@@ -101,6 +170,12 @@ function sanitizeDisplayText(value: string): string {
     return withoutPaths.length > MAX_TITLE_LENGTH
         ? withoutPaths.slice(0, MAX_TITLE_LENGTH - 1) + '…'
         : withoutPaths;
+}
+
+function safeOptionalDisplayText(value: string | null): string | undefined {
+    if (!value) return undefined;
+    const sanitized = sanitizeDisplayText(value);
+    return sanitized || undefined;
 }
 
 function normalizeTimestamp(value: unknown): string | null {
@@ -287,6 +362,23 @@ function resolveTitle(source: any, processId: string): string {
     return sanitized || processId;
 }
 
+function normalizePointerReference(value: string | null): string | null {
+    if (!value || looksLikeLocalPath(value)) return null;
+    return value;
+}
+
+function shortenCommitHash(hash: string): string {
+    return hash.length > 7 ? hash.slice(0, 7) : hash;
+}
+
+function buildWorkItemLabel(workItemId: string, workItemNumber?: number): string {
+    return workItemNumber !== undefined ? `Work Item #${workItemNumber}` : `Work Item ${workItemId}`;
+}
+
+function buildPullRequestLabel(pullRequestId: string, number?: number): string {
+    return number !== undefined ? `PR #${number}` : `PR ${pullRequestId}`;
+}
+
 export function createSessionContextDragPayload(
     source: unknown,
     options: CreateSessionContextDragPayloadOptions = {},
@@ -366,6 +458,118 @@ export function createRalphSessionContextDragPayload(
     };
 }
 
+export function createWorkItemContextDragPayload(
+    source: unknown,
+    options: CreatePointerContextDragPayloadOptions = {},
+): WorkItemContextDragPayload | null {
+    if (!source || typeof source !== 'object') return null;
+    const record = source as any;
+    const sourceWorkspaceId = resolveWorkspaceId(record, options.activeWorkspaceId);
+    const workItemId = normalizePointerReference(stringFrom(record, [['workItemId'], ['id']]));
+    if (!sourceWorkspaceId || !workItemId || looksLikeLocalPath(sourceWorkspaceId)) return null;
+
+    const workItemNumber = numberFrom(record, [['workItemNumber'], ['number']]);
+    const title = safeOptionalDisplayText(stringFrom(record, [['title'], ['displayName']]));
+    const status = safeOptionalDisplayText(stringFrom(record, [['status']]));
+    const type = safeOptionalDisplayText(stringFrom(record, [['type']]));
+    const label = buildWorkItemLabel(workItemId, workItemNumber);
+
+    return {
+        kind: WORK_ITEM_CONTEXT_DRAG_KIND,
+        version: 1,
+        sourceWorkspaceId,
+        workItemId,
+        ...(workItemNumber !== undefined ? { workItemNumber } : {}),
+        label,
+        ...(title ? { title } : {}),
+        ...(status ? { status } : {}),
+        ...(type ? { type } : {}),
+    };
+}
+
+export function createGitCommitContextDragPayload(
+    source: unknown,
+    options: CreatePointerContextDragPayloadOptions = {},
+): GitCommitContextDragPayload | null {
+    if (!source || typeof source !== 'object') return null;
+    const record = source as any;
+    const sourceWorkspaceId = resolveWorkspaceId(record, options.activeWorkspaceId);
+    const commitHash = normalizePointerReference(stringFrom(record, [['commitHash'], ['hash'], ['id']]));
+    if (!sourceWorkspaceId || !commitHash || looksLikeLocalPath(sourceWorkspaceId)) return null;
+
+    const shortHash = safeOptionalDisplayText(stringFrom(record, [['shortHash'], ['shortId']])) ?? shortenCommitHash(commitHash);
+    const subject = safeOptionalDisplayText(stringFrom(record, [['subject'], ['message'], ['title']]));
+    const label = `Commit ${shortHash}`;
+
+    return {
+        kind: GIT_COMMIT_CONTEXT_DRAG_KIND,
+        version: 1,
+        sourceWorkspaceId,
+        commitHash,
+        shortHash,
+        label,
+        ...(subject ? { subject, title: subject } : {}),
+    };
+}
+
+export function createGitRangeContextDragPayload(
+    source: unknown,
+    options: CreatePointerContextDragPayloadOptions = {},
+): GitRangeContextDragPayload | null {
+    if (!source || typeof source !== 'object') return null;
+    const record = source as any;
+    const sourceWorkspaceId = resolveWorkspaceId(record, options.activeWorkspaceId);
+    const baseRef = normalizePointerReference(stringFrom(record, [['baseRef'], ['base']]));
+    const headRef = normalizePointerReference(stringFrom(record, [['headRef'], ['head']]));
+    if (!sourceWorkspaceId || !baseRef || !headRef || looksLikeLocalPath(sourceWorkspaceId)) return null;
+
+    const branchName = safeOptionalDisplayText(stringFrom(record, [['branchName'], ['label']]));
+    const mergeBase = normalizePointerReference(stringFrom(record, [['mergeBase']]));
+    const commitCount = numberFrom(record, [['commitCount']]);
+    const fileCount = numberFrom(record, [['fileCount'], ['changedFiles']]);
+    const label = `Range ${baseRef}..${headRef}`;
+
+    return {
+        kind: GIT_RANGE_CONTEXT_DRAG_KIND,
+        version: 1,
+        sourceWorkspaceId,
+        baseRef,
+        headRef,
+        label,
+        ...(branchName ? { branchName, title: branchName } : {}),
+        ...(mergeBase ? { mergeBase } : {}),
+        ...(commitCount !== undefined ? { commitCount } : {}),
+        ...(fileCount !== undefined ? { fileCount } : {}),
+    };
+}
+
+export function createPullRequestContextDragPayload(
+    source: unknown,
+    options: CreatePointerContextDragPayloadOptions = {},
+): PullRequestContextDragPayload | null {
+    if (!source || typeof source !== 'object') return null;
+    const record = source as any;
+    const sourceWorkspaceId = resolveWorkspaceId(record, options.activeWorkspaceId);
+    const number = numberFrom(record, [['number']]);
+    const pullRequestId = normalizePointerReference(stringFrom(record, [['pullRequestId'], ['id']]) ?? (number !== undefined ? String(number) : null));
+    if (!sourceWorkspaceId || !pullRequestId || looksLikeLocalPath(sourceWorkspaceId)) return null;
+
+    const title = safeOptionalDisplayText(stringFrom(record, [['title'], ['displayName']]));
+    const status = safeOptionalDisplayText(stringFrom(record, [['status'], ['state']]));
+    const label = buildPullRequestLabel(pullRequestId, number);
+
+    return {
+        kind: PULL_REQUEST_CONTEXT_DRAG_KIND,
+        version: 1,
+        sourceWorkspaceId,
+        pullRequestId,
+        ...(number !== undefined ? { number } : {}),
+        label,
+        ...(title ? { title } : {}),
+        ...(status ? { status } : {}),
+    };
+}
+
 export function writeSessionContextDragData(dataTransfer: DragDataTransfer, payload: SessionContextDragPayload): void {
     dataTransfer.effectAllowed = 'copy';
     dataTransfer.setData(SESSION_CONTEXT_DRAG_MIME, JSON.stringify(payload));
@@ -376,4 +580,11 @@ export function writeRalphSessionContextDragData(dataTransfer: DragDataTransfer,
     dataTransfer.effectAllowed = 'copy';
     dataTransfer.setData(RALPH_SESSION_CONTEXT_DRAG_MIME, JSON.stringify(payload));
     dataTransfer.setData('text/plain', `CoC Ralph session context: ${payload.displayLabel} [${payload.phase}/${payload.status}] ${payload.sourceRalphSessionId}`);
+}
+
+export function writePointerContextDragData(dataTransfer: DragDataTransfer, payload: PointerContextDragPayload): void {
+    dataTransfer.effectAllowed = 'copy';
+    dataTransfer.setData(POINTER_CONTEXT_DRAG_MIME, JSON.stringify(payload));
+    const title = payload.title ? ` - ${payload.title}` : '';
+    dataTransfer.setData('text/plain', `CoC pointer context: ${payload.label}${title}`);
 }

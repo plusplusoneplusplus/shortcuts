@@ -4,11 +4,12 @@
  * Unit tests for the GET /api/agent-providers endpoint logic.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
     buildAgentProvidersResponse,
     registerAgentProvidersRoutes,
 } from '../../src/server/agent-providers/agent-providers-routes';
+import { AgentProvidersQuotaCache } from '../../src/server/agent-providers/quota-cache';
 import { RuntimeConfigService } from '../../src/config/runtime-config-service';
 import type { IAvailabilityResult } from '@plusplusoneplusplus/forge';
 
@@ -33,6 +34,25 @@ const claudeUnavailable = (): Promise<IAvailabilityResult> =>
 
 const claudeAvailable = (): Promise<IAvailabilityResult> =>
     Promise.resolve({ available: true });
+
+function quotaResult(type = 'chat', usedRequests = 30, remainingPercentage = 0.7) {
+    return {
+        quotaSnapshots: {
+            [type]: {
+                isUnlimitedEntitlement: false,
+                entitlementRequests: 100,
+                usedRequests,
+                remainingPercentage,
+                usageAllowedWithExhaustedQuota: false,
+                overage: 0,
+            },
+        },
+    };
+}
+
+afterEach(() => {
+    vi.useRealTimers();
+});
 
 // ── Copilot provider ──────────────────────────────────────────────────────────
 
@@ -226,6 +246,101 @@ describe('live config reflection', () => {
     });
 });
 
+// ── Quota cache ────────────────────────────────────────────────────────────────
+
+describe('AgentProvidersQuotaCache', () => {
+    it('returns a cached response without recalling provider services', async () => {
+        const svc = makeService(false);
+        const getAccountQuota = vi.fn().mockResolvedValue(quotaResult('chat', 10, 0.9));
+        const cache = new AgentProvidersQuotaCache({
+            runtimeConfigService: svc,
+            getCopilotSdkService: () => ({ getAccountQuota }),
+        }, {
+            now: () => new Date('2026-06-01T00:00:00.000Z'),
+        });
+
+        const first = await cache.get();
+        const second = await cache.get();
+
+        expect(second).toBe(first);
+        expect(getAccountQuota).toHaveBeenCalledTimes(1);
+        expect(first.lastUpdated).toBe('2026-06-01T00:00:00.000Z');
+        expect(first.providers[0].quotaTypes[0].usedRequests).toBe(10);
+    });
+
+    it('single-flights concurrent cache misses', async () => {
+        const svc = makeService(false);
+        let resolveQuota!: (value: ReturnType<typeof quotaResult>) => void;
+        const getAccountQuota = vi.fn(() => new Promise<ReturnType<typeof quotaResult>>(resolve => {
+            resolveQuota = resolve;
+        }));
+        const cache = new AgentProvidersQuotaCache({
+            runtimeConfigService: svc,
+            getCopilotSdkService: () => ({ getAccountQuota }),
+        });
+
+        const firstPromise = cache.get();
+        const secondPromise = cache.get();
+        expect(getAccountQuota).toHaveBeenCalledTimes(1);
+
+        resolveQuota(quotaResult('chat', 25, 0.75));
+        const [first, second] = await Promise.all([firstPromise, secondPromise]);
+
+        expect(second).toBe(first);
+        expect(first.providers[0].quotaTypes[0].usedRequests).toBe(25);
+    });
+
+    it('isolates per-provider failures and still returns successful providers', async () => {
+        const svc = makeService(true, true);
+        const copilotQuota = vi.fn().mockResolvedValue(quotaResult('chat', 10, 0.9));
+        const codexQuota = vi.fn().mockRejectedValue(new Error('Codex unavailable'));
+        const claudeQuota = vi.fn().mockResolvedValue(quotaResult('five_hour', 60, 0.4));
+        const cache = new AgentProvidersQuotaCache({
+            runtimeConfigService: svc,
+            getCopilotSdkService: () => ({ getAccountQuota: copilotQuota }),
+            getCodexSdkService: () => ({ getAccountQuota: codexQuota }),
+            getClaudeSdkService: () => ({ getAccountQuota: claudeQuota }),
+        });
+
+        const body = await cache.get();
+        const copilot = body.providers.find((p: any) => p.id === 'copilot');
+        const codex = body.providers.find((p: any) => p.id === 'codex');
+        const claude = body.providers.find((p: any) => p.id === 'claude');
+
+        expect(copilot?.error).toBeUndefined();
+        expect(copilot?.quotaTypes[0].usedRequests).toBe(10);
+        expect(codex?.error).toBe('Codex unavailable');
+        expect(codex?.quotaTypes).toEqual([]);
+        expect(claude?.error).toBeUndefined();
+        expect(claude?.quotaTypes[0].type).toBe('five_hour');
+        expect(copilotQuota).toHaveBeenCalledTimes(1);
+        expect(codexQuota).toHaveBeenCalledTimes(1);
+        expect(claudeQuota).toHaveBeenCalledTimes(1);
+    });
+
+    it('refreshes on the background interval and stops refreshing after dispose', async () => {
+        vi.useFakeTimers();
+        const svc = makeService(false);
+        const getAccountQuota = vi.fn()
+            .mockResolvedValueOnce(quotaResult('chat', 1, 0.99))
+            .mockResolvedValueOnce(quotaResult('chat', 2, 0.98));
+        const cache = new AgentProvidersQuotaCache({
+            runtimeConfigService: svc,
+            getCopilotSdkService: () => ({ getAccountQuota }),
+        }, {
+            refreshIntervalMs: 50,
+        });
+
+        cache.start();
+        await vi.advanceTimersByTimeAsync(50);
+        expect(getAccountQuota).toHaveBeenCalledTimes(1);
+
+        cache.dispose();
+        await vi.advanceTimersByTimeAsync(50);
+        expect(getAccountQuota).toHaveBeenCalledTimes(1);
+    });
+});
+
 // ── Quota route registration ──────────────────────────────────────────────────
 
 describe('registerAgentProvidersRoutes — quota endpoint', () => {
@@ -312,6 +427,7 @@ describe('registerAgentProvidersRoutes — quota endpoint', () => {
         expect(chatQuota.usedRequests).toBe(30);
         expect(chatQuota.entitlementRequests).toBe(100);
         expect(chatQuota.remainingPercentage).toBe(0.7);
+        expect(body.lastUpdated).toEqual(expect.any(String));
     });
 
     it('returns copilot error when sdk service throws', async () => {
@@ -494,6 +610,28 @@ describe('registerAgentProvidersRoutes — quota endpoint', () => {
         expect(claude.error).toBeUndefined();
     });
 
+    it('includes claude provider with empty quotaTypes when claude is enabled but no claude service is registered', async () => {
+        const svc = makeService(false, true);
+        const routes: any[] = [];
+        const mockCopilotService = {
+            getAccountQuota: vi.fn().mockResolvedValue({ quotaSnapshots: {} }),
+        };
+        registerAgentProvidersRoutes(routes, {
+            runtimeConfigService: svc,
+            getCodexAvailability: codexUnavailable,
+            getClaudeAvailability: claudeAvailable,
+            getCopilotSdkService: () => mockCopilotService as any,
+        });
+        const quotaRoute = routes.find(r => r.pattern === '/api/agent-providers/quota');
+        const { res, getBody } = makeRes();
+        await quotaRoute.handler({} as any, res);
+        const body = JSON.parse(getBody());
+        const claude = body.providers.find((p: any) => p.id === 'claude');
+        expect(claude).toBeDefined();
+        expect(claude.quotaTypes).toEqual([]);
+        expect(claude.error).toBeUndefined();
+    });
+
     it('returns claude error when Claude quota lookup throws', async () => {
         const svc = makeService(false, true);
         const routes: any[] = [];
@@ -537,5 +675,64 @@ describe('registerAgentProvidersRoutes — quota endpoint', () => {
         await quotaRoute.handler({} as any, res);
         const body = JSON.parse(getBody());
         expect(body.providers.find((p: any) => p.id === 'codex')).toBeUndefined();
+    });
+
+    it('serves cached quota data by default after the lazy first fetch', async () => {
+        const svc = makeService(false);
+        const routes: any[] = [];
+        const getAccountQuota = vi.fn()
+            .mockResolvedValueOnce(quotaResult('chat', 1, 0.99))
+            .mockResolvedValueOnce(quotaResult('chat', 2, 0.98));
+        registerAgentProvidersRoutes(routes, {
+            runtimeConfigService: svc,
+            getCodexAvailability: codexUnavailable,
+            getClaudeAvailability: claudeUnavailable,
+            getCopilotSdkService: () => ({ getAccountQuota }) as any,
+        });
+        const quotaRoute = routes.find(r => r.pattern === '/api/agent-providers/quota');
+
+        const first = makeRes();
+        await quotaRoute.handler({ url: '/api/agent-providers/quota' } as any, first.res);
+        const firstBody = JSON.parse(first.getBody());
+
+        const second = makeRes();
+        await quotaRoute.handler({ url: '/api/agent-providers/quota' } as any, second.res);
+        const secondBody = JSON.parse(second.getBody());
+
+        expect(getAccountQuota).toHaveBeenCalledTimes(1);
+        expect(firstBody.providers[0].quotaTypes[0].usedRequests).toBe(1);
+        expect(secondBody.providers[0].quotaTypes[0].usedRequests).toBe(1);
+        expect(secondBody.lastUpdated).toBe(firstBody.lastUpdated);
+    });
+
+    it('force=1 bypasses cached quota data and updates the cache', async () => {
+        const svc = makeService(false);
+        const routes: any[] = [];
+        const getAccountQuota = vi.fn()
+            .mockResolvedValueOnce(quotaResult('chat', 1, 0.99))
+            .mockResolvedValueOnce(quotaResult('chat', 2, 0.98));
+        registerAgentProvidersRoutes(routes, {
+            runtimeConfigService: svc,
+            getCodexAvailability: codexUnavailable,
+            getClaudeAvailability: claudeUnavailable,
+            getCopilotSdkService: () => ({ getAccountQuota }) as any,
+        });
+        const quotaRoute = routes.find(r => r.pattern === '/api/agent-providers/quota');
+
+        const initial = makeRes();
+        await quotaRoute.handler({ url: '/api/agent-providers/quota' } as any, initial.res);
+
+        const forced = makeRes();
+        await quotaRoute.handler({ url: '/api/agent-providers/quota?force=1' } as any, forced.res);
+        const forcedBody = JSON.parse(forced.getBody());
+
+        const cachedAfterForce = makeRes();
+        await quotaRoute.handler({ url: '/api/agent-providers/quota' } as any, cachedAfterForce.res);
+        const cachedBody = JSON.parse(cachedAfterForce.getBody());
+
+        expect(getAccountQuota).toHaveBeenCalledTimes(2);
+        expect(forcedBody.providers[0].quotaTypes[0].usedRequests).toBe(2);
+        expect(cachedBody.providers[0].quotaTypes[0].usedRequests).toBe(2);
+        expect(cachedBody.lastUpdated).toBe(forcedBody.lastUpdated);
     });
 });

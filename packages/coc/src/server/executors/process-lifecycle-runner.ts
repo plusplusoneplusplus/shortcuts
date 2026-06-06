@@ -45,6 +45,7 @@ import {
     prependSelectedSkillsDirective,
 } from './prompt-builder';
 import { cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
+import { buildLiveConversationCostEstimate } from '../processes/process-metadata-read-model';
 import {
     isChatFollowUp,
     isChatPayload,
@@ -483,9 +484,17 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                 cost: tokenUsage.cost !== undefined
                                     ? (prevCumulative?.cost ?? 0) + tokenUsage.cost
                                     : prevCumulative?.cost,
+                                actualUsdCost: tokenUsage.actualUsdCost !== undefined
+                                    ? (prevCumulative?.actualUsdCost ?? 0) + tokenUsage.actualUsdCost
+                                    : prevCumulative?.actualUsdCost,
                                 duration: tokenUsage.duration !== undefined
                                     ? (prevCumulative?.duration ?? 0) + tokenUsage.duration
                                     : prevCumulative?.duration,
+                                tokenLimit: tokenUsage.tokenLimit ?? prevCumulative?.tokenLimit,
+                                currentTokens: tokenUsage.currentTokens ?? prevCumulative?.currentTokens,
+                                systemTokens: tokenUsage.systemTokens ?? prevCumulative?.systemTokens,
+                                toolDefinitionsTokens: tokenUsage.toolDefinitionsTokens ?? prevCumulative?.toolDefinitionsTokens,
+                                conversationTokens: tokenUsage.conversationTokens ?? prevCumulative?.conversationTokens,
                             } : prevCumulative;
                             // If cancellation was requested while executing, finalize as cancelled
                             if (current.status === 'cancelling') {
@@ -542,12 +551,20 @@ export class ProcessLifecycleRunner extends BaseExecutor {
 
                 turnSaved = true;
 
+                const currentProc = await this.store.getProcess(
+                    processId,
+                    (task.payload as any)?.workspaceId as string | undefined,
+                );
+
                 if (tokenUsage) {
                     try {
+                        const cumulativeTokenUsage = currentProc?.cumulativeTokenUsage;
                         this.store.emitProcessEvent(processId, {
                             type: 'token-usage',
                             turnIndex: appendResult?.turn.turnIndex,
                             tokenUsage,
+                            ...(cumulativeTokenUsage ? { cumulativeTokenUsage } : {}),
+                            ...(currentProc ? { conversationCostEstimate: buildLiveConversationCostEstimate(currentProc, appendResult?.allTurns) } : {}),
                             sessionTokenLimit: tokenUsage.tokenLimit,
                             sessionCurrentTokens: tokenUsage.currentTokens,
                             ...(tokenUsage.systemTokens          != null ? { sessionSystemTokens:     tokenUsage.systemTokens }          : {}),
@@ -561,10 +578,6 @@ export class ProcessLifecycleRunner extends BaseExecutor {
 
                 const combinedTurns = appendResult?.allTurns ?? process.conversationTurns ?? initialTurns;
 
-                const currentProc = await this.store.getProcess(
-                    processId,
-                    (task.payload as any)?.workspaceId as string | undefined,
-                );
                 const finalStatus = currentProc?.status === 'cancelled' ? 'cancelled' : 'completed';
                 if (!TERMINAL_STATUSES.has(currentProc?.status ?? '')) {
                     this.store.emitProcessComplete(processId, finalStatus, `${duration}ms`);

@@ -204,7 +204,8 @@ describe('ForEachRunRow', () => {
 
         fireEvent.click(screen.getByTestId('for-each-run-body'));
 
-        expect(onSelectRun).toHaveBeenCalledWith('run-1');
+        expect(onSelectRun.mock.calls[0][0]).toBe('run-1');
+        expect(onSelectRun.mock.calls[0][1]).toBeTruthy();
         expect(screen.queryByTestId('for-each-run-children')).toBeNull();
     });
 

@@ -43,7 +43,7 @@ describe('RepoGitTab', () => {
         });
 
         it('imports typed CoC client', () => {
-            expect(source).toContain("import { getSpaCocClient } from '../../api/cocClient'");
+            expect(source).toContain("import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient'");
         });
 
         it('fetches branch-range data', () => {
@@ -377,7 +377,50 @@ describe('RepoGitTab', () => {
             expect(source).toContain('setActionError(null)');
         });
 
+        it('opens a local branch picker for cherry-picking instead of immediately cherry-picking onto HEAD', () => {
+            const block = source.match(/const handleCherryPick = useCallback[\s\S]*?(?=const handleOpenCrossCloneCherryPick)/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('handleOpenCherryPickToBranch([commit])');
+            expect(block![0]).not.toContain('.git.cherryPick(workspaceId, commit.hash)');
+        });
+
+        it('cherry-picks selected commits oldest-first onto the picked branch', () => {
+            const orderBlock = source.match(/const orderOldestFirst = useCallback[\s\S]*?(?=const handleOpenCherryPickToBranch)/);
+            const applyBlock = source.match(/const handleCherryPickToBranch = useCallback[\s\S]*?(?=const handleCherryPick = useCallback)/);
+            expect(orderBlock).toBeTruthy();
+            expect(applyBlock).toBeTruthy();
+            expect(orderBlock![0]).toContain('return rightIndex - leftIndex');
+            expect(applyBlock![0]).toContain('hashes');
+            expect(applyBlock![0]).toContain('targetBranch');
+            expect(applyBlock![0]).toContain('.git.cherryPick(workspaceId, primaryHash');
+        });
+
+        it('surfaces dirty/conflict cherry-pick errors without continue instructions', () => {
+            const applyBlock = source.match(/const handleCherryPickToBranch = useCallback[\s\S]*?(?=const handleCherryPick = useCallback)/);
+            expect(applyBlock).toBeTruthy();
+            expect(applyBlock![0]).toContain('getSpaCocClientErrorMessage');
+            expect(applyBlock![0]).not.toContain('cherry-pick --continue');
+        });
+
         it('shows action error toast', () => {
+            expect(source).toContain('data-testid="git-action-error"');
+        });
+
+        it('handleDropCommit polls async jobs before refreshing', () => {
+            const block = source.match(/const handleDropCommit = useCallback[\s\S]*?(?=const handleCommitContextMenu)/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('.git.dropCommit(workspaceId, commit.hash)');
+            expect(block![0]).toContain('if (result.jobId)');
+            expect(block![0]).toContain('.git.getOperation(workspaceId, jobId)');
+            expect(block![0]).toContain("job.status !== 'running'");
+            expect(block![0]).toContain("refreshAll({ selectFallbackToHead: true })");
+        });
+
+        it('handleDropCommit shows action-error banner state when the async job fails', () => {
+            const block = source.match(/const handleDropCommit = useCallback[\s\S]*?(?=const handleCommitContextMenu)/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain("job?.status === 'failed'");
+            expect(block![0]).toContain("setActionError(job.error || 'Drop commit failed')");
             expect(source).toContain('data-testid="git-action-error"');
         });
 
@@ -543,6 +586,12 @@ describe('RepoGitTab', () => {
             expect(source).toContain("import { BranchPickerModal } from './branches/BranchPickerModal'");
         });
 
+        it('renders a second BranchPickerModal for cherry-pick target selection', () => {
+            expect(source).toContain('title="Cherry-pick to branch"');
+            expect(source).toContain('onSelected={handleCherryPickToBranch}');
+            expect(source).toContain('isOpen={cherryPickTarget !== null}');
+        });
+
         it('imports CrossCloneCherryPickModal', () => {
             expect(source).toContain("import { CrossCloneCherryPickModal } from './CrossCloneCherryPickModal'");
         });
@@ -706,6 +755,19 @@ describe('RepoGitTab', () => {
             expect(block).toBeTruthy();
             expect(block![0]).toContain('refreshAll()');
             expect(block![0]).toContain('Cherry-picked to');
+        });
+    });
+
+    describe('drop commit context menu', () => {
+        it('computes unpushed commits from commit index and unpushedCount', () => {
+            expect(source).toContain('const commitIndex = commits.findIndex(c => c.hash === commit.hash)');
+            expect(source).toContain('const isUnpushed = commitIndex >= 0 && commitIndex < unpushedCount');
+        });
+
+        it('shows Drop Commit only inside the unpushed context-menu gate', () => {
+            const matches = source.match(/label: 'Drop Commit'/g) ?? [];
+            expect(matches).toHaveLength(1);
+            expect(source).toMatch(/if \(isUnpushed\) \{\s*items\.push\(\{\s*label: 'Drop Commit'[\s\S]*?handleDropCommit\(commit\)/);
         });
     });
 
@@ -906,7 +968,7 @@ describe('RepoGitTab', () => {
         });
 
         it('imports typed CoC client utility', () => {
-            expect(source).toContain("import { getSpaCocClient } from '../../api/cocClient'");
+            expect(source).toContain("import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient'");
         });
 
         it('imports useMemo from react', () => {

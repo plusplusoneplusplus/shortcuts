@@ -8,6 +8,9 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import {
     ModePillSelector,
     DEFAULT_MODE_PILL_OPTIONS,
+    FOR_EACH_MODE_PILL_OPTION,
+    RALPH_MODE_PILL_OPTION,
+    getModePillOption,
 } from '../../../../src/server/spa/client/react/features/chat/ModePillSelector';
 
 describe('ModePillSelector', () => {
@@ -204,5 +207,79 @@ describe('ModePillSelector', () => {
         expect(ids).toEqual(['mode-pill-autopilot', 'mode-pill-ask']);
         expect(screen.queryByTestId('mode-pill-plan')).toBeNull();
         expect(screen.getByTestId('mode-pill-ask').textContent).toBe('Q&A');
+    });
+
+    it('renders workflow choices as a third segment inside the same selector', () => {
+        render(
+            <ModePillSelector
+                options={DEFAULT_MODE_PILL_OPTIONS}
+                workflowOptions={[RALPH_MODE_PILL_OPTION, FOR_EACH_MODE_PILL_OPTION]}
+                value="ask"
+                onChange={() => {}}
+            />,
+        );
+
+        const group = screen.getByTestId('mode-pill-selector');
+        const workflowTrigger = screen.getByTestId('workflow-mode-trigger');
+        expect(group.contains(workflowTrigger)).toBe(true);
+        expect(workflowTrigger.textContent?.trim()).toBe('Workflow');
+        expect(screen.queryByTestId('mode-pill-ralph')).toBeNull();
+        expect(screen.queryByTestId('mode-pill-for-each')).toBeNull();
+    });
+
+    it('shows the active workflow mode label and dot on the workflow segment', () => {
+        render(
+            <ModePillSelector
+                options={DEFAULT_MODE_PILL_OPTIONS}
+                workflowOptions={[RALPH_MODE_PILL_OPTION, FOR_EACH_MODE_PILL_OPTION]}
+                value="for-each"
+                onChange={() => {}}
+            />,
+        );
+
+        const workflowTrigger = screen.getByTestId('workflow-mode-trigger');
+        const workflowDot = workflowTrigger.querySelector('span[aria-hidden="true"]');
+        expect(workflowTrigger.textContent?.trim()).toBe('For Each');
+        expect(workflowTrigger.getAttribute('data-active')).toBe('true');
+        expect(workflowTrigger.getAttribute('data-selected-mode')).toBe('for-each');
+        expect(workflowTrigger.className).toContain('shadow-[inset_0_0_0_1px_#d0d0d0]');
+        expect(workflowDot?.className).toContain('bg-sky-500');
+    });
+
+    it('opens the workflow menu and changes to the selected workflow option', () => {
+        const onChange = vi.fn();
+        render(
+            <ModePillSelector
+                options={DEFAULT_MODE_PILL_OPTIONS}
+                workflowOptions={[RALPH_MODE_PILL_OPTION, FOR_EACH_MODE_PILL_OPTION]}
+                value="ask"
+                onChange={onChange}
+            />,
+        );
+
+        fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
+        expect(screen.getByTestId('workflow-mode-option-ralph')).toBeTruthy();
+        fireEvent.click(screen.getByTestId('workflow-mode-option-ralph'));
+        expect(onChange).toHaveBeenCalledWith('ralph');
+        expect(screen.queryByTestId('workflow-mode-menu')).toBeNull();
+    });
+
+    it('derives built-in pill options from the workflow registry metadata', () => {
+        expect(DEFAULT_MODE_PILL_OPTIONS).toEqual([
+            expect.objectContaining({ value: 'ask', label: 'Ask', dotClass: 'bg-yellow-500' }),
+            expect.objectContaining({ value: 'autopilot', label: 'Autopilot', dotClass: 'bg-green-500' }),
+        ]);
+        expect(getModePillOption('ralph')).toEqual(RALPH_MODE_PILL_OPTION);
+        expect(getModePillOption('for-each')).toEqual(FOR_EACH_MODE_PILL_OPTION);
+        expect(RALPH_MODE_PILL_OPTION).toEqual(expect.objectContaining({
+            value: 'ralph',
+            label: 'Ralph',
+            dotClass: 'bg-purple-500',
+        }));
+        expect(FOR_EACH_MODE_PILL_OPTION).toEqual(expect.objectContaining({
+            value: 'for-each',
+            label: 'For Each',
+            dotClass: 'bg-sky-500',
+        }));
     });
 });

@@ -747,24 +747,47 @@ describe('BranchService.amendCommitMessage', () => {
         mockedRmSync.mockReturnValue(undefined);
     }
 
-    it('writes message to temp file and runs git commit --amend --only -F', async () => {
+    it('writes message to temp file and runs git commit --amend --only -F via argv (no shell)', async () => {
         setupMocks();
-        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
         mockedExecSync.mockReturnValueOnce('abc1234\n');
 
         const result = await service.amendCommitMessage('/repo', 'Fix typo in README');
 
         expect(result).toEqual({ success: true, hash: 'abc1234' });
         expect(mockedWriteFileSync).toHaveBeenCalledWith(MOCK_MSG_PATH, 'Fix typo in README', 'utf-8');
-        expect(mockedExecAsync).toHaveBeenCalledWith(
-            `git commit --amend --only -F "${MOCK_MSG_PATH}"`,
+        // Must use execFileAsync (argv-style, no shell) — not execAsync (shell-string)
+        expect(mockedExecAsync).not.toHaveBeenCalled();
+        expect(mockedExecFileAsync).toHaveBeenCalledWith(
+            'git',
+            ['commit', '--amend', '--only', '-F', MOCK_MSG_PATH],
             expect.objectContaining({ cwd: '/repo' })
+        );
+    });
+
+    it('passes path with spaces and backslashes directly via argv without shell quoting', async () => {
+        const spaceDir = path.join('/my repo', '.git', 'tmp-amend-sp');
+        const spaceMsgPath = path.join(spaceDir, 'COMMIT_MSG');
+        mockedMkdtempSync.mockReturnValueOnce(spaceDir);
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedRmSync.mockReturnValue(undefined);
+        mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecSync.mockReturnValueOnce('hhh0009\n');
+
+        const result = await service.amendCommitMessage('/my repo', 'Windows path test');
+
+        expect(result.success).toBe(true);
+        // Path is passed as a plain argv element — no shell quoting or escaping
+        expect(mockedExecFileAsync).toHaveBeenCalledWith(
+            'git',
+            ['commit', '--amend', '--only', '-F', spaceMsgPath],
+            expect.objectContaining({ cwd: '/my repo' })
         );
     });
 
     it('includes body separated by double newline in temp file', async () => {
         setupMocks();
-        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
         mockedExecSync.mockReturnValueOnce('def5678\n');
 
         const result = await service.amendCommitMessage('/repo', 'feat: add button', 'Extended description here.');
@@ -782,19 +805,19 @@ describe('BranchService.amendCommitMessage', () => {
 
         expect(result.success).toBe(false);
         expect(result.error).toMatch(/title.*empty/i);
-        expect(mockedExecAsync).not.toHaveBeenCalled();
+        expect(mockedExecFileAsync).not.toHaveBeenCalled();
     });
 
     it('returns error when title is whitespace only', async () => {
         const result = await service.amendCommitMessage('/repo', '   ');
 
         expect(result.success).toBe(false);
-        expect(mockedExecAsync).not.toHaveBeenCalled();
+        expect(mockedExecFileAsync).not.toHaveBeenCalled();
     });
 
     it('returns error result on git failure', async () => {
         setupMocks();
-        mockedExecAsync.mockRejectedValueOnce(new Error('nothing to amend'));
+        mockedExecFileAsync.mockRejectedValueOnce(new Error('nothing to amend'));
 
         const result = await service.amendCommitMessage('/repo', 'Some title');
 
@@ -804,7 +827,7 @@ describe('BranchService.amendCommitMessage', () => {
 
     it('handles messages with double quotes', async () => {
         setupMocks();
-        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
         mockedExecSync.mockReturnValueOnce('aaa0001\n');
 
         await service.amendCommitMessage('/repo', 'Fix "the" bug');
@@ -814,7 +837,7 @@ describe('BranchService.amendCommitMessage', () => {
 
     it('handles messages with shell metacharacters ($, backticks, !)', async () => {
         setupMocks();
-        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
         mockedExecSync.mockReturnValueOnce('bbb0002\n');
 
         const title = 'Fix $HOME expansion and `command` injection!';
@@ -825,7 +848,7 @@ describe('BranchService.amendCommitMessage', () => {
 
     it('handles messages with Windows-specific characters (% and ^)', async () => {
         setupMocks();
-        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
         mockedExecSync.mockReturnValueOnce('ccc0003\n');
 
         const title = 'Fix 100% of ^caret issues';
@@ -836,7 +859,7 @@ describe('BranchService.amendCommitMessage', () => {
 
     it('handles messages with Unicode and emoji', async () => {
         setupMocks();
-        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
         mockedExecSync.mockReturnValueOnce('ddd0004\n');
 
         const title = '🐛 Fix bug in über-feature — résumé handling';
@@ -847,7 +870,7 @@ describe('BranchService.amendCommitMessage', () => {
 
     it('handles very long messages (>500 chars)', async () => {
         setupMocks();
-        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
         mockedExecSync.mockReturnValueOnce('eee0005\n');
 
         const title = 'Fix: ' + 'a'.repeat(600);
@@ -859,7 +882,7 @@ describe('BranchService.amendCommitMessage', () => {
 
     it('handles multi-line body with embedded quotes and special chars', async () => {
         setupMocks();
-        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
         mockedExecSync.mockReturnValueOnce('fff0006\n');
 
         const title = 'feat: add "login" feature';
@@ -871,7 +894,7 @@ describe('BranchService.amendCommitMessage', () => {
 
     it('cleans up temp directory on success', async () => {
         setupMocks();
-        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
         mockedExecSync.mockReturnValueOnce('ggg0007\n');
 
         await service.amendCommitMessage('/repo', 'Some title');
@@ -881,7 +904,7 @@ describe('BranchService.amendCommitMessage', () => {
 
     it('cleans up temp directory on failure', async () => {
         setupMocks();
-        mockedExecAsync.mockRejectedValueOnce(new Error('git error'));
+        mockedExecFileAsync.mockRejectedValueOnce(new Error('git error'));
 
         await service.amendCommitMessage('/repo', 'Some title');
 
@@ -890,6 +913,12 @@ describe('BranchService.amendCommitMessage', () => {
 });
 
 // ── cherryPick ──────────────────────────────────────────────
+function q(value: string): string {
+    return process.platform === 'win32'
+        ? `"${value.replace(/"/g, '\\"')}"`
+        : `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 describe('BranchService.cherryPick', () => {
     let service: BranchService;
 
@@ -909,6 +938,182 @@ describe('BranchService.cherryPick', () => {
             'git cherry-pick abc1234',
             expect.objectContaining({ cwd: '/repo' })
         );
+    });
+
+    it('cherry-picks multiple commits onto another branch and switches back', async () => {
+        mockedExecAsync
+            .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: 'target-start\n', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: 'feature\n', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        const result = await service.cherryPick('/repo', 'older123', {
+            hashes: ['older123', 'newer456'],
+            targetBranch: 'feature',
+        });
+
+        expect(result).toMatchObject({
+            success: true,
+            conflicts: false,
+            targetBranch: 'feature',
+            originalBranch: 'main',
+            appliedHashes: ['older123', 'newer456'],
+        });
+        expect(mockedExecAsync.mock.calls.map(call => call[0])).toEqual([
+            'git rev-parse --abbrev-ref HEAD',
+            'git status --porcelain',
+            `git checkout ${q('feature')}`,
+            'git rev-parse HEAD',
+            `git cherry-pick ${q('older123')}`,
+            `git cherry-pick ${q('newer456')}`,
+            'git rev-parse --abbrev-ref HEAD',
+            `git checkout ${q('main')}`,
+        ]);
+    });
+
+    it('blocks cherry-picking to another branch when the working tree is dirty', async () => {
+        mockedExecAsync
+            .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' })
+            .mockResolvedValueOnce({ stdout: ' M src/app.ts\n', stderr: '' });
+
+        const result = await service.cherryPick('/repo', 'abc1234', { targetBranch: 'feature' });
+
+        expect(result).toMatchObject({
+            success: false,
+            conflicts: false,
+            dirty: true,
+            targetBranch: 'feature',
+            originalBranch: 'main',
+        });
+        expect(result.message).toContain('commit or stash');
+        expect(mockedExecAsync.mock.calls.map(call => call[0])).toEqual([
+            'git rev-parse --abbrev-ref HEAD',
+            'git status --porcelain',
+        ]);
+    });
+
+    it('does not block or switch branches for a dirty single cherry-pick targeting the current branch', async () => {
+        mockedExecAsync
+            .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        const result = await service.cherryPick('/repo', 'abc1234', { targetBranch: 'main' });
+
+        expect(result).toMatchObject({
+            success: true,
+            conflicts: false,
+            targetBranch: 'main',
+            originalBranch: 'main',
+            appliedHashes: ['abc1234'],
+        });
+        expect(mockedExecAsync.mock.calls.map(call => call[0])).toEqual([
+            'git rev-parse --abbrev-ref HEAD',
+            `git cherry-pick ${q('abc1234')}`,
+        ]);
+    });
+
+    it('aborts a conflicting single cherry-pick targeting the current branch without resetting', async () => {
+        mockedExecAsync
+            .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' })
+            .mockRejectedValueOnce(new Error('CONFLICT (content): Merge conflict in src/foo.ts'))
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' });
+
+        const result = await service.cherryPick('/repo', 'abc1234', { targetBranch: 'main' });
+
+        expect(result).toMatchObject({
+            success: false,
+            conflicts: true,
+            targetBranch: 'main',
+            originalBranch: 'main',
+            appliedHashes: [],
+        });
+        expect(mockedExecAsync.mock.calls.map(call => call[0])).toEqual([
+            'git rev-parse --abbrev-ref HEAD',
+            `git cherry-pick ${q('abc1234')}`,
+            'git cherry-pick --abort',
+            'git rev-parse --abbrev-ref HEAD',
+        ]);
+    });
+
+    it('aborts and resets the current branch when a later multi-commit cherry-pick fails', async () => {
+        mockedExecAsync
+            .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: 'main-start\n', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockRejectedValueOnce(new Error('CONFLICT (content): Merge conflict in src/foo.ts'))
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' });
+
+        const result = await service.cherryPick('/repo', 'older123', {
+            hashes: ['older123', 'bad456'],
+            targetBranch: 'main',
+        });
+
+        expect(result).toMatchObject({
+            success: false,
+            conflicts: true,
+            targetBranch: 'main',
+            originalBranch: 'main',
+            appliedHashes: ['older123'],
+        });
+        expect(mockedExecAsync.mock.calls.map(call => call[0])).toEqual([
+            'git rev-parse --abbrev-ref HEAD',
+            'git status --porcelain',
+            'git rev-parse HEAD',
+            `git cherry-pick ${q('older123')}`,
+            `git cherry-pick ${q('bad456')}`,
+            'git cherry-pick --abort',
+            `git reset --hard ${q('main-start')}`,
+            'git rev-parse --abbrev-ref HEAD',
+        ]);
+    });
+
+    it('aborts, resets the target branch, and switches back when a cross-branch cherry-pick fails', async () => {
+        mockedExecAsync
+            .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: 'target-start\n', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockRejectedValueOnce(new Error('CONFLICT (content): Merge conflict in src/foo.ts'))
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: 'feature\n', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' });
+
+        const result = await service.cherryPick('/repo', 'older123', {
+            hashes: ['older123', 'bad456'],
+            targetBranch: 'feature',
+        });
+
+        expect(result).toMatchObject({
+            success: false,
+            conflicts: true,
+            targetBranch: 'feature',
+            originalBranch: 'main',
+            appliedHashes: ['older123'],
+        });
+        expect(mockedExecAsync.mock.calls.map(call => call[0])).toEqual([
+            'git rev-parse --abbrev-ref HEAD',
+            'git status --porcelain',
+            `git checkout ${q('feature')}`,
+            'git rev-parse HEAD',
+            `git cherry-pick ${q('older123')}`,
+            `git cherry-pick ${q('bad456')}`,
+            'git cherry-pick --abort',
+            `git reset --hard ${q('target-start')}`,
+            'git rev-parse --abbrev-ref HEAD',
+            `git checkout ${q('main')}`,
+            'git rev-parse --abbrev-ref HEAD',
+        ]);
     });
 
     it('returns conflicts: true when CONFLICT appears in the error message', async () => {
@@ -1557,6 +1762,142 @@ describe('BranchService.rewordCommit', () => {
 
         const msgCall = mockedWriteFileSync.mock.calls[0];
         expect(msgCall[1]).toBe(title.trim());
+    });
+
+    });
+
+// ── dropCommit ──────────────────────────────────────────────────
+describe('BranchService.dropCommit', () => {
+    let service: BranchService;
+    const mockedMkdtempSync = fs.mkdtempSync as Mock;
+    const mockedWriteFileSync = fs.writeFileSync as Mock;
+    const mockedRmSync = fs.rmSync as Mock;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        setLogger(nullLogger);
+        service = new BranchService();
+    });
+
+    it('returns error for empty hash', async () => {
+        const result = await service.dropCommit('/repo', '');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toMatch(/hash.*empty/i);
+        expect(mockedExecAsync).not.toHaveBeenCalled();
+    });
+
+    it('returns error for whitespace-only hash', async () => {
+        const result = await service.dropCommit('/repo', '   ');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toMatch(/hash.*empty/i);
+        expect(mockedExecAsync).not.toHaveBeenCalled();
+    });
+
+    it('calls git rebase -i with GIT_SEQUENCE_EDITOR set to drop the commit', async () => {
+        mockedExecSync
+            .mockReturnValueOnce('abc1234full\n')   // rev-parse hash
+            .mockReturnValueOnce('parent000\n');      // rev-parse parent
+        mockedMkdtempSync.mockReturnValueOnce('/repo/.git/tmp-drop-xyz');
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedRmSync.mockReturnValue(undefined);
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        const result = await service.dropCommit('/repo', 'abc1234');
+
+        expect(result.success).toBe(true);
+        expect(mockedExecAsync).toHaveBeenCalledWith(
+            expect.stringContaining('git rebase -i parent000'),
+            expect.objectContaining({
+                cwd: '/repo',
+                timeout: 600000,
+                env: expect.objectContaining({
+                    GIT_SEQUENCE_EDITOR: expect.any(String),
+                }),
+            })
+        );
+    });
+
+    it('does not set GIT_EDITOR (no message file needed)', async () => {
+        mockedExecSync
+            .mockReturnValueOnce('abc1234full\n')
+            .mockReturnValueOnce('parent000\n');
+        mockedMkdtempSync.mockReturnValueOnce('/repo/.git/tmp-drop-xyz');
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedRmSync.mockReturnValue(undefined);
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        await service.dropCommit('/repo', 'abc1234');
+
+        const [, opts] = mockedExecAsync.mock.calls[0];
+        expect(opts.env?.GIT_EDITOR).toBeUndefined();
+    });
+
+    it('aborts rebase and returns failure on rebase error', async () => {
+        mockedExecSync
+            .mockReturnValueOnce('abc1234full\n')   // rev-parse hash
+            .mockReturnValueOnce('parent000\n')       // rev-parse parent
+            .mockReturnValue('');                      // git rebase --abort (best-effort)
+        mockedMkdtempSync.mockReturnValueOnce('/repo/.git/tmp-drop-xyz');
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedRmSync.mockReturnValue(undefined);
+        mockedExecAsync.mockRejectedValueOnce(new Error('rebase conflict'));
+
+        const result = await service.dropCommit('/repo', 'abc1234');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('rebase conflict');
+        // Confirms abort was attempted (third execGitSync call)
+        expect(mockedExecSync).toHaveBeenCalledWith(
+            expect.stringContaining('git rebase --abort'),
+            expect.anything()
+        );
+    });
+
+    it('cleans up temp directory on success', async () => {
+        mockedExecSync
+            .mockReturnValueOnce('abc1234full\n')
+            .mockReturnValueOnce('parent000\n');
+        mockedMkdtempSync.mockReturnValueOnce('/repo/.git/tmp-drop-xyz');
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedRmSync.mockReturnValue(undefined);
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        await service.dropCommit('/repo', 'abc1234');
+
+        expect(mockedRmSync).toHaveBeenCalledWith('/repo/.git/tmp-drop-xyz', { recursive: true });
+    });
+
+    it('cleans up temp directory on failure', async () => {
+        mockedExecSync
+            .mockReturnValueOnce('abc1234full\n')
+            .mockReturnValueOnce('parent000\n')
+            .mockReturnValue('');
+        mockedMkdtempSync.mockReturnValueOnce('/repo/.git/tmp-drop-xyz');
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedRmSync.mockReturnValue(undefined);
+        mockedExecAsync.mockRejectedValueOnce(new Error('rebase conflict'));
+
+        await service.dropCommit('/repo', 'abc1234');
+
+        expect(mockedRmSync).toHaveBeenCalledWith('/repo/.git/tmp-drop-xyz', { recursive: true });
+    });
+
+    it('returns failure with unknown error message for non-Error throws', async () => {
+        mockedExecSync
+            .mockReturnValueOnce('abc1234full\n')
+            .mockReturnValueOnce('parent000\n')
+            .mockReturnValue('');
+        mockedMkdtempSync.mockReturnValueOnce('/repo/.git/tmp-drop-xyz');
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedRmSync.mockReturnValue(undefined);
+        mockedExecAsync.mockRejectedValueOnce('non-error string');
+
+        const result = await service.dropCommit('/repo', 'abc1234');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('Unknown error');
     });
 
     // ── getBranchStatus / hasUncommittedChanges (async) ─────────────────────────────────────────────

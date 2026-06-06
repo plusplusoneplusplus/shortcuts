@@ -4,6 +4,7 @@
  */
 
 import { createContext, useContext, useReducer, type ReactNode, type Dispatch } from 'react';
+import type { SessionContextAttachmentDragPayload } from '../features/chat/sessionContextDrag';
 
 // ── State ──────────────────────────────────────────────────────────────
 
@@ -39,6 +40,8 @@ export interface QueueContextState {
     dialogInitialWorkspaceId: string | null;
     /** Pre-filled prompt text seeded into EnqueueDialog when it opens. */
     dialogInitialPrompt: string | null;
+    /** Pointer/session context chips seeded into EnqueueDialog when it opens. */
+    dialogAttachedContext: SessionContextAttachmentDragPayload[] | null;
     /** When 'ask', the dialog creates a read-only chat instead of a follow-prompt task.
      *  When 'resolve', the dialog submits via the resolve callback instead of the queue API. */
     dialogMode: 'task' | 'ask' | 'resolve';
@@ -109,6 +112,7 @@ const initialState: QueueContextState = {
     dialogInitialFolderPath: null,
     dialogInitialWorkspaceId: null,
     dialogInitialPrompt: null,
+    dialogAttachedContext: null,
     dialogMode: 'task',
     dialogLaunchMode: 'default',
     dialogContextFiles: null,
@@ -143,7 +147,7 @@ export type QueueAction =
     | { type: 'DRAIN_COMPLETE' }
     | { type: 'DRAIN_TIMEOUT' }
     | { type: 'TOGGLE_DIALOG' }
-    | { type: 'OPEN_DIALOG'; folderPath?: string | null; workspaceId?: string | null; mode?: 'task' | 'ask' | 'resolve'; initialPrompt?: string | null; launchMode?: 'default' | 'floating-chat'; contextFiles?: string[] | null; contextTaskName?: string | null; bulkMode?: boolean; resolveContext?: QueueContextState['dialogResolveContext'] }
+    | { type: 'OPEN_DIALOG'; folderPath?: string | null; workspaceId?: string | null; mode?: 'task' | 'ask' | 'resolve'; initialPrompt?: string | null; attachedContext?: SessionContextAttachmentDragPayload[] | null; launchMode?: 'default' | 'floating-chat'; contextFiles?: string[] | null; contextTaskName?: string | null; bulkMode?: boolean; resolveContext?: QueueContextState['dialogResolveContext'] }
     | { type: 'CLOSE_DIALOG' }
     | { type: 'TOGGLE_HISTORY' }
     | { type: 'SET_FOLLOW_UP_STREAMING'; value: boolean; turnIndex: number | null }
@@ -223,9 +227,9 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
         case 'TOGGLE_DIALOG':
             return { ...state, showDialog: !state.showDialog };
         case 'OPEN_DIALOG':
-            return { ...state, showDialog: true, dialogInitialFolderPath: action.folderPath ?? null, dialogInitialWorkspaceId: action.workspaceId ?? null, dialogInitialPrompt: action.initialPrompt ?? null, dialogMode: action.mode ?? 'task', dialogLaunchMode: action.launchMode ?? 'default', dialogContextFiles: action.contextFiles ?? null, dialogContextTaskName: action.contextTaskName ?? null, dialogBulkMode: action.bulkMode ?? false, dialogResolveContext: action.resolveContext ?? null };
+            return { ...state, showDialog: true, dialogInitialFolderPath: action.folderPath ?? null, dialogInitialWorkspaceId: action.workspaceId ?? null, dialogInitialPrompt: action.initialPrompt ?? null, dialogAttachedContext: action.attachedContext ?? null, dialogMode: action.mode ?? 'task', dialogLaunchMode: action.launchMode ?? 'default', dialogContextFiles: action.contextFiles ?? null, dialogContextTaskName: action.contextTaskName ?? null, dialogBulkMode: action.bulkMode ?? false, dialogResolveContext: action.resolveContext ?? null };
         case 'CLOSE_DIALOG':
-            return { ...state, showDialog: false, dialogInitialFolderPath: null, dialogInitialWorkspaceId: null, dialogInitialPrompt: null, dialogMode: 'task', dialogLaunchMode: 'default', dialogContextFiles: null, dialogContextTaskName: null, dialogBulkMode: false, dialogResolveContext: null };
+            return { ...state, showDialog: false, dialogInitialFolderPath: null, dialogInitialWorkspaceId: null, dialogInitialPrompt: null, dialogAttachedContext: null, dialogMode: 'task', dialogLaunchMode: 'default', dialogContextFiles: null, dialogContextTaskName: null, dialogBulkMode: false, dialogResolveContext: null };
         case 'TOGGLE_HISTORY':
             return { ...state, showHistory: !state.showHistory };
         case 'SET_FOLLOW_UP_STREAMING':

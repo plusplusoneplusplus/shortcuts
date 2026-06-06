@@ -17,6 +17,7 @@ import {
     buildWslCommandArgs,
     getWslExecutablePath,
     resolveWorkspaceExecutionContext,
+    translatePathForExecution,
 } from '../utils/workspace-execution';
 import {
     BranchStatus,
@@ -24,6 +25,8 @@ import {
     BranchListOptions,
     PaginatedBranchResult,
     GitOperationResult,
+    GitCherryPickOptions,
+    GitCherryPickResult,
     GitPatchApplyOptions,
     GitPatchApplyResult,
     GitPatchExportResult,
@@ -103,6 +106,55 @@ export class BranchService {
                 ...options.env,
             },
         });
+        return stdout;
+    }
+
+    /**
+     * Execute git with an explicit argv array (no shell interpolation).
+     * Safe for paths with spaces, backslashes, or shell metacharacters on all platforms.
+     * For WSL contexts, path arguments are translated from Windows UNC paths to Linux paths.
+     */
+    private async execGitFileAsync(args: string[], options: GitExecOptions): Promise<string> {
+        await ensureGitSafeDirectoryAsync(options.cwd);
+        const executionContext = resolveWorkspaceExecutionContext(options.cwd);
+
+        if (executionContext.kind === 'wsl') {
+            const translatedArgs = args.map(arg => {
+                try {
+                    return translatePathForExecution(arg, executionContext);
+                } catch {
+                    return arg;
+                }
+            });
+            const { stdout } = await execFileAsync(
+                getWslExecutablePath(),
+                buildWslCommandArgs(executionContext, ['git', ...translatedArgs]),
+                {
+                    timeout: options.timeout || 30000,
+                    windowsHide: true,
+                    env: {
+                        ...process.env,
+                        GIT_TERMINAL_PROMPT: '0',
+                        ...options.env,
+                    },
+                },
+            );
+            return stdout;
+        }
+
+        const { stdout } = await execFileAsync(
+            'git',
+            args,
+            {
+                cwd: options.cwd,
+                timeout: options.timeout || 30000,
+                env: {
+                    ...process.env,
+                    GIT_TERMINAL_PROMPT: '0',
+                    ...options.env,
+                },
+            },
+        );
         return stdout;
     }
 
@@ -747,21 +799,137 @@ export class BranchService {
     }
 
     /**
-     * Cherry-pick a commit onto the current branch.
-     * @returns success: true on clean apply, conflicts: true when merge conflicts occur
+     * Cherry-pick commit(s). Existing callers that omit options keep the plain
+     * "onto current HEAD" behavior, while branch-targeted calls are atomic.
      */
-    async cherryPick(repoRoot: string, hash: string): Promise<{ success: boolean; conflicts: boolean; message: string }> {
+    async cherryPick(repoRoot: string, hash: string, options?: GitCherryPickOptions): Promise<GitCherryPickResult> {
+        const hashes = options?.hashes?.length ? options.hashes : [hash];
+        const targetBranch = options?.targetBranch?.trim();
+        if (!options || (!targetBranch && hashes.length === 1)) {
+            return this.cherryPickOntoCurrentHead(repoRoot, hash);
+        }
+
+        const originalBranch = await this.getCurrentBranchName(repoRoot);
+        if (targetBranch && !originalBranch) {
+            return {
+                success: false,
+                conflicts: false,
+                message: 'Cannot determine current branch (detached HEAD?)',
+                targetBranch,
+                originalBranch,
+            };
+        }
+        const shouldSwitch = Boolean(targetBranch && originalBranch && targetBranch !== originalBranch);
+        const shouldRollbackToStartingHead = shouldSwitch || hashes.length > 1;
+        const appliedHashes: string[] = [];
+        let targetStartingHead: string | null = null;
+
+        if (shouldRollbackToStartingHead && await this.hasUncommittedChanges(repoRoot)) {
+            return {
+                success: false,
+                conflicts: false,
+                dirty: true,
+                message: 'Working tree must be clean before atomic cherry-picking. Please commit or stash your changes.',
+                targetBranch,
+                originalBranch,
+            };
+        }
+
+        try {
+            if (shouldSwitch) {
+                await this.execGit(`git checkout ${this.quoteShellArg(targetBranch!)}`, { cwd: repoRoot });
+            }
+            if (shouldRollbackToStartingHead) {
+                targetStartingHead = (await this.execGit('git rev-parse HEAD', { cwd: repoRoot })).trim();
+            }
+
+            for (const commitHash of hashes) {
+                await this.execGit(`git cherry-pick ${this.quoteShellArg(commitHash)}`, { cwd: repoRoot });
+                appliedHashes.push(commitHash);
+            }
+
+            return {
+                success: true,
+                conflicts: false,
+                message: hashes.length === 1 ? 'Cherry-pick applied successfully' : 'Cherry-picks applied successfully',
+                targetBranch: targetBranch || originalBranch || undefined,
+                originalBranch,
+                appliedHashes,
+            };
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            const isConflict = this.isCherryPickConflict(errorMessage);
+
+            await this.abortCherryPickAndRestoreBranch(repoRoot);
+            if (targetStartingHead) {
+                try {
+                    await this.execGit(`git reset --hard ${this.quoteShellArg(targetStartingHead)}`, { cwd: repoRoot });
+                } catch (resetError) {
+                    getLogger().error('Git', `Failed to reset cherry-pick target branch to ${targetStartingHead}`, resetError instanceof Error ? resetError : undefined);
+                }
+            }
+            await this.switchBackToOriginalBranch(repoRoot, originalBranch);
+
+            if (isConflict) {
+                return {
+                    success: false,
+                    conflicts: true,
+                    message: errorMessage,
+                    targetBranch,
+                    originalBranch,
+                    appliedHashes,
+                };
+            }
+            getLogger().error('Git', `Failed to cherry-pick ${hashes.join(', ')}`, error instanceof Error ? error : undefined);
+            return {
+                success: false,
+                conflicts: false,
+                message: errorMessage,
+                targetBranch,
+                originalBranch,
+                appliedHashes,
+            };
+        } finally {
+            if (shouldSwitch) {
+                await this.switchBackToOriginalBranch(repoRoot, originalBranch);
+            }
+        }
+    }
+
+    private async cherryPickOntoCurrentHead(repoRoot: string, hash: string): Promise<GitCherryPickResult> {
         try {
             await this.execGit(`git cherry-pick ${hash}`, { cwd: repoRoot });
             return { success: true, conflicts: false, message: 'Cherry-pick applied successfully' };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            const isConflict = /CONFLICT|conflict/i.test(errorMessage) || /cherry-pick.*conflict/i.test(errorMessage) || /Merge conflict/i.test(errorMessage);
-            if (isConflict) {
+            if (this.isCherryPickConflict(errorMessage)) {
                 return { success: false, conflicts: true, message: errorMessage };
             }
             getLogger().error('Git', `Failed to cherry-pick ${hash}`, error instanceof Error ? error : undefined);
             return { success: false, conflicts: false, message: errorMessage };
+        }
+    }
+
+    private isCherryPickConflict(errorMessage: string): boolean {
+        return /CONFLICT|conflict/i.test(errorMessage) || /cherry-pick.*conflict/i.test(errorMessage) || /Merge conflict/i.test(errorMessage);
+    }
+
+    private async abortCherryPickAndRestoreBranch(repoRoot: string): Promise<void> {
+        try {
+            await this.execGit('git cherry-pick --abort', { cwd: repoRoot });
+        } catch {
+            // No cherry-pick may be in progress for non-conflict failures.
+        }
+    }
+
+    private async switchBackToOriginalBranch(repoRoot: string, originalBranch: string | null): Promise<void> {
+        if (!originalBranch) return;
+        const currentBranch = await this.getCurrentBranchName(repoRoot);
+        if (currentBranch === originalBranch) return;
+        try {
+            await this.execGit(`git checkout ${this.quoteShellArg(originalBranch)}`, { cwd: repoRoot });
+        } catch (error) {
+            getLogger().error('Git', `Failed to switch back to branch ${originalBranch}`, error instanceof Error ? error : undefined);
         }
     }
 
@@ -914,7 +1082,7 @@ export class BranchService {
         const msgPath = path.join(tmpDir, 'COMMIT_MSG');
         try {
             fs.writeFileSync(msgPath, message, 'utf-8');
-            await this.execGit(`git commit --amend --only -F "${msgPath}"`, { cwd: repoRoot });
+            await this.execGitFileAsync(['commit', '--amend', '--only', '-F', msgPath], { cwd: repoRoot });
             const hash = this.execGitSync('git rev-parse HEAD', { cwd: repoRoot }).trim();
             return { success: true, hash };
         } catch (error) {
@@ -1107,6 +1275,60 @@ export class BranchService {
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             getLogger().error('Git', 'Failed to reword commit', error instanceof Error ? error : undefined);
+            return { success: false, error: errorMessage };
+        } finally {
+            if (tmpDir) {
+                try { fs.rmSync(tmpDir, { recursive: true }); } catch { /* best effort */ }
+            }
+        }
+    }
+
+    /**
+     * Drop a single unpushed commit from history via interactive rebase.
+     * Uses GIT_SEQUENCE_EDITOR to replace `pick <hash>` with `drop <hash>`.
+     * On any error the rebase is automatically aborted to prevent leaving a
+     * rebase-in-progress state.
+     */
+    async dropCommit(repoRoot: string, hash: string): Promise<GitOperationResult> {
+        if (!hash || !hash.trim()) {
+            return { success: false, error: 'Commit hash must not be empty' };
+        }
+        let tmpDir: string | undefined;
+        try {
+            const fullHash = this.execGitSync(`git rev-parse ${hash}`, { cwd: repoRoot }).trim();
+            const parentHash = this.execGitSync(`git rev-parse ${fullHash}~1`, { cwd: repoRoot }).trim();
+
+            tmpDir = fs.mkdtempSync(path.join(repoRoot, '.git', 'tmp-drop-'));
+
+            let seqEditor: string;
+            if (process.platform === 'win32') {
+                const seqScriptPath = path.join(tmpDir, 'seq-editor.cmd');
+                const shortHash = fullHash.slice(0, 7);
+                fs.writeFileSync(seqScriptPath,
+                    `@echo off\r\n` +
+                    `powershell -NoProfile -Command "(Get-Content '%1') -replace '^pick ${shortHash}', 'drop ${shortHash}' | Set-Content '%1'"\r\n`,
+                    'utf-8');
+                seqEditor = seqScriptPath;
+            } else {
+                const seqScriptPath = path.join(tmpDir, 'seq-editor.sh');
+                const shortHash = fullHash.slice(0, 7);
+                fs.writeFileSync(seqScriptPath,
+                    `#!/bin/sh\nsed -i "s/^pick ${shortHash}/drop ${shortHash}/" "$1"\n`,
+                    { mode: 0o755 });
+                seqEditor = seqScriptPath;
+            }
+
+            await this.execGit(`git rebase -i ${parentHash}`, {
+                cwd: repoRoot,
+                timeout: 600000,
+                env: { GIT_SEQUENCE_EDITOR: seqEditor },
+            });
+
+            return { success: true };
+        } catch (error) {
+            try { this.execGitSync('git rebase --abort', { cwd: repoRoot }); } catch { /* best effort */ }
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            getLogger().error('Git', 'Failed to drop commit', error instanceof Error ? error : undefined);
             return { success: false, error: errorMessage };
         } finally {
             if (tmpDir) {

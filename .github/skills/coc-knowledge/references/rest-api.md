@@ -13,7 +13,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | GET | `/api/logs` | Server log ring buffer |
 | GET | `/api/stats` | Token usage + cost stats |
 | GET | `/api/agent-providers` | Copilot/Codex/Claude enabled + SDK availability status. Codex auth is handled by the Codex SDK/CLI, not CoC routes |
-| GET | `/api/agent-providers/quota` | Provider quota snapshots where supported |
+| GET | `/api/agent-providers/quota` | Cached provider quota snapshots where supported; `?force=1` refreshes live provider data and updates the cache |
 
 ## Agent Providers
 
@@ -55,6 +55,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/git/clone` | Clone an arbitrary git URL into a parent directory using the server process's git credentials; returns `clonedPath` on success and `{ error }` on clone failure |
+| POST | `/api/workspaces/:id/git/cherry-pick` | Cherry-pick commit(s) in a workspace. Body accepts `{ hash }` for the existing single-commit current-HEAD behavior, or `{ hash, hashes, targetBranch }` to apply multiple commits in caller-provided order onto a local target branch; cross-branch picks require a clean working tree and return `409 { dirty: true }` when blocked |
 | POST | `/api/workspaces/:id/git/patch/export` | Export one commit from a registered workspace as a format-patch payload for cross-clone cherry-pick flows. Body `{ hash }`; response includes source workspace metadata, source commit metadata, normalized source remote URL, and `{ format: 'format-patch', body }` without source root paths or raw remote credentials |
 | POST | `/api/workspaces/:id/git/patch/apply` | Apply a format-patch payload to the target workspace with `git am --3way`. Body `{ patch: { format: 'format-patch', body }, stashAndContinue?, sourceServer?, sourceWorkspace?, sourceCommit?, normalizedSourceRemoteUrl? }`; dirty targets return `409 { dirty: true }` unless `stashAndContinue` is explicitly true, conflicts return `409 { conflicts: true }`, and clean applies return the target branch, new target HEAD/commit hash, and a target-scoped `cherry-pick-transfer` git-op record with sanitized source/target metadata |
 

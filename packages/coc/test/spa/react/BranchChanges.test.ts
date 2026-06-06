@@ -235,6 +235,14 @@ describe('BranchChanges', () => {
             expect(source).toContain('data-testid="branch-changes-badge"');
             expect(source).toContain('Branch Range');
         });
+
+        it('makes the branch-range header a shared pointer context drag source', () => {
+            expect(source).toContain('createGitRangeContextDragPayload');
+            expect(source).toContain('writePointerContextDragData');
+            expect(source).toContain('isSessionContextAttachmentsEnabled');
+            expect(source).toContain('data-session-context-kind={sessionContextPayload ? \'range\' : undefined}');
+            expect(source).toContain('drag to attach as range context');
+        });
     });
 
     describe('rendering — expanded state', () => {

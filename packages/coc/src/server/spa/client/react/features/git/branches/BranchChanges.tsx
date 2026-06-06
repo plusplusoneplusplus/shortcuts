@@ -18,6 +18,8 @@ import { buildFileTree, compactFolders, FileTreeView, FlatFileList } from '../di
 import type { FileChange } from '../diff/FileTree';
 import { useFilesViewMode } from '../hooks/useFilesViewMode';
 import { UnifiedDiffViewer } from '../diff/UnifiedDiffViewer';
+import { createGitRangeContextDragPayload, writePointerContextDragData } from '../../chat/sessionContextDrag';
+import { isSessionContextAttachmentsEnabled } from '../../../utils/config';
 
 export interface BranchRangeInfo {
     baseRef: string;
@@ -47,6 +49,9 @@ interface BranchRangeFile extends FileChange {}
 
 export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDefaultBranch, onFileSelect, selectedFile, onBranchContextMenu, onBranchRangeSelect }: BranchChangesProps) {
     const rangeInfo = branchRangeData ?? null;
+    const sessionContextPayload = isSessionContextAttachmentsEnabled() && rangeInfo
+        ? createGitRangeContextDragPayload(rangeInfo, { activeWorkspaceId: workspaceId })
+        : null;
     const [files, setFiles] = useState<BranchRangeFile[]>([]);
     const [filesLoading, setFilesLoading] = useState(false);
     const [expanded, setExpanded] = useState(false);
@@ -171,7 +176,12 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
                 className="w-full flex items-center gap-2 px-2.5 py-1.5 bg-[#0078d4]/[0.05] dark:bg-[#3794ff]/[0.08] hover:bg-[#0078d4]/[0.09] dark:hover:bg-[#3794ff]/[0.14] text-left cursor-pointer transition-colors min-h-[38px]"
                 onClick={() => { setExpanded(prev => !prev); onBranchRangeSelect?.(); }}
                 onContextMenu={(e) => { if (e.shiftKey) return; e.preventDefault(); e.stopPropagation(); onBranchContextMenu?.(e); }}
+                draggable={!!sessionContextPayload}
+                onDragStart={sessionContextPayload ? e => writePointerContextDragData(e.dataTransfer, sessionContextPayload) : undefined}
                 data-testid="branch-changes-header"
+                data-session-context-source={sessionContextPayload ? 'true' : undefined}
+                data-session-context-kind={sessionContextPayload ? 'range' : undefined}
+                title={sessionContextPayload ? `${sessionContextPayload.label} - drag to attach as range context` : undefined}
                 aria-expanded={expanded}
             >
                 <span className="text-[10px] text-[#848484] dark:text-[#9d9d9d] flex-shrink-0 w-3 text-center">

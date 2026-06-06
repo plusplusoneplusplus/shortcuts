@@ -282,6 +282,19 @@ describe('ConversationTurnBubble — attached session context blocks', () => {
         ].join('\n');
     }
 
+    function makePointerContextContent(message = 'Review this pointer.'): string {
+        return [
+            '<attached_pointer_context version="1">',
+            '<source workspace_id="ws-1" kind="pull-request" label="PR #45" pull_request_id="45" number="45" status="open">',
+            '<title>Review context drag</title>',
+            '<instruction>Before answering, use the pointer metadata above to retrieve this pull request from the active workspace if details are needed. This pointer block contains only stable references and safe display metadata.</instruction>',
+            '</source>',
+            '</attached_pointer_context>',
+            '',
+            message,
+        ].join('\n');
+    }
+
     beforeEach(() => {
         vi.restoreAllMocks();
     });
@@ -399,6 +412,22 @@ describe('ConversationTurnBubble — attached session context blocks', () => {
         expect(spy).toHaveBeenCalledTimes(1);
         expect(spy.mock.calls[0][0]).toContain('<attached_ralph_session_context version="1">');
         expect(spy.mock.calls[0][0]).toContain('ralph_session_id="ralph-session-1234567890"');
+    });
+
+    it('renders persisted pointer context blocks as collapsed cards', () => {
+        render(
+            <ConversationTurnBubble
+                turn={makeTurn({ role: 'user', content: makePointerContextContent() })}
+            />
+        );
+
+        const card = screen.getByTestId('attached-pointer-context-block') as HTMLDetailsElement;
+        expect(card.open).toBe(false);
+        expect(card.dataset.contextKind).toBe('pull-request');
+        expect(screen.getByTestId('attached-pointer-context-summary').textContent).toContain('PR #45');
+        expect(screen.getByTestId('attached-pointer-context-meta').textContent).toContain('open');
+        expect(screen.getByTestId('user-plain-text')?.textContent).toBe('Review this pointer.');
+        expect(screen.getByTestId('user-plain-text')?.textContent).not.toContain('attached_pointer_context');
     });
 
     it('renders coexisting session and Ralph cards while raw mode still exposes exact persisted content', () => {

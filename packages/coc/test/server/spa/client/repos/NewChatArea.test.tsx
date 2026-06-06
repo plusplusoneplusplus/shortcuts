@@ -119,6 +119,61 @@ vi.mock('../../../../../src/server/spa/client/react/ui/AttachmentPreviews', () =
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
+    WORKFLOW_REGISTRY: [
+        {
+            mode: 'ask',
+            icon: '💡',
+            label: 'Ask',
+            tooltip: 'Ask — get answers without making changes',
+            dotClass: 'bg-yellow-500',
+            border: 'border-yellow-500',
+            ring: 'ring-yellow-500',
+            text: 'text-yellow-600',
+            defaultVisible: true,
+        },
+        {
+            mode: 'autopilot',
+            icon: '🤖',
+            label: 'Autopilot',
+            tooltip: 'Autopilot — execute changes automatically',
+            dotClass: 'bg-green-500',
+            border: 'border-green-500',
+            ring: 'ring-green-500',
+            text: 'text-green-600',
+            defaultVisible: true,
+        },
+        {
+            mode: 'ralph',
+            icon: '🔄',
+            label: 'Ralph',
+            tooltip: 'Ralph — iterative AI coding loop with guided goal setting',
+            dotClass: 'bg-purple-500',
+            border: 'border-purple-500',
+            ring: 'ring-purple-500',
+            text: 'text-purple-600',
+            category: 'workflow',
+            featureFlag: 'ralph',
+        },
+        {
+            mode: 'for-each',
+            icon: '🔁',
+            label: 'For Each',
+            tooltip: 'For Each — generate a reviewed item plan, then run each item separately',
+            dotClass: 'bg-sky-500',
+            border: 'border-sky-500',
+            ring: 'ring-sky-500',
+            text: 'text-sky-600',
+            category: 'workflow',
+            featureFlag: 'for-each',
+        },
+    ],
+    DEFAULT_CHAT_MODES: ['ask', 'autopilot'],
+    getVisibleChatModes: ({ category, featureFlags }: { category?: string; featureFlags?: Record<string, boolean> }) => {
+        if (category === 'workflow') {
+            return featureFlags?.['for-each'] ? ['for-each'] : [];
+        }
+        return ['ask', 'autopilot'];
+    },
     MODE_BORDER_COLORS: {
         autopilot: { border: 'border-green-500', ring: 'ring-green-500' },
         ask: { border: 'border-yellow-500', ring: 'ring-yellow-500' },
@@ -501,7 +556,8 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'for-each-generation-task' } });
 
         render(<NewChatArea workspaceId="ws-1" />);
-        fireEvent.click(screen.getByTestId('mode-pill-for-each'));
+        fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
+        fireEvent.click(screen.getByTestId('workflow-mode-option-for-each'));
         typeInInput('Split this work into items');
         await clickSend();
 
@@ -544,6 +600,7 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         render(<NewChatArea workspaceId="ws-1" />);
 
         expect(screen.queryByTestId('mode-pill-for-each')).toBeNull();
+        expect(screen.queryByTestId('workflow-mode-trigger')).toBeNull();
     });
 
     it('uses the normal chat payload capabilities for For Each generation', async () => {
@@ -604,7 +661,8 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
 
         fireEvent.click(screen.getByTestId('effort-pill-trigger-btn'));
         fireEvent.click(screen.getByTestId('effort-pill-option-high'));
-        fireEvent.click(screen.getByTestId('mode-pill-for-each'));
+        fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
+        fireEvent.click(screen.getByTestId('workflow-mode-option-for-each'));
         typeInInput('/safety Split into safer tasks');
         await clickSend();
 

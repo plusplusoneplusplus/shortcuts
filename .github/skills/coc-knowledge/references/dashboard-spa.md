@@ -51,11 +51,13 @@ when pinned, while retaining the pinned affordance. Parent rows expose the same
 hover pin affordance and context-menu
 Pin to top/Unpin actions as individual chat rows, but those actions call the
 workspace group-pin API instead of changing child process `pinnedAt`.
-The chat-list multi-select range model follows the rendered Ralph rows:
-collapsed sessions count as one row and expand to all child process IDs when
-selected, while expanded sessions range over individual child rows. For Each run
-groups are backed by workspace-scoped `client.forEach.list(workspaceId)`
-summaries and nest linked generation/child chats by `payload.context.forEach`,
+The chat-list multi-select range model follows rendered grouped rows:
+collapsed Ralph sessions and For Each runs count as one row and expand to their
+real child process IDs when selected; expanded groups range over visible child
+rows, and desktop Shift-click on a parent row uses that parent as a range
+endpoint without opening the detail pane. For Each run groups are backed by
+workspace-scoped `client.forEach.list(workspaceId)` summaries and nest linked
+generation/child chats by `payload.context.forEach`,
 persisted `forEach` metadata, or `generationProcessId` so child chats do not
 duplicate as standalone rows.
 
@@ -110,7 +112,24 @@ green when provider metadata is missing.
 `ConversationMetadataPopover` keeps long identifiers as separate label/value rows
 for wrapping and log links, while short categorical fields render as a compact
 summary chip strip and related fields collapse into `Time`, `Workspace`,
-`Ralph`, `Goal`, and `System` rows.
+`Ralph`, `Goal`, and `System` rows. When a process exposes
+`cumulativeTokenUsage`, the popover also renders live conversation-level
+`Tokens` and `USD cost` rows: token totals expand to input/output/cache
+breakdowns, and cost uses the server-derived native-first
+`conversationCostEstimate.displayedUsdCost` (`actualUsdCost ?? estimatedUsdCost`
+per turn) with compact source labels, URL-backed pricing-source links, and
+partial/unavailable-pricing caveats. While a conversation is
+running, `useChatSSE` mirrors `token-usage` event `cumulativeTokenUsage` and
+`conversationCostEstimate` snapshots into the cached process details that feed
+the popover; after completion, the normal process refresh replaces that live
+snapshot with the final server read model.
+
+`UsageStatsView` renders token totals per model/day plus USD-only cost metadata
+for every populated usage cell. The displayed cost uses the native-first
+`displayedUsdCost` field (`actualUsdCost ?? estimatedUsdCost` as computed by the
+server/Forge layer); cells without a displayable USD value show explicit
+`USD pricing unavailable` copy instead of silently leaving cost blank. The UI
+does not render Copilot premium request units.
 
 ## Tool Call Rendering
 
@@ -143,46 +162,67 @@ collapse. Generic `ToolCallView` still handles `ask_user` as a fallback and
 summarizes `args.questions[0].question` when present.
 
 `toolNormalization.ts` → `normalizeToolName()` canonicalises SDK-specific names before display and storage. Notable aliases: `read_file`/`open_file` → `view`, `edit_file`/`str_replace`/`str_replace_editor` → `edit`, `write_file`/`create_file` → `create`, `command_execution` → `shell`, `file_change` → `apply_patch`, `Skill` (Claude Code SDK PascalCase) → `skill`. All downstream logic (`getToolKindInfo`, `getToolSummary`, `filterWhisperChunks` skill counting) operates on the normalised lowercase name.
+For Codex `file_change` calls normalized to `apply_patch`, `ToolCallView`
+continues to summarize from `args.changes`; when the backend enriches the
+parameters with a unified `args.diff`, expanded tool details and hover previews
+render that patch text instead of the short result summary.
 
 ## Input Area
 
 Stacked layout with:
 1. `RichTextInput` (contenteditable)
 2. Toolbar reads as ownership zones separated by 1 px vertical dividers (`chat-toolbar-divider-*`):
-    - **New chat (`NewChatArea`)**: `AgentSelectorChip` → divider → `ModePillSelector` → divider → model picker → `EffortPillSelector` → spacer → ctool buttons (`/`, `@`, attach) → divider → send. When Ralph is selected, the send control is a split submit: the primary action is **Grill** and still enqueues the existing ask-mode grilling flow, while **Start from goal...** opens an editable direct-goal review dialog that posts the reviewed text to `/api/ralph-launch` without sending attachments. When `forEach.enabled` is true, New Chat also shows `For Each` as a distinct mode with the internal value `for-each`; it is not shown in follow-up composers. Submitting For Each creates a normal persisted Ask-mode generation chat, selects it in the Activity detail pane, and stores `payload.context.forEach.kind='generation'` metadata with workspace, generation ID, child mode, original request, status, latest valid structured plan, latest invalid-plan error, and eventual run linkage. The generation chat uses the normal provider/model/reasoning, slash-skill, prompt-history, session-context, and file/image attachment path; follow-ups remain locked to the For Each plan-generation system context through persisted process metadata. `ForEachPlanReviewCard` renders the persisted latest valid plan when available, falls back to transcript scanning for newer assistant turns, keeps the previous valid plan when a refinement emits invalid JSON or no Advanced JSON, shows that error inline, renders a structured editor plus Advanced JSON fallback, and approves through `client.forEach.create/updatePlan/approve` without calling child start/continue endpoints. `ChatListPane` renders these generation chats as normal chat-history rows with a sky-blue **For Each** badge and a generated-plan preview such as `3 proposed items - draft` or `1 proposed item - approved`.
+    - **New chat (`NewChatArea`)**: `AgentSelectorChip` → divider → primary `ModePillSelector` (Ask/Autopilot) plus a Workflow submenu for enabled workflow modes → divider → model picker → `EffortPillSelector` → spacer → ctool buttons (`/`, `@`, attach) → divider → send. Ralph is selected from the Workflow submenu; when active, the send control is a split submit: the primary action is **Grill** and still enqueues the existing ask-mode grilling flow, while **Start from goal...** opens an editable direct-goal review dialog that posts the reviewed text to `/api/ralph-launch` without sending attachments. When `forEach.enabled` is true, New Chat exposes `For Each` through the Workflow submenu with the internal value `for-each`; it is not shown in follow-up composers. Submitting For Each creates a normal persisted Ask-mode generation chat, selects it in the Activity detail pane, and stores `payload.context.forEach.kind='generation'` metadata with workspace, generation ID, child mode, original request, status, latest valid structured plan, latest invalid-plan error, and eventual run linkage. The generation chat uses the normal provider/model/reasoning, slash-skill, prompt-history, session-context, and file/image attachment path; follow-ups remain locked to the For Each plan-generation system context through persisted process metadata. `ForEachPlanReviewCard` renders the persisted latest valid plan when available, falls back to transcript scanning for newer assistant turns, keeps the previous valid plan when a refinement emits invalid JSON or no Advanced JSON, shows that error inline, renders a structured editor plus Advanced JSON fallback, and approves through `client.forEach.create/updatePlan/approve` without calling child start/continue endpoints. `ChatListPane` renders these generation chats as normal chat-history rows with a sky-blue **For Each** badge and a generated-plan preview such as `3 proposed items - draft` or `1 proposed item - approved`.
    - **Follow-up (`FollowUpInputArea`)**: provider chip → divider → `ModePillSelector` → divider → model picker → `EffortPillSelector` (rendered only when the parent supplies `onEffortChange`) → spacer → ctool buttons → `ComposerMetaStrip` → divider → `QueueFollowUpButton`. Provider isn't switchable on a follow-up (locked to the session), so the provider chip is read-only. At widths below `lg` (≤1023px), the row stays `flex-nowrap`, the segmented mode selector collapses to a tap-to-cycle button, slash/mention/attach collapse into a single overflow menu, `ComposerMetaStrip` is hidden, and visible reachable controls use approximately 32px tap targets; `lg:` classes restore the compact desktop sizes and wrapping behavior.
+   - **Focused composer shortcuts**: model/slash menus keep first priority. With the text input focused and no slash/model menu open, `Shift+Up/Down` cycles the visible effort control in both composers (`EffortTierSelector` skips unconfigured tiers; legacy `EffortPillSelector` cycles Auto plus selectable supported efforts). In `NewChatArea` only, provider cycling uses `Ctrl+Up/Down` on Windows/Linux and `Cmd+Up/Down` on macOS, skips disabled/unavailable providers, and persists through the repo-scoped `lastChatProvider` preference. These shortcuts are intentionally not exposed in toolbar labels, tooltips, or ARIA copy.
 3. `ComposerMetaStrip`: cwd chip + context-window fuel gauge + provider badge for non-Copilot sessions. The context-window gauge renders a segmented system/tool/conversation breakdown when `useChatSSE` receives all three persisted snapshot values (`sessionSystemTokens`, `sessionToolTokens`, `sessionConversationTokens`) or the same fields from live `token-usage`; otherwise it falls back to the single-colour usage bar. In the follow-up toolbar it sits between the tools zone and the send divider so its info reads as status next to send.
 
 Focus indicator propagates mode-colored ring from contenteditable to parent card.
 
 When `features.sessionContextAttachments` is enabled, same-workspace chat/process
-rows and Ralph session group rows are copy-drag context sources. Both
-`NewChatArea` and `FollowUpInputArea` accept drag/drop payloads for single source
-sessions and Ralph groups. The composers validate same-workspace, duplicate,
-self-drop/current-child, three-logical-attachment cap, and `get_conversation`
-tool availability before adding removable context chips through
-`AttachedContextPreviews`; single sessions render as neutral **Session** chips,
-while Ralph groups render as purple **RALPH** chips with phase/status,
-process/iteration counts, latest activity, and a shortened Ralph session ID.
-Send paths re-check the same constraints before formatting already-attached
+rows, Ralph session group rows, Work Item list/hierarchy rows, Git commit rows,
+branch range headers/overview headers, and Pull Request rows are copy-drag
+context sources. `NewChatArea`, `FollowUpInputArea`, and the desktop repo header
+Queue Task / Ask buttons accept these shared drag/drop payloads. The composers
+show a dashed copy-context overlay while supported payloads are dragged over
+them and render inline feedback for unsupported drops. They validate
+same-workspace, duplicate, self-drop/current-child for session-backed pointers,
+and a shared three-logical-attachment cap before adding removable context chips
+through `AttachedContextPreviews`. `get_conversation` tool availability is
+required only for single-session and Ralph pointers. Single
+sessions render as neutral **Session** chips, Ralph groups render as purple
+**RALPH** chips, and Work Item/Commit/Range/PR pointers render as sky chips with
+stable labels such as `Work Item #123`, `Commit abc1234`, `Range base..head`,
+and `PR #45` plus short safe metadata. Git commit row body drags are copy-only
+context drags; the existing unpushed-commit reorder path remains isolated to the
+row's grab handle so context dragging does not trigger commit reordering.
+
+The header buttons validate the drop, open the queue dialog in task or ask mode,
+and seed a removable context chip without submitting. Send paths re-check the same constraints before formatting already-attached
 source IDs so stale feature/capability state cannot send unusable pointers. The
 attached-context formatter emits pointer-only `<attached_session_context>` blocks
-for single sessions and pointer-only `<attached_ralph_session_context>` blocks
-for Ralph groups; the Ralph block stores source workspace ID, Ralph session ID,
-phase/status, safe title/display label, latest activity, process/iteration
-counts, and ordered child process IDs only. Single-session drag payloads derive
-their title from custom title/title/displayName, prompt preview or prompt
-metadata, then process ID; they do not use latest-turn previews such as
-`lastMessagePreview`. `ConversationTurnBubble` parses persisted attached-context
-blocks on user turns and renders them as collapsed cards: neutral "Attached
-session context" cards for single sessions and purple "Attached Ralph context"
-cards for Ralph groups. Both cards show their pointer metadata and a raw-block
-copy affordance while raw mode still exposes the exact persisted message
-content.
+for single sessions, pointer-only `<attached_ralph_session_context>` blocks for
+Ralph groups, and generic pointer-only `<attached_pointer_context>` blocks for
+Work Item, Git commit, Git range, and Pull Request references. Pointer blocks
+store source workspace ID and stable identifiers/references only (for example
+work item ID/number, commit hash, base/head refs, PR ID/number) plus safe labels,
+titles/statuses, and summary counts when available; they do not store work item
+bodies, diffs, PR descriptions, file contents, or latest-turn previews. The Ralph
+block stores source workspace ID, Ralph session ID, phase/status, safe
+title/display label, latest activity, process/iteration counts, and ordered child
+process IDs only. Single-session drag payloads derive their title from custom
+title/title/displayName, prompt preview or prompt metadata, then process ID; they
+do not use latest-turn previews such as `lastMessagePreview`.
+`ConversationTurnBubble` parses persisted attached-context blocks on user turns
+and renders them as collapsed cards: neutral "Attached session context" cards
+for single sessions, purple "Attached Ralph context" cards for Ralph groups, and
+sky pointer cards for Work Item/Commit/Range/PR pointers. These cards show their
+pointer metadata and a raw-block copy affordance while raw mode still exposes the
+exact persisted message content.
 
 New chats use `AgentSelectorChip` to choose a per-chat provider. The initial selection comes from the workspace's `lastChatProvider` preference when that provider is enabled and available; otherwise it falls back to the configured `defaultProvider` from runtime config, and then to Copilot if the configured default provider cannot be selected. Follow-up inputs show the provider stored on the process metadata so existing chats continue using their original provider.
 
-`ModePillSelector` exposes Ask and Autopilot by default. Ralph is appended only where the existing Ralph feature flag and eligibility rules allow it. For Each is appended only in New Chat when `forEach.enabled` is true. Prompt schedules expose Ask and Autopilot only. Legacy loaded draft/task/schedule records with `mode='plan'` are normalized to Ask for display and follow-up behavior, and the dashboard does not render a separate Plan pill, badge, tooltip, icon, or custom-instruction tab. Mode accents are Ask yellow, Autopilot green, Ralph purple, and For Each sky blue.
+`repos/modeConfig.ts` owns the central `WORKFLOW_REGISTRY` for chat/workflow mode labels, icons, tooltips, pill dots, accent colors, categories, surfaces, and feature flags. `ModePillSelector` derives Ask and Autopilot defaults from that registry, while New Chat and follow-up composers derive visible mode options through the registry-backed visibility helper. Ralph is appended only where the existing Ralph feature flag and eligibility rules allow it. For Each is appended only in New Chat when `forEach.enabled` is true, or in follow-up composers when explicitly allowed and feature-enabled. In New Chat, `ModePillSelector` renders Ask, Autopilot, and an optional Workflow dropdown as one segmented pill; the Workflow segment shows the generic `Workflow` label until a workflow mode is selected, then displays the selected workflow option's registry label (e.g. `Ralph`, `For Each`). The Workflow segment remains visibly active when a workflow mode is selected, mirrors the selected workflow dot, and the composer card keeps the selected workflow mode's registry accent. Prompt schedules expose Ask and Autopilot only. Legacy loaded draft/task/schedule records with `mode='plan'` are normalized to Ask for display and follow-up behavior, and the dashboard does not render a separate Plan pill, badge, tooltip, icon, or custom-instruction tab. Mode accents are Ask yellow, Autopilot green, Ralph purple, and For Each sky blue.
 
 `features/chat/ForEachRunPane.tsx` renders the dedicated For Each detail pane for `#repos/<workspaceId>/(activity|chats|tasks)/for-each/<runId>` links, approved generation chats, and For Each group-row selection when `forEach.enabled` is true. It reads the parent run through `coc-client`'s `forEach` domain, shows the full original request, parent status, child mode, shared instructions, item status chips, generated prompt previews, a link back to the persisted generation chat when `generationProcessId` is present, and child process links, and exposes explicit Start/Continue, Retry failed item, Skip pending/failed item, Cancel remaining, and Refresh actions. It does not render Ralph journals, recurring loop controls, DAG workflow nodes, or sibling item result context. Generation chats pass approval navigation through `ChatDetailPane`/`RepoChatTab`, which clears the selected chat and opens the run-pane hash after the reviewed plan is approved; For Each group rows use the same parent routing, For Each hashes restore the parent pane on desktop and mobile, and selecting a generation or child chat clears the parent pane and opens the chat detail.
 
@@ -193,19 +233,43 @@ Modal job-submission dialogs use `shared/ModalJobAiControls.tsx` when they need 
 When effort-tier mode is enabled, `EffortTierSelector` lists `Very Low`, `Low`, `Medium`, and `High` in that order. Tooltips expose the concrete model and reasoning effort mapped to the selected tier and each configured menu option; empty reasoning effort displays as `Auto`, and unconfigured options remain disabled with an Admin configuration tooltip.
 
 The Admin AI Provider page's `ProviderEffortTiersSection` uses the same tier order (`Very Low`, `Low`, `Medium`, `High`) when editing provider defaults. Rows sourced from hardcoded provider defaults are prefilled and marked with a `Default` badge; saving persists only rows explicitly changed from those defaults, and clearing an override reverts that row to its provider default.
-The provider routing table's quota cell renders Codex and Claude finite
-`quotaTypes[]` snapshots as compact per-window rows with a readable quota-window
-label, remaining percentage, used/entitlement caption, and remaining-usage bar.
-Known provider windows label `five_hour` as `5h` and `seven_day` as `Weekly`;
-unknown ids are converted to readable text. Copilot finite quotas render as the
-single tightest-limit row used by the legacy quota cell. The page-level
-quota-risk summary uses the tightest finite quota across all providers.
+
+Quota UI math lives in `shared/quotaUtils.ts`. It formats quota-window labels,
+clamps remaining and used percentages, maps remaining percentages to risk
+classes, and selects the tightest finite quota across one provider or across
+enabled providers. Known provider windows label `five_hour` as `5h` and
+`seven_day` as `Weekly`; unknown ids are converted to readable text. The Admin
+provider routing table uses those helpers for quota cells: Codex and Claude
+finite `quotaTypes[]` snapshots render as compact per-window rows with a
+readable quota-window label, remaining percentage, used/entitlement caption,
+and remaining-usage bar. Copilot finite quotas render as the single
+tightest-limit row used by the legacy quota cell. The page-level quota-risk
+summary uses the tightest finite quota across all providers. When the non-container
+Admin AI Provider tab is active, `AdminPanel` loads
+`admin.getAgentProvidersQuota()` without `force` so the page displays the
+server's cached quota snapshot after refresh or tab entry; the page's Refresh
+quota button still calls the force path. The desktop
+top-bar `AgentProviderQuotaIndicator` uses the same helpers to fill a circular
+gauge to the most-constrained enabled provider's used percentage and to render a
+NotificationBell-style dropdown. The dropdown lists one row per enabled
+provider; each row's gauge and risk badge are driven by that provider's tightest
+finite quota window, while the body lists every finite quota window (e.g. both
+`5h` and `Weekly`) with its used/entitlement caption and a minute-level UTC reset
+timestamp (`YYYY-MM-DD HH:MM`) plus a remaining-time countdown (`Xd Yh left` for
+multi-day windows, `Xh Ym left` otherwise, or `due` once elapsed). It also
+shows an unlimited badge for all-unlimited providers, provider-level errors, a
+last-updated line,
+a force-refresh button that calls `admin.getAgentProvidersQuota({ force: true })`,
+and an `#admin/agents` link to the AI Provider page.
 
 The model-picker chip in both `NewChatArea` and `FollowUpInputArea` mirrors the `AgentSelectorChip` style: icon + label + chevron, no inline `✕` clear. When a `modelOverride` is set, `ModelCommandMenu` renders a `Use default` entry at the top of the dropdown that calls `setModelOverride(null)`; clearing flows through the menu rather than a chip-side button. `NoteChatPanel` reuses the same menu without passing `onClearOverride`, so the clear row only appears in the chat composers.
 
 ## Top Bar
 
-Right-hand action cluster: `[Connected pill | NotificationBell | Admin | Theme]`
+Right-hand action cluster:
+`[Connected pill | NotificationBell | AgentProviderQuotaIndicator | Admin | Theme]`.
+The quota indicator is hidden below the `md` breakpoint; the mobile top bar does
+not render the quota dropdown trigger.
 
 The legacy "Tools" popover has been migrated into the Admin page's left
 sidebar, but there is no longer a generic Tools group. The Admin sidebar is
@@ -257,7 +321,7 @@ The top-level `#memory` route is embedded in the Admin shell's Knowledge group a
 
 ## Feature Flags
 
-`featureFlags.ts` defines compile-time flags (e.g., `SHOW_WELCOME_TUTORIAL`). Runtime feature flags are exposed through `GET /api/config/runtime` and SPA helpers in `utils/config.ts`; `workItems.sync.enabled` only reports usable sync UI when both it and `workItems.hierarchy.enabled` are true. Most features gated by flags are disabled by default. The Git tab's cross-clone cherry-pick UI is gated by `features.gitCrossCloneCherryPick` / `gitCrossCloneCherryPickEnabled` and is enabled by default. Chat composer drag/drop session-context attachments are gated by `features.sessionContextAttachments` / `sessionContextAttachmentsEnabled`; when enabled, same-workspace chat rows, process cards, queue/history process rows, process search result cards, and Ralph session group rows become copy-drag sources using custom pointer-only MIME payloads. Single-session payloads contain workspace ID, process ID, title/preview, status, and last-activity metadata; Ralph group payloads contain workspace ID, Ralph session ID, phase/status, title/display label, last activity, and ordered child process IDs.
+`featureFlags.ts` defines compile-time flags (e.g., `SHOW_WELCOME_TUTORIAL`). Runtime feature flags are exposed through `GET /api/config/runtime` and SPA helpers in `utils/config.ts`; `workItems.sync.enabled` only reports usable sync UI when both it and `workItems.hierarchy.enabled` are true. Most features gated by flags are disabled by default. The Git tab's cross-clone cherry-pick UI is gated by `features.gitCrossCloneCherryPick` / `gitCrossCloneCherryPickEnabled` and is enabled by default. Chat composer drag/drop session-context attachments are gated by `features.sessionContextAttachments` / `sessionContextAttachmentsEnabled`; when enabled, same-workspace chat rows, process cards, queue/history process rows, process search result cards, Ralph session group rows, Work Item rows/cards, Git commit rows, Git branch-range headers, and Pull Request rows become copy-drag sources using custom pointer-only MIME payloads, and desktop repo-header Ask/Queue Task buttons become copy drop targets that seed queue-dialog chips. Single-session payloads contain workspace ID, process ID, title/preview, status, and last-activity metadata; Ralph group payloads contain workspace ID, Ralph session ID, phase/status, title/display label, last activity, and ordered child process IDs. Work Item, commit, range, and PR payloads contain stable IDs/references plus safe display metadata only.
 
 ## Work Items
 
@@ -270,7 +334,7 @@ The split Local/Remote tracker views do not show the legacy per-item preview/imp
 
 ## coc-client Integration
 
-The SPA consumes `@plusplusoneplusplus/coc-client` for typed REST transport. Domain clients: admin, processes, queue, schedules, tasks, notes, workflows, wiki, memory, memoryV2, skills, preferences, seen-state, work-items, agentProviders, git. The git domain includes commit/diff/branch helpers, operation history, and patch-transfer export/apply methods used by cross-clone cherry-pick flows. When enabled, the Git commit context menu opens `CrossCloneCherryPickModal`, which lists current-CoC registered workspaces plus online registered remote-CoC workspaces using typed workspace/git-info clients, groups targets by normalized remote URL, recommends same-remote clones, labels each target with its CoC server, requires explicit cross-remote confirmation, and requires explicit dirty-target stash opt-in. Local targets call git patch export/apply directly; remote targets call the initiating server's `servers.cherryPickTransfer` orchestrator.
+The SPA consumes `@plusplusoneplusplus/coc-client` for typed REST transport. Domain clients: admin, processes, queue, schedules, tasks, notes, workflows, wiki, memory, memoryV2, skills, preferences, seen-state, work-items, agentProviders, git. The git domain includes commit/diff/branch helpers, operation history, and patch-transfer export/apply methods used by cross-clone cherry-pick flows. The Git tab treats async git operation responses with `jobId` as pending work, polling operation history until terminal status before refreshing; failed Drop Commit jobs render the tab-level action-error banner. The same-clone commit context menu opens `BranchPickerModal` as a local-branch selector for `Cherry-pick to branch…`, sends selected commit hashes oldest-first through `client.git.cherryPick(..., { hashes, targetBranch })`, shows server dirty/conflict errors in the tab action banner, refreshes on success, and keeps the user on the original branch after the server switches back. When enabled, the Git commit context menu opens `CrossCloneCherryPickModal`, which lists current-CoC registered workspaces plus online registered remote-CoC workspaces using typed workspace/git-info clients, groups targets by normalized remote URL, recommends same-remote clones, labels each target with its CoC server, requires explicit cross-remote confirmation, and requires explicit dirty-target stash opt-in. Local targets call git patch export/apply directly; remote targets call the initiating server's `servers.cherryPickTransfer` orchestrator.
 
 Local React hooks (`fetchApi`, `useWebSocket`, `seenStateApi`) wrap the client for React state management.
 

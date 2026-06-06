@@ -41,6 +41,13 @@ import { buildRepoSubTabSuffix } from '../../layout/Router';
 import { SHOW_WIKI_TAB } from '../../layout/TopBar';
 import type { RepoData } from '../../repos/repoGrouping';
 import type { RepoSubTab, TasksPanelNavState } from '../../types/dashboard';
+import { isSessionContextAttachmentsEnabled } from '../../utils/config';
+import {
+    dataTransferHasSessionContext,
+    readSessionContextDropPayload,
+    useConversationRetrievalCapability,
+    validateSessionContextDrop,
+} from '../chat/sessionContextDrop';
 
 interface RepoDetailProps {
     repo: RepoData;
@@ -123,6 +130,10 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const notesEnabled = useNotesEnabled();
     const workflowsEnabled = useWorkflowsEnabled();
     const pullRequestsEnabled = usePullRequestsEnabled();
+    const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
+    const canRetrieveConversations = useConversationRetrievalCapability(ws.id, sessionContextAttachmentsEnabled);
+    const [headerContextDropTarget, setHeaderContextDropTarget] = useState<'task' | 'ask' | null>(null);
+    const [headerContextDropFeedback, setHeaderContextDropFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
     // Notes chat panel — per-workspace state so it persists across tab switches
     const [notesChatPanelOpen, setNotesChatPanelOpen] = useState(() => {
@@ -321,6 +332,78 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         };
     }, [overflowOpen]);
 
+    useEffect(() => {
+        if (!headerContextDropFeedback) return;
+        const timer = window.setTimeout(() => setHeaderContextDropFeedback(null), 4000);
+        return () => window.clearTimeout(timer);
+    }, [headerContextDropFeedback]);
+
+    function setHeaderDropFeedback(type: 'success' | 'error', message: string) {
+        setHeaderContextDropFeedback({ type, message });
+    }
+
+    function handleHeaderContextDragOver(mode: 'task' | 'ask') {
+        return (e: React.DragEvent<HTMLElement>) => {
+            e.preventDefault();
+            if (sessionContextAttachmentsEnabled && dataTransferHasSessionContext(e.dataTransfer)) {
+                e.dataTransfer.dropEffect = 'copy';
+                setHeaderContextDropTarget(mode);
+                return;
+            }
+            e.dataTransfer.dropEffect = 'none';
+            if (headerContextDropTarget === mode) {
+                setHeaderContextDropTarget(null);
+            }
+        };
+    }
+
+    function handleHeaderContextDragLeave(mode: 'task' | 'ask') {
+        return (e: React.DragEvent<HTMLElement>) => {
+            const nextTarget = e.relatedTarget as Node | null;
+            if (nextTarget && e.currentTarget.contains(nextTarget)) return;
+            setHeaderContextDropTarget(current => current === mode ? null : current);
+        };
+    }
+
+    function handleHeaderContextDrop(mode: 'task' | 'ask') {
+        return (e: React.DragEvent<HTMLElement>) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setHeaderContextDropTarget(null);
+            const validation = validateSessionContextDrop({
+                payload: readSessionContextDropPayload(e.dataTransfer),
+                featureEnabled: sessionContextAttachmentsEnabled,
+                activeWorkspaceId: ws.id,
+                currentProcessId: null,
+                existingItems: [],
+                canRetrieveConversations,
+            });
+            if (!validation.ok) {
+                setHeaderDropFeedback('error', validation.error);
+                return;
+            }
+            queueDispatch({
+                type: 'OPEN_DIALOG',
+                workspaceId: ws.id,
+                mode,
+                attachedContext: [validation.payload],
+            });
+            setHeaderDropFeedback(
+                'success',
+                mode === 'ask'
+                    ? 'Context attached to an Ask draft.'
+                    : 'Context attached to a Queue Task draft.',
+            );
+        };
+    }
+
+    function headerContextDropClass(mode: 'task' | 'ask'): string {
+        return cn(
+            'rounded-md transition-[box-shadow,background-color]',
+            headerContextDropTarget === mode && 'ring-2 ring-[#0969da] ring-offset-1 ring-offset-white dark:ring-[#3794ff] dark:ring-offset-[#1e1e1e] bg-[#ddf4ff]/60 dark:bg-[#3794ff]/15',
+        );
+    }
+
     async function handleResumeQueue() {
         setIsPauseResumeLoading(true);
         try {
@@ -511,27 +594,59 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                             {/* Classic-mode primary visible buttons (mirror reference layout). */}
                             {uiLayoutMode === 'classic' && (
                                 <>
-                                    <Button
-                                        variant="success"
-                                        size="sm"
-                                        onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id })}
-                                        title="Queue a new AI task (Alt+Q)"
-                                        data-testid="repo-queue-task-btn"
-                                        className="!h-[30px] !rounded-md !px-2.5 !text-[13px] !font-semibold !min-h-0 !shadow-[0_1px_0_rgba(31,35,40,0.1)]"
+                                    <div
+                                        className={headerContextDropClass('task')}
+                                        onDragEnter={handleHeaderContextDragOver('task')}
+                                        onDragOver={handleHeaderContextDragOver('task')}
+                                        onDragLeave={handleHeaderContextDragLeave('task')}
+                                        onDrop={handleHeaderContextDrop('task')}
+                                        data-testid="repo-queue-task-drop-target"
                                     >
-                                        Queue Task
-                                    </Button>
-                                    <Button
-                                        variant="secondary"
-                                        size="sm"
-                                        onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' })}
-                                        title="Ask AI a question (read-only)"
-                                        data-testid="repo-ask-btn"
-                                        className="!h-[30px] !rounded-md !px-2.5 !text-[13px] !font-semibold !min-h-0 !bg-yellow-500 hover:!bg-yellow-600 dark:!bg-yellow-400 dark:hover:!bg-yellow-300 !text-[#1e1e1e] !border-transparent !shadow-[0_1px_0_rgba(31,35,40,0.1)]"
+                                        <Button
+                                            variant="success"
+                                            size="sm"
+                                            onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id })}
+                                            title="Queue a new AI task (Alt+Q). Drop CoC context here to attach it first."
+                                            data-testid="repo-queue-task-btn"
+                                            className="!h-[30px] !rounded-md !px-2.5 !text-[13px] !font-semibold !min-h-0 !shadow-[0_1px_0_rgba(31,35,40,0.1)]"
+                                        >
+                                            Queue Task
+                                        </Button>
+                                    </div>
+                                    <div
+                                        className={headerContextDropClass('ask')}
+                                        onDragEnter={handleHeaderContextDragOver('ask')}
+                                        onDragOver={handleHeaderContextDragOver('ask')}
+                                        onDragLeave={handleHeaderContextDragLeave('ask')}
+                                        onDrop={handleHeaderContextDrop('ask')}
+                                        data-testid="repo-ask-drop-target"
                                     >
-                                        Ask
-                                    </Button>
+                                        <Button
+                                            variant="secondary"
+                                            size="sm"
+                                            onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' })}
+                                            title="Ask AI a question (read-only). Drop CoC context here to attach it first."
+                                            data-testid="repo-ask-btn"
+                                            className="!h-[30px] !rounded-md !px-2.5 !text-[13px] !font-semibold !min-h-0 !bg-yellow-500 hover:!bg-yellow-600 dark:!bg-yellow-400 dark:hover:!bg-yellow-300 !text-[#1e1e1e] !border-transparent !shadow-[0_1px_0_rgba(31,35,40,0.1)]"
+                                        >
+                                            Ask
+                                        </Button>
+                                    </div>
                                 </>
+                            )}
+                            {headerContextDropFeedback && (
+                                <div
+                                    className={cn(
+                                        'absolute right-0 top-full z-30 mt-1 max-w-[260px] rounded-md border px-2 py-1 text-[11px] shadow-sm',
+                                        headerContextDropFeedback.type === 'error'
+                                            ? 'border-[#f14c4c]/40 bg-[#fff1f1] text-[#b42318] dark:bg-[#3b1d1d] dark:text-[#ffb4a9]'
+                                            : 'border-[#1f883d]/40 bg-[#dafbe1] text-[#116329] dark:bg-[#16351f] dark:text-[#7ee787]',
+                                    )}
+                                    data-testid="repo-header-context-drop-feedback"
+                                    role="status"
+                                >
+                                    {headerContextDropFeedback.message}
+                                </div>
                             )}
                             {/*
                               Container for "deferred" actions whose placement depends on layout

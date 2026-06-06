@@ -20,6 +20,7 @@ import type {
   AdminTokenResponse,
   AdminVersionResponse,
   AdminWipeResponse,
+  AgentProvidersQuotaOptions,
   AgentProvidersQuotaResponse,
 } from '../contracts';
 import type { CocRequestOptions, NormalizedCocClientOptions, QueryPrimitive, RequestAdapter } from '../types';
@@ -163,8 +164,11 @@ export class AdminClient {
     });
   }
 
-  getAgentProvidersQuota(): Promise<AgentProvidersQuotaResponse> {
-    return this.transport.request<AgentProvidersQuotaResponse>('/agent-providers/quota');
+  getAgentProvidersQuota(options: AgentProvidersQuotaOptions = {}): Promise<AgentProvidersQuotaResponse> {
+    const requestOptions: CocRequestOptions | undefined = options.force
+      ? { query: { force: '1' } }
+      : undefined;
+    return this.transport.request<AgentProvidersQuotaResponse>('/agent-providers/quota', requestOptions);
   }
 
   private fetchRaw(path: string, options: {

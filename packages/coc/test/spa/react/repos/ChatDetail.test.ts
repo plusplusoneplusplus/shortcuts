@@ -132,7 +132,7 @@ describe('ChatDetail', () => {
 
         it('imports ModePillSelector and exposes pill options for the new layout', () => {
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('ModePillSelector');
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('DEFAULT_MODE_PILL_OPTIONS');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('getVisibleModePillOptions');
             // The compact branch still references MODE_ICONS for its cycle button.
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('MODE_ICONS');
         });
@@ -189,7 +189,7 @@ describe('ChatDetail', () => {
 
         it('Shift+Tab cycles modes via MODE_ORDER array', () => {
             expect(MODE_CONFIG_SOURCE).toContain('MODE_ORDER');
-            expect(MODE_CONFIG_SOURCE).toContain("DEFAULT_CHAT_MODES: readonly ChatMode[] = ['ask', 'autopilot']");
+            expect(MODE_CONFIG_SOURCE).toContain('DEFAULT_CHAT_MODES: readonly ChatMode[] = WORKFLOW_REGISTRY');
         });
 
         it('Shift+Tab uses functional state update for mode cycling', () => {
@@ -680,9 +680,9 @@ describe('ChatDetail', () => {
     describe('mode-based input border colors', () => {
         it('defines MODE_BORDER_COLORS mapping for active modes', () => {
             expect(MODE_CONFIG_SOURCE).toContain('MODE_BORDER_COLORS');
-            expect(MODE_CONFIG_SOURCE).toContain("autopilot: { border: 'border-green-500 dark:border-green-400', ring: 'focus-within:ring-green-500/30' }");
-            expect(MODE_CONFIG_SOURCE).toContain("ask: { border: 'border-yellow-500 dark:border-yellow-400', ring: 'focus-within:ring-yellow-500/30' }");
-            expect(MODE_CONFIG_SOURCE).toContain("ralph: { border: 'border-purple-500 dark:border-purple-400', ring: 'focus-within:ring-purple-500/30' }");
+            expect(MODE_CONFIG_SOURCE).toContain("border: 'border-green-500 dark:border-green-400'");
+            expect(MODE_CONFIG_SOURCE).toContain("border: 'border-yellow-500 dark:border-yellow-400'");
+            expect(MODE_CONFIG_SOURCE).toContain("border: 'border-purple-500 dark:border-purple-400'");
             expect(MODE_CONFIG_SOURCE).not.toContain('border-blue-500');
         });
 

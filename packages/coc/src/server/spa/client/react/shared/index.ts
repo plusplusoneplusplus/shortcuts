@@ -32,6 +32,7 @@ export type { MarkdownReviewEditorProps } from './MarkdownReviewEditor';
 export { FilePreview } from './FilePreview';
 export type { FilePreviewProps } from './FilePreview';
 export { NotificationBell } from './NotificationBell';
+export { agentProviderQuotaIndicator } from './AgentProviderQuotaIndicator';
 export { DASHBOARD_AI_COMMANDS } from './ai-commands';
 export type { DashboardAICommand } from './ai-commands';
 export { shortenFilePath, linkifyFilePaths, FILE_PATH_RE } from './file-path-utils';
@@ -40,6 +41,17 @@ export type { RalphLaunchDialogProps } from './RalphLaunchDialog';
 export { isGoalFile } from './goal-file-utils';
 export { useUndoRedo } from './useUndoRedo';
 export type { HistorySnapshot } from './useUndoRedo';
+export {
+    formatQuotaTypeLabel,
+    getQuotaPercent,
+    getQuotaUsedPercent,
+    getQuotaRiskClasses,
+    getFiniteQuotaTypes,
+    getUnlimitedQuotaTypes,
+    getTightestFiniteQuotaType,
+    getMostConstrainedProviderQuota,
+} from './quotaUtils';
+export type { QuotaRiskClasses, MostConstrainedQuota } from './quotaUtils';
 export { ModalJobAiControls, useModalJobAiSelection, isChatProvider, isSelectableProvider } from './ModalJobAiControls';
 export type {
     ModalJobAiControlsProps,

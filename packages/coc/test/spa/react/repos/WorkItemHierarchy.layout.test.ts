@@ -82,6 +82,13 @@ describe('WorkItemHierarchyNode — type system', () => {
         expect(src).toContain('githubMirror={item.githubMirror}');
         expect(src).toContain('azureBoardsMirror={item.azureBoardsMirror}');
     });
+
+    it('can render a work item pointer context drag source', () => {
+        expect(src).toContain('WorkItemContextDragPayload');
+        expect(src).toContain('writePointerContextDragData');
+        expect(src).toContain('draggable={!!sessionContextPayload}');
+        expect(src).toContain('data-session-context-kind={sessionContextPayload ? \'work-item\' : undefined}');
+    });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -142,6 +149,12 @@ describe('WorkItemHierarchyTree — structure', () => {
 
     it('handles disabled response from tree endpoint', () => {
         expect(src).toContain('disabled');
+    });
+
+    it('builds work item pointer context payloads for hierarchy rows when enabled', () => {
+        expect(src).toContain('createWorkItemContextDragPayload');
+        expect(src).toContain('isSessionContextAttachmentsEnabled');
+        expect(src).toContain('sessionContextPayload={sessionContextPayload}');
     });
 });
 

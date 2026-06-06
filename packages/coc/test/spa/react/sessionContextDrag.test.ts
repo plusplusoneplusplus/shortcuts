@@ -1,11 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+    createGitCommitContextDragPayload,
+    createGitRangeContextDragPayload,
+    createPullRequestContextDragPayload,
     createRalphSessionContextDragPayload,
     createSessionContextDragPayload,
+    createWorkItemContextDragPayload,
+    GIT_COMMIT_CONTEXT_DRAG_KIND,
+    GIT_RANGE_CONTEXT_DRAG_KIND,
+    POINTER_CONTEXT_DRAG_MIME,
+    PULL_REQUEST_CONTEXT_DRAG_KIND,
     RALPH_SESSION_CONTEXT_DRAG_KIND,
     RALPH_SESSION_CONTEXT_DRAG_MIME,
     SESSION_CONTEXT_DRAG_KIND,
     SESSION_CONTEXT_DRAG_MIME,
+    WORK_ITEM_CONTEXT_DRAG_KIND,
+    writePointerContextDragData,
     writeRalphSessionContextDragData,
     writeSessionContextDragData,
 } from '../../../src/server/spa/client/react/features/chat/sessionContextDrag';
@@ -110,6 +120,111 @@ describe('sessionContextDrag', () => {
         expect(dataTransfer.effectAllowed).toBe('copy');
         expect(dataTransfer.setData).toHaveBeenCalledWith(SESSION_CONTEXT_DRAG_MIME, JSON.stringify(payload));
         expect(dataTransfer.setData).toHaveBeenCalledWith('text/plain', 'CoC session context: Source chat [completed] proc-1');
+    });
+
+    it('builds pointer-only work item payloads with stable labels', () => {
+        const payload = createWorkItemContextDragPayload({
+            id: 'wi-abc',
+            workspaceId: 'ws-1',
+            workItemNumber: 123,
+            title: 'Fix context drag',
+            status: 'planning',
+            type: 'bug',
+        }, { activeWorkspaceId: 'ws-1' });
+
+        expect(payload).toEqual({
+            kind: WORK_ITEM_CONTEXT_DRAG_KIND,
+            version: 1,
+            sourceWorkspaceId: 'ws-1',
+            workItemId: 'wi-abc',
+            workItemNumber: 123,
+            label: 'Work Item #123',
+            title: 'Fix context drag',
+            status: 'planning',
+            type: 'bug',
+        });
+    });
+
+    it('builds pointer-only git commit payloads without author identity fields', () => {
+        const payload = createGitCommitContextDragPayload({
+            hash: 'abcdef1234567890',
+            subject: 'Add context chips',
+            author: 'Example Author',
+            authorEmail: 'redacted-author-email',
+        }, { activeWorkspaceId: 'ws-1' });
+
+        expect(payload).toEqual({
+            kind: GIT_COMMIT_CONTEXT_DRAG_KIND,
+            version: 1,
+            sourceWorkspaceId: 'ws-1',
+            commitHash: 'abcdef1234567890',
+            shortHash: 'abcdef1',
+            label: 'Commit abcdef1',
+            subject: 'Add context chips',
+            title: 'Add context chips',
+        });
+        expect(JSON.stringify(payload)).not.toContain('redacted-author-email');
+    });
+
+    it('builds pointer-only git range payloads from branch range metadata', () => {
+        const payload = createGitRangeContextDragPayload({
+            baseRef: 'origin/main',
+            headRef: 'feature/context-drag',
+            mergeBase: '1234567890abcdef',
+            branchName: 'feature/context-drag',
+            commitCount: 4,
+            fileCount: 12,
+        }, { activeWorkspaceId: 'ws-1' });
+
+        expect(payload).toEqual({
+            kind: GIT_RANGE_CONTEXT_DRAG_KIND,
+            version: 1,
+            sourceWorkspaceId: 'ws-1',
+            baseRef: 'origin/main',
+            headRef: 'feature/context-drag',
+            label: 'Range origin/main..feature/context-drag',
+            title: 'feature/context-drag',
+            branchName: 'feature/context-drag',
+            mergeBase: '1234567890abcdef',
+            commitCount: 4,
+            fileCount: 12,
+        });
+    });
+
+    it('builds pointer-only pull request payloads with PR number labels', () => {
+        const payload = createPullRequestContextDragPayload({
+            id: 'pr-node-id',
+            number: 45,
+            title: 'Review context drag',
+            status: 'open',
+        }, { activeWorkspaceId: 'ws-1' });
+
+        expect(payload).toEqual({
+            kind: PULL_REQUEST_CONTEXT_DRAG_KIND,
+            version: 1,
+            sourceWorkspaceId: 'ws-1',
+            pullRequestId: 'pr-node-id',
+            number: 45,
+            label: 'PR #45',
+            title: 'Review context drag',
+            status: 'open',
+        });
+    });
+
+    it('writes pointer context MIME payloads and copy-only text fallback', () => {
+        const payload = createPullRequestContextDragPayload({
+            id: '45',
+            number: 45,
+            title: 'Review context drag',
+            status: 'open',
+        }, { activeWorkspaceId: 'ws-1' })!;
+        const dataTransfer = { setData: vi.fn(), effectAllowed: 'move' as DataTransfer['effectAllowed'] };
+
+        writePointerContextDragData(dataTransfer, payload);
+
+        expect(dataTransfer.effectAllowed).toBe('copy');
+        expect(dataTransfer.setData).toHaveBeenCalledWith(POINTER_CONTEXT_DRAG_MIME, JSON.stringify(payload));
+        expect(dataTransfer.setData).toHaveBeenCalledWith('text/plain', 'CoC pointer context: PR #45 - Review context drag');
     });
 
     it('builds a pointer-only payload for Ralph session groups', () => {

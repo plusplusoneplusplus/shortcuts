@@ -9,12 +9,21 @@
  */
 import { Suspense, lazy, useState, type ReactNode } from 'react';
 import { Spinner } from '../ui';
-import type { ProviderInstallStatus, AgentProvidersQuotaResponse } from '@plusplusoneplusplus/coc-client';
+import type { AgentProviderId, ProviderInstallStatus, AgentProvidersQuotaResponse } from '@plusplusoneplusplus/coc-client';
+import {
+    formatQuotaTypeLabel,
+    getFiniteQuotaTypes,
+    getMostConstrainedProviderQuota,
+    getQuotaPercent,
+    getQuotaRiskClasses,
+    getTightestFiniteQuotaType,
+    getUnlimitedQuotaTypes,
+} from '../shared/quotaUtils';
 
 const ProviderModelsSection = lazy(() => import('../features/models/ProviderModelsSection').then(m => ({ default: m.ProviderModelsSection })));
 const ProviderEffortTiersSection = lazy(() => import('../features/models/ProviderEffortTiersSection').then(m => ({ default: m.ProviderEffortTiersSection })));
 
-type Provider = 'copilot' | 'codex' | 'claude';
+type Provider = AgentProviderId;
 
 export interface AIProviderPageProps {
     defaultProvider: Provider;
@@ -36,38 +45,13 @@ export interface AIProviderPageProps {
     quotaData: AgentProvidersQuotaResponse | null;
     quotaLoading: boolean;
     quotaError: string | null;
-    onRefreshQuota: () => void;
+    onRefreshQuota: (options?: { force?: boolean }) => void;
 
     sources: Record<string, string | undefined>;
 }
 
 const PROVIDER_LABELS: Record<Provider, string> = { copilot: 'Copilot', codex: 'Codex', claude: 'Claude' };
 const PROVIDER_IDS: Provider[] = ['copilot', 'codex', 'claude'];
-const QUOTA_TYPE_LABELS: Record<string, string> = {
-    five_hour: '5h',
-    seven_day: 'Weekly',
-};
-
-function formatQuotaTypeLabel(type: string): string {
-    const normalized = type.trim();
-    const knownLabel = QUOTA_TYPE_LABELS[normalized];
-    if (knownLabel) return knownLabel;
-    const readable = normalized.replace(/[_-]+/g, ' ').trim();
-    if (!readable) return 'Quota';
-    return readable.charAt(0).toUpperCase() + readable.slice(1);
-}
-
-function getQuotaPercent(remainingPercentage: number | undefined): number {
-    return Math.max(0, Math.min(100, Math.round((remainingPercentage ?? 1) * 100)));
-}
-
-function getQuotaRiskClasses(pct: number): { barClass: string; badgeClass: string; badgeLabel: string } {
-    return {
-        barClass: pct < 25 ? 'aip-bar-danger' : pct < 50 ? 'aip-bar-warning' : '',
-        badgeClass: pct < 25 ? 'ar-badge-danger' : pct < 50 ? 'ar-badge-warning' : 'ar-badge-success',
-        badgeLabel: pct < 25 ? 'Risk' : pct < 50 ? 'Watch' : 'OK',
-    };
-}
 
 function CopilotIcon() {
     return (
@@ -167,8 +151,8 @@ function QuotaCell({ providerId, quotaData }: { providerId: Provider; quotaData:
         );
     }
 
-    const unlimitedTypes = providerData.quotaTypes.filter(q => q.isUnlimitedEntitlement);
-    const finiteTypes = providerData.quotaTypes.filter(q => !q.isUnlimitedEntitlement);
+    const unlimitedTypes = getUnlimitedQuotaTypes(providerData.quotaTypes);
+    const finiteTypes = getFiniteQuotaTypes(providerData.quotaTypes);
 
     if (finiteTypes.length > 0 && (providerId === 'codex' || providerId === 'claude')) {
         return (
@@ -197,27 +181,25 @@ function QuotaCell({ providerId, quotaData }: { providerId: Provider; quotaData:
     }
 
     if (finiteTypes.length > 0) {
-        const tightest = finiteTypes.reduce((best, qt) => {
-            const pct = getQuotaPercent(qt.remainingPercentage);
-            const bestPct = getQuotaPercent(best.remainingPercentage);
-            return pct < bestPct ? qt : best;
-        }, finiteTypes[0]);
-        const pct = getQuotaPercent(tightest.remainingPercentage);
-        const { barClass, badgeClass, badgeLabel } = getQuotaRiskClasses(pct);
-        return (
-            <div className="aip-quota-cell">
-                <div className="aip-quota-top">
-                    <strong className="aip-quota-value">{pct}% remaining</strong>
-                    <span className={`ar-badge ${badgeClass}`}>{badgeLabel}</span>
+        const tightest = getTightestFiniteQuotaType(finiteTypes);
+        if (tightest) {
+            const pct = getQuotaPercent(tightest.remainingPercentage);
+            const { barClass, badgeClass, badgeLabel } = getQuotaRiskClasses(pct);
+            return (
+                <div className="aip-quota-cell">
+                    <div className="aip-quota-top">
+                        <strong className="aip-quota-value">{pct}% remaining</strong>
+                        <span className={`ar-badge ${badgeClass}`}>{badgeLabel}</span>
+                    </div>
+                    <div className="aip-quota-caption">
+                        {tightest.usedRequests} / {tightest.entitlementRequests} used
+                    </div>
+                    <div className={`aip-bar ${barClass}`}>
+                        <span style={{ width: `${pct}%` }} />
+                    </div>
                 </div>
-                <div className="aip-quota-caption">
-                    {tightest.usedRequests} / {tightest.entitlementRequests} used
-                </div>
-                <div className={`aip-bar ${barClass}`}>
-                    <span style={{ width: `${pct}%` }} />
-                </div>
-            </div>
-        );
+            );
+        }
     }
 
     if (unlimitedTypes.length > 0) {
@@ -344,21 +326,13 @@ export function AIProviderPage(props: AIProviderPageProps) {
     const overallQuotaRisk = (() => {
         if (!quotaData) return { badge: 'No data', cls: '', note: 'Quota not loaded' };
         const allProviders = quotaData.providers.filter(p => !p.error);
-        const finiteQts = allProviders.flatMap(p =>
-            (p.quotaTypes || []).filter(q => !q.isUnlimitedEntitlement),
-        );
-        if (finiteQts.length > 0) {
-            const tightest = finiteQts.reduce((best, qt) => {
-                const pct = Math.round((qt.remainingPercentage ?? 1) * 100);
-                const bestPct = Math.round((best.remainingPercentage ?? 1) * 100);
-                return pct < bestPct ? qt : best;
-            }, finiteQts[0]);
-            const pct = Math.round((tightest.remainingPercentage ?? 1) * 100);
-            const label = pct < 25 ? 'Risk' : pct < 50 ? 'Watch' : 'Healthy';
-            const cls = pct < 25 ? 'ar-badge-danger' : pct < 50 ? 'ar-badge-warning' : 'ar-badge-success';
-            return { badge: label, cls, note: `${pct}% remaining` };
+        const tightest = getMostConstrainedProviderQuota(quotaData);
+        if (tightest) {
+            const { badgeClass, badgeLabel } = getQuotaRiskClasses(tightest.remainingPercent);
+            const label = badgeLabel === 'OK' ? 'Healthy' : badgeLabel;
+            return { badge: label, cls: badgeClass, note: `${tightest.remainingPercent}% remaining` };
         }
-        const unlimited = allProviders.flatMap(p => (p.quotaTypes || []).filter(q => q.isUnlimitedEntitlement));
+        const unlimited = allProviders.flatMap(p => getUnlimitedQuotaTypes(p.quotaTypes));
         if (unlimited.length > 0) {
             return { badge: 'Healthy', cls: 'ar-badge-success', note: `${unlimited.length} unlimited pool${unlimited.length !== 1 ? 's' : ''}` };
         }
@@ -431,7 +405,7 @@ export function AIProviderPage(props: AIProviderPageProps) {
                         <button
                             type="button"
                             className="ar-btn ar-btn-secondary ar-btn-sm"
-                            onClick={onRefreshQuota}
+                            onClick={() => onRefreshQuota({ force: true })}
                             disabled={quotaLoading}
                             data-testid="btn-refresh-quota"
                         >

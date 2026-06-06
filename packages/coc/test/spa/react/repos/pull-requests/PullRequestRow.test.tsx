@@ -8,6 +8,11 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { PullRequestRow } from '../../../../../src/server/spa/client/react/features/pull-requests/PullRequestRow';
 import type { PullRequest } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-utils';
+import {
+    POINTER_CONTEXT_DRAG_MIME,
+    PULL_REQUEST_CONTEXT_DRAG_KIND,
+    type PullRequestContextDragPayload,
+} from '../../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 
 function makePr(overrides: Partial<PullRequest> = {}): PullRequest {
     return {
@@ -162,6 +167,32 @@ describe('PullRequestRow — click handling', () => {
         render(<PullRequestRow pr={makePr()} onClick={onClick} />);
         fireEvent.click(screen.getByTestId('pr-row'));
         expect(onClick).toHaveBeenCalledOnce();
+    });
+});
+
+describe('PullRequestRow — context drag source', () => {
+    it('writes pointer-only PR context on drag start', () => {
+        const payload: PullRequestContextDragPayload = {
+            kind: PULL_REQUEST_CONTEXT_DRAG_KIND,
+            version: 1,
+            sourceWorkspaceId: 'ws-test',
+            pullRequestId: 'pr-node-42',
+            number: 42,
+            label: 'PR #42',
+            title: 'Fix login bug',
+            status: 'open',
+        };
+        const dataTransfer = {
+            setData: vi.fn(),
+            effectAllowed: 'move' as DataTransfer['effectAllowed'],
+        };
+
+        render(<PullRequestRow pr={makePr()} onClick={vi.fn()} sessionContextPayload={payload} />);
+        fireEvent.dragStart(screen.getByTestId('pr-row'), { dataTransfer });
+
+        expect(dataTransfer.effectAllowed).toBe('copy');
+        expect(dataTransfer.setData).toHaveBeenCalledWith(POINTER_CONTEXT_DRAG_MIME, JSON.stringify(payload));
+        expect(dataTransfer.setData).toHaveBeenCalledWith('text/plain', 'CoC pointer context: PR #42 - Fix login bug');
     });
 });
 

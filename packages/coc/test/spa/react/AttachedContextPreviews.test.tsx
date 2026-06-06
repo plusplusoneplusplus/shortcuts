@@ -163,4 +163,69 @@ describe('AttachedContextPreviews', () => {
         expect(screen.getByTestId('attached-ralph-context-meta').textContent).toContain('2 iterations');
         expect(screen.getByTestId('attached-ralph-context-meta').textContent).toContain('ralph-se…0001');
     });
+
+    it('renders pointer context chips with stable labels and metadata', () => {
+        render(
+            <AttachedContextPreviews
+                items={[
+                    {
+                        kind: 'work-item',
+                        id: 'ctx-work-item',
+                        sourceWorkspaceId: 'ws-1',
+                        workItemId: 'wi-123',
+                        workItemNumber: 123,
+                        label: 'Work Item #123',
+                        title: 'Fix context drag',
+                        status: 'planning',
+                        type: 'bug',
+                        preview: 'Work Item #123',
+                    },
+                    {
+                        kind: 'commit',
+                        id: 'ctx-commit',
+                        sourceWorkspaceId: 'ws-1',
+                        commitHash: 'abcdef1234567890',
+                        shortHash: 'abcdef1',
+                        label: 'Commit abcdef1',
+                        subject: 'Add context drag',
+                        title: 'Add context drag',
+                        preview: 'Commit abcdef1',
+                    },
+                    {
+                        kind: 'range',
+                        id: 'ctx-range',
+                        sourceWorkspaceId: 'ws-1',
+                        baseRef: 'origin/main',
+                        headRef: 'feature/context-drag',
+                        label: 'Range origin/main..feature/context-drag',
+                        branchName: 'feature/context-drag',
+                        commitCount: 4,
+                        fileCount: 12,
+                        preview: 'Range origin/main..feature/context-drag',
+                    },
+                    {
+                        kind: 'pull-request',
+                        id: 'ctx-pr',
+                        sourceWorkspaceId: 'ws-1',
+                        pullRequestId: '45',
+                        number: 45,
+                        label: 'PR #45',
+                        title: 'Review context drag',
+                        status: 'open',
+                        preview: 'PR #45',
+                    },
+                ]}
+                onRemove={vi.fn()}
+            />,
+        );
+
+        expect(screen.getByTestId('attached-work-item-context-chip').textContent).toContain('Work Item #123');
+        expect(screen.getByTestId('attached-commit-context-chip').textContent).toContain('Commit abcdef1');
+        expect(screen.getByTestId('attached-range-context-chip').textContent).toContain('Range origin/main..feature/context-drag');
+        expect(screen.getByTestId('attached-pull-request-context-chip').textContent).toContain('PR #45');
+        expect(screen.getByTestId('attached-work-item-context-chip').textContent).toContain('planning');
+        expect(screen.getByTestId('attached-commit-context-chip').textContent).toContain('Add context drag');
+        expect(screen.getByTestId('attached-range-context-chip').textContent).toContain('4 commits');
+        expect(screen.getByTestId('attached-pull-request-context-chip').textContent).toContain('open');
+    });
 });

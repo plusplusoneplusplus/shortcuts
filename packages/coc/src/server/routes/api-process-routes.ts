@@ -31,6 +31,7 @@ import { normalizeChatMode } from '../tasks/task-types';
 import type { ChatProvider } from '../tasks/task-types';
 import type { ApiRouteContext } from './api-shared';
 import { createRoute, asString } from './route-utils';
+import { buildMetadataProcess } from '../processes/process-metadata-read-model';
 
 /** Valid AIProcessStatus values for validation. */
 const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 'completed', 'failed', 'cancelled']);
@@ -333,7 +334,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 }
                 return void handleAPIError(res, notFound('Process'));
             }
-            const result = filter.exclude ? stripExcludedFields(proc, filter.exclude) : proc;
+            const result = filter.exclude ? stripExcludedFields(proc, filter.exclude) : buildMetadataProcess(proc);
 
             if (!include.has('children')) {
                 return { process: result, children: [], total: 0 };
