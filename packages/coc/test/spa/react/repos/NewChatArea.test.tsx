@@ -8,7 +8,7 @@ import React from 'react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig } = vi.hoisted(() => ({
+const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockForEachEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig } = vi.hoisted(() => ({
     mockQueueDispatch: vi.fn(),
     mockAppState: {
         workspaces: [{ id: 'ws-1', rootPath: '/home/user/repo' }],
@@ -52,6 +52,7 @@ const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCo
         effectiveModelName: undefined as string | undefined,
     },
     mockRalphEnabled: { value: false },
+    mockForEachEnabled: { value: false },
     mockSessionContextAttachmentsEnabled: { value: false },
     mockGetLlmToolsConfig: vi.fn(),
 }));
@@ -89,7 +90,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '/api',
     getConfig: () => ({ apiBasePath: '/api' }),
     isRalphEnabled: () => mockRalphEnabled.value,
-    isForEachEnabled: () => false,
+    isForEachEnabled: () => mockForEachEnabled.value,
     isLoopsEnabled: () => false,
     getDefaultProvider: () => 'copilot' as const,
     isEffortLevelsEnabled: () => false,
@@ -268,6 +269,11 @@ function makeUnsupportedDataTransfer() {
     };
 }
 
+function selectRalphMode() {
+    fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
+    fireEvent.click(screen.getByTestId('workflow-mode-option-ralph'));
+}
+
 beforeEach(() => {
     vi.clearAllMocks();
     mockAppState.workspaces = [{ id: 'ws-1', rootPath: '/home/user/repo' }];
@@ -284,6 +290,7 @@ beforeEach(() => {
     mockHistory.reset = vi.fn();
     mockDraftStore.getDraft.mockReturnValue(null);
     mockRalphEnabled.value = false;
+    mockForEachEnabled.value = false;
     mockSessionContextAttachmentsEnabled.value = false;
     mockGetLlmToolsConfig.mockResolvedValue({
         tools: [{ name: 'get_conversation', label: 'Get Conversation', description: '', enabledByDefault: true }],
@@ -354,8 +361,38 @@ describe('NewChatArea', () => {
         expect(screen.getByTestId('mode-pill-autopilot')).toBeTruthy();
         expect(screen.queryByTestId('mode-pill-plan')).toBeNull();
         expect(screen.queryByTestId('mode-pill-ralph')).toBeNull();
+        expect(screen.queryByTestId('workflow-mode-trigger')).toBeNull();
         expect(screen.queryByTestId('new-chat-ralph-start-from-goal-btn')).toBeNull();
         expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('shows workflow modes in a Workflow submenu when enabled', () => {
+        mockRalphEnabled.value = true;
+        mockForEachEnabled.value = true;
+
+        render(<NewChatArea workspaceId="ws-1" />);
+
+        expect(screen.getByTestId('mode-pill-ask')).toBeTruthy();
+        expect(screen.getByTestId('mode-pill-autopilot')).toBeTruthy();
+        expect(screen.queryByTestId('mode-pill-ralph')).toBeNull();
+        expect(screen.queryByTestId('mode-pill-for-each')).toBeNull();
+
+        fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
+
+        expect(screen.getByTestId('workflow-mode-option-ralph').textContent).toContain('Ralph');
+        expect(screen.getByTestId('workflow-mode-option-for-each').textContent).toContain('For Each');
+    });
+
+    it('selects Ralph from the Workflow submenu and preserves the Ralph split submit', () => {
+        mockRalphEnabled.value = true;
+
+        render(<NewChatArea workspaceId="ws-1" />);
+        fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
+        fireEvent.click(screen.getByTestId('workflow-mode-option-ralph'));
+
+        expect(screen.getByTestId('new-chat-ralph-submit-split')).toBeTruthy();
+        expect(screen.getByTestId('new-chat-send-btn').textContent).toContain('Grill');
+        expect(screen.getByTestId('new-chat-ralph-start-from-goal-btn')).toBeTruthy();
     });
 
     it('sends with default ask mode', async () => {
@@ -1078,7 +1115,7 @@ describe('NewChatArea', () => {
             expect(screen.queryByTestId('new-chat-ralph-submit-split')).toBeNull();
             expect(screen.queryByTestId('new-chat-ralph-start-from-goal-btn')).toBeNull();
 
-            fireEvent.click(screen.getByTestId('mode-pill-ralph'));
+            selectRalphMode();
 
             expect(screen.getByTestId('new-chat-ralph-submit-split')).toBeTruthy();
             expect(screen.getByTestId('new-chat-send-btn').textContent).toContain('Grill');
@@ -1095,9 +1132,7 @@ describe('NewChatArea', () => {
 
             render(<NewChatArea workspaceId="ws-1" />);
 
-            // Click the ralph pill to select ralph mode
-            const ralphPill = screen.getByTestId('mode-pill-ralph');
-            fireEvent.click(ralphPill);
+            selectRalphMode();
 
             // Type a message and send
             const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
@@ -1118,7 +1153,7 @@ describe('NewChatArea', () => {
 
         it('opens an editable direct-goal review dialog prefilled from the composer without mutating the draft on cancel', async () => {
             render(<NewChatArea workspaceId="ws-1" />);
-            fireEvent.click(screen.getByTestId('mode-pill-ralph'));
+            selectRalphMode();
 
             const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
             fireEvent.change(input, { target: { value: '## Goal Build a thing' } });
@@ -1144,7 +1179,7 @@ describe('NewChatArea', () => {
             });
 
             render(<NewChatArea workspaceId="ws-1" />);
-            fireEvent.click(screen.getByTestId('mode-pill-ralph'));
+            selectRalphMode();
 
             fireEvent.click(screen.getByTestId('effort-pill-trigger-btn'));
             fireEvent.click(screen.getByTestId('effort-pill-option-high'));
@@ -1192,7 +1227,7 @@ describe('NewChatArea', () => {
 
         it('shows a non-blocking warning for direct-goal text without a Goal heading', () => {
             render(<NewChatArea workspaceId="ws-1" />);
-            fireEvent.click(screen.getByTestId('mode-pill-ralph'));
+            selectRalphMode();
 
             const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
             fireEvent.change(input, { target: { value: 'Build a thing without markdown heading' } });
@@ -1210,7 +1245,7 @@ describe('NewChatArea', () => {
             });
 
             render(<NewChatArea workspaceId="ws-1" />);
-            fireEvent.click(screen.getByTestId('mode-pill-ralph'));
+            selectRalphMode();
 
             const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
             fireEvent.change(input, { target: { value: '## Goal Original' } });
@@ -1234,7 +1269,7 @@ describe('NewChatArea', () => {
             mockFileReader();
 
             render(<NewChatArea workspaceId="ws-1" />);
-            fireEvent.click(screen.getByTestId('mode-pill-ralph'));
+            selectRalphMode();
 
             const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
             fireEvent.change(input, { target: { value: '## Goal\nBuild with attached context' } });

@@ -25,7 +25,7 @@ import { useSlashCommands } from './hooks/useSlashCommands';
 import { useModelCommand, selectPickableModels } from './hooks/useModelCommand';
 import { SlashCommandMenu, getMetaSkillItems, mergeSkillsWithMeta, type SkillItem } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
-import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION, FOR_EACH_MODE_PILL_OPTION } from './ModePillSelector';
+import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, getModePillOption } from './ModePillSelector';
 import { EffortPillSelector, buildEffortOptionsForModel } from './EffortPillSelector';
 import type { EffortLevel } from './EffortPillSelector';
 import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
@@ -69,6 +69,12 @@ export interface NewChatAreaProps {
     onBack?: () => void;
 }
 
+interface WorkflowModeMenuProps {
+    options: readonly ReturnType<typeof getModePillOption>[];
+    value: ChatMode;
+    onChange: (value: ChatMode) => void;
+}
+
 function isChatProvider(value: unknown): value is ChatProvider {
     return value === 'copilot' || value === 'codex' || value === 'claude';
 }
@@ -77,6 +83,69 @@ function isSelectableProvider(provider: ChatProvider, providers: Array<{ id: str
     if (provider === 'copilot') return true;
     const status = providers.find(p => p.id === provider);
     return status?.enabled === true && status?.available === true;
+}
+
+function WorkflowModeMenu({ options, value, onChange }: WorkflowModeMenuProps) {
+    const [open, setOpen] = useState(false);
+    if (options.length === 0) return null;
+
+    return (
+        <div className="relative shrink-0" data-testid="workflow-mode-selector">
+            <button
+                type="button"
+                className="ctool inline-flex items-center gap-1 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
+                onClick={() => setOpen(current => !current)}
+                aria-haspopup="menu"
+                aria-expanded={open}
+                title="Workflow modes"
+                data-testid="workflow-mode-trigger"
+            >
+                <span aria-hidden="true" className="inline-block h-[4px] w-[4px] rounded-full bg-purple-500" />
+                <span>Workflow</span>
+                <svg
+                    width="7"
+                    height="7"
+                    viewBox="0 0 8 6"
+                    fill="none"
+                    aria-hidden="true"
+                    className="shrink-0 opacity-60"
+                >
+                    <path d="M1 1l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+            </button>
+            {open && (
+                <div
+                    role="menu"
+                    data-testid="workflow-mode-menu"
+                    className="absolute left-0 bottom-full z-50 mb-1 min-w-[130px] rounded-md border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] py-1 shadow-lg"
+                >
+                    {options.map(option => {
+                        const selected = option.value === value;
+                        return (
+                            <button
+                                key={option.value}
+                                type="button"
+                                role="menuitemradio"
+                                aria-checked={selected}
+                                className={cn(
+                                    'flex w-full items-center gap-2 px-2 py-1.5 text-left text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a]',
+                                    selected && 'bg-[#f3f3f3] dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ffffff]',
+                                )}
+                                onClick={() => {
+                                    onChange(option.value);
+                                    setOpen(false);
+                                }}
+                                data-testid={`workflow-mode-option-${option.value}`}
+                            >
+                                <span aria-hidden="true" className={cn('inline-block h-[4px] w-[4px] rounded-full', option.dotClass)} />
+                                <span>{option.label}</span>
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
 }
 
 export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
@@ -136,17 +205,17 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         return pickableModels.some(model => model.id === override) ? override : null;
     }, [modelCommand.modelOverride, pickableModels]);
 
-    const modePillOptions = useMemo(
+    const modePillOptions = DEFAULT_MODE_PILL_OPTIONS;
+    const workflowModeOptions = useMemo(
         () => [
-            ...DEFAULT_MODE_PILL_OPTIONS,
-            ...(isRalphEnabled() ? [RALPH_MODE_PILL_OPTION] : []),
-            ...(isForEachEnabled() ? [FOR_EACH_MODE_PILL_OPTION] : []),
+            ...(isRalphEnabled() ? [getModePillOption('ralph')] : []),
+            ...(isForEachEnabled() ? [getModePillOption('for-each')] : []),
         ],
         [],
     );
     const visibleModes = useMemo(
-        () => modePillOptions.map(opt => opt.value),
-        [modePillOptions],
+        () => [...modePillOptions, ...workflowModeOptions].map(opt => opt.value),
+        [modePillOptions, workflowModeOptions],
     );
 
     // Restore draft from localStorage on mount / workspace switch.
@@ -865,6 +934,11 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                 onChange={setSelectedMode}
                             />
                         </div>
+                        <WorkflowModeMenu
+                            options={workflowModeOptions}
+                            value={selectedMode}
+                            onChange={setSelectedMode}
+                        />
                         <span aria-hidden="true" data-testid="chat-toolbar-divider-mode" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                         {/* Model picker + effort pill (legacy) vs Effort Tier selector.
                              When effortLevels.enabled is true and the active provider has
