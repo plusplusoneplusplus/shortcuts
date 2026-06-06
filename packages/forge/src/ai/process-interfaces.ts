@@ -13,6 +13,7 @@ import type {
     DiscoveryProcessMetadata,
     CodeReviewGroupMetadata,
 } from './process-legacy-types';
+import type { ConversationCostEstimate } from './conversation-cost-estimate';
 
 // Re-export legacy types so consumers of process-interfaces.ts get them too.
 export type { CodeReviewProcessMetadata, DiscoveryProcessMetadata, CodeReviewGroupMetadata };
@@ -455,6 +456,8 @@ export interface AIProcess {
     conversationTokens?: number;
     /** Running total of token usage across all turns in this session */
     cumulativeTokenUsage?: TokenUsage;
+    /** Derived on API reads from conversationTurns; not persisted. */
+    conversationCostEstimate?: ConversationCostEstimate;
 
     // ========================================================================
     // Pending Messages (Added 2026-04)
@@ -556,6 +559,8 @@ export interface SerializedAIProcess {
     conversationTokens?: number;
     /** Running total of token usage across all turns */
     cumulativeTokenUsage?: TokenUsage;
+    /** Derived on API reads from conversationTurns; not persisted. */
+    conversationCostEstimate?: ConversationCostEstimate;
 
     /** Messages queued on the server while an AI response is in progress */
     pendingMessages?: PendingMessage[];

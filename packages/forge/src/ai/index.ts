@@ -243,3 +243,8 @@ export {
     getCopilotModelPricing,
     normalizeCopilotModelId,
 } from './copilot-token-cost';
+export {
+    ConversationCostBreakdown,
+    ConversationCostEstimate,
+    computeConversationCostEstimate,
+} from './conversation-cost-estimate';

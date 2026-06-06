@@ -13,6 +13,8 @@ import { registerApiProcessRoutes } from '../../../src/server/routes/api-process
 import type { Route } from '../../../src/server/types';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import type { MockProcessStore } from '../helpers/mock-process-store';
+import { estimateCopilotTokenCost } from '@plusplusoneplusplus/forge';
+import type { ConversationTurn } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Mocks
@@ -183,6 +185,58 @@ describe('Process ID resolution: queue_ prefix fallback', () => {
         const res = await request(baseUrl, `/api/processes/${encodeURIComponent(queueId)}`);
         expect(res.status).toBe(200);
         expect(res.json().process.id).toBe(queueId);
+    });
+
+    it('GET exposes a derived per-turn conversation cost estimate without storing it', async () => {
+        const firstUsage = {
+            inputTokens: 1_000_000,
+            outputTokens: 100_000,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            totalTokens: 1_100_000,
+            turnCount: 1,
+        };
+        const secondUsage = {
+            inputTokens: 1_000_000,
+            outputTokens: 100_000,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            totalTokens: 1_100_000,
+            turnCount: 1,
+        };
+        const turns: ConversationTurn[] = [
+            { role: 'user', content: 'first', timestamp: new Date(), turnIndex: 0, timeline: [] },
+            { role: 'assistant', content: 'first answer', timestamp: new Date(), turnIndex: 1, timeline: [], tokenUsage: firstUsage },
+            { role: 'user', content: 'switch', timestamp: new Date(), turnIndex: 2, timeline: [], model: 'gpt-5-mini' },
+            { role: 'assistant', content: 'second answer', timestamp: new Date(), turnIndex: 3, timeline: [], tokenUsage: secondUsage },
+        ];
+        await store.addProcess({
+            id: 'priced-process',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'priced',
+            metadata: { type: 'chat', model: 'gpt-5.5' },
+            cumulativeTokenUsage: {
+                inputTokens: 2_000_000,
+                outputTokens: 200_000,
+                cacheReadTokens: 0,
+                cacheWriteTokens: 0,
+                totalTokens: 2_200_000,
+                turnCount: 2,
+            },
+            conversationTurns: turns,
+        });
+
+        const res = await request(baseUrl, '/api/processes/priced-process');
+        expect(res.status, res.body).toBe(200);
+        const process = res.json().process;
+        const expected = estimateCopilotTokenCost('gpt-5.5', firstUsage)!.totalUsd
+            + estimateCopilotTokenCost('gpt-5-mini', secondUsage)!.totalUsd;
+        expect(process.conversationCostEstimate.estimatedUsdCost).toBeCloseTo(expected);
+        expect(process.conversationCostEstimate.unpricedTurnCount).toBe(0);
+        expect(process.conversationCostEstimate.pricingUnavailable).toBe(false);
+        expect(store.processes.get('priced-process')!.conversationCostEstimate).toBeUndefined();
     });
 
     // ---------------------------------------------------------------

@@ -14,7 +14,7 @@ import type {
     ProcessStore, ProcessFilter, AIProcess, AIProcessStatus,
     CreateTaskInput, Attachment, QueuedTask, SearchFilter,
 } from '@plusplusoneplusplus/forge';
-import { deserializeProcess, getLogger, LogCategory, PASTE_THRESHOLD, isQueueProcessId, resolveModelForProvider, toTaskId, toQueueProcessId } from '@plusplusoneplusplus/forge';
+import { computeConversationCostEstimate, deserializeProcess, getLogger, LogCategory, PASTE_THRESHOLD, isQueueProcessId, resolveModelForProvider, toTaskId, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import {
     sendJSON, parseBody, parseQueryParams, parseIncludeFields, stripExcludedFields,
@@ -91,6 +91,24 @@ async function resolveProcess(
         return store.getProcess(bareId, workspaceId);
     }
     return undefined;
+}
+
+function getProcessDefaultModel(process: AIProcess): string | undefined {
+    const model = process.metadata?.model;
+    return typeof model === 'string' && model.trim() ? model.trim() : undefined;
+}
+
+function buildMetadataProcess(process: AIProcess): AIProcess {
+    if (!process.cumulativeTokenUsage) {
+        return process;
+    }
+    const conversationCostEstimate = computeConversationCostEstimate(
+        process.conversationTurns,
+        getProcessDefaultModel(process),
+    );
+    return conversationCostEstimate
+        ? { ...process, conversationCostEstimate }
+        : process;
 }
 
 export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
@@ -333,7 +351,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 }
                 return void handleAPIError(res, notFound('Process'));
             }
-            const result = filter.exclude ? stripExcludedFields(proc, filter.exclude) : proc;
+            const result = filter.exclude ? stripExcludedFields(proc, filter.exclude) : buildMetadataProcess(proc);
 
             if (!include.has('children')) {
                 return { process: result, children: [], total: 0 };
