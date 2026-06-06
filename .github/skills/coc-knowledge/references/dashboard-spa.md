@@ -110,7 +110,11 @@ green when provider metadata is missing.
 `ConversationMetadataPopover` keeps long identifiers as separate label/value rows
 for wrapping and log links, while short categorical fields render as a compact
 summary chip strip and related fields collapse into `Time`, `Workspace`,
-`Ralph`, `Goal`, and `System` rows.
+`Ralph`, `Goal`, and `System` rows. When a process exposes
+`cumulativeTokenUsage`, the popover also renders live conversation-level
+`Tokens` and `Est. cost` rows: token totals expand to input/output/cache
+breakdowns, and cost uses the server-derived `conversationCostEstimate` with
+pricing-source and partial/unavailable-pricing caveats.
 
 ## Tool Call Rendering
 

@@ -250,6 +250,149 @@ describe('compact metadata helpers', () => {
     });
 });
 
+describe('ConversationMetadataPopover – token and cost rows', () => {
+    const TOKEN_USAGE = {
+        inputTokens: 1_234,
+        outputTokens: 567,
+        cacheReadTokens: 89,
+        cacheWriteTokens: 10,
+        totalTokens: 1_801,
+        turnCount: 2,
+    };
+
+    it('shows total tokens from cumulativeTokenUsage and expands to the breakdown', async () => {
+        renderPopover({ ...BASE_PROCESS, cumulativeTokenUsage: TOKEN_USAGE });
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+
+        await act(async () => {
+            fireEvent.click(trigger);
+        });
+
+        expect(screen.getByText('Tokens')).toBeDefined();
+        const tokenButton = screen.getByRole('button', { name: 'Total: 1,801' });
+        expect(tokenButton).toHaveAttribute('aria-expanded', 'false');
+
+        await act(async () => {
+            fireEvent.click(tokenButton);
+        });
+
+        expect(tokenButton).toHaveAttribute('aria-expanded', 'true');
+        expect(screen.getByText(/Input: 1,234/)).toBeDefined();
+        expect(screen.getByText(/Output: 567/)).toBeDefined();
+        expect(screen.getByText(/Cache read: 89/)).toBeDefined();
+        expect(screen.getByText(/Cache write: 10/)).toBeDefined();
+        expect(screen.getByText(/Total: 1,801/)).toBeDefined();
+    });
+
+    it('shows a priced estimated cost with Stats-page USD formatting and pricing source', async () => {
+        renderPopover({
+            ...BASE_PROCESS,
+            cumulativeTokenUsage: TOKEN_USAGE,
+            conversationCostEstimate: {
+                estimatedUsdCost: 42.314,
+                costBreakdown: { inputUsd: 10, cachedInputUsd: 0.25, cacheWriteUsd: 0.064, outputUsd: 32 },
+                pricingSource: 'Copilot pricing table',
+                unpricedTurnCount: 0,
+                pricingUnavailable: false,
+            },
+        });
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+
+        await act(async () => {
+            fireEvent.click(trigger);
+        });
+
+        expect(screen.getByText('Est. cost')).toBeDefined();
+        expect(screen.getByText(/Est\. \$42\.31/)).toBeDefined();
+        expect(screen.getByText(/Source: Copilot pricing table/)).toBeDefined();
+    });
+
+    it('uses sub-cent USD formatting for small estimated costs', async () => {
+        renderPopover({
+            ...BASE_PROCESS,
+            cumulativeTokenUsage: TOKEN_USAGE,
+            conversationCostEstimate: {
+                estimatedUsdCost: 0.0042,
+                costBreakdown: { inputUsd: 0.001, cachedInputUsd: 0.0002, cacheWriteUsd: 0, outputUsd: 0.003 },
+                pricingSource: 'Copilot pricing table',
+                unpricedTurnCount: 0,
+                pricingUnavailable: false,
+            },
+        });
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+
+        await act(async () => {
+            fireEvent.click(trigger);
+        });
+
+        expect(screen.getByText(/Est\. \$0\.0042/)).toBeDefined();
+    });
+
+    it('omits the token and cost section when cumulativeTokenUsage is missing', async () => {
+        renderPopover({
+            ...BASE_PROCESS,
+            conversationCostEstimate: {
+                estimatedUsdCost: 1,
+                costBreakdown: { inputUsd: 1, cachedInputUsd: 0, cacheWriteUsd: 0, outputUsd: 0 },
+                pricingSource: 'Copilot pricing table',
+                unpricedTurnCount: 0,
+                pricingUnavailable: false,
+            },
+        });
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+
+        await act(async () => {
+            fireEvent.click(trigger);
+        });
+
+        expect(screen.queryByText('Tokens')).toBeNull();
+        expect(screen.queryByText('Est. cost')).toBeNull();
+    });
+
+    it('shows pricing unavailable when all usage-bearing turns are unpriced', async () => {
+        renderPopover({
+            ...BASE_PROCESS,
+            cumulativeTokenUsage: TOKEN_USAGE,
+            conversationCostEstimate: {
+                estimatedUsdCost: 0,
+                costBreakdown: { inputUsd: 0, cachedInputUsd: 0, cacheWriteUsd: 0, outputUsd: 0 },
+                unpricedTurnCount: 1,
+                pricingUnavailable: true,
+            },
+        });
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+
+        await act(async () => {
+            fireEvent.click(trigger);
+        });
+
+        expect(screen.getByText(/pricing unavailable/)).toBeDefined();
+        expect(screen.getByText(/1 turn unpriced/)).toBeDefined();
+    });
+
+    it('shows a partial caveat when priced and unpriced turns are mixed', async () => {
+        renderPopover({
+            ...BASE_PROCESS,
+            cumulativeTokenUsage: TOKEN_USAGE,
+            conversationCostEstimate: {
+                estimatedUsdCost: 1.234,
+                costBreakdown: { inputUsd: 0.5, cachedInputUsd: 0.034, cacheWriteUsd: 0, outputUsd: 0.7 },
+                pricingSource: 'Copilot pricing table',
+                unpricedTurnCount: 2,
+                pricingUnavailable: false,
+            },
+        });
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+
+        await act(async () => {
+            fireEvent.click(trigger);
+        });
+
+        expect(screen.getByText(/Est\. \$1\.23/)).toBeDefined();
+        expect(screen.getByText(/partial — 2 turns unpriced/)).toBeDefined();
+    });
+});
+
 describe('getSessionIdFromProcess', () => {
     it('returns null for null/undefined process', () => {
         expect(getSessionIdFromProcess(null)).toBeNull();
