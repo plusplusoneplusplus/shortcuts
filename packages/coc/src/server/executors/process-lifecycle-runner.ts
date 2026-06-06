@@ -484,6 +484,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                 cost: tokenUsage.cost !== undefined
                                     ? (prevCumulative?.cost ?? 0) + tokenUsage.cost
                                     : prevCumulative?.cost,
+                                actualUsdCost: tokenUsage.actualUsdCost !== undefined
+                                    ? (prevCumulative?.actualUsdCost ?? 0) + tokenUsage.actualUsdCost
+                                    : prevCumulative?.actualUsdCost,
                                 duration: tokenUsage.duration !== undefined
                                     ? (prevCumulative?.duration ?? 0) + tokenUsage.duration
                                     : prevCumulative?.duration,

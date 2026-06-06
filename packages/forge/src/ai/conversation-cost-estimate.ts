@@ -1,6 +1,7 @@
 import type { TokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { ConversationTurn } from './process-interfaces';
 import { estimateCopilotTokenCost } from './copilot-token-cost';
+import { resolveDisplayedUsdCost, type DisplayedUsdCostSource } from './displayed-usd-cost';
 
 export interface ConversationCostBreakdown {
     inputUsd: number;
@@ -10,7 +11,10 @@ export interface ConversationCostBreakdown {
 }
 
 export interface ConversationCostEstimate {
+    actualUsdCost?: number;
     estimatedUsdCost: number;
+    displayedUsdCost?: number;
+    displayedUsdCostSource?: DisplayedUsdCostSource | 'mixed';
     costBreakdown: ConversationCostBreakdown;
     pricingSource?: string;
     unpricedTurnCount: number;
@@ -46,8 +50,12 @@ export function computeConversationCostEstimate(
 ): ConversationCostEstimate | undefined {
     let currentModel = defaultModel?.trim() || undefined;
     const costBreakdown = emptyBreakdown();
+    let actualUsdCost = 0;
     let estimatedUsdCost = 0;
+    let displayedUsdCost = 0;
     let pricedTurnCount = 0;
+    let displayedTurnCount = 0;
+    const displayedSources = new Set<DisplayedUsdCostSource>();
     let unpricedTurnCount = 0;
     let pricingSource: string | undefined;
 
@@ -61,14 +69,33 @@ export function computeConversationCostEstimate(
             continue;
         }
 
+        const actualTurnUsd = typeof turn.tokenUsage.actualUsdCost === 'number' && Number.isFinite(turn.tokenUsage.actualUsdCost)
+            ? turn.tokenUsage.actualUsdCost
+            : undefined;
+        if (actualTurnUsd !== undefined) {
+            actualUsdCost += actualTurnUsd;
+        }
+
         if (!currentModel) {
             unpricedTurnCount += 1;
+            const displayed = resolveDisplayedUsdCost({ actualUsdCost: actualTurnUsd });
+            if (displayed) {
+                displayedTurnCount += 1;
+                displayedUsdCost += displayed.usd;
+                displayedSources.add(displayed.source);
+            }
             continue;
         }
 
         const estimate = estimateCopilotTokenCost(currentModel, turn.tokenUsage);
         if (!estimate) {
             unpricedTurnCount += 1;
+            const displayed = resolveDisplayedUsdCost({ actualUsdCost: actualTurnUsd });
+            if (displayed) {
+                displayedTurnCount += 1;
+                displayedUsdCost += displayed.usd;
+                displayedSources.add(displayed.source);
+            }
             continue;
         }
 
@@ -79,6 +106,15 @@ export function computeConversationCostEstimate(
         costBreakdown.cachedInputUsd += estimate.cachedInputUsd;
         costBreakdown.cacheWriteUsd += estimate.cacheWriteUsd;
         costBreakdown.outputUsd += estimate.outputUsd;
+        const displayed = resolveDisplayedUsdCost({
+            actualUsdCost: actualTurnUsd,
+            estimatedUsdCost: estimate.totalUsd,
+        });
+        if (displayed) {
+            displayedTurnCount += 1;
+            displayedUsdCost += displayed.usd;
+            displayedSources.add(displayed.source);
+        }
     }
 
     if (pricedTurnCount === 0 && unpricedTurnCount === 0) {
@@ -86,10 +122,17 @@ export function computeConversationCostEstimate(
     }
 
     return {
+        ...(actualUsdCost > 0 || displayedSources.has('native') ? { actualUsdCost } : {}),
         estimatedUsdCost,
+        ...(displayedTurnCount > 0 ? {
+            displayedUsdCost,
+            displayedUsdCostSource: displayedSources.size === 1
+                ? Array.from(displayedSources)[0]
+                : 'mixed',
+        } : {}),
         costBreakdown,
         pricingSource,
         unpricedTurnCount,
-        pricingUnavailable: pricedTurnCount === 0,
+        pricingUnavailable: displayedTurnCount === 0,
     };
 }

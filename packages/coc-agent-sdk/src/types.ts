@@ -342,10 +342,16 @@ export interface TokenUsage {
     cacheWriteTokens: number;
     /** Sum of inputTokens + outputTokens */
     totalTokens: number;
-    /** Cumulative cost across all turns (if reported by the SDK) */
+    /** Provider-reported non-USD billing units, such as Copilot premium request units */
     cost?: number;
+    /** Provider-native USD cost, such as Claude total_cost_usd */
+    actualUsdCost?: number;
     /** Estimated USD token cost derived from published Copilot per-token pricing */
     estimatedUsdCost?: number;
+    /** Native-first USD cost selected for display: actualUsdCost when present, else estimatedUsdCost */
+    displayedUsdCost?: number;
+    /** Source used for displayedUsdCost */
+    displayedUsdCostSource?: 'native' | 'estimated' | 'mixed';
     /** Estimated USD token cost by billing category */
     costBreakdown?: {
         inputUsd: number;

@@ -11,7 +11,10 @@ export interface ClientTokenUsage {
     totalTokens: number;
     turnCount: number;
     cost?: number;
+    actualUsdCost?: number;
     estimatedUsdCost?: number;
+    displayedUsdCost?: number;
+    displayedUsdCostSource?: 'native' | 'estimated' | 'mixed';
     costBreakdown?: {
         inputUsd: number;
         cachedInputUsd: number;
@@ -191,4 +194,3 @@ export interface TasksPanelNavState {
     selectedFolderPath: string | null;
     activeFolderPath: string | null;
 }
-

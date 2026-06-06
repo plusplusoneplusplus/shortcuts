@@ -244,6 +244,13 @@ export {
     normalizeCopilotModelId,
 } from './copilot-token-cost';
 export {
+    DisplayedUsdCost,
+    DisplayedUsdCostInput,
+    DisplayedUsdCostSource,
+    resolveDisplayedUsdCost,
+    withDisplayedUsdCost,
+} from './displayed-usd-cost';
+export {
     ConversationCostBreakdown,
     ConversationCostEstimate,
     computeConversationCostEstimate,

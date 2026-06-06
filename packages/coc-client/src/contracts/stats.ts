@@ -6,7 +6,10 @@ export interface TokenUsage {
   totalTokens: number;
   turnCount: number;
   cost?: number;
+  actualUsdCost?: number;
   estimatedUsdCost?: number;
+  displayedUsdCost?: number;
+  displayedUsdCostSource?: 'native' | 'estimated' | 'mixed';
   costBreakdown?: {
     inputUsd: number;
     cachedInputUsd: number;

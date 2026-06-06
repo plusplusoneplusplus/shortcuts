@@ -1543,7 +1543,7 @@ function addClaudeUsage(current: TokenUsage | undefined, msg: Pick<ClaudeResultM
     result.totalTokens = result.inputTokens + result.outputTokens;
     result.turnCount += Math.max(1, claudeUsageNumber(msg.num_turns));
     if (msg.total_cost_usd != null && Number.isFinite(msg.total_cost_usd)) {
-        result.cost = (result.cost ?? 0) + msg.total_cost_usd;
+        result.actualUsdCost = (result.actualUsdCost ?? 0) + msg.total_cost_usd;
     }
     if (msg.duration_ms != null && Number.isFinite(msg.duration_ms)) {
         result.duration = (result.duration ?? 0) + msg.duration_ms;

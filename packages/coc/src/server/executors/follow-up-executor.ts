@@ -445,6 +445,9 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                             cost: result.tokenUsage.cost !== undefined
                                 ? (prevCumulative?.cost ?? 0) + result.tokenUsage.cost
                                 : prevCumulative?.cost,
+                            actualUsdCost: result.tokenUsage.actualUsdCost !== undefined
+                                ? (prevCumulative?.actualUsdCost ?? 0) + result.tokenUsage.actualUsdCost
+                                : prevCumulative?.actualUsdCost,
                             duration: result.tokenUsage.duration !== undefined
                                 ? (prevCumulative?.duration ?? 0) + result.tokenUsage.duration
                                 : prevCumulative?.duration,

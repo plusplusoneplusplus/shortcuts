@@ -585,7 +585,7 @@ describe('ClaudeSDKService.sendMessage', () => {
             cacheReadTokens: 50,
             cacheWriteTokens: 12,
             totalTokens: 135,
-            cost: 0.0123,
+            actualUsdCost: 0.0123,
             duration: 1400,
             turnCount: 2,
         });
@@ -1417,7 +1417,7 @@ describe('ClaudeSDKService.sendMessage', () => {
                 cacheReadTokens: 1,
                 cacheWriteTokens: 0,
                 totalTokens: 5,
-                cost: 0,
+                actualUsdCost: 0,
                 duration: 42,
                 turnCount: 1,
             },

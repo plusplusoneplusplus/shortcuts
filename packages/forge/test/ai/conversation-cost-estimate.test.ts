@@ -118,4 +118,27 @@ describe('computeConversationCostEstimate', () => {
         expect(estimate!.unpricedTurnCount).toBe(1);
         expect(estimate!.pricingUnavailable).toBe(false);
     });
+
+    it('uses native USD for display while preserving token estimates', () => {
+        const turnUsage = usage({
+            inputTokens: 1_000_000,
+            outputTokens: 1_000_000,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            actualUsdCost: 0.0123,
+            cost: 99,
+        });
+        const estimated = estimateCopilotTokenCost('claude-sonnet-4.6', turnUsage)!;
+
+        const estimate = computeConversationCostEstimate([
+            turn('user', 0),
+            turn('assistant', 1, { tokenUsage: turnUsage }),
+        ], 'claude-sonnet-4.6');
+
+        expect(estimate).toBeDefined();
+        expect(estimate!.actualUsdCost).toBeCloseTo(0.0123);
+        expect(estimate!.estimatedUsdCost).toBeCloseTo(estimated.totalUsd);
+        expect(estimate!.displayedUsdCost).toBeCloseTo(0.0123);
+        expect(estimate!.displayedUsdCostSource).toBe('native');
+    });
 });

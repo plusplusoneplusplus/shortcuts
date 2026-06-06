@@ -29,6 +29,10 @@ const sampleTokenUsage: TokenUsage = {
     cacheWriteTokens: 50,
     totalTokens: 6912,
     turnCount: 1,
+    actualUsdCost: 0.0123,
+    estimatedUsdCost: 0.0456,
+    displayedUsdCost: 0.0123,
+    displayedUsdCostSource: 'native',
     tokenLimit: 200_000,
     currentTokens: 42_000,
     systemTokens: 10_000,
@@ -56,6 +60,10 @@ describe('ConversationTurn.tokenUsage serialization', () => {
             cacheWriteTokens: 50,
             totalTokens: 6912,
             turnCount: 1,
+            actualUsdCost: 0.0123,
+            estimatedUsdCost: 0.0456,
+            displayedUsdCost: 0.0123,
+            displayedUsdCostSource: 'native',
             tokenLimit: 200_000,
             currentTokens: 42_000,
             systemTokens: 10_000,
@@ -69,6 +77,10 @@ describe('ConversationTurn.tokenUsage serialization', () => {
         expect(dTurn.tokenUsage!.inputTokens).toBe(1234);
         expect(dTurn.tokenUsage!.outputTokens).toBe(5678);
         expect(dTurn.tokenUsage!.totalTokens).toBe(6912);
+        expect(dTurn.tokenUsage!.actualUsdCost).toBe(0.0123);
+        expect(dTurn.tokenUsage!.estimatedUsdCost).toBe(0.0456);
+        expect(dTurn.tokenUsage!.displayedUsdCost).toBe(0.0123);
+        expect(dTurn.tokenUsage!.displayedUsdCostSource).toBe('native');
         expect(dTurn.tokenUsage!.tokenLimit).toBe(200_000);
         expect(dTurn.tokenUsage!.currentTokens).toBe(42_000);
         expect(dTurn.tokenUsage!.systemTokens).toBe(10_000);

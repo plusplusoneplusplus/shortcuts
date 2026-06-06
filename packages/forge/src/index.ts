@@ -263,10 +263,15 @@ export {
     CopilotTokenCostBreakdown,
     ConversationCostBreakdown,
     ConversationCostEstimate,
+    DisplayedUsdCost,
+    DisplayedUsdCostInput,
+    DisplayedUsdCostSource,
     estimateCopilotTokenCost,
     computeConversationCostEstimate,
     getCopilotModelPricing,
     normalizeCopilotModelId,
+    resolveDisplayedUsdCost,
+    withDisplayedUsdCost,
 } from './ai';
 
 // ============================================================================

@@ -1,6 +1,7 @@
 import type { TokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { SerializedAIProcess } from './process-types';
 import { estimateCopilotTokenCost } from './copilot-token-cost';
+import { withDisplayedUsdCost } from './displayed-usd-cost';
 
 export interface TokenUsageStatsEntry {
     date: string;                        // YYYY-MM-DD (UTC)
@@ -31,9 +32,12 @@ interface Accumulator {
     usage: TokenUsage;
     hasCost: boolean;
     hasDuration: boolean;
+    hasActualUsdCost: boolean;
     hasEstimatedUsdCost: boolean;
+    hasDisplayedUsdCost: boolean;
     hasCostBreakdown: boolean;
     pricingSources: Set<string>;
+    displayedUsdCostSources: Set<NonNullable<TokenUsage['displayedUsdCostSource']>>;
     pricingUnavailable: boolean;
 }
 
@@ -42,9 +46,12 @@ function newAccumulator(): Accumulator {
         usage: emptyUsage(),
         hasCost: false,
         hasDuration: false,
+        hasActualUsdCost: false,
         hasEstimatedUsdCost: false,
+        hasDisplayedUsdCost: false,
         hasCostBreakdown: false,
         pricingSources: new Set(),
+        displayedUsdCostSources: new Set(),
         pricingUnavailable: false,
     };
 }
@@ -65,9 +72,17 @@ function addToAccumulator(acc: Accumulator, src: TokenUsage): void {
         acc.hasDuration = true;
         acc.usage.duration = (acc.usage.duration ?? 0) + src.duration;
     }
+    if (src.actualUsdCost !== undefined) {
+        acc.hasActualUsdCost = true;
+        acc.usage.actualUsdCost = (acc.usage.actualUsdCost ?? 0) + src.actualUsdCost;
+    }
     if (src.estimatedUsdCost !== undefined) {
         acc.hasEstimatedUsdCost = true;
         acc.usage.estimatedUsdCost = (acc.usage.estimatedUsdCost ?? 0) + src.estimatedUsdCost;
+    }
+    if (src.displayedUsdCost !== undefined) {
+        acc.hasDisplayedUsdCost = true;
+        acc.usage.displayedUsdCost = (acc.usage.displayedUsdCost ?? 0) + src.displayedUsdCost;
     }
     if (src.costBreakdown !== undefined) {
         acc.hasCostBreakdown = true;
@@ -87,6 +102,9 @@ function addToAccumulator(acc: Accumulator, src: TokenUsage): void {
     if (src.pricingSource !== undefined) {
         acc.pricingSources.add(src.pricingSource);
     }
+    if (src.displayedUsdCostSource !== undefined) {
+        acc.displayedUsdCostSources.add(src.displayedUsdCostSource);
+    }
     if (src.pricingUnavailable) {
         acc.pricingUnavailable = true;
     }
@@ -100,8 +118,19 @@ function finalizeAccumulator(acc: Accumulator): TokenUsage {
     if (!acc.hasDuration) {
         delete result.duration;
     }
+    if (!acc.hasActualUsdCost) {
+        delete result.actualUsdCost;
+    }
     if (!acc.hasEstimatedUsdCost) {
         delete result.estimatedUsdCost;
+    }
+    if (acc.hasDisplayedUsdCost) {
+        result.displayedUsdCostSource = acc.displayedUsdCostSources.size === 1
+            ? Array.from(acc.displayedUsdCostSources)[0]
+            : 'mixed';
+    } else {
+        delete result.displayedUsdCost;
+        delete result.displayedUsdCostSource;
     }
     if (!acc.hasCostBreakdown) {
         delete result.costBreakdown;
@@ -124,7 +153,7 @@ function addEstimatedTokenCost(model: string, usage: TokenUsage): TokenUsage {
     const estimated = estimateCopilotTokenCost(model, result);
     if (!estimated) {
         result.pricingUnavailable = true;
-        return result;
+        return withDisplayedUsdCost(result);
     }
 
     result.estimatedUsdCost = estimated.totalUsd;
@@ -135,7 +164,7 @@ function addEstimatedTokenCost(model: string, usage: TokenUsage): TokenUsage {
         outputUsd: estimated.outputUsd,
     };
     result.pricingSource = estimated.pricingSource;
-    return result;
+    return withDisplayedUsdCost(result);
 }
 
 export function aggregateTokenUsageStats(

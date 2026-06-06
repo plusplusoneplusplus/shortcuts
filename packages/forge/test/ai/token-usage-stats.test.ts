@@ -13,6 +13,7 @@ function makeProcess(
         totalTokens?: number;
         turnCount?: number;
         cost?: number;
+        actualUsdCost?: number;
         duration?: number;
     } | null = {}
 ): SerializedAIProcess {
@@ -31,6 +32,7 @@ function makeProcess(
             totalTokens: tokens.totalTokens ?? 15,
             turnCount: tokens.turnCount ?? 1,
             cost: tokens.cost,
+            actualUsdCost: tokens.actualUsdCost,
             duration: tokens.duration,
         },
     } as SerializedAIProcess;
@@ -189,5 +191,40 @@ describe('aggregateTokenUsageStats', () => {
         expect(entry.byModel.UNKNOWN.pricingUnavailable).toBe(true);
         expect(entry.dayTotal.estimatedUsdCost).toBeCloseTo(24.03532);
         expect(entry.dayTotal.pricingUnavailable).toBe(true);
+    });
+
+    it('13. selects native USD for Claude and estimated USD for Codex in display totals', () => {
+        const claude = makeProcess('2026-06-03T08:00:00.000Z', 'claude-sonnet-4.6', {
+            inputTokens: 1_000_000,
+            outputTokens: 1_000_000,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            totalTokens: 2_000_000,
+            cost: 99,
+            actualUsdCost: 0.0123,
+        });
+        const codex = makeProcess('2026-06-03T09:00:00.000Z', 'gpt-5.3-codex', {
+            inputTokens: 500_000,
+            outputTokens: 100_000,
+            cacheReadTokens: 100_000,
+            cacheWriteTokens: 0,
+            totalTokens: 600_000,
+        });
+
+        const result = aggregateTokenUsageStats([claude, codex]);
+        const entry = result.entries[0];
+        const codexEstimate = entry.byModel['gpt-5.3-codex'].estimatedUsdCost;
+
+        expect(entry.byModel['claude-sonnet-4.6'].actualUsdCost).toBeCloseTo(0.0123);
+        expect(entry.byModel['claude-sonnet-4.6'].estimatedUsdCost).toBeDefined();
+        expect(entry.byModel['claude-sonnet-4.6'].displayedUsdCost).toBeCloseTo(0.0123);
+        expect(entry.byModel['claude-sonnet-4.6'].displayedUsdCostSource).toBe('native');
+        expect(codexEstimate).toBeDefined();
+        expect(entry.byModel['gpt-5.3-codex'].actualUsdCost).toBeUndefined();
+        expect(entry.byModel['gpt-5.3-codex'].displayedUsdCost).toBeCloseTo(codexEstimate!);
+        expect(entry.byModel['gpt-5.3-codex'].displayedUsdCostSource).toBe('estimated');
+        expect(entry.dayTotal.displayedUsdCost).toBeCloseTo(0.0123 + codexEstimate!);
+        expect(entry.dayTotal.displayedUsdCostSource).toBe('mixed');
+        expect(entry.dayTotal.cost).toBe(99);
     });
 });
