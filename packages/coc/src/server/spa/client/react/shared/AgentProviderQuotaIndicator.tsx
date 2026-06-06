@@ -49,7 +49,21 @@ function formatLastUpdated(lastUpdated: string | null | undefined): string {
     return `Last updated ${Math.floor(hours / 24)}d ago`;
 }
 
-function formatResetDate(resetDate: string | undefined): string {
+function formatTimeRemaining(deltaMs: number): string {
+    if (deltaMs <= 0) {
+        return 'due';
+    }
+    const totalMinutes = Math.floor(deltaMs / 60_000);
+    const days = Math.floor(totalMinutes / (60 * 24));
+    const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+    const minutes = totalMinutes % 60;
+    if (days > 0) {
+        return `${days}d ${hours}h left`;
+    }
+    return `${hours}h ${minutes}m left`;
+}
+
+function formatResetDate(resetDate: string | undefined, now: number = Date.now()): string {
     if (!resetDate) {
         return 'Reset not reported';
     }
@@ -57,7 +71,10 @@ function formatResetDate(resetDate: string | undefined): string {
     if (!Number.isFinite(timestamp)) {
         return 'Reset not reported';
     }
-    return `Reset ${new Date(timestamp).toISOString().slice(0, 10)}`;
+    // Minute-level UTC timestamp (YYYY-MM-DD HH:MM) keeps the absolute reset
+    // unambiguous and deterministic across timezones.
+    const absolute = new Date(timestamp).toISOString().slice(0, 16).replace('T', ' ');
+    return `Reset ${absolute} · ${formatTimeRemaining(timestamp - now)}`;
 }
 
 function getGaugeColor(remainingPercent: number | null): string {

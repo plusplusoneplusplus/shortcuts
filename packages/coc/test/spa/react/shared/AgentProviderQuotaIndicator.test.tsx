@@ -90,14 +90,16 @@ describe('AgentProviderQuotaIndicator', () => {
                         remainingPercentage: 0.85,
                         usedRequests: 15,
                         entitlementRequests: 100,
-                        resetDate: '2026-06-07T00:00:00.000Z',
+                        // +30s of slack keeps the minute-floor countdown stable under
+                        // the fake timer's shouldAdvanceTime; seconds are not displayed.
+                        resetDate: '2026-06-07T00:00:30.000Z',
                     })],
                 },
                 {
                     id: 'codex',
                     quotaTypes: [
-                        quotaType({ type: 'seven_day', remainingPercentage: 0.9, usedRequests: 10, entitlementRequests: 100, resetDate: '2026-06-13T00:00:00.000Z' }),
-                        quotaType({ type: 'five_hour', remainingPercentage: 0.2, usedRequests: 80, entitlementRequests: 100, resetDate: '2026-06-06T15:00:00.000Z' }),
+                        quotaType({ type: 'seven_day', remainingPercentage: 0.9, usedRequests: 10, entitlementRequests: 100, resetDate: '2026-06-13T00:00:30.000Z' }),
+                        quotaType({ type: 'five_hour', remainingPercentage: 0.2, usedRequests: 80, entitlementRequests: 100, resetDate: '2026-06-06T15:00:30.000Z' }),
                     ],
                 },
                 {
@@ -118,7 +120,9 @@ describe('AgentProviderQuotaIndicator', () => {
         expect(copilotRow.textContent).toContain('Copilot');
         expect(copilotRow.textContent).toContain('Chat');
         expect(copilotRow.textContent).toContain('15 / 100 used');
-        expect(copilotRow.textContent).toContain('Reset 2026-06-07');
+        // Minute-level reset timestamp plus a remaining-time countdown.
+        expect(copilotRow.textContent).toContain('Reset 2026-06-07 00:00');
+        expect(copilotRow.textContent).toContain('13h 58m left');
 
         const codexRow = screen.getByTestId('quota-provider-row-codex');
         expect(codexRow.textContent).toContain('Codex');
@@ -130,11 +134,14 @@ describe('AgentProviderQuotaIndicator', () => {
 
         const codexWeekly = screen.getByTestId('quota-provider-window-codex-seven_day');
         expect(codexWeekly.textContent).toContain('10 / 100 used');
-        expect(codexWeekly.textContent).toContain('Reset 2026-06-13');
+        // Multi-day windows collapse to a days + hours countdown.
+        expect(codexWeekly.textContent).toContain('Reset 2026-06-13 00:00');
+        expect(codexWeekly.textContent).toContain('6d 13h left');
 
         const codexFiveHour = screen.getByTestId('quota-provider-window-codex-five_hour');
         expect(codexFiveHour.textContent).toContain('80 / 100 used');
-        expect(codexFiveHour.textContent).toContain('Reset 2026-06-06');
+        expect(codexFiveHour.textContent).toContain('Reset 2026-06-06 15:00');
+        expect(codexFiveHour.textContent).toContain('4h 58m left');
 
         const claudeRow = screen.getByTestId('quota-provider-row-claude');
         expect(claudeRow.textContent).toContain('Claude');
@@ -142,6 +149,32 @@ describe('AgentProviderQuotaIndicator', () => {
 
         expect(screen.getByTestId('agent-provider-quota-last-updated').textContent).toBe('Last updated 2m ago');
         expect(screen.getByTestId('agent-provider-quota-admin-link').getAttribute('href')).toBe('#admin/agents');
+    });
+
+    it('marks an elapsed reset as due and handles a missing reset date', async () => {
+        mocks.getAgentProvidersQuota.mockResolvedValue(quotaResponse({
+            providers: [
+                {
+                    id: 'codex',
+                    quotaTypes: [
+                        // Reset already in the past relative to the mocked clock.
+                        quotaType({ type: 'five_hour', remainingPercentage: 0.2, usedRequests: 80, entitlementRequests: 100, resetDate: '2026-06-06T09:00:00.000Z' }),
+                        // No reset date reported.
+                        quotaType({ type: 'seven_day', remainingPercentage: 0.5, usedRequests: 50, entitlementRequests: 100 }),
+                    ],
+                },
+            ],
+        }));
+
+        render(<AgentProviderQuotaIndicator />);
+        fireEvent.click(await screen.findByTestId('agent-provider-quota-indicator'));
+
+        const codexFiveHour = await screen.findByTestId('quota-provider-window-codex-five_hour');
+        expect(codexFiveHour.textContent).toContain('Reset 2026-06-06 09:00 · due');
+        expect(codexFiveHour.textContent).not.toContain('left');
+
+        const codexWeekly = screen.getByTestId('quota-provider-window-codex-seven_day');
+        expect(codexWeekly.textContent).toContain('Reset not reported');
     });
 
     it('forces a live refresh from the dropdown and updates the gauge', async () => {

@@ -254,7 +254,9 @@ gauge to the most-constrained enabled provider's used percentage and to render a
 NotificationBell-style dropdown. The dropdown lists one row per enabled
 provider; each row's gauge and risk badge are driven by that provider's tightest
 finite quota window, while the body lists every finite quota window (e.g. both
-`5h` and `Weekly`) with its used/entitlement caption and reset date. It also
+`5h` and `Weekly`) with its used/entitlement caption and a minute-level UTC reset
+timestamp (`YYYY-MM-DD HH:MM`) plus a remaining-time countdown (`Xd Yh left` for
+multi-day windows, `Xh Ym left` otherwise, or `due` once elapsed). It also
 shows an unlimited badge for all-unlimited providers, provider-level errors, a
 last-updated line,
 a force-refresh button that calls `admin.getAgentProvidersQuota({ force: true })`,
