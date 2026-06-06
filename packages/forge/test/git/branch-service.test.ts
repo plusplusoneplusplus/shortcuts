@@ -934,6 +934,123 @@ describe('BranchService.cherryPick', () => {
         );
     });
 
+    it('cherry-picks multiple commits onto another branch and switches back', async () => {
+        mockedExecAsync
+            .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: 'target-start\n', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: 'feature\n', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        const result = await service.cherryPick('/repo', 'older123', {
+            hashes: ['older123', 'newer456'],
+            targetBranch: 'feature',
+        });
+
+        expect(result).toMatchObject({
+            success: true,
+            conflicts: false,
+            targetBranch: 'feature',
+            originalBranch: 'main',
+            appliedHashes: ['older123', 'newer456'],
+        });
+        expect(mockedExecAsync.mock.calls.map(call => call[0])).toEqual([
+            'git rev-parse --abbrev-ref HEAD',
+            'git status --porcelain',
+            "git checkout 'feature'",
+            'git rev-parse HEAD',
+            "git cherry-pick 'older123'",
+            "git cherry-pick 'newer456'",
+            'git rev-parse --abbrev-ref HEAD',
+            "git checkout 'main'",
+        ]);
+    });
+
+    it('blocks cherry-picking to another branch when the working tree is dirty', async () => {
+        mockedExecAsync
+            .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' })
+            .mockResolvedValueOnce({ stdout: ' M src/app.ts\n', stderr: '' });
+
+        const result = await service.cherryPick('/repo', 'abc1234', { targetBranch: 'feature' });
+
+        expect(result).toMatchObject({
+            success: false,
+            conflicts: false,
+            dirty: true,
+            targetBranch: 'feature',
+            originalBranch: 'main',
+        });
+        expect(result.message).toContain('commit or stash');
+        expect(mockedExecAsync.mock.calls.map(call => call[0])).toEqual([
+            'git rev-parse --abbrev-ref HEAD',
+            'git status --porcelain',
+        ]);
+    });
+
+    it('does not switch branches when the target is the current branch', async () => {
+        mockedExecAsync
+            .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        const result = await service.cherryPick('/repo', 'abc1234', { targetBranch: 'main' });
+
+        expect(result).toMatchObject({
+            success: true,
+            conflicts: false,
+            targetBranch: 'main',
+            originalBranch: 'main',
+            appliedHashes: ['abc1234'],
+        });
+        expect(mockedExecAsync.mock.calls.map(call => call[0])).toEqual([
+            'git rev-parse --abbrev-ref HEAD',
+            "git cherry-pick 'abc1234'",
+        ]);
+    });
+
+    it('aborts, resets the target branch, and switches back when a cross-branch cherry-pick fails', async () => {
+        mockedExecAsync
+            .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: 'target-start\n', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockRejectedValueOnce(new Error('CONFLICT (content): Merge conflict in src/foo.ts'))
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: 'feature\n', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' });
+
+        const result = await service.cherryPick('/repo', 'older123', {
+            hashes: ['older123', 'bad456'],
+            targetBranch: 'feature',
+        });
+
+        expect(result).toMatchObject({
+            success: false,
+            conflicts: true,
+            targetBranch: 'feature',
+            originalBranch: 'main',
+            appliedHashes: ['older123'],
+        });
+        expect(mockedExecAsync.mock.calls.map(call => call[0])).toEqual([
+            'git rev-parse --abbrev-ref HEAD',
+            'git status --porcelain',
+            "git checkout 'feature'",
+            'git rev-parse HEAD',
+            "git cherry-pick 'older123'",
+            "git cherry-pick 'bad456'",
+            'git cherry-pick --abort',
+            "git reset --hard 'target-start'",
+            'git rev-parse --abbrev-ref HEAD',
+            "git checkout 'main'",
+            'git rev-parse --abbrev-ref HEAD',
+        ]);
+    });
+
     it('returns conflicts: true when CONFLICT appears in the error message', async () => {
         mockedExecAsync.mockRejectedValueOnce(new Error('CONFLICT (content): Merge conflict in src/foo.ts'));
 

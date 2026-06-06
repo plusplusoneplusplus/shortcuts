@@ -330,7 +330,7 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
         },
     }));
 
-    // POST /api/workspaces/:id/git/cherry-pick — Cherry-pick a commit onto the current branch
+    // POST /api/workspaces/:id/git/cherry-pick — Cherry-pick commit(s), optionally onto a local branch
     routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/cherry-pick$/,
@@ -339,12 +339,35 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
             if (!ws) return;
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
-            if (!body.hash || typeof body.hash !== 'string') return void handleAPIError(res, missingFields(['hash']));
-            const result = await branchService.cherryPick(ws.rootPath, body.hash);
+            const hashes = Array.isArray(body.hashes)
+                ? body.hashes.filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0).map((value: string) => value.trim())
+                : [];
+            const hash = typeof body.hash === 'string' && body.hash.trim() ? body.hash.trim() : hashes[0];
+            if (!hash) return void handleAPIError(res, missingFields(['hash']));
+            const targetBranch = typeof body.targetBranch === 'string' && body.targetBranch.trim() ? body.targetBranch.trim() : undefined;
+            if (targetBranch) {
+                const localBranches = branchService.getLocalBranches(ws.rootPath);
+                if (!localBranches.some(branch => branch.name === targetBranch)) {
+                    return void handleAPIError(res, badRequest('Target branch must be a local branch'));
+                }
+            }
+            const result = await branchService.cherryPick(ws.rootPath, hash, {
+                hashes: hashes.length > 0 ? hashes : undefined,
+                targetBranch,
+            });
             if (result.success) {
                 gitCache.invalidateMutable(ws.id);
                 getWsServer?.()?.broadcastGitChanged(ws.id, 'cherry-pick');
-                return { success: true };
+                return {
+                    success: true,
+                    targetBranch: result.targetBranch,
+                    originalBranch: result.originalBranch,
+                    appliedHashes: result.appliedHashes,
+                };
+            }
+            if (result.dirty) {
+                sendJSON(res, 409, { error: result.message, dirty: true });
+                return;
             }
             if (result.conflicts) {
                 sendJSON(res, 409, { error: result.message, conflicts: true });

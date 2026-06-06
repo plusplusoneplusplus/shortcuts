@@ -25,6 +25,8 @@ import {
     BranchListOptions,
     PaginatedBranchResult,
     GitOperationResult,
+    GitCherryPickOptions,
+    GitCherryPickResult,
     GitPatchApplyOptions,
     GitPatchApplyResult,
     GitPatchExportResult,
@@ -797,21 +799,134 @@ export class BranchService {
     }
 
     /**
-     * Cherry-pick a commit onto the current branch.
-     * @returns success: true on clean apply, conflicts: true when merge conflicts occur
+     * Cherry-pick commit(s). Existing callers that omit options keep the plain
+     * "onto current HEAD" behavior, while branch-targeted calls are atomic.
      */
-    async cherryPick(repoRoot: string, hash: string): Promise<{ success: boolean; conflicts: boolean; message: string }> {
+    async cherryPick(repoRoot: string, hash: string, options?: GitCherryPickOptions): Promise<GitCherryPickResult> {
+        const hashes = options?.hashes?.length ? options.hashes : [hash];
+        const targetBranch = options?.targetBranch?.trim();
+        if (!options || (!targetBranch && hashes.length === 1)) {
+            return this.cherryPickOntoCurrentHead(repoRoot, hash);
+        }
+
+        const originalBranch = await this.getCurrentBranchName(repoRoot);
+        if (targetBranch && !originalBranch) {
+            return {
+                success: false,
+                conflicts: false,
+                message: 'Cannot determine current branch (detached HEAD?)',
+                targetBranch,
+                originalBranch,
+            };
+        }
+        const shouldSwitch = Boolean(targetBranch && originalBranch && targetBranch !== originalBranch);
+        const appliedHashes: string[] = [];
+        let targetStartingHead: string | null = null;
+
+        if (shouldSwitch && await this.hasUncommittedChanges(repoRoot)) {
+            return {
+                success: false,
+                conflicts: false,
+                dirty: true,
+                message: 'Working tree must be clean before cherry-picking to another branch. Please commit or stash your changes.',
+                targetBranch,
+                originalBranch,
+            };
+        }
+
+        try {
+            if (shouldSwitch) {
+                await this.execGit(`git checkout ${this.quoteShellArg(targetBranch!)}`, { cwd: repoRoot });
+                targetStartingHead = (await this.execGit('git rev-parse HEAD', { cwd: repoRoot })).trim();
+            }
+
+            for (const commitHash of hashes) {
+                await this.execGit(`git cherry-pick ${this.quoteShellArg(commitHash)}`, { cwd: repoRoot });
+                appliedHashes.push(commitHash);
+            }
+
+            return {
+                success: true,
+                conflicts: false,
+                message: hashes.length === 1 ? 'Cherry-pick applied successfully' : 'Cherry-picks applied successfully',
+                targetBranch: targetBranch || originalBranch || undefined,
+                originalBranch,
+                appliedHashes,
+            };
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            const isConflict = this.isCherryPickConflict(errorMessage);
+
+            await this.abortCherryPickAndRestoreBranch(repoRoot);
+            if (targetStartingHead) {
+                try {
+                    await this.execGit(`git reset --hard ${this.quoteShellArg(targetStartingHead)}`, { cwd: repoRoot });
+                } catch (resetError) {
+                    getLogger().error('Git', `Failed to reset cherry-pick target branch to ${targetStartingHead}`, resetError instanceof Error ? resetError : undefined);
+                }
+            }
+            await this.switchBackToOriginalBranch(repoRoot, originalBranch);
+
+            if (isConflict) {
+                return {
+                    success: false,
+                    conflicts: true,
+                    message: errorMessage,
+                    targetBranch,
+                    originalBranch,
+                    appliedHashes,
+                };
+            }
+            getLogger().error('Git', `Failed to cherry-pick ${hashes.join(', ')}`, error instanceof Error ? error : undefined);
+            return {
+                success: false,
+                conflicts: false,
+                message: errorMessage,
+                targetBranch,
+                originalBranch,
+                appliedHashes,
+            };
+        } finally {
+            if (shouldSwitch) {
+                await this.switchBackToOriginalBranch(repoRoot, originalBranch);
+            }
+        }
+    }
+
+    private async cherryPickOntoCurrentHead(repoRoot: string, hash: string): Promise<GitCherryPickResult> {
         try {
             await this.execGit(`git cherry-pick ${hash}`, { cwd: repoRoot });
             return { success: true, conflicts: false, message: 'Cherry-pick applied successfully' };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            const isConflict = /CONFLICT|conflict/i.test(errorMessage) || /cherry-pick.*conflict/i.test(errorMessage) || /Merge conflict/i.test(errorMessage);
-            if (isConflict) {
+            if (this.isCherryPickConflict(errorMessage)) {
                 return { success: false, conflicts: true, message: errorMessage };
             }
             getLogger().error('Git', `Failed to cherry-pick ${hash}`, error instanceof Error ? error : undefined);
             return { success: false, conflicts: false, message: errorMessage };
+        }
+    }
+
+    private isCherryPickConflict(errorMessage: string): boolean {
+        return /CONFLICT|conflict/i.test(errorMessage) || /cherry-pick.*conflict/i.test(errorMessage) || /Merge conflict/i.test(errorMessage);
+    }
+
+    private async abortCherryPickAndRestoreBranch(repoRoot: string): Promise<void> {
+        try {
+            await this.execGit('git cherry-pick --abort', { cwd: repoRoot });
+        } catch {
+            // No cherry-pick may be in progress for non-conflict failures.
+        }
+    }
+
+    private async switchBackToOriginalBranch(repoRoot: string, originalBranch: string | null): Promise<void> {
+        if (!originalBranch) return;
+        const currentBranch = await this.getCurrentBranchName(repoRoot);
+        if (currentBranch === originalBranch) return;
+        try {
+            await this.execGit(`git checkout ${this.quoteShellArg(originalBranch)}`, { cwd: repoRoot });
+        } catch (error) {
+            getLogger().error('Git', `Failed to switch back to branch ${originalBranch}`, error instanceof Error ? error : undefined);
         }
     }
 

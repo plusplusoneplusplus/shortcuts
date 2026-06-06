@@ -34,6 +34,7 @@ import type { MockProcessStore } from './helpers/mock-process-store';
 
 const mockGetBranchStatus = vi.fn();
 const mockHasUncommittedChanges = vi.fn();
+const mockGetLocalBranches = vi.fn();
 const mockGetLocalBranchesPaginated = vi.fn();
 const mockGetRemoteBranchesPaginated = vi.fn();
 const mockMergeBranch = vi.fn();
@@ -59,6 +60,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         BranchService: vi.fn().mockImplementation(function () { return ({
             getBranchStatus: vi.fn(async (...args: any[]) => mockGetBranchStatus(...args)),
             hasUncommittedChanges: vi.fn(async (...args: any[]) => mockHasUncommittedChanges(...args)),
+            getLocalBranches: mockGetLocalBranches,
             getLocalBranchesPaginated: mockGetLocalBranchesPaginated,
             getRemoteBranchesPaginated: mockGetRemoteBranchesPaginated,
             mergeBranch: mockMergeBranch,
@@ -163,6 +165,7 @@ describe('Git Conflict Scenarios', () => {
     beforeEach(() => {
         mockGetBranchStatus.mockReset();
         mockHasUncommittedChanges.mockReset();
+        mockGetLocalBranches.mockReset();
         mockMergeBranch.mockReset();
         mockCherryPick.mockReset();
         mockRebaseAutosquash.mockReset();
@@ -171,6 +174,7 @@ describe('Git Conflict Scenarios', () => {
         mockForgeExecGit.mockReturnValue('');
         // Sensible defaults
         mockHasUncommittedChanges.mockReturnValue(false);
+        mockGetLocalBranches.mockReturnValue([{ name: 'main', isCurrent: true, isRemote: false }]);
         mockGetBranchStatus.mockReturnValue({ name: 'main', isDetached: false, ahead: 0, behind: 0, hasUncommittedChanges: false });
     });
 
@@ -347,7 +351,85 @@ describe('Git Conflict Scenarios', () => {
 
             expect(res.status).toBe(200);
             expect(res.json()).toEqual({ success: true });
-            expect(mockCherryPick).toHaveBeenCalledWith(WORKSPACE_ROOT, 'abc1234ef567890');
+            expect(mockCherryPick).toHaveBeenCalledWith(WORKSPACE_ROOT, 'abc1234ef567890', {
+                hashes: undefined,
+                targetBranch: undefined,
+            });
+        });
+
+        it('passes target branch and hash list to the cherry-pick service', async () => {
+            mockGetLocalBranches.mockReturnValue([
+                { name: 'main', isCurrent: true, isRemote: false },
+                { name: 'release', isCurrent: false, isRemote: false },
+            ]);
+            mockCherryPick.mockResolvedValue({
+                success: true,
+                conflicts: false,
+                message: 'applied commits',
+                targetBranch: 'release',
+                originalBranch: 'main',
+                appliedHashes: ['older123', 'newer456'],
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/cherry-pick`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    hash: 'newer456',
+                    hashes: ['older123', 'newer456'],
+                    targetBranch: 'release',
+                }),
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({
+                success: true,
+                targetBranch: 'release',
+                originalBranch: 'main',
+                appliedHashes: ['older123', 'newer456'],
+            });
+            expect(mockCherryPick).toHaveBeenCalledWith(WORKSPACE_ROOT, 'newer456', {
+                hashes: ['older123', 'newer456'],
+                targetBranch: 'release',
+            });
+        });
+
+        it('returns 409 when cherry-pick to branch is blocked by a dirty working tree', async () => {
+            mockGetLocalBranches.mockReturnValue([
+                { name: 'main', isCurrent: true, isRemote: false },
+                { name: 'release', isCurrent: false, isRemote: false },
+            ]);
+            mockCherryPick.mockResolvedValue({
+                success: false,
+                conflicts: false,
+                dirty: true,
+                message: 'Working tree must be clean before cherry-picking to another branch. Please commit or stash your changes.',
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/cherry-pick`, {
+                method: 'POST',
+                body: JSON.stringify({ hash: 'abc1234', targetBranch: 'release' }),
+            });
+
+            expect(res.status).toBe(409);
+            expect(res.json()).toEqual({
+                error: 'Working tree must be clean before cherry-picking to another branch. Please commit or stash your changes.',
+                dirty: true,
+            });
+        });
+
+        it('rejects non-local target branches before invoking cherry-pick', async () => {
+            mockGetLocalBranches.mockReturnValue([
+                { name: 'main', isCurrent: true, isRemote: false },
+            ]);
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/cherry-pick`, {
+                method: 'POST',
+                body: JSON.stringify({ hash: 'abc1234', targetBranch: 'origin/release' }),
+            });
+
+            expect(res.status).toBe(400);
+            expect(res.json().error).toContain('local branch');
+            expect(mockCherryPick).not.toHaveBeenCalled();
         });
 
         it('returns 409 when cherry-pick produces conflicts', async () => {

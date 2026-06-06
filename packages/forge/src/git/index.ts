@@ -20,6 +20,8 @@ export {
     BranchListOptions,
     PaginatedBranchResult,
     GitOperationResult,
+    GitCherryPickOptions,
+    GitCherryPickResult,
     GitPatchExportPayload,
     GitPatchExportResult,
     GitPatchApplyOptions,

@@ -259,6 +259,21 @@ export interface GitOperationResult {
     error?: string;
 }
 
+export interface GitCherryPickOptions {
+    hashes?: string[];
+    targetBranch?: string;
+}
+
+export interface GitCherryPickResult {
+    success: boolean;
+    conflicts: boolean;
+    message: string;
+    dirty?: boolean;
+    targetBranch?: string;
+    originalBranch?: string | null;
+    appliedHashes?: string[];
+}
+
 export interface GitPatchExportPayload {
     commitHash: string;
     subject: string;
