@@ -114,7 +114,11 @@ summary chip strip and related fields collapse into `Time`, `Workspace`,
 `cumulativeTokenUsage`, the popover also renders live conversation-level
 `Tokens` and `Est. cost` rows: token totals expand to input/output/cache
 breakdowns, and cost uses the server-derived `conversationCostEstimate` with
-pricing-source and partial/unavailable-pricing caveats.
+pricing-source and partial/unavailable-pricing caveats. While a conversation is
+running, `useChatSSE` mirrors `token-usage` event `cumulativeTokenUsage` and
+`conversationCostEstimate` snapshots into the cached process details that feed
+the popover; after completion, the normal process refresh replaces that live
+snapshot with the final server read model.
 
 ## Tool Call Rendering
 

@@ -30,7 +30,7 @@ Default backend. Single `processes.db` file at `~/.coc/processes.db`. Schema ver
 - **Seen state:** `seen_at TEXT` column for read/unread tracking
 - **Pending messages:** `pendingMessages` persisted in process metadata
 - **Prompt autocomplete:** `getBestPromptCompletion` and `getPromptAutocompleteContext` for ghost text
-- **Conversation cost read model:** Process detail reads derive `conversationCostEstimate` from turn-level token usage without persisting it. Pricing model resolution starts with `metadata.model`, falls back to `config.model`, and can be overridden by later user turns with a `model` field.
+- **Conversation cost read model:** Process detail reads derive `conversationCostEstimate` from turn-level token usage without persisting it. Pricing model resolution starts with `metadata.model`, falls back to `config.model`, and can be overridden by later user turns with a `model` field. `token-usage` process events can also carry the live `cumulativeTokenUsage` and derived `conversationCostEstimate` snapshot for running-chat UI updates; final process reads remain authoritative.
 
 ### Convenience Methods
 

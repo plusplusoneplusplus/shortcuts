@@ -43,6 +43,7 @@ import {
 import { systemMessageBuilder } from './system-message-builder';
 import { readNoteContent, appendNoteEditSnapshot, SNAPSHOT_SIZE_LIMIT } from './note-chat-executor';
 import { emitMessageSteering } from '../streaming/sse-handler';
+import { buildLiveConversationCostEstimate } from '../processes/process-metadata-read-model';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
@@ -503,10 +504,14 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
             if (result.tokenUsage) {
                 try {
+                    const currentProc = await this.store.getProcess(processId, wsId);
+                    const cumulativeTokenUsage = currentProc?.cumulativeTokenUsage;
                     this.store.emitProcessEvent(processId, {
                         type: 'token-usage',
                         turnIndex: assistantTurn.turnIndex,
                         tokenUsage: result.tokenUsage,
+                        ...(cumulativeTokenUsage ? { cumulativeTokenUsage } : {}),
+                        ...(currentProc ? { conversationCostEstimate: buildLiveConversationCostEstimate(currentProc, allTurns) } : {}),
                         sessionTokenLimit: result.tokenUsage.tokenLimit,
                         sessionCurrentTokens: result.tokenUsage.currentTokens,
                         ...(result.tokenUsage.systemTokens          != null ? { sessionSystemTokens:       result.tokenUsage.systemTokens }          : {}),

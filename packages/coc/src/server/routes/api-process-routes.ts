@@ -14,7 +14,7 @@ import type {
     ProcessStore, ProcessFilter, AIProcess, AIProcessStatus,
     CreateTaskInput, Attachment, QueuedTask, SearchFilter,
 } from '@plusplusoneplusplus/forge';
-import { computeConversationCostEstimate, deserializeProcess, getLogger, LogCategory, PASTE_THRESHOLD, isQueueProcessId, resolveModelForProvider, toTaskId, toQueueProcessId } from '@plusplusoneplusplus/forge';
+import { deserializeProcess, getLogger, LogCategory, PASTE_THRESHOLD, isQueueProcessId, resolveModelForProvider, toTaskId, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import {
     sendJSON, parseBody, parseQueryParams, parseIncludeFields, stripExcludedFields,
@@ -31,6 +31,7 @@ import { normalizeChatMode } from '../tasks/task-types';
 import type { ChatProvider } from '../tasks/task-types';
 import type { ApiRouteContext } from './api-shared';
 import { createRoute, asString } from './route-utils';
+import { buildMetadataProcess } from '../processes/process-metadata-read-model';
 
 /** Valid AIProcessStatus values for validation. */
 const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 'completed', 'failed', 'cancelled']);
@@ -91,25 +92,6 @@ async function resolveProcess(
         return store.getProcess(bareId, workspaceId);
     }
     return undefined;
-}
-
-function getProcessDefaultModel(process: AIProcess): string | undefined {
-    const model = process.metadata?.model
-        ?? (process as AIProcess & { config?: { model?: unknown } }).config?.model;
-    return typeof model === 'string' && model.trim() ? model.trim() : undefined;
-}
-
-function buildMetadataProcess(process: AIProcess): AIProcess {
-    if (!process.cumulativeTokenUsage) {
-        return process;
-    }
-    const conversationCostEstimate = computeConversationCostEstimate(
-        process.conversationTurns,
-        getProcessDefaultModel(process),
-    );
-    return conversationCostEstimate
-        ? { ...process, conversationCostEstimate }
-        : process;
 }
 
 export function registerApiProcessRoutes(ctx: ApiRouteContext): void {

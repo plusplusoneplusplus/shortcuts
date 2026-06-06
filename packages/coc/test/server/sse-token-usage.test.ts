@@ -108,6 +108,18 @@ describe('SSE token-usage events', () => {
             type: 'token-usage',
             turnIndex: 1,
             tokenUsage,
+            cumulativeTokenUsage: {
+                ...tokenUsage,
+                totalTokens: 6912,
+                turnCount: 1,
+            },
+            conversationCostEstimate: {
+                estimatedUsdCost: 0.123,
+                costBreakdown: { inputUsd: 0.01, cachedInputUsd: 0.001, cacheWriteUsd: 0.002, outputUsd: 0.11 },
+                pricingSource: 'Copilot pricing table',
+                unpricedTurnCount: 0,
+                pricingUnavailable: false,
+            },
             sessionTokenLimit: 200_000,
             sessionCurrentTokens: 42_000,
         });
@@ -124,6 +136,15 @@ describe('SSE token-usage events', () => {
         });
         expect(d.sessionTokenLimit).toBe(200_000);
         expect(d.sessionCurrentTokens).toBe(42_000);
+        expect(d.cumulativeTokenUsage).toMatchObject({
+            inputTokens: 1234,
+            outputTokens: 5678,
+            totalTokens: 6912,
+        });
+        expect(d.conversationCostEstimate).toMatchObject({
+            estimatedUsdCost: 0.123,
+            pricingUnavailable: false,
+        });
     });
 
     it('forwards token-usage event without session fields when omitted', async () => {

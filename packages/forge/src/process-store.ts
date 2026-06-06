@@ -10,6 +10,7 @@
 import { AIProcess, AIProcessStatus, AIProcessType, ProcessEvent, ConversationTurn, TimelineItem } from './ai/process-types';
 import type { PipelinePhaseEvent, PipelineProgressEvent, ItemProcessEventData } from './pipeline-types';
 import type { TokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
+import type { ConversationCostEstimate } from './ai/conversation-cost-estimate';
 
 /**
  * A single FTS5 search hit within a conversation turn,
@@ -118,6 +119,10 @@ export interface ProcessOutputEvent {
     suggestions?: string[];
     /** Per-turn token usage data (for 'token-usage' events). */
     tokenUsage?: TokenUsage;
+    /** Running total of token usage after this turn (for 'token-usage' events). */
+    cumulativeTokenUsage?: TokenUsage;
+    /** Server-derived estimated conversation cost after this turn (for 'token-usage' events). */
+    conversationCostEstimate?: ConversationCostEstimate;
     /** Session-level token limit (for 'token-usage' events). */
     sessionTokenLimit?: number;
     /** Session-level current tokens (for 'token-usage' events). */

@@ -419,6 +419,48 @@ describe('useChatSSE', () => {
         expect(setTask).toHaveBeenCalled();
     });
 
+    it('regression: token-usage event mirrors live token and cost totals onto processDetails', async () => {
+        const setProcessDetails = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setProcessDetails })));
+
+        act(() => {
+            MockEventSource.last._emit('token-usage', {
+                turnIndex: 1,
+                tokenUsage: {
+                    inputTokens: 100,
+                    outputTokens: 50,
+                    cacheReadTokens: 10,
+                    cacheWriteTokens: 5,
+                    totalTokens: 165,
+                    turnCount: 1,
+                },
+                cumulativeTokenUsage: {
+                    inputTokens: 300,
+                    outputTokens: 150,
+                    cacheReadTokens: 30,
+                    cacheWriteTokens: 15,
+                    totalTokens: 495,
+                    turnCount: 3,
+                },
+                conversationCostEstimate: {
+                    estimatedUsdCost: 0.024,
+                    costBreakdown: { inputUsd: 0.004, cachedInputUsd: 0.001, cacheWriteUsd: 0.002, outputUsd: 0.017 },
+                    pricingSource: 'Copilot pricing table',
+                    unpricedTurnCount: 0,
+                    pricingUnavailable: false,
+                },
+            });
+        });
+
+        const updater = setProcessDetails.mock.calls.find(
+            (call: any[]) => typeof call[0] === 'function',
+        )?.[0];
+        expect(updater).toBeDefined();
+        const result = updater!({ id: 'pid-1', status: 'running' });
+        expect(result.cumulativeTokenUsage).toMatchObject({ totalTokens: 495, turnCount: 3 });
+        expect(result.conversationCostEstimate).toMatchObject({ estimatedUsdCost: 0.024, pricingUnavailable: false });
+    });
+
     // ── Group 4: SSE event handling ──
 
     describe('SSE queue events', () => {

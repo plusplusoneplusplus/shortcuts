@@ -45,6 +45,7 @@ import {
     prependSelectedSkillsDirective,
 } from './prompt-builder';
 import { cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
+import { buildLiveConversationCostEstimate } from '../processes/process-metadata-read-model';
 import {
     isChatFollowUp,
     isChatPayload,
@@ -542,12 +543,20 @@ export class ProcessLifecycleRunner extends BaseExecutor {
 
                 turnSaved = true;
 
+                const currentProc = await this.store.getProcess(
+                    processId,
+                    (task.payload as any)?.workspaceId as string | undefined,
+                );
+
                 if (tokenUsage) {
                     try {
+                        const cumulativeTokenUsage = currentProc?.cumulativeTokenUsage;
                         this.store.emitProcessEvent(processId, {
                             type: 'token-usage',
                             turnIndex: appendResult?.turn.turnIndex,
                             tokenUsage,
+                            ...(cumulativeTokenUsage ? { cumulativeTokenUsage } : {}),
+                            ...(currentProc ? { conversationCostEstimate: buildLiveConversationCostEstimate(currentProc, appendResult?.allTurns) } : {}),
                             sessionTokenLimit: tokenUsage.tokenLimit,
                             sessionCurrentTokens: tokenUsage.currentTokens,
                             ...(tokenUsage.systemTokens          != null ? { sessionSystemTokens:     tokenUsage.systemTokens }          : {}),
@@ -561,10 +570,6 @@ export class ProcessLifecycleRunner extends BaseExecutor {
 
                 const combinedTurns = appendResult?.allTurns ?? process.conversationTurns ?? initialTurns;
 
-                const currentProc = await this.store.getProcess(
-                    processId,
-                    (task.payload as any)?.workspaceId as string | undefined,
-                );
                 const finalStatus = currentProc?.status === 'cancelled' ? 'cancelled' : 'completed';
                 if (!TERMINAL_STATUSES.has(currentProc?.status ?? '')) {
                     this.store.emitProcessComplete(processId, finalStatus, `${duration}ms`);
