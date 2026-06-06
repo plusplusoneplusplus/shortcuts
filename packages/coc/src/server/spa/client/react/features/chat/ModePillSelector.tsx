@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 /**
  * ModePillSelector — rectangular segmented control for picking the chat mode.
@@ -75,11 +75,23 @@ export function ModePillSelector({
     ...rest
 }: ModePillSelectorProps) {
     const [workflowOpen, setWorkflowOpen] = useState(false);
+    const workflowRef = useRef<HTMLDivElement>(null);
     const testId = rest['data-testid'] ?? 'mode-pill-selector';
     const activeWorkflowOption = workflowOptions.find(opt => opt.value === value);
     const workflowTriggerLabel = activeWorkflowOption?.label ?? 'Workflow';
     const workflowTriggerDotClass = activeWorkflowOption?.dotClass ?? 'bg-purple-500';
     const hasWorkflowOptions = workflowOptions.length > 0;
+
+    useEffect(() => {
+        if (!workflowOpen) return;
+        const handleMouseDown = (e: MouseEvent) => {
+            if (workflowRef.current && !workflowRef.current.contains(e.target as Node)) {
+                setWorkflowOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleMouseDown);
+        return () => document.removeEventListener('mousedown', handleMouseDown);
+    }, [workflowOpen]);
 
     function handleChange(nextValue: ChatMode) {
         setWorkflowOpen(false);
@@ -134,7 +146,7 @@ export function ModePillSelector({
                 );
             })}
             {hasWorkflowOptions && (
-                <div className="relative shrink-0 inline-flex items-center" data-testid="workflow-mode-selector">
+                <div ref={workflowRef} className="relative shrink-0 inline-flex items-center" data-testid="workflow-mode-selector">
                     <button
                         type="button"
                         aria-haspopup="menu"
