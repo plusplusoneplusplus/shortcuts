@@ -611,17 +611,14 @@ describe('readPreferences / writePreferences', () => {
     });
 
     it('round-trips lastChatProvider through write and read', () => {
-        // Regression: the field is part of the coc-client contract and is
-        // persisted by NewChatArea + ModalJobAiControls. The schema uses
-        // .strip(), so a missing field definition silently dropped provider
-        // selections (server returned undefined), breaking provider persistence.
-        writeRepoPreferences(tmpDir, 'r', { lastChatProvider: 'codex' });
+        // The field is persisted by NewChatArea and ModalJobAiControls.
+        writeRepoPreferences(tmpDir, 'r', { lastChatProvider: 'auto' });
         const loaded = readRepoPreferences(tmpDir, 'r');
-        expect(loaded.lastChatProvider).toBe('codex');
+        expect(loaded.lastChatProvider).toBe('auto');
     });
 
     it('accepts each valid lastChatProvider value', () => {
-        for (const provider of ['copilot', 'codex', 'claude'] as const) {
+        for (const provider of ['copilot', 'codex', 'claude', 'auto'] as const) {
             expect(validatePerRepoPreferences({ lastChatProvider: provider }).lastChatProvider).toBe(provider);
         }
     });

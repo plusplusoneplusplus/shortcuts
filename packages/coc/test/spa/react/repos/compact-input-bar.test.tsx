@@ -65,7 +65,9 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isLoopsEnabled: () => false,
     isCodexEnabled: () => false,
     getDefaultProvider: () => 'copilot',
+    getConfiguredDefaultProvider: () => 'copilot',
     getActiveProvider: () => 'copilot',
+    isAutoAgentProviderRoutingEnabled: () => false,
     isEffortLevelsEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => false,
 }));

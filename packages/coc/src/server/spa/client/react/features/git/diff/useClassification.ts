@@ -251,10 +251,11 @@ export function useClassification(
         const postBody: Record<string, unknown> = {
             type: ck.type,
             identifier: ck.identifier,
-            provider: ai.provider,
         };
+        if (ai.provider) postBody.provider = ai.provider;
         if (ai.model) postBody.model = ai.model;
         if (ai.reasoningEffort) postBody.reasoningEffort = ai.reasoningEffort;
+        if (ai.effortTier) postBody.effortTier = ai.effortTier;
 
         requestSpaApi<ClassifyResponse>(
             buildUrl(''),

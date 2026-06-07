@@ -26,8 +26,9 @@ function formatReasoningEffort(effort: string): string {
     return effort || 'Auto';
 }
 
-function buildTierTitle(tier: EffortTierKey, tiers: LocalEffortTiersMap): string {
+function buildTierTitle(tier: EffortTierKey, tiers: LocalEffortTiersMap, autoProviderMode: boolean): string {
     const label = TIER_LABELS[tier];
+    if (autoProviderMode) return `${label}: provider and model resolved by Auto at scheduling time`;
     const entry = tiers[tier];
     if (!entry?.model) return `${label}: Not configured in Admin`;
     return `${label}\nModel: ${entry.model}\nReasoning effort: ${formatReasoningEffort(entry.reasoningEffort)}`;
@@ -45,6 +46,7 @@ export interface EffortTierSelectorProps {
     'data-testid'?: string;
     className?: string;
     mobileTapTarget?: boolean;
+    autoProviderMode?: boolean;
 }
 
 export function EffortTierSelector({
@@ -54,6 +56,7 @@ export function EffortTierSelector({
     disabled = false,
     className,
     mobileTapTarget = false,
+    autoProviderMode = false,
     ...rest
 }: EffortTierSelectorProps) {
     const testId = rest['data-testid'] ?? 'effort-tier-selector';
@@ -72,7 +75,7 @@ export function EffortTierSelector({
     }, [open]);
 
     const selectedLabel = TIER_LABELS[selectedTier];
-    const selectedTitle = buildTierTitle(selectedTier, tiers);
+    const selectedTitle = buildTierTitle(selectedTier, tiers, autoProviderMode);
 
     return (
         <div
@@ -127,8 +130,8 @@ export function EffortTierSelector({
                 >
                     {TIER_KEYS.map(tier => {
                         const isSelected = tier === selectedTier;
-                        const isConfigured = !!tiers[tier]?.model;
-                        const tierTitle = buildTierTitle(tier, tiers);
+                        const isConfigured = autoProviderMode || !!tiers[tier]?.model;
+                        const tierTitle = buildTierTitle(tier, tiers, autoProviderMode);
                         return (
                             <button
                                 key={tier}

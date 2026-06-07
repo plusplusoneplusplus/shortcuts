@@ -226,6 +226,7 @@ export function GenerateTaskDialog({
             model: aiSelection.resolved.model || finalModel || undefined,
             provider: aiSelection.resolved.provider,
             reasoningEffort: aiSelection.resolved.reasoningEffort,
+            effortTier: aiSelection.resolved.effortTier,
             mode: includeContext ? 'from-feature' : undefined,
             depth: finalDepth,
             priority: finalPriority,

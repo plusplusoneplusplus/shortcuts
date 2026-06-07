@@ -16,7 +16,7 @@
  */
 
 import type { Route } from '../types';
-import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import type { CreateTaskInput, ProcessStore } from '@plusplusoneplusplus/forge';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import { sendJson, send404, send400, send500, readJsonBody } from '../router';
 import { RepoTreeService } from './tree-service';
@@ -32,6 +32,8 @@ import { VALID_CHAT_PROVIDERS, VALID_REASONING_EFFORTS } from '../tasks/task-typ
 import type { ReasoningEffort } from '../tasks/task-types';
 import { buildClassificationPrompt } from './pr-classification-handler';
 import { renderClassificationPrompt } from './classification-prompt';
+
+const VALID_EFFORT_TIERS = new Set(['very-low', 'low', 'medium', 'high']);
 
 // ============================================================================
 // Types
@@ -52,6 +54,8 @@ interface ClassifyDiffPostBody {
     provider?: ChatProvider;
     /** Reasoning effort override for models that support it (optional). */
     reasoningEffort?: ReasoningEffort;
+    /** Effort tier to expand after provider resolution (optional). */
+    effortTier?: 'very-low' | 'low' | 'medium' | 'high';
 }
 
 export interface GenericClassificationRouteOptions {
@@ -59,6 +63,7 @@ export interface GenericClassificationRouteOptions {
     store: ProcessStore;
     bridge: MultiRepoQueueRouter;
     repoTreeService?: RepoTreeService;
+    prepareTaskForEnqueue?: (input: CreateTaskInput) => Promise<void>;
 }
 
 // ============================================================================
@@ -90,6 +95,9 @@ export function registerGenericClassificationRoutes(routes: Route[], opts: Gener
                 }
                 if (!body.identifier || typeof body.identifier !== 'string') {
                     return send400(res, 'Missing required field: identifier');
+                }
+                if (body.effortTier !== undefined && (typeof body.effortTier !== 'string' || !VALID_EFFORT_TIERS.has(body.effortTier))) {
+                    return send400(res, `Invalid effortTier: '${String(body.effortTier)}'`);
                 }
 
                 const workspaceId = body.workspaceId || repoId;
@@ -132,7 +140,7 @@ export function registerGenericClassificationRoutes(routes: Route[], opts: Gener
                 // Determine the task kind and skills based on type
                 const displayName = buildDisplayName(type, identifier);
 
-                const taskId = queueManager.enqueue({
+                const taskSpec: CreateTaskInput = {
                     type: TaskDefs.prClassification.kind,
                     priority: 'normal',
                     repoId: resolvedRepoId,
@@ -151,9 +159,14 @@ export function registerGenericClassificationRoutes(routes: Route[], opts: Gener
                     config: {
                         ...(body.model ? { model: body.model } : {}),
                         ...(body.reasoningEffort && VALID_REASONING_EFFORTS.has(body.reasoningEffort) ? { reasoningEffort: body.reasoningEffort } : {}),
+                        ...(body.effortTier ? { effortTier: body.effortTier } : {}),
                     },
                     displayName,
-                });
+                };
+                if (opts.prepareTaskForEnqueue) {
+                    await opts.prepareTaskForEnqueue(taskSpec);
+                }
+                const taskId = queueManager.enqueue(taskSpec);
 
                 // Write pending marker
                 try {

@@ -1,6 +1,6 @@
-import type { AgentProviderStatus } from '@plusplusoneplusplus/coc-client';
 import type { EffortLevel, EffortPillOption } from '../features/chat/EffortPillSelector';
 import type { EffortTierKey, LocalEffortTiersMap } from '../hooks/useProviderEffortTiers';
+import type { AgentSelectorProvider, ChatProvider } from './providerSelection';
 
 export type ChatComposerCycleDirection = -1 | 1;
 
@@ -16,8 +16,6 @@ export interface ComposerShortcutEvent {
     altKey?: boolean;
     shiftKey?: boolean;
 }
-
-type ChatProvider = AgentProviderStatus['id'];
 
 const EFFORT_TIER_ORDER: readonly EffortTierKey[] = ['very-low', 'low', 'medium', 'high'];
 const REASONING_EFFORT_ORDER: readonly (EffortLevel | null)[] = [null, 'low', 'medium', 'high', 'xhigh'];
@@ -109,7 +107,7 @@ export function cycleReasoningEffort(
 
 export function cycleChatProvider(
     current: ChatProvider,
-    providers: readonly AgentProviderStatus[],
+    providers: readonly AgentSelectorProvider[],
     direction: ChatComposerCycleDirection,
 ): ChatComposerCycleResult<ChatProvider> {
     const order = providers.map(provider => provider.id);

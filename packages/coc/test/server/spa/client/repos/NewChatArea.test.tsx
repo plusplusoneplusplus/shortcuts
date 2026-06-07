@@ -13,11 +13,14 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 const mockQueueDispatch = vi.fn();
 const mockAppDispatch = vi.fn();
 const mockEnqueueTask = vi.fn();
+const mockPatchRepo = vi.fn();
 const mockHandleModelSelect = vi.fn();
 const mockSetModelOverride = vi.fn((model: string | null) => { mockModelOverride = model; });
 const mockParseAndExtract = vi.fn();
 const mockClearAttachments = vi.fn();
 let mockDefaultProvider: 'copilot' | 'codex' | 'claude' = 'copilot';
+let mockConfiguredDefaultProvider: 'copilot' | 'codex' | 'claude' | 'auto' = 'copilot';
+let mockAutoProviderRoutingEnabled = false;
 let mockRepoPreferences: Record<string, unknown> = {};
 let mockModelOverride: string | null = null;
 let mockUseModelsProviders: Array<string | undefined> = [];
@@ -60,6 +63,8 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isForEachEnabled: () => mockForEachEnabled,
     isMapReduceEnabled: () => mockMapReduceEnabled,
     isLoopsEnabled: () => false,
+    isAutoAgentProviderRoutingEnabled: () => mockAutoProviderRoutingEnabled,
+    getConfiguredDefaultProvider: () => mockConfiguredDefaultProvider,
     getDefaultProvider: () => mockDefaultProvider,
     isEffortLevelsEnabled: () => mockEffortLevelsEnabled,
     isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled,
@@ -71,7 +76,7 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
         preferences: {
             patchGlobal: vi.fn().mockResolvedValue({}),
             getRepo: vi.fn().mockResolvedValue(mockRepoPreferences),
-            patchRepo: vi.fn().mockResolvedValue({}),
+            patchRepo: mockPatchRepo,
             getLlmToolsConfig: vi.fn().mockResolvedValue({
                 conversationRetrievalAvailable: true,
                 tools: [{ name: 'get_conversation' }],
@@ -343,6 +348,8 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockDefaultProvider = 'copilot';
+        mockConfiguredDefaultProvider = 'copilot';
+        mockAutoProviderRoutingEnabled = false;
         mockRepoPreferences = {};
         mockModelOverride = null;
         mockUseModelsProviders = [];
@@ -353,6 +360,7 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         mockAttachmentPayload = [];
         mockEffortLevelsEnabled = false;
         mockEffortTiers = {};
+        mockPatchRepo.mockResolvedValue({});
         mockParseAndExtract.mockReturnValue({ skills: [], prompt: '' });
         mockAgentProviders = [
             { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
@@ -442,6 +450,7 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
 
     it('uses configured default provider when no last-used provider is saved', async () => {
         mockDefaultProvider = 'codex';
+        mockConfiguredDefaultProvider = 'codex';
         mockAgentProviders = [
             { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
             { id: 'codex', label: 'Codex', enabled: true, available: true },
@@ -463,8 +472,64 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         });
     });
 
+    it('selects Auto from the configured default and omits provider/model overrides on submit', async () => {
+        mockAutoProviderRoutingEnabled = true;
+        mockConfiguredDefaultProvider = 'auto';
+        mockDefaultProvider = 'copilot';
+        mockAgentProviders = [
+            { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+            { id: 'codex', label: 'Codex', enabled: true, available: true },
+            { id: 'claude', label: 'Claude', enabled: true, available: true },
+        ];
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'queue_auto' } });
+
+        renderNewChatArea();
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Auto'));
+        expect(screen.getByTestId('effort-tier-selector')).toBeTruthy();
+        expect(screen.queryByTestId('model-picker-chip-container')).toBeNull();
+
+        typeInInput('Use Auto');
+        await clickSend();
+
+        await waitFor(() => expect(mockEnqueueTask).toHaveBeenCalledOnce());
+        const body = mockEnqueueTask.mock.calls[0][0];
+        expect(body.payload.provider).toBeUndefined();
+        expect(body.payload.model).toBeUndefined();
+        expect(body.payload.reasoningEffort).toBeUndefined();
+        expect(body.config).toEqual({ effortTier: 'medium' });
+    });
+
+    it('persists Auto when selected explicitly', async () => {
+        mockAutoProviderRoutingEnabled = true;
+        mockAgentProviders = [
+            { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+            { id: 'codex', label: 'Codex', enabled: true, available: true },
+            { id: 'claude', label: 'Claude', enabled: true, available: true },
+        ];
+
+        renderNewChatArea();
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Copilot'));
+        fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+        fireEvent.click(screen.getByTestId('agent-option-auto'));
+
+        expect(mockPatchRepo).toHaveBeenCalledWith('ws-1', { lastChatProvider: 'auto' });
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Auto'));
+    });
+
+    it('ignores a persisted Auto provider when Auto routing is disabled', async () => {
+        mockAutoProviderRoutingEnabled = false;
+        mockRepoPreferences = { lastChatProvider: 'auto' };
+
+        renderNewChatArea();
+
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Copilot'));
+        fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+        expect(screen.queryByTestId('agent-option-auto')).toBeNull();
+    });
+
     it('falls back to copilot when configured default provider is unavailable', async () => {
         mockDefaultProvider = 'codex';
+        mockConfiguredDefaultProvider = 'codex';
         mockAgentProviders = [
             { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
             { id: 'codex', label: 'Codex', enabled: true, available: false, reason: 'Sign in required' },
@@ -629,6 +694,7 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         mockForEachEnabled = true;
         mockSessionContextAttachmentsEnabled = true;
         mockDefaultProvider = 'codex';
+        mockConfiguredDefaultProvider = 'codex';
         mockModelOverride = 'shared-model';
         mockAgentProviders = [
             { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
@@ -732,6 +798,8 @@ describe('NewChatArea – Effort Tier selector', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockDefaultProvider = 'copilot';
+        mockConfiguredDefaultProvider = 'copilot';
+        mockAutoProviderRoutingEnabled = false;
         mockRepoPreferences = {};
         mockModelOverride = null;
         mockUseModelsProviders = [];
@@ -742,6 +810,7 @@ describe('NewChatArea – Effort Tier selector', () => {
         mockAttachmentPayload = [];
         mockEffortLevelsEnabled = false;
         mockEffortTiers = {};
+        mockPatchRepo.mockResolvedValue({});
         mockParseAndExtract.mockReturnValue({ skills: [], prompt: '' });
         mockAgentProviders = [
             { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },

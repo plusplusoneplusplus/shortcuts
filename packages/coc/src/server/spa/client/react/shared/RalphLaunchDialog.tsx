@@ -82,7 +82,9 @@ export function RalphLaunchDialog({
             const config: Record<string, unknown> = {};
             if (resolvedAi.model) config.model = resolvedAi.model;
             if (resolvedAi.reasoningEffort) config.reasoningEffort = resolvedAi.reasoningEffort;
-            const body: Record<string, unknown> = { goalSpec: trimmed, workspaceId, provider: resolvedAi.provider };
+            if (resolvedAi.effortTier) config.effortTier = resolvedAi.effortTier;
+            const body: Record<string, unknown> = { goalSpec: trimmed, workspaceId };
+            if (resolvedAi.provider) body.provider = resolvedAi.provider;
             if (folderPath) body.folderPath = folderPath;
             if (workingDirectory) body.workingDirectory = workingDirectory;
             if (Object.keys(config).length > 0) body.config = config;
@@ -152,10 +154,14 @@ export function RalphLaunchDialog({
                                 className="text-xs rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#1f1f1f] px-2 py-1 text-[#5a5a5a] dark:text-[#cccccc]"
                                 data-testid="ralph-launch-ai-summary"
                             >
-                                <span className="font-medium">{resolvedAi.provider}</span>
+                                <span className="font-medium">{resolvedAi.provider ?? 'Auto'}</span>
                                 <span className="text-[#848484]">
-                                    {' '}· model: {resolvedAi.model ?? 'workspace default'}
-                                    {' '}· effort: {resolvedAi.reasoningEffort ?? 'auto'}
+                                    {resolvedAi.effortTier
+                                        ? <> {' '}· effort tier: {resolvedAi.effortTier}</>
+                                        : <>
+                                            {' '}· model: {resolvedAi.model ?? 'workspace default'}
+                                            {' '}· effort: {resolvedAi.reasoningEffort ?? 'auto'}
+                                        </>}
                                 </span>
                             </div>
                         ) : (

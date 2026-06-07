@@ -15,7 +15,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import type { ServerResponse } from 'http';
-import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import type { CreateTaskInput, ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from './task-types';
 import {
     buildCreateTaskPrompt,
@@ -69,7 +69,14 @@ function sendEvent(res: ServerResponse, event: string, data: unknown): void {
  * Register task generation API routes on the given route table.
  * Mutates the `routes` array in-place.
  */
-export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStore, bridge: MultiRepoQueueRouter, aiService: ISDKService, dataDir: string): void {
+export function registerTaskGenerationRoutes(
+    routes: Route[],
+    store: ProcessStore,
+    bridge: MultiRepoQueueRouter,
+    aiService: ISDKService,
+    dataDir: string,
+    prepareTaskForEnqueue?: (input: CreateTaskInput) => Promise<void>,
+): void {
 
     // ------------------------------------------------------------------
     // POST /api/workspaces/:id/tasks/generate — AI task generation
@@ -292,7 +299,7 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
-            const { prompt, targetFolder, name, model, provider, reasoningEffort, mode, depth, priority, images } = body || {};
+            const { prompt, targetFolder, name, model, provider, reasoningEffort, effortTier, mode, depth, priority, images } = body || {};
 
             if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
                 return sendError(res, 400, 'Missing required field: prompt');
@@ -334,12 +341,20 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
                     ...(typeof model === 'string' && model.trim() ? { model: model.trim() } : {}),
                     timeoutMs: DEFAULT_AI_TIMEOUT_MS,
                     ...(typeof reasoningEffort === 'string' && reasoningEffort.trim() ? { reasoningEffort: reasoningEffort.trim() } : {}),
+                    ...(typeof effortTier === 'string' && effortTier.trim() ? { effortTier: effortTier.trim() } : {}),
                 },
                 displayName: name || prompt.trim().slice(0, 60),
             };
             const validation = validateAndParseTask(taskSpec);
             if (!validation.valid || !validation.input) {
                 return sendError(res, 400, validation.error || 'Invalid queue task');
+            }
+            if (prepareTaskForEnqueue) {
+                try {
+                    await prepareTaskForEnqueue(validation.input);
+                } catch (err) {
+                    return sendError(res, 400, err instanceof Error ? err.message : 'Failed to resolve provider or effort tier');
+                }
             }
 
             bridge.getOrCreateBridge(ws.rootPath);

@@ -328,13 +328,14 @@ export function EnqueueDialog() {
             const contextTaskName = queueState.dialogContextTaskName;
             const resolvedAi = aiSelection.resolved;
             const selectedModel = resolvedAi.model || (selectedTemplateId ? model : undefined);
-            const buildConfig = (): EnqueueTaskRequest['config'] | undefined => {
-                const config: EnqueueTaskRequest['config'] = {
-                    ...(selectedModel ? { model: selectedModel } : {}),
-                    ...(resolvedAi.reasoningEffort ? { reasoningEffort: resolvedAi.reasoningEffort } : {}),
+                const buildConfig = (): EnqueueTaskRequest['config'] | undefined => {
+                    const config: EnqueueTaskRequest['config'] = {
+                        ...(selectedModel ? { model: selectedModel } : {}),
+                        ...(resolvedAi.reasoningEffort ? { reasoningEffort: resolvedAi.reasoningEffort } : {}),
+                        ...(resolvedAi.effortTier ? { effortTier: resolvedAi.effortTier } : {}),
+                    };
+                    return Object.keys(config).length > 0 ? config : undefined;
                 };
-                return Object.keys(config).length > 0 ? config : undefined;
-            };
 
             // Helper to build a single task body, optionally with context files
             const buildBody = (files?: string[], taskNameOverride?: string): any => {
@@ -350,7 +351,7 @@ export function EnqueueDialog() {
                             prompt: effectivePrompt || `Ask: ${skillLabel}`,
                             workspaceId: workspaceId || undefined,
                             workingDirectory: workingDirectory || undefined,
-                            provider: resolvedAi.provider,
+                            ...(resolvedAi.provider ? { provider: resolvedAi.provider } : {}),
                             ...(effectiveSkills.length > 0 || files ? { context: { ...(effectiveSkills.length > 0 ? { skills: effectiveSkills } : {}), ...(files ? { files } : {}) } } : {}),
                         },
                         images: images.length > 0 ? images : undefined,
@@ -372,7 +373,7 @@ export function EnqueueDialog() {
                             prompt: effectivePrompt || `Use the ${skillLabel} skill${effectiveSkills.length > 1 ? 's' : ''}.`,
                             workspaceId: workspaceId || undefined,
                             workingDirectory,
-                            provider: resolvedAi.provider,
+                            ...(resolvedAi.provider ? { provider: resolvedAi.provider } : {}),
                             context: {
                                 skills: effectiveSkills,
                                 ...(files ? { files } : {}),
@@ -390,7 +391,7 @@ export function EnqueueDialog() {
                             prompt: effectivePrompt,
                             workspaceId: workspaceId || undefined,
                             workingDirectory: workingDirectory || folderPath || undefined,
-                            provider: resolvedAi.provider,
+                            ...(resolvedAi.provider ? { provider: resolvedAi.provider } : {}),
                             ...(files ? { context: { files } } : {}),
                         },
                         images: images.length > 0 ? images : undefined,

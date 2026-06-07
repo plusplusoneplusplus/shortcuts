@@ -21,6 +21,8 @@ export interface ExecuteWorkItemOptions {
     provider?: ChatProvider;
     /** Per-turn reasoning-effort override for the chat task. */
     reasoningEffort?: ReasoningEffort;
+    /** Effort tier to expand after the task's provider is resolved. */
+    effortTier?: string;
     /** Chat mode for execution (default: 'autopilot'). */
     mode?: Exclude<ChatMode, 'ralph'> | string;
     /** Git HEAD SHA captured immediately before execution enqueued. */
@@ -126,6 +128,7 @@ export async function executeWorkItem(
         config: {
             ...(options?.model ? { model: options.model } : {}),
             ...(options?.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
+            ...(options?.effortTier ? { effortTier: options.effortTier } : {}),
         },
         displayName: `Run #${runNumber}: Code Implement`,
     });

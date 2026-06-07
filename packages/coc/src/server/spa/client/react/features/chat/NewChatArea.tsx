@@ -32,7 +32,7 @@ import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
 import { useChatPromptHistory } from '../../hooks/useChatPromptHistory';
-import { getDefaultProvider, isRalphEnabled, isForEachEnabled, isMapReduceEnabled, isLoopsEnabled, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
+import { isRalphEnabled, isForEachEnabled, isMapReduceEnabled, isLoopsEnabled, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
 import type { EffortTierKey } from '../../hooks/useProviderEffortTiers';
 import { EffortTierSelector } from './EffortTierSelector';
@@ -43,6 +43,15 @@ import { AgentSelectorChip } from './AgentSelectorChip';
 import type { ChatProvider } from './AgentSelectorChip';
 import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
 import { deriveEffort } from '../../utils/effortUtils';
+import {
+    AUTO_EFFORT_TIER_MAP,
+    getAgentSelectorProviders,
+    getConcreteProviderForClientHooks,
+    getSelectableComposerDefaultProvider,
+    isChatProvider,
+    isSelectableProvider,
+    shouldSendProviderOverride,
+} from '../../utils/providerSelection';
 import {
     cycleChatProvider,
     cycleConfiguredEffortTier,
@@ -69,16 +78,6 @@ export interface NewChatAreaProps {
     onBack?: () => void;
 }
 
-function isChatProvider(value: unknown): value is ChatProvider {
-    return value === 'copilot' || value === 'codex' || value === 'claude';
-}
-
-function isSelectableProvider(provider: ChatProvider, providers: Array<{ id: string; enabled: boolean; available: boolean }>): boolean {
-    if (provider === 'copilot') return true;
-    const status = providers.find(p => p.id === provider);
-    return status?.enabled === true && status?.available === true;
-}
-
 export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const [input, setInput] = useState('');
     const [cursorPos, setCursorPos] = useState(0);
@@ -88,7 +87,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const [sessionContextDropError, setSessionContextDropError] = useState<string | null>(null);
     const [sessionContextDragActive, setSessionContextDragActive] = useState(false);
     const [skills, setSkills] = useState<SkillItem[]>([]);
-    const [selectedProvider, setSelectedProvider] = useState<ChatProvider>(() => getDefaultProvider());
+    const [selectedProvider, setSelectedProvider] = useState<ChatProvider>(() => getSelectableComposerDefaultProvider([]));
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
     const [selectedEffortTier, setSelectedEffortTier] = useState<EffortTierKey>('medium');
     const [ralphDirectGoalDraft, setRalphDirectGoalDraft] = useState<string | null>(null);
@@ -111,25 +110,29 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const { updateOnboarding } = useOnboardingPreferences();
 
     // Agent providers for the agent selector chip
-    const { providers: agentProviders, loading: providersLoading } = useAgentProviders();
+    const { providers: rawAgentProviders, loading: providersLoading } = useAgentProviders();
+    const agentProviders = useMemo(() => getAgentSelectorProviders(rawAgentProviders), [rawAgentProviders]);
+    const selectedProviderForClientHooks = getConcreteProviderForClientHooks(selectedProvider);
+    const autoProviderSelected = selectedProvider === 'auto';
 
     // Per-provider, per-model reasoning-effort preferences (from Admin → AI Provider → Models).
     // Used to auto-fill the effort picker when the user changes provider or model.
-    const reasoningEfforts = useProviderReasoningEfforts(selectedProvider);
+    const reasoningEfforts = useProviderReasoningEfforts(selectedProviderForClientHooks);
 
     // Per-provider effort tier map (from Admin → AI Provider → Effort Tiers).
     // Used when effortLevels.enabled is true to supply model + reasoning effort from a single tier pick.
-    const { tiers: effortTierMap, loading: effortTiersLoading } = useProviderEffortTiers(selectedProvider);
-    const hasTiers = !effortTiersLoading && (['low', 'medium', 'high'] as EffortTierKey[]).some(k => !!effortTierMap[k]?.model);
-    const useEffortTierMode = isEffortLevelsEnabled() && hasTiers;
+    const { tiers: providerEffortTierMap, loading: effortTiersLoading } = useProviderEffortTiers(selectedProviderForClientHooks);
+    const hasTiers = !effortTiersLoading && (['low', 'medium', 'high'] as EffortTierKey[]).some(k => !!providerEffortTierMap[k]?.model);
+    const useEffortTierMode = autoProviderSelected || (isEffortLevelsEnabled() && hasTiers);
+    const effortTierMap = autoProviderSelected ? AUTO_EFFORT_TIER_MAP : providerEffortTierMap;
 
     // Model command support
-    const { models: availableModels, loading: modelsLoading } = useModels(selectedProvider);
+    const { models: availableModels, loading: modelsLoading } = useModels(selectedProviderForClientHooks);
     const pickableModels = selectPickableModels(availableModels);
     const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isLoopsEnabled())), [skills]);
     const slashCommands = useSlashCommands(augmentedSkills);
     const modelCommand = useModelCommand(pickableModels);
-    const { effectiveModel: defaultModelId, effectiveModelName: defaultModelLabel } = useDefaultModelForMode(workspaceId, selectedMode, availableModels, selectedProvider);
+    const { effectiveModel: defaultModelId, effectiveModelName: defaultModelLabel } = useDefaultModelForMode(workspaceId, selectedMode, availableModels, selectedProviderForClientHooks);
     const validModelOverride = useMemo(() => {
         const override = modelCommand.modelOverride;
         if (!override) return null;
@@ -239,8 +242,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     }, [workspaceId]);
 
     const getSelectableDefaultProvider = () => {
-        const configuredDefault = getDefaultProvider();
-        return isSelectableProvider(configuredDefault, agentProviders) ? configuredDefault : 'copilot';
+        return getSelectableComposerDefaultProvider(agentProviders);
     };
 
     // Load last-used provider preference for this workspace on mount / workspace switch.
@@ -270,7 +272,6 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
 
     // When agentProviders load and selected provider becomes unavailable, fall back to the default provider.
     useEffect(() => {
-        if (selectedProvider === 'copilot') return;
         if (!isSelectableProvider(selectedProvider, agentProviders)) {
             setSelectedProvider(getSelectableDefaultProvider());
         }
@@ -280,11 +281,17 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     // provider's models are loading, the override is hidden and omitted from
     // sends; once loading settles, invalid overrides are cleared from state.
     useEffect(() => {
+        if (autoProviderSelected) {
+            if (modelCommand.modelOverride) {
+                modelCommand.setModelOverride(null);
+            }
+            return;
+        }
         if (modelsLoading || !modelCommand.modelOverride) return;
         if (!validModelOverride) {
             modelCommand.setModelOverride(null);
         }
-    }, [modelsLoading, modelCommand.modelOverride, modelCommand.setModelOverride, validModelOverride]);
+    }, [autoProviderSelected, modelsLoading, modelCommand.modelOverride, modelCommand.setModelOverride, validModelOverride]);
 
     // Derive effort options from the currently effective model's supported efforts.
     const effectiveModelId = validModelOverride ?? defaultModelId;
@@ -303,6 +310,11 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const _supportedEffortsKey = effectiveModelInfo?.supportedReasoningEfforts?.join(',') ?? '';
     const _capSupportsReasoning = !effectiveModelInfo || effectiveModelInfo.capabilities?.supports.reasoningEffort !== false;
     useEffect(() => {
+        if (autoProviderSelected) {
+            setEffortOverride(null);
+            userPickedForModelRef.current = null;
+            return;
+        }
         const currentModelId = effectiveModelId ?? '';
         const pick = userPickedForModelRef.current;
         if (pick && pick.provider === selectedProvider && pick.modelId === currentModelId) {
@@ -326,7 +338,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             });
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedProvider, effectiveModelId, reasoningEfforts, _supportedEffortsKey, _capSupportsReasoning]);
+    }, [autoProviderSelected, selectedProvider, effectiveModelId, reasoningEfforts, _supportedEffortsKey, _capSupportsReasoning]);
 
     /** Wraps setEffortOverride to record that the user explicitly picked for the
      *  current (provider, model) combo, preventing auto-derive from overwriting. */
@@ -407,13 +419,16 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     }
 
     function resolveComposerAiSelection(): ResolvedModalJobAiSelection {
+        if (autoProviderSelected) {
+            return { effortTier: selectedEffortTier };
+        }
         const tierPayload = useEffortTierMode ? resolveEffortTier(selectedEffortTier, effortTierMap) : null;
         const model = tierPayload?.model ?? validModelOverride ?? undefined;
         const reasoningEffort = tierPayload !== null
             ? tierPayload.reasoningEffort ?? undefined
             : effortOverride ?? undefined;
         return {
-            provider: selectedProvider,
+            ...(shouldSendProviderOverride(selectedProvider) ? { provider: selectedProvider } : {}),
             ...(model ? { model } : {}),
             ...(reasoningEffort ? { reasoningEffort } : {}),
         };
@@ -536,9 +551,10 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             const effectivePrompt = formatAttachedContext(contextItems) + basePrompt;
 
             // Resolve model + reasoningEffort: tier mode takes priority over legacy controls.
-            const tierPayload = useEffortTierMode ? resolveEffortTier(selectedEffortTier, effortTierMap) : null;
+            const tierPayload = !autoProviderSelected && useEffortTierMode ? resolveEffortTier(selectedEffortTier, effortTierMap) : null;
             const modelForPayload = tierPayload?.model ?? validModelOverride ?? null;
             const effortForPayload = tierPayload !== null ? tierPayload.reasoningEffort : effortOverride;
+            const config = autoProviderSelected ? { effortTier: selectedEffortTier } : undefined;
 
             const result = await getSpaCocClient().queue.enqueue({
                 type: 'chat',
@@ -553,8 +569,9 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                     ...(attachmentPayload.length > 0 ? { attachments: attachmentPayload } : {}),
                     ...(modelForPayload ? { model: modelForPayload } : {}),
                     ...(effortForPayload ? { reasoningEffort: effortForPayload } : {}),
-                    provider: selectedProvider,
+                    ...(shouldSendProviderOverride(selectedProvider) ? { provider: selectedProvider } : {}),
                 } as any,
+                ...(config ? { config } : {}),
             });
 
             const rawId = result.task?.id ?? (result as any).id;
@@ -911,6 +928,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                 disabled={sending}
                                 data-testid="effort-tier-selector"
                                 className="ml-0.5"
+                                autoProviderMode={autoProviderSelected}
                             />
                         ) : (
                             <>

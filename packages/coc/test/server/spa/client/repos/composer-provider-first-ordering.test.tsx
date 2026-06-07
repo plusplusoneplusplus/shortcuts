@@ -52,6 +52,8 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isMapReduceEnabled: () => false,
     isLoopsEnabled: () => false,
     getDefaultProvider: () => mockDefaultProvider,
+    getConfiguredDefaultProvider: () => mockDefaultProvider,
+    isAutoAgentProviderRoutingEnabled: () => false,
     isEffortLevelsEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => false,
 }));

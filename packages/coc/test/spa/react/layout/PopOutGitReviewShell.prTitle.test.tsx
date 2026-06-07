@@ -128,6 +128,8 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getHostname: () => 'localhost',
     getActiveProvider: () => 'copilot',
     getDefaultProvider: () => 'copilot',
+    getConfiguredDefaultProvider: () => 'copilot',
+    isAutoAgentProviderRoutingEnabled: () => false,
     isEffortLevelsEnabled: () => false,
 }));
 

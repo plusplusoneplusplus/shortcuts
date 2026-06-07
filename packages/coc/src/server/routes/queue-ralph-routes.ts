@@ -18,6 +18,8 @@ import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preference
 import { VALID_CHAT_PROVIDERS, VALID_REASONING_EFFORTS } from '../tasks/task-types';
 import type { ChatProvider, ReasoningEffort } from '../tasks/task-types';
 
+const VALID_EFFORT_TIERS = new Set(['very-low', 'low', 'medium', 'high']);
+
 export interface QueueRalphRouteContext {
     bridge: MultiRepoQueueRouter;
     store: ProcessStore;
@@ -75,6 +77,15 @@ export function registerRalphRoutes(routes: Route[], ctx: QueueRalphRouteContext
                 : rawReasoningEffort as ReasoningEffort;
             if (reasoningEffort !== undefined && !VALID_REASONING_EFFORTS.has(reasoningEffort)) {
                 return sendError(res, 400, `Invalid reasoningEffort: '${String(rawReasoningEffort)}'. Valid reasoningEffort values: ${[...VALID_REASONING_EFFORTS].join(', ')}`);
+            }
+            const rawEffortTier = config.effortTier ?? body.effortTier;
+            const effortTier = rawEffortTier === undefined
+                ? undefined
+                : typeof rawEffortTier === 'string' && VALID_EFFORT_TIERS.has(rawEffortTier)
+                    ? rawEffortTier as 'very-low' | 'low' | 'medium' | 'high'
+                    : undefined;
+            if (rawEffortTier !== undefined && !effortTier) {
+                return sendError(res, 400, `Invalid effortTier: '${String(rawEffortTier)}'. Valid effortTier values: ${[...VALID_EFFORT_TIERS].join(', ')}`);
             }
 
             // Resolve process (handle queue_ prefix vs bare UUID)
@@ -152,6 +163,7 @@ export function registerRalphRoutes(routes: Route[], ctx: QueueRalphRouteContext
                 provider,
                 model,
                 reasoningEffort,
+                effortTier,
             }));
 
             sendJSON(res, 200, { processId: toQueueProcessId(taskId) });

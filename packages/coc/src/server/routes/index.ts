@@ -300,6 +300,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         store,
         bridge,
         repoTreeService,
+        prepareTaskForEnqueue: prepareEnqueueTask,
     });
     registerRemoteServerRoutes(routes, {
         store: opts.remoteServerStore ?? new RemoteServerStore(dataDir),
@@ -358,7 +359,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             timestamp: Date.now(),
         });
     }, bridge, resolvedAiService);
-    registerTaskGenerationRoutes(routes, store, bridge, resolvedAiService, dataDir);
+    registerTaskGenerationRoutes(routes, store, bridge, resolvedAiService, dataDir, prepareEnqueueTask);
     registerTemplateRoutes(routes, store);
     registerTemplateWriteRoutes(routes, store, (workspaceId) => {
         getWsServer().broadcastProcessEvent({

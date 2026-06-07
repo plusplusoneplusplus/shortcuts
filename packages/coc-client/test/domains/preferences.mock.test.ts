@@ -50,6 +50,7 @@ describe('PreferencesClient mock coverage', () => {
     mock.on('PUT', '/api/workspaces/repo%2Fa/preferences', {
       body: {
         lastModel: 'gpt-5.5',
+        lastChatProvider: 'auto',
         disabledLlmTools: ['tavily_web_search'],
       },
     });
@@ -61,9 +62,11 @@ describe('PreferencesClient mock coverage', () => {
     });
     await expect(client.preferences.replaceRepo('repo/a', {
       lastModel: 'gpt-5.5',
+      lastChatProvider: 'auto',
       disabledLlmTools: ['tavily_web_search'],
     })).resolves.toEqual({
       lastModel: 'gpt-5.5',
+      lastChatProvider: 'auto',
       disabledLlmTools: ['tavily_web_search'],
     });
 
@@ -73,6 +76,7 @@ describe('PreferencesClient mock coverage', () => {
     });
     expectJsonRequest(mock.requests[1], 'PUT', '/api/workspaces/repo%2Fa/preferences', {
       lastModel: 'gpt-5.5',
+      lastChatProvider: 'auto',
       disabledLlmTools: ['tavily_web_search'],
     });
   });

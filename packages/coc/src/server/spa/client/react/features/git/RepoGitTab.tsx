@@ -1147,6 +1147,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         const config = {
             ...(aiSelection.model ? { model: aiSelection.model } : {}),
             ...(aiSelection.reasoningEffort ? { reasoningEffort: aiSelection.reasoningEffort } : {}),
+            ...(aiSelection.effortTier ? { effortTier: aiSelection.effortTier } : {}),
         };
         const shortId =
             pendingSkillRun.type === 'commit' && pendingSkillRun.commit
@@ -1165,7 +1166,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 prompt: promptContent,
                 workingDirectory: ws?.rootPath || '',
                 workspaceId,
-                provider: aiSelection.provider,
+                ...(aiSelection.provider ? { provider: aiSelection.provider } : {}),
                 context: {
                     skills: [pendingSkillRun.skillName],
                 },

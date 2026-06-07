@@ -64,6 +64,26 @@ describe('ClassifyDiffAiControls', () => {
         expect(screen.getByTestId('classify-provider-divider')).toBeInTheDocument();
     });
 
+    it('shows Auto and hides provider-specific model controls when Auto is selected', () => {
+        render(<ClassifyDiffAiControls selection={createSelection({
+            provider: 'auto',
+            agentProviders: [
+                { id: 'auto', label: 'Auto', enabled: true, available: true },
+                { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+                { id: 'codex', label: 'Codex', enabled: true, available: true },
+            ],
+            useEffortTierMode: true,
+            effortTierMap: {
+                medium: { model: 'Auto', reasoningEffort: '', source: 'default' },
+            },
+            resolved: { effortTier: 'medium' },
+        })} />);
+
+        expect(screen.getByTestId('agent-selector-chip-btn')).toHaveTextContent('Auto');
+        expect(screen.getByTestId('classify-effort-tier-selector')).toBeInTheDocument();
+        expect(screen.queryByTestId('classify-model-picker-chip')).toBeNull();
+    });
+
     it('renders effort tiers instead of the model picker in tier mode', () => {
         render(<ClassifyDiffAiControls selection={createSelection({
             useEffortTierMode: true,

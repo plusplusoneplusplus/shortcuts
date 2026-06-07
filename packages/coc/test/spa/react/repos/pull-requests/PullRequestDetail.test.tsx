@@ -11,6 +11,8 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isRalphEnabled: () => false,
     getActiveProvider: () => 'copilot',
     getDefaultProvider: () => 'copilot',
+    getConfiguredDefaultProvider: () => 'copilot',
+    isAutoAgentProviderRoutingEnabled: () => false,
     isEffortLevelsEnabled: () => false,
 }));
 

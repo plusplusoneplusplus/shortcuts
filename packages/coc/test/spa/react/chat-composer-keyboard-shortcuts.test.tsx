@@ -167,7 +167,9 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     isLoopsEnabled: () => mockConfig.loopsEnabled,
     isCodexEnabled: () => false,
     getDefaultProvider: () => mockConfig.defaultProvider,
+    getConfiguredDefaultProvider: () => mockConfig.defaultProvider,
     getActiveProvider: () => mockConfig.defaultProvider,
+    isAutoAgentProviderRoutingEnabled: () => false,
     isEffortLevelsEnabled: () => mockConfig.effortLevelsEnabled,
     isSessionContextAttachmentsEnabled: () => mockConfig.sessionContextAttachmentsEnabled,
 }));

@@ -11,6 +11,8 @@ import { buildRalphIterationPrompt } from '@plusplusoneplusplus/coc-workflow/ral
 import { RalphSessionStore } from './ralph-session-store';
 import type { ChatContext, ChatProvider, ReasoningEffort } from '../tasks/task-types';
 
+export type RalphEffortTier = 'very-low' | 'low' | 'medium' | 'high';
+
 export interface BuildRalphIterationTaskInput {
     workspaceId?: string;
     workingDirectory?: string;
@@ -35,6 +37,8 @@ export interface BuildRalphIterationTaskInput {
     model?: string;
     /** Optional reasoning-effort override for this Ralph execution task. */
     reasoningEffort?: ReasoningEffort;
+    /** Optional effort tier to expand after provider resolution. */
+    effortTier?: RalphEffortTier;
     /**
      * When set, the enqueued task is tagged as a continuation of this Ralph
      * session, allowing the queue manager to admit it ahead of unrelated
@@ -67,6 +71,7 @@ export function buildRalphIterationTask(input: BuildRalphIterationTaskInput) {
         config: {
             ...(input.model ? { model: input.model } : {}),
             ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
+            ...(input.effortTier ? { effortTier: input.effortTier } : {}),
         },
         payload: {
             kind: 'chat' as const,

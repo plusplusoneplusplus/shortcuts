@@ -89,6 +89,7 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
             const config: EnqueueTaskRequest['config'] = {
                 ...(resolvedAi.model ? { model: resolvedAi.model } : {}),
                 ...(resolvedAi.reasoningEffort ? { reasoningEffort: resolvedAi.reasoningEffort } : {}),
+                ...(resolvedAi.effortTier ? { effortTier: resolvedAi.effortTier } : {}),
             };
             const body: EnqueueTaskRequest = {
                 type: 'custom',
@@ -96,7 +97,7 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
                 displayName: `Update: ${taskName}`,
                 payload: {
                     workingDirectory,
-                    provider: resolvedAi.provider,
+                    ...(resolvedAi.provider ? { provider: resolvedAi.provider } : {}),
                     data: {
                         prompt,
                         workingDirectory,

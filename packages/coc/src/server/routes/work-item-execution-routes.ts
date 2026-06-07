@@ -27,6 +27,8 @@ import { buildBatchResolvePrompt } from '../tasks/comments/task-comments-ai';
 import { buildMultiFileBatchResolvePrompt } from '../tasks/comments/diff-comments-ai';
 import { VALID_CHAT_PROVIDERS, VALID_REASONING_EFFORTS, type ChatProvider, type ReasoningEffort } from '../tasks/task-types';
 
+const VALID_EFFORT_TIERS = new Set(['very-low', 'low', 'medium', 'high']);
+
 export interface WorkItemExecutionRouteContext {
     routes: Route[];
     workItemStore: WorkItemStore;
@@ -119,11 +121,20 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                 if (body.reasoningEffort !== undefined && !reasoningEffort) {
                     return handleAPIError(res, badRequest(`Invalid reasoningEffort: '${body.reasoningEffort}'`));
                 }
+                const effortTier: string | undefined = body.effortTier === undefined
+                    ? undefined
+                    : typeof body.effortTier === 'string' && VALID_EFFORT_TIERS.has(body.effortTier)
+                        ? body.effortTier
+                        : undefined;
+                if (body.effortTier !== undefined && !effortTier) {
+                    return handleAPIError(res, badRequest(`Invalid effortTier: '${body.effortTier}'`));
+                }
 
                 const result = await executeWorkItem(workItemId, workItemStore, enqueue, {
                     model: body.model,
                     provider,
                     reasoningEffort,
+                    effortTier,
                     mode: body.mode,
                     headBefore,
                     taskFilePath,

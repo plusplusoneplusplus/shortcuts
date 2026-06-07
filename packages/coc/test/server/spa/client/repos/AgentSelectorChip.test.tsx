@@ -22,6 +22,13 @@ const CODEX_ENABLED: AgentProviderStatus = {
     available: true,
 };
 
+const AUTO = {
+    id: 'auto',
+    label: 'Auto',
+    enabled: true,
+    available: true,
+} as const;
+
 const CODEX_DISABLED: AgentProviderStatus = {
     id: 'codex',
     label: 'Codex',
@@ -63,6 +70,19 @@ describe('AgentSelectorChip', () => {
             );
             const btn = screen.getByTestId('agent-selector-chip-btn');
             expect(btn.textContent).toContain('Codex');
+        });
+
+        it('shows Auto when selected is auto', () => {
+            render(
+                <AgentSelectorChip
+                    providers={[AUTO, COPILOT, CODEX_ENABLED]}
+                    loading={false}
+                    selected="auto"
+                    onChange={vi.fn()}
+                />
+            );
+            const btn = screen.getByTestId('agent-selector-chip-btn');
+            expect(btn.textContent).toContain('Auto');
         });
 
         it('is disabled when loading', () => {
@@ -108,16 +128,17 @@ describe('AgentSelectorChip', () => {
             expect(screen.getByTestId('agent-selector-menu')).toBeTruthy();
         });
 
-        it('shows both provider options in menu', () => {
+        it('shows provider options in menu', () => {
             render(
                 <AgentSelectorChip
-                    providers={[COPILOT, CODEX_ENABLED]}
+                    providers={[AUTO, COPILOT, CODEX_ENABLED]}
                     loading={false}
                     selected="copilot"
                     onChange={vi.fn()}
                 />
             );
             fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+            expect(screen.getByTestId('agent-option-auto')).toBeTruthy();
             expect(screen.getByTestId('agent-option-copilot')).toBeTruthy();
             expect(screen.getByTestId('agent-option-codex')).toBeTruthy();
         });
@@ -135,6 +156,21 @@ describe('AgentSelectorChip', () => {
             fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
             fireEvent.click(screen.getByTestId('agent-option-codex'));
             expect(onChange).toHaveBeenCalledWith('codex');
+        });
+
+        it('calls onChange when Auto is clicked', () => {
+            const onChange = vi.fn();
+            render(
+                <AgentSelectorChip
+                    providers={[AUTO, COPILOT, CODEX_ENABLED]}
+                    loading={false}
+                    selected="copilot"
+                    onChange={onChange}
+                />
+            );
+            fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+            fireEvent.click(screen.getByTestId('agent-option-auto'));
+            expect(onChange).toHaveBeenCalledWith('auto');
         });
 
         it('closes menu after selecting a provider', () => {
