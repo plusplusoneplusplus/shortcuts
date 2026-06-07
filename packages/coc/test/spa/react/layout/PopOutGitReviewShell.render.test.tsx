@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
     getBranchRange: vi.fn(),
     listBranchRangeFiles: vi.fn(),
     useCachedDiff: vi.fn(),
+    isCommitChatLensEnabled: vi.fn(() => false),
+    useBreakpoint: vi.fn(),
     postMessage: vi.fn(),
     commentCounts: new Map<string, number>(),
 }));
@@ -33,6 +35,19 @@ vi.mock('../../../../src/server/spa/client/react/ui', () => ({
     Spinner: () => <span data-testid="spinner" />,
     ToastContainer: () => null,
     useToast: () => ({ toasts: [], addToast: vi.fn(), removeToast: vi.fn() }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/utils/config', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../../../src/server/spa/client/react/utils/config')>();
+    return {
+        ...actual,
+        getHostname: () => '',
+        isCommitChatLensEnabled: mocks.isCommitChatLensEnabled,
+    };
+});
+
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
+    useBreakpoint: mocks.useBreakpoint,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -71,6 +86,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/GitReviewPopOutContext
     useGitReviewPopOutChannel: () => ({ postMessage: mocks.postMessage }),
     gitReviewPopOutKey: (workspaceId: string, commitHash: string) => `${workspaceId}:commit:${commitHash}`,
     gitReviewBranchPopOutKey: (workspaceId: string) => `${workspaceId}:branch`,
+    gitReviewPrPopOutKey: (workspaceId: string, prId: string) => `${workspaceId}:pr:${prId}`,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/git/diff/PopOutFilePanel', () => ({
@@ -115,6 +131,23 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel
     },
 }));
 
+vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChatPanel', () => ({
+    CommitChatPanel: (props: {
+        workspaceId: string;
+        commitHash: string;
+        commitMessage?: string;
+        hideEmptyHeader?: boolean;
+    }) => (
+        <div
+            data-testid="commit-chat-panel"
+            data-workspace-id={props.workspaceId}
+            data-commit-hash={props.commitHash}
+            data-commit-message={props.commitMessage ?? ''}
+            data-hide-empty-header={props.hideEmptyHeader ? 'true' : 'false'}
+        />
+    ),
+}));
+
 vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitDetail', () => ({
     CommitDetail: ({ isPopOut }: { isPopOut?: boolean }) => (
         <div data-testid="commit-detail" data-popout={String(!!isPopOut)} />
@@ -156,6 +189,7 @@ vi.mock('../../../../src/server/spa/client/react/features/git/branches/BranchRan
 }));
 
 import { PopOutGitReviewShell } from '../../../../src/server/spa/client/react/layout/PopOutGitReviewShell';
+import { getReviewChatPlacementStorageKey } from '../../../../src/server/spa/client/react/features/git/commits/commitChatPlacement';
 
 const COMMIT_DIFF = [
     'diff --git a/src/app.ts b/src/app.ts',
@@ -170,6 +204,14 @@ const COMMIT_DIFF = [
 describe('PopOutGitReviewShell selected-file rendering', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        localStorage.clear();
+        mocks.isCommitChatLensEnabled.mockReturnValue(false);
+        mocks.useBreakpoint.mockReturnValue({
+            isMobile: false,
+            isTablet: false,
+            isDesktop: true,
+            breakpoint: 'desktop',
+        });
         mocks.commitDiffPath.mockImplementation((workspaceId: string, hash: string) => (
             `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${encodeURIComponent(hash)}/diff`
         ));
@@ -245,5 +287,99 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
         expect(panel.getAttribute('data-old-ref')).toBe('branch-base');
         expect(panel.getAttribute('data-new-ref')).toBe('branch-head');
         expect(screen.queryByTestId('branch-range-overview')).toBeNull();
+    });
+
+    it('opens commit popout chat as a desktop lens and pins back to the right column', async () => {
+        mocks.isCommitChatLensEnabled.mockReturnValue(true);
+        window.history.pushState({}, '', '/?workspace=ws1#popout/git-review/abc123');
+        mocks.getCommit.mockResolvedValue({
+            hash: 'abc123',
+            shortHash: 'abc123',
+            subject: 'Fix app',
+            author: 'Test Author',
+            date: '2026-01-01T00:00:00Z',
+            parentHashes: [],
+        });
+
+        render(<PopOutGitReviewShell />);
+
+        await screen.findByTestId('popout-file-panel');
+        fireEvent.click(screen.getByTestId('commit-popout-chat-toggle'));
+
+        await waitFor(() => expect(screen.getByTestId('commit-chat-lens')).toBeTruthy());
+        expect(screen.queryByTestId('commit-popout-chat-container')).toBeNull();
+        expect(screen.getByTestId('commit-chat-panel').getAttribute('data-commit-hash')).toBe('abc123');
+        expect(screen.getByTestId('commit-chat-panel').getAttribute('data-commit-message')).toBe('Fix app');
+        expect(screen.getByTestId('commit-chat-panel').getAttribute('data-hide-empty-header')).toBe('true');
+
+        fireEvent.click(screen.getByTestId('commit-chat-pin-btn'));
+
+        const placementKey = getReviewChatPlacementStorageKey({
+            type: 'commit',
+            workspaceId: 'ws1',
+            commitHash: 'abc123',
+        });
+        expect(localStorage.getItem(placementKey)).toBe('side-panel');
+        expect(screen.getByTestId('commit-popout-chat-container')).toBeTruthy();
+        expect(screen.getByTestId('commit-chat-side-panel')).toBeTruthy();
+        expect(screen.queryByTestId('commit-chat-lens')).toBeNull();
+
+        fireEvent.click(screen.getByTestId('commit-chat-unpin-btn'));
+
+        expect(localStorage.getItem(placementKey)).toBeNull();
+        expect(screen.getByTestId('commit-chat-lens')).toBeTruthy();
+        expect(screen.queryByTestId('commit-popout-chat-container')).toBeNull();
+    });
+
+    it('keeps commit popout chat in the legacy right column when the flag is disabled', async () => {
+        window.history.pushState({}, '', '/?workspace=ws1#popout/git-review/abc123');
+        mocks.getCommit.mockResolvedValue({
+            hash: 'abc123',
+            shortHash: 'abc123',
+            subject: 'Fix app',
+            author: 'Test Author',
+            date: '2026-01-01T00:00:00Z',
+            parentHashes: [],
+        });
+
+        render(<PopOutGitReviewShell />);
+
+        await screen.findByTestId('popout-file-panel');
+        fireEvent.click(screen.getByTestId('commit-popout-chat-toggle'));
+
+        expect(screen.getByTestId('commit-popout-chat-container')).toBeTruthy();
+        expect(screen.getByTestId('commit-chat-panel').getAttribute('data-hide-empty-header')).toBe('false');
+        expect(screen.queryByTestId('commit-chat-lens')).toBeNull();
+        expect(screen.queryByTestId('commit-chat-side-panel')).toBeNull();
+    });
+
+    it('keeps commit popout chat in the legacy right column on mobile when the flag is enabled', async () => {
+        mocks.isCommitChatLensEnabled.mockReturnValue(true);
+        mocks.useBreakpoint.mockReturnValue({
+            isMobile: true,
+            isTablet: false,
+            isDesktop: false,
+            breakpoint: 'mobile',
+        });
+        window.history.pushState({}, '', '/?workspace=ws1#popout/git-review/abc123');
+        mocks.getCommit.mockResolvedValue({
+            hash: 'abc123',
+            shortHash: 'abc123',
+            subject: 'Fix app',
+            author: 'Test Author',
+            date: '2026-01-01T00:00:00Z',
+            parentHashes: [],
+        });
+
+        render(<PopOutGitReviewShell />);
+
+        await screen.findByTestId('popout-file-panel');
+        fireEvent.click(screen.getByTestId('commit-popout-chat-toggle'));
+
+        expect(screen.getByTestId('commit-popout-chat-container')).toBeTruthy();
+        expect(screen.getByTestId('commit-chat-panel').getAttribute('data-hide-empty-header')).toBe('false');
+        expect(screen.queryByTestId('commit-chat-lens')).toBeNull();
+        expect(screen.queryByTestId('commit-chat-side-panel')).toBeNull();
+        expect(screen.queryByTestId('commit-chat-unpin-btn')).toBeNull();
     });
 });
