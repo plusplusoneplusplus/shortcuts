@@ -59,6 +59,9 @@ export interface MapReduceRunMetadata {
     maxParallel: number;
     childMode: MapReduceChildMode;
     provider?: ChatProvider;
+    autoProviderRouting?: {
+        requested: true;
+    };
     model?: string;
     reasoningEffort?: ReasoningEffort;
     createdAt: string;
@@ -89,6 +92,9 @@ export interface CreateMapReduceRunInput {
     maxParallel?: number;
     childMode: MapReduceChildMode;
     provider?: ChatProvider;
+    autoProviderRouting?: {
+        requested: true;
+    };
     model?: string;
     reasoningEffort?: ReasoningEffort;
     generationProcessId?: string;

@@ -225,6 +225,9 @@ export class FileMapReduceRunStore {
             if (input.provider) {
                 metadata.provider = input.provider;
             }
+            if (input.autoProviderRouting?.requested) {
+                metadata.autoProviderRouting = { requested: true };
+            }
             if (input.model) {
                 metadata.model = input.model;
             }

@@ -50,7 +50,7 @@ async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
 async function createApprovedRun(
     store: FileMapReduceRunStore,
     items: MapReduceItem[],
-    options: Partial<Pick<MapReduceRun, 'childMode' | 'provider' | 'model' | 'reasoningEffort' | 'maxParallel'>> = {},
+    options: Partial<Pick<MapReduceRun, 'childMode' | 'provider' | 'autoProviderRouting' | 'model' | 'reasoningEffort' | 'maxParallel'>> = {},
 ): Promise<MapReduceRun> {
     const run = await store.createDraftRun({
         workspaceId: WORKSPACE_ID,
@@ -60,6 +60,7 @@ async function createApprovedRun(
         childMode: options.childMode ?? 'ask',
         maxParallel: options.maxParallel ?? 2,
         provider: options.provider,
+        autoProviderRouting: options.autoProviderRouting,
         model: options.model,
         reasoningEffort: options.reasoningEffort,
         items,
@@ -245,6 +246,38 @@ describe('MapReduceRunExecutor', () => {
             expect(skipped.status).toBe('running');
             expect(enqueuedTasks).toHaveLength(3);
             expect(enqueuedTasks[2].displayName).toBe('[Map Reduce] Third');
+        });
+    });
+
+    it('carries auto-provider routing to map and reduce children without a concrete provider', async () => {
+        await withTempDir(async (dataDir) => {
+            const store = new FileMapReduceRunStore({ dataDir });
+            const enqueuedTasks: CreateTaskInput[] = [];
+            const executor = new MapReduceRunExecutor({
+                store,
+                enqueueChildTask: async (input) => {
+                    enqueuedTasks.push(input);
+                    return `task-${enqueuedTasks.length}`;
+                },
+            });
+            const run = await createApprovedRun(store, [item()], {
+                childMode: 'autopilot',
+                maxParallel: 1,
+                autoProviderRouting: { requested: true },
+            });
+
+            await executor.startOrContinueRun(WORKSPACE_ID, run.runId);
+
+            expect(enqueuedTasks).toHaveLength(1);
+            expect(enqueuedTasks[0].payload.provider).toBeUndefined();
+            expect((enqueuedTasks[0].payload as any).context.autoProviderRouting).toEqual({ requested: true });
+
+            await executor.handleChildTaskCompleted(queuedTask(enqueuedTasks[0], 'task-1'), 'map output');
+
+            expect(enqueuedTasks).toHaveLength(2);
+            expect(enqueuedTasks[1].payload.provider).toBeUndefined();
+            expect((enqueuedTasks[1].payload as any).context.autoProviderRouting).toEqual({ requested: true });
+            expect((enqueuedTasks[1].payload as any).context.mapReduce.phase).toBe('reduce');
         });
     });
 

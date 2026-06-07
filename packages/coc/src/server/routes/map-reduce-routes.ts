@@ -123,18 +123,25 @@ async function resolveAiSelection(
     body: { provider?: unknown; config?: unknown },
 ): Promise<{
     provider?: ChatProvider;
+    runProvider?: ChatProvider;
+    autoProviderRouting?: { requested: true };
     model?: string;
     reasoningEffort?: ReasoningEffort;
 }> {
     const selection = parseAiSelection(body);
     if (selection.provider || !ctx.resolveDefaultProvider) {
-        return selection;
+        return { ...selection, runProvider: selection.provider };
     }
     const resolution = await ctx.resolveDefaultProvider();
     if (!resolution.provider) {
         throw badRequest(resolution.error ?? 'Default provider resolution did not select a concrete provider.');
     }
-    return { ...selection, provider: resolution.provider };
+    return {
+        ...selection,
+        provider: resolution.provider,
+        runProvider: resolution.selectedByAuto ? undefined : resolution.provider,
+        ...(resolution.selectedByAuto ? { autoProviderRouting: { requested: true as const } } : {}),
+    };
 }
 
 function toRouteError(error: unknown): APIError {
@@ -201,7 +208,7 @@ export function registerMapReduceRoutes(ctx: MapReduceRouteContext): void {
                     : optionalString(body.sharedInstructions, 'sharedInstructions') ?? '';
                 const childMode = parseChildMode(body.childMode);
                 const maxParallel = optionalPositiveInteger(body.maxParallel, 'maxParallel');
-                const { provider, model, reasoningEffort } = await resolveAiSelection(ctx, body);
+                const { runProvider, model, reasoningEffort, autoProviderRouting } = await resolveAiSelection(ctx, body);
                 const generationProcessId = optionalString(body.generationProcessId, 'generationProcessId');
                 const generationId = optionalString(body.generationId, 'generationId');
 
@@ -212,7 +219,8 @@ export function registerMapReduceRoutes(ctx: MapReduceRouteContext): void {
                     reduceInstructions,
                     maxParallel,
                     childMode,
-                    provider,
+                    provider: runProvider,
+                    autoProviderRouting,
                     model,
                     reasoningEffort,
                     generationProcessId,
@@ -249,7 +257,7 @@ export function registerMapReduceRoutes(ctx: MapReduceRouteContext): void {
                 }
                 const sharedInstructions = optionalString(body.sharedInstructions, 'sharedInstructions');
                 const childMode = parseChildMode(body.childMode);
-                const { provider, model, reasoningEffort } = await resolveAiSelection(ctx, body);
+                const { provider, runProvider, model, reasoningEffort, autoProviderRouting } = await resolveAiSelection(ctx, body);
 
                 let plan: Awaited<ReturnType<GenerateMapReducePlanFn>>;
                 try {
@@ -278,7 +286,8 @@ export function registerMapReduceRoutes(ctx: MapReduceRouteContext): void {
                     reduceInstructions: plan.reduceInstructions,
                     maxParallel: plan.maxParallel,
                     childMode,
-                    provider,
+                    provider: runProvider,
+                    autoProviderRouting,
                     model,
                     reasoningEffort,
                     items: plan.items,

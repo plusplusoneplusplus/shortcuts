@@ -108,4 +108,18 @@ describe('buildRalphIterationTask', () => {
         });
         expect(task.payload.context.ralph).not.toHaveProperty('finalCheck');
     });
+
+    it('marks auto-provider routing without binding a concrete provider', () => {
+        const task = buildRalphIterationTask({
+            sessionId: 'sess-auto',
+            originalGoal: 'Keep resolving provider at execution.',
+            iteration: 1,
+            maxIterations: 3,
+            provider: undefined,
+            autoProviderRouting: true,
+        });
+
+        expect(task.payload.provider).toBeUndefined();
+        expect(task.payload.context.autoProviderRouting).toEqual({ requested: true });
+    });
 });

@@ -149,6 +149,7 @@ export async function orchestrateRalphIteration(input: OrchestrateRalphIteration
                 const effectiveSessionId = action.sessionId ?? action.continuationOfSessionId;
                 logger.debug(LogCategory.AI, `[Ralph] Enqueuing iteration ${action.iteration}/${action.maxIterations} for session ${effectiveSessionId}`);
                 try {
+                    const autoProviderRouting = isAutoProviderRoutingRequested(deps.existingPayloadContext);
                     const nextTask = buildRalphIterationTask({
                         workspaceId: action.workspaceId,
                         workingDirectory: deps.workingDirectory,
@@ -158,7 +159,8 @@ export async function orchestrateRalphIteration(input: OrchestrateRalphIteration
                         iteration: action.iteration,
                         maxIterations: action.maxIterations,
                         dataDir: deps.dataDir,
-                        provider: deps.provider,
+                        provider: autoProviderRouting ? undefined : deps.provider,
+                        autoProviderRouting,
                         continuationOfSessionId: action.continuationOfSessionId,
                         displayName: action.displayName,
                         extraContext: deps.existingPayloadContext,
@@ -317,7 +319,7 @@ async function enqueueFinalCheckForSession(input: EnqueueFinalCheckInput): Promi
         workingDirectory: deps.workingDirectory,
         folderPath: deps.folderPath,
         repoId: deps.repoId,
-        provider: deps.provider,
+        provider: isAutoProviderRoutingRequested(deps.existingPayloadContext) ? undefined : deps.provider,
         extraContext: deps.existingPayloadContext,
     });
 
@@ -346,4 +348,14 @@ async function enqueueFinalCheckForSession(input: EnqueueFinalCheckInput): Promi
     });
 
     logger.debug(LogCategory.AI, `[Ralph/FinalCheck] Enqueued final-check task ${newTaskId} (check ${checkIndex}) for session ${sessionId}`);
+}
+
+function isAutoProviderRoutingRequested(context: Record<string, unknown> | undefined): boolean {
+    const routing = context?.autoProviderRouting;
+    return Boolean(
+        routing
+        && typeof routing === 'object'
+        && !Array.isArray(routing)
+        && (routing as Record<string, unknown>).requested === true
+    );
 }

@@ -396,7 +396,7 @@ describe('For Each routes', () => {
         expect((enqueuedTasks[0].payload.prompt as string)).toContain('Use shared guardrails.');
     });
 
-    it('resolves the default provider for generated For Each runs when no provider is selected', async () => {
+    it('uses Auto only for plan generation and marks generated For Each children for execution-time routing', async () => {
         forEachEnabled = true;
         await stopServer();
         resolveDefaultProvider = vi.fn(async () => ({
@@ -415,7 +415,8 @@ describe('For Each routes', () => {
         });
 
         expect(created.status).toBe(201);
-        expect(created.body.run.provider).toBe('claude');
+        expect(created.body.run.provider).toBeUndefined();
+        expect(created.body.run.autoProviderRouting).toEqual({ requested: true });
         expect(resolveDefaultProvider).toHaveBeenCalledOnce();
         expect(generateItemPlan).toHaveBeenCalledWith(expect.objectContaining({
             provider: 'claude',
@@ -425,9 +426,8 @@ describe('For Each routes', () => {
         const started = await request('POST', `/api/workspaces/${WORKSPACE_ID}/for-each-runs/${created.body.run.runId}/start`);
 
         expect(started.status).toBe(200);
-        expect(enqueuedTasks[0].payload).toMatchObject({
-            provider: 'claude',
-        });
+        expect(enqueuedTasks[0].payload.provider).toBeUndefined();
+        expect((enqueuedTasks[0].payload as any).context.autoProviderRouting).toEqual({ requested: true });
     });
 
     it('continues sequentially after completion and stops on child failure', async () => {

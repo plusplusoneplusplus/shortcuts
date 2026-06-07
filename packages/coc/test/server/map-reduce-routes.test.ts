@@ -375,7 +375,7 @@ describe('Map Reduce routes', () => {
         expect(enqueuedTasks[0].payload.prompt).toContain('Keep each map item isolated.');
     });
 
-    it('resolves the default provider for generated Map Reduce runs when no provider is selected', async () => {
+    it('uses Auto only for plan generation and marks generated Map Reduce children for execution-time routing', async () => {
         mapReduceEnabled = true;
         await stopServer();
         resolveDefaultProvider = vi.fn(async () => ({
@@ -394,11 +394,19 @@ describe('Map Reduce routes', () => {
         });
 
         expect(created.status).toBe(201);
-        expect(created.body.run.provider).toBe('claude');
+        expect(created.body.run.provider).toBeUndefined();
+        expect(created.body.run.autoProviderRouting).toEqual({ requested: true });
         expect(resolveDefaultProvider).toHaveBeenCalledOnce();
         expect(generatePlan).toHaveBeenCalledWith(expect.objectContaining({
             provider: 'claude',
         }));
+
+        await request('POST', `/api/workspaces/${WORKSPACE_ID}/map-reduce-runs/${created.body.run.runId}/approve`);
+        const started = await request('POST', `/api/workspaces/${WORKSPACE_ID}/map-reduce-runs/${created.body.run.runId}/start`);
+
+        expect(started.status).toBe(200);
+        expect(enqueuedTasks[0].payload.provider).toBeUndefined();
+        expect((enqueuedTasks[0].payload as any).context.autoProviderRouting).toEqual({ requested: true });
     });
 
     it('retries failed map items, skips failed map items, and cancels active children', async () => {

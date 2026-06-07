@@ -39,6 +39,9 @@ export interface ForEachRunMetadata {
     sharedInstructions?: string;
     childMode: ForEachChildMode;
     provider?: ChatProvider;
+    autoProviderRouting?: {
+        requested: true;
+    };
     model?: string;
     reasoningEffort?: ReasoningEffort;
     createdAt: string;
@@ -65,6 +68,9 @@ export interface CreateForEachRunInput {
     sharedInstructions?: string;
     childMode: ForEachChildMode;
     provider?: ChatProvider;
+    autoProviderRouting?: {
+        requested: true;
+    };
     model?: string;
     reasoningEffort?: ReasoningEffort;
     generationProcessId?: string;

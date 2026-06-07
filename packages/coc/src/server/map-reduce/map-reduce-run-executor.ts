@@ -94,6 +94,7 @@ function buildMapChildTask(run: MapReduceRun, item: MapReduceItem): CreateTaskIn
             ...(run.model ? { model: run.model } : {}),
             ...(run.reasoningEffort ? { reasoningEffort: run.reasoningEffort } : {}),
             context: {
+                ...(run.autoProviderRouting?.requested ? { autoProviderRouting: { requested: true as const } } : {}),
                 mapReduce: {
                     workspaceId: run.workspaceId,
                     runId: run.runId,
@@ -123,6 +124,7 @@ function buildReduceChildTask(run: MapReduceRun): CreateTaskInput {
             ...(run.model ? { model: run.model } : {}),
             ...(run.reasoningEffort ? { reasoningEffort: run.reasoningEffort } : {}),
             context: {
+                ...(run.autoProviderRouting?.requested ? { autoProviderRouting: { requested: true as const } } : {}),
                 mapReduce: {
                     workspaceId: run.workspaceId,
                     runId: run.runId,
