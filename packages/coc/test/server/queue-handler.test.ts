@@ -879,7 +879,6 @@ describe('Queue Handler', () => {
 
         it('should include auto-provider pending marker without a concrete provider when listing queued tasks', async () => {
             const srv = await startServer({
-                defaultProvider: 'auto',
                 features: { autoAgentProviderRouting: true },
             } as CLIConfig);
 

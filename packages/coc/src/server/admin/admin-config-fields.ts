@@ -40,7 +40,7 @@ const bool = (key: string, set: (cfg: CLIConfig, v: boolean) => void, runtime: A
 });
 
 const VALID_OUTPUT_VALUES = ['table', 'json', 'csv', 'markdown'] as const;
-const VALID_DEFAULT_PROVIDER_VALUES = ['copilot', 'codex', 'claude', 'auto'] as const;
+const VALID_DEFAULT_PROVIDER_VALUES = ['copilot', 'codex', 'claude'] as const;
 const VALID_CONCRETE_PROVIDER_VALUES = ['copilot', 'codex', 'claude'] as const;
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -312,7 +312,7 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         runtime: 'restartRequired',
         validate: (v) => typeof v === 'string' && (VALID_DEFAULT_PROVIDER_VALUES as readonly string[]).includes(v)
             ? undefined
-            : 'defaultProvider must be "copilot", "codex", "claude", or "auto"',
+            : 'defaultProvider must be "copilot", "codex", or "claude"',
         apply: (cfg, v) => { cfg.defaultProvider = v as DefaultAgentProvider; },
     },
     {

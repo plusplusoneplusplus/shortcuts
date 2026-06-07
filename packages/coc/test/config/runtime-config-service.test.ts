@@ -204,13 +204,13 @@ describe('RuntimeConfigService', () => {
             ).rejects.toThrow('No valid editable fields');
         });
 
-        it('should reject defaultProvider auto while auto routing feature is disabled', async () => {
+        it('should reject defaultProvider auto', async () => {
             writeConfig({ parallel: 5 });
             const svc = new RuntimeConfigService({ configPath });
 
             await expect(
                 svc.updateConfig({ defaultProvider: 'auto' }),
-            ).rejects.toThrow('defaultProvider "auto" requires features.autoAgentProviderRouting: true');
+            ).rejects.toThrow('defaultProvider must be "copilot", "codex", or "claude"');
 
             expect(svc.revision).toBe(0);
             expect(svc.config.defaultProvider).toBe('copilot');
@@ -220,23 +220,23 @@ describe('RuntimeConfigService', () => {
             expect(raw.features?.autoAgentProviderRouting).toBeUndefined();
         });
 
-        it('should allow enabling auto routing and selecting defaultProvider auto in the same update', async () => {
+        it('should allow enabling Auto routing while keeping defaultProvider concrete', async () => {
             const svc = new RuntimeConfigService({ configPath });
 
             const result = await svc.updateConfig({
                 'features.autoAgentProviderRouting': true,
-                defaultProvider: 'auto',
+                defaultProvider: 'claude',
             });
 
             expect(result.config.features.autoAgentProviderRouting).toBe(true);
-            expect(result.config.defaultProvider).toBe('auto');
+            expect(result.config.defaultProvider).toBe('claude');
             expect(result.sources['features.autoAgentProviderRouting']).toBe('file');
             expect(result.sources.defaultProvider).toBe('file');
             expect(result.revision).toBe(1);
 
             const raw = yaml.load(fs.readFileSync(configPath, 'utf-8')) as CLIConfig;
             expect(raw.features?.autoAgentProviderRouting).toBe(true);
-            expect(raw.defaultProvider).toBe('auto');
+            expect(raw.defaultProvider).toBe('claude');
         });
 
         it('should handle multiple sequential updates correctly', async () => {

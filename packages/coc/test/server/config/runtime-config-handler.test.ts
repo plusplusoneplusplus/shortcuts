@@ -101,9 +101,9 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.autoAgentProviderRoutingEnabled).toBe(true);
     });
 
-    it('reports defaultProvider auto when configured', () => {
+    it('reports concrete defaultProvider while Auto routing is enabled', () => {
         const svc = createMockRuntimeConfigService({
-            defaultProvider: 'auto',
+            defaultProvider: 'claude',
             features: {
                 focusedDiff: false,
                 autoMemoryPromotion: false,
@@ -114,7 +114,7 @@ describe('buildRuntimeDashboardConfig', () => {
             },
         } as any);
         const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
-        expect(result.features.defaultProvider).toBe('auto');
+        expect(result.features.defaultProvider).toBe('claude');
         expect(result.features.autoAgentProviderRoutingEnabled).toBe(true);
     });
 

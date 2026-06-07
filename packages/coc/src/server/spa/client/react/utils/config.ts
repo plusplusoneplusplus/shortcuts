@@ -36,8 +36,8 @@ interface DashboardConfig {
     bindAddress?: string;
     /** Whether the Codex SDK provider is enabled (feature flag). */
     codexEnabled?: boolean;
-    /** Default AI provider for new chats/tasks. */
-    defaultProvider?: 'copilot' | 'codex' | 'claude' | 'auto';
+    /** Concrete default AI provider when Auto routing is disabled. */
+    defaultProvider?: 'copilot' | 'codex' | 'claude';
     /** Whether Auto agent provider routing is enabled. */
     autoAgentProviderRoutingEnabled?: boolean;
     /** Whether the Work Items hierarchy board is enabled (feature flag). */
@@ -325,15 +325,14 @@ export function isEffortLevelsEnabled(): boolean {
     return getConfig().effortLevelsEnabled === true;
 }
 
-/** Returns the raw configured default AI provider selection for new chats/tasks. */
-export function getConfiguredDefaultProvider(): 'copilot' | 'codex' | 'claude' | 'auto' {
+/** Returns the configured concrete default AI provider. */
+export function getConfiguredDefaultProvider(): 'copilot' | 'codex' | 'claude' {
     return getConfig().defaultProvider ?? 'copilot';
 }
 
 /** Returns the concrete default AI provider for UI surfaces that require an SDK provider. */
 export function getDefaultProvider(): 'copilot' | 'codex' | 'claude' {
-    const provider = getConfiguredDefaultProvider();
-    return provider === 'auto' ? 'copilot' : provider;
+    return getConfiguredDefaultProvider();
 }
 
 /** Returns the currently active provider (alias for getDefaultProvider). */

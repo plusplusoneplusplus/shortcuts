@@ -24,7 +24,7 @@ import {
 // ============================================================================
 
 export type ConcreteAgentProvider = 'copilot' | 'codex' | 'claude';
-export type DefaultAgentProvider = ConcreteAgentProvider | 'auto';
+export type DefaultAgentProvider = ConcreteAgentProvider;
 export type AutoProviderRoutingRule = {
     provider: ConcreteAgentProvider;
     enabled?: boolean;
@@ -205,7 +205,7 @@ export interface CLIConfig {
         enabled?: boolean;
     };
     /**
-     * Default AI provider for new chats/tasks: 'copilot' (default), 'codex', 'claude', or feature-gated 'auto'.
+     * Concrete default AI provider when Auto routing is disabled.
      * Per-chat provider selection overrides this value.
      */
     defaultProvider?: DefaultAgentProvider;
@@ -465,7 +465,7 @@ export interface ResolvedCLIConfig {
         enabled: boolean;
     };
     /**
-     * Default AI provider for new chats/tasks: 'copilot' (default), 'codex', 'claude', or feature-gated 'auto'.
+     * Concrete default AI provider when Auto routing is disabled.
      * Per-chat provider selection overrides this value.
      */
     defaultProvider: DefaultAgentProvider;

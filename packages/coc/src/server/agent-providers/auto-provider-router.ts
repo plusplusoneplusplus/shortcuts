@@ -85,23 +85,13 @@ export function resolveDefaultAgentProvider(
     config: Pick<ResolvedCLIConfig, 'defaultProvider' | 'features' | 'agentProviderRouting'>,
     options: ResolveAutoProviderOptions,
 ): AutoProviderResolutionResult {
-    if (config.defaultProvider !== 'auto') {
+    if (config.features.autoAgentProviderRouting !== true) {
         return {
             provider: config.defaultProvider,
             selectedByAuto: false,
             fallbackUsed: false,
             decisions: [],
             warnings: [],
-        };
-    }
-
-    if (config.features.autoAgentProviderRouting !== true) {
-        return {
-            selectedByAuto: true,
-            fallbackUsed: false,
-            decisions: [],
-            warnings: [],
-            error: 'defaultProvider "auto" requires features.autoAgentProviderRouting: true',
         };
     }
 

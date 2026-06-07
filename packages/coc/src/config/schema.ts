@@ -12,7 +12,6 @@ import { z } from 'zod';
 // ============================================================================
 
 const concreteAgentProviderEnum = z.enum(['copilot', 'codex', 'claude']);
-const defaultAgentProviderEnum = z.enum(['copilot', 'codex', 'claude', 'auto']);
 const percentSchema = z.number().int().min(0).max(100);
 
 const loggingLevelEnum = z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']);
@@ -129,7 +128,7 @@ export const CLIConfigSchema = z.object({
     claude: z.object({
         enabled: z.boolean().optional(),
     }).passthrough().optional(),
-    defaultProvider: defaultAgentProviderEnum.optional(),
+    defaultProvider: concreteAgentProviderEnum.optional(),
     ralph: z.object({
         enabled: z.boolean().optional(),
         finalCheck: z.object({
@@ -199,15 +198,7 @@ export const CLIConfigSchema = z.object({
     effortLevels: z.object({
         enabled: z.boolean().optional(),
     }).passthrough().optional(),
-}).passthrough().superRefine((config, ctx) => {
-    if (config.defaultProvider === 'auto' && config.features?.autoAgentProviderRouting !== true) {
-        ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['defaultProvider'],
-            message: 'defaultProvider "auto" requires features.autoAgentProviderRouting: true',
-        });
-    }
-});
+}).passthrough();
 
 /**
  * Inferred type from schema (should match CLIConfig)

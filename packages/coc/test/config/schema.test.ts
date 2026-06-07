@@ -378,21 +378,24 @@ describe('auto agent provider routing schema validation', () => {
         }
     });
 
-    it('rejects defaultProvider auto when the feature flag is not enabled', () => {
+    it('rejects defaultProvider auto even when the feature flag is enabled', () => {
         expect(() => CLIConfigSchema.parse({ defaultProvider: 'auto' }))
             .toThrow();
         expect(() => CLIConfigSchema.parse({
             defaultProvider: 'auto',
             features: { autoAgentProviderRouting: false },
         })).toThrow();
-    });
-
-    it('accepts defaultProvider auto when the feature flag is enabled', () => {
-        const result = CLIConfigSchema.parse({
+        expect(() => CLIConfigSchema.parse({
             defaultProvider: 'auto',
             features: { autoAgentProviderRouting: true },
+        })).toThrow();
+    });
+
+    it('accepts the Auto routing feature flag without defaultProvider auto', () => {
+        const result = CLIConfigSchema.parse({
+            features: { autoAgentProviderRouting: true },
         });
-        expect(result.defaultProvider).toBe('auto');
+        expect(result.defaultProvider).toBeUndefined();
         expect(result.features?.autoAgentProviderRouting).toBe(true);
     });
 

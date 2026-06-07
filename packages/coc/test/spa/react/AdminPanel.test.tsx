@@ -1577,7 +1577,7 @@ describe('AdminPanel', () => {
     });
 
     describe('auto provider routing controls', () => {
-        it('saves the Auto provider routing feature flag from the Features card', async () => {
+        it('saves the Auto provider routing feature flag from the AI Provider page', async () => {
             let capturedBody: any = null;
             mockFetch.mockImplementation((url: string, options?: any) => {
                 if (url.includes('/admin/config') && options?.method === 'PUT') {
@@ -1599,21 +1599,24 @@ describe('AdminPanel', () => {
             });
 
             await act(async () => { renderWithProviders(); });
-            await gotoSettingsSubTab('features');
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('admin-tab-agents'));
+            });
             await waitFor(() => expect(screen.getByTestId('toggle-auto-agent-provider-routing-enabled')).toBeDefined());
 
             await act(async () => {
                 fireEvent.click(screen.getByTestId('toggle-auto-agent-provider-routing-enabled'));
             });
             await act(async () => {
-                fireEvent.click(screen.getByTestId('settings-features-save'));
+                fireEvent.click(screen.getByTestId('settings-default-provider-save'));
             });
 
             await waitFor(() => expect(capturedBody).not.toBeNull());
             expect(capturedBody['features.autoAgentProviderRouting']).toBe(true);
+            expect(capturedBody.defaultProvider).toBe('copilot');
         });
 
-        it('saves Auto as the default provider with the edited routing profile', async () => {
+        it('saves Auto enablement with the edited routing profile', async () => {
             let capturedBody: any = null;
             mockFetch.mockImplementation((url: string, options?: any) => {
                 if (url.includes('/admin/config') && options?.method === 'PUT') {
@@ -1681,11 +1684,9 @@ describe('AdminPanel', () => {
             await act(async () => {
                 fireEvent.click(screen.getByTestId('admin-tab-agents'));
             });
-            await waitFor(() => expect(screen.getByTestId('select-default-provider-auto')).toBeDefined());
+            await waitFor(() => expect(screen.getByTestId('toggle-auto-agent-provider-routing-enabled')).toBeDefined());
 
-            await act(async () => {
-                fireEvent.click(screen.getByTestId('select-default-provider-auto'));
-            });
+            await waitFor(() => expect(screen.getByTestId('auto-provider-threshold-claude')).toBeDefined());
             await act(async () => {
                 fireEvent.change(screen.getByTestId('auto-provider-threshold-claude'), { target: { value: '35' } });
             });
@@ -1694,7 +1695,8 @@ describe('AdminPanel', () => {
             });
 
             await waitFor(() => expect(capturedBody).not.toBeNull());
-            expect(capturedBody.defaultProvider).toBe('auto');
+            expect(capturedBody.defaultProvider).toBe('copilot');
+            expect(capturedBody['features.autoAgentProviderRouting']).toBe(true);
             expect(capturedBody['codex.enabled']).toBe(true);
             expect(capturedBody['claude.enabled']).toBe(true);
             expect(capturedBody['agentProviderRouting.auto']).toEqual(expect.objectContaining({

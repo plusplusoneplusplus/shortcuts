@@ -2,7 +2,7 @@ export type AdminOutputFormat = 'table' | 'json' | 'csv' | 'markdown';
 export type AdminImportMode = 'replace' | 'merge';
 export type AdminStorageBackend = 'file' | 'sqlite';
 export type AdminConcreteAgentProvider = 'copilot' | 'codex' | 'claude';
-export type AdminDefaultProvider = AdminConcreteAgentProvider | 'auto';
+export type AdminDefaultProvider = AdminConcreteAgentProvider;
 
 export interface AdminAutoProviderRoutingRule {
   provider: AdminConcreteAgentProvider;

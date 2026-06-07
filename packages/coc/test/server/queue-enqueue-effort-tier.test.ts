@@ -228,7 +228,7 @@ describe('prepareTaskForEnqueue', () => {
         await expect(prepareTaskForEnqueue(input, makeContext({
             resolveDefaultProvider,
             isAutoProviderRoutingActive: () => false,
-        }))).rejects.toThrow('Auto provider routing requires defaultProvider "auto"');
+        }))).rejects.toThrow('Auto provider routing requires features.autoAgentProviderRouting: true');
         expect(resolveDefaultProvider).not.toHaveBeenCalled();
     });
 });

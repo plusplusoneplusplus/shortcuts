@@ -62,14 +62,13 @@ describe('default provider helpers', () => {
         expect(getDefaultProvider()).toBe('claude');
     });
 
-    it('exposes auto as the configured provider but falls back to copilot for concrete provider callers', () => {
+    it('keeps the configured provider concrete when Auto routing is enabled', () => {
         (window as any).__DASHBOARD_CONFIG__ = {
             apiBasePath: '/api',
             wsPath: '/ws',
-            defaultProvider: 'auto',
             autoAgentProviderRoutingEnabled: true,
         };
-        expect(getConfiguredDefaultProvider()).toBe('auto');
+        expect(getConfiguredDefaultProvider()).toBe('copilot');
         expect(getDefaultProvider()).toBe('copilot');
         expect(isAutoAgentProviderRoutingEnabled()).toBe(true);
     });

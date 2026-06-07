@@ -36,6 +36,7 @@ function makeProps(overrides: Partial<AIProviderPageProps> = {}): AIProviderPage
         claudeEnabled: false,
         setClaudeEnabled: vi.fn(),
         autoAgentProviderRoutingEnabled: false,
+        setAutoAgentProviderRoutingEnabled: vi.fn(),
         autoRoutingConfig: undefined,
         setAutoRoutingConfig: vi.fn(),
         providerAvailability: {
@@ -158,7 +159,7 @@ describe('AIProviderPage', () => {
         renderPage();
         const grid = screen.getByTestId('aip-summary-grid');
         expect(grid).toBeDefined();
-        expect(screen.getByText('Default provider')).toBeDefined();
+        expect(screen.getByText('Default route')).toBeDefined();
         expect(screen.getByText('Provider health')).toBeDefined();
         expect(screen.getByText('Enabled models')).toBeDefined();
         expect(screen.getByText('Quota risk')).toBeDefined();
@@ -270,11 +271,11 @@ describe('AIProviderPage', () => {
     });
 
     // ────────────── Auto provider routing ──────────────
-    it('gates Auto default selection and routing editor when the feature flag is disabled', () => {
+    it('shows the Auto toggle and hides the routing editor when Auto is disabled', () => {
         renderPage({ autoAgentProviderRoutingEnabled: false });
 
-        const autoButton = screen.getByTestId('select-default-provider-auto') as HTMLButtonElement;
-        expect(autoButton.disabled).toBe(true);
+        const toggle = screen.getByTestId('toggle-auto-agent-provider-routing-enabled');
+        expect(toggle.getAttribute('aria-checked')).toBe('false');
         expect(screen.getByTestId('auto-provider-routing-disabled')).toBeDefined();
         expect(screen.queryByTestId('auto-provider-rules')).toBeNull();
     });
@@ -282,7 +283,7 @@ describe('AIProviderPage', () => {
     it('renders the first-use Auto profile when the feature flag is enabled', () => {
         renderPage({ autoAgentProviderRoutingEnabled: true });
 
-        expect((screen.getByTestId('select-default-provider-auto') as HTMLButtonElement).disabled).toBe(false);
+        expect(screen.getByTestId('toggle-auto-agent-provider-routing-enabled').getAttribute('aria-checked')).toBe('true');
         expect(screen.getByTestId('auto-provider-rule-claude')).toBeDefined();
         expect(screen.getByTestId('auto-provider-rule-codex')).toBeDefined();
         expect(screen.getByTestId('auto-provider-rule-copilot')).toBeDefined();
@@ -293,12 +294,12 @@ describe('AIProviderPage', () => {
         expect((screen.getByTestId('auto-provider-fallback') as HTMLSelectElement).value).toBe('copilot');
     });
 
-    it('selects Auto as the default provider when enabled', () => {
-        const { props } = renderPage({ autoAgentProviderRoutingEnabled: true });
+    it('toggles Auto routing enablement', () => {
+        const { props } = renderPage({ autoAgentProviderRoutingEnabled: false });
 
-        fireEvent.click(screen.getByTestId('select-default-provider-auto'));
+        fireEvent.click(screen.getByTestId('toggle-auto-agent-provider-routing-enabled'));
 
-        expect(props.setDefaultProvider).toHaveBeenCalledWith('auto');
+        expect(props.setAutoAgentProviderRoutingEnabled).toHaveBeenCalledWith(true);
     });
 
     it('edits Auto rule normal thresholds, weekly guard, priority, and fallback', () => {

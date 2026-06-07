@@ -16,7 +16,7 @@ function config(overrides: Partial<ResolvedCLIConfig> = {}): ResolvedCLIConfig {
             autoAgentProviderRouting: true,
             ...overrides.features,
         },
-        defaultProvider: overrides.defaultProvider ?? 'auto',
+        defaultProvider: overrides.defaultProvider ?? DEFAULT_CONFIG.defaultProvider,
         agentProviderRouting: overrides.agentProviderRouting ?? DEFAULT_CONFIG.agentProviderRouting,
     };
 }
@@ -58,9 +58,12 @@ function availability(overrides: AutoProviderAvailabilityMap = {}): AutoProvider
 }
 
 describe('auto provider router', () => {
-    it('returns concrete defaults without invoking auto routing', () => {
+    it('returns concrete defaults without invoking auto routing when Auto is disabled', () => {
         const result = resolveDefaultAgentProvider(
-            config({ defaultProvider: 'codex' }),
+            config({
+                defaultProvider: 'codex',
+                features: { ...DEFAULT_CONFIG.features, autoAgentProviderRouting: false },
+            }),
             { providerAvailability: availability(), quotaData: null },
         );
 
@@ -73,17 +76,20 @@ describe('auto provider router', () => {
         });
     });
 
-    it('rejects defaultProvider auto when the feature flag is disabled at runtime', () => {
+    it('routes provider-omitted defaults through Auto when the feature flag is enabled', () => {
         const result = resolveDefaultAgentProvider(
-            config({
-                defaultProvider: 'auto',
-                features: { ...DEFAULT_CONFIG.features, autoAgentProviderRouting: false },
-            }),
-            { providerAvailability: availability(), quotaData: null },
+            config({ defaultProvider: 'codex' }),
+            {
+                providerAvailability: availability(),
+                quotaData: quota({
+                    claude: [quotaType({ type: 'five_hour', remainingPercentage: 0.9 })],
+                    codex: [quotaType({ type: 'five_hour', remainingPercentage: 0.9 })],
+                }),
+            },
         );
 
-        expect(result.provider).toBeUndefined();
-        expect(result.error).toBe('defaultProvider "auto" requires features.autoAgentProviderRouting: true');
+        expect(result.provider).toBe('claude');
+        expect(result.selectedByAuto).toBe(true);
     });
 
     it('chooses the first eligible provider by priority using the tightest finite quota pool', () => {

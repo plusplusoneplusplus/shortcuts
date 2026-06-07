@@ -258,16 +258,25 @@ timeout: 300
             expect(() => loadConfigFile(configPath)).toThrow('Invalid config file');
         });
 
-        it('should load defaultProvider auto when auto routing feature flag is enabled', () => {
+        it('should load the Auto routing feature flag without defaultProvider auto', () => {
             const configPath = path.join(tmpDir, 'auto-provider.yaml');
+            fs.writeFileSync(configPath, [
+                'features:',
+                '  autoAgentProviderRouting: true',
+            ].join('\n'));
+            const result = loadConfigFile(configPath);
+            expect(result?.features?.autoAgentProviderRouting).toBe(true);
+            expect(result?.defaultProvider).toBeUndefined();
+        });
+
+        it('should reject defaultProvider auto even when auto routing feature flag is enabled', () => {
+            const configPath = path.join(tmpDir, 'auto-provider-invalid.yaml');
             fs.writeFileSync(configPath, [
                 'features:',
                 '  autoAgentProviderRouting: true',
                 'defaultProvider: auto',
             ].join('\n'));
-            const result = loadConfigFile(configPath);
-            expect(result?.features?.autoAgentProviderRouting).toBe(true);
-            expect(result?.defaultProvider).toBe('auto');
+            expect(() => loadConfigFile(configPath)).toThrow('Invalid config file');
         });
 
         it('should reject defaultProvider auto when auto routing feature flag is disabled', () => {

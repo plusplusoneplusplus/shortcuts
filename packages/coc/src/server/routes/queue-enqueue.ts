@@ -465,7 +465,7 @@ export async function resolveDefaultProviderForTask(input: CreateTaskInput, ctx:
     const autoRoutingActive = ctx.isAutoProviderRoutingActive?.() === true;
     if (!autoRequested && !autoRoutingActive) return;
     if (autoRequested && ctx.isAutoProviderRoutingActive && !autoRoutingActive) {
-        throw new Error('Auto provider routing requires defaultProvider "auto" and features.autoAgentProviderRouting: true.');
+        throw new Error('Auto provider routing requires features.autoAgentProviderRouting: true.');
     }
 
     markAutoProviderRoutingRequested(payload);

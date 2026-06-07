@@ -199,14 +199,11 @@ describe('validate()', () => {
         it('accepts "claude"', () => {
             expect(fieldFor('defaultProvider').validate('claude')).toBeUndefined();
         });
-        it('accepts "auto"', () => {
-            expect(fieldFor('defaultProvider').validate('auto')).toBeUndefined();
-        });
         it('rejects other strings', () => {
-            expect(fieldFor('defaultProvider').validate('unknown')).toMatch(/copilot.*codex.*claude.*auto/);
+            expect(fieldFor('defaultProvider').validate('unknown')).toMatch(/copilot.*codex.*claude/);
         });
         it('rejects non-string', () => {
-            expect(fieldFor('defaultProvider').validate(true)).toMatch(/copilot.*codex.*claude.*auto/);
+            expect(fieldFor('defaultProvider').validate(true)).toMatch(/copilot.*codex.*claude/);
         });
     });
 
@@ -443,11 +440,6 @@ describe('apply()', () => {
             const cfg: CLIConfig = {};
             fieldFor('defaultProvider').apply(cfg, 'codex');
             expect(cfg.defaultProvider).toBe('codex');
-        });
-        it('sets auto', () => {
-            const cfg: CLIConfig = {};
-            fieldFor('defaultProvider').apply(cfg, 'auto');
-            expect(cfg.defaultProvider).toBe('auto');
         });
     });
 

@@ -194,8 +194,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         if (defaultProvider === 'claude') return 'claude';
         return 'copilot';
     };
-    const concreteDefaultProviderResolution = (): AutoProviderResolutionResult => ({
-        provider: concreteDefaultProvider(),
+    const concreteDefaultProviderResolution = (provider: ChatProvider = concreteDefaultProvider()): AutoProviderResolutionResult => ({
+        provider,
         selectedByAuto: false,
         fallbackUsed: false,
         decisions: [],
@@ -232,8 +232,12 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const resolveDefaultProvider = async (options?: ResolveDefaultProviderOptions): Promise<AutoProviderResolutionResult> => {
         const config = opts.runtimeConfigService?.config ?? opts.resolvedConfig;
         const forceAuto = options?.forceAuto === true;
-        if (!config || (!forceAuto && config.defaultProvider !== 'auto')) {
+        if (!config) {
             return concreteDefaultProviderResolution();
+        }
+        const autoRoutingEnabled = config.features.autoAgentProviderRouting === true;
+        if (!forceAuto && !autoRoutingEnabled) {
+            return concreteDefaultProviderResolution(config.defaultProvider);
         }
         if (config.features.autoAgentProviderRouting !== true) {
             return {
@@ -262,8 +266,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     };
     const isAutoProviderRoutingActive = (): boolean => {
         const config = opts.runtimeConfigService?.config ?? opts.resolvedConfig;
-        return config?.defaultProvider === 'auto'
-            && config.features.autoAgentProviderRouting === true;
+        return config?.features.autoAgentProviderRouting === true;
     };
     const resolveConcreteDefaultProvider = async (): Promise<ChatProvider> => {
         const resolution = await resolveDefaultProvider();

@@ -53,6 +53,7 @@ export interface AIProviderPageProps {
     claudeEnabled: boolean;
     setClaudeEnabled: (v: boolean) => void;
     autoAgentProviderRoutingEnabled: boolean;
+    setAutoAgentProviderRoutingEnabled: (v: boolean) => void;
     autoRoutingConfig: AdminAutoProviderRoutingConfig | null | undefined;
     setAutoRoutingConfig: (config: NormalizedAutoProviderRoutingConfig) => void;
     providerAvailability: Record<string, { available: boolean; error?: string }>;
@@ -74,7 +75,7 @@ export interface AIProviderPageProps {
 }
 
 const PROVIDER_LABELS: Record<Provider, string> = { copilot: 'Copilot', codex: 'Codex', claude: 'Claude' };
-const DEFAULT_PROVIDER_LABELS: Record<DefaultProvider, string> = { ...PROVIDER_LABELS, auto: 'Auto' };
+const DEFAULT_PROVIDER_LABELS: Record<DefaultProvider, string> = PROVIDER_LABELS;
 const PROVIDER_IDS: Provider[] = ['copilot', 'codex', 'claude'];
 export const DEFAULT_AUTO_PROVIDER_ROUTING_CONFIG: NormalizedAutoProviderRoutingConfig = {
     rules: [
@@ -396,7 +397,7 @@ export function AIProviderPage(props: AIProviderPageProps) {
         defaultProvider, setDefaultProvider,
         codexEnabled, setCodexEnabled,
         claudeEnabled, setClaudeEnabled,
-        autoAgentProviderRoutingEnabled, autoRoutingConfig, setAutoRoutingConfig,
+        autoAgentProviderRoutingEnabled, setAutoAgentProviderRoutingEnabled, autoRoutingConfig, setAutoRoutingConfig,
         providerAvailability, sdkInstallStatuses, sdkInstallErrors, onInstallSdk,
         dirty, saving, onSave, onCancel,
         quotaData, quotaLoading, quotaError, onRefreshQuota,
@@ -404,7 +405,7 @@ export function AIProviderPage(props: AIProviderPageProps) {
 
     const normalizedAutoRouting = normalizeAutoProviderRoutingConfig(autoRoutingConfig);
     const [activeModelProvider, setActiveModelProvider] = useState<Provider>(
-        defaultProvider === 'auto' ? normalizedAutoRouting.fallbackProvider : defaultProvider,
+        defaultProvider,
     );
     const [activeSubTab, setActiveSubTab] = useState<AIProviderSubTab>('routing');
 
@@ -548,9 +549,9 @@ export function AIProviderPage(props: AIProviderPageProps) {
             {/* Summary grid */}
             <section className="aip-summary-grid" aria-label="Provider summary" data-testid="aip-summary-grid">
                 <SummaryCard
-                    label="Default provider"
-                    value={DEFAULT_PROVIDER_LABELS[defaultProvider]}
-                    note={defaultProvider === 'auto' ? 'Priority + quota based' : 'No per-chat override'}
+                    label="Default route"
+                    value={autoAgentProviderRoutingEnabled ? 'Auto' : DEFAULT_PROVIDER_LABELS[defaultProvider]}
+                    note={autoAgentProviderRoutingEnabled ? 'Omitted-provider flows use Auto' : 'No per-chat override'}
                 />
                 <SummaryCard
                     label="Provider health"
@@ -602,22 +603,19 @@ export function AIProviderPage(props: AIProviderPageProps) {
                                 <span className="aip-provider-source">feature flag</span>
                             </div>
                             <div className="aip-provider-meta">
-                                Resolve new work by provider priority, live availability, normal quota thresholds, and weekly guardrails.
+                                Enable Auto to make omitted-provider chats, tasks, and API-created work route by priority, availability, quota, and weekly guardrails. Explicit provider selections and follow-ups keep their provider.
                             </div>
                         </div>
-                        <button
-                            type="button"
-                            className={`ar-btn ar-btn-sm ${defaultProvider === 'auto' ? 'ar-btn-primary' : 'ar-btn-secondary'}`}
-                            onClick={() => setDefaultProvider('auto')}
-                            disabled={!autoAgentProviderRoutingEnabled}
-                            data-testid="select-default-provider-auto"
-                        >
-                            {defaultProvider === 'auto' ? 'Default' : 'Make default'}
-                        </button>
+                        <Toggle
+                            checked={autoAgentProviderRoutingEnabled}
+                            onChange={setAutoAgentProviderRoutingEnabled}
+                            label="Toggle Auto provider routing"
+                            testId="toggle-auto-agent-provider-routing-enabled"
+                        />
                     </div>
                     {!autoAgentProviderRoutingEnabled ? (
                         <div className="aip-auto-disabled" data-testid="auto-provider-routing-disabled">
-                            Enable the "Auto agent provider routing" feature flag in Admin → Configure → Features before Auto can be selected or edited.
+                            Auto is disabled. New omitted-provider flows use the concrete default provider below.
                         </div>
                     ) : (
                         <>

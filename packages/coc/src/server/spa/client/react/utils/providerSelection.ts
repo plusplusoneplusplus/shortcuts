@@ -70,11 +70,7 @@ export function getConcreteProviderForClientHooks(provider: ChatProvider): Concr
 }
 
 export function getConfiguredComposerDefaultProvider(): ChatProvider {
-    const configuredDefault = getConfiguredDefaultProvider();
-    if (configuredDefault === 'auto') {
-        return isAutoAgentProviderRoutingEnabled() ? 'auto' : getDefaultProvider();
-    }
-    return configuredDefault;
+    return isAutoAgentProviderRoutingEnabled() ? 'auto' : getConfiguredDefaultProvider();
 }
 
 export function getSelectableComposerDefaultProvider(
