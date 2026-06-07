@@ -187,7 +187,7 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChat
 
 import { CommitDetail } from '../../../../src/server/spa/client/react/features/git/commits/CommitDetail';
 import { FileDiffPanel } from '../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel';
-import { getCommitChatPlacementStorageKey } from '../../../../src/server/spa/client/react/features/git/commits/commitChatPlacement';
+import { getReviewChatPlacementStorageKey } from '../../../../src/server/spa/client/react/features/git/commits/commitChatPlacement';
 
 function makeCommitSource(overrides: Partial<DiffSource> = {}): DiffSource {
     return {
@@ -251,7 +251,7 @@ describe('commit chat lens surfaces with feature flag enabled', () => {
 
         fireEvent.click(screen.getByTestId('commit-chat-pin-btn'));
 
-        const storageKey = getCommitChatPlacementStorageKey('ws1', 'abc123');
+        const storageKey = getReviewChatPlacementStorageKey({ type: 'commit', workspaceId: 'ws1', commitHash: 'abc123' });
         expect(localStorage.getItem(storageKey)).toBe('side-panel');
         expect(screen.getByTestId('commit-chat-side-panel')).toBeTruthy();
         expect(screen.queryByTestId('commit-chat-lens')).toBeNull();
@@ -275,7 +275,7 @@ describe('commit chat lens surfaces with feature flag enabled', () => {
 
         expect(screen.getByTestId('commit-chat-lens')).toBeTruthy();
         expect(screen.getByTestId('commit-chat-panel').getAttribute('data-commit-hash')).toBe('def456');
-        expect(localStorage.getItem(getCommitChatPlacementStorageKey('ws1', 'def456'))).toBeNull();
+        expect(localStorage.getItem(getReviewChatPlacementStorageKey({ type: 'commit', workspaceId: 'ws1', commitHash: 'def456' }))).toBeNull();
     });
 
     it('opens commit-backed FileDiffPanel chat as a lens and pins back to the side panel', async () => {
@@ -297,7 +297,7 @@ describe('commit chat lens surfaces with feature flag enabled', () => {
 
         fireEvent.click(screen.getByTestId('commit-chat-pin-btn'));
 
-        expect(localStorage.getItem(getCommitChatPlacementStorageKey('ws1', 'abc123'))).toBe('side-panel');
+        expect(localStorage.getItem(getReviewChatPlacementStorageKey({ type: 'commit', workspaceId: 'ws1', commitHash: 'abc123' }))).toBe('side-panel');
         expect(screen.getByTestId('commit-chat-side-panel')).toBeTruthy();
     });
 

@@ -221,7 +221,7 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChat
 }));
 
 import { WorkItemCommitReviewPane } from '../../../../src/server/spa/client/react/features/work-items/WorkItemCommitReviewPane';
-import { getCommitChatPlacementStorageKey } from '../../../../src/server/spa/client/react/features/git/commits/commitChatPlacement';
+import { getReviewChatPlacementStorageKey } from '../../../../src/server/spa/client/react/features/git/commits/commitChatPlacement';
 
 const commitFiles = [
     { status: 'modified', path: 'src/example.ts' },
@@ -258,7 +258,7 @@ describe('WorkItemCommitReviewPane commit chat lens', () => {
 
         fireEvent.click(screen.getByTestId('toggle-chat-btn'));
 
-        const placementKey = getCommitChatPlacementStorageKey('ws-test', 'abc1234567890');
+        const placementKey = getReviewChatPlacementStorageKey({ type: 'commit', workspaceId: 'ws-test', commitHash: 'abc1234567890' });
         await waitFor(() => expect(screen.getByTestId('commit-chat-lens')).toBeTruthy());
         expect(screen.queryByTestId('commit-chat-side-panel')).toBeNull();
         expect(screen.getByTestId('commit-chat-panel').getAttribute('data-workspace-id')).toBe('ws-test');

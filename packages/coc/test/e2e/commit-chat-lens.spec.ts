@@ -14,7 +14,7 @@ function latestCommit(repoDir: string): { hash: string; shortHash: string; subje
 }
 
 function placementStorageKey(workspaceId: string, commitHash: string): string {
-    return `coc.commitChat.placement.${encodeURIComponent(workspaceId)}.${encodeURIComponent(commitHash)}`;
+    return `coc.reviewChat.placement.commit.${encodeURIComponent(workspaceId)}.${encodeURIComponent(commitHash)}`;
 }
 
 async function seedWorkItemCommit(serverUrl: string, commit: { hash: string; subject: string }): Promise<void> {
@@ -54,6 +54,16 @@ async function seedWorkItemCommit(serverUrl: string, commit: { hash: string; sub
         }),
     });
     expect(patchRes.status).toBe(200);
+}
+
+async function enableCommitChatLensFeature(serverUrl: string): Promise<void> {
+    const res = await request(`${serverUrl}/api/admin/config`, {
+        method: 'PUT',
+        body: JSON.stringify({ 'features.commitChatLens': true }),
+    });
+    if (res.status !== 200) {
+        throw new Error(`Failed to enable commit chat lens feature: ${res.status} ${res.body}`);
+    }
 }
 
 async function expectBottomRightLens(page: import('@playwright/test').Page): Promise<void> {
@@ -116,6 +126,7 @@ test.describe('feature-flagged commit chat lens', () => {
 
         await seedWorkspace(serverUrl, WORKSPACE_ID, 'Commit Chat Lens', repoDir);
         await seedWorkItemCommit(serverUrl, commit);
+        await enableCommitChatLensFeature(serverUrl);
 
         await page.goto(`${serverUrl}/?workspace=${encodeURIComponent(WORKSPACE_ID)}#repos/${encodeURIComponent(WORKSPACE_ID)}/git/${encodeURIComponent(commit.hash)}`);
         await expect(page.getByTestId(`commit-row-${commit.shortHash}`)).toBeVisible();
