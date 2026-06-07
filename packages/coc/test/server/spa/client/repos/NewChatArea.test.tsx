@@ -509,7 +509,7 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         ];
 
         renderNewChatArea();
-        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Copilot'));
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Auto'));
         fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
         fireEvent.click(screen.getByTestId('agent-option-auto'));
 

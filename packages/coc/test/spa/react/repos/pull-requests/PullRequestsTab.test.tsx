@@ -22,6 +22,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isPullRequestsSuggestionsEnabled: () => configMock.pullRequestsSuggestionsEnabled,
     getActiveProvider: () => 'copilot',
     isSessionContextAttachmentsEnabled: () => false,
+    isCommitChatLensEnabled: () => false,
 }));
 
 // Mock AppContext to avoid full context setup.
