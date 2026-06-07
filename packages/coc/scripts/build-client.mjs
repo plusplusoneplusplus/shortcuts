@@ -63,6 +63,9 @@ await esbuild.build({
     sourcemap: false,
     logLevel: 'info',
     alias: spaAliases,
+    define: {
+        'process.env.SHOW_COMMIT_CHAT_LENS': JSON.stringify(process.env.SHOW_COMMIT_CHAT_LENS === 'true' ? 'true' : 'false'),
+    },
     // Excalidraw publishes its JS and CSS under custom export conditions
     // (`production` / `development`) in its package.json. Without telling
     // esbuild which one to pick, the explicit `import '@excalidraw/excalidraw/index.css'`
