@@ -295,6 +295,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         configurable: true,
         writable: true,
     });
+    bridge.setResolveDefaultProvider(resolveDefaultProvider);
 
     // excalidrawEnabled uses a live getter via runtimeConfigService so admin
     // changes take effect without restart. loopsEnabled stays startup-captured

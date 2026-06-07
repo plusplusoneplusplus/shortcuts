@@ -12,8 +12,11 @@ import { RalphSessionStore } from '../ralph/ralph-session-store';
 import { orchestrateRalphIteration } from '../ralph/orchestrate-iteration';
 import { orchestrateFinalCheck } from '../ralph/orchestrate-final-check';
 import { loadConfigFile, DEFAULT_CONFIG } from '../../config';
+import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 
 export const DEFAULT_FOLLOW_UP_SUGGESTIONS = { enabled: true, count: 3 } as const;
+
+export type ResolveDefaultProviderForExecution = (options?: { forceAuto?: boolean }) => Promise<AutoProviderResolutionResult>;
 
 export interface CLITaskExecutorOptions {
     approvePermissions?: boolean; workingDirectory?: string; dataDir?: string;
@@ -28,6 +31,8 @@ export interface CLITaskExecutorOptions {
      * holding a direct reference to RuntimeConfigService.
      */
     resolveAiServiceForProvider?: (provider: import('../tasks/task-types').ChatProvider) => ISDKService;
+    /** Resolve Auto provider routing when a queued chat task starts execution. */
+    resolveDefaultProvider?: ResolveDefaultProviderForExecution;
     getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
     getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined;
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
@@ -49,6 +54,8 @@ export interface QueueExecutorBridge {
     skipAskUserQuestion?(processId: string, questionId: string): Promise<boolean>;
     /** Resolve a pending ask-user question batch. Returns true only if every answer resolves. */
     answerAskUserQuestions?(processId: string, batchId: string, answers: Array<{ questionId: string; answer?: string | string[] | boolean; skipped?: boolean }>): Promise<boolean>;
+    /** Update the execution-time Auto provider resolver for existing bridges. */
+    setResolveDefaultProvider?(resolveDefaultProvider: ResolveDefaultProviderForExecution): void;
 }
 
 export interface RalphSessionCompleteEvent {
@@ -90,6 +97,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private readonly getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
     private readonly getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined;
     private readonly onRalphSessionComplete?: (event: RalphSessionCompleteEvent) => void;
+    private resolveDefaultProvider?: ResolveDefaultProviderForExecution;
 
     constructor(store: ProcessStore, options: CLITaskExecutorOptions = {}) {
         super(store, options.dataDir);
@@ -98,6 +106,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         this.aiService = options.aiService ?? sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
         this.getWsServer = options.getWsServer;
         this.onRalphSessionComplete = options.onRalphSessionComplete;
+        this.resolveDefaultProvider = options.resolveDefaultProvider;
         this.titleGenerationService = new TitleGenerationService({
             store,
             aiService: this.aiService,
@@ -129,6 +138,9 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         this.titleGenerationService.setQueueManager(qm);
     }
     setQueueExecutor(qe: QueueExecutor): void { this.queueExecutor = qe; }
+    setResolveDefaultProvider(resolveDefaultProvider: ResolveDefaultProviderForExecution): void {
+        this.resolveDefaultProvider = resolveDefaultProvider;
+    }
     private generateTitleIfNeeded(processId: string, turns: ConversationTurn[]): void { this.titleGenerationService.generateIfNeeded(processId, turns); }
 
     private async resolveWorkspaceIdForPath(rootPath: string): Promise<string> {
@@ -327,6 +339,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 executeFollowUpFn: (pid, msg, att, mode, dm, imgs, skills, mdl, ts, re) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs, skills, mdl, ts, re),
                 executeByTypeFn: (t, p) => this.executors.dispatch(t, p),
                 getWorkingDirectoryFn: (t) => this.executors.getWorkingDirectory(t),
+                resolveDefaultProvider: this.resolveDefaultProvider,
                 onDrainPendingMessages: (processId, taskId) => this.drainPendingMessages(processId, taskId),
                 onRalphNext: (processId, completedTask, responseText) => this.enqueueRalphNextIteration(processId, completedTask, responseText),
                 onLoopTickComplete: (loopId, success) => {

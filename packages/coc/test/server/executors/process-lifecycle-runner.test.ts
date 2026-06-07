@@ -1390,6 +1390,83 @@ describe('ProcessLifecycleRunner — provider attribution', () => {
         });
     });
 
+    it('resolves requested Auto provider routing at execution time and dispatches with the selected provider', async () => {
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'copilot');
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Use auto at execution',
+                workspaceId: 'ws-abc',
+                context: { autoProviderRouting: { requested: true } },
+            } as any,
+        });
+        const resolveDefaultProvider = vi.fn().mockResolvedValue({
+            provider: 'codex',
+            selectedByAuto: true,
+            fallbackUsed: false,
+            warnings: ['Quota cache was stale.'],
+            decisions: [{ provider: 'codex', selected: true }],
+        });
+        const executeByTypeFn = vi.fn().mockResolvedValue({ response: 'done' });
+
+        await runner.run(task, makeOpts({ resolveDefaultProvider, executeByTypeFn }));
+
+        expect(resolveDefaultProvider).toHaveBeenCalledOnce();
+        expect((task.payload as any).provider).toBe('codex');
+        expect(executeByTypeFn).toHaveBeenCalledWith(expect.objectContaining({
+            payload: expect.objectContaining({ provider: 'codex' }),
+        }), expect.any(String));
+        const proc = await store.getProcess(`queue_${task.id}`);
+        expect(proc?.metadata?.provider).toBe('codex');
+        expect(proc?.metadata?.autoProviderRouting).toMatchObject({
+            requested: true,
+            selectedByAuto: true,
+            provider: 'codex',
+            fallbackUsed: false,
+            warnings: ['Quota cache was stale.'],
+            decisions: [{ provider: 'codex', selected: true }],
+        });
+    });
+
+    it('uses and records the Auto fallback provider when no routing rule is eligible', async () => {
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'codex');
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Use auto fallback',
+                workspaceId: 'ws-abc',
+                context: { autoProviderRouting: { requested: true } },
+            } as any,
+        });
+        const fallback = {
+            provider: 'copilot',
+            used: true,
+            providerEnabled: true,
+            providerAvailable: true,
+            reason: "No auto provider rule passed; using fallback provider 'copilot'.",
+            warnings: [],
+        };
+        const resolveDefaultProvider = vi.fn().mockResolvedValue({
+            provider: 'copilot',
+            selectedByAuto: true,
+            fallbackUsed: true,
+            warnings: [],
+            decisions: [{ provider: 'codex', selected: false, reason: 'Quota threshold failed.' }],
+            fallback,
+        });
+
+        await runner.run(task, makeOpts({ resolveDefaultProvider }));
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        expect(proc?.metadata?.provider).toBe('copilot');
+        expect(proc?.metadata?.autoProviderRouting).toMatchObject({
+            requested: true,
+            provider: 'copilot',
+            fallbackUsed: true,
+            fallback,
+        });
+    });
+
     it('records the SDK effective model on assistant turn and metadata', async () => {
         const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'codex');
         const task = makeTask({
