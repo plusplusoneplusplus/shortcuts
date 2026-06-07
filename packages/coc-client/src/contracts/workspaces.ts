@@ -430,6 +430,17 @@ export interface RalphContinueResponse {
   newMaxIterations: number;
 }
 
+export interface RalphContinueRequest {
+  additionalIterations?: number;
+  provider?: ChatProvider;
+  config?: {
+    model?: string;
+    reasoningEffort?: ReasoningEffort;
+    effortTier?: EffortTierKey;
+  };
+  autoProviderRouting?: boolean;
+}
+
 export interface RalphNewLoopResponse {
   resumed: true;
   sessionId: string;

@@ -12,6 +12,7 @@
 import type React from 'react';
 import { useCallback } from 'react';
 import {
+    buildRalphContinueRequest,
     buildRalphResumeRequest,
     RalphWorkflowPane,
 } from './RalphWorkflowPane';
@@ -60,6 +61,18 @@ export function RalphWorkflowPaneContainer(
         [onSelectIteration, view, sessionId],
     );
 
+    const handleContinue = useCallback(
+        async (additionalIterations: number, aiSelection?: ResolvedModalJobAiSelection) => {
+            await getSpaCocClient().workspaces.continueRalphSession(
+                workspaceId,
+                sessionId,
+                buildRalphContinueRequest(additionalIterations, aiSelection),
+            );
+            refresh();
+        },
+        [workspaceId, sessionId, refresh],
+    );
+
     const handleNewLoop = useCallback(
         async (newGoal: string, additionalIterations: number) => {
             await getSpaCocClient().workspaces.startNewRalphLoop(workspaceId, sessionId, {
@@ -90,6 +103,7 @@ export function RalphWorkflowPaneContainer(
             view={view}
             onClose={onClose}
             onSelectIteration={onSelectIteration ? handleSelectIteration : undefined}
+            onContinue={handleContinue}
             onNewLoop={handleNewLoop}
             onResume={handleResume}
             selectedFileName={selectedFileName}

@@ -198,6 +198,26 @@ are omitted from the request so the route preserves prior settings, while
 changed or unrecovered defaults are sent through `resumeRalphSession()`.
 `coc-client` exposes `resumeRalphSession()`.
 
+### Continue a Completed Session
+
+`POST /api/workspaces/:workspaceId/ralph-sessions/:sessionId/continue`
+(`packages/coc/src/server/routes/ralph-continue-routes.ts`) extends a completed
+session (`terminalReason` `CAP_REACHED` or `NO_SIGNAL`) by `additionalIterations`
+and enqueues iteration `currentIteration + 1` on the same `sessionId`.
+
+Its request body accepts the same per-task AI controls as `/resume`: optional
+`provider`, `config.model`, `config.reasoningEffort`, `config.effortTier`, and
+`autoProviderRouting`, validated by the shared `parseRalphAiSelection`. The
+override/recovery merge is identical to resume — explicit values win, omitted
+values fall back to the recovered prior provider/model/reasoning-effort, and an
+explicit `effortTier` suppresses recovered model/reasoning-effort.
+
+The SPA `RalphWorkflowPane` "Continue loop" confirmation panel renders the same
+`ModalJobAiControls` (initialized from `resumeDefaults`); unchanged recovered
+defaults are omitted, changed/unrecovered selections are forwarded through
+`continueRalphSession()`. `coc-client` exposes `continueRalphSession()` taking a
+`RalphContinueRequest`.
+
 ## Scheduled Ralph Runs
 
 Prompt schedules with `mode='ralph'` seed a repo-scoped Ralph session before

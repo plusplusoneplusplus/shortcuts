@@ -19,6 +19,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 const ralphSessionMock = vi.fn();
 const resumeRalphSessionMock = vi.fn();
+const continueRalphSessionMock = vi.fn();
 const { mockModalSelection } = vi.hoisted(() => ({
     mockModalSelection: vi.fn(),
 }));
@@ -28,6 +29,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
         workspaces: {
             ralphSession: ralphSessionMock,
             resumeRalphSession: resumeRalphSessionMock,
+            continueRalphSession: continueRalphSessionMock,
         },
     }),
 }));
@@ -51,6 +53,15 @@ beforeEach(() => {
         taskId: 'task-resumed',
         nextIteration: 3,
         maxIterations: 10,
+    });
+    continueRalphSessionMock.mockReset();
+    continueRalphSessionMock.mockResolvedValue({
+        resumed: true,
+        sessionId: 'sess-1',
+        workspaceId: 'ws-1',
+        taskId: 'task-continued',
+        nextIteration: 11,
+        newMaxIterations: 30,
     });
     mockModalSelection.mockReset();
     mockModalSelection.mockReturnValue({
@@ -244,6 +255,61 @@ describe('RalphWorkflowPaneContainer', () => {
 
         await waitFor(() => {
             expect(resumeRalphSessionMock).toHaveBeenCalledWith('ws-1', 'sess-1', {
+                provider: 'claude',
+                config: {
+                    model: 'claude-sonnet-4.6',
+                    reasoningEffort: 'high',
+                    effortTier: 'low',
+                },
+            });
+        });
+        expect(mockModalSelection).toHaveBeenCalledWith({
+            workspaceId: 'ws-1',
+            mode: 'ralph',
+            initialSelection: resumeDefaults,
+        });
+    });
+
+    it('passes the resolved Continue AI selection to the coc-client request', async () => {
+        const resumeDefaults = {
+            provider: 'codex',
+            model: 'gpt-5.3-codex',
+            reasoningEffort: 'medium',
+        };
+        ralphSessionMock
+            .mockResolvedValueOnce({
+                record: makeRecord({
+                    phase: 'complete',
+                    currentIteration: 10,
+                    terminalReason: 'CAP_REACHED',
+                }),
+                sections: [],
+                resumeDefaults,
+            })
+            .mockResolvedValueOnce({
+                record: makeRecord(),
+                sections: [],
+            });
+        mockModalSelection.mockReturnValue({
+            resolved: {
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+                reasoningEffort: 'high',
+                effortTier: 'low',
+            },
+            dirty: true,
+        });
+
+        render(<RalphWorkflowPaneContainer workspaceId="ws-1" sessionId="sess-1" />);
+        await waitFor(() => expect(screen.getByTestId('ralph-workflow-pane')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('ralph-workflow-continue'));
+        expect(screen.getByTestId('ralph-workflow-continue-ai-controls')).toBeTruthy();
+        fireEvent.click(screen.getByTestId('ralph-workflow-continue-confirm-button'));
+
+        await waitFor(() => {
+            expect(continueRalphSessionMock).toHaveBeenCalledWith('ws-1', 'sess-1', {
+                additionalIterations: 20,
                 provider: 'claude',
                 config: {
                     model: 'claude-sonnet-4.6',

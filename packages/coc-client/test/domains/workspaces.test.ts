@@ -155,4 +155,74 @@ describe('WorkspacesClient', () => {
       },
     });
   });
+
+  it('serializes Ralph continue AI overrides alongside additionalIterations', async () => {
+    const adapter = createMockAdapter({});
+    const client = new WorkspacesClient(adapter);
+
+    await client.continueRalphSession('repo/a', 'sess/1', {
+      additionalIterations: 20,
+      provider: 'claude',
+      config: {
+        model: 'claude-sonnet-4.6',
+        reasoningEffort: 'high',
+        effortTier: 'low',
+      },
+    });
+
+    expect(adapter.calls).toHaveLength(1);
+    expect(adapter.calls[0]).toEqual({
+      path: '/workspaces/repo%2Fa/ralph-sessions/sess%2F1/continue',
+      options: {
+        method: 'POST',
+        body: {
+          additionalIterations: 20,
+          provider: 'claude',
+          config: {
+            model: 'claude-sonnet-4.6',
+            reasoningEffort: 'high',
+            effortTier: 'low',
+          },
+        },
+      },
+    });
+  });
+
+  it('serializes Ralph continue Auto routing without a concrete provider', async () => {
+    const adapter = createMockAdapter({});
+    const client = new WorkspacesClient(adapter);
+
+    await client.continueRalphSession('repo/a', 'sess/1', {
+      additionalIterations: 5,
+      autoProviderRouting: true,
+      config: { effortTier: 'medium' },
+    });
+
+    expect(adapter.calls[0]).toEqual({
+      path: '/workspaces/repo%2Fa/ralph-sessions/sess%2F1/continue',
+      options: {
+        method: 'POST',
+        body: {
+          additionalIterations: 5,
+          config: { effortTier: 'medium' },
+          autoProviderRouting: true,
+        },
+      },
+    });
+  });
+
+  it('keeps the Ralph continue body minimal when no overrides are provided', async () => {
+    const adapter = createMockAdapter({});
+    const client = new WorkspacesClient(adapter);
+
+    await client.continueRalphSession('repo/a', 'sess/1', { additionalIterations: 20 });
+
+    expect(adapter.calls[0]).toEqual({
+      path: '/workspaces/repo%2Fa/ralph-sessions/sess%2F1/continue',
+      options: {
+        method: 'POST',
+        body: { additionalIterations: 20 },
+      },
+    });
+  });
 });

@@ -16,6 +16,7 @@ import type {
   MyWorkSummaryResponse,
   MyWorkSyncRequest,
   MyWorkSyncResponse,
+  RalphContinueRequest,
   RalphContinueResponse,
   RalphNewLoopResponse,
   RalphResumeRequest,
@@ -239,11 +240,30 @@ export class WorkspacesClient {
   continueRalphSession(
     workspaceId: string,
     sessionId: string,
-    request: { additionalIterations?: number } = {},
+    request: RalphContinueRequest = {},
   ): Promise<RalphContinueResponse> {
     const body: Record<string, unknown> = {};
     if (typeof request.additionalIterations === 'number') {
       body.additionalIterations = request.additionalIterations;
+    }
+    if (request.provider) {
+      body.provider = request.provider;
+    }
+    const config: Record<string, unknown> = {};
+    if (request.config?.model) {
+      config.model = request.config.model;
+    }
+    if (request.config?.reasoningEffort) {
+      config.reasoningEffort = request.config.reasoningEffort;
+    }
+    if (request.config?.effortTier) {
+      config.effortTier = request.config.effortTier;
+    }
+    if (Object.keys(config).length > 0) {
+      body.config = config;
+    }
+    if (request.autoProviderRouting === true) {
+      body.autoProviderRouting = true;
     }
     return this.transport.request<RalphContinueResponse>(
       `/workspaces/${encodePathSegment(workspaceId)}/ralph-sessions/${encodePathSegment(sessionId)}/continue`,

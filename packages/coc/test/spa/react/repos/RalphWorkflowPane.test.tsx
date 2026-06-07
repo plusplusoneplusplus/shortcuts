@@ -416,9 +416,11 @@ describe('RalphWorkflowPane', () => {
         );
         await user.click(screen.getByTestId('ralph-workflow-continue'));
         expect(screen.getByTestId('ralph-workflow-continue-confirm')).toBeInTheDocument();
+        expect(screen.getByTestId('ralph-workflow-continue-ai-controls')).toBeInTheDocument();
         expect(screen.queryByTestId('ralph-workflow-resume-ai-controls')).toBeNull();
         await user.click(screen.getByTestId('ralph-workflow-continue-confirm-button'));
-        expect(onContinue).toHaveBeenCalledWith(5);
+        // No recoverable defaults + untouched controls → the resolved selection is forwarded.
+        expect(onContinue).toHaveBeenCalledWith(5, { provider: 'copilot' });
     });
 
     it('cancel button hides the confirmation panel', async () => {
@@ -446,6 +448,105 @@ describe('RalphWorkflowPane', () => {
         await user.click(screen.getByTestId('ralph-workflow-continue-cancel'));
         expect(screen.queryByTestId('ralph-workflow-continue-confirm')).toBeNull();
         expect(onContinue).not.toHaveBeenCalled();
+    });
+
+    function makeContinuableView(
+        resumeDefaults?: RalphSessionView['resumeDefaults'],
+    ): RalphSessionView {
+        return {
+            record: makeRecord({
+                phase: 'complete',
+                currentIteration: 10,
+                completedAt: new Date().toISOString(),
+                terminalReason: 'CAP_REACHED',
+                iterations: [makeIter(10)],
+            }),
+            sections: [makeSection(10)],
+            ...(resumeDefaults ? { resumeDefaults } : {}),
+        };
+    }
+
+    it('initializes Continue AI controls from recovered defaults and omits unchanged overrides', async () => {
+        const user = userEvent.setup();
+        const onContinue = vi.fn().mockResolvedValue(undefined);
+        const resumeDefaults = {
+            provider: 'codex' as const,
+            model: 'gpt-5.3-codex',
+            reasoningEffort: 'high' as const,
+        };
+        mockModalSelection.mockReturnValue({ resolved: resumeDefaults, dirty: false });
+
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={makeContinuableView(resumeDefaults)}
+                continueDefaultIterations={5}
+                onContinue={onContinue}
+            />,
+        );
+
+        await user.click(screen.getByTestId('ralph-workflow-continue'));
+        expect(mockModalSelection).toHaveBeenCalledWith({
+            workspaceId: 'ws-1',
+            mode: 'ralph',
+            initialSelection: resumeDefaults,
+        });
+        await user.click(screen.getByTestId('ralph-workflow-continue-confirm-button'));
+        // Untouched controls with recoverable defaults → omit the override entirely.
+        expect(onContinue).toHaveBeenCalledWith(5, undefined);
+    });
+
+    it('passes a changed Continue AI selection to onContinue', async () => {
+        const user = userEvent.setup();
+        const onContinue = vi.fn().mockResolvedValue(undefined);
+        const resumeDefaults = {
+            provider: 'codex' as const,
+            model: 'gpt-5.3-codex',
+            reasoningEffort: 'medium' as const,
+        };
+        const changedSelection = {
+            provider: 'claude' as const,
+            model: 'claude-sonnet-4.6',
+            reasoningEffort: 'high',
+            effortTier: 'low' as const,
+        };
+        mockModalSelection.mockReturnValue({ resolved: changedSelection, dirty: true });
+
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={makeContinuableView(resumeDefaults)}
+                continueDefaultIterations={5}
+                onContinue={onContinue}
+            />,
+        );
+
+        await user.click(screen.getByTestId('ralph-workflow-continue'));
+        await user.click(screen.getByTestId('ralph-workflow-continue-confirm-button'));
+        expect(onContinue).toHaveBeenCalledWith(5, changedSelection);
+    });
+
+    it('disables Continue AI controls while submitting', async () => {
+        const user = userEvent.setup();
+        let resolveContinue!: () => void;
+        const onContinue = vi.fn(() => new Promise<void>((resolve) => { resolveContinue = resolve; }));
+
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={makeContinuableView()}
+                onContinue={onContinue}
+            />,
+        );
+
+        await user.click(screen.getByTestId('ralph-workflow-continue'));
+        expect(screen.getByTestId('ralph-workflow-continue-ai-controls')).toHaveAttribute('data-disabled', 'false');
+        await user.click(screen.getByTestId('ralph-workflow-continue-confirm-button'));
+        expect(screen.getByTestId('ralph-workflow-continue-ai-controls')).toHaveAttribute('data-disabled', 'true');
+        resolveContinue();
     });
 });
 
