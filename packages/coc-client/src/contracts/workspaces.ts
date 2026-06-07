@@ -122,6 +122,22 @@ export interface WorkspacesResponse {
   workspaces: WorkspaceInfo[];
 }
 
+export interface ActiveWorkspaceReportRequest {
+  clientId: string;
+  workspaceId: string | null;
+}
+
+export interface ActiveWorkspaceClientState {
+  clientId: string;
+  workspaceId: string;
+  lastSeenAt: number;
+}
+
+export interface ActiveWorkspaceResponse {
+  activeWorkspaceIds: string[];
+  clients: ActiveWorkspaceClientState[];
+}
+
 export interface BrowseWorkspaceEntry {
   name: string;
   type?: 'directory' | string;

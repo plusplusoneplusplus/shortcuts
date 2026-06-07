@@ -9,6 +9,8 @@ describe('WorkspacesClient', () => {
 
     await client.list();
     await client.register({ id: 'repo/a', name: 'Repo', rootPath: 'C:\\repo' });
+    await client.getActiveWorkspaces();
+    await client.reportActiveWorkspace({ clientId: 'dashboard-tab', workspaceId: 'repo/a' });
     await client.discover('C:\\repos');
     await client.browseFolders('C:\\repos', { showHidden: true });
     await client.summary('repo/a', { folder: 'workflows', showArchived: true });
@@ -30,6 +32,8 @@ describe('WorkspacesClient', () => {
     expect(adapter.calls.map(c => c.path)).toEqual([
       '/workspaces',
       '/workspaces',
+      '/workspaces/active',
+      '/workspaces/active',
       '/workspaces/discover',
       '/fs/browse',
       '/workspaces/repo%2Fa/summary',
@@ -48,29 +52,33 @@ describe('WorkspacesClient', () => {
       '/my-life/sync',
       '/my-life/generate-summary',
     ]);
-    expect(adapter.calls[2].options?.query).toEqual({ path: 'C:\\repos' });
-    expect(adapter.calls[3].options?.query).toEqual({ path: 'C:\\repos', showHidden: true });
-    expect(adapter.calls[4].options?.query).toEqual({ folder: 'workflows', showArchived: true });
-    expect(adapter.calls[6].options).toMatchObject({
+    expect(adapter.calls[3].options).toMatchObject({
+      method: 'POST',
+      body: { clientId: 'dashboard-tab', workspaceId: 'repo/a' },
+    });
+    expect(adapter.calls[4].options?.query).toEqual({ path: 'C:\\repos' });
+    expect(adapter.calls[5].options?.query).toEqual({ path: 'C:\\repos', showHidden: true });
+    expect(adapter.calls[6].options?.query).toEqual({ folder: 'workflows', showArchived: true });
+    expect(adapter.calls[8].options).toMatchObject({
       method: 'POST',
       body: { workspaceIds: ['repo/a', 'repo/b'] },
     });
-    expect(adapter.calls[8].options?.query).toEqual({ forceReload: true });
-    expect(adapter.calls[9].options).toMatchObject({
+    expect(adapter.calls[10].options?.query).toEqual({ forceReload: true });
+    expect(adapter.calls[11].options).toMatchObject({
       method: 'PUT',
       body: { enabledMcpServers: ['github'] },
     });
-    expect(adapter.calls[11].options).toMatchObject({
+    expect(adapter.calls[13].options).toMatchObject({
       method: 'PUT',
       body: { content: 'Ask carefully' },
     });
-    expect(adapter.calls[12].options).toMatchObject({ method: 'DELETE' });
-    expect(adapter.calls[13].options?.query).toEqual({ limit: 100, offset: 200 });
-    expect(adapter.calls[15].options).toMatchObject({
+    expect(adapter.calls[14].options).toMatchObject({ method: 'DELETE' });
+    expect(adapter.calls[15].options?.query).toEqual({ limit: 100, offset: 200 });
+    expect(adapter.calls[17].options).toMatchObject({
       method: 'POST',
       body: { actionItems: ['Review PR'] },
     });
-    expect(adapter.calls[17].options).toMatchObject({
+    expect(adapter.calls[19].options).toMatchObject({
       method: 'POST',
       body: { goals: ['Exercise'] },
     });

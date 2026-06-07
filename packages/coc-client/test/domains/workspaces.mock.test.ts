@@ -68,6 +68,29 @@ describe('WorkspacesClient mock server contract', () => {
     expectJsonRequest(mock.requests[4], 'POST', '/api/git-info/batch', { workspaceIds: ['repo/a space%雪'] });
   });
 
+  it('reports the active dashboard workspace', async () => {
+    mock = await startMockServer();
+    const active = {
+      activeWorkspaceIds: ['repo/a space%雪'],
+      clients: [{ clientId: 'dashboard-tab', workspaceId: 'repo/a space%雪', lastSeenAt: 123 }],
+    };
+    mock.on('GET', '/api/workspaces/active', { body: active });
+    mock.on('POST', '/api/workspaces/active', { body: active });
+    const client = createClient(mock);
+
+    await expect(client.workspaces.getActiveWorkspaces()).resolves.toEqual(active);
+    await expect(client.workspaces.reportActiveWorkspace({
+      clientId: 'dashboard-tab',
+      workspaceId: 'repo/a space%雪',
+    })).resolves.toEqual(active);
+
+    expectGetRequest(mock.requests[0], '/api/workspaces/active');
+    expectJsonRequest(mock.requests[1], 'POST', '/api/workspaces/active', {
+      clientId: 'dashboard-tab',
+      workspaceId: 'repo/a space%雪',
+    });
+  });
+
   it('sends register, update, delete, and history deletion shapes exactly', async () => {
     mock = await startMockServer();
     const registered: WorkspaceInfo = {

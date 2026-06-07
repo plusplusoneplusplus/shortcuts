@@ -34,6 +34,7 @@ vi.mock('../../src/server/spa/client/react/hooks/useApi', () => ({
 const mockQueueList = vi.fn();
 const mockModelsList = vi.fn();
 const mockAgentProviderModelsList = vi.fn();
+const mockReportActiveWorkspace = vi.fn();
 vi.mock('../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         agentProviders: {
@@ -44,6 +45,9 @@ vi.mock('../../src/server/spa/client/react/api/cocClient', () => ({
         },
         queue: {
             list: mockQueueList,
+        },
+        workspaces: {
+            reportActiveWorkspace: mockReportActiveWorkspace,
         },
     }),
 }));
@@ -173,7 +177,8 @@ describe('App bootstrap', () => {
         mockQueueDispatch.mockClear();
         mockAddNotification.mockClear();
         mockAddToast.mockClear();
-        mockFetchApi.mockClear();
+        mockFetchApi.mockReset();
+        mockFetchApi.mockResolvedValue({});
         mockWsConnect.mockClear();
         mockQueueList.mockReset();
         mockQueueList.mockResolvedValue({ queued: [], running: [] });
@@ -181,6 +186,8 @@ describe('App bootstrap', () => {
         mockModelsList.mockResolvedValue([]);
         mockAgentProviderModelsList.mockReset();
         mockAgentProviderModelsList.mockResolvedValue({ models: [] });
+        mockReportActiveWorkspace.mockReset();
+        mockReportActiveWorkspace.mockResolvedValue({ activeWorkspaceIds: [], clients: [] });
     });
 
     it('fetches /preferences on mount and dispatches SET_WELCOME_PREFERENCES', async () => {
@@ -320,6 +327,42 @@ describe('App bootstrap', () => {
                 activityFilters: undefined,
             },
         });
+    });
+
+    it('reports the selected dashboard workspace on mount and workspace changes', async () => {
+        mockAppState = makeAppState({ selectedRepoId: 'ws-one' });
+        const { rerender } = render(<App />);
+
+        await waitFor(() =>
+            expect(mockReportActiveWorkspace).toHaveBeenCalledWith({
+                clientId: expect.any(String),
+                workspaceId: 'ws-one',
+            }),
+        );
+        const clientId = mockReportActiveWorkspace.mock.calls[0][0].clientId;
+
+        mockAppState = makeAppState({ selectedRepoId: 'ws-two' });
+        rerender(<App />);
+
+        await waitFor(() =>
+            expect(mockReportActiveWorkspace).toHaveBeenCalledWith({
+                clientId,
+                workspaceId: 'ws-two',
+            }),
+        );
+    });
+
+    it('reports null when no dashboard workspace is selected', async () => {
+        mockAppState = makeAppState({ selectedRepoId: null });
+
+        render(<App />);
+
+        await waitFor(() =>
+            expect(mockReportActiveWorkspace).toHaveBeenCalledWith({
+                clientId: expect.any(String),
+                workspaceId: null,
+            }),
+        );
     });
 });
 

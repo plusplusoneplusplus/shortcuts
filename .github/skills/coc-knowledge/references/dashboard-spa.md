@@ -76,6 +76,12 @@ as standalone rows.
 | `ToastContext` | Toast notification queue |
 | `FloatingChatsContext` | Floating chat window management |
 
+`App.tsx` reports `AppContext.selectedRepoId` to the server through
+`client.workspaces.reportActiveWorkspace({ clientId, workspaceId })` on mount,
+workspace changes, and a 60-second heartbeat while a workspace is selected. The
+client ID is session-scoped in `sessionStorage` so multiple dashboard tabs can
+report independent active workspaces without collapsing multi-repo state.
+
 ## Key Hooks
 
 | Hook | Purpose |

@@ -1,6 +1,8 @@
 import type {
   BrowseWorkspaceFoldersOptions,
   BrowseWorkspaceFoldersResponse,
+  ActiveWorkspaceReportRequest,
+  ActiveWorkspaceResponse,
   DeleteWorkspaceHistoryFilters,
   DeleteWorkspaceOptions,
   DiscoverWorkspacesResponse,
@@ -86,6 +88,17 @@ export class WorkspacesClient {
 
   register(request: RegisterWorkspaceRequest): Promise<WorkspaceInfo> {
     return this.transport.request<WorkspaceInfo>('/workspaces', { method: 'POST', body: { ...request } });
+  }
+
+  getActiveWorkspaces(): Promise<ActiveWorkspaceResponse> {
+    return this.transport.request<ActiveWorkspaceResponse>('/workspaces/active');
+  }
+
+  reportActiveWorkspace(request: ActiveWorkspaceReportRequest): Promise<ActiveWorkspaceResponse> {
+    return this.transport.request<ActiveWorkspaceResponse>('/workspaces/active', {
+      method: 'POST',
+      body: { ...request },
+    });
   }
 
   discover(path: string): Promise<DiscoverWorkspacesResponse> {

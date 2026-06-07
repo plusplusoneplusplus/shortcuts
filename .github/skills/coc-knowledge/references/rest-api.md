@@ -33,6 +33,8 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 |--------|------|-------------|
 | GET | `/api/workspaces` | List registered workspaces |
 | POST | `/api/workspaces` | Register a workspace |
+| GET | `/api/workspaces/active` | Inspect dashboard clients' recent active workspace reports; response includes `activeWorkspaceIds` and per-client `lastSeenAt` records |
+| POST | `/api/workspaces/active` | Report a dashboard client's currently selected workspace. Body `{ clientId, workspaceId }`, where `workspaceId: null` clears that client |
 | DELETE | `/api/workspaces/:id` | Unregister workspace |
 | GET | `/api/workspaces/:id/preferences` | Per-repo preferences |
 | PATCH | `/api/workspaces/:id/preferences` | Update per-repo preferences |

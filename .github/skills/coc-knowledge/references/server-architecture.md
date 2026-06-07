@@ -106,6 +106,7 @@ The `src/server/` tree is grouped by feature domain. Cross-cutting plumbing stay
 | `agent-providers/` | Agent-provider quota cache, provider status routes, SDK install helpers, and the pure Auto provider router that evaluates configured priority, availability, normal quota thresholds, weekly guards, fallback, and selection warnings before callers expand effort tiers. Queue/fresh-terminal defaults, explicit SPA Auto requests (`context.autoProviderRouting.requested`), direct Ralph, For Each, and work-item enqueue surfaces use the shared quota cache and refresh it only when missing or stale. |
 | `messaging/` | Teams bot integration: manager, command router, per-user state |
 | `spa/` | Dashboard SPA (HTML template, React client) |
+| `dashboard/` | Server-side dashboard state helpers, including recent active-workspace tracking for proactive background refresh. |
 
 ## Executors
 
