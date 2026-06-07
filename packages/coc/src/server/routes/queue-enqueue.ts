@@ -447,7 +447,7 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
 /**
  * @internal exported for tests
  */
-export async function prepareTaskForEnqueue(input: CreateTaskInput, ctx: Pick<QueueRouteContext, 'getDefaultProvider' | 'resolveDefaultProvider' | 'getEffortTiersForProvider'>): Promise<void> {
+export async function prepareTaskForEnqueue(input: CreateTaskInput, ctx: Pick<QueueRouteContext, 'getDefaultProvider' | 'resolveDefaultProvider' | 'isAutoProviderRoutingActive' | 'getEffortTiersForProvider'>): Promise<void> {
     await resolveDefaultProviderForTask(input, ctx);
     resolveEffortTierConfig(input, ctx);
 }
@@ -455,33 +455,29 @@ export async function prepareTaskForEnqueue(input: CreateTaskInput, ctx: Pick<Qu
 /**
  * @internal exported for tests
  */
-export async function resolveDefaultProviderForTask(input: CreateTaskInput, ctx: Pick<QueueRouteContext, 'getDefaultProvider' | 'resolveDefaultProvider'>): Promise<void> {
+export async function resolveDefaultProviderForTask(input: CreateTaskInput, ctx: Pick<QueueRouteContext, 'isAutoProviderRoutingActive'>): Promise<void> {
     const payload = input.payload as Record<string, unknown>;
     if (payload.kind !== 'chat') return;
     if (isChatProvider(payload.provider)) return;
     if (typeof payload.processId === 'string' && payload.processId.trim()) return;
 
-    const forceAuto = isAutoProviderRoutingRequested(payload);
-    if (forceAuto && !ctx.resolveDefaultProvider) {
-        throw new Error('Auto provider routing is not available for this queue.');
+    const autoRequested = isAutoProviderRoutingRequested(payload);
+    const autoRoutingActive = ctx.isAutoProviderRoutingActive?.() === true;
+    if (!autoRequested && !autoRoutingActive) return;
+    if (autoRequested && ctx.isAutoProviderRoutingActive && !autoRoutingActive) {
+        throw new Error('Auto provider routing requires defaultProvider "auto" and features.autoAgentProviderRouting: true.');
     }
-    const resolution = await resolveDefaultProviderResolution(ctx, { forceAuto });
-    if (!resolution.selectedByAuto) return;
 
-    payload.provider = resolution.provider;
+    markAutoProviderRoutingRequested(payload);
+}
+
+function markAutoProviderRoutingRequested(payload: Record<string, unknown>): void {
     const context = payload.context && typeof payload.context === 'object' && !Array.isArray(payload.context)
         ? payload.context as Record<string, unknown>
         : {};
     payload.context = {
         ...context,
-        autoProviderRouting: {
-            selectedByAuto: true,
-            provider: resolution.provider,
-            fallbackUsed: resolution.fallbackUsed,
-            warnings: resolution.warnings,
-            decisions: resolution.decisions,
-            ...(resolution.fallback ? { fallback: resolution.fallback } : {}),
-        },
+        autoProviderRouting: { requested: true },
     };
 }
 

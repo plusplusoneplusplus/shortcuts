@@ -29,6 +29,7 @@ export function registerQueueRoutes(
     options: {
         getDefaultProvider?: () => ChatProvider;
         resolveDefaultProvider?: (options?: ResolveDefaultProviderOptions) => Promise<AutoProviderResolutionResult>;
+        isAutoProviderRoutingActive?: () => boolean;
         getEffortTiersForProvider?: (provider: ChatProvider) => StoredEffortTiersMap | undefined;
     } = {},
 ): void {
@@ -46,6 +47,7 @@ export function registerQueueRoutes(
         state,
         getDefaultProvider: options.getDefaultProvider,
         resolveDefaultProvider: options.resolveDefaultProvider,
+        isAutoProviderRoutingActive: options.isAutoProviderRoutingActive,
         getEffortTiersForProvider: options.getEffortTiersForProvider,
     };
     registerQueueEnqueueRoutes(routes, ctx);

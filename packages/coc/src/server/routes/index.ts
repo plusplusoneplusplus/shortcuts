@@ -260,6 +260,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             quotaStale: agentProvidersQuotaCache.isStale(),
         });
     };
+    const isAutoProviderRoutingActive = (): boolean => {
+        const config = opts.runtimeConfigService?.config ?? opts.resolvedConfig;
+        return config?.defaultProvider === 'auto'
+            && config.features.autoAgentProviderRouting === true;
+    };
     const resolveConcreteDefaultProvider = async (): Promise<ChatProvider> => {
         const resolution = await resolveDefaultProvider();
         if (!resolution.provider) {
@@ -276,6 +281,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         await prepareTaskForEnqueue(input, {
             getDefaultProvider: concreteDefaultProvider,
             resolveDefaultProvider,
+            isAutoProviderRoutingActive,
             getEffortTiersForProvider,
         });
     };
@@ -340,6 +346,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerQueueRoutes(routes, bridge, store, globalWorkspaceRootPath, {
         getDefaultProvider: concreteDefaultProvider,
         resolveDefaultProvider,
+        isAutoProviderRoutingActive,
         getEffortTiersForProvider,
     });
     registerTaskRoutes(routes, store, dataDir, (workspaceId) => {

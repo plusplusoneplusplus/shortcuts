@@ -14,7 +14,7 @@ function makeInput(overrides: Partial<CreateTaskInput> = {}): CreateTaskInput {
     };
 }
 
-function makeContext(overrides: Partial<QueueRouteContext> = {}): Pick<QueueRouteContext, 'getDefaultProvider' | 'resolveDefaultProvider' | 'getEffortTiersForProvider'> {
+function makeContext(overrides: Partial<QueueRouteContext> = {}): Pick<QueueRouteContext, 'getDefaultProvider' | 'resolveDefaultProvider' | 'isAutoProviderRoutingActive' | 'getEffortTiersForProvider'> {
     return {
         getDefaultProvider: () => 'copilot',
         ...overrides,
@@ -101,9 +101,9 @@ describe('resolveEffortTierConfig', () => {
 });
 
 describe('prepareTaskForEnqueue', () => {
-    it('resolves Auto to a concrete provider before effort-tier expansion', async () => {
+    it('marks requested Auto routing without resolving a concrete provider at enqueue', async () => {
         const stored: StoredEffortTiersMap = {
-            high: { model: 'codex-configured-high', reasoningEffort: 'high' },
+            high: { model: 'copilot-configured-high', reasoningEffort: 'high' },
         };
         const resolveDefaultProvider = vi.fn(async () => ({
             provider: 'codex' as const,
@@ -128,46 +128,39 @@ describe('prepareTaskForEnqueue', () => {
 
         await prepareTaskForEnqueue(input, makeContext({
             resolveDefaultProvider,
-            getEffortTiersForProvider: (provider) => provider === 'codex' ? stored : undefined,
+            isAutoProviderRoutingActive: () => true,
+            getEffortTiersForProvider: (provider) => provider === 'copilot' ? stored : undefined,
         }));
 
-        expect(resolveDefaultProvider).toHaveBeenCalledWith({ forceAuto: true });
-        expect((input.payload as any).provider).toBe('codex');
-        expect((input.payload as any).context.autoProviderRouting).toMatchObject({
-            selectedByAuto: true,
-            provider: 'codex',
-            fallbackUsed: false,
-        });
-        expect(input.config.model).toBe('codex-configured-high');
+        expect(resolveDefaultProvider).not.toHaveBeenCalled();
+        expect((input.payload as any).provider).toBeUndefined();
+        expect((input.payload as any).context.autoProviderRouting).toEqual({ requested: true });
+        expect(input.config.model).toBe('copilot-configured-high');
         expect(input.config.reasoningEffort).toBe('high');
         expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
     });
 
-    it('resolves Auto for non-chat task types that carry a chat payload', async () => {
+    it('marks Auto for non-chat task types that carry a chat payload', async () => {
         const input = makeInput({
             type: 'run-workflow',
             payload: { kind: 'chat', mode: 'autopilot', prompt: 'execute work item' },
         });
-
-        await prepareTaskForEnqueue(input, makeContext({
-            resolveDefaultProvider: async () => ({
-                provider: 'claude',
-                selectedByAuto: true,
-                fallbackUsed: false,
-                warnings: [],
-                decisions: [{
-                    provider: 'claude',
-                    selected: true,
-                    reason: 'Provider passed checks.',
-                } as any],
-            }),
+        const resolveDefaultProvider = vi.fn(async () => ({
+            provider: 'claude' as const,
+            selectedByAuto: true,
+            fallbackUsed: false,
+            warnings: [],
+            decisions: [],
         }));
 
-        expect((input.payload as any).provider).toBe('claude');
-        expect((input.payload as any).context.autoProviderRouting).toMatchObject({
-            selectedByAuto: true,
-            provider: 'claude',
-        });
+        await prepareTaskForEnqueue(input, makeContext({
+            resolveDefaultProvider,
+            isAutoProviderRoutingActive: () => true,
+        }));
+
+        expect(resolveDefaultProvider).not.toHaveBeenCalled();
+        expect((input.payload as any).provider).toBeUndefined();
+        expect((input.payload as any).context.autoProviderRouting).toEqual({ requested: true });
     });
 
     it('preserves explicit providers and does not invoke Auto routing', async () => {
@@ -196,19 +189,46 @@ describe('prepareTaskForEnqueue', () => {
         expect(input.config.model).toBe('claude-haiku-4.5');
     });
 
-    it('surfaces Auto routing failures before enqueue', async () => {
+    it('does not mark follow-up tasks for Auto routing', async () => {
         const input = makeInput({
-            config: { effortTier: 'high' } as CreateTaskInput['config'] & { effortTier: string },
+            payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: 'follow up',
+                processId: 'queue_existing',
+            },
         });
 
+        await prepareTaskForEnqueue(input, makeContext({
+            isAutoProviderRoutingActive: () => true,
+        }));
+
+        expect((input.payload as any).provider).toBeUndefined();
+        expect((input.payload as any).context).toBeUndefined();
+    });
+
+    it('rejects requested Auto routing when the auto default gate is inactive', async () => {
+        const input = makeInput({
+            payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: 'test',
+                context: { autoProviderRouting: { requested: true } },
+            },
+            config: { effortTier: 'high' } as CreateTaskInput['config'] & { effortTier: string },
+        });
+        const resolveDefaultProvider = vi.fn(async () => ({
+            selectedByAuto: true,
+            fallbackUsed: false,
+            decisions: [],
+            warnings: [],
+            error: 'Auto provider routing failed. fallback copilot: unavailable',
+        }));
+
         await expect(prepareTaskForEnqueue(input, makeContext({
-            resolveDefaultProvider: async () => ({
-                selectedByAuto: true,
-                fallbackUsed: false,
-                decisions: [],
-                warnings: [],
-                error: 'Auto provider routing failed. fallback copilot: unavailable',
-            }),
-        }))).rejects.toThrow('Auto provider routing failed. fallback copilot: unavailable');
+            resolveDefaultProvider,
+            isAutoProviderRoutingActive: () => false,
+        }))).rejects.toThrow('Auto provider routing requires defaultProvider "auto"');
+        expect(resolveDefaultProvider).not.toHaveBeenCalled();
     });
 });

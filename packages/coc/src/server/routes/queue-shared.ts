@@ -85,6 +85,7 @@ export interface QueueRouteContext {
     state: QueueGlobalState;
     getDefaultProvider?: () => ChatProvider;
     resolveDefaultProvider?: (options?: ResolveDefaultProviderOptions) => Promise<AutoProviderResolutionResult>;
+    isAutoProviderRoutingActive?: () => boolean;
     getEffortTiersForProvider?: (provider: ChatProvider) => StoredEffortTiersMap | undefined;
 }
 
