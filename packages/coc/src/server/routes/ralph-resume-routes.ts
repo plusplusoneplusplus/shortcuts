@@ -83,9 +83,11 @@ export function registerRalphResumeRoutes(routes: Route[], ctx: RalphResumeRoute
             const recovered = await recoverIterationPaths(record, store, workspaceId);
             const { workingDirectory, folderPath } = recovered;
             const provider = aiSelection.value.provider ?? recovered.provider;
-            const model = aiSelection.value.model ?? recovered.model;
-            const reasoningEffort = aiSelection.value.reasoningEffort ?? recovered.reasoningEffort;
             const effortTier = aiSelection.value.effortTier;
+            const recoverConcreteAiSettings = effortTier === undefined;
+            const model = aiSelection.value.model ?? (recoverConcreteAiSettings ? recovered.model : undefined);
+            const reasoningEffort = aiSelection.value.reasoningEffort
+                ?? (recoverConcreteAiSettings ? recovered.reasoningEffort : undefined);
 
             const nowIso = new Date().toISOString();
             try {

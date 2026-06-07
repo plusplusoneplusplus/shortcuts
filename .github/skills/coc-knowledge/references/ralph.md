@@ -185,8 +185,10 @@ The request body may include the same per-task AI controls accepted by
 `/api/processes/:id/ralph-start` and `/api/ralph-launch`: optional `provider`,
 `config.model`, `config.reasoningEffort`, `config.effortTier`, and
 `autoProviderRouting`. Explicit values apply only to the newly enqueued resumed
-iteration; omitted values continue to use the recovered prior
-provider/model/reasoning-effort when recoverable.
+iteration. Omitted values continue to use the recovered prior
+provider/model/reasoning-effort when recoverable, except that an explicit
+`effortTier` suppresses recovered model/reasoning-effort so tier expansion can
+select the resumed iteration's concrete model and effort.
 
 The SPA `RalphWorkflowPane` shows a "Resume" button (amber) when it detects
 a stuck executing session (phase executing, iterations > 0, no iteration with

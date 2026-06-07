@@ -102,7 +102,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | GET | `/api/workspaces/:wsId/ralph-sessions/:sessionId` | Read session journal (`record`, parsed progress `sections`, alphabetically ordered raw session `files`, and optional transient `resumeDefaults` recovered from the latest iteration process for stuck-session Resume UI) |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/continue` | Extend completed session (CAP_REACHED or NO_SIGNAL) by N iterations, preserving the prior concrete provider/model when recoverable |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/new-loop` | New goal loop after RALPH_COMPLETE, preserving the prior concrete provider/model when recoverable |
-| POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/resume` | Resume stuck executing session (no in-flight task), preserving prior provider/model/reasoning-effort when recoverable and accepting optional `provider`, `config.model`, `config.reasoningEffort`, `config.effortTier`, and `autoProviderRouting` overrides for the resumed iteration |
+| POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/resume` | Resume stuck executing session (no in-flight task), preserving prior provider/model/reasoning-effort when recoverable and accepting optional `provider`, `config.model`, `config.reasoningEffort`, `config.effortTier`, and `autoProviderRouting` overrides for the resumed iteration; an explicit `config.effortTier` suppresses recovered model/reasoning-effort unless those fields are also explicit |
 
 ## For Each Runs
 

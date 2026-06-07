@@ -240,6 +240,41 @@ describe('POST /api/workspaces/:wsId/ralph-sessions/:sessionId/resume', () => {
         expect(enqueueArg.payload.context.autoProviderRouting).toEqual({ requested: true });
     });
 
+    it('lets an explicit effort tier override recovered model and reasoning effort', async () => {
+        await seedSession(dataDir, 'ws-tier-only', 'sess-tier-only');
+        await store.addProcess({
+            id: 'queue_p3',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'last iteration',
+            metadata: {
+                provider: 'codex',
+                model: 'gpt-5.3-codex',
+            },
+            payload: {
+                kind: 'chat',
+                mode: 'ralph',
+                prompt: 'last iteration',
+                provider: 'codex',
+                reasoningEffort: 'xhigh',
+                workspaceId: 'ws-tier-only',
+                workingDirectory: '/repos/tier-only',
+            },
+        } as any);
+
+        const res = await post(baseUrl, '/api/workspaces/ws-tier-only/ralph-sessions/sess-tier-only/resume', {
+            config: { effortTier: 'medium' },
+        });
+
+        expect(res.status).toBe(200);
+        const enqueueArg = bridgeStub.enqueue.mock.calls[0][0];
+        expect(enqueueArg.payload.provider).toBe('codex');
+        expect(enqueueArg.config.model).toBeUndefined();
+        expect(enqueueArg.config.reasoningEffort).toBeUndefined();
+        expect(enqueueArg.config.effortTier).toBe('medium');
+    });
+
     it('resumes a session where last iteration failed', async () => {
         await seedSession(dataDir, 'ws-2', 'sess-failed', {
             currentIteration: 2,
