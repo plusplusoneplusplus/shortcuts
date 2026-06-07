@@ -99,6 +99,15 @@ Each `sendMessage()` call creates its **own `CopilotClient`** child process — 
 
 `TransformOptions` / `TransformResult` live in `sdk-service-interface.ts` and are re-exported through forge.
 
+#### Production callers
+
+| Caller | Model | Notes |
+| --- | --- | --- |
+| `TitleGenerationService` (`coc/src/server/executors/title-generator.ts`) | `gpt-5.4-mini` (`TITLE_GENERATION_MODEL`) | `generateTitle()` and `prewarm()` route through `transform`. Relies on the safe isolation defaults (no MCP/tools, denied permissions); throws on `!success` and on `effectiveModel` mismatch so a silent provider fallback never persists a title under the wrong model. |
+| PR suggestion ranking (`coc/src/server/repos/pr-suggestions.ts`) | `gpt-4.1` | `rankAndCacheSuggestions` calls `transform` with a 30s timeout and throws on `!success` to preserve its contract. |
+
+Model choice is product policy and stays in these callers — neither model is in `MODEL_REGISTRY`, which lists only user-selectable models.
+
 ## CodexSDKService Architecture
 
 `CodexSDKService` implements `ISDKService` backed by the **optional** `@openai/codex-sdk` peer dependency. When the package is not installed, `isAvailable()` returns `{ available: false }` and `sendMessage()` returns an error result rather than throwing.

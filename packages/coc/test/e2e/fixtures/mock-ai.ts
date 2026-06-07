@@ -182,9 +182,14 @@ export interface E2EMockAIOptions {
  * - isAvailable → { available: true }
  * - sendMessage → { success: true, response: 'AI response text', sessionId: 'session-123' }
  *
- * Title prompts ("Summarise the following conversation…") are routed to a
- * separate title handle by the canonical mock; other background prompts
- * ("Generate a title for:") reach sendMessage but skip queued one-shot overrides.
+ * Title generation no longer flows through sendMessage: TitleGenerationService
+ * (and its prewarm) route through the SDK `transform` boundary, which the
+ * canonical mock serves from its default transform handle (returning
+ * `{ success: true, text: 'Generated Title', effectiveModel: 'gpt-5.4-mini' }`).
+ * The background-prompt guard below remains so that any residual title/follow-up
+ * prompt reaching sendMessage still skips queued one-shot overrides intended for
+ * primary user prompts; the canonical mock also keeps a legacy sendMessage title
+ * route for backward compatibility.
  */
 export function createE2EMockSDKService(options?: E2EMockAIOptions): E2EMockAIControls {
     const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
