@@ -794,6 +794,47 @@ describe('ConversationTurnBubble — ask_user history', () => {
         expect(answer.getAttribute('data-skipped')).toBe('true');
         expect(answer.textContent).toContain('Question skipped');
     });
+
+    it('renders historical Codex ask_user MCP calls with nested arguments as history cards', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'assistant',
+                    content: '',
+                    toolCalls: [
+                        {
+                            id: 'ask-codex-nested',
+                            toolName: 'ask_user',
+                            args: {
+                                server: 'coc_llm_tools',
+                                arguments: {
+                                    questions: [
+                                        {
+                                            question: 'Which provider should handle this?',
+                                            type: 'select',
+                                            options: [
+                                                { value: 'auto', label: 'Auto' },
+                                            ],
+                                        },
+                                    ],
+                                },
+                            },
+                            status: 'completed',
+                            result: JSON.stringify([
+                                { questionId: 'generated-question-id', answer: 'auto', skipped: false },
+                            ]),
+                        },
+                    ],
+                    timeline: [],
+                })}
+            />
+        );
+
+        expect(screen.getByTestId('ask-user-history-card')).toBeTruthy();
+        expect(screen.getByText('Which provider should handle this?')).toBeTruthy();
+        expect(screen.getByTestId('ask-user-history-answer').textContent).toContain('Auto (auto)');
+        expect(container.querySelector('[data-tool-id="ask-codex-nested"]')).toBeNull();
+    });
 });
 
 import { afterEach } from 'vitest';

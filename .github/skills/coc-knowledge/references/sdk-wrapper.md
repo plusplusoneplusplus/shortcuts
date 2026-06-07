@@ -140,7 +140,7 @@ sdkServiceRegistry.register(SDK_PROVIDER_CODEX, svc);
 
 **Lazy loading:** No SDK module is loaded until the first `isAvailable()` or `sendMessage()` call.
 
-**CoC LLM tools:** when `options.tools` is present, a per-request `Codex` client is built with `config.mcp_servers.coc_llm_tools` pointing at the stdio bridge (see *CoC LLM Tools over MCP*).
+**CoC LLM tools:** when `options.tools` is present, a per-request `Codex` client is built with `config.mcp_servers.coc_llm_tools` pointing at the stdio bridge (see *CoC LLM Tools over MCP*). Captured tool calls from this first-party MCP server store the actual tool input directly in `args` (for example `args.questions` for `ask_user`) so process timelines match the Copilot and Claude display contract; external MCP tool calls retain `{ server, arguments }` metadata.
 
 ## ClaudeSDKService Architecture
 

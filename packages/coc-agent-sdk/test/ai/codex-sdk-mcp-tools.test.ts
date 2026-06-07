@@ -8,12 +8,15 @@ import {
 } from '../../src/llm-tools/mcp-config';
 import type { Tool } from '../../src/types';
 
-function makeThread(threadId = 'thread-1') {
+function makeThread(threadId = 'thread-1', itemEvents: Array<{ type: 'item.started' | 'item.completed'; item: Record<string, unknown> }> = []) {
     return {
         id: threadId,
         runStreamed: vi.fn(async () => ({
             events: (async function* () {
                 yield { type: 'thread.started' as const, thread_id: threadId };
+                for (const event of itemEvents) {
+                    yield event;
+                }
                 yield { type: 'item.completed' as const, item: { id: 'i1', type: 'agent_message', text: 'ok' } };
             })(),
         })),
@@ -127,5 +130,83 @@ describe('CodexSDKService MCP tool wiring', () => {
         expect(ctor).not.toHaveBeenCalled();
         expect(defaultClient.startThread).toHaveBeenCalledTimes(1);
         expect(cocToolBridgeServer.activeCount).toBe(0);
+    });
+
+    it('stores first-party CoC MCP tool arguments directly on captured tool calls', async () => {
+        svc = new CodexSDKService();
+        const questionArgs = {
+            questions: [
+                {
+                    question: 'Which provider should handle this?',
+                    type: 'select',
+                    options: [{ value: 'auto', label: 'Auto' }],
+                },
+            ],
+        };
+        const toolItem = {
+            id: 'ask-1',
+            type: 'mcp_tool_call',
+            server: COC_LLM_TOOLS_MCP_SERVER_NAME,
+            tool: 'ask_user',
+            arguments: questionArgs,
+            result: { content: [{ type: 'text', text: JSON.stringify([{ questionId: 'q1', answer: 'auto', skipped: false }]) }] },
+        };
+        const defaultClient = {
+            startThread: vi.fn(() => makeThread('thread-ask', [
+                { type: 'item.started', item: toolItem },
+                { type: 'item.completed', item: toolItem },
+            ])),
+            resumeThread: vi.fn(),
+        };
+        (svc as unknown as { sdk: unknown }).sdk = defaultClient;
+        (svc as unknown as { availabilityCache: unknown }).availabilityCache = { available: true };
+
+        const result = await svc.sendMessage({ prompt: 'hi' });
+
+        expect(result.success).toBe(true);
+        expect(result.toolCalls).toHaveLength(1);
+        expect(result.toolCalls?.[0]).toMatchObject({
+            id: 'ask-1',
+            name: 'ask_user',
+            status: 'completed',
+            args: questionArgs,
+        });
+        expect(result.toolCalls?.[0].args).not.toHaveProperty('arguments');
+        expect(result.toolCalls?.[0].args).not.toHaveProperty('server');
+    });
+
+    it('keeps external MCP tool arguments nested with server metadata', async () => {
+        svc = new CodexSDKService();
+        const toolArguments = { query: 'open issues' };
+        const toolItem = {
+            id: 'external-1',
+            type: 'mcp_tool_call',
+            server: 'external_search',
+            tool: 'search',
+            arguments: toolArguments,
+            result: { content: [{ type: 'text', text: 'done' }] },
+        };
+        const defaultClient = {
+            startThread: vi.fn(() => makeThread('thread-external', [
+                { type: 'item.started', item: toolItem },
+                { type: 'item.completed', item: toolItem },
+            ])),
+            resumeThread: vi.fn(),
+        };
+        (svc as unknown as { sdk: unknown }).sdk = defaultClient;
+        (svc as unknown as { availabilityCache: unknown }).availabilityCache = { available: true };
+
+        const result = await svc.sendMessage({ prompt: 'hi' });
+
+        expect(result.success).toBe(true);
+        expect(result.toolCalls?.[0]).toMatchObject({
+            id: 'external-1',
+            name: 'search',
+            status: 'completed',
+            args: {
+                server: 'external_search',
+                arguments: toolArguments,
+            },
+        });
     });
 });

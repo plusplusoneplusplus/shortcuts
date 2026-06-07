@@ -1050,13 +1050,19 @@ export class CodexSDKService implements ISDKService {
                 const tool = typeof item.tool === 'string' && item.tool ? item.tool : 'mcp_tool';
                 const server = typeof item.server === 'string' ? item.server : undefined;
                 const error = item.error?.message;
+                const toolArguments = (item.arguments && typeof item.arguments === 'object' && !Array.isArray(item.arguments))
+                    ? item.arguments as Record<string, unknown>
+                    : {};
+                const parameters = server === COC_LLM_TOOLS_MCP_SERVER_NAME
+                    ? toolArguments
+                    : {
+                        ...(server ? { server } : {}),
+                        arguments: toolArguments,
+                    };
                 return {
                     id: item.id,
                     toolName: tool,
-                    parameters: {
-                        ...(server ? { server } : {}),
-                        arguments: item.arguments ?? {},
-                    },
+                    parameters,
                     ...(error ? { error } : { result: this.stringifyCodexResult(item.result) }),
                 };
             }
