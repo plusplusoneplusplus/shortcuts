@@ -129,7 +129,7 @@ The `executors/` directory contains the AI chat execution layer:
 | `chat-tool-builder.ts` | Common chat tool bundle assembly |
 | `bounded-memory-addon.ts` | Wires bounded MEMORY.md into chat executors |
 
-CoC chat tasks use Ask, Autopilot, or Ralph modes. Legacy stored or incoming chat payloads with `mode='plan'` are normalized to Ask before dispatch, metadata persistence, schedule execution, and follow-up execution; the server does not route CoC chat work through a dedicated Plan executor.
+CoC chat tasks use Ask, Autopilot, or Ralph modes. Legacy stored or incoming chat payloads with `mode='plan'` are normalized to Ask before dispatch, metadata persistence, schedule execution, and follow-up execution; the server does not route CoC chat work through a dedicated Plan executor. Follow-up execution resolves the final provider/session/default model before applying per-turn reasoning effort; unsupported per-turn efforts are omitted with a warning so stale UI tier selections do not fail an existing chat, while persisted/default effort validation remains strict.
 
 ## Configuration
 

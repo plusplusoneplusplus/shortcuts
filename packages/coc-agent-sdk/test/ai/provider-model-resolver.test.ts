@@ -30,5 +30,19 @@ describe('resolveModelForProvider', () => {
             requestedModel: 'provider-default',
         });
     });
-});
 
+    it('treats default as a provider default alias for all providers', () => {
+        expect(resolveModelForProvider('copilot', 'default')).toEqual({
+            coerced: false,
+            requestedModel: 'default',
+        });
+        expect(resolveModelForProvider('codex', 'default')).toEqual({
+            coerced: false,
+            requestedModel: 'default',
+        });
+        expect(resolveModelForProvider('claude', 'default')).toEqual({
+            coerced: false,
+            requestedModel: 'default',
+        });
+    });
+});

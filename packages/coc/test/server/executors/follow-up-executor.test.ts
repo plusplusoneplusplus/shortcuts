@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import type { AIProcess } from '@plusplusoneplusplus/forge';
+import type { AIProcess, ModelInfo } from '@plusplusoneplusplus/forge';
 import { FollowUpExecutor } from '../../../src/server/executors/follow-up-executor';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
@@ -158,6 +158,29 @@ function makeProcess(overrides?: Partial<AIProcess>): AIProcess {
             { role: 'assistant', content: 'Hi there', timestamp: new Date(), turnIndex: 1, timeline: [] },
         ],
         ...overrides,
+    };
+}
+
+function makeModelInfo(
+    id: string,
+    supportedReasoningEfforts: string[] | undefined,
+    defaultReasoningEffort?: string,
+): ModelInfo {
+    return {
+        id,
+        name: id,
+        capabilities: {
+            supports: {
+                vision: false,
+                reasoningEffort: supportedReasoningEfforts !== undefined && supportedReasoningEfforts.length > 0,
+                ...(supportedReasoningEfforts !== undefined ? { reasoning_effort: supportedReasoningEfforts } : {}),
+            },
+            limits: {
+                max_context_window_tokens: 200_000,
+            },
+        },
+        ...(supportedReasoningEfforts !== undefined ? { supportedReasoningEfforts } : {}),
+        ...(defaultReasoningEffort ? { defaultReasoningEffort } : {}),
     };
 }
 
@@ -849,6 +872,71 @@ describe('FollowUpExecutor', () => {
                 && (updates as any).metadata?.systemPrompt == null,
         );
         expect(modelOnlyUpdateCall).toBeUndefined();
+    });
+
+    it('omits incompatible per-turn reasoning effort for the existing Claude session model', async () => {
+        const proc = makeProcess({
+            id: 'proc-claude-haiku-high',
+            sdkSessionId: 'sess-claude-haiku',
+            metadata: { type: 'chat', provider: 'claude', model: 'haiku' },
+        });
+        await store.addProcess(proc);
+        sdkMocks.mockListModels.mockResolvedValue([
+            makeModelInfo('haiku', []),
+        ]);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-claude-haiku-high', 'msg', undefined, undefined, undefined, undefined, undefined, undefined, undefined, 'high');
+
+        const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callArg.model).toBe('haiku');
+        expect(callArg.reasoningEffort).toBeUndefined();
+        const assistantTurn = store.processes.get('proc-claude-haiku-high')?.conversationTurns?.at(-1) as any;
+        expect(assistantTurn.reasoningEffort).toBeUndefined();
+    });
+
+    it('passes compatible per-turn reasoning effort for a Claude model that supports it', async () => {
+        const proc = makeProcess({
+            id: 'proc-claude-sonnet-high',
+            sdkSessionId: 'sess-claude-sonnet',
+            metadata: { type: 'chat', provider: 'claude', model: 'claude-sonnet-4.6' },
+        });
+        await store.addProcess(proc);
+        sdkMocks.mockListModels.mockResolvedValue([
+            makeModelInfo('claude-sonnet-4.6', ['low', 'medium', 'high'], 'medium'),
+        ]);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-claude-sonnet-high', 'msg', undefined, undefined, undefined, undefined, undefined, undefined, undefined, 'high');
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+                model: 'claude-sonnet-4.6',
+                reasoningEffort: 'high',
+            }),
+        );
+    });
+
+    it('keeps model default reasoning effort when no per-turn effort is supplied', async () => {
+        const proc = makeProcess({
+            id: 'proc-claude-default-effort',
+            sdkSessionId: 'sess-claude-default',
+            metadata: { type: 'chat', provider: 'claude', model: 'claude-sonnet-4.6' },
+        });
+        await store.addProcess(proc);
+        sdkMocks.mockListModels.mockResolvedValue([
+            makeModelInfo('claude-sonnet-4.6', ['medium', 'high'], 'medium'),
+        ]);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-claude-default-effort', 'msg');
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+                model: 'claude-sonnet-4.6',
+                reasoningEffort: 'medium',
+            }),
+        );
     });
 
     // -------------------------------------------------------------------------
