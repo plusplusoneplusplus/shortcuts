@@ -16,9 +16,9 @@ export interface ProviderModelResolution {
 }
 
 const PROVIDER_DEFAULT_MODELS: Readonly<Record<SupportedProvider, ReadonlySet<string>>> = {
-    [COPILOT_PROVIDER]: new Set(['copilot-default', 'provider-default']),
-    [CODEX_PROVIDER]: new Set(['codex-default', 'provider-default']),
-    [CLAUDE_PROVIDER]: new Set(['claude-provider-default', 'provider-default']),
+    [COPILOT_PROVIDER]: new Set(['copilot-default', 'provider-default', 'default']),
+    [CODEX_PROVIDER]: new Set(['codex-default', 'provider-default', 'default']),
+    [CLAUDE_PROVIDER]: new Set(['claude-provider-default', 'provider-default', 'default']),
 };
 
 function isProviderDefault(provider: SupportedProvider, normalizedModel: string): boolean {
@@ -55,4 +55,3 @@ export function resolveModelForProvider(
 
     return { coerced: true, requestedModel: trimmed };
 }
-

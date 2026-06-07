@@ -459,6 +459,23 @@ describe('registerGenericClassificationRoutes', () => {
             expect(enqueueCapture()).toBeDefined();
             expect(enqueueCapture().payload.provider).toBeUndefined();
         });
+
+        it('adds Auto routing request context without setting provider=auto', async () => {
+            const { localRoutes, enqueueCapture } = setupLocalRoutes();
+            mockedReadClassification.mockReturnValue(undefined);
+            mockedReadPending.mockReturnValue(undefined);
+
+            const { res } = makeCapturingRes();
+            await localRoutes[0].handler(
+                makePostReq({ type: 'pr', identifier: '10:abc123', workspaceId: 'ws1', autoProviderRouting: true, effortTier: 'medium' }),
+                res,
+                ['/api/repos/repo1/classify-diff', 'repo1'],
+            );
+
+            expect(enqueueCapture()).toBeDefined();
+            expect(enqueueCapture().payload.provider).toBeUndefined();
+            expect(enqueueCapture().payload.context).toEqual({ autoProviderRouting: { requested: true } });
+            expect(enqueueCapture().config.effortTier).toBe('medium');
+        });
     });
 });
-

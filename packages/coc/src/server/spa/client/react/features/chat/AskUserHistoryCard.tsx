@@ -60,9 +60,18 @@ function normalizeQuestion(value: unknown): AskUserHistoryQuestion | null {
     };
 }
 
-export function getAskUserHistoryQuestions(toolCall: AskUserHistoryToolCall): AskUserHistoryQuestion[] {
+function getAskUserArgs(toolCall: AskUserHistoryToolCall): Record<string, unknown> | null {
     const args = toolCall.args;
-    if (!isRecord(args)) return [];
+    if (!isRecord(args)) return null;
+    if (isRecord(args.arguments) && (Array.isArray(args.arguments.questions) || typeof args.arguments.question === 'string')) {
+        return args.arguments;
+    }
+    return args;
+}
+
+export function getAskUserHistoryQuestions(toolCall: AskUserHistoryToolCall): AskUserHistoryQuestion[] {
+    const args = getAskUserArgs(toolCall);
+    if (!args) return [];
     if (Array.isArray(args.questions)) {
         return args.questions.map(normalizeQuestion).filter((question): question is AskUserHistoryQuestion => question !== null);
     }

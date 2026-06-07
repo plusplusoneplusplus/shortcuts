@@ -26,14 +26,17 @@ import {
     enqueueViaBridge,
     buildSummarizePrompt,
     type QueueRouteContext,
+    type ResolveDefaultProviderOptions,
     type TaskValidationResult,
     type SummarizeConversation,
 } from './queue-shared';
 import { NoteChatBindingStore } from '../notes/note-chat-binding-store';
 import { normalizeRelativeNotePath } from '../notes/note-chat-bindings-handler';
 import type { ChatProvider } from '../tasks/task-types';
+import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 
 const EFFORT_TIER_KEYS = new Set(['very-low', 'low', 'medium', 'high']);
+type ResolvedDefaultProviderResolution = AutoProviderResolutionResult & { provider: ChatProvider };
 
 export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteContext): void {
     const { bridge, store, globalWorkspaceRootPath, state } = ctx;
@@ -82,25 +85,35 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
         method: 'GET',
         pattern: '/api/queue/models',
         handler: async (_req, res) => {
-            const activeProvider = ctx.getDefaultProvider?.() ?? 'copilot';
+            let resolution: ResolvedDefaultProviderResolution;
+            try {
+                resolution = await resolveDefaultProviderResolution(ctx);
+            } catch (err) {
+                return sendError(res, 500, err instanceof Error ? err.message : 'Failed to resolve default provider');
+            }
+            const activeProvider = resolution.provider;
             if (activeProvider === 'copilot') {
                 const live = modelMetadataStore.getCachedModels()
                     .filter(m => m.policy?.state !== 'disabled');
                 const models = live.length > 0
                     ? live.map(m => m.id)
                     : getActiveModels().map(m => m.id);
-                sendJSON(res, 200, { provider: activeProvider, models });
+                sendJSON(res, 200, buildQueueModelsResponse(activeProvider, models, resolution));
             } else {
                 const sdkService = sdkServiceRegistry.get(activeProvider);
                 if (!sdkService) {
-                    sendJSON(res, 200, { provider: activeProvider, models: [] });
+                    sendJSON(res, 200, buildQueueModelsResponse(activeProvider, [], resolution));
                     return;
                 }
                 try {
                     const providerModels = await sdkService.listModels();
-                    sendJSON(res, 200, { provider: activeProvider, models: providerModels.map((m: any) => m.id) });
+                    sendJSON(res, 200, buildQueueModelsResponse(
+                        activeProvider,
+                        providerModels.map((m: any) => m.id),
+                        resolution,
+                    ));
                 } catch {
-                    sendJSON(res, 200, { provider: activeProvider, models: [] });
+                    sendJSON(res, 200, buildQueueModelsResponse(activeProvider, [], resolution));
                 }
             }
         },
@@ -122,10 +135,10 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
             return sendError(res, 400, validation.error!);
         }
         try {
-            resolveEffortTierConfig(validation.input!, ctx);
+            await prepareTaskForEnqueue(validation.input!, ctx);
         } catch (err) {
-            const message = err instanceof Error ? err.message : 'Failed to resolve effort tier';
-            return sendError(res, 500, message);
+            const message = err instanceof Error ? err.message : 'Failed to resolve provider or effort tier';
+            return sendError(res, 400, message);
         }
 
         // For brand-new chat tasks, the SPA sends raw data-URL attachments on
@@ -223,10 +236,10 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
             }
 
             try {
-                resolveEffortTierConfig(validation.input!, ctx);
+                await prepareTaskForEnqueue(validation.input!, ctx);
             } catch (err) {
-                const message = err instanceof Error ? err.message : 'Failed to resolve effort tier';
-                return sendError(res, 500, message);
+                const message = err instanceof Error ? err.message : 'Failed to resolve provider or effort tier';
+                return sendError(res, 400, message);
             }
 
             try {
@@ -301,7 +314,7 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
                 const taskSpec = body.tasks[i];
 
                 try {
-                    resolveEffortTierConfig(validation.input!, ctx);
+                    await prepareTaskForEnqueue(validation.input!, ctx);
                     const taskId = await enqueueViaBridge(validation.input!, bridge, state, globalWorkspaceRootPath, store);
                     const task = bridge.findManagerForTask(taskId)?.getTask(taskId);
 
@@ -413,6 +426,7 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
             }
 
             try {
+                await prepareTaskForEnqueue(validation.input!, ctx);
                 const taskId = await enqueueViaBridge(validation.input!, bridge, state, globalWorkspaceRootPath, store);
                 process.stderr.write(
                     `[Queue] summarize processIds=${body.processIds.length} taskId=${taskId}\n`
@@ -429,6 +443,113 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * @internal exported for tests
+ */
+export async function prepareTaskForEnqueue(input: CreateTaskInput, ctx: Pick<QueueRouteContext, 'getDefaultProvider' | 'resolveDefaultProvider' | 'isAutoProviderRoutingActive' | 'getEffortTiersForProvider'>): Promise<void> {
+    await resolveDefaultProviderForTask(input, ctx);
+    resolveEffortTierConfig(input, ctx);
+}
+
+/**
+ * @internal exported for tests
+ */
+export async function resolveDefaultProviderForTask(input: CreateTaskInput, ctx: Pick<QueueRouteContext, 'isAutoProviderRoutingActive'>): Promise<void> {
+    const payload = input.payload as Record<string, unknown>;
+    if (payload.kind !== 'chat') return;
+    if (isChatProvider(payload.provider)) return;
+    if (typeof payload.processId === 'string' && payload.processId.trim()) return;
+
+    const autoRequested = isAutoProviderRoutingRequested(payload);
+    const autoRoutingActive = ctx.isAutoProviderRoutingActive?.() === true;
+    if (!autoRequested && !autoRoutingActive) return;
+    if (autoRequested && ctx.isAutoProviderRoutingActive && !autoRoutingActive) {
+        throw new Error('Auto provider routing requires features.autoAgentProviderRouting: true.');
+    }
+
+    markAutoProviderRoutingRequested(payload);
+}
+
+function markAutoProviderRoutingRequested(payload: Record<string, unknown>): void {
+    const context = payload.context && typeof payload.context === 'object' && !Array.isArray(payload.context)
+        ? payload.context as Record<string, unknown>
+        : {};
+    payload.context = {
+        ...context,
+        autoProviderRouting: { requested: true },
+    };
+}
+
+/**
+ * @internal exported for tests
+ */
+export async function resolveDefaultProviderForQueue(ctx: Pick<QueueRouteContext, 'getDefaultProvider' | 'resolveDefaultProvider'>): Promise<ChatProvider> {
+    return (await resolveDefaultProviderResolution(ctx)).provider;
+}
+
+function buildQueueModelsResponse(
+    provider: ChatProvider,
+    models: string[],
+    resolution: ResolvedDefaultProviderResolution,
+): Record<string, unknown> {
+    return {
+        provider,
+        models,
+        ...buildAutoProviderRoutingMetadata(resolution),
+    };
+}
+
+function buildAutoProviderRoutingMetadata(resolution: ResolvedDefaultProviderResolution): Record<string, unknown> {
+    if (!resolution.selectedByAuto) {
+        return {};
+    }
+    return {
+        autoProviderRouting: {
+            selectedByAuto: true,
+            provider: resolution.provider,
+            fallbackUsed: resolution.fallbackUsed,
+            warnings: resolution.warnings,
+            decisions: resolution.decisions,
+            ...(resolution.fallback ? { fallback: resolution.fallback } : {}),
+        },
+    };
+}
+
+async function resolveDefaultProviderResolution(
+    ctx: Pick<QueueRouteContext, 'getDefaultProvider' | 'resolveDefaultProvider'>,
+    options?: ResolveDefaultProviderOptions,
+): Promise<ResolvedDefaultProviderResolution> {
+    const resolution = ctx.resolveDefaultProvider
+        ? await ctx.resolveDefaultProvider(options)
+        : concreteDefaultProviderResolution(ctx.getDefaultProvider?.() ?? 'copilot');
+    if (!isChatProvider(resolution.provider)) {
+        throw new Error(resolution.error ?? 'Default provider resolution did not select a concrete provider.');
+    }
+    return { ...resolution, provider: resolution.provider };
+}
+
+function isAutoProviderRoutingRequested(payload: Record<string, unknown>): boolean {
+    const context = payload.context;
+    if (!context || typeof context !== 'object' || Array.isArray(context)) return false;
+    const routing = (context as Record<string, unknown>).autoProviderRouting;
+    return Boolean(
+        routing
+        && typeof routing === 'object'
+        && !Array.isArray(routing)
+        && (routing as Record<string, unknown>).requested === true
+    );
+}
+
+function concreteDefaultProviderResolution(provider: ChatProvider): AutoProviderResolutionResult {
+    return {
+        provider,
+        selectedByAuto: false,
+        fallbackUsed: false,
+        decisions: [],
+        warnings: [],
+    };
+}
 
 /**
  * @internal exported for tests

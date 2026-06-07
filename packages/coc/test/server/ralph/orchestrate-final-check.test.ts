@@ -164,6 +164,26 @@ describe('orchestrateFinalCheck', () => {
             expect(deps.enqueueTask).toHaveBeenCalledTimes(1);
         });
 
+        it('keeps auto-provider routing requested for gap-fix iterations instead of carrying the resolved provider', async () => {
+            const deps = makeDeps({
+                provider: 'claude',
+                extraContext: {
+                    autoProviderRouting: {
+                        requested: true,
+                        selectedByAuto: true,
+                        provider: 'claude',
+                        fallbackUsed: false,
+                    },
+                },
+            });
+
+            await orchestrateFinalCheck(makeInput(makeGapsResponse('Fix it.'), deps));
+
+            const enqueuedTask = (deps.enqueueTask as Mock).mock.calls[0][0];
+            expect(enqueuedTask.payload.provider).toBeUndefined();
+            expect(enqueuedTask.payload.context.autoProviderRouting.requested).toBe(true);
+        });
+
         it('persists record with gapLoopStarted=true and gapCount=1', async () => {
             const deps = makeDeps();
             await orchestrateFinalCheck(makeInput(makeGapsResponse('Fix it.'), deps));

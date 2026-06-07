@@ -35,6 +35,8 @@ export interface DashboardOptions {
     ralphEnabled?: boolean;
     /** Whether the dedicated For Each mode feature is enabled in server config. */
     forEachEnabled?: boolean;
+    /** Whether the dedicated Map Reduce mode feature is enabled in server config. */
+    mapReduceEnabled?: boolean;
     /** Whether vim-style navigation (hjkl/jk/gg/G/Esc/i bindings) is enabled. */
     vimNavigationEnabled?: boolean;
     /** Whether the loops/recurring follow-up subsystem is enabled in server config. */
@@ -45,6 +47,10 @@ export interface DashboardOptions {
     focusedDiffEnabled?: boolean;
     /** Whether drag/drop session-context attachments are enabled in chat composers. */
     sessionContextAttachmentsEnabled?: boolean;
+    /** Whether commit chat opens as a bottom-right lens on desktop commit-review surfaces. */
+    commitChatLensEnabled?: boolean;
+    /** Whether Auto agent provider routing is enabled in Admin -> AI Provider. */
+    autoAgentProviderRoutingEnabled?: boolean;
     /** Whether the Work Items hierarchy board is enabled in server config. */
     workItemsHierarchyEnabled?: boolean;
     /** Whether remote Work Items provider integration is enabled in server config. */

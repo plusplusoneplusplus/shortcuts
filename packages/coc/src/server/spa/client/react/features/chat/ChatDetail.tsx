@@ -63,6 +63,7 @@ import { RalphStartPanel } from './RalphStartPanel';
 import { ImplementPlanCard } from './ImplementPlanCard';
 import type { ImplementationRecord, ExistingRun, RunLiveStatus } from './ImplementPlanCard';
 import { ForEachPlanReviewCard, type ForEachGenerationMetadata } from './ForEachPlanReviewCard';
+import { MapReducePlanReviewCard, type MapReduceGenerationMetadata } from './MapReducePlanReviewCard';
 import { getRalphContext } from '../../../../../tasks/task-types';
 import { useLoops } from './hooks/useLoops';
 import { LoopManagementPanel } from './LoopManagementPanel';
@@ -115,9 +116,11 @@ export interface ChatDetailProps {
     onClearPendingPrefix?: () => void;
     /** Opens the reviewed For Each parent-run pane after approval. */
     onOpenForEachRun?: (runId: string) => void;
+    /** Opens the reviewed Map Reduce parent-run pane after approval. */
+    onOpenMapReduceRun?: (runId: string) => void;
 }
 
-export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, compactModeSelector = false, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onOpenForEachRun }: ChatDetailProps) {
+export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, compactModeSelector = false, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onOpenForEachRun, onOpenMapReduceRun }: ChatDetailProps) {
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
 
@@ -201,6 +204,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const metadataProcess = useMemo(() => buildMetadataProcess(task, processDetails, processId), [task, processId, processDetails]);
     const forEachGeneration = metadataProcess?.metadata?.forEach?.kind === 'generation'
         ? metadataProcess.metadata.forEach as ForEachGenerationMetadata
+        : null;
+    const mapReduceGeneration = metadataProcess?.metadata?.mapReduce?.kind === 'generation'
+        ? metadataProcess.metadata.mapReduce as MapReduceGenerationMetadata
         : null;
     const sessionModel = metadataProcess?.metadata?.model as string | undefined;
     const rawReasoningEffort = metadataProcess?.metadata?.reasoningEffort;
@@ -1563,6 +1569,19 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             model={sessionModel}
                             reasoningEffort={sessionReasoningEffort}
                             onApprovedRun={onOpenForEachRun}
+                        />
+                    )}
+                    {mapReduceGeneration && (
+                        <MapReducePlanReviewCard
+                            workspaceId={workspaceId ?? mapReduceGeneration.workspaceId}
+                            processId={processId}
+                            metadataProcess={metadataProcess}
+                            mapReduce={mapReduceGeneration}
+                            turns={turns}
+                            provider={sessionProvider}
+                            model={sessionModel}
+                            reasoningEffort={sessionReasoningEffort}
+                            onApprovedRun={onOpenMapReduceRun}
                         />
                     )}
                     {/* Plan file complete — offer one-click handoff to autopilot */}

@@ -15,6 +15,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
+import { validateConfigWithSchema } from '../../config/schema';
 import { parseBody, sendJSON } from '../core/api-handler';
 import { badRequest, forbidden, handleAPIError, invalidJSON, notFound } from '../errors';
 import { exportAllData } from '../storage/data-exporter';
@@ -273,6 +274,12 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                     if (field.key in body) {
                         field.apply(existing, body[field.key]);
                     }
+                }
+
+                try {
+                    validateConfigWithSchema(existing);
+                } catch (err) {
+                    return handleAPIError(res, badRequest((err as Error).message));
                 }
 
                 configFunctions?.writeConfigFile?.(resolvedConfigPath, existing);

@@ -195,6 +195,35 @@ describe('serializeTaskSummary', () => {
         expect((p.context as any).skills).toBeUndefined();
     });
 
+    it('preserves Map Reduce context for grouped running/queued children', () => {
+        const task = makeTask({
+            payload: {
+                context: {
+                    mapReduce: {
+                        workspaceId: 'ws-1',
+                        runId: 'map-reduce-run-1',
+                        phase: 'map',
+                        itemId: 'item-1',
+                        childMode: 'ask',
+                    },
+                    skills: ['some-skill'],
+                },
+            },
+        });
+
+        const out = serializeTaskSummary(task);
+        const p = out.payload as Record<string, unknown>;
+
+        expect((p.context as any).mapReduce).toEqual({
+            workspaceId: 'ws-1',
+            runId: 'map-reduce-run-1',
+            phase: 'map',
+            itemId: 'item-1',
+            childMode: 'ask',
+        });
+        expect((p.context as any).skills).toBeUndefined();
+    });
+
     it('frozen and admitted undefined when falsy', () => {
         const task = makeTask();
         const out = serializeTaskSummary(task);

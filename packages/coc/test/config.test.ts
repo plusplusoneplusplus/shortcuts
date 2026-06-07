@@ -62,7 +62,15 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.scratchpad).toEqual({ enabled: true, layout: 'vertical' });
             expect(DEFAULT_CONFIG.workflows).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.forEach).toEqual({ enabled: false });
+            expect(DEFAULT_CONFIG.mapReduce).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.features.gitCrossCloneCherryPick).toBe(true);
+            expect(DEFAULT_CONFIG.features.commitChatLens).toBe(false);
+            expect(DEFAULT_CONFIG.features.autoAgentProviderRouting).toBe(false);
+            expect(DEFAULT_CONFIG.defaultProvider).toBe('copilot');
+            expect(DEFAULT_CONFIG.agentProviderRouting.auto.rules.map(rule => rule.provider)).toEqual(['claude', 'codex', 'copilot']);
+            expect(DEFAULT_CONFIG.agentProviderRouting.auto.rules.map(rule => rule.minimumRemainingPercent)).toEqual([33, 33, 10]);
+            expect(DEFAULT_CONFIG.agentProviderRouting.auto.rules.map(rule => rule.weeklyGuard.minimumRemainingPercent)).toEqual([33, 33, 10]);
+            expect(DEFAULT_CONFIG.agentProviderRouting.auto.fallbackProvider).toBe('copilot');
             expect(DEFAULT_CONFIG.workItems.sync.enabled).toBe(false);
         });
 
@@ -247,6 +255,45 @@ timeout: 300
         it('should throw for unknown store.backend value', () => {
             const configPath = path.join(tmpDir, 'store-bad.yaml');
             fs.writeFileSync(configPath, 'store:\n  backend: postgres\n');
+            expect(() => loadConfigFile(configPath)).toThrow('Invalid config file');
+        });
+
+        it('should load the Auto routing feature flag without defaultProvider auto', () => {
+            const configPath = path.join(tmpDir, 'auto-provider.yaml');
+            fs.writeFileSync(configPath, [
+                'features:',
+                '  autoAgentProviderRouting: true',
+            ].join('\n'));
+            const result = loadConfigFile(configPath);
+            expect(result?.features?.autoAgentProviderRouting).toBe(true);
+            expect(result?.defaultProvider).toBeUndefined();
+        });
+
+        it('should reject defaultProvider auto even when auto routing feature flag is enabled', () => {
+            const configPath = path.join(tmpDir, 'auto-provider-invalid.yaml');
+            fs.writeFileSync(configPath, [
+                'features:',
+                '  autoAgentProviderRouting: true',
+                'defaultProvider: auto',
+            ].join('\n'));
+            expect(() => loadConfigFile(configPath)).toThrow('Invalid config file');
+        });
+
+        it('should reject defaultProvider auto when auto routing feature flag is disabled', () => {
+            const configPath = path.join(tmpDir, 'auto-provider-disabled.yaml');
+            fs.writeFileSync(configPath, 'defaultProvider: auto\n');
+            expect(() => loadConfigFile(configPath)).toThrow('Invalid config file');
+        });
+
+        it('should reject invalid auto provider routing threshold values', () => {
+            const configPath = path.join(tmpDir, 'bad-auto-provider-routing.yaml');
+            fs.writeFileSync(configPath, [
+                'agentProviderRouting:',
+                '  auto:',
+                '    rules:',
+                '      - provider: claude',
+                '        minimumRemainingPercent: 101',
+            ].join('\n'));
             expect(() => loadConfigFile(configPath)).toThrow('Invalid config file');
         });
     });
@@ -558,6 +605,42 @@ timeout: 300
             expect(result.excalidraw.enabled).toBe(true);
         });
 
+        it('should preserve auto provider routing defaults when not overridden', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, {});
+            expect(result.features.autoAgentProviderRouting).toBe(false);
+            expect(result.defaultProvider).toBe('copilot');
+            expect(result.agentProviderRouting.auto.rules.map(rule => rule.provider)).toEqual(['claude', 'codex', 'copilot']);
+            expect(result.agentProviderRouting.auto.fallbackProvider).toBe('copilot');
+        });
+
+        it('should override auto provider routing config from file', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, {
+                agentProviderRouting: {
+                    auto: {
+                        rules: [
+                            {
+                                provider: 'copilot',
+                                enabled: true,
+                                minimumRemainingPercent: 5,
+                                weeklyGuard: { enabled: false, minimumRemainingPercent: 0 },
+                            },
+                        ],
+                        fallbackProvider: 'copilot',
+                    },
+                },
+            });
+
+            expect(result.agentProviderRouting.auto.rules).toEqual([
+                {
+                    provider: 'copilot',
+                    enabled: true,
+                    minimumRemainingPercent: 5,
+                    weeklyGuard: { enabled: false, minimumRemainingPercent: 0 },
+                },
+            ]);
+            expect(result.agentProviderRouting.auto.fallbackProvider).toBe('copilot');
+        });
+
         it('should default memory promotion AI normalization to disabled', () => {
             const result = mergeConfig(DEFAULT_CONFIG, {});
             expect(result.memoryPromotion.aiNormalization.enabled).toBe(false);
@@ -833,6 +916,8 @@ timeout: 300
                 '    maxGapFixLoops: 5',
                 'forEach:',
                 '  enabled: true',
+                'mapReduce:',
+                '  enabled: true',
                 'vimNavigation:',
                 '  enabled: true',
                 'loops:',
@@ -845,6 +930,28 @@ timeout: 300
                 '  enabled: true',
                 'containerDefaultAgent:',
                 '  enabled: true',
+                'agentProviderRouting:',
+                '  auto:',
+                '    rules:',
+                '      - provider: claude',
+                '        enabled: true',
+                '        minimumRemainingPercent: 33',
+                '        weeklyGuard:',
+                '          enabled: true',
+                '          minimumRemainingPercent: 33',
+                '      - provider: codex',
+                '        enabled: true',
+                '        minimumRemainingPercent: 33',
+                '        weeklyGuard:',
+                '          enabled: true',
+                '          minimumRemainingPercent: 33',
+                '      - provider: copilot',
+                '        enabled: true',
+                '        minimumRemainingPercent: 10',
+                '        weeklyGuard:',
+                '          enabled: true',
+                '          minimumRemainingPercent: 10',
+                '    fallbackProvider: copilot',
                 'codex:',
                 '  enabled: true',
                 'claude:',
@@ -855,6 +962,8 @@ timeout: 300
                 '  focusedDiff: true',
                 '  gitCrossCloneCherryPick: true',
                 '  sessionContextAttachments: true',
+                '  commitChatLens: true',
+                '  autoAgentProviderRouting: true',
                 'memoryPromotion:',
                 '  batchSize: 25',
                 '  timeoutMs: 80000',
@@ -944,6 +1053,8 @@ timeout: 300
                 '  enabled: true',
                 'forEach:',
                 '  enabled: false',
+                'mapReduce:',
+                '  enabled: true',
                 'vimNavigation:',
                 '  enabled: true',
                 'loops:',
@@ -982,6 +1093,40 @@ timeout: 300
             }).toMatchInlineSnapshot(`
               {
                 "resolved": {
+                  "agentProviderRouting": {
+                    "auto": {
+                      "fallbackProvider": "copilot",
+                      "rules": [
+                        {
+                          "enabled": true,
+                          "minimumRemainingPercent": 33,
+                          "provider": "claude",
+                          "weeklyGuard": {
+                            "enabled": true,
+                            "minimumRemainingPercent": 33,
+                          },
+                        },
+                        {
+                          "enabled": true,
+                          "minimumRemainingPercent": 33,
+                          "provider": "codex",
+                          "weeklyGuard": {
+                            "enabled": true,
+                            "minimumRemainingPercent": 33,
+                          },
+                        },
+                        {
+                          "enabled": true,
+                          "minimumRemainingPercent": 10,
+                          "provider": "copilot",
+                          "weeklyGuard": {
+                            "enabled": true,
+                            "minimumRemainingPercent": 10,
+                          },
+                        },
+                      ],
+                    },
+                  },
                   "approvePermissions": true,
                   "chat": {
                     "askUser": {
@@ -1009,7 +1154,9 @@ timeout: 300
                     "enabled": false,
                   },
                   "features": {
+                    "autoAgentProviderRouting": false,
                     "autoMemoryPromotion": true,
+                    "commitChatLens": false,
                     "focusedDiff": true,
                     "gitCommitLookup": false,
                     "gitCrossCloneCherryPick": true,
@@ -1031,6 +1178,9 @@ timeout: 300
                     },
                   },
                   "loops": {
+                    "enabled": true,
+                  },
+                  "mapReduce": {
                     "enabled": true,
                   },
                   "mcpConfig": "\${HOME}/mcp.json",
@@ -1142,6 +1292,7 @@ timeout: 300
                   },
                 },
                 "sources": {
+                  "agentProviderRouting.auto": "default",
                   "approvePermissions": "file",
                   "chat.askUser.enabled": "file",
                   "chat.followUpSuggestions.count": "file",
@@ -1152,13 +1303,16 @@ timeout: 300
                   "defaultProvider": "default",
                   "effortLevels.enabled": "default",
                   "excalidraw.enabled": "default",
+                  "features.autoAgentProviderRouting": "default",
                   "features.autoMemoryPromotion": "file",
+                  "features.commitChatLens": "default",
                   "features.focusedDiff": "file",
                   "features.gitCrossCloneCherryPick": "default",
                   "features.sessionContextAttachments": "default",
                   "forEach.enabled": "file",
                   "groupSingleLineMessages": "file",
                   "loops.enabled": "file",
+                  "mapReduce.enabled": "file",
                   "mcpConfig": "file",
                   "mcpOauth.autoRefresh.enabled": "default",
                   "mcpOauth.enabled": "default",

@@ -268,6 +268,50 @@ describe('AgentProvidersQuotaCache', () => {
         expect(first.providers[0].quotaTypes[0].usedRequests).toBe(10);
     });
 
+    it('reports stale cached quota snapshots based on the refresh interval', async () => {
+        const svc = makeService(false);
+        const getAccountQuota = vi.fn().mockResolvedValue(quotaResult('chat', 10, 0.9));
+        let now = new Date('2026-06-01T00:00:00.000Z');
+        const cache = new AgentProvidersQuotaCache({
+            runtimeConfigService: svc,
+            getCopilotSdkService: () => ({ getAccountQuota }),
+        }, {
+            refreshIntervalMs: 1_000,
+            now: () => now,
+        });
+
+        expect(cache.isStale()).toBe(true);
+        await cache.get();
+        expect(cache.isStale()).toBe(false);
+
+        now = new Date('2026-06-01T00:00:01.000Z');
+        expect(cache.isStale()).toBe(true);
+    });
+
+    it('refreshes stale cached quota snapshots when requested', async () => {
+        const svc = makeService(false);
+        const getAccountQuota = vi.fn()
+            .mockResolvedValueOnce(quotaResult('chat', 1, 0.99))
+            .mockResolvedValueOnce(quotaResult('chat', 2, 0.98));
+        let now = new Date('2026-06-01T00:00:00.000Z');
+        const cache = new AgentProvidersQuotaCache({
+            runtimeConfigService: svc,
+            getCopilotSdkService: () => ({ getAccountQuota }),
+        }, {
+            refreshIntervalMs: 1_000,
+            now: () => now,
+        });
+
+        await cache.get();
+        now = new Date('2026-06-01T00:00:01.000Z');
+        const refreshed = await cache.get({ refreshIfStale: true });
+
+        expect(getAccountQuota).toHaveBeenCalledTimes(2);
+        expect(refreshed.providers[0].quotaTypes[0].usedRequests).toBe(2);
+        expect(refreshed.lastUpdated).toBe('2026-06-01T00:00:01.000Z');
+        expect(cache.getCached()).toBe(refreshed);
+    });
+
     it('single-flights concurrent cache misses', async () => {
         const svc = makeService(false);
         let resolveQuota!: (value: ReturnType<typeof quotaResult>) => void;

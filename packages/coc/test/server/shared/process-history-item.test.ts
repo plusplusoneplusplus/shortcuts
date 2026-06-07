@@ -217,6 +217,31 @@ describe('toProcessHistoryItem', () => {
         });
     });
 
+    it('forwards metadata.mapReduce verbatim when present', () => {
+        const proc = makeProcess({
+            metadata: {
+                type: 'chat',
+                workspaceId: 'ws-abc',
+                mode: 'autopilot',
+                mapReduce: {
+                    workspaceId: 'ws-abc',
+                    runId: 'map-reduce-run-1',
+                    phase: 'reduce',
+                    childMode: 'autopilot',
+                },
+            },
+        } as any);
+
+        const item = toProcessHistoryItem(proc);
+
+        expect(item.mapReduce).toEqual({
+            workspaceId: 'ws-abc',
+            runId: 'map-reduce-run-1',
+            phase: 'reduce',
+            childMode: 'autopilot',
+        });
+    });
+
     it('forwards generation metadata.forEach verbatim when present', () => {
         const proc = makeProcess({
             metadata: {

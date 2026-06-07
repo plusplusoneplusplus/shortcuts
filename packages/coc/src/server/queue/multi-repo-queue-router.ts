@@ -28,6 +28,7 @@ import {
     QueueExecutorBridgeOptions,
     QueueExecutorBridge,
     createQueueExecutorBridge,
+    type ResolveDefaultProviderForExecution,
     type RalphSessionCompleteEvent,
 } from './queue-executor-bridge';
 import { normalizeChatMode } from '../tasks/task-types';
@@ -83,6 +84,13 @@ export class MultiRepoQueueRouter extends EventEmitter {
      */
     clearInitialDelay(): void {
         this.defaultOptions = { ...this.defaultOptions, initialDelayMs: 0 };
+    }
+
+    setResolveDefaultProvider(resolveDefaultProvider: ResolveDefaultProviderForExecution): void {
+        this.defaultOptions = { ...this.defaultOptions, resolveDefaultProvider };
+        for (const { bridge } of this.bridges.values()) {
+            bridge.setResolveDefaultProvider?.(resolveDefaultProvider);
+        }
     }
 
     /**

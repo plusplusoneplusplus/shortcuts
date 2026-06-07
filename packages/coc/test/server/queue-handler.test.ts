@@ -114,7 +114,11 @@ describe('Queue Handler', () => {
         fs.rmSync(dataDir, { recursive: true, force: true });
     });
 
-    async function startServer(fileConfig?: CLIConfig): Promise<ExecutionServer> {
+    function testConfigPath(): string {
+        return path.join(dataDir, 'config.yaml');
+    }
+
+    async function startServer(fileConfig: CLIConfig = {}): Promise<ExecutionServer> {
         const store = new FileProcessStore({ dataDir });
         server = await createExecutionServer({
             port: 0,
@@ -122,13 +126,20 @@ describe('Queue Handler', () => {
             store,
             dataDir,
             fileConfig,
-            configPath: fileConfig ? path.join(dataDir, 'config.yaml') : undefined,
+            configPath: testConfigPath(),
         });
         return server;
     }
 
     async function startServerWith(store: SqliteProcessStore | FileProcessStore): Promise<ExecutionServer> {
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({
+            port: 0,
+            host: 'localhost',
+            store,
+            dataDir,
+            fileConfig: {},
+            configPath: testConfigPath(),
+        });
         return server;
     }
 
@@ -597,6 +608,98 @@ describe('Queue Handler', () => {
                 });
             }
         });
+
+        it('should await the async default provider resolver for model list routing', async () => {
+            const routes: any[] = [];
+            let providerLookups = 0;
+            registerQueueRoutes(routes, {} as any, undefined, undefined, {
+                resolveDefaultProvider: async () => {
+                    providerLookups += 1;
+                    return {
+                        provider: 'copilot',
+                        selectedByAuto: true,
+                        fallbackUsed: false,
+                        decisions: [],
+                        warnings: [],
+                    };
+                },
+            });
+            const bareServer = http.createServer(createRouter({ routes, spaHtml: '' }));
+            await new Promise<void>((resolve) => bareServer.listen(0, 'localhost', resolve));
+            const address = bareServer.address();
+            const url = `http://localhost:${typeof address === 'object' && address ? address.port : 0}`;
+
+            try {
+                const res = await request(`${url}/api/queue/models`);
+                expect(res.status).toBe(200);
+                const body = JSON.parse(res.body);
+                expect(body.provider).toBe('copilot');
+                expect(providerLookups).toBe(1);
+            } finally {
+                await new Promise<void>((resolve, reject) => {
+                    bareServer.close((err) => err ? reject(err) : resolve());
+                });
+            }
+        });
+
+        it('should include Auto routing metadata in model list responses', async () => {
+            const routes: any[] = [];
+            registerQueueRoutes(routes, {} as any, undefined, undefined, {
+                resolveDefaultProvider: async () => ({
+                    provider: 'copilot',
+                    selectedByAuto: true,
+                    fallbackUsed: true,
+                    warnings: ['Fallback provider was selected without usable quota data.'],
+                    decisions: [{
+                        provider: 'claude',
+                        selected: false,
+                        reason: 'Provider is unavailable.',
+                        normalThreshold: { status: 'not_checked', reason: 'Quota not checked.' },
+                        weeklyGuard: { status: 'not_checked', reason: 'Weekly guard not checked.' },
+                    } as any],
+                    fallback: {
+                        provider: 'copilot',
+                        used: true,
+                        providerEnabled: true,
+                        providerAvailable: true,
+                        reason: "No auto provider rule passed; using fallback provider 'copilot'.",
+                        warnings: ['Fallback provider was selected without usable quota data.'],
+                    },
+                }),
+            });
+            const bareServer = http.createServer(createRouter({ routes, spaHtml: '' }));
+            await new Promise<void>((resolve) => bareServer.listen(0, 'localhost', resolve));
+            const address = bareServer.address();
+            const url = `http://localhost:${typeof address === 'object' && address ? address.port : 0}`;
+
+            try {
+                const res = await request(`${url}/api/queue/models`);
+                expect(res.status).toBe(200);
+                const body = JSON.parse(res.body);
+                expect(body.provider).toBe('copilot');
+                expect(body.autoProviderRouting).toMatchObject({
+                    selectedByAuto: true,
+                    provider: 'copilot',
+                    fallbackUsed: true,
+                    warnings: ['Fallback provider was selected without usable quota data.'],
+                    decisions: [{
+                        provider: 'claude',
+                        selected: false,
+                        reason: 'Provider is unavailable.',
+                    }],
+                    fallback: {
+                        provider: 'copilot',
+                        used: true,
+                        providerEnabled: true,
+                        providerAvailable: true,
+                    },
+                });
+            } finally {
+                await new Promise<void>((resolve, reject) => {
+                    bareServer.close((err) => err ? reject(err) : resolve());
+                });
+            }
+        });
     });
 
     // ========================================================================
@@ -783,6 +886,32 @@ describe('Queue Handler', () => {
             const noFolder = body.queued.find((t: any) => t.displayName === 'NoFolder');
             expect(withFolder.folderPath).toBe('/repos/frontend');
             expect(noFolder.folderPath).toBeUndefined();
+        });
+
+        it('should include auto-provider pending marker without a concrete provider when listing queued tasks', async () => {
+            const srv = await startServer({
+                features: { autoAgentProviderRouting: true },
+            } as CLIConfig);
+
+            const enqueueRes = await postJSON(`${srv.url}/api/queue`, makeTask({
+                displayName: 'Auto pending',
+                payload: {
+                    kind: 'chat',
+                    mode: 'autopilot',
+                    prompt: 'route me later',
+                },
+            }));
+            expect(enqueueRes.status).toBe(201);
+            const enqueued = JSON.parse(enqueueRes.body).task;
+            expect(enqueued.payload.provider).toBeUndefined();
+            expect(enqueued.payload.context.autoProviderRouting).toEqual({ requested: true });
+
+            const res = await request(`${srv.url}/api/queue`);
+            const body = JSON.parse(res.body);
+            const queuedTask = body.queued.find((t: any) => t.displayName === 'Auto pending');
+            expect(queuedTask).toBeDefined();
+            expect(queuedTask.payload.provider).toBeUndefined();
+            expect(queuedTask.payload.context.autoProviderRouting).toEqual({ requested: true });
         });
     });
 
@@ -2624,8 +2753,7 @@ describe('Queue Handler', () => {
             const store = new FileProcessStore({ dataDir });
             await seedProcess(store, 'queue_id1', 'ws1');
             await seedProcess(store, 'queue_id2', 'ws1');
-            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
-            server = srv;
+            const srv = await startServerWith(store);
 
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
                 processIds: ['id1', 'id2'],
@@ -2651,8 +2779,7 @@ describe('Queue Handler', () => {
         it('should accept a single processId (minimum boundary)', async () => {
             const store = new FileProcessStore({ dataDir });
             await seedProcess(store, 'queue_id1', 'ws1');
-            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
-            server = srv;
+            const srv = await startServerWith(store);
 
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
                 processIds: ['id1'],
@@ -2712,8 +2839,7 @@ describe('Queue Handler', () => {
             for (const id of ids) {
                 await seedProcess(store, `queue_${id}`, 'ws1');
             }
-            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
-            server = srv;
+            const srv = await startServerWith(store);
 
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
                 processIds: ids,
@@ -2729,8 +2855,7 @@ describe('Queue Handler', () => {
             await seedProcess(store, 'queue_a', 'ws1');
             await seedProcess(store, 'queue_b', 'ws1');
             await seedProcess(store, 'queue_c', 'ws1');
-            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
-            server = srv;
+            const srv = await startServerWith(store);
 
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
                 processIds: ['a', 'b', 'c'],
@@ -2769,8 +2894,7 @@ describe('Queue Handler', () => {
             const store = new FileProcessStore({ dataDir });
             await seedProcess(store, 'queue_abc123', 'ws1');
             await seedProcess(store, 'queue_def456', 'ws1');
-            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
-            server = srv;
+            const srv = await startServerWith(store);
 
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
                 processIds: ['abc123', 'def456'],
@@ -2791,8 +2915,7 @@ describe('Queue Handler', () => {
             const store = new FileProcessStore({ dataDir });
             await seedProcess(store, 'queue_abc123', 'ws1');
             await seedProcess(store, 'queue_def456', 'ws1');
-            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
-            server = srv;
+            const srv = await startServerWith(store);
 
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
                 processIds: ['queue_abc123', 'queue_def456'],
@@ -2811,8 +2934,7 @@ describe('Queue Handler', () => {
         it('should forward userPrompt into the enqueued task prompt', async () => {
             const store = new FileProcessStore({ dataDir });
             await seedProcess(store, 'queue_id1', 'ws1');
-            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
-            server = srv;
+            const srv = await startServerWith(store);
 
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
                 processIds: ['id1'],
@@ -2832,8 +2954,7 @@ describe('Queue Handler', () => {
         it('should not include user prompt section when userPrompt is empty', async () => {
             const store = new FileProcessStore({ dataDir });
             await seedProcess(store, 'queue_id1', 'ws1');
-            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
-            server = srv;
+            const srv = await startServerWith(store);
 
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
                 processIds: ['id1'],
@@ -2852,8 +2973,7 @@ describe('Queue Handler', () => {
         it('should truncate userPrompt to 2000 characters', async () => {
             const store = new FileProcessStore({ dataDir });
             await seedProcess(store, 'queue_id1', 'ws1');
-            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
-            server = srv;
+            const srv = await startServerWith(store);
 
             const longPrompt = 'x'.repeat(3000);
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
@@ -2875,8 +2995,7 @@ describe('Queue Handler', () => {
         it('should return 404 when none of the processes are found', async () => {
             const store = new FileProcessStore({ dataDir });
             await store.registerWorkspace({ id: 'ws1', name: 'test', rootPath: '/test' });
-            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
-            server = srv;
+            const srv = await startServerWith(store);
 
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
                 processIds: ['nonexistent1', 'nonexistent2'],
@@ -2890,8 +3009,7 @@ describe('Queue Handler', () => {
         it('should proceed with partial results when some processes are missing', async () => {
             const store = new FileProcessStore({ dataDir });
             await seedProcess(store, 'queue_existing', 'ws1');
-            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
-            server = srv;
+            const srv = await startServerWith(store);
 
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
                 processIds: ['existing', 'missing'],

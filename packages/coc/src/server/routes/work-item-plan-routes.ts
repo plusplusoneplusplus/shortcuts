@@ -18,6 +18,7 @@ import { sendJSON, parseBody } from '../core/api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
 import type { WorkItemStore, WorkItemPlanVersion, WorkItemChange } from '../work-items/types';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
+import { clearWorkItemResponseCacheForWorkspace } from '../work-items/work-item-response-cache';
 
 export interface WorkItemPlanRouteContext {
     routes: Route[];
@@ -107,6 +108,7 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
                 },
             });
             if (updated) {
+                clearWorkItemResponseCacheForWorkspace(repoId);
                 getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
             }
 
@@ -221,6 +223,7 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
                 },
             });
             if (updated) {
+                clearWorkItemResponseCacheForWorkspace(repoId);
                 getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
             }
 

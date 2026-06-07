@@ -11,6 +11,7 @@ import { createRouter } from '../../../src/server/shared/router';
 import { registerRalphSessionRoutes } from '../../../src/server/routes/ralph-session-routes';
 import type { Route } from '../../../src/server/types';
 import { RalphSessionStore } from '../../../src/server/ralph/ralph-session-store';
+import { createMockProcessStore, type MockProcessStore } from '../../helpers/mock-process-store';
 
 function getJson(baseUrl: string, urlPath: string): Promise<{ status: number; body: any }> {
     return new Promise((resolve, reject) => {
@@ -42,15 +43,17 @@ describe('GET /api/workspaces/:workspaceId/ralph-sessions/:sessionId', () => {
     let server: http.Server;
     let baseUrl: string;
     let dataDir: string;
+    let processStore: MockProcessStore;
 
     const WS = 'ws-1';
     const SID = 'session-1';
 
     beforeAll(async () => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ralph-session-routes-test-'));
+        processStore = createMockProcessStore();
 
         const routes: Route[] = [];
-        registerRalphSessionRoutes(routes, { dataDir });
+        registerRalphSessionRoutes(routes, { dataDir, store: processStore });
 
         const router = createRouter({ routes, spaHtml: '' });
         server = http.createServer(router);
@@ -67,6 +70,7 @@ describe('GET /api/workspaces/:workspaceId/ralph-sessions/:sessionId', () => {
 
     beforeEach(async () => {
         // Reset session dir between tests
+        processStore.processes.clear();
         const sessionDir = path.join(dataDir, 'repos', WS, 'ralph-sessions', SID);
         try { fs.rmSync(sessionDir, { recursive: true, force: true }); } catch { /* ignore */ }
     });
@@ -141,6 +145,83 @@ describe('GET /api/workspaces/:workspaceId/ralph-sessions/:sessionId', () => {
         const r = await getJson(baseUrl, `/api/workspaces/${WS}/ralph-sessions/${SID}`);
         expect(r.status).toBe(200);
         expect(r.body.sections).toEqual([]);
+    });
+
+    it('returns transient resume defaults recovered from the latest iteration process', async () => {
+        const store = new RalphSessionStore({ dataDir });
+        await store.initSession(WS, SID, { originalGoal: 'resume defaults', maxIterations: 10 });
+        await store.updateSessionRecord(WS, SID, (rec) => ({
+            ...rec,
+            currentIteration: 2,
+            phase: 'executing',
+            iterations: [
+                { iteration: 1, loopIndex: 1, taskId: 't1', processId: 'queue_old', startedAt: '2026-06-01T00:00:00Z', status: 'completed' },
+                { iteration: 2, loopIndex: 1, taskId: 't2', processId: 'queue_latest', startedAt: '2026-06-01T00:10:00Z', status: 'completed' },
+            ],
+        }));
+        await processStore.addProcess({
+            id: 'queue_latest',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date('2026-06-01T00:10:00Z'),
+            promptPreview: 'latest',
+            metadata: {
+                workspaceId: WS,
+                provider: 'codex',
+                model: 'gpt-5.3-codex',
+            },
+            payload: {
+                kind: 'chat',
+                mode: 'ralph',
+                provider: 'codex',
+                reasoningEffort: 'high',
+            },
+        } as any);
+
+        const r = await getJson(baseUrl, `/api/workspaces/${WS}/ralph-sessions/${SID}`);
+
+        expect(r.status).toBe(200);
+        expect(r.body.resumeDefaults).toEqual({
+            provider: 'codex',
+            model: 'gpt-5.3-codex',
+            reasoningEffort: 'high',
+        });
+    });
+
+    it('omits resume defaults when the latest iteration process cannot be recovered in the workspace', async () => {
+        const store = new RalphSessionStore({ dataDir });
+        await store.initSession(WS, SID, { originalGoal: 'missing defaults', maxIterations: 10 });
+        await store.updateSessionRecord(WS, SID, (rec) => ({
+            ...rec,
+            currentIteration: 1,
+            phase: 'executing',
+            iterations: [
+                { iteration: 1, loopIndex: 1, taskId: 't1', processId: 'queue_other-ws', startedAt: '2026-06-01T00:00:00Z', status: 'completed' },
+            ],
+        }));
+        await processStore.addProcess({
+            id: 'queue_other-ws',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date('2026-06-01T00:00:00Z'),
+            promptPreview: 'other workspace',
+            metadata: {
+                workspaceId: 'different-workspace',
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+            },
+            payload: {
+                kind: 'chat',
+                mode: 'ralph',
+                provider: 'claude',
+                reasoningEffort: 'medium',
+            },
+        } as any);
+
+        const r = await getJson(baseUrl, `/api/workspaces/${WS}/ralph-sessions/${SID}`);
+
+        expect(r.status).toBe(200);
+        expect(r.body.resumeDefaults).toBeUndefined();
     });
 
     it('URL-decodes workspaceId and sessionId path segments', async () => {

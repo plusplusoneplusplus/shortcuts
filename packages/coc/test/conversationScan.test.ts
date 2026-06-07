@@ -701,4 +701,74 @@ describe('scanTurnsForCreatedFiles', () => {
             expect(scanTurnsForCreatedFiles(turns)).toHaveLength(0);
         });
     });
+
+    describe('shell mv detection', () => {
+        it('detects a goal file destination from a simple mv command', () => {
+            const turns = [
+                makeTurn([{
+                    toolName: 'shell',
+                    args: {
+                        command: 'mv /tmp/title-generation-transform.plan.md /tmp/title-generation-transform.goal.md',
+                    },
+                }]),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/title-generation-transform.goal.md');
+        });
+
+        it('detects a quoted mv destination inside bash -lc command chains', () => {
+            const turns = [
+                makeTurn([{
+                    toolName: 'shell',
+                    args: {
+                        command: "/bin/bash -lc 'mv \"/tmp/Plans/sdk provider/title generation.plan.md\" \"/tmp/Plans/sdk provider/title generation.goal.md\" && ls -l \"/tmp/Plans/sdk provider/title generation.goal.md\"'",
+                    },
+                }]),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/Plans/sdk provider/title generation.goal.md');
+        });
+
+        it('resolves shell mv command args from tool-start for live SSE completions', () => {
+            const turns = [
+                makeLiveSSETurn([{
+                    id: 'tc0',
+                    toolName: 'shell',
+                    args: {
+                        command: 'mv /tmp/live.plan.md /tmp/live.goal.md',
+                    },
+                }]),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/live.goal.md');
+        });
+
+        it('ignores mv destinations with non-pinned extensions', () => {
+            const turns = [
+                makeTurn([{
+                    toolName: 'shell',
+                    args: {
+                        command: 'mv /tmp/diagram.md /tmp/diagram.png',
+                    },
+                }]),
+            ];
+            expect(scanTurnsForCreatedFiles(turns)).toHaveLength(0);
+        });
+
+        it('ignores unrelated shell commands with pinned file paths in output', () => {
+            const turns = [
+                makePersistedTurn([{
+                    name: 'shell',
+                    args: {
+                        command: 'ls -l /tmp/title-generation-transform.goal.md',
+                    },
+                    result: '-rw-r--r-- 1 user user 123 /tmp/title-generation-transform.goal.md',
+                }]),
+            ];
+            expect(scanTurnsForCreatedFiles(turns)).toHaveLength(0);
+        });
+    });
 });

@@ -53,7 +53,12 @@ export function useRalphSessionView(
             .workspaces.ralphSession(workspaceId, sessionId)
             .then((res) => {
                 if (cancelled) return;
-                setView({ record: res.record, sections: res.sections, files: res.files });
+                setView({
+                    record: res.record,
+                    sections: res.sections,
+                    files: res.files,
+                    resumeDefaults: res.resumeDefaults,
+                });
             })
             .catch((err: any) => {
                 if (cancelled) return;

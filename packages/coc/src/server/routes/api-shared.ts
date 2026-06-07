@@ -12,6 +12,7 @@ import type Database from 'better-sqlite3';
 import type { Route } from '../types';
 import type { QueueExecutorBridge } from '../core/api-handler';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
+import type { ActiveWorkspaceTracker } from '../dashboard/active-workspace-tracker';
 
 /**
  * Dependency context passed to every API route module.
@@ -22,6 +23,7 @@ export interface ApiRouteContext {
     bridge?: QueueExecutorBridge;
     dataDir?: string;
     getWsServer?: () => ProcessWebSocketServer | undefined;
+    activeWorkspaceTracker?: ActiveWorkspaceTracker;
     gitOpsStore: GitOpsStore;
     db?: Database.Database;
     /**

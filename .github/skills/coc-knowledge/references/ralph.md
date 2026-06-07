@@ -57,9 +57,11 @@ The Ralph executor is the only writer. It must:
 Readers, including REST handlers and the SPA `useRalphSessionView` hook, treat
 `session.json` and `progress.md` as source of truth and never mutate them. The
 session read route also returns raw text for every direct file in the session
-folder as `files: { name, content }[]`, sorted alphabetically by filename. A
-missing journal is surfaced as `null` or empty state. A partially written
-`session.json` is tolerated as `null`; the next mutator pass rewrites it.
+folder as `files: { name, content }[]`, sorted alphabetically by filename, plus
+optional transient `resumeDefaults` recovered from the latest iteration process
+for stuck-session Resume controls. A missing journal is surfaced as `null` or
+empty state. A partially written `session.json` is tolerated as `null`; the next
+mutator pass rewrites it.
 
 ## Size Cap
 
@@ -110,9 +112,12 @@ review dialog prefilled from the composer and passes its current
 workspace-scoped provider/model/reasoning-effort selection into the launch. The
 New Chat direct-goal path sends goal text only: attachments and images block
 confirmation, no grilling chat is enqueued, and the pasted goal is not saved as
-a note. The route validates optional `provider` and `reasoningEffort` inputs and
-carries them, alongside optional `config.model`, onto the first queued Ralph
-execution task.
+a note. `folderPath` is the source/context folder for the goal spec, while
+`workingDirectory` is an optional explicit execution directory; when omitted,
+the multi-repo queue router resolves the execution root from `workspaceId`. The
+route validates optional `provider` and `reasoningEffort` inputs and carries
+them, alongside optional `config.model`, onto the first queued Ralph execution
+task.
 
 `POST /api/processes/:id/ralph-start`
 (`packages/coc/src/server/routes/queue-ralph-routes.ts`) starts execution from
@@ -179,9 +184,42 @@ The endpoint appends a resume marker to `progress.md` (via
 changing `maxIterations`. If the session has reached its cap, the endpoint
 returns 409 directing the user to `/continue` instead.
 
+The request body may include the same per-task AI controls accepted by
+`/api/processes/:id/ralph-start` and `/api/ralph-launch`: optional `provider`,
+`config.model`, `config.reasoningEffort`, `config.effortTier`, and
+`autoProviderRouting`. Explicit values apply only to the newly enqueued resumed
+iteration. Omitted values continue to use the recovered prior
+provider/model/reasoning-effort when recoverable, except that an explicit
+`effortTier` suppresses recovered model/reasoning-effort so tier expansion can
+select the resumed iteration's concrete model and effort.
+
 The SPA `RalphWorkflowPane` shows a "Resume" button (amber) when it detects
 a stuck executing session (phase executing, iterations > 0, no iteration with
-status `running`). `coc-client` exposes `resumeRalphSession()`.
+status `running`). Its confirmation panel renders shared `ModalJobAiControls`
+initialized from `resumeDefaults` when available; unchanged recovered defaults
+are omitted from the request so the route preserves prior settings, while
+changed or unrecovered defaults are sent through `resumeRalphSession()`.
+`coc-client` exposes `resumeRalphSession()`.
+
+### Continue a Completed Session
+
+`POST /api/workspaces/:workspaceId/ralph-sessions/:sessionId/continue`
+(`packages/coc/src/server/routes/ralph-continue-routes.ts`) extends a completed
+session (`terminalReason` `CAP_REACHED` or `NO_SIGNAL`) by `additionalIterations`
+and enqueues iteration `currentIteration + 1` on the same `sessionId`.
+
+Its request body accepts the same per-task AI controls as `/resume`: optional
+`provider`, `config.model`, `config.reasoningEffort`, `config.effortTier`, and
+`autoProviderRouting`, validated by the shared `parseRalphAiSelection`. The
+override/recovery merge is identical to resume — explicit values win, omitted
+values fall back to the recovered prior provider/model/reasoning-effort, and an
+explicit `effortTier` suppresses recovered model/reasoning-effort.
+
+The SPA `RalphWorkflowPane` "Continue loop" confirmation panel renders the same
+`ModalJobAiControls` (initialized from `resumeDefaults`); unchanged recovered
+defaults are omitted, changed/unrecovered selections are forwarded through
+`continueRalphSession()`. `coc-client` exposes `continueRalphSession()` taking a
+`RalphContinueRequest`.
 
 ## Scheduled Ralph Runs
 

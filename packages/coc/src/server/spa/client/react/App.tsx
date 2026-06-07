@@ -55,6 +55,28 @@ export interface WorkspaceLike {
     rootPath?: string;
 }
 
+const ACTIVE_WORKSPACE_CLIENT_ID_KEY = 'coc-dashboard-active-workspace-client-id';
+const ACTIVE_WORKSPACE_REPORT_INTERVAL_MS = 60 * 1000;
+
+function generateDashboardClientId(): string {
+    const randomId = globalThis.crypto?.randomUUID?.();
+    if (randomId) return `dashboard-${randomId}`;
+    return `dashboard-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+/* @internal – exported for testing only */
+export function getDashboardClientId(): string {
+    try {
+        const existing = sessionStorage.getItem(ACTIVE_WORKSPACE_CLIENT_ID_KEY);
+        if (existing) return existing;
+        const generated = generateDashboardClientId();
+        sessionStorage.setItem(ACTIVE_WORKSPACE_CLIENT_ID_KEY, generated);
+        return generated;
+    } catch {
+        return generateDashboardClientId();
+    }
+}
+
 
 function normalizePath(pathValue: string): string {
     return toForwardSlashes(pathValue);
@@ -305,6 +327,23 @@ function AppInner() {
         }
         bootstrap();
     }, [connect, loadGlobalPreferences]);
+
+    useEffect(() => {
+        const clientId = getDashboardClientId();
+        const workspaceId = typeof appState.selectedRepoId === 'string' && appState.selectedRepoId
+            ? appState.selectedRepoId
+            : null;
+
+        const report = () => {
+            getSpaCocClient().workspaces.reportActiveWorkspace({ clientId, workspaceId }).catch(() => {});
+        };
+
+        report();
+
+        if (!workspaceId) return;
+        const intervalId = window.setInterval(report, ACTIVE_WORKSPACE_REPORT_INTERVAL_MS);
+        return () => window.clearInterval(intervalId);
+    }, [appState.selectedRepoId]);
 
     // Admin is a full-page route handled by Router.tsx via the #admin hash.
     const handleAdminOpen = useCallback(() => {

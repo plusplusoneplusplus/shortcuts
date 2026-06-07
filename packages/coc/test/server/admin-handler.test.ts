@@ -717,6 +717,31 @@ describe('Admin Handler', () => {
             expect(diskConfig.features.focusedDiff).toBe(true);
         });
 
+        it('should persist features.commitChatLens to disk', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const yaml = require('js-yaml');
+            fs.writeFileSync(configPath, yaml.dump({
+                features: { focusedDiff: true },
+            }), 'utf-8');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'features.commitChatLens': true }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.features.commitChatLens).toBe(true);
+            expect(body.resolved.features.focusedDiff).toBe(true);
+            expect(body.sources['features.commitChatLens']).toBe('file');
+
+            const diskConfig = yaml.load(fs.readFileSync(configPath, 'utf-8'));
+            expect(diskConfig.features.commitChatLens).toBe(true);
+            expect(diskConfig.features.focusedDiff).toBe(true);
+        });
+
         it('should create config file when none exists', async () => {
             const configPath = path.join(dataDir, 'brand-new-config.yaml');
             expect(fs.existsSync(configPath)).toBe(false);
@@ -901,6 +926,21 @@ describe('Admin Handler', () => {
             expect(res.status).toBe(400);
             const body = JSON.parse(res.body);
             expect(body.error).toContain('features.sessionContextAttachments');
+        });
+
+        it('should reject non-boolean features.commitChatLens', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'features.commitChatLens': 'yes' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('features.commitChatLens');
         });
 
         it('should reject timeout: string', async () => {

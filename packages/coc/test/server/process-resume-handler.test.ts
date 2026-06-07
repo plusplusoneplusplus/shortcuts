@@ -448,6 +448,45 @@ describe('POST /api/chat/launch-terminal', () => {
         }
     });
 
+    it('awaits async provider resolution before launching fresh chat', async () => {
+        const routes: Route[] = [];
+        const getProvider = vi.fn(async () => 'claude' as const);
+        registerFreshChatTerminalRoutes(routes, mockFreshLauncher, { getProvider });
+
+        const claudeServer = http.createServer(createRequestHandler({
+            routes,
+            spaHtml: generateDashboardHtml(),
+            store: undefined as any,
+        }));
+        await new Promise<void>((resolve, reject) => {
+            claudeServer.on('error', reject);
+            claudeServer.listen(0, 'localhost', () => resolve());
+        });
+
+        try {
+            const address = claudeServer.address() as { port: number };
+            mockFreshLauncher.mockResolvedValue({
+                launched: true,
+                command: "cd '/some/path' && claude --dangerously-skip-permissions",
+                terminal: 'Terminal',
+            });
+
+            const res = await request(`http://localhost:${address.port}/api/chat/launch-terminal`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workingDirectory: '/some/path' }),
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.provider).toBe('claude');
+            expect(getProvider).toHaveBeenCalledTimes(1);
+            expect(mockFreshLauncher).toHaveBeenCalledWith({ workingDirectory: '/some/path', provider: 'claude' });
+        } finally {
+            await new Promise<void>((resolve) => claudeServer.close(() => resolve()));
+        }
+    });
+
     it('falls back to process.cwd() when workingDirectory is missing', async () => {
         mockFreshLauncher.mockResolvedValue({
             launched: true,
@@ -594,4 +633,3 @@ describe('launchFreshChatInTerminal – Windows spawn arguments', () => {
         expect(startLine).not.toContain('codex');
     });
 });
-

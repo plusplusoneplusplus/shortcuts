@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     isForEachEnabled: () => mocks.forEachEnabled,
+    isMapReduceEnabled: () => false,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({

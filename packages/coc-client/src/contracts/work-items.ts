@@ -1,4 +1,5 @@
 import type { ChatProvider, JsonObject, ReasoningEffort } from './common';
+import type { EffortTierKey } from './queue';
 
 export type KnownWorkItemStatus =
   | 'created'
@@ -399,6 +400,7 @@ export interface ExecuteWorkItemRequest extends JsonObject {
   model?: string;
   provider?: ChatProvider;
   reasoningEffort?: ReasoningEffort;
+  effortTier?: EffortTierKey;
   mode?: string;
   skillNames?: string[];
 }

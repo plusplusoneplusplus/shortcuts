@@ -97,9 +97,9 @@ function seedExclusiveTask(
 }
 
 /**
- * Filter mock SDK call args down to "primary" user-prompt calls, ignoring
- * background AI calls (title generation, prewarm, etc.) so per-test
- * assertions stay focused on what the executor sent for the queued task.
+ * Filter mock SDK call args down to "primary" user-prompt calls. The title
+ * generator now uses transform(), but this still ignores legacy/dedicated
+ * background sendMessage prompts so assertions stay focused on the queued task.
  */
 function isBackgroundPrompt(prompt: string | undefined): boolean {
     if (!prompt) return false;
@@ -120,7 +120,7 @@ function primarySendMessageCalls(
     });
 }
 
-/** Poll until the number of primary (non-background) AI calls reaches `count`. */
+/** Poll until the number of primary sendMessage AI calls reaches `count`. */
 async function waitForAICalls(
     mockAI: { mockSendMessage: { calls: unknown[][] } },
     count: number,

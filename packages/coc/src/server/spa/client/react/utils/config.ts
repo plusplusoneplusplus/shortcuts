@@ -23,6 +23,7 @@ interface DashboardConfig {
     serversEnabled?: boolean;
     ralphEnabled?: boolean;
     forEachEnabled?: boolean;
+    mapReduceEnabled?: boolean;
     vimNavigationEnabled?: boolean;
     containerMode?: boolean;
     loopsEnabled?: boolean;
@@ -30,12 +31,15 @@ interface DashboardConfig {
     mcpOauthEnabled?: boolean;
     focusedDiffEnabled?: boolean;
     sessionContextAttachmentsEnabled?: boolean;
+    commitChatLensEnabled?: boolean;
     containerDefaultAgentEnabled?: boolean;
     bindAddress?: string;
     /** Whether the Codex SDK provider is enabled (feature flag). */
     codexEnabled?: boolean;
-    /** Default AI provider for new chats/tasks. */
+    /** Concrete default AI provider when Auto routing is disabled. */
     defaultProvider?: 'copilot' | 'codex' | 'claude';
+    /** Whether Auto agent provider routing is enabled. */
+    autoAgentProviderRoutingEnabled?: boolean;
     /** Whether the Work Items hierarchy board is enabled (feature flag). */
     workItemsHierarchyEnabled?: boolean;
     /** Whether remote Work Items provider integration is enabled (requires hierarchy). */
@@ -109,15 +113,18 @@ async function _fetchAndApplyRuntimeConfig(apiBase: string): Promise<void> {
             serversEnabled: data.features.serversEnabled,
             ralphEnabled: data.features.ralphEnabled,
             forEachEnabled: data.features.forEachEnabled,
+            mapReduceEnabled: data.features.mapReduceEnabled,
             vimNavigationEnabled: data.features.vimNavigationEnabled,
             loopsEnabled: data.features.loopsEnabled,
             excalidrawEnabled: data.features.excalidrawEnabled,
             mcpOauthEnabled: data.features.mcpOauthEnabled,
             focusedDiffEnabled: data.features.focusedDiffEnabled,
             sessionContextAttachmentsEnabled: data.features.sessionContextAttachmentsEnabled,
+            commitChatLensEnabled: data.features.commitChatLensEnabled,
             containerDefaultAgentEnabled: data.features.containerDefaultAgentEnabled,
             codexEnabled: data.features.codexEnabled,
             defaultProvider: data.features.defaultProvider,
+            autoAgentProviderRoutingEnabled: data.features.autoAgentProviderRoutingEnabled,
             workItemsHierarchyEnabled: data.features.workItemsHierarchyEnabled,
             workItemsSyncEnabled: data.features.workItemsSyncEnabled,
             workItemsAiAuthoringEnabled: data.features.workItemsAiAuthoringEnabled,
@@ -235,6 +242,10 @@ export function isForEachEnabled(): boolean {
     return getConfig().forEachEnabled === true;
 }
 
+export function isMapReduceEnabled(): boolean {
+    return getConfig().mapReduceEnabled === true;
+}
+
 export function isVimNavigationEnabled(): boolean {
     return getConfig().vimNavigationEnabled === true;
 }
@@ -264,6 +275,11 @@ export function isSessionContextAttachmentsEnabled(): boolean {
     return getConfig().sessionContextAttachmentsEnabled === true;
 }
 
+/** Returns true when commit chat lens placement is enabled. */
+export function isCommitChatLensEnabled(): boolean {
+    return getConfig().commitChatLensEnabled === true;
+}
+
 export function isContainerDefaultAgentEnabled(): boolean {
     return getConfig().containerDefaultAgentEnabled === true;
 }
@@ -271,6 +287,11 @@ export function isContainerDefaultAgentEnabled(): boolean {
 /** Returns true when the Codex SDK provider feature flag is enabled. */
 export function isCodexEnabled(): boolean {
     return getConfig().codexEnabled === true;
+}
+
+/** Returns true when Auto provider routing is enabled. */
+export function isAutoAgentProviderRoutingEnabled(): boolean {
+    return getConfig().autoAgentProviderRoutingEnabled === true;
 }
 
 /** Returns true when the Work Items hierarchy board feature flag is enabled. */
@@ -304,9 +325,14 @@ export function isEffortLevelsEnabled(): boolean {
     return getConfig().effortLevelsEnabled === true;
 }
 
-/** Returns the configured default AI provider for new chats/tasks. */
-export function getDefaultProvider(): 'copilot' | 'codex' | 'claude' {
+/** Returns the configured concrete default AI provider. */
+export function getConfiguredDefaultProvider(): 'copilot' | 'codex' | 'claude' {
     return getConfig().defaultProvider ?? 'copilot';
+}
+
+/** Returns the concrete default AI provider for UI surfaces that require an SDK provider. */
+export function getDefaultProvider(): 'copilot' | 'codex' | 'claude' {
+    return getConfiguredDefaultProvider();
 }
 
 /** Returns the currently active provider (alias for getDefaultProvider). */

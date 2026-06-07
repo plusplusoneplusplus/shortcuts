@@ -1193,6 +1193,51 @@ describe('AdminPanel', () => {
             expect(capturedBody!['features.gitCrossCloneCherryPick']).toBe(true);
         });
 
+        it('commit chat lens toggle saves features.commitChatLens', async () => {
+            let capturedBody: Record<string, unknown> | null = null;
+            mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+                if (url.includes('/preferences')) {
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+                }
+                if (opts?.method === 'PUT' && url.includes('/admin/config')) {
+                    capturedBody = JSON.parse(opts.body as string);
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+                }
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            resolved: {
+                                terminal: { enabled: false }, notes: { enabled: false },
+                                myWork: { enabled: false }, myLife: { enabled: false },
+                                features: { commitChatLens: false },
+                            },
+                            sources: {},
+                        }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+
+            await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('features');
+            await waitFor(() => expect(screen.getByTestId('toggle-commit-chat-lens-enabled')).toBeDefined());
+
+            const toggle = screen.getByTestId('toggle-commit-chat-lens-enabled') as HTMLInputElement;
+            expect(toggle.checked).toBe(false);
+
+            await act(async () => {
+                fireEvent.click(toggle);
+            });
+            expect((screen.getByTestId('settings-features-save') as HTMLButtonElement).disabled).toBe(false);
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('settings-features-save'));
+            });
+            await waitFor(() => expect(capturedBody).not.toBeNull());
+            expect(capturedBody!['features.commitChatLens']).toBe(true);
+        });
+
         it('Advanced card shows read-only diagnostics without Save button', async () => {
             mockFullConfig();
             await act(async () => { renderWithProviders(); });
@@ -1528,6 +1573,140 @@ describe('AdminPanel', () => {
 
             await waitFor(() => expect(postCalls.length).toBeGreaterThan(0));
             expect(postCalls[0]).toContain('/providers/sdk/codex/install');
+        });
+    });
+
+    describe('auto provider routing controls', () => {
+        it('saves the Auto provider routing feature flag from the AI Provider page', async () => {
+            let capturedBody: any = null;
+            mockFetch.mockImplementation((url: string, options?: any) => {
+                if (url.includes('/admin/config') && options?.method === 'PUT') {
+                    capturedBody = JSON.parse(options.body);
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+                }
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            resolved: {
+                                features: { autoAgentProviderRouting: false },
+                            },
+                            sources: {},
+                        }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}), headers: new Headers() });
+            });
+
+            await act(async () => { renderWithProviders(); });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('admin-tab-agents'));
+            });
+            await waitFor(() => expect(screen.getByTestId('toggle-auto-agent-provider-routing-enabled')).toBeDefined());
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('toggle-auto-agent-provider-routing-enabled'));
+            });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('settings-default-provider-save'));
+            });
+
+            await waitFor(() => expect(capturedBody).not.toBeNull());
+            expect(capturedBody['features.autoAgentProviderRouting']).toBe(true);
+            expect(capturedBody.defaultProvider).toBe('copilot');
+        });
+
+        it('saves Auto enablement with the edited routing profile', async () => {
+            let capturedBody: any = null;
+            mockFetch.mockImplementation((url: string, options?: any) => {
+                if (url.includes('/admin/config') && options?.method === 'PUT') {
+                    capturedBody = JSON.parse(options.body);
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+                }
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            resolved: {
+                                codex: { enabled: true },
+                                claude: { enabled: true },
+                                defaultProvider: 'copilot',
+                                features: { autoAgentProviderRouting: true },
+                                agentProviderRouting: {
+                                    auto: {
+                                        rules: [
+                                            { provider: 'claude', enabled: true, minimumRemainingPercent: 33, weeklyGuard: { enabled: true, minimumRemainingPercent: 33 } },
+                                            { provider: 'codex', enabled: true, minimumRemainingPercent: 33, weeklyGuard: { enabled: true, minimumRemainingPercent: 33 } },
+                                            { provider: 'copilot', enabled: true, minimumRemainingPercent: 10, weeklyGuard: { enabled: true, minimumRemainingPercent: 10 } },
+                                        ],
+                                        fallbackProvider: 'copilot',
+                                    },
+                                },
+                            },
+                            sources: {},
+                        }),
+                    });
+                }
+                if (url.includes('/admin/providers/availability')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({ codex: { available: true }, claude: { available: true } }),
+                    });
+                }
+                if (url.includes('/agent-providers/quota')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            lastUpdated: '2026-06-06T17:00:00Z',
+                            providers: [
+                                { id: 'claude', quotaTypes: [{ type: 'five_hour', isUnlimitedEntitlement: false, usedRequests: 10, entitlementRequests: 100, remainingPercentage: 0.9, usageAllowedWithExhaustedQuota: false, overage: 0 }] },
+                                { id: 'codex', quotaTypes: [{ type: 'five_hour', isUnlimitedEntitlement: false, usedRequests: 10, entitlementRequests: 100, remainingPercentage: 0.9, usageAllowedWithExhaustedQuota: false, overage: 0 }] },
+                                { id: 'copilot', quotaTypes: [{ type: 'five_hour', isUnlimitedEntitlement: false, usedRequests: 10, entitlementRequests: 100, remainingPercentage: 0.9, usageAllowedWithExhaustedQuota: false, overage: 0 }] },
+                            ],
+                        }),
+                    });
+                }
+                if (url.includes('/agent-providers')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            providers: [
+                                { id: 'codex', installStatus: 'installed' },
+                                { id: 'claude', installStatus: 'installed' },
+                            ],
+                        }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}), headers: new Headers() });
+            });
+
+            await act(async () => { renderWithProviders(); });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('admin-tab-agents'));
+            });
+            await waitFor(() => expect(screen.getByTestId('toggle-auto-agent-provider-routing-enabled')).toBeDefined());
+
+            await waitFor(() => expect(screen.getByTestId('auto-provider-threshold-claude')).toBeDefined());
+            await act(async () => {
+                fireEvent.change(screen.getByTestId('auto-provider-threshold-claude'), { target: { value: '35' } });
+            });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('settings-default-provider-save'));
+            });
+
+            await waitFor(() => expect(capturedBody).not.toBeNull());
+            expect(capturedBody.defaultProvider).toBe('copilot');
+            expect(capturedBody['features.autoAgentProviderRouting']).toBe(true);
+            expect(capturedBody['codex.enabled']).toBe(true);
+            expect(capturedBody['claude.enabled']).toBe(true);
+            expect(capturedBody['agentProviderRouting.auto']).toEqual(expect.objectContaining({
+                fallbackProvider: 'copilot',
+                rules: [
+                    expect.objectContaining({ provider: 'claude', minimumRemainingPercent: 35 }),
+                    expect.objectContaining({ provider: 'codex', minimumRemainingPercent: 33 }),
+                    expect.objectContaining({ provider: 'copilot', minimumRemainingPercent: 10 }),
+                ],
+            }));
         });
     });
 });

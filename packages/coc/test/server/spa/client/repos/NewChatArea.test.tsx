@@ -13,16 +13,20 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 const mockQueueDispatch = vi.fn();
 const mockAppDispatch = vi.fn();
 const mockEnqueueTask = vi.fn();
+const mockPatchRepo = vi.fn();
 const mockHandleModelSelect = vi.fn();
 const mockSetModelOverride = vi.fn((model: string | null) => { mockModelOverride = model; });
 const mockParseAndExtract = vi.fn();
 const mockClearAttachments = vi.fn();
 let mockDefaultProvider: 'copilot' | 'codex' | 'claude' = 'copilot';
+let mockConfiguredDefaultProvider: 'copilot' | 'codex' | 'claude' | 'auto' = 'copilot';
+let mockAutoProviderRoutingEnabled = false;
 let mockRepoPreferences: Record<string, unknown> = {};
 let mockModelOverride: string | null = null;
 let mockUseModelsProviders: Array<string | undefined> = [];
 let mockUseDefaultModelArgs: Array<[string | undefined, string, string | undefined]> = [];
 let mockForEachEnabled = false;
+let mockMapReduceEnabled = false;
 let mockSessionContextAttachmentsEnabled = false;
 let mockAttachments: any[] = [];
 let mockAttachmentPayload: any[] = [];
@@ -57,7 +61,10 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => 'http://localhost:4000/api',
     isRalphEnabled: () => false,
     isForEachEnabled: () => mockForEachEnabled,
+    isMapReduceEnabled: () => mockMapReduceEnabled,
     isLoopsEnabled: () => false,
+    isAutoAgentProviderRoutingEnabled: () => mockAutoProviderRoutingEnabled,
+    getConfiguredDefaultProvider: () => mockConfiguredDefaultProvider,
     getDefaultProvider: () => mockDefaultProvider,
     isEffortLevelsEnabled: () => mockEffortLevelsEnabled,
     isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled,
@@ -69,7 +76,7 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
         preferences: {
             patchGlobal: vi.fn().mockResolvedValue({}),
             getRepo: vi.fn().mockResolvedValue(mockRepoPreferences),
-            patchRepo: vi.fn().mockResolvedValue({}),
+            patchRepo: mockPatchRepo,
             getLlmToolsConfig: vi.fn().mockResolvedValue({
                 conversationRetrievalAvailable: true,
                 tools: [{ name: 'get_conversation' }],
@@ -166,11 +173,27 @@ vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
             category: 'workflow',
             featureFlag: 'for-each',
         },
+        {
+            mode: 'map-reduce',
+            icon: '🧩',
+            label: 'Map Reduce',
+            tooltip: 'Map Reduce — fan out parallel map work, then aggregate with one reduce step',
+            dotClass: 'bg-indigo-500',
+            border: 'border-indigo-500',
+            ring: 'ring-indigo-500',
+            text: 'text-indigo-600',
+            category: 'workflow',
+            featureFlag: 'map-reduce',
+        },
     ],
     DEFAULT_CHAT_MODES: ['ask', 'autopilot'],
     getVisibleChatModes: ({ category, featureFlags }: { category?: string; featureFlags?: Record<string, boolean> }) => {
         if (category === 'workflow') {
-            return featureFlags?.['for-each'] ? ['for-each'] : [];
+            const modes = [];
+            if (featureFlags?.ralph) modes.push('ralph');
+            if (featureFlags?.['for-each']) modes.push('for-each');
+            if (featureFlags?.['map-reduce']) modes.push('map-reduce');
+            return modes;
         }
         return ['ask', 'autopilot'];
     },
@@ -180,6 +203,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
         plan: { border: 'border-blue-500', ring: 'ring-blue-500' },
         ralph: { border: 'border-purple-500', ring: 'ring-purple-500' },
         'for-each': { border: 'border-sky-500', ring: 'ring-sky-500' },
+        'map-reduce': { border: 'border-indigo-500', ring: 'ring-indigo-500' },
     },
     MODE_ICONS: {
         ask: '💡',
@@ -187,6 +211,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
         autopilot: '🤖',
         ralph: '🔄',
         'for-each': '🔁',
+        'map-reduce': '🧩',
     },
     MODE_LABELS: {
         ask: '💡 Ask',
@@ -194,6 +219,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
         autopilot: '🤖 Autopilot',
         ralph: '🔄 Ralph',
         'for-each': '🔁 For Each',
+        'map-reduce': '🧩 Map Reduce',
     },
     MODE_TOOLTIPS: {
         ask: 'Ask — get answers without making changes',
@@ -201,9 +227,10 @@ vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
         autopilot: 'Autopilot — execute changes automatically',
         ralph: 'Ralph — iterative AI coding loop with guided goal setting',
         'for-each': 'For Each — generate a reviewed item plan, then run each item separately',
+        'map-reduce': 'Map Reduce — fan out parallel map work, then aggregate with one reduce step',
     },
     cycleMode: (current: string) => {
-        const next: Record<string, string> = { autopilot: 'ask', ask: 'autopilot', plan: 'autopilot', 'for-each': 'ask' };
+        const next: Record<string, string> = { autopilot: 'ask', ask: 'autopilot', plan: 'autopilot', 'for-each': 'ask', 'map-reduce': 'ask' };
         return next[current];
     },
     normalizeChatMode: (mode: string) => mode === 'plan' ? 'ask' : mode,
@@ -321,6 +348,8 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockDefaultProvider = 'copilot';
+        mockConfiguredDefaultProvider = 'copilot';
+        mockAutoProviderRoutingEnabled = false;
         mockRepoPreferences = {};
         mockModelOverride = null;
         mockUseModelsProviders = [];
@@ -331,6 +360,7 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         mockAttachmentPayload = [];
         mockEffortLevelsEnabled = false;
         mockEffortTiers = {};
+        mockPatchRepo.mockResolvedValue({});
         mockParseAndExtract.mockReturnValue({ skills: [], prompt: '' });
         mockAgentProviders = [
             { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
@@ -420,6 +450,7 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
 
     it('uses configured default provider when no last-used provider is saved', async () => {
         mockDefaultProvider = 'codex';
+        mockConfiguredDefaultProvider = 'codex';
         mockAgentProviders = [
             { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
             { id: 'codex', label: 'Codex', enabled: true, available: true },
@@ -441,8 +472,65 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         });
     });
 
+    it('selects Auto from the configured default and omits provider/model overrides on submit', async () => {
+        mockAutoProviderRoutingEnabled = true;
+        mockConfiguredDefaultProvider = 'auto';
+        mockDefaultProvider = 'copilot';
+        mockAgentProviders = [
+            { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+            { id: 'codex', label: 'Codex', enabled: true, available: true },
+            { id: 'claude', label: 'Claude', enabled: true, available: true },
+        ];
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'queue_auto' } });
+
+        renderNewChatArea();
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Auto'));
+        expect(screen.getByTestId('effort-tier-selector')).toBeTruthy();
+        expect(screen.queryByTestId('model-picker-chip-container')).toBeNull();
+
+        typeInInput('Use Auto');
+        await clickSend();
+
+        await waitFor(() => expect(mockEnqueueTask).toHaveBeenCalledOnce());
+        const body = mockEnqueueTask.mock.calls[0][0];
+        expect(body.payload.provider).toBeUndefined();
+        expect(body.payload.model).toBeUndefined();
+        expect(body.payload.reasoningEffort).toBeUndefined();
+        expect(body.payload.context).toEqual({ autoProviderRouting: { requested: true } });
+        expect(body.config).toEqual({ effortTier: 'medium' });
+    });
+
+    it('persists Auto when selected explicitly', async () => {
+        mockAutoProviderRoutingEnabled = true;
+        mockAgentProviders = [
+            { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+            { id: 'codex', label: 'Codex', enabled: true, available: true },
+            { id: 'claude', label: 'Claude', enabled: true, available: true },
+        ];
+
+        renderNewChatArea();
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Auto'));
+        fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+        fireEvent.click(screen.getByTestId('agent-option-auto'));
+
+        expect(mockPatchRepo).toHaveBeenCalledWith('ws-1', { lastChatProvider: 'auto' });
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Auto'));
+    });
+
+    it('ignores a persisted Auto provider when Auto routing is disabled', async () => {
+        mockAutoProviderRoutingEnabled = false;
+        mockRepoPreferences = { lastChatProvider: 'auto' };
+
+        renderNewChatArea();
+
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Copilot'));
+        fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+        expect(screen.queryByTestId('agent-option-auto')).toBeNull();
+    });
+
     it('falls back to copilot when configured default provider is unavailable', async () => {
         mockDefaultProvider = 'codex';
+        mockConfiguredDefaultProvider = 'codex';
         mockAgentProviders = [
             { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
             { id: 'codex', label: 'Codex', enabled: true, available: false, reason: 'Sign in required' },
@@ -607,6 +695,7 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         mockForEachEnabled = true;
         mockSessionContextAttachmentsEnabled = true;
         mockDefaultProvider = 'codex';
+        mockConfiguredDefaultProvider = 'codex';
         mockModelOverride = 'shared-model';
         mockAgentProviders = [
             { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
@@ -710,6 +799,8 @@ describe('NewChatArea – Effort Tier selector', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockDefaultProvider = 'copilot';
+        mockConfiguredDefaultProvider = 'copilot';
+        mockAutoProviderRoutingEnabled = false;
         mockRepoPreferences = {};
         mockModelOverride = null;
         mockUseModelsProviders = [];
@@ -720,6 +811,7 @@ describe('NewChatArea – Effort Tier selector', () => {
         mockAttachmentPayload = [];
         mockEffortLevelsEnabled = false;
         mockEffortTiers = {};
+        mockPatchRepo.mockResolvedValue({});
         mockParseAndExtract.mockReturnValue({ skills: [], prompt: '' });
         mockAgentProviders = [
             { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },

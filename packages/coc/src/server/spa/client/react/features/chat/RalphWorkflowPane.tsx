@@ -13,6 +13,9 @@ import { MarkdownView } from '../../shared/MarkdownView';
 import { renderMarkdownToHtml } from '../../../diff/markdown-renderer';
 import type {
     ParsedProgressSection,
+    RalphContinueRequest,
+    RalphResumeAiDefaults,
+    RalphResumeRequest,
     RalphLoopRecord,
     RalphSessionFile,
     RalphSessionRecord,
@@ -21,12 +24,14 @@ import type {
 import { RalphWorkflowNode } from './RalphWorkflowNode';
 import { getSpaCocClient } from '../../api/cocClient';
 import { RALPH_MULTI_LOOP } from '../../featureFlags';
+import { ModalJobAiControls, type ResolvedModalJobAiSelection, useModalJobAiSelection } from '../../shared/ModalJobAiControls';
 
 /** Combined view fetched from the server. */
 export interface RalphSessionView {
     record: RalphSessionRecord;
     sections: ParsedProgressSection[];
     files?: RalphSessionFile[];
+    resumeDefaults?: RalphResumeAiDefaults;
 }
 
 export interface RalphWorkflowPaneProps {
@@ -45,13 +50,13 @@ export interface RalphWorkflowPaneProps {
      *  without providing an explicit override. Falls back to 20. */
     continueDefaultIterations?: number;
     /** Override the continue handler (used by tests). */
-    onContinue?: (additionalIterations: number) => Promise<void>;
+    onContinue?: (additionalIterations: number, aiSelection?: ResolvedModalJobAiSelection) => Promise<void>;
     /** Default additional iterations for "New Loop". Falls back to continueDefaultIterations or 20. */
     newLoopDefaultIterations?: number;
     /** Override the new-loop handler (used by tests). When omitted, falls back to the API call. */
     onNewLoop?: (newGoal: string, additionalIterations: number) => Promise<void>;
     /** Override the resume handler (used by tests). When omitted, calls the API directly. */
-    onResume?: () => Promise<void>;
+    onResume?: (aiSelection?: ResolvedModalJobAiSelection) => Promise<void>;
     /** Optional file name decoded from the Ralph session deep-link. */
     selectedFileName?: string;
     /** Called when the user selects a session file. Router wiring is owned by the deep-link slice. */
@@ -106,6 +111,47 @@ function formatSessionFileText(file: RalphSessionFile): SessionFileText {
         }
         throw err;
     }
+}
+
+export function buildRalphResumeRequest(
+    selection: ResolvedModalJobAiSelection | undefined,
+): RalphResumeRequest | undefined {
+    if (!selection) {
+        return undefined;
+    }
+    const config: NonNullable<RalphResumeRequest['config']> = {};
+    if (selection.model) config.model = selection.model;
+    if (selection.reasoningEffort) config.reasoningEffort = selection.reasoningEffort;
+    if (selection.effortTier) config.effortTier = selection.effortTier;
+
+    const request: RalphResumeRequest = {};
+    if (selection.provider) request.provider = selection.provider;
+    if (selection.autoProviderRouting) request.autoProviderRouting = true;
+    if (Object.keys(config).length > 0) request.config = config;
+
+    return Object.keys(request).length > 0 ? request : undefined;
+}
+
+export function buildRalphContinueRequest(
+    additionalIterations: number,
+    selection: ResolvedModalJobAiSelection | undefined,
+): RalphContinueRequest {
+    const request: RalphContinueRequest = { additionalIterations };
+    const ai = buildRalphResumeRequest(selection);
+    if (ai?.provider) request.provider = ai.provider;
+    if (ai?.config) request.config = ai.config;
+    if (ai?.autoProviderRouting) request.autoProviderRouting = ai.autoProviderRouting;
+    return request;
+}
+
+function hasRecoverableAiDefaults(defaults: RalphResumeAiDefaults | undefined): boolean {
+    return Boolean(
+        defaults?.provider
+            || defaults?.model
+            || defaults?.reasoningEffort
+            || defaults?.effortTier
+            || defaults?.autoProviderRouting,
+    );
 }
 
 interface RalphSessionFileBrowserProps {
@@ -241,6 +287,17 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
 
     const [resumeState, setResumeState] = useState<'idle' | 'confirm' | 'submitting'>('idle');
     const [resumeError, setResumeError] = useState<string | null>(null);
+    const resumeDefaults = view && view !== null ? view.resumeDefaults : undefined;
+    const resumeAiSelection = useModalJobAiSelection({
+        workspaceId,
+        mode: 'ralph',
+        initialSelection: resumeDefaults,
+    });
+    const continueAiSelection = useModalJobAiSelection({
+        workspaceId,
+        mode: 'ralph',
+        initialSelection: resumeDefaults,
+    });
 
     if (view === undefined) {
         return (
@@ -294,11 +351,18 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
     const handleResumeConfirmed = async () => {
         setResumeState('submitting');
         setResumeError(null);
+        const resolvedResumeSelection = resumeAiSelection.dirty || !hasRecoverableAiDefaults(resumeDefaults)
+            ? resumeAiSelection.resolved
+            : undefined;
         try {
             if (onResume) {
-                await onResume();
+                await onResume(resolvedResumeSelection);
             } else {
-                await getSpaCocClient().workspaces.resumeRalphSession(workspaceId, sessionId);
+                await getSpaCocClient().workspaces.resumeRalphSession(
+                    workspaceId,
+                    sessionId,
+                    buildRalphResumeRequest(resolvedResumeSelection),
+                );
             }
             setResumeState('idle');
         } catch (err) {
@@ -310,13 +374,18 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
     const handleContinueConfirmed = async () => {
         setContinueState('submitting');
         setContinueError(null);
+        const resolvedContinueSelection = continueAiSelection.dirty || !hasRecoverableAiDefaults(resumeDefaults)
+            ? continueAiSelection.resolved
+            : undefined;
         try {
             if (onContinue) {
-                await onContinue(continueDefaultIterations);
+                await onContinue(continueDefaultIterations, resolvedContinueSelection);
             } else {
-                await getSpaCocClient().workspaces.continueRalphSession(workspaceId, sessionId, {
-                    additionalIterations: continueDefaultIterations,
-                });
+                await getSpaCocClient().workspaces.continueRalphSession(
+                    workspaceId,
+                    sessionId,
+                    buildRalphContinueRequest(continueDefaultIterations, resolvedContinueSelection),
+                );
             }
             setContinueState('idle');
         } catch (err) {
@@ -468,6 +537,16 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
                                     {resumeError}
                                 </p>
                             )}
+                            <div className="mb-2">
+                                <div className="mb-1 text-[11px] font-medium text-amber-900 dark:text-amber-100">
+                                    Agent:
+                                </div>
+                                <ModalJobAiControls
+                                    selection={resumeAiSelection}
+                                    disabled={resumeState === 'submitting'}
+                                    testIdPrefix="ralph-workflow-resume"
+                                />
+                            </div>
                             <div className="flex justify-end gap-2">
                                 <button
                                     type="button"
@@ -507,6 +586,16 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
                                     {continueError}
                                 </p>
                             )}
+                            <div className="mb-2">
+                                <div className="mb-1 text-[11px] font-medium text-blue-900 dark:text-blue-100">
+                                    Agent:
+                                </div>
+                                <ModalJobAiControls
+                                    selection={continueAiSelection}
+                                    disabled={continueState === 'submitting'}
+                                    testIdPrefix="ralph-workflow-continue"
+                                />
+                            </div>
                             <div className="flex justify-end gap-2">
                                 <button
                                     type="button"

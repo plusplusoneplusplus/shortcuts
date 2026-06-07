@@ -275,4 +275,26 @@ describe('CommitChatPanel', () => {
 
         expect(mockCreateChat).toHaveBeenCalledWith('hello', undefined);
     });
+
+    it('sends the first hidden-header lens message through the existing binding exactly once', async () => {
+        setupHook();
+        await act(async () => { render(<CommitChatPanel {...defaultProps} hideEmptyHeader />); });
+
+        expect(screen.queryByTestId('commit-chat-close-btn')).toBeNull();
+        expect(mockUseCommitChatBinding).toHaveBeenCalledWith({
+            workspaceId: defaultProps.workspaceId,
+            commitHash: defaultProps.commitHash,
+            commitMessage: undefined,
+        });
+
+        const input = screen.getByTestId('commit-chat-input');
+        fireEvent.change(input, { target: { value: 'summarize the risky changes' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('commit-chat-send-btn'));
+        });
+
+        expect(mockCreateChat).toHaveBeenCalledTimes(1);
+        expect(mockCreateChat).toHaveBeenCalledWith('summarize the risky changes', undefined);
+    });
 });

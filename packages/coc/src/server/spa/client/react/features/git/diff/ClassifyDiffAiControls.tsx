@@ -91,6 +91,7 @@ export function ClassifyDiffAiControls({
                     disabled={disabled}
                     data-testid={`${testIdPrefix}-effort-tier-selector`}
                     className="ml-0.5"
+                    autoProviderMode={provider === 'auto'}
                 />
             ) : (
                 <div className="relative shrink-0" data-testid={`${testIdPrefix}-model-picker-chip-container`}>

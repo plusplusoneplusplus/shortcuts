@@ -57,6 +57,7 @@ function buildChildTask(run: ForEachRun, item: ForEachItem): CreateTaskInput {
             ...(run.model ? { model: run.model } : {}),
             ...(run.reasoningEffort ? { reasoningEffort: run.reasoningEffort } : {}),
             context: {
+                ...(run.autoProviderRouting?.requested ? { autoProviderRouting: { requested: true as const } } : {}),
                 forEach: {
                     workspaceId: run.workspaceId,
                     runId: run.runId,

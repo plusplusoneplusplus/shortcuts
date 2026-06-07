@@ -25,6 +25,14 @@ vi.mock('../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: vi.fn().mockResolvedValue(null),
 }));
 
+vi.mock('../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        workspaces: {
+            reportActiveWorkspace: vi.fn().mockResolvedValue({ activeWorkspaceIds: [], clients: [] }),
+        },
+    }),
+}));
+
 // ── Mock contexts ───────────────────────────────────────────────
 
 const mockAppDispatch = vi.fn();

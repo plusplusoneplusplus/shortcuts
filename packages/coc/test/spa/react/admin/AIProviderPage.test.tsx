@@ -35,6 +35,10 @@ function makeProps(overrides: Partial<AIProviderPageProps> = {}): AIProviderPage
         setCodexEnabled: vi.fn(),
         claudeEnabled: false,
         setClaudeEnabled: vi.fn(),
+        autoAgentProviderRoutingEnabled: false,
+        setAutoAgentProviderRoutingEnabled: vi.fn(),
+        autoRoutingConfig: undefined,
+        setAutoRoutingConfig: vi.fn(),
         providerAvailability: {
             codex: { available: true },
             claude: { available: false, error: 'SDK not installed' },
@@ -155,7 +159,7 @@ describe('AIProviderPage', () => {
         renderPage();
         const grid = screen.getByTestId('aip-summary-grid');
         expect(grid).toBeDefined();
-        expect(screen.getByText('Default provider')).toBeDefined();
+        expect(screen.getByText('Default route')).toBeDefined();
         expect(screen.getByText('Provider health')).toBeDefined();
         expect(screen.getByText('Enabled models')).toBeDefined();
         expect(screen.getByText('Quota risk')).toBeDefined();
@@ -264,6 +268,107 @@ describe('AIProviderPage', () => {
         const { props } = renderPage({ defaultProvider: 'copilot' });
         fireEvent.click(screen.getByTestId('select-default-provider-codex'));
         expect(props.setDefaultProvider).toHaveBeenCalledWith('codex');
+    });
+
+    // ────────────── Auto provider routing ──────────────
+    it('shows the Auto toggle and hides the routing editor when Auto is disabled', () => {
+        renderPage({ autoAgentProviderRoutingEnabled: false });
+
+        const toggle = screen.getByTestId('toggle-auto-agent-provider-routing-enabled');
+        expect(toggle.getAttribute('aria-checked')).toBe('false');
+        expect(screen.getByTestId('auto-provider-routing-disabled')).toBeDefined();
+        expect(screen.queryByTestId('auto-provider-rules')).toBeNull();
+    });
+
+    it('renders the first-use Auto profile when the feature flag is enabled', () => {
+        renderPage({ autoAgentProviderRoutingEnabled: true });
+
+        expect(screen.getByTestId('toggle-auto-agent-provider-routing-enabled').getAttribute('aria-checked')).toBe('true');
+        expect(screen.getByTestId('auto-provider-rule-claude')).toBeDefined();
+        expect(screen.getByTestId('auto-provider-rule-codex')).toBeDefined();
+        expect(screen.getByTestId('auto-provider-rule-copilot')).toBeDefined();
+        expect((screen.getByTestId('auto-provider-threshold-claude') as HTMLInputElement).value).toBe('33');
+        expect((screen.getByTestId('auto-provider-threshold-codex') as HTMLInputElement).value).toBe('33');
+        expect((screen.getByTestId('auto-provider-threshold-copilot') as HTMLInputElement).value).toBe('10');
+        expect((screen.getByTestId('auto-provider-weekly-threshold-claude') as HTMLInputElement).value).toBe('33');
+        expect((screen.getByTestId('auto-provider-fallback') as HTMLSelectElement).value).toBe('copilot');
+    });
+
+    it('toggles Auto routing enablement', () => {
+        const { props } = renderPage({ autoAgentProviderRoutingEnabled: false });
+
+        fireEvent.click(screen.getByTestId('toggle-auto-agent-provider-routing-enabled'));
+
+        expect(props.setAutoAgentProviderRoutingEnabled).toHaveBeenCalledWith(true);
+    });
+
+    it('edits Auto rule normal thresholds, weekly guard, priority, and fallback', () => {
+        const { props } = renderPage({ autoAgentProviderRoutingEnabled: true });
+
+        fireEvent.change(screen.getByTestId('auto-provider-threshold-claude'), { target: { value: '40' } });
+        expect(props.setAutoRoutingConfig).toHaveBeenLastCalledWith(expect.objectContaining({
+            rules: expect.arrayContaining([
+                expect.objectContaining({ provider: 'claude', minimumRemainingPercent: 40 }),
+            ]),
+        }));
+
+        fireEvent.click(screen.getByTestId('auto-provider-weekly-enabled-claude'));
+        expect(props.setAutoRoutingConfig).toHaveBeenLastCalledWith(expect.objectContaining({
+            rules: expect.arrayContaining([
+                expect.objectContaining({
+                    provider: 'claude',
+                    weeklyGuard: expect.objectContaining({ enabled: false }),
+                }),
+            ]),
+        }));
+
+        fireEvent.click(screen.getByTestId('auto-provider-move-down-claude'));
+        expect(props.setAutoRoutingConfig).toHaveBeenLastCalledWith(expect.objectContaining({
+            rules: [
+                expect.objectContaining({ provider: 'codex' }),
+                expect.objectContaining({ provider: 'claude' }),
+                expect.objectContaining({ provider: 'copilot' }),
+            ],
+        }));
+
+        fireEvent.change(screen.getByTestId('auto-provider-fallback'), { target: { value: 'claude' } });
+        expect(props.setAutoRoutingConfig).toHaveBeenLastCalledWith(expect.objectContaining({ fallbackProvider: 'claude' }));
+    });
+
+    it('previews the concrete provider selected by Auto routing with weekly guard details', () => {
+        renderPage({
+            autoAgentProviderRoutingEnabled: true,
+            claudeEnabled: true,
+            providerAvailability: { codex: { available: true }, claude: { available: true } },
+            quotaData: {
+                lastUpdated: '2026-06-06T17:00:00Z',
+                providers: [
+                    {
+                        id: 'claude',
+                        quotaTypes: [
+                            quotaType({ type: 'five_hour', remainingPercentage: 0.8 }),
+                            quotaType({ type: 'seven_day', remainingPercentage: 0.2 }),
+                        ],
+                    },
+                    {
+                        id: 'codex',
+                        quotaTypes: [
+                            quotaType({ type: 'five_hour', remainingPercentage: 0.5 }),
+                            quotaType({ type: 'seven_day', remainingPercentage: 0.5 }),
+                        ],
+                    },
+                    {
+                        id: 'copilot',
+                        quotaTypes: [quotaType({ type: 'five_hour', remainingPercentage: 0.9 })],
+                    },
+                ],
+            },
+        });
+
+        const preview = screen.getByTestId('auto-provider-preview');
+        expect(within(preview).getByText('Codex')).toBeDefined();
+        expect(screen.getByTestId('auto-provider-weekly-status-claude').textContent).toContain('below the 33% guard');
+        expect(screen.getByTestId('auto-provider-rule-reason-codex').textContent).toContain('passed availability');
     });
 
     // ────────────── Toggle switches ──────────────

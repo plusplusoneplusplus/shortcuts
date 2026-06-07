@@ -18,10 +18,15 @@ import type {
 } from '@plusplusoneplusplus/forge';
 import { getLogger, LogCategory, resolveModelForProvider } from '@plusplusoneplusplus/forge';
 import { truncateDisplayName } from '../shared/queue-utils';
-import { TaskDefs, VALID_ENQUEUE_TYPES, VISIBLE_TASK_TYPE_LABELS, VALID_CHAT_PROVIDERS, normalizeChatMode } from '../tasks/task-types';
+import { TaskDefs, VALID_ENQUEUE_TYPES, VISIBLE_TASK_TYPE_LABELS, VALID_CHAT_PROVIDERS, normalizeChatMode, type ChatProvider } from '../tasks/task-types';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
+import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 import * as path from 'path';
 import type { ParsedUrlQuery } from 'querystring';
+
+export interface ResolveDefaultProviderOptions {
+    forceAuto?: boolean;
+}
 
 // ============================================================================
 // Constants
@@ -78,8 +83,10 @@ export interface QueueRouteContext {
     store: ProcessStore | undefined;
     globalWorkspaceRootPath: string | undefined;
     state: QueueGlobalState;
-    getDefaultProvider?: () => 'copilot' | 'codex' | 'claude';
-    getEffortTiersForProvider?: (provider: 'copilot' | 'codex' | 'claude') => StoredEffortTiersMap | undefined;
+    getDefaultProvider?: () => ChatProvider;
+    resolveDefaultProvider?: (options?: ResolveDefaultProviderOptions) => Promise<AutoProviderResolutionResult>;
+    isAutoProviderRoutingActive?: () => boolean;
+    getEffortTiersForProvider?: (provider: ChatProvider) => StoredEffortTiersMap | undefined;
 }
 
 export function getRepoIdentifierFromQuery(query: ParsedUrlQuery): string | undefined {
@@ -193,6 +200,12 @@ export function serializeTaskSummary(task: QueuedTask): Record<string, unknown> 
     }
     if (payload?.context?.forEach !== undefined) {
         slimPayload.context = { ...slimPayload.context as any, forEach: payload.context.forEach };
+    }
+    if (payload?.context?.mapReduce !== undefined) {
+        slimPayload.context = { ...slimPayload.context as any, mapReduce: payload.context.mapReduce };
+    }
+    if (payload?.context?.autoProviderRouting !== undefined) {
+        slimPayload.context = { ...slimPayload.context as any, autoProviderRouting: payload.context.autoProviderRouting };
     }
 
     return {

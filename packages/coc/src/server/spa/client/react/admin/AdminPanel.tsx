@@ -10,7 +10,7 @@ import './admin-redesign.css';
 import { useState, useEffect, useCallback, useRef, lazy, Suspense, type ReactNode } from 'react';
 import { Spinner, useToast, ToastContainer } from '../ui';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
-import type { ProviderInstallStatus } from '@plusplusoneplusplus/coc-client';
+import type { AdminAutoProviderRoutingConfig, AdminDefaultProvider, ProviderInstallStatus } from '@plusplusoneplusplus/coc-client';
 import { invalidateDisplaySettings } from '../hooks/preferences/useDisplaySettings';
 import { invalidateHtmlEmbedPreference } from '../hooks/preferences/useHtmlEmbedPreference';
 import { SettingsCard } from './SettingsCard';
@@ -41,7 +41,7 @@ const UsageStatsView = lazy(() => import('../features/stats/UsageStatsView').the
 const ServersView = lazy(() => import('../features/servers/ServersView').then(m => ({ default: m.ServersView })));
 const MemoryV2Panel = lazy(() => import('../features/memory/MemoryV2Panel').then(m => ({ default: m.MemoryV2Panel })));
 const ProviderModelsSection = lazy(() => import('../features/models/ProviderModelsSection').then(m => ({ default: m.ProviderModelsSection })));
-import { AIProviderPage } from './AIProviderPage';
+import { AIProviderPage, normalizeAutoProviderRoutingConfig, type NormalizedAutoProviderRoutingConfig } from './AIProviderPage';
 
 function formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
@@ -58,6 +58,51 @@ interface Stats {
 }
 
 const VALID_OUTPUT_OPTIONS = ['table', 'json', 'csv', 'markdown'] as const;
+
+type FeaturesSnapshot = {
+    terminal: boolean;
+    notes: boolean;
+    myWork: boolean;
+    myLife: boolean;
+    scratchpad: boolean;
+    scratchpadLayout: 'horizontal' | 'vertical';
+    workflows: boolean;
+    pullRequests: boolean;
+    pullRequestsSuggestions: boolean;
+    servers: boolean;
+    ralph: boolean;
+    forEach: boolean;
+    mapReduce: boolean;
+    vimNavigation: boolean;
+    loops: boolean;
+    excalidraw: boolean;
+    mcpOauth: boolean;
+    focusedDiff: boolean;
+    gitCrossCloneCherryPick: boolean;
+    sessionContextAttachments: boolean;
+    commitChatLens: boolean;
+    autoAgentProviderRouting: boolean;
+    workItemsHierarchy: boolean;
+    workItemsSync: boolean;
+    workItemsAiAuthoring: boolean;
+    effortLevels: boolean;
+};
+
+type DefaultProviderSnapshot = {
+    provider: AdminDefaultProvider;
+    codexEnabled: boolean;
+    claudeEnabled: boolean;
+    autoAgentProviderRouting: boolean;
+    autoRoutingConfig: NormalizedAutoProviderRoutingConfig;
+};
+
+function autoRoutingConfigsEqual(
+    a: AdminAutoProviderRoutingConfig | null | undefined,
+    b: AdminAutoProviderRoutingConfig | null | undefined,
+): boolean {
+    return JSON.stringify(normalizeAutoProviderRoutingConfig(a)) === JSON.stringify(normalizeAutoProviderRoutingConfig(b));
+}
+
 const TAB_LABELS: Record<AdminSubTab, string> = {
     settings: 'AI & Execution',
     providers: 'Providers',
@@ -327,6 +372,7 @@ export function AdminPanel() {
     const [serversEnabled, setServersEnabled] = useState(false);
     const [ralphEnabled, setRalphEnabled] = useState(false);
     const [forEachEnabled, setForEachEnabled] = useState(false);
+    const [mapReduceEnabled, setMapReduceEnabled] = useState(false);
     const [vimNavigationEnabled, setVimNavigationEnabled] = useState(false);
     const [loopsEnabled, setLoopsEnabled] = useState(false);
     const [excalidrawEnabled, setExcalidrawEnabled] = useState(false);
@@ -334,13 +380,16 @@ export function AdminPanel() {
     const [focusedDiffEnabled, setFocusedDiffEnabled] = useState(false);
     const [gitCrossCloneCherryPickEnabled, setGitCrossCloneCherryPickEnabled] = useState(false);
     const [sessionContextAttachmentsEnabled, setSessionContextAttachmentsEnabled] = useState(false);
+    const [commitChatLensEnabled, setCommitChatLensEnabled] = useState(false);
+    const [autoAgentProviderRoutingEnabled, setAutoAgentProviderRoutingEnabled] = useState(false);
     const [workItemsHierarchyEnabled, setWorkItemsHierarchyEnabled] = useState(false);
     const [workItemsSyncEnabled, setWorkItemsSyncEnabled] = useState(false);
     const [workItemsAiAuthoringEnabled, setWorkItemsAiAuthoringEnabled] = useState(false);
     const [effortLevelsEnabled, setEffortLevelsEnabled] = useState(false);
     const [codexEnabled, setCodexEnabled] = useState(false);
     const [claudeEnabled, setClaudeEnabled] = useState(false);
-    const [defaultProvider, setDefaultProvider] = useState<'copilot' | 'codex' | 'claude'>('copilot');
+    const [defaultProvider, setDefaultProvider] = useState<AdminDefaultProvider>('copilot');
+    const [autoRoutingConfig, setAutoRoutingConfig] = useState<NormalizedAutoProviderRoutingConfig>(() => normalizeAutoProviderRoutingConfig(undefined));
     const [providerAvailability, setProviderAvailability] = useState<Record<string, { available: boolean; error?: string }>>({});
     const [sdkInstallStatuses, setSdkInstallStatuses] = useState<Record<string, ProviderInstallStatus>>({});
     const [sdkInstallErrors, setSdkInstallErrors] = useState<Record<string, string | undefined>>({});
@@ -371,7 +420,13 @@ export function AdminPanel() {
 
     // Snapshots for per-card dirty tracking (set when config/prefs loads)
     const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
-    const [defaultProviderSnapshot, setDefaultProviderSnapshot] = useState<{ provider: 'copilot' | 'codex' | 'claude'; codexEnabled: boolean; claudeEnabled: boolean }>({ provider: 'copilot', codexEnabled: false, claudeEnabled: false });
+    const [defaultProviderSnapshot, setDefaultProviderSnapshot] = useState<DefaultProviderSnapshot>({
+        provider: 'copilot',
+        codexEnabled: false,
+        claudeEnabled: false,
+        autoAgentProviderRouting: false,
+        autoRoutingConfig: normalizeAutoProviderRoutingConfig(undefined),
+    });
     const [chatSnapshot, setChatSnapshot] = useState({ followUpEnabled: true, followUpCount: '3', askUserEnabled: false, showReportIntent: false, toolCompactness: 3 as 0 | 1 | 2 | 3 });
     const [appearanceSnapshot, setAppearanceSnapshot] = useState({
         theme: 'auto' as string,
@@ -383,7 +438,7 @@ export function AdminPanel() {
         taskCardDensity: 'compact' as 'compact' | 'dense',
         historyGrouping: true,
     });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, forEach: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false, gitCrossCloneCherryPick: false, sessionContextAttachments: false, workItemsHierarchy: false, workItemsSync: false, workItemsAiAuthoring: false, effortLevels: false });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState<FeaturesSnapshot>({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, forEach: false, mapReduce: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false, gitCrossCloneCherryPick: false, sessionContextAttachments: false, commitChatLens: false, autoAgentProviderRouting: false, workItemsHierarchy: false, workItemsSync: false, workItemsAiAuthoring: false, effortLevels: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -486,6 +541,8 @@ export function AdminPanel() {
             setRalphEnabled(re);
             const fee = resolved.forEach?.enabled ?? false;
             setForEachEnabled(fee);
+            const mre = resolved.mapReduce?.enabled ?? false;
+            setMapReduceEnabled(mre);
             const vne = resolved.vimNavigation?.enabled ?? false;
             setVimNavigationEnabled(vne);
             const loe = resolved.loops?.enabled ?? false;
@@ -497,9 +554,13 @@ export function AdminPanel() {
             const fde = resolved.features?.focusedDiff ?? false;
             const gccpe = resolved.features?.gitCrossCloneCherryPick ?? false;
             const scae = resolved.features?.sessionContextAttachments ?? false;
+            const ccle = resolved.features?.commitChatLens ?? false;
+            const aapre = resolved.features?.autoAgentProviderRouting ?? false;
             setGitCrossCloneCherryPickEnabled(gccpe);
             setFocusedDiffEnabled(fde);
             setSessionContextAttachmentsEnabled(scae);
+            setCommitChatLensEnabled(ccle);
+            setAutoAgentProviderRoutingEnabled(aapre);
             const wihe = resolved.workItems?.hierarchy?.enabled ?? false;
             setWorkItemsHierarchyEnabled(wihe);
             const wise = resolved.workItems?.sync?.enabled ?? false;
@@ -512,11 +573,13 @@ export function AdminPanel() {
             setCodexEnabled(cxe);
             const cle = resolved.claude?.enabled ?? false;
             setClaudeEnabled(cle);
-            const dp = (resolved.defaultProvider === 'codex' ? 'codex' : resolved.defaultProvider === 'claude' ? 'claude' : 'copilot') as 'copilot' | 'codex' | 'claude';
+            const dp = (resolved.defaultProvider === 'codex' ? 'codex' : resolved.defaultProvider === 'claude' ? 'claude' : 'copilot') as AdminDefaultProvider;
+            const arc = normalizeAutoProviderRoutingConfig(resolved.agentProviderRouting?.auto);
             setDefaultProvider(dp);
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, forEach: fee, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde, gitCrossCloneCherryPick: gccpe, sessionContextAttachments: scae, workItemsHierarchy: wihe, workItemsSync: wise, workItemsAiAuthoring: waae, effortLevels: ele });
+            setAutoRoutingConfig(arc);
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, forEach: fee, mapReduce: mre, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde, gitCrossCloneCherryPick: gccpe, sessionContextAttachments: scae, commitChatLens: ccle, autoAgentProviderRouting: aapre, workItemsHierarchy: wihe, workItemsSync: wise, workItemsAiAuthoring: waae, effortLevels: ele });
             setAiExecSnapshot({ model: form.model, parallel: form.parallel, timeout: form.timeout, output: form.output });
-            setDefaultProviderSnapshot({ provider: dp, codexEnabled: cxe, claudeEnabled: cle });
+            setDefaultProviderSnapshot({ provider: dp, codexEnabled: cxe, claudeEnabled: cle, autoAgentProviderRouting: aapre, autoRoutingConfig: arc });
             const sgr = resolved.sync?.gitRemote ?? '';
             const sim = String(resolved.sync?.intervalMinutes ?? 5);
             setSyncGitRemote(sgr);
@@ -593,7 +656,11 @@ export function AdminPanel() {
         configForm.timeout !== aiExecSnapshot.timeout ||
         configForm.output !== aiExecSnapshot.output;
 
-    const defaultProviderDirty = defaultProvider !== defaultProviderSnapshot.provider || codexEnabled !== defaultProviderSnapshot.codexEnabled || claudeEnabled !== defaultProviderSnapshot.claudeEnabled;
+    const defaultProviderDirty = defaultProvider !== defaultProviderSnapshot.provider ||
+        codexEnabled !== defaultProviderSnapshot.codexEnabled ||
+        claudeEnabled !== defaultProviderSnapshot.claudeEnabled ||
+        autoAgentProviderRoutingEnabled !== defaultProviderSnapshot.autoAgentProviderRouting ||
+        !autoRoutingConfigsEqual(autoRoutingConfig, defaultProviderSnapshot.autoRoutingConfig);
 
     const chatDirty = chatFollowUpEnabled !== chatSnapshot.followUpEnabled ||
         chatFollowUpCount !== chatSnapshot.followUpCount ||
@@ -622,6 +689,7 @@ export function AdminPanel() {
         serversEnabled !== featuresSnapshot.servers ||
         ralphEnabled !== featuresSnapshot.ralph ||
         forEachEnabled !== featuresSnapshot.forEach ||
+        mapReduceEnabled !== featuresSnapshot.mapReduce ||
         vimNavigationEnabled !== featuresSnapshot.vimNavigation ||
         loopsEnabled !== featuresSnapshot.loops ||
         excalidrawEnabled !== featuresSnapshot.excalidraw ||
@@ -629,6 +697,7 @@ export function AdminPanel() {
         focusedDiffEnabled !== featuresSnapshot.focusedDiff ||
         gitCrossCloneCherryPickEnabled !== featuresSnapshot.gitCrossCloneCherryPick ||
         sessionContextAttachmentsEnabled !== featuresSnapshot.sessionContextAttachments ||
+        commitChatLensEnabled !== featuresSnapshot.commitChatLens ||
         workItemsHierarchyEnabled !== featuresSnapshot.workItemsHierarchy ||
         workItemsSyncEnabled !== featuresSnapshot.workItemsSync ||
         workItemsAiAuthoringEnabled !== featuresSnapshot.workItemsAiAuthoring ||
@@ -676,20 +745,34 @@ export function AdminPanel() {
     const handleSaveDefaultProvider = useCallback(async () => {
         setDefaultProviderSaving(true);
         try {
-            await getSpaCocClient().admin.updateConfig({ defaultProvider, 'codex.enabled': codexEnabled, 'claude.enabled': claudeEnabled });
-            addToast('Default provider settings saved — restart required to apply changes', 'success');
-            setDefaultProviderSnapshot({ provider: defaultProvider, codexEnabled, claudeEnabled });
+            const normalizedAutoRouting = normalizeAutoProviderRoutingConfig(autoRoutingConfig);
+            const payload: Record<string, unknown> = {
+                defaultProvider,
+                'codex.enabled': codexEnabled,
+                'claude.enabled': claudeEnabled,
+                'features.autoAgentProviderRouting': autoAgentProviderRoutingEnabled,
+            };
+            if (autoAgentProviderRoutingEnabled) {
+                payload['agentProviderRouting.auto'] = normalizedAutoRouting;
+            }
+            await getSpaCocClient().admin.updateConfig(payload);
+            addToast('AI provider settings saved — restart required to apply changes', 'success');
+            setAutoRoutingConfig(normalizedAutoRouting);
+            setDefaultProviderSnapshot({ provider: defaultProvider, codexEnabled, claudeEnabled, autoAgentProviderRouting: autoAgentProviderRoutingEnabled, autoRoutingConfig: normalizedAutoRouting });
+            setFeaturesSnapshot(prev => ({ ...prev, autoAgentProviderRouting: autoAgentProviderRoutingEnabled }));
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setDefaultProviderSaving(false);
         }
-    }, [defaultProvider, codexEnabled, claudeEnabled, addToast]);
+    }, [defaultProvider, autoAgentProviderRoutingEnabled, codexEnabled, claudeEnabled, autoRoutingConfig, addToast]);
 
     const handleCancelDefaultProvider = useCallback(() => {
         setDefaultProvider(defaultProviderSnapshot.provider);
         setCodexEnabled(defaultProviderSnapshot.codexEnabled);
         setClaudeEnabled(defaultProviderSnapshot.claudeEnabled);
+        setAutoAgentProviderRoutingEnabled(defaultProviderSnapshot.autoAgentProviderRouting);
+        setAutoRoutingConfig(defaultProviderSnapshot.autoRoutingConfig);
     }, [defaultProviderSnapshot]);
 
     // ── SDK install status helpers ──
@@ -849,7 +932,7 @@ export function AdminPanel() {
     const handleSaveFeatures = useCallback(async () => {
         setFeaturesSaving(true);
         try {
-            await getSpaCocClient().admin.updateConfig({
+            const payload: Record<string, unknown> = {
                 'terminal.enabled': terminalEnabled,
                 'notes.enabled': notesEnabled,
                 'myWork.enabled': myWorkEnabled,
@@ -862,6 +945,7 @@ export function AdminPanel() {
                 'servers.enabled': serversEnabled,
                 'ralph.enabled': ralphEnabled,
                 'forEach.enabled': forEachEnabled,
+                'mapReduce.enabled': mapReduceEnabled,
                 'vimNavigation.enabled': vimNavigationEnabled,
                 'loops.enabled': loopsEnabled,
                 'excalidraw.enabled': excalidrawEnabled,
@@ -869,20 +953,22 @@ export function AdminPanel() {
                 'features.focusedDiff': focusedDiffEnabled,
                 'features.gitCrossCloneCherryPick': gitCrossCloneCherryPickEnabled,
                 'features.sessionContextAttachments': sessionContextAttachmentsEnabled,
+                'features.commitChatLens': commitChatLensEnabled,
                 'workItems.hierarchy.enabled': workItemsHierarchyEnabled,
                 'workItems.sync.enabled': workItemsSyncEnabled,
                 'workItems.aiAuthoring.enabled': workItemsAiAuthoringEnabled,
                 'effortLevels.enabled': effortLevelsEnabled,
-            });
+            };
+            await getSpaCocClient().admin.updateConfig(payload);
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, forEach: forEachEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled, gitCrossCloneCherryPick: gitCrossCloneCherryPickEnabled, sessionContextAttachments: sessionContextAttachmentsEnabled, workItemsHierarchy: workItemsHierarchyEnabled, workItemsSync: workItemsSyncEnabled, workItemsAiAuthoring: workItemsAiAuthoringEnabled, effortLevels: effortLevelsEnabled });
+            setFeaturesSnapshot(prev => ({ ...prev, terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, forEach: forEachEnabled, mapReduce: mapReduceEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled, gitCrossCloneCherryPick: gitCrossCloneCherryPickEnabled, sessionContextAttachments: sessionContextAttachmentsEnabled, commitChatLens: commitChatLensEnabled, autoAgentProviderRouting: prev.autoAgentProviderRouting, workItemsHierarchy: workItemsHierarchyEnabled, workItemsSync: workItemsSyncEnabled, workItemsAiAuthoring: workItemsAiAuthoringEnabled, effortLevels: effortLevelsEnabled }));
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, forEachEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, gitCrossCloneCherryPickEnabled, sessionContextAttachmentsEnabled, workItemsHierarchyEnabled, workItemsSyncEnabled, workItemsAiAuthoringEnabled, effortLevelsEnabled, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, forEachEnabled, mapReduceEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, gitCrossCloneCherryPickEnabled, sessionContextAttachmentsEnabled, commitChatLensEnabled, workItemsHierarchyEnabled, workItemsSyncEnabled, workItemsAiAuthoringEnabled, effortLevelsEnabled, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setTerminalEnabled(featuresSnapshot.terminal);
@@ -897,6 +983,7 @@ export function AdminPanel() {
         setServersEnabled(featuresSnapshot.servers);
         setRalphEnabled(featuresSnapshot.ralph);
         setForEachEnabled(featuresSnapshot.forEach);
+        setMapReduceEnabled(featuresSnapshot.mapReduce);
         setVimNavigationEnabled(featuresSnapshot.vimNavigation);
         setLoopsEnabled(featuresSnapshot.loops);
         setExcalidrawEnabled(featuresSnapshot.excalidraw);
@@ -904,6 +991,7 @@ export function AdminPanel() {
         setFocusedDiffEnabled(featuresSnapshot.focusedDiff);
         setGitCrossCloneCherryPickEnabled(featuresSnapshot.gitCrossCloneCherryPick);
         setSessionContextAttachmentsEnabled(featuresSnapshot.sessionContextAttachments);
+        setCommitChatLensEnabled(featuresSnapshot.commitChatLens);
         setWorkItemsHierarchyEnabled(featuresSnapshot.workItemsHierarchy);
         setWorkItemsSyncEnabled(featuresSnapshot.workItemsSync);
         setWorkItemsAiAuthoringEnabled(featuresSnapshot.workItemsAiAuthoring);
@@ -1695,6 +1783,13 @@ export function AdminPanel() {
                                         <AdminToggle checked={forEachEnabled} onChange={setForEachEnabled} data-testid="toggle-for-each-enabled" />
                                     </AdminRow>
                                     <AdminRow
+                                        name={<>Map Reduce Mode <span className="ar-badge ar-badge-accent">Experimental</span></>}
+                                        hint="Generate a reviewed map plan from New Chat, run items in parallel, then reduce outputs into one result. Disabled by default."
+                                    >
+                                        <SourceBadge source={sources['mapReduce.enabled']} />
+                                        <AdminToggle checked={mapReduceEnabled} onChange={setMapReduceEnabled} data-testid="toggle-map-reduce-enabled" />
+                                    </AdminRow>
+                                    <AdminRow
                                         name="Vim-style navigation"
                                         hint="Enable hjkl pane navigation, j/k to step through chats and messages, gg/G to jump, i to focus the input, Esc to blur. Disabled by default."
                                     >
@@ -1742,6 +1837,13 @@ export function AdminPanel() {
                                     >
                                         <SourceBadge source={sources['features.sessionContextAttachments']} />
                                         <AdminToggle checked={sessionContextAttachmentsEnabled} onChange={setSessionContextAttachmentsEnabled} data-testid="toggle-session-context-attachments-enabled" />
+                                    </AdminRow>
+                                    <AdminRow
+                                        name={<>Review chat lens <span className="ar-badge ar-badge-accent">Experimental</span></>}
+                                        hint="Open unpinned commit and pull-request review chat as a desktop bottom-right lens instead of the side panel or drawer. Disabled by default."
+                                    >
+                                        <SourceBadge source={sources['features.commitChatLens']} />
+                                        <AdminToggle checked={commitChatLensEnabled} onChange={setCommitChatLensEnabled} data-testid="toggle-commit-chat-lens-enabled" />
                                     </AdminRow>
                                     <AdminRow
                                         name="Work Items Hierarchy Board"
@@ -2099,6 +2201,10 @@ export function AdminPanel() {
                                 setCodexEnabled={setCodexEnabled}
                                 claudeEnabled={claudeEnabled}
                                 setClaudeEnabled={setClaudeEnabled}
+                                autoAgentProviderRoutingEnabled={autoAgentProviderRoutingEnabled}
+                                setAutoAgentProviderRoutingEnabled={setAutoAgentProviderRoutingEnabled}
+                                autoRoutingConfig={autoRoutingConfig}
+                                setAutoRoutingConfig={setAutoRoutingConfig}
                                 providerAvailability={providerAvailability}
                                 sdkInstallStatuses={sdkInstallStatuses}
                                 sdkInstallErrors={sdkInstallErrors}

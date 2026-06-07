@@ -10,7 +10,7 @@ import * as path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { createRouter } from '../../src/server/shared/router';
-import { registerPrRoutes, clearPrListCache, clearPrDetailCache, clearPrDiffCache, clearPrThreadsCache, clearPrCommitsCache, clearPrReviewersCache, clearPrChecksCache } from '../../src/server/repos/pr-routes';
+import { registerPrRoutes, clearPrListCache, clearPrDetailCache, clearPrDiffCache, clearPrThreadsCache, clearPrCommitsCache, clearPrReviewersCache, clearPrChecksCache, warmPullRequestWorkspaceCache } from '../../src/server/repos/pr-routes';
 import type { Route } from '../../src/server/types';
 import type { IPullRequestsService } from '@plusplusoneplusplus/forge';
 import type { ProviderPullRequest, CommentThread, Reviewer } from '@plusplusoneplusplus/forge';
@@ -202,10 +202,11 @@ describe('GET /api/repos/:id/pull-requests', () => {
     it('returns pullRequests array on success', async () => {
         const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
         expect(res.status).toBe(200);
-        const body = await res.json() as { pullRequests: unknown[]; total: number };
+        const body = await res.json() as { pullRequests: unknown[]; total: number; fetchedAt?: number };
         expect(Array.isArray(body.pullRequests)).toBe(true);
         expect(body.pullRequests).toHaveLength(1);
         expect(body.total).toBe(1);
+        expect(body.fetchedAt).toEqual(expect.any(Number));
     });
 
     it('enriches list rows with real diff stats from the provider diff', async () => {
@@ -362,6 +363,48 @@ describe('GET /api/repos/:id/pull-requests', () => {
         // Force refresh
         const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?force=true`);
         expect(res.status).toBe(200);
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
+    });
+
+    it('serves PR list data warmed by the background cache without an upstream call', async () => {
+        await warmPullRequestWorkspaceCache({
+            dataDir,
+            repoId: REPO_ID,
+            service: new RepoTreeService(dataDir),
+            suggestionsEnabled: true,
+        });
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(1);
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+
+        expect(res.status).toBe(200);
+        const body = await res.json() as { pullRequests: unknown[]; fetchedAt?: number };
+        expect(body.pullRequests).toHaveLength(1);
+        expect(body.fetchedAt).toEqual(expect.any(Number));
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(1);
+    });
+
+    it('preserves stale warmed PR list cache when a background refresh fails', async () => {
+        await warmPullRequestWorkspaceCache({
+            dataDir,
+            repoId: REPO_ID,
+            service: new RepoTreeService(dataDir),
+        });
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(1);
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('provider down'));
+
+        await expect(warmPullRequestWorkspaceCache({
+            dataDir,
+            repoId: REPO_ID,
+            service: new RepoTreeService(dataDir),
+        })).rejects.toThrow('provider down');
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+
+        expect(res.status).toBe(200);
+        const body = await res.json() as { pullRequests: Array<{ number: number }> };
+        expect(body.pullRequests).toHaveLength(1);
+        expect(body.pullRequests[0].number).toBe(42);
         expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
     });
 

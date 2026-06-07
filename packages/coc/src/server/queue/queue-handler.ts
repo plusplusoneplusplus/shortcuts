@@ -14,6 +14,9 @@ import { registerQueueStatsRoutes } from '../routes/queue-stats';
 import { registerQueueControlRoutes } from '../routes/queue-control';
 import { registerQueueFollowUpRoutes } from '../routes/queue-follow-up';
 import { registerQueueImagesRoutes } from '../routes/queue-images';
+import type { ChatProvider } from '../tasks/task-types';
+import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
+import type { ResolveDefaultProviderOptions } from '../routes/queue-shared';
 
 export { buildContextPrompt, buildSummarizePrompt, serializeConversationForSummary } from '../routes/queue-shared';
 export type { SummarizeConversation } from '../routes/queue-shared';
@@ -24,8 +27,10 @@ export function registerQueueRoutes(
     store?: ProcessStore,
     globalWorkspaceRootPath?: string,
     options: {
-        getDefaultProvider?: () => 'copilot' | 'codex' | 'claude';
-        getEffortTiersForProvider?: (provider: 'copilot' | 'codex' | 'claude') => StoredEffortTiersMap | undefined;
+        getDefaultProvider?: () => ChatProvider;
+        resolveDefaultProvider?: (options?: ResolveDefaultProviderOptions) => Promise<AutoProviderResolutionResult>;
+        isAutoProviderRoutingActive?: () => boolean;
+        getEffortTiersForProvider?: (provider: ChatProvider) => StoredEffortTiersMap | undefined;
     } = {},
 ): void {
     const state: QueueGlobalState = {
@@ -41,6 +46,8 @@ export function registerQueueRoutes(
         globalWorkspaceRootPath,
         state,
         getDefaultProvider: options.getDefaultProvider,
+        resolveDefaultProvider: options.resolveDefaultProvider,
+        isAutoProviderRoutingActive: options.isAutoProviderRoutingActive,
         getEffortTiersForProvider: options.getEffortTiersForProvider,
     };
     registerQueueEnqueueRoutes(routes, ctx);

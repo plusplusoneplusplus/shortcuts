@@ -87,6 +87,27 @@ const svc = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
 
 Each `sendMessage()` call creates its **own `CopilotClient`** child process — no shared client. Concurrent tasks with different working directories cannot interfere.
 
+### One-shot `transform` primitive
+
+`ISDKService.transform(input, options?)` is the provider-agnostic primitive for isolated, single-shot text transformations (e.g. chat-title generation, PR ranking). Contract:
+
+- **Signature:** `transform(input: string, options?: TransformOptions): Promise<TransformResult>`.
+- **Structured result:** returns `{ success, text, error?, effectiveModel?, tokenUsage? }` — it does **not** throw on provider failure; callers branch on `success` and may verify `effectiveModel`.
+- **Fresh & isolated:** one provider request per call. No session resume, no caller-visible session/thread reuse, no session cache, no `sendFollowUp`-style continuation.
+- **Safe defaults:** `loadDefaultMcpConfig` defaults to `false` (no MCP/tools) and `onPermissionRequest` defaults to `denyAllPermissions`; both are overridable via `TransformOptions`.
+- **No model default:** the SDK owns no transform model. The caller passes `options.model`; omitting it falls back to the provider default. Product policy (model choice, prompt construction, sanitization) stays in the calling layer.
+
+`TransformOptions` / `TransformResult` live in `sdk-service-interface.ts` and are re-exported through forge.
+
+#### Production callers
+
+| Caller | Model | Notes |
+| --- | --- | --- |
+| `TitleGenerationService` (`coc/src/server/executors/title-generator.ts`) | `gpt-5.4-mini` (`TITLE_GENERATION_MODEL`) | `generateTitle()` and `prewarm()` route through `transform`. Relies on the safe isolation defaults (no MCP/tools, denied permissions); throws on `!success` and on `effectiveModel` mismatch so a silent provider fallback never persists a title under the wrong model. |
+| PR suggestion ranking (`coc/src/server/repos/pr-suggestions.ts`) | `gpt-4.1` | `rankAndCacheSuggestions` calls `transform` with a 30s timeout and throws on `!success` to preserve its contract. |
+
+Model choice is product policy and stays in these callers — neither model is in `MODEL_REGISTRY`, which lists only user-selectable models.
+
 ## CodexSDKService Architecture
 
 `CodexSDKService` implements `ISDKService` backed by the **optional** `@openai/codex-sdk` peer dependency. When the package is not installed, `isAvailable()` returns `{ available: false }` and `sendMessage()` returns an error result rather than throwing.
@@ -119,7 +140,7 @@ sdkServiceRegistry.register(SDK_PROVIDER_CODEX, svc);
 
 **Lazy loading:** No SDK module is loaded until the first `isAvailable()` or `sendMessage()` call.
 
-**CoC LLM tools:** when `options.tools` is present, a per-request `Codex` client is built with `config.mcp_servers.coc_llm_tools` pointing at the stdio bridge (see *CoC LLM Tools over MCP*).
+**CoC LLM tools:** when `options.tools` is present, a per-request `Codex` client is built with `config.mcp_servers.coc_llm_tools` pointing at the stdio bridge (see *CoC LLM Tools over MCP*). Captured tool calls from this first-party MCP server store the actual tool input directly in `args` (for example `args.questions` for `ask_user`) so process timelines match the Copilot and Claude display contract; external MCP tool calls retain `{ server, arguments }` metadata.
 
 ## ClaudeSDKService Architecture
 
@@ -146,7 +167,7 @@ Claude Code expects hyphenated model IDs for version aliases (for example, `clau
 
 ## Provider-Aware Model Resolution
 
-`resolveModelForProvider(provider, requestedModel)` is the shared boundary helper for provider-bound chat flows. It keeps model overrides only when they are valid for the selected provider (`gpt-*` for Codex, Claude IDs/family aliases for Claude, Copilot-compatible IDs for Copilot). Provider-default aliases such as `provider-default`, `codex-default`, and `claude-provider-default` resolve to `undefined`, which means "let the provider choose its default". Invalid cross-provider overrides are coerced to `undefined` and the CoC server logs a warning before persisting turns or process metadata.
+`resolveModelForProvider(provider, requestedModel)` is the shared boundary helper for provider-bound chat flows. It keeps model overrides only when they are valid for the selected provider (`gpt-*` for Codex, Claude IDs/family aliases for Claude, Copilot-compatible IDs for Copilot). Provider-default aliases such as `default`, `provider-default`, `codex-default`, and `claude-provider-default` resolve to `undefined`, which means "let the provider choose its default". Invalid cross-provider overrides are coerced to `undefined` and the CoC server logs a warning before persisting turns or process metadata.
 
 All SDK `sendMessage()` implementations return `effectiveModel?: string` in `IInvocationResult` / `SDKInvocationResult`. CoC records that effective model on assistant turns and reconciles `metadata.model` to it; an omitted `effectiveModel` means the provider default was used. This prevents dashboard records from showing a stale selected model that the provider did not actually run.
 

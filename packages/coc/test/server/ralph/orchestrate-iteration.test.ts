@@ -135,6 +135,36 @@ describe('orchestrateRalphIteration — RALPH_NEXT (continue)', () => {
         expect(enqueuedTask.payload.context.scheduleId).toBe('sch-1');
     });
 
+    it('keeps auto-provider routing requested for the next iteration instead of carrying the resolved provider', async () => {
+        const deps = makeDeps({
+            dataDir,
+            provider: 'claude',
+            existingPayloadContext: {
+                autoProviderRouting: {
+                    requested: true,
+                    selectedByAuto: true,
+                    provider: 'claude',
+                    fallbackUsed: false,
+                },
+            },
+        });
+        await orchestrateRalphIteration({
+            responseText: makeNextResponse(),
+            completedTaskId: TASK_ID,
+            processId: PROCESS_ID,
+            workspaceId: WS,
+            sessionId: SID,
+            originalGoal: 'Do the goal.',
+            currentIteration: 1,
+            maxIterations: 5,
+            deps,
+        });
+
+        const enqueuedTask = (deps.enqueueTask as ReturnType<typeof vi.fn>).mock.calls[0][0];
+        expect(enqueuedTask.payload.provider).toBeUndefined();
+        expect(enqueuedTask.payload.context.autoProviderRouting.requested).toBe(true);
+    });
+
     it('writes progress section to journal', async () => {
         const deps = makeDeps({ dataDir });
         await orchestrateRalphIteration({

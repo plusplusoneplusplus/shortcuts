@@ -8,7 +8,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { Route } from '../types';
-import type { ProcessStore, TaskQueueManager, ISDKService, AIInvoker } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, TaskQueueManager, ISDKService, AIInvoker, CreateTaskInput } from '@plusplusoneplusplus/forge';
 import { modelMetadataStore, sdkServiceRegistry, CopilotSDKService, CodexSDKService, ClaudeSDKService, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_CODEX } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
@@ -18,6 +18,7 @@ import type { WikiServerOptions } from '../types';
 import type { WikiManager } from '../wiki';
 import { registerApiRoutes } from '../core/api-handler';
 import { registerQueueRoutes } from '../queue/queue-handler';
+import { prepareTaskForEnqueue } from './queue-enqueue';
 import { registerTaskRoutes, registerTaskWriteRoutes } from '../tasks/tasks-handler';
 import { registerTaskGenerationRoutes } from '../tasks/task-generation-handler';
 import { registerPromptRoutes } from '../prompts/prompt-handler';
@@ -31,7 +32,7 @@ import { registerMemoryV2Routes } from '../memory/memory-v2-routes';
 import { registerRepoRoutes } from '../repos/repo-routes';
 import { registerInstructionRoutes } from '../skills/instruction-handler';
 import { registerProviderRoutes } from '../providers/provider-routes';
-import { registerPrRoutes } from '../repos/pr-routes';
+import { registerPrRoutes, warmPullRequestWorkspaceCache } from '../repos/pr-routes';
 import { registerPrClassificationRoutes } from '../repos/pr-classification-handler';
 import { registerGenericClassificationRoutes } from '../repos/generic-classification-handler';
 import { registerLogsRoutes } from '../logging/logs-routes';
@@ -66,6 +67,7 @@ import { registerWorkItemPlanRoutes } from './work-item-plan-routes';
 import { registerWorkItemExecutionRoutes } from './work-item-execution-routes';
 import { registerWorkItemChangesRoutes } from './work-item-changes-routes';
 import { registerWorkItemAiRoutes } from './work-item-ai-routes';
+import { warmWorkItemWorkspaceCache } from './work-item-cache-warming';
 import { createWorkItemAiGenerators } from '../work-items/work-item-ai-generator';
 import { FileWorkItemStore } from '../work-items/work-item-store';
 import { createAzureBoardsWorkItemSyncProviderAdapter } from '../work-items/work-item-sync-azure-boards-provider';
@@ -97,6 +99,10 @@ import { registerForEachRoutes } from './for-each-routes';
 import { FileForEachRunStore } from '../for-each/for-each-run-store';
 import { createForEachPlanGenerator } from '../for-each/for-each-plan-generator';
 import { ForEachRunExecutor } from '../for-each/for-each-run-executor';
+import { registerMapReduceRoutes } from './map-reduce-routes';
+import { FileMapReduceRunStore } from '../map-reduce/map-reduce-run-store';
+import { createMapReducePlanGenerator } from '../map-reduce/map-reduce-plan-generator';
+import { MapReduceRunExecutor } from '../map-reduce/map-reduce-run-executor';
 import { registerLoopRoutes } from '../loops/loop-handler';
 import type { LoopStore } from '../loops/loop-store';
 import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
@@ -104,6 +110,7 @@ import { registerMcpOauthRoutes } from '../mcp-oauth';
 import type { McpOauthManager } from '../mcp-oauth';
 import { registerAgentProvidersRoutes } from '../agent-providers/agent-providers-routes';
 import { AgentProvidersQuotaCache } from '../agent-providers/quota-cache';
+import { resolveAutoAgentProvider, type AutoProviderAvailabilityMap, type AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 import { registerProviderInstallRoutes } from '../providers/provider-install-routes';
 import { registerDiagramRoutes } from '../diagrams/diagrams-handler';
 import { registerRuntimeConfigRoutes } from '../config/runtime-config-handler';
@@ -113,6 +120,9 @@ import { registerTeamsMessagingRoutes } from '../messaging/teams-messaging-handl
 import { registerContainerSessionRoutes } from '../container-sessions/container-session-handler';
 import { ContainerSessionStore } from '../container-sessions/container-session-store';
 import type { ContainerAgentInfo } from '../container-sessions/container-session-types';
+import type { ResolveDefaultProviderOptions } from './queue-shared';
+import { ActiveWorkspaceTracker } from '../dashboard/active-workspace-tracker';
+import { ActiveWorkspaceBackgroundRefresher } from '../dashboard/active-workspace-background-refresher';
 
 /** Collect git commits made between headBefore and current HEAD. Non-fatal — returns [] on error. */
 function collectWorkItemCommits(
@@ -166,7 +176,7 @@ export interface RegisterRoutesOptions {
     syncEngines?: Map<string, SyncEngine>;
 }
 
-export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; agentProvidersQuotaCache?: AgentProvidersQuotaCache } {
+export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; agentProvidersQuotaCache?: AgentProvidersQuotaCache; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher } {
     const {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
@@ -177,6 +187,118 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     let workItemGitHubPullPoller: WorkItemGitHubPullPoller | undefined;
     let workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller | undefined;
     let agentProvidersQuotaCache: AgentProvidersQuotaCache | undefined;
+    const concreteDefaultProvider = (): ChatProvider => {
+        const defaultProvider = opts.runtimeConfigService?.config.defaultProvider
+            ?? opts.resolvedConfig?.defaultProvider;
+        if (defaultProvider === 'codex') return 'codex';
+        if (defaultProvider === 'claude') return 'claude';
+        return 'copilot';
+    };
+    const concreteDefaultProviderResolution = (provider: ChatProvider = concreteDefaultProvider()): AutoProviderResolutionResult => ({
+        provider,
+        selectedByAuto: false,
+        fallbackUsed: false,
+        decisions: [],
+        warnings: [],
+    });
+    const getAutoProviderAvailability = async (): Promise<AutoProviderAvailabilityMap> => {
+        const config = opts.runtimeConfigService?.config ?? opts.resolvedConfig;
+        const codexEnabled = config?.codex?.enabled ?? false;
+        const claudeEnabled = config?.claude?.enabled ?? false;
+        const availability: AutoProviderAvailabilityMap = {
+            copilot: { enabled: true, available: true },
+        };
+
+        if (!codexEnabled) {
+            availability.codex = { enabled: false, available: false, reason: 'Codex provider is disabled.' };
+        } else {
+            const svc = sdkServiceRegistry.get(SDK_PROVIDER_CODEX);
+            availability.codex = svc
+                ? { enabled: true, ...(await svc.isAvailable()) }
+                : { enabled: true, available: false, reason: 'Codex SDK service is not registered.' };
+        }
+
+        if (!claudeEnabled) {
+            availability.claude = { enabled: false, available: false, reason: 'Claude provider is disabled.' };
+        } else {
+            const svc = sdkServiceRegistry.get(SDK_PROVIDER_CLAUDE);
+            availability.claude = svc
+                ? { enabled: true, ...(await svc.isAvailable()) }
+                : { enabled: true, available: false, reason: 'Claude SDK service is not registered.' };
+        }
+
+        return availability;
+    };
+    const resolveDefaultProvider = async (options?: ResolveDefaultProviderOptions): Promise<AutoProviderResolutionResult> => {
+        const config = opts.runtimeConfigService?.config ?? opts.resolvedConfig;
+        const forceAuto = options?.forceAuto === true;
+        if (!config) {
+            return concreteDefaultProviderResolution();
+        }
+        const autoRoutingEnabled = config.features.autoAgentProviderRouting === true;
+        if (!forceAuto && !autoRoutingEnabled) {
+            return concreteDefaultProviderResolution(config.defaultProvider);
+        }
+        if (config.features.autoAgentProviderRouting !== true) {
+            return {
+                selectedByAuto: true,
+                fallbackUsed: false,
+                decisions: [],
+                warnings: [],
+                error: 'Auto provider routing requires features.autoAgentProviderRouting: true',
+            };
+        }
+        if (!agentProvidersQuotaCache) {
+            return {
+                selectedByAuto: true,
+                fallbackUsed: false,
+                decisions: [],
+                warnings: [],
+                error: 'Auto provider routing requires the provider quota cache.',
+            };
+        }
+        const quotaData = await agentProvidersQuotaCache.get({ refreshIfStale: true });
+        return resolveAutoAgentProvider(config.agentProviderRouting.auto, {
+            providerAvailability: await getAutoProviderAvailability(),
+            quotaData,
+            quotaStale: agentProvidersQuotaCache.isStale(),
+        });
+    };
+    const isAutoProviderRoutingActive = (): boolean => {
+        const config = opts.runtimeConfigService?.config ?? opts.resolvedConfig;
+        return config?.features.autoAgentProviderRouting === true;
+    };
+    const resolveConcreteDefaultProvider = async (): Promise<ChatProvider> => {
+        const resolution = await resolveDefaultProvider();
+        if (!resolution.provider) {
+            throw new Error(resolution.error ?? 'Default provider resolution did not select a concrete provider.');
+        }
+        return resolution.provider;
+    };
+    const getEffortTiersForProvider = (provider: ChatProvider) => (
+        loadConfigFile(opts.runtimeConfigService?.configPath ?? opts.configPath)?.models?.providers?.[provider]?.effortTiers
+        ?? opts.runtimeConfigService?.config.models?.providers?.[provider]?.effortTiers
+        ?? opts.resolvedConfig?.models?.providers?.[provider]?.effortTiers
+    );
+    const prepareEnqueueTask = async (input: CreateTaskInput): Promise<void> => {
+        await prepareTaskForEnqueue(input, {
+            getDefaultProvider: concreteDefaultProvider,
+            resolveDefaultProvider,
+            isAutoProviderRoutingActive,
+            getEffortTiersForProvider,
+        });
+    };
+    const enqueueWithResolvedDefaults = async (input: CreateTaskInput): Promise<string> => {
+        await prepareEnqueueTask(input);
+        return bridge.enqueue(input);
+    };
+    const bridgeWithResolvedDefaults = Object.create(bridge) as MultiRepoQueueRouter;
+    Object.defineProperty(bridgeWithResolvedDefaults, 'enqueue', {
+        value: enqueueWithResolvedDefaults,
+        configurable: true,
+        writable: true,
+    });
+    bridge.setResolveDefaultProvider(resolveDefaultProvider);
 
     // excalidrawEnabled uses a live getter via runtimeConfigService so admin
     // changes take effect without restart. loopsEnabled stays startup-captured
@@ -184,7 +306,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const getLiveFeatureFlags = opts.runtimeConfigService
         ? () => ({ excalidrawEnabled: opts.runtimeConfigService!.config.excalidraw?.enabled ?? false })
         : () => ({ excalidrawEnabled: opts.resolvedConfig?.excalidraw?.enabled ?? false });
-    registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.loops?.enabled ?? false, getLiveFeatureFlags);
+    const activeWorkspaceTracker = new ActiveWorkspaceTracker();
+    registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.loops?.enabled ?? false, getLiveFeatureFlags, activeWorkspaceTracker);
     const repoTreeService = new RepoTreeService(dataDir, undefined, store);
     registerRepoRoutes(routes, dataDir, repoTreeService);
     registerPrRoutes(routes, dataDir, repoTreeService, undefined, resolvedAiService);
@@ -202,6 +325,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         store,
         bridge,
         repoTreeService,
+        prepareTaskForEnqueue: prepareEnqueueTask,
     });
     registerRemoteServerRoutes(routes, {
         store: opts.remoteServerStore ?? new RemoteServerStore(dataDir),
@@ -218,30 +342,16 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     registerProcessResumeRoutes(routes, store);
     registerFreshChatTerminalRoutes(routes, undefined, {
-        getProvider: () => {
-            const defaultProvider = opts.runtimeConfigService?.config.defaultProvider
-                ?? opts.resolvedConfig?.defaultProvider;
-            if (defaultProvider === 'codex') return 'codex';
-            if (defaultProvider === 'claude') return 'claude';
-            return 'copilot';
-        },
+        getProvider: resolveConcreteDefaultProvider,
     });
     registerTerminalRoutes(routes, store, opts.getTerminalSessionManager ?? (() => undefined), opts.resolvedConfig, opts.runtimeConfigService);
 
     // Queue routes receive the bridge directly for per-repo routing
     registerQueueRoutes(routes, bridge, store, globalWorkspaceRootPath, {
-        getDefaultProvider: () => {
-            const defaultProvider = opts.runtimeConfigService?.config.defaultProvider
-                ?? opts.resolvedConfig?.defaultProvider;
-            if (defaultProvider === 'codex') return 'codex';
-            if (defaultProvider === 'claude') return 'claude';
-            return 'copilot';
-        },
-        getEffortTiersForProvider: (provider) => (
-            loadConfigFile(opts.runtimeConfigService?.configPath ?? opts.configPath)?.models?.providers?.[provider]?.effortTiers
-            ?? opts.runtimeConfigService?.config.models?.providers?.[provider]?.effortTiers
-            ?? opts.resolvedConfig?.models?.providers?.[provider]?.effortTiers
-        ),
+        getDefaultProvider: concreteDefaultProvider,
+        resolveDefaultProvider,
+        isAutoProviderRoutingActive,
+        getEffortTiersForProvider,
     });
     registerTaskRoutes(routes, store, dataDir, (workspaceId) => {
         getWsServer().broadcastProcessEvent({
@@ -275,7 +385,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             timestamp: Date.now(),
         });
     }, bridge, resolvedAiService);
-    registerTaskGenerationRoutes(routes, store, bridge, resolvedAiService, dataDir);
+    registerTaskGenerationRoutes(routes, store, bridge, resolvedAiService, dataDir, prepareEnqueueTask);
     registerTemplateRoutes(routes, store);
     registerTemplateWriteRoutes(routes, store, (workspaceId) => {
         getWsServer().broadcastProcessEvent({
@@ -466,20 +576,20 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
 
     // Ralph routes
-    registerRalphRoutes(routes, { bridge, store, dataDir });
-    registerRalphSessionRoutes(routes, { dataDir });
-    registerRalphContinueRoutes(routes, { bridge, store, dataDir });
-    registerRalphNewLoopRoutes(routes, { bridge, store, dataDir });
-    registerRalphPromoteRoutes(routes, { bridge, store, dataDir });
-    registerRalphLaunchRoutes(routes, { bridge, dataDir });
-    registerRalphResumeRoutes(routes, { bridge, store, dataDir });
+    registerRalphRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
+    registerRalphSessionRoutes(routes, { dataDir, store });
+    registerRalphContinueRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
+    registerRalphNewLoopRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
+    registerRalphPromoteRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
+    registerRalphLaunchRoutes(routes, { bridge: bridgeWithResolvedDefaults, dataDir });
+    registerRalphResumeRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
 
     // For Each routes: dedicated reviewed item-plan mode. Routes are registered
     // with a live feature guard so admin toggles take effect without restart.
     const forEachRunStore = new FileForEachRunStore({ dataDir });
     const forEachRunExecutor = new ForEachRunExecutor({
         store: forEachRunStore,
-        enqueueChildTask: (task) => bridge.enqueue(task),
+        enqueueChildTask: (task) => enqueueWithResolvedDefaults(task),
         cancelChildTask: (taskId) => {
             const executor = bridge.findExecutorForTask(taskId);
             if (executor) {
@@ -503,11 +613,48 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         getForEachEnabled,
         generateItemPlan: forEachPlanGenerator.generateItemPlan,
         executor: forEachRunExecutor,
+        resolveDefaultProvider,
+    });
+
+    // Map Reduce routes: dedicated reviewed map-plan mode with parallel map
+    // dispatch followed by a single reduce child chat. Live feature guard mirrors
+    // For Each so admin toggles take effect without restart.
+    const mapReduceRunStore = new FileMapReduceRunStore({ dataDir });
+    const mapReduceRunExecutor = new MapReduceRunExecutor({
+        store: mapReduceRunStore,
+        enqueueChildTask: (task) => enqueueWithResolvedDefaults(task),
+        cancelChildTask: (taskId) => {
+            const executor = bridge.findExecutorForTask(taskId);
+            if (executor) {
+                executor.cancelTask(taskId);
+                return true;
+            }
+            return bridge.findManagerForTask(taskId)?.cancelTask(taskId) ?? false;
+        },
+    });
+    mapReduceRunExecutor.attachToQueueRegistry(bridge.registry);
+    const mapReducePlanGenerator = createMapReducePlanGenerator({
+        aiService: resolvedAiService,
+        resolveAiServiceForProvider: opts.resolveAiServiceForProvider,
+    });
+    const getMapReduceEnabled = opts.runtimeConfigService
+        ? () => opts.runtimeConfigService!.config.mapReduce?.enabled ?? false
+        : () => opts.resolvedConfig?.mapReduce?.enabled ?? false;
+    registerMapReduceRoutes({
+        routes,
+        store: mapReduceRunStore,
+        getMapReduceEnabled,
+        generatePlan: mapReducePlanGenerator.generatePlan,
+        executor: mapReduceRunExecutor,
+        resolveDefaultProvider,
     });
 
     // Work item routes
     const workItemStore = new FileWorkItemStore({ dataDir });
-    const enqueueForWorkItems = bridge.enqueue.bind(bridge) as EnqueueFunction;
+    const enqueueForWorkItems = (async (input: Parameters<EnqueueFunction>[0]) => {
+        await prepareEnqueueTask(input as CreateTaskInput);
+        return bridge.enqueue(input as CreateTaskInput);
+    }) as EnqueueFunction;
     const getWorkItemsHierarchyEnabled = opts.runtimeConfigService
         ? () => opts.runtimeConfigService!.config.workItems?.hierarchy?.enabled ?? false
         : () => opts.resolvedConfig?.workItems?.hierarchy?.enabled ?? false;
@@ -550,6 +697,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     // Hierarchy tree route must be registered before generic /:workItemId to win the match
     registerWorkItemHierarchyRoutes({ routes, workItemStore, getHierarchyEnabled: getWorkItemsHierarchyEnabled });
+    const workItemSyncProviders = [
+        createGitHubWorkItemSyncProviderAdapter(),
+        createAzureBoardsWorkItemSyncProviderAdapter({ dataDir }),
+    ];
     registerWorkItemSyncRoutes({
         routes,
         workItemStore,
@@ -557,10 +708,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         dataDir,
         getHierarchyEnabled: getWorkItemsHierarchyEnabled,
         getSyncEnabled: getWorkItemsSyncEnabled,
-        providers: [
-            createGitHubWorkItemSyncProviderAdapter(),
-            createAzureBoardsWorkItemSyncProviderAdapter({ dataDir }),
-        ],
+        providers: workItemSyncProviders,
         onGitHubBackedEpicTreeChanged: (workspaceId) => workItemGitHubPullPoller?.configureWorkspace(workspaceId),
         onAzureBoardsBackedEpicTreeChanged: (workspaceId) => workItemAzureBoardsPullPoller?.configureWorkspace(workspaceId),
     });
@@ -577,6 +725,32 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerWorkItemPlanRoutes({ routes, workItemStore, getWsServer });
     registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer, dataDir });
     registerWorkItemChangesRoutes({ routes, workItemStore, getWsServer });
+
+    const activeWorkspaceBackgroundRefresher = new ActiveWorkspaceBackgroundRefresher({
+        tracker: activeWorkspaceTracker,
+        refreshWorkspace: async (workspaceId) => {
+            const config = opts.runtimeConfigService?.config ?? opts.resolvedConfig;
+            await Promise.all([
+                config?.pullRequests?.enabled === true
+                    ? warmPullRequestWorkspaceCache({
+                        dataDir,
+                        repoId: workspaceId,
+                        service: repoTreeService,
+                        suggestionsEnabled: config.pullRequests?.suggestions === true,
+                    })
+                    : Promise.resolve(),
+                warmWorkItemWorkspaceCache({
+                    workspaceId,
+                    workItemStore,
+                    processStore: store,
+                    dataDir,
+                    getHierarchyEnabled: getWorkItemsHierarchyEnabled,
+                    getSyncEnabled: getWorkItemsSyncEnabled,
+                    providers: workItemSyncProviders,
+                }),
+            ]);
+        },
+    });
 
     // Wire queue task completion → work item status update + commit collection
     bridge.on('queueChange', (event: { type: string; task?: any }) => {
@@ -707,5 +881,5 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
     );
 
-    return { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, agentProvidersQuotaCache };
+    return { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, agentProvidersQuotaCache, activeWorkspaceBackgroundRefresher };
 }

@@ -1,4 +1,7 @@
+import type { ChatProvider, ReasoningEffort } from './common';
 import type { ForEachChildMode, ForEachItem } from './for-each';
+import type { MapReduceProcessContext } from './map-reduce';
+import type { EffortTierKey } from './queue';
 
 export interface WorkspaceInfo {
   id: string;
@@ -119,6 +122,22 @@ export interface WorkspacesResponse {
   workspaces: WorkspaceInfo[];
 }
 
+export interface ActiveWorkspaceReportRequest {
+  clientId: string;
+  workspaceId: string | null;
+}
+
+export interface ActiveWorkspaceClientState {
+  clientId: string;
+  workspaceId: string;
+  lastSeenAt: number;
+}
+
+export interface ActiveWorkspaceResponse {
+  activeWorkspaceIds: string[];
+  clients: ActiveWorkspaceClientState[];
+}
+
 export interface BrowseWorkspaceEntry {
   name: string;
   type?: 'directory' | string;
@@ -216,6 +235,7 @@ export interface ProcessHistoryItem {
     lastPlanError?: string;
     lastPlanErrorTurnIndex?: number;
   };
+  mapReduce?: MapReduceProcessContext;
 }
 
 export interface ProcessHistoryResponse {
@@ -402,10 +422,19 @@ export interface RalphSessionFile {
   content: string;
 }
 
+export interface RalphResumeAiDefaults {
+  provider?: ChatProvider;
+  model?: string;
+  reasoningEffort?: ReasoningEffort;
+  effortTier?: EffortTierKey;
+  autoProviderRouting?: boolean;
+}
+
 export interface RalphSessionResponse {
   record: RalphSessionRecord;
   sections: ParsedProgressSection[];
   files: RalphSessionFile[];
+  resumeDefaults?: RalphResumeAiDefaults;
 }
 
 export interface RalphContinueResponse {
@@ -415,6 +444,17 @@ export interface RalphContinueResponse {
   taskId: string;
   nextIteration: number;
   newMaxIterations: number;
+}
+
+export interface RalphContinueRequest {
+  additionalIterations?: number;
+  provider?: ChatProvider;
+  config?: {
+    model?: string;
+    reasoningEffort?: ReasoningEffort;
+    effortTier?: EffortTierKey;
+  };
+  autoProviderRouting?: boolean;
 }
 
 export interface RalphNewLoopResponse {
@@ -434,4 +474,14 @@ export interface RalphResumeResponse {
   taskId: string;
   nextIteration: number;
   maxIterations: number;
+}
+
+export interface RalphResumeRequest {
+  provider?: ChatProvider;
+  config?: {
+    model?: string;
+    reasoningEffort?: ReasoningEffort;
+    effortTier?: EffortTierKey;
+  };
+  autoProviderRouting?: boolean;
 }

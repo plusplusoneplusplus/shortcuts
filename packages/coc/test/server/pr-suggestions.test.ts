@@ -437,10 +437,13 @@ describe('toPrMetadata', () => {
 describe('rankAndCacheSuggestions', () => {
     it('calls transform and caches result', async () => {
         const mockAiService = {
-            transform: vi.fn().mockResolvedValue([
-                { prNumber: 100, score: 95 },
-                { prNumber: 101, score: 80 },
-            ]),
+            transform: vi.fn().mockResolvedValue({
+                success: true,
+                text: JSON.stringify([
+                    { prNumber: 100, score: 95 },
+                    { prNumber: 101, score: 80 },
+                ]),
+            }),
         } as unknown as CopilotSDKService;
 
         const history: ReviewHistoryCache = {
@@ -462,10 +465,11 @@ describe('rankAndCacheSuggestions', () => {
         expect(cached!.suggestions).toHaveLength(2);
     });
 
-    it('passes parseSuggestionsResponse as parser', async () => {
+    it('parses the transform response text', async () => {
         const mockAiService = {
-            transform: vi.fn().mockImplementation((_prompt: string, parse: (raw: string) => unknown) => {
-                return Promise.resolve(parse('[{"prNumber": 42, "score": 95}]'));
+            transform: vi.fn().mockResolvedValue({
+                success: true,
+                text: '[{"prNumber": 42, "score": 95}]',
             }),
         } as unknown as CopilotSDKService;
 
@@ -507,7 +511,7 @@ describe('rankAndCacheSuggestions', () => {
 
     it('uses gpt-4.1 model with 30s timeout', async () => {
         const mockAiService = {
-            transform: vi.fn().mockResolvedValue([]),
+            transform: vi.fn().mockResolvedValue({ success: true, text: '[]' }),
         } as unknown as CopilotSDKService;
 
         const history: ReviewHistoryCache = {
@@ -521,7 +525,6 @@ describe('rankAndCacheSuggestions', () => {
 
         expect(mockAiService.transform).toHaveBeenCalledWith(
             expect.any(String),
-            expect.any(Function),
             { model: 'gpt-4.1', timeoutMs: 30_000 },
         );
     });

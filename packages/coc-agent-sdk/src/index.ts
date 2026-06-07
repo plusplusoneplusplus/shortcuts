@@ -86,6 +86,8 @@ export type {
     IModelInfo,
     IAvailabilityResult,
     IInvocationResult,
+    TransformOptions,
+    TransformResult,
 } from './sdk-service-interface';
 
 export {

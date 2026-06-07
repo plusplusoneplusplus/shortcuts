@@ -42,11 +42,14 @@ describe('ADMIN_EDITABLE_KEYS', () => {
             'workflows.enabled', 'pullRequests.enabled', 'servers.enabled',
             'ralph.enabled', 'forEach.enabled', 'vimNavigation.enabled', 'loops.enabled',
             'excalidraw.enabled',
-            'mcpOauth.enabled',
-            'codex.enabled',
+            'mcpOauth.enabled', 'mcpOauth.autoRefresh.enabled',
+            'codex.enabled', 'claude.enabled',
             'defaultProvider',
+            'agentProviderRouting.auto',
             'features.gitCrossCloneCherryPick',
             'features.sessionContextAttachments',
+            'features.commitChatLens',
+            'features.autoAgentProviderRouting',
             'workItems.hierarchy.enabled',
             'workItems.sync.enabled',
             'workItems.aiAuthoring.enabled',
@@ -197,10 +200,44 @@ describe('validate()', () => {
             expect(fieldFor('defaultProvider').validate('claude')).toBeUndefined();
         });
         it('rejects other strings', () => {
-            expect(fieldFor('defaultProvider').validate('unknown')).toMatch(/copilot.*codex/);
+            expect(fieldFor('defaultProvider').validate('unknown')).toMatch(/copilot.*codex.*claude/);
         });
         it('rejects non-string', () => {
-            expect(fieldFor('defaultProvider').validate(true)).toMatch(/copilot.*codex/);
+            expect(fieldFor('defaultProvider').validate(true)).toMatch(/copilot.*codex.*claude/);
+        });
+    });
+
+    describe('agentProviderRouting.auto', () => {
+        it('accepts a valid auto routing profile', () => {
+            expect(fieldFor('agentProviderRouting.auto').validate({
+                rules: [
+                    {
+                        provider: 'claude',
+                        enabled: true,
+                        minimumRemainingPercent: 33,
+                        weeklyGuard: { enabled: true, minimumRemainingPercent: 33 },
+                    },
+                ],
+                fallbackProvider: 'copilot',
+            })).toBeUndefined();
+        });
+
+        it('rejects invalid rule provider values', () => {
+            expect(fieldFor('agentProviderRouting.auto').validate({
+                rules: [{ provider: 'openai' }],
+            })).toMatch(/provider must be one of/);
+        });
+
+        it('rejects invalid threshold values', () => {
+            expect(fieldFor('agentProviderRouting.auto').validate({
+                rules: [{ provider: 'copilot', minimumRemainingPercent: 101 }],
+            })).toMatch(/between 0 and 100/);
+        });
+
+        it('rejects invalid weekly guard threshold values', () => {
+            expect(fieldFor('agentProviderRouting.auto').validate({
+                rules: [{ provider: 'copilot', weeklyGuard: { minimumRemainingPercent: -1 } }],
+            })).toMatch(/between 0 and 100/);
         });
     });
 
@@ -213,8 +250,13 @@ describe('validate()', () => {
         'servers.enabled', 'ralph.enabled', 'forEach.enabled', 'vimNavigation.enabled', 'loops.enabled',
         'excalidraw.enabled',
         'mcpOauth.enabled',
+        'mcpOauth.autoRefresh.enabled',
+        'codex.enabled',
+        'claude.enabled',
         'features.gitCrossCloneCherryPick',
         'features.sessionContextAttachments',
+        'features.commitChatLens',
+        'features.autoAgentProviderRouting',
         'workItems.hierarchy.enabled',
         'workItems.sync.enabled',
         'workItems.aiAuthoring.enabled',
@@ -358,6 +400,7 @@ describe('apply()', () => {
         ['mcpOauth.enabled', (c) => c.mcpOauth?.enabled],
         ['features.gitCrossCloneCherryPick', (c) => c.features?.gitCrossCloneCherryPick],
         ['features.sessionContextAttachments', (c) => c.features?.sessionContextAttachments],
+        ['features.commitChatLens', (c) => c.features?.commitChatLens],
         ['workItems.hierarchy.enabled', (c) => c.workItems?.hierarchy?.enabled],
         ['workItems.sync.enabled', (c) => c.workItems?.sync?.enabled],
         ['workItems.aiAuthoring.enabled', (c) => c.workItems?.aiAuthoring?.enabled],
@@ -400,6 +443,18 @@ describe('apply()', () => {
         });
     });
 
+    describe('agentProviderRouting.auto', () => {
+        it('sets auto routing config', () => {
+            const cfg: CLIConfig = {};
+            fieldFor('agentProviderRouting.auto').apply(cfg, {
+                rules: [{ provider: 'claude', enabled: true, minimumRemainingPercent: 33 }],
+                fallbackProvider: 'copilot',
+            });
+            expect(cfg.agentProviderRouting?.auto?.rules?.[0].provider).toBe('claude');
+            expect(cfg.agentProviderRouting?.auto?.fallbackProvider).toBe('copilot');
+        });
+    });
+
 });
 
 // ── runtime classification ────────────────────────────────────────────────────
@@ -425,6 +480,14 @@ describe('runtime classification', () => {
         expect(fieldFor('defaultProvider').runtime).toBe('restartRequired');
     });
 
+    it('marks agentProviderRouting.auto as restartRequired', () => {
+        expect(fieldFor('agentProviderRouting.auto').runtime).toBe('restartRequired');
+    });
+
+    it('marks features.autoAgentProviderRouting as restartRequired', () => {
+        expect(fieldFor('features.autoAgentProviderRouting').runtime).toBe('restartRequired');
+    });
+
     const liveFeatures = [
         'notes.enabled', 'myWork.enabled', 'myLife.enabled',
         'scratchpad.enabled', 'workflows.enabled', 'pullRequests.enabled',
@@ -432,6 +495,7 @@ describe('runtime classification', () => {
         'excalidraw.enabled', 'features.focusedDiff',
         'features.gitCrossCloneCherryPick',
         'features.sessionContextAttachments',
+        'features.commitChatLens',
         'workItems.hierarchy.enabled', 'workItems.sync.enabled', 'workItems.aiAuthoring.enabled',
     ];
 

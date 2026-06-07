@@ -101,9 +101,12 @@ The `src/server/` tree is grouped by feature domain. Cross-cutting plumbing stay
 | `memory/` | Memory config, bounded-memory REST, repo-memory, promote, background-review |
 | `ralph/` | Iterative execution sessions and file-backed journal (see [ralph.md](ralph.md)) |
 | `for-each/` | Dedicated For Each run records, item-plan validation, file-backed repo-scoped draft/approval storage, and sequential child-chat orchestration |
+| `map-reduce/` | Dedicated Map Reduce plan generation, run records, map-plan validation, reduce-step state, per-run parallelism configuration, file-backed repo-scoped draft/approval/execution storage with parallel map claiming, and child-chat orchestration that auto-chains reduce after successful map completion |
 | `models/` | Model registry endpoints |
+| `agent-providers/` | Agent-provider quota cache, provider status routes, SDK install helpers, and the pure Auto provider router that evaluates configured priority, availability, normal quota thresholds, weekly guards, fallback, and selection warnings before callers expand effort tiers. Queue/fresh-terminal defaults, explicit SPA Auto requests (`context.autoProviderRouting.requested`), direct Ralph, For Each, and work-item enqueue surfaces use the shared quota cache and refresh it only when missing or stale. |
 | `messaging/` | Teams bot integration: manager, command router, per-user state |
 | `spa/` | Dashboard SPA (HTML template, React client) |
+| `dashboard/` | Server-side dashboard state helpers, including recent active-workspace tracking and interval-based proactive background refresh for warm active-workspace caches. |
 
 ## Executors
 
@@ -126,7 +129,7 @@ The `executors/` directory contains the AI chat execution layer:
 | `chat-tool-builder.ts` | Common chat tool bundle assembly |
 | `bounded-memory-addon.ts` | Wires bounded MEMORY.md into chat executors |
 
-CoC chat tasks use Ask, Autopilot, or Ralph modes. Legacy stored or incoming chat payloads with `mode='plan'` are normalized to Ask before dispatch, metadata persistence, schedule execution, and follow-up execution; the server does not route CoC chat work through a dedicated Plan executor.
+CoC chat tasks use Ask, Autopilot, or Ralph modes. Legacy stored or incoming chat payloads with `mode='plan'` are normalized to Ask before dispatch, metadata persistence, schedule execution, and follow-up execution; the server does not route CoC chat work through a dedicated Plan executor. Follow-up execution resolves the final provider/session/default model before applying per-turn reasoning effort; unsupported per-turn efforts are omitted with a warning so stale UI tier selections do not fail an existing chat, while persisted/default effort validation remains strict.
 
 ## Configuration
 
@@ -139,7 +142,7 @@ output: table
 approvePermissions: false
 mcpConfig: ~/.copilot/mcp-config.json  # global MCP; repo .vscode/mcp.json is also loaded per workspace
 timeout: 1800
-defaultProvider: copilot  # default for new chats/tasks when payload.provider is omitted
+defaultProvider: copilot  # concrete default for new chats/tasks when payload.provider is omitted and Auto is not explicitly requested
 
 serve:
   port: 4000
@@ -165,11 +168,40 @@ workflows:
 forEach:
   enabled: false
 
+mapReduce:
+  enabled: false
+
 codex:
   enabled: false
 
 claude:
   enabled: false
+
+features:
+  autoAgentProviderRouting: false  # enables Auto for omitted-provider default paths
+
+agentProviderRouting:
+  auto:
+    rules:
+      - provider: claude
+        enabled: true
+        minimumRemainingPercent: 25
+        weeklyGuard:
+          enabled: true
+          minimumRemainingPercent: 25
+      - provider: codex
+        enabled: true
+        minimumRemainingPercent: 25
+        weeklyGuard:
+          enabled: true
+          minimumRemainingPercent: 25
+      - provider: copilot
+        enabled: true
+        minimumRemainingPercent: 10
+        weeklyGuard:
+          enabled: true
+          minimumRemainingPercent: 10
+    fallbackProvider: copilot
 ```
 
 Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT.
@@ -180,7 +212,7 @@ Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT.
 2. Auto-migrations: workspace registry JSON → SQLite, file-based process history → SQLite
 3. Chat/follow-up executors initialize model metadata on demand if task starts before cache warm
 4. Variant models with `capabilities.family` base preserved in process metadata but sent to SDK as base model + reasoning effort
-5. `defaultProvider` is resolved at startup and wired into queue infrastructure; chat payloads with `payload.provider` override it, while follow-ups use the provider recorded on the original process
+5. `defaultProvider` is the concrete fallback provider when Auto routing is disabled; when `features.autoAgentProviderRouting` is true, omitted-provider default paths use `agentProviderRouting.auto`, chat payloads with `payload.provider` override it, explicit Auto requests carry `context.autoProviderRouting.requested` and are resolved to a concrete provider before effort-tier expansion, while follow-ups use the provider recorded on the original process
 
 ## Storage Layout
 
@@ -199,6 +231,7 @@ Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT.
 - `memory/MEMORY.md` — per-repo bounded memory
 - `ralph-sessions/<sessionId>/` — Ralph `session.json` metadata and `progress.md` journal
 - `for-each-runs/<runId>/` — For Each `run.json` metadata and `items.json` reviewed item plan/state
+- `map-reduce-runs/<runId>/` — Map Reduce `run.json` metadata, `items.json` reviewed map item plan/state, and `reduce-step.json` tracked reduce-step state
 - `paste-context/` — temp files for large pasted content
 
 Use `getRepoDataPath(dataDir, workspaceId, filename)` for all per-repo path construction.

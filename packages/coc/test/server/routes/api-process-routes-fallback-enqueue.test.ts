@@ -47,6 +47,8 @@ vi.mock('../../../src/server/core/image-utils', () => ({
 vi.mock('../../../src/server/streaming/sse-handler', () => ({
     handleProcessStream: vi.fn(),
     emitMessageQueued: vi.fn(),
+    emitPendingMessageAdded: vi.fn(),
+    emitMessageSteering: vi.fn(),
 }));
 
 // ============================================================================
@@ -96,16 +98,18 @@ describe('api-process-routes fallback enqueue — workspaceId propagation', () =
     let baseUrl: string;
     let store: MockProcessStore;
     let enqueueMock: ReturnType<typeof vi.fn>;
+    let findTaskByProcessIdMock: ReturnType<typeof vi.fn>;
 
     beforeAll(async () => {
         store = createMockProcessStore();
         enqueueMock = vi.fn().mockResolvedValue('new-task-id');
+        findTaskByProcessIdMock = vi.fn();
 
         const bridge: QueueExecutorBridge = {
             executeFollowUp: vi.fn().mockResolvedValue(undefined),
             isSessionAlive: vi.fn().mockResolvedValue(true),
             enqueue: enqueueMock,
-            // No findTaskByProcessId — forces fallback path
+            findTaskByProcessId: findTaskByProcessIdMock,
         };
 
         const routes: Route[] = [];
@@ -135,6 +139,7 @@ describe('api-process-routes fallback enqueue — workspaceId propagation', () =
     beforeEach(() => {
         store.processes.clear();
         enqueueMock.mockClear();
+        findTaskByProcessIdMock.mockReset().mockReturnValue(undefined);
     });
 
     it('propagates workspaceId from process metadata in fallback enqueue payload', async () => {
@@ -186,5 +191,61 @@ describe('api-process-routes fallback enqueue — workspaceId propagation', () =
         expect(enqueueMock).toHaveBeenCalledTimes(1);
         const input: CreateTaskInput = enqueueMock.mock.calls[0][0];
         expect(input.payload.workspaceId).toBeUndefined();
+    });
+
+    it('drops invalid model overrides but preserves valid reasoning effort in fallback enqueue payloads', async () => {
+        await store.addProcess({
+            id: 'proc-claude-invalid-model',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'initial',
+            metadata: { type: 'chat', provider: 'claude', model: 'haiku' },
+            conversationTurns: [
+                { role: 'user', content: 'Hello', timestamp: new Date(), turnIndex: 0, timeline: [] },
+            ],
+        });
+
+        const res = await request(baseUrl, '/api/processes/proc-claude-invalid-model/message', {
+            method: 'POST',
+            body: JSON.stringify({ content: 'continue', model: 'gpt-5.5', reasoningEffort: 'high' }),
+        });
+
+        expect(res.status).toBe(202);
+        expect(enqueueMock).toHaveBeenCalledTimes(1);
+        const input: CreateTaskInput = enqueueMock.mock.calls[0][0];
+        expect(input.payload.model).toBeUndefined();
+        expect(input.payload.reasoningEffort).toBe('high');
+        expect(input.config).toEqual({ reasoningEffort: 'high' });
+    });
+
+    it('buffers pending messages with dropped invalid model overrides and preserved effort', async () => {
+        findTaskByProcessIdMock.mockReturnValue({ status: 'running' });
+        await store.addProcess({
+            id: 'proc-claude-running',
+            type: 'chat',
+            status: 'running',
+            startTime: new Date(),
+            promptPreview: 'initial',
+            metadata: { type: 'chat', provider: 'claude', model: 'haiku' },
+            conversationTurns: [
+                { role: 'user', content: 'Hello', timestamp: new Date(), turnIndex: 0, timeline: [] },
+            ],
+        });
+
+        const res = await request(baseUrl, '/api/processes/proc-claude-running/message', {
+            method: 'POST',
+            body: JSON.stringify({ content: 'queued follow-up', model: 'gpt-5.5', reasoningEffort: 'high' }),
+        });
+
+        expect(res.status).toBe(202);
+        expect(enqueueMock).not.toHaveBeenCalled();
+        const pendingMessage = store.processes.get('proc-claude-running')?.pendingMessages?.[0] as any;
+        expect(pendingMessage).toEqual(expect.objectContaining({
+            content: 'queued follow-up',
+            displayContent: 'queued follow-up',
+            reasoningEffort: 'high',
+        }));
+        expect(pendingMessage.model).toBeUndefined();
     });
 });

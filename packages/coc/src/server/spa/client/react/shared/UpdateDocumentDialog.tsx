@@ -11,6 +11,7 @@ import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import type { EnqueueTaskRequest } from '@plusplusoneplusplus/coc-client';
 import { ModalJobAiControls, useModalJobAiSelection } from './ModalJobAiControls';
+import { mergeAutoProviderRoutingContext } from '../utils/providerSelection';
 
 export interface UpdateDocumentDialogProps {
     wsId: string;
@@ -89,6 +90,7 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
             const config: EnqueueTaskRequest['config'] = {
                 ...(resolvedAi.model ? { model: resolvedAi.model } : {}),
                 ...(resolvedAi.reasoningEffort ? { reasoningEffort: resolvedAi.reasoningEffort } : {}),
+                ...(resolvedAi.effortTier ? { effortTier: resolvedAi.effortTier } : {}),
             };
             const body: EnqueueTaskRequest = {
                 type: 'custom',
@@ -96,7 +98,8 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
                 displayName: `Update: ${taskName}`,
                 payload: {
                     workingDirectory,
-                    provider: resolvedAi.provider,
+                    ...(resolvedAi.provider ? { provider: resolvedAi.provider } : {}),
+                    ...(resolvedAi.autoProviderRouting ? { context: mergeAutoProviderRoutingContext(resolvedAi) } : {}),
                     data: {
                         prompt,
                         workingDirectory,

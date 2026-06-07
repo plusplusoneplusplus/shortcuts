@@ -150,6 +150,7 @@ export class FileForEachRunStore {
             };
             if (input.sharedInstructions) metadata.sharedInstructions = input.sharedInstructions;
             if (input.provider) metadata.provider = input.provider;
+            if (input.autoProviderRouting?.requested) metadata.autoProviderRouting = { requested: true };
             if (input.model) metadata.model = input.model;
             if (input.reasoningEffort) metadata.reasoningEffort = input.reasoningEffort;
             if (input.generationProcessId) metadata.generationProcessId = input.generationProcessId;

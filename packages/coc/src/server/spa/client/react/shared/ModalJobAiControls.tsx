@@ -8,7 +8,6 @@
  * state into each dialog.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { AgentProviderStatus } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient } from '../api/cocClient';
 import { useAgentProviders } from '../hooks/useAgentProviders';
 import { useDefaultModelForMode } from '../hooks/useDefaultModelForMode';
@@ -17,32 +16,40 @@ import { useModels } from '../hooks/useModels';
 import { useProviderEffortTiers } from '../hooks/useProviderEffortTiers';
 import type { EffortTierKey } from '../hooks/useProviderEffortTiers';
 import { useProviderReasoningEfforts } from '../hooks/useProviderReasoningEfforts';
-import { getDefaultProvider, isEffortLevelsEnabled } from '../utils/config';
+import { isEffortLevelsEnabled } from '../utils/config';
 import { deriveEffort } from '../utils/effortUtils';
 import { resolveEffectiveTier, resolveEffortTier } from '../utils/resolveEffortTier';
 import { AgentSelectorChip } from '../features/chat/AgentSelectorChip';
 import type { ChatProvider } from '../features/chat/AgentSelectorChip';
+import {
+    AUTO_EFFORT_TIER_MAP,
+    getAgentSelectorProviders,
+    getConcreteProviderForClientHooks,
+    getSelectableComposerDefaultProvider,
+    isChatProvider,
+    isSelectableProvider,
+    shouldSendProviderOverride,
+    type AgentSelectorProvider,
+    type ResolvedComposerAiSelection,
+} from '../utils/providerSelection';
 import { EffortPillSelector, buildEffortOptionsForModel } from '../features/chat/EffortPillSelector';
 import type { EffortLevel } from '../features/chat/EffortPillSelector';
 import { EffortTierSelector } from '../features/chat/EffortTierSelector';
 import { ModelCommandMenu } from '../features/chat/ModelCommandMenu';
 import { selectPickableModels, useModelCommand } from '../features/chat/hooks/useModelCommand';
 
-export interface ResolvedModalJobAiSelection {
-    provider: ChatProvider;
-    model?: string;
-    reasoningEffort?: string;
-}
+export type ResolvedModalJobAiSelection = ResolvedComposerAiSelection;
 
 export interface UseModalJobAiSelectionOptions {
     workspaceId?: string;
     mode?: ChatModeForModel;
+    initialSelection?: ResolvedModalJobAiSelection;
 }
 
 export interface UseModalJobAiSelectionResult {
     provider: ChatProvider;
     setProvider: (provider: ChatProvider) => void;
-    agentProviders: AgentProviderStatus[];
+    agentProviders: AgentSelectorProvider[];
     providersLoading: boolean;
     useEffortTierMode: boolean;
     effortTierMap: ReturnType<typeof useProviderEffortTiers>['tiers'];
@@ -56,52 +63,90 @@ export interface UseModalJobAiSelectionResult {
     setEffortOverride: (effort: EffortLevel | null) => void;
     effortOptions: ReturnType<typeof buildEffortOptionsForModel>;
     effortPickerDisabled: boolean;
+    dirty: boolean;
     resolved: ResolvedModalJobAiSelection;
 }
 
-export function isChatProvider(value: unknown): value is ChatProvider {
-    return value === 'copilot' || value === 'codex' || value === 'claude';
-}
-
-export function isSelectableProvider(
-    provider: ChatProvider,
-    providers: Array<{ id: string; enabled: boolean; available: boolean }>,
-): boolean {
-    if (provider === 'copilot') {
-        return true;
-    }
-    const status = providers.find(p => p.id === provider);
-    return status?.enabled === true && status?.available === true;
-}
-
-function getSelectableDefaultProvider(providers: AgentProviderStatus[]): ChatProvider {
-    const configuredDefault = getDefaultProvider();
-    return isSelectableProvider(configuredDefault, providers) ? configuredDefault : 'copilot';
-}
+export { isChatProvider, isSelectableProvider };
 
 function getTierStorageKey(workspaceId: string | undefined): string {
     return `coc:effort-tier:${workspaceId ?? 'default'}`;
 }
 
+function isEffortLevel(value: unknown): value is EffortLevel {
+    return value === 'low' || value === 'medium' || value === 'high' || value === 'xhigh';
+}
+
+function isEffortTierKey(value: unknown): value is EffortTierKey {
+    return value === 'very-low' || value === 'low' || value === 'medium' || value === 'high';
+}
+
+function getInitialProvider(selection: ResolvedModalJobAiSelection | undefined): ChatProvider | undefined {
+    if (!selection) {
+        return undefined;
+    }
+    return selection.autoProviderRouting ? 'auto' : selection.provider;
+}
+
+function getInitialSelectionKey(selection: ResolvedModalJobAiSelection | undefined): string {
+    if (!selection) {
+        return '';
+    }
+    return JSON.stringify({
+        provider: selection.provider,
+        model: selection.model,
+        reasoningEffort: selection.reasoningEffort,
+        effortTier: selection.effortTier,
+        autoProviderRouting: selection.autoProviderRouting === true,
+    });
+}
+
+function findMatchingEffortTier(
+    selection: ResolvedModalJobAiSelection,
+    tiers: ReturnType<typeof useProviderEffortTiers>['tiers'],
+): EffortTierKey | undefined {
+    if (!selection.model) {
+        return undefined;
+    }
+    const expectedReasoningEffort = selection.reasoningEffort ?? '';
+    for (const tier of ['very-low', 'low', 'medium', 'high'] as const) {
+        const entry = tiers[tier];
+        if (entry?.model === selection.model
+            && (entry.reasoningEffort ?? '') === expectedReasoningEffort) {
+            return tier;
+        }
+    }
+    return undefined;
+}
+
 export function useModalJobAiSelection({
     workspaceId,
     mode = 'ask',
+    initialSelection,
 }: UseModalJobAiSelectionOptions): UseModalJobAiSelectionResult {
-    const [provider, setProviderState] = useState<ChatProvider>(() => getDefaultProvider());
+    const [provider, setProviderState] = useState<ChatProvider>(() => getSelectableComposerDefaultProvider([]));
     const [effortOverride, setEffortOverrideState] = useState<EffortLevel | null>(null);
     const [selectedEffortTier, setSelectedEffortTier] = useState<EffortTierKey>('medium');
+    const [dirty, setDirty] = useState(false);
     const userPickedForModelRef = useRef<{ provider: ChatProvider; modelId: string } | null>(null);
+    const appliedInitialSelectionKeyRef = useRef<string | null>(null);
+    const initialProvider = getInitialProvider(initialSelection);
+    const initialSelectionKey = getInitialSelectionKey(initialSelection);
 
-    const { providers: agentProviders, loading: providersLoading } = useAgentProviders();
-    const { models: availableModels, loading: modelsLoading } = useModels(provider);
+    const { providers: rawAgentProviders, loading: providersLoading } = useAgentProviders();
+    const agentProviders = useMemo(() => getAgentSelectorProviders(rawAgentProviders), [rawAgentProviders]);
+    const providerForClientHooks = getConcreteProviderForClientHooks(provider);
+    const autoProviderSelected = provider === 'auto';
+    const { models: availableModels, loading: modelsLoading } = useModels(providerForClientHooks);
     const pickableModels = selectPickableModels(availableModels);
     const modelCommand = useModelCommand(pickableModels);
     const { effectiveModel: defaultModelId, effectiveModelName: defaultModelLabel } =
-        useDefaultModelForMode(workspaceId, mode, availableModels, provider);
-    const reasoningEfforts = useProviderReasoningEfforts(provider);
-    const { tiers: effortTierMap, loading: effortTiersLoading } = useProviderEffortTiers(provider);
-    const hasTiers = !effortTiersLoading && (['low', 'medium', 'high'] as EffortTierKey[]).some(k => !!effortTierMap[k]?.model);
-    const useEffortTierMode = isEffortLevelsEnabled() && hasTiers;
+        useDefaultModelForMode(workspaceId, mode, availableModels, providerForClientHooks);
+    const reasoningEfforts = useProviderReasoningEfforts(providerForClientHooks);
+    const { tiers: providerEffortTierMap, loading: effortTiersLoading } = useProviderEffortTiers(providerForClientHooks);
+    const hasTiers = !effortTiersLoading && (['low', 'medium', 'high'] as EffortTierKey[]).some(k => !!providerEffortTierMap[k]?.model);
+    const useEffortTierMode = autoProviderSelected || (isEffortLevelsEnabled() && hasTiers);
+    const effortTierMap = autoProviderSelected ? AUTO_EFFORT_TIER_MAP : providerEffortTierMap;
 
     const validModelOverride = useMemo(() => {
         const override = modelCommand.modelOverride;
@@ -117,6 +162,32 @@ export function useModalJobAiSelection({
     }, [workspaceId]);
 
     useEffect(() => {
+        if (!initialSelection) {
+            appliedInitialSelectionKeyRef.current = null;
+            return;
+        }
+        if (appliedInitialSelectionKeyRef.current === initialSelectionKey) {
+            return;
+        }
+        appliedInitialSelectionKeyRef.current = initialSelectionKey;
+        setDirty(false);
+        if (initialProvider) {
+            setProviderState(initialProvider);
+        }
+        if (isEffortTierKey(initialSelection.effortTier)) {
+            setSelectedEffortTier(initialSelection.effortTier);
+        }
+        modelCommand.setModelOverride(initialSelection.model ?? null);
+        const initialEffort = isEffortLevel(initialSelection.reasoningEffort)
+            ? initialSelection.reasoningEffort
+            : null;
+        setEffortOverrideState(initialEffort);
+        userPickedForModelRef.current = initialSelection.model
+            ? { provider: initialProvider ?? provider, modelId: initialSelection.model }
+            : null;
+    }, [initialProvider, initialSelection, initialSelectionKey, modelCommand.setModelOverride, provider]);
+
+    useEffect(() => {
         if (!useEffortTierMode) {
             return;
         }
@@ -127,8 +198,21 @@ export function useModalJobAiSelection({
     }, [useEffortTierMode, effortTierMap, selectedEffortTier]);
 
     useEffect(() => {
-        const fallbackProvider = getSelectableDefaultProvider(agentProviders);
+        if (!initialSelection || initialSelection.effortTier || !useEffortTierMode || dirty) {
+            return;
+        }
+        const matchingTier = findMatchingEffortTier(initialSelection, effortTierMap);
+        if (matchingTier && matchingTier !== selectedEffortTier) {
+            setSelectedEffortTier(matchingTier);
+        }
+    }, [dirty, effortTierMap, initialSelection, selectedEffortTier, useEffortTierMode]);
+
+    useEffect(() => {
+        const fallbackProvider = getSelectableComposerDefaultProvider(agentProviders);
         let cancelled = false;
+        if (initialProvider) {
+            return;
+        }
         if (!workspaceId) {
             setProviderState(fallbackProvider);
             return;
@@ -149,25 +233,31 @@ export function useModalJobAiSelection({
                 }
             });
         return () => { cancelled = true; };
-    }, [workspaceId, agentProviders]);
+    }, [workspaceId, agentProviders, initialProvider]);
 
     useEffect(() => {
-        if (provider === 'copilot') {
+        if (!isSelectableProvider(provider, agentProviders)) {
+            if (initialProvider === provider) {
+                return;
+            }
+            setProviderState(getSelectableComposerDefaultProvider(agentProviders));
+        }
+    }, [agentProviders, provider, initialProvider]);
+
+    useEffect(() => {
+        if (autoProviderSelected) {
+            if (modelCommand.modelOverride) {
+                modelCommand.setModelOverride(null);
+            }
             return;
         }
-        if (!isSelectableProvider(provider, agentProviders)) {
-            setProviderState(getSelectableDefaultProvider(agentProviders));
-        }
-    }, [agentProviders, provider]);
-
-    useEffect(() => {
         if (modelsLoading || !modelCommand.modelOverride) {
             return;
         }
         if (!validModelOverride) {
             modelCommand.setModelOverride(null);
         }
-    }, [modelsLoading, modelCommand.modelOverride, modelCommand.setModelOverride, validModelOverride]);
+    }, [autoProviderSelected, modelsLoading, modelCommand.modelOverride, modelCommand.setModelOverride, validModelOverride]);
 
     const effectiveModelId = validModelOverride ?? defaultModelId;
     const effectiveModelInfo = availableModels.find(m => m.id === effectiveModelId);
@@ -177,6 +267,11 @@ export function useModalJobAiSelection({
     const capabilitySupportsReasoning = !effectiveModelInfo || effectiveModelInfo.capabilities?.supports.reasoningEffort !== false;
 
     useEffect(() => {
+        if (autoProviderSelected) {
+            setEffortOverrideState(null);
+            userPickedForModelRef.current = null;
+            return;
+        }
         const currentModelId = effectiveModelId ?? '';
         const pick = userPickedForModelRef.current;
         if (pick && pick.provider === provider && pick.modelId === currentModelId) {
@@ -189,9 +284,10 @@ export function useModalJobAiSelection({
             capabilitySupportsReasoning,
         ));
         userPickedForModelRef.current = null;
-    }, [provider, effectiveModelId, reasoningEfforts, supportedEffortsKey, capabilitySupportsReasoning, effectiveModelInfo]);
+    }, [autoProviderSelected, provider, effectiveModelId, reasoningEfforts, supportedEffortsKey, capabilitySupportsReasoning, effectiveModelInfo]);
 
     const setProvider = (nextProvider: ChatProvider) => {
+        setDirty(true);
         setProviderState(nextProvider);
         if (workspaceId) {
             getSpaCocClient().preferences.patchRepo(workspaceId, { lastChatProvider: nextProvider })
@@ -200,25 +296,42 @@ export function useModalJobAiSelection({
     };
 
     const setEffortTier = (tier: EffortTierKey) => {
+        setDirty(true);
         setSelectedEffortTier(tier);
         localStorage.setItem(getTierStorageKey(workspaceId), tier);
     };
 
     const setEffortOverride = (effort: EffortLevel | null) => {
+        setDirty(true);
         setEffortOverrideState(effort);
         userPickedForModelRef.current = { provider, modelId: effectiveModelId ?? '' };
     };
 
+    const modalModelCommand = useMemo<ReturnType<typeof useModelCommand>>(() => ({
+        ...modelCommand,
+        setModelOverride: (model: string | null) => {
+            setDirty(true);
+            modelCommand.setModelOverride(model);
+        },
+        handleModelSelect: (modelId: string) => {
+            setDirty(true);
+            modelCommand.handleModelSelect(modelId);
+        },
+    }), [modelCommand]);
+
     const tierPayload = useEffortTierMode ? resolveEffortTier(selectedEffortTier, effortTierMap) : null;
     const resolved = useMemo<ResolvedModalJobAiSelection>(() => {
+        if (autoProviderSelected) {
+            return { effortTier: selectedEffortTier, autoProviderRouting: true };
+        }
         const model = tierPayload?.model ?? validModelOverride ?? undefined;
         const reasoningEffort = tierPayload !== null ? (tierPayload.reasoningEffort ?? undefined) : (effortOverride ?? undefined);
         return {
-            provider,
+            ...(shouldSendProviderOverride(provider) ? { provider } : {}),
             ...(model ? { model } : {}),
             ...(reasoningEffort ? { reasoningEffort } : {}),
         };
-    }, [effortOverride, provider, tierPayload, validModelOverride]);
+    }, [autoProviderSelected, effortOverride, provider, selectedEffortTier, tierPayload, validModelOverride]);
 
     return {
         provider,
@@ -229,7 +342,7 @@ export function useModalJobAiSelection({
         effortTierMap,
         selectedEffortTier,
         setEffortTier,
-        modelCommand,
+        modelCommand: modalModelCommand,
         defaultModelId,
         defaultModelLabel,
         validModelOverride,
@@ -237,6 +350,7 @@ export function useModalJobAiSelection({
         setEffortOverride,
         effortOptions,
         effortPickerDisabled,
+        dirty,
         resolved,
     };
 }
@@ -295,6 +409,7 @@ export function ModalJobAiControls({
                     disabled={disabled}
                     data-testid={`${testIdPrefix}-effort-tier-selector`}
                     className="ml-0.5"
+                    autoProviderMode={provider === 'auto'}
                 />
             ) : (
                 <>

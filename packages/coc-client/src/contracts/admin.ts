@@ -1,6 +1,23 @@
 export type AdminOutputFormat = 'table' | 'json' | 'csv' | 'markdown';
 export type AdminImportMode = 'replace' | 'merge';
 export type AdminStorageBackend = 'file' | 'sqlite';
+export type AdminConcreteAgentProvider = 'copilot' | 'codex' | 'claude';
+export type AdminDefaultProvider = AdminConcreteAgentProvider;
+
+export interface AdminAutoProviderRoutingRule {
+  provider: AdminConcreteAgentProvider;
+  enabled?: boolean;
+  minimumRemainingPercent?: number;
+  weeklyGuard?: {
+    enabled?: boolean;
+    minimumRemainingPercent?: number;
+  };
+}
+
+export interface AdminAutoProviderRoutingConfig {
+  rules?: AdminAutoProviderRoutingRule[];
+  fallbackProvider?: AdminConcreteAgentProvider;
+}
 
 export interface AdminTokenResponse {
   token: string;
@@ -66,10 +83,14 @@ export interface AdminResolvedConfig {
   pullRequests?: { enabled?: boolean; suggestions?: boolean };
   servers?: { enabled?: boolean };
   forEach?: { enabled?: boolean };
+  mapReduce?: { enabled?: boolean };
   excalidraw?: { enabled?: boolean };
   codex?: { enabled?: boolean };
   claude?: { enabled?: boolean };
-  defaultProvider?: 'copilot' | 'codex' | 'claude';
+  defaultProvider?: AdminDefaultProvider;
+  agentProviderRouting?: {
+    auto?: AdminAutoProviderRoutingConfig;
+  };
   mcpOauth?: {
     enabled?: boolean;
     autoRefresh?: {
@@ -82,6 +103,8 @@ export interface AdminResolvedConfig {
     gitCommitLookup?: boolean;
     gitCrossCloneCherryPick?: boolean;
     sessionContextAttachments?: boolean;
+    commitChatLens?: boolean;
+    autoAgentProviderRouting?: boolean;
   };
   workItems?: { hierarchy?: { enabled?: boolean }; sync?: { enabled?: boolean }; aiAuthoring?: { enabled?: boolean } };
   effortLevels?: { enabled?: boolean };
@@ -135,17 +158,21 @@ export interface AdminConfigUpdate {
   'pullRequests.suggestions'?: boolean;
   'servers.enabled'?: boolean;
   'forEach.enabled'?: boolean;
+  'mapReduce.enabled'?: boolean;
   'excalidraw.enabled'?: boolean;
   'mcpOauth.enabled'?: boolean;
   'mcpOauth.autoRefresh.enabled'?: boolean;
   'codex.enabled'?: boolean;
   'claude.enabled'?: boolean;
-  defaultProvider?: 'copilot' | 'codex' | 'claude';
+  defaultProvider?: AdminDefaultProvider;
+  'agentProviderRouting.auto'?: AdminAutoProviderRoutingConfig;
   'workItems.hierarchy.enabled'?: boolean;
   'workItems.sync.enabled'?: boolean;
   'workItems.aiAuthoring.enabled'?: boolean;
   'features.gitCrossCloneCherryPick'?: boolean;
   'features.sessionContextAttachments'?: boolean;
+  'features.commitChatLens'?: boolean;
+  'features.autoAgentProviderRouting'?: boolean;
   'effortLevels.enabled'?: boolean;
   [key: string]: unknown;
 }
@@ -170,6 +197,7 @@ export interface RuntimeDashboardConfig {
     serversEnabled: boolean;
     ralphEnabled: boolean;
     forEachEnabled: boolean;
+    mapReduceEnabled: boolean;
     vimNavigationEnabled: boolean;
     loopsEnabled: boolean;
     excalidrawEnabled: boolean;
@@ -178,13 +206,15 @@ export interface RuntimeDashboardConfig {
     containerDefaultAgentEnabled: boolean;
     codexEnabled: boolean;
     claudeEnabled: boolean;
-    defaultProvider: 'copilot' | 'codex' | 'claude';
+    defaultProvider: AdminDefaultProvider;
+    autoAgentProviderRoutingEnabled: boolean;
     workItemsHierarchyEnabled: boolean;
     workItemsSyncEnabled: boolean;
     workItemsAiAuthoringEnabled: boolean;
     gitCommitLookupEnabled: boolean;
     gitCrossCloneCherryPickEnabled: boolean;
     sessionContextAttachmentsEnabled: boolean;
+    commitChatLensEnabled: boolean;
     effortLevelsEnabled: boolean;
   };
   hostname?: string;

@@ -9,10 +9,20 @@
  */
 
 import type { ConversationTurn, ISDKService, ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
-import { denyAllPermissions, getLogger, LogCategory, isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
+import { getLogger, LogCategory, isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 
 const SCRIPT_TITLE_MAX_LEN = 60;
 export const TITLE_GENERATION_TIMEOUT_MS = 30_000;
+
+/**
+ * Model used for AI title generation.
+ *
+ * This is an internal, non-user-selectable model (like the previous `gpt-4.1`),
+ * so it intentionally lives outside the user-facing model registry. Product
+ * policy (model choice) is owned here by the caller; the SDK transform boundary
+ * owns no model default.
+ */
+export const TITLE_GENERATION_MODEL = 'gpt-5.4-mini';
 
 export interface TitleGenerationServiceOptions {
     store: ProcessStore;
@@ -44,7 +54,6 @@ export function deriveScriptTitle(script: string): string {
 export class TitleGenerationService {
     private readonly logger = getLogger();
     private readonly timeoutMs: number;
-    private warmClientPromise: Promise<unknown> | null = null;
     private readonly inFlightByProcessId = new Map<string, Promise<void>>();
     private queueManager: TaskQueueManager | undefined;
 
@@ -57,38 +66,24 @@ export class TitleGenerationService {
         this.queueManager = queueManager;
     }
 
-    async getOrCreateWarmClient(): Promise<unknown | null> {
-        const createClient = (this.options.aiService as { createClient?: (cwd?: string) => Promise<unknown> }).createClient?.bind(this.options.aiService);
-        if (!createClient) return null;
-        if (!this.warmClientPromise) {
-            this.warmClientPromise = createClient(this.options.defaultWorkingDirectory).catch((err) => {
-                this.warmClientPromise = null;
-                throw err;
-            });
-        }
-        try {
-            return await this.warmClientPromise;
-        } catch {
-            return null;
-        }
-    }
-
+    /**
+     * Best-effort warm-up of the provider so the first real title generation is
+     * fast. Runs an isolated one-shot transform (no MCP/tools, denied
+     * permissions) through the SDK transform boundary, mirroring the real call.
+     */
     async prewarm(): Promise<void> {
-        const warmClient = await this.getOrCreateWarmClient();
-        if (!warmClient) return;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), Math.min(this.timeoutMs, 30_000));
         try {
-            await this.options.aiService.sendMessage({
-                prompt: 'Generate a title for: user asked a question and assistant answered.',
-                model: 'gpt-4.1',
-                timeoutMs: Math.min(this.timeoutMs, 30_000),
-                signal: controller.signal,
-                workingDirectory: this.options.defaultWorkingDirectory,
-                loadDefaultMcpConfig: false,
-                onPermissionRequest: denyAllPermissions,
-                client: warmClient as never,
-            });
+            await this.options.aiService.transform(
+                'Generate a title for: user asked a question and assistant answered.',
+                {
+                    model: TITLE_GENERATION_MODEL,
+                    timeoutMs: Math.min(this.timeoutMs, 30_000),
+                    cwd: this.options.defaultWorkingDirectory,
+                    signal: controller.signal,
+                },
+            );
         } catch {
             // Pre-warm is best-effort; normal title generation can retry lazily.
         } finally {
@@ -143,21 +138,26 @@ export class TitleGenerationService {
     }
 
     private async generateTitle(prompt: string): Promise<string> {
-        const warmClient = await this.getOrCreateWarmClient();
-        const result = await this.options.aiService.sendMessage({
-            prompt,
-            model: 'gpt-4.1',
+        // Route through the provider-agnostic SDK transform boundary. The
+        // transform primitive owns safe isolation defaults (no MCP/tools, denied
+        // permissions, fresh non-resumable request); this caller owns product
+        // policy (model + prompt) and never reuses a session/client.
+        const result = await this.options.aiService.transform(prompt, {
+            model: TITLE_GENERATION_MODEL,
             timeoutMs: this.timeoutMs,
-            workingDirectory: this.options.defaultWorkingDirectory,
-            loadDefaultMcpConfig: false,
-            onPermissionRequest: denyAllPermissions,
-            ...(warmClient ? { client: warmClient as never } : {}),
+            cwd: this.options.defaultWorkingDirectory,
         });
         if (!result.success) {
-            if (warmClient) this.warmClientPromise = null;
             throw new Error(result.error || 'AI title generation failed');
         }
-        return (result.response ?? '').trim().replace(/[".]/g, '');
+        // Defend against silent provider fallback: a title produced by a
+        // different model is not what product policy requested.
+        if (result.effectiveModel && result.effectiveModel !== TITLE_GENERATION_MODEL) {
+            throw new Error(
+                `AI title generation used unexpected model '${result.effectiveModel}' (expected '${TITLE_GENERATION_MODEL}')`,
+            );
+        }
+        return (result.text ?? '').trim().replace(/[".]/g, '');
     }
 
     private syncQueueDisplayName(processId: string, title: string): void {

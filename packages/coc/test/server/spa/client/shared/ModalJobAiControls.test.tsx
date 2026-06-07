@@ -10,6 +10,8 @@ import type { AgentProviderStatus } from '@plusplusoneplusplus/coc-client';
 const mocks = vi.hoisted(() => ({
     effortLevelsEnabled: true,
     defaultProvider: 'codex' as 'copilot' | 'codex' | 'claude',
+    configuredDefaultProvider: 'codex' as 'copilot' | 'codex' | 'claude' | 'auto',
+    autoProviderRoutingEnabled: false,
     listProviders: vi.fn(),
     listModels: vi.fn(),
     getReasoningEfforts: vi.fn(),
@@ -20,7 +22,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getDefaultProvider: () => mocks.defaultProvider,
+    getConfiguredDefaultProvider: () => mocks.configuredDefaultProvider,
     getActiveProvider: () => mocks.defaultProvider,
+    isAutoAgentProviderRoutingEnabled: () => mocks.autoProviderRoutingEnabled,
     isEffortLevelsEnabled: () => mocks.effortLevelsEnabled,
 }));
 
@@ -96,6 +100,8 @@ describe('ModalJobAiControls', () => {
         localStorage.clear();
         mocks.effortLevelsEnabled = true;
         mocks.defaultProvider = 'codex';
+        mocks.configuredDefaultProvider = 'codex';
+        mocks.autoProviderRoutingEnabled = false;
         mocks.listProviders.mockResolvedValue({ providers: PROVIDERS });
         mocks.listModels.mockResolvedValue({ models: MODELS });
         mocks.getReasoningEfforts.mockResolvedValue({ reasoningEfforts: { 'codex-default': 'high' } });
@@ -158,6 +164,33 @@ describe('ModalJobAiControls', () => {
 
         expect(mocks.patchRepo).toHaveBeenCalledWith('ws-1', { lastChatProvider: 'copilot' });
         await waitFor(() => expect(readResolved().provider).toBe('copilot'));
+    });
+
+    it('restores Auto and resolves to an effort tier without provider or model overrides', async () => {
+        mocks.autoProviderRoutingEnabled = true;
+        mocks.configuredDefaultProvider = 'auto';
+        mocks.defaultProvider = 'copilot';
+        mocks.getRepo.mockResolvedValue({ lastChatProvider: 'auto' });
+
+        render(<Harness />);
+
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Auto'));
+        expect(screen.getByTestId('job-effort-tier-selector')).toBeTruthy();
+        expect(screen.queryByTestId('job-model-picker-chip')).toBeNull();
+        expect(readResolved()).toEqual({ effortTier: 'medium', autoProviderRouting: true });
+    });
+
+    it('persists Auto provider changes through repo preferences', async () => {
+        mocks.autoProviderRoutingEnabled = true;
+
+        render(<Harness />);
+
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Codex'));
+        fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+        fireEvent.click(screen.getByTestId('agent-option-auto'));
+
+        expect(mocks.patchRepo).toHaveBeenCalledWith('ws-1', { lastChatProvider: 'auto' });
+        await waitFor(() => expect(readResolved()).toEqual({ effortTier: 'medium', autoProviderRouting: true }));
     });
 
     it('omits model and reasoning-effort overrides when legacy controls resolve to defaults only', async () => {

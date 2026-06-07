@@ -11,6 +11,7 @@ import { ForEachRunExecutor } from '../../src/server/for-each/for-each-run-execu
 import type { ForEachItem } from '../../src/server/for-each/types';
 import type { GenerateForEachItemPlanFn } from '../../src/server/for-each/for-each-plan-generator';
 import type { CreateTaskInput, QueuedTask } from '@plusplusoneplusplus/forge';
+import type { AutoProviderResolutionResult } from '../../src/server/agent-providers/auto-provider-router';
 
 const WORKSPACE_ID = 'ws-routes-test';
 const GENERATED_ITEMS: ForEachItem[] = [
@@ -31,6 +32,7 @@ let generateItemPlan: ReturnType<typeof vi.fn<GenerateForEachItemPlanFn>>;
 let executor: ForEachRunExecutor;
 let enqueuedTasks: CreateTaskInput[];
 let cancelledTaskIds: string[];
+let resolveDefaultProvider: ReturnType<typeof vi.fn<() => Promise<AutoProviderResolutionResult>>> | undefined;
 
 function makeServer(): http.Server {
     const routes: Route[] = [];
@@ -40,6 +42,7 @@ function makeServer(): http.Server {
         getForEachEnabled: () => forEachEnabled,
         generateItemPlan,
         executor,
+        ...(resolveDefaultProvider ? { resolveDefaultProvider } : {}),
     });
     return http.createServer(createRouter({ routes, spaHtml: '' }));
 }
@@ -90,6 +93,7 @@ describe('For Each routes', () => {
         tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-for-each-routes-'));
         store = new FileForEachRunStore({ dataDir: tmpDir });
         generateItemPlan = vi.fn(async () => GENERATED_ITEMS);
+        resolveDefaultProvider = undefined;
         enqueuedTasks = [];
         cancelledTaskIds = [];
         executor = new ForEachRunExecutor({
@@ -390,6 +394,40 @@ describe('For Each routes', () => {
         });
         expect((enqueuedTasks[0].payload.prompt as string)).toContain('Item task prompt:');
         expect((enqueuedTasks[0].payload.prompt as string)).toContain('Use shared guardrails.');
+    });
+
+    it('uses Auto only for plan generation and marks generated For Each children for execution-time routing', async () => {
+        forEachEnabled = true;
+        await stopServer();
+        resolveDefaultProvider = vi.fn(async () => ({
+            provider: 'claude',
+            selectedByAuto: true,
+            fallbackUsed: false,
+            warnings: [],
+            decisions: [],
+        }));
+        server = makeServer();
+        await startServer();
+
+        const created = await request('POST', `/api/workspaces/${WORKSPACE_ID}/for-each-runs/generate`, {
+            prompt: 'Split this request',
+            childMode: 'ask',
+        });
+
+        expect(created.status).toBe(201);
+        expect(created.body.run.provider).toBeUndefined();
+        expect(created.body.run.autoProviderRouting).toEqual({ requested: true });
+        expect(resolveDefaultProvider).toHaveBeenCalledOnce();
+        expect(generateItemPlan).toHaveBeenCalledWith(expect.objectContaining({
+            provider: 'claude',
+        }));
+
+        await request('POST', `/api/workspaces/${WORKSPACE_ID}/for-each-runs/${created.body.run.runId}/approve`);
+        const started = await request('POST', `/api/workspaces/${WORKSPACE_ID}/for-each-runs/${created.body.run.runId}/start`);
+
+        expect(started.status).toBe(200);
+        expect(enqueuedTasks[0].payload.provider).toBeUndefined();
+        expect((enqueuedTasks[0].payload as any).context.autoProviderRouting).toEqual({ requested: true });
     });
 
     it('continues sequentially after completion and stops on child failure', async () => {

@@ -26,5 +26,6 @@ export { WorkspacesClient } from './workspaces';
 export { WorkflowClient } from './workflows';
 export { WikiClient } from './wiki';
 export { LoopsClient } from './loops';
+export { MapReduceClient } from './map-reduce';
 export { SyncClient } from './sync';
 export type { SyncStatus } from './sync';

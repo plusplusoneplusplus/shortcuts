@@ -38,7 +38,8 @@ import {
     resolveModelForProvider,
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
-import type { ChatPayload, PrClassificationPayload } from '../tasks/task-types';
+import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
+import type { ChatPayload, ChatProvider, PrClassificationPayload } from '../tasks/task-types';
 import {
     extractPrompt,
     applySkillContent,
@@ -56,11 +57,13 @@ import {
     isRalphMode,
     normalizeChatMode,
     serializeForEachMetadata,
+    serializeMapReduceMetadata,
     serializeRalphMetadata,
 } from '../tasks/task-types';
 import { deriveScriptTitle } from './title-generator';
 import { BaseExecutor } from './base-executor';
 import { updateForEachGenerationMetadataFromAssistantTurn } from '../for-each/for-each-generation-metadata';
+import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduce/map-reduce-generation-metadata';
 
 // ============================================================================
 // Constants
@@ -136,6 +139,8 @@ export interface LifecycleRunnerOptions {
     executeByTypeFn: (task: QueuedTask, prompt: string) => Promise<unknown>;
     /** Resolve the working directory for a given task. */
     getWorkingDirectoryFn: (task: QueuedTask) => string | undefined;
+    /** Resolve Auto default-provider routing when a queued task starts. */
+    resolveDefaultProvider?: (options?: { forceAuto?: boolean }) => Promise<AutoProviderResolutionResult>;
     /** Drain one pending message after task completes (server-side follow-up drain). */
     onDrainPendingMessages?: (processId: string, taskId: string) => Promise<void>;
     /**
@@ -177,6 +182,53 @@ async function notifyLoopTickComplete(
             `[QueueExecutor] onLoopTickComplete(${ctx.loopId}, success=${success}) failed: ${err instanceof Error ? err.message : String(err)}`,
         );
     }
+}
+
+type AutoProviderRoutingMetadata = NonNullable<ChatPayload['context']>['autoProviderRouting'];
+
+function isConcreteProvider(provider: unknown): provider is ChatProvider {
+    return provider === 'copilot' || provider === 'codex' || provider === 'claude';
+}
+
+function isAutoProviderRoutingRequested(payload: ChatPayload): boolean {
+    return payload.context?.autoProviderRouting?.requested === true;
+}
+
+async function resolveExecutionProvider(
+    task: QueuedTask,
+    opts: LifecycleRunnerOptions,
+    fallbackProvider: ChatProvider,
+): Promise<ChatProvider> {
+    if (!isChatPayload(task.payload)) return fallbackProvider;
+
+    const payload = task.payload as ChatPayload;
+    if (isConcreteProvider(payload.provider)) return payload.provider;
+    if (!isAutoProviderRoutingRequested(payload)) return fallbackProvider;
+    if (!opts.resolveDefaultProvider) {
+        throw new Error('Auto provider routing was requested, but no execution-time provider resolver is configured.');
+    }
+
+    const resolution = await opts.resolveDefaultProvider();
+    if (!isConcreteProvider(resolution.provider)) {
+        throw new Error(resolution.error ?? 'Execution-time Auto provider routing did not select a concrete provider.');
+    }
+
+    payload.provider = resolution.provider;
+    const autoProviderRouting: AutoProviderRoutingMetadata = {
+        requested: true,
+        selectedByAuto: resolution.selectedByAuto,
+        provider: resolution.provider,
+        fallbackUsed: resolution.fallbackUsed,
+        warnings: resolution.warnings,
+        decisions: resolution.decisions,
+        ...(resolution.fallback ? { fallback: resolution.fallback } : {}),
+    };
+    payload.context = {
+        ...(payload.context ?? {}),
+        autoProviderRouting,
+    };
+
+    return resolution.provider;
 }
 
 // ============================================================================
@@ -321,7 +373,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 : undefined;
         const displayPrompt = prependSelectedSkillsDirective(prompt, selectedSkills);
         const workingDirectory = opts.getWorkingDirectoryFn(task);
-        const taskProvider = (isChatPayload(task.payload) ? (task.payload as ChatPayload).provider : undefined) ?? this.provider;
+        const taskProvider = await resolveExecutionProvider(task, opts, this.provider);
         const providerModel = resolveModelForProvider(taskProvider, task.config.model);
         if (providerModel.coerced) {
             logger.warn(
@@ -367,7 +419,11 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     ? task.payload.context?.noteChat?.noteTitle
                     : undefined,
                 forEach: serializeForEachMetadata(task.payload),
+                mapReduce: serializeMapReduceMetadata(task.payload),
                 ralph: serializeRalphMetadata(task.payload),
+                autoProviderRouting: isChatPayload(task.payload)
+                    ? task.payload.context?.autoProviderRouting
+                    : undefined,
             },
         };
 
@@ -503,11 +559,16 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                     type: current.metadata?.type ?? task.type,
                                     model: effectiveModel,
                                 };
-                                const metadata = updateForEachGenerationMetadataFromAssistantTurn(
+                                const forEachMetadata = updateForEachGenerationMetadataFromAssistantTurn(
                                     baseMetadata,
                                     responseText,
                                     assistantTurnIndex,
                                 ) ?? baseMetadata;
+                                const metadata = updateMapReduceGenerationMetadataFromAssistantTurn(
+                                    forEachMetadata,
+                                    responseText,
+                                    assistantTurnIndex,
+                                ) ?? forEachMetadata;
                                 return {
                                     status: 'cancelled' as const,
                                     endTime: new Date(),
@@ -527,11 +588,16 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                 type: current.metadata?.type ?? task.type,
                                 model: effectiveModel,
                             };
-                            const metadata = updateForEachGenerationMetadataFromAssistantTurn(
+                            const forEachMetadata = updateForEachGenerationMetadataFromAssistantTurn(
                                 baseMetadata,
                                 responseText,
                                 assistantTurnIndex,
                             ) ?? baseMetadata;
+                            const metadata = updateMapReduceGenerationMetadataFromAssistantTurn(
+                                forEachMetadata,
+                                responseText,
+                                assistantTurnIndex,
+                            ) ?? forEachMetadata;
                             return {
                                 status: 'completed' as const,
                                 endTime: new Date(),

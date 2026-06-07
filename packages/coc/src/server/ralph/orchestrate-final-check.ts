@@ -209,6 +209,7 @@ async function startGapFixLoop(input: StartGapFixLoopInput): Promise<void> {
 
     const newLoopIndex = newLoopRecord.loops?.[newLoopRecord.loops.length - 1]?.loopIndex ?? (loopIndex + 1);
     const nextIteration = newLoopRecord.currentIteration + 1;
+    const autoProviderRouting = isAutoProviderRoutingRequested(deps.extraContext);
 
     const taskInput = buildRalphIterationTask({
         workspaceId,
@@ -219,7 +220,8 @@ async function startGapFixLoop(input: StartGapFixLoopInput): Promise<void> {
         iteration: nextIteration,
         maxIterations: newLoopRecord.maxIterations,
         dataDir: deps.dataDir,
-        provider: deps.provider,
+        provider: autoProviderRouting ? undefined : deps.provider,
+        autoProviderRouting,
         continuationOfSessionId: sessionId,
         extraContext: { ...(deps.extraContext ?? {}), ralph: { loopIndex: newLoopIndex } },
     });
@@ -261,4 +263,14 @@ async function safeUpsertRecord(
     } catch (err) {
         logger.warn(LogCategory.AI, `[Ralph/FinalCheck] Failed to persist metadata for ${sessionId} check ${checkIndex}: ${err instanceof Error ? err.message : String(err)}`);
     }
+}
+
+function isAutoProviderRoutingRequested(context: Record<string, unknown> | undefined): boolean {
+    const routing = context?.autoProviderRouting;
+    return Boolean(
+        routing
+        && typeof routing === 'object'
+        && !Array.isArray(routing)
+        && (routing as Record<string, unknown>).requested === true
+    );
 }

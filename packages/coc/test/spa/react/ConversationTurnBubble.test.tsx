@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { ConversationTurnBubble } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
-import { mergeConsecutiveContentChunks, inferParentToolCalls } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
+import { mergeConsecutiveContentChunks, inferParentToolCalls, splitLargePasteTurnContent } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
 import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
 import * as formatUtils from '../../../src/server/spa/client/react/utils/format';
 
@@ -246,6 +246,135 @@ describe('ConversationTurnBubble — whitespace-only content suppression', () =>
         const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'user', content: 'Hello' })} />);
         expect(container.querySelector('[data-testid="user-plain-text"]')).toBeTruthy();
         expect(container.querySelector('[data-testid="user-plain-text"]')?.textContent).toBe('Hello');
+    });
+});
+
+describe('ConversationTurnBubble — large pasted content card', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    function makeLargePaste(): string {
+        return [
+            'first preview line',
+            'second preview line',
+            'third preview line',
+            'fourth line stays hidden until expand',
+            'x'.repeat(17_000),
+        ].join('\n');
+    }
+
+    it('keeps typed prompt visible and replaces the pasted payload with a collapsed card', () => {
+        const pastedContent = makeLargePaste();
+        render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'user',
+                    content: `Please analyze this log\n\n${pastedContent}`,
+                    pasteExternalized: true,
+                })}
+            />,
+        );
+
+        expect(screen.getByTestId('user-plain-text').textContent).toBe('Please analyze this log');
+        expect(screen.getByTestId('large-paste-card')).toBeTruthy();
+        expect(screen.getByText(`Large pasted content (${pastedContent.length} chars)`, { exact: false })).toBeTruthy();
+        expect(screen.queryByTestId('paste-externalized-badge')).toBeNull();
+        expect(screen.queryByText('fourth line stays hidden until expand')).toBeNull();
+    });
+
+    it('shows the first three preview lines while collapsed', () => {
+        const pastedContent = makeLargePaste();
+        render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'user',
+                    content: `Summarize this\n\n${pastedContent}`,
+                    pasteExternalized: true,
+                })}
+            />,
+        );
+
+        const preview = screen.getByTestId('large-paste-card-preview');
+        expect(preview.textContent).toContain('first preview line');
+        expect(preview.textContent).toContain('second preview line');
+        expect(preview.textContent).toContain('third preview line');
+        expect(preview.textContent).not.toContain('fourth line stays hidden until expand');
+    });
+
+    it('expands to show the exact full pasted content and collapses again', () => {
+        const pastedContent = makeLargePaste();
+        render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'user',
+                    content: `Inspect this\n\n${pastedContent}`,
+                    pasteExternalized: true,
+                })}
+            />,
+        );
+
+        expect(screen.queryByTestId('large-paste-card-full-content')).toBeNull();
+        fireEvent.click(screen.getByTestId('large-paste-card-toggle'));
+
+        const fullContent = screen.getByTestId('large-paste-card-full-content');
+        expect(fullContent.textContent).toBe(pastedContent);
+        expect(fullContent.textContent).toContain('fourth line stays hidden until expand');
+
+        fireEvent.click(screen.getByTestId('large-paste-card-toggle'));
+        expect(screen.queryByTestId('large-paste-card-full-content')).toBeNull();
+        expect(screen.queryByText('fourth line stays hidden until expand')).toBeNull();
+    });
+
+    it('copies only the exact pasted payload from the card action', async () => {
+        const spy = vi.spyOn(formatUtils, 'copyToClipboard').mockResolvedValue(undefined);
+        const pastedContent = makeLargePaste();
+        render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'user',
+                    content: `Please inspect\n\n${pastedContent}`,
+                    pasteExternalized: true,
+                })}
+            />,
+        );
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('large-paste-card-copy'));
+        });
+
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(spy).toHaveBeenCalledWith(pastedContent);
+    });
+
+    it('collapses the full turn content when no short typed prompt prefix can be inferred', () => {
+        const pastedContent = makeLargePaste();
+        render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'user',
+                    content: pastedContent,
+                    pasteExternalized: true,
+                })}
+            />,
+        );
+
+        expect(screen.queryByTestId('user-plain-text')).toBeNull();
+        expect(screen.getByTestId('large-paste-card')).toBeTruthy();
+    });
+
+    it('uses the same short-prefix split rule as paste externalization', () => {
+        const pastedContent = makeLargePaste();
+        expect(splitLargePasteTurnContent(`Question?\n\n${pastedContent}`)).toEqual({
+            promptContent: 'Question?',
+            pasteContent: pastedContent,
+        });
+
+        const longQuestion = 'a'.repeat(501);
+        expect(splitLargePasteTurnContent(`${longQuestion}\n\n${pastedContent}`)).toEqual({
+            promptContent: '',
+            pasteContent: `${longQuestion}\n\n${pastedContent}`,
+        });
     });
 });
 
@@ -793,6 +922,47 @@ describe('ConversationTurnBubble — ask_user history', () => {
         expect(screen.getByText('Should this optional step be skipped?')).toBeTruthy();
         expect(answer.getAttribute('data-skipped')).toBe('true');
         expect(answer.textContent).toContain('Question skipped');
+    });
+
+    it('renders historical Codex ask_user MCP calls with nested arguments as history cards', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'assistant',
+                    content: '',
+                    toolCalls: [
+                        {
+                            id: 'ask-codex-nested',
+                            toolName: 'ask_user',
+                            args: {
+                                server: 'coc_llm_tools',
+                                arguments: {
+                                    questions: [
+                                        {
+                                            question: 'Which provider should handle this?',
+                                            type: 'select',
+                                            options: [
+                                                { value: 'auto', label: 'Auto' },
+                                            ],
+                                        },
+                                    ],
+                                },
+                            },
+                            status: 'completed',
+                            result: JSON.stringify([
+                                { questionId: 'generated-question-id', answer: 'auto', skipped: false },
+                            ]),
+                        },
+                    ],
+                    timeline: [],
+                })}
+            />
+        );
+
+        expect(screen.getByTestId('ask-user-history-card')).toBeTruthy();
+        expect(screen.getByText('Which provider should handle this?')).toBeTruthy();
+        expect(screen.getByTestId('ask-user-history-answer').textContent).toContain('Auto (auto)');
+        expect(container.querySelector('[data-tool-id="ask-codex-nested"]')).toBeNull();
     });
 });
 

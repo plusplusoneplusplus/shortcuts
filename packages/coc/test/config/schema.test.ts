@@ -370,6 +370,103 @@ describe('queue.restartPickupDelayMs schema validation', () => {
     });
 });
 
+describe('auto agent provider routing schema validation', () => {
+    it('accepts concrete default providers without the feature flag', () => {
+        for (const provider of ['copilot', 'codex', 'claude']) {
+            const result = CLIConfigSchema.parse({ defaultProvider: provider });
+            expect(result.defaultProvider).toBe(provider);
+        }
+    });
+
+    it('rejects defaultProvider auto even when the feature flag is enabled', () => {
+        expect(() => CLIConfigSchema.parse({ defaultProvider: 'auto' }))
+            .toThrow();
+        expect(() => CLIConfigSchema.parse({
+            defaultProvider: 'auto',
+            features: { autoAgentProviderRouting: false },
+        })).toThrow();
+        expect(() => CLIConfigSchema.parse({
+            defaultProvider: 'auto',
+            features: { autoAgentProviderRouting: true },
+        })).toThrow();
+    });
+
+    it('accepts the Auto routing feature flag without defaultProvider auto', () => {
+        const result = CLIConfigSchema.parse({
+            features: { autoAgentProviderRouting: true },
+        });
+        expect(result.defaultProvider).toBeUndefined();
+        expect(result.features?.autoAgentProviderRouting).toBe(true);
+    });
+
+    it('accepts auto routing rules and fallback provider', () => {
+        const result = CLIConfigSchema.parse({
+            agentProviderRouting: {
+                auto: {
+                    rules: [
+                        {
+                            provider: 'claude',
+                            enabled: true,
+                            minimumRemainingPercent: 33,
+                            weeklyGuard: {
+                                enabled: true,
+                                minimumRemainingPercent: 33,
+                            },
+                        },
+                        {
+                            provider: 'copilot',
+                            enabled: false,
+                            minimumRemainingPercent: 0,
+                            weeklyGuard: {
+                                enabled: false,
+                                minimumRemainingPercent: 100,
+                            },
+                        },
+                    ],
+                    fallbackProvider: 'copilot',
+                },
+            },
+        });
+        expect(result.agentProviderRouting?.auto?.rules?.[0].provider).toBe('claude');
+        expect(result.agentProviderRouting?.auto?.fallbackProvider).toBe('copilot');
+    });
+
+    it('rejects invalid auto routing provider values', () => {
+        expect(() => CLIConfigSchema.parse({
+            agentProviderRouting: {
+                auto: {
+                    rules: [{ provider: 'openai' }],
+                    fallbackProvider: 'copilot',
+                },
+            },
+        })).toThrow();
+        expect(() => CLIConfigSchema.parse({
+            agentProviderRouting: {
+                auto: {
+                    fallbackProvider: 'openai',
+                },
+            },
+        })).toThrow();
+    });
+
+    it('rejects auto routing percentages outside 0..100', () => {
+        expect(() => CLIConfigSchema.parse({
+            agentProviderRouting: {
+                auto: {
+                    rules: [{ provider: 'copilot', minimumRemainingPercent: -1 }],
+                },
+            },
+        })).toThrow();
+        expect(() => CLIConfigSchema.parse({
+            agentProviderRouting: {
+                auto: {
+                    rules: [{ provider: 'copilot', weeklyGuard: { minimumRemainingPercent: 101 } }],
+                },
+            },
+        })).toThrow();
+    });
+});
+
 describe('memoryPromotion schema validation', () => {
     it('accepts AI normalization config', () => {
         const result = CLIConfigSchema.parse({

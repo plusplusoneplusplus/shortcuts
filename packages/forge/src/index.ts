@@ -165,6 +165,8 @@ export {
     IModelInfo,
     IAvailabilityResult,
     IInvocationResult,
+    TransformOptions,
+    TransformResult,
     // SDK Service Registry
     SDKServiceRegistry,
     sdkServiceRegistry,

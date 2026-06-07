@@ -9,6 +9,7 @@ import type { Route } from '../../../src/server/types';
 import { createRouter } from '../../../src/server/shared/router';
 import { registerWorkItemSyncRoutes } from '../../../src/server/routes/work-item-sync-routes';
 import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
+import { clearWorkItemResponseCache } from '../../../src/server/work-items/work-item-response-cache';
 import {
     createAzureBoardsWorkItemSyncProviderAdapter,
     importAzureBoardsEpicTreeAsWorkItems,
@@ -178,6 +179,7 @@ async function startServer(
         onAzureBoardsBackedEpicTreeChanged?: (workspaceId: string) => void | Promise<void>;
     } = {},
 ): Promise<void> {
+    clearWorkItemResponseCache();
     server = makeServer(providers, options);
     await new Promise<void>((resolve, reject) => {
         server!.on('error', reject);
@@ -193,6 +195,7 @@ async function stopServer(): Promise<void> {
     if (!server) return;
     await new Promise<void>(resolve => server!.close(() => resolve()));
     server = undefined;
+    clearWorkItemResponseCache();
 }
 
 async function request(method: string, urlPath: string, body?: unknown): Promise<{ status: number; body: any }> {
@@ -221,6 +224,7 @@ async function request(method: string, urlPath: string, body?: unknown): Promise
 }
 
 beforeEach(async () => {
+    clearWorkItemResponseCache();
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-sync-'));
     store = new FileWorkItemStore({ dataDir: tmpDir });
     hierarchyEnabled = true;
@@ -229,6 +233,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
     await stopServer();
+    clearWorkItemResponseCache();
     await fs.rm(tmpDir, { recursive: true, force: true });
 });
 
@@ -285,6 +290,49 @@ describe('Work Item Sync Routes', () => {
             expect.objectContaining({ provider: 'github', available: true }),
         ]);
         expect(JSON.stringify(status.body)).not.toMatch(/token|secret|password|credential/i);
+    });
+
+    it('serves cached sync status until force=true requests live provider status', async () => {
+        let available = true;
+        const provider: WorkItemSyncProviderAdapter = {
+            provider: 'github',
+            async getStatus() {
+                return available
+                    ? {
+                        provider: 'github',
+                        available: true,
+                        repository: {
+                            provider: 'github',
+                            owner: 'plusplusoneplusplus',
+                            repo: 'shortcuts',
+                            url: 'https://github.com/plusplusoneplusplus/shortcuts',
+                            source: 'origin',
+                        },
+                        auth: { mode: 'external', authenticated: true },
+                    }
+                    : {
+                        provider: 'github',
+                        available: false,
+                        reason: 'auth-unavailable',
+                        auth: { mode: 'external', authenticated: false },
+                    };
+            },
+        };
+        await startServer([provider]);
+
+        const first = await request('GET', `/api/workspaces/${REPO_ID}/work-items/sync/status`);
+        expect(first.status).toBe(200);
+        expect(first.body.provider.available).toBe(true);
+
+        available = false;
+        const cached = await request('GET', `/api/workspaces/${REPO_ID}/work-items/sync/status`);
+        expect(cached.status).toBe(200);
+        expect(cached.body.provider.available).toBe(true);
+
+        const forced = await request('GET', `/api/workspaces/${REPO_ID}/work-items/sync/status?force=true`);
+        expect(forced.status).toBe(200);
+        expect(forced.body.provider.available).toBe(false);
+        expect(forced.body.provider.reason).toBe('auth-unavailable');
     });
 
     it('reports Azure Boards as the only remote provider for Azure DevOps workspace remotes', async () => {

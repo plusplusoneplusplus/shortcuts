@@ -26,6 +26,8 @@ import { registerGlobalSkillRoutes } from '../skills/global-skill-handler';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { getServerLogger } from '../logging/server-logger';
 import { registerApiWorkspaceRoutes } from '../routes/api-workspace-routes';
+import { ActiveWorkspaceTracker } from '../dashboard/active-workspace-tracker';
+import { registerDashboardActiveWorkspaceRoutes } from '../routes/dashboard-active-workspace-routes';
 import { registerApiGitRoutes } from '../routes/api-git-routes';
 import { registerApiProcessRoutes } from '../routes/api-process-routes';
 import { registerApiFsRoutes } from '../routes/api-fs-routes';
@@ -235,6 +237,7 @@ export function registerApiRoutes(
     dataDir?: string, getWsServer?: () => ProcessWebSocketServer | undefined,
     db?: Database.Database, loopsEnabled?: boolean,
     getLiveFeatureFlags?: () => { excalidrawEnabled: boolean },
+    activeWorkspaceTracker?: ActiveWorkspaceTracker,
 ): void {
     // Wrap routes.push to automatically log API mutations (POST/PATCH/DELETE).
     const MUTATION_METHODS = new Set(['POST', 'PATCH', 'DELETE']);
@@ -279,9 +282,21 @@ export function registerApiRoutes(
             initializeDatabase(resolvedDb);
         }
 
-        const ctx: ApiRouteContext = { routes, store, bridge, dataDir, getWsServer, gitOpsStore, db: resolvedDb, loopsEnabled, getLiveFeatureFlags };
+        const ctx: ApiRouteContext = {
+            routes,
+            store,
+            bridge,
+            dataDir,
+            getWsServer,
+            activeWorkspaceTracker: activeWorkspaceTracker ?? new ActiveWorkspaceTracker(),
+            gitOpsStore,
+            db: resolvedDb,
+            loopsEnabled,
+            getLiveFeatureFlags,
+        };
 
         registerApiWorkspaceRoutes(ctx);
+        registerDashboardActiveWorkspaceRoutes(ctx);
         registerApiGitRoutes(ctx);
         registerApiFsRoutes(routes, { dataDir: dataDir ?? undefined, workspaceProvider: store });
         registerApiProcessRoutes(ctx);

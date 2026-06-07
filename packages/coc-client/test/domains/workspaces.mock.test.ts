@@ -68,6 +68,29 @@ describe('WorkspacesClient mock server contract', () => {
     expectJsonRequest(mock.requests[4], 'POST', '/api/git-info/batch', { workspaceIds: ['repo/a space%雪'] });
   });
 
+  it('reports the active dashboard workspace', async () => {
+    mock = await startMockServer();
+    const active = {
+      activeWorkspaceIds: ['repo/a space%雪'],
+      clients: [{ clientId: 'dashboard-tab', workspaceId: 'repo/a space%雪', lastSeenAt: 123 }],
+    };
+    mock.on('GET', '/api/workspaces/active', { body: active });
+    mock.on('POST', '/api/workspaces/active', { body: active });
+    const client = createClient(mock);
+
+    await expect(client.workspaces.getActiveWorkspaces()).resolves.toEqual(active);
+    await expect(client.workspaces.reportActiveWorkspace({
+      clientId: 'dashboard-tab',
+      workspaceId: 'repo/a space%雪',
+    })).resolves.toEqual(active);
+
+    expectGetRequest(mock.requests[0], '/api/workspaces/active');
+    expectJsonRequest(mock.requests[1], 'POST', '/api/workspaces/active', {
+      clientId: 'dashboard-tab',
+      workspaceId: 'repo/a space%雪',
+    });
+  });
+
   it('sends register, update, delete, and history deletion shapes exactly', async () => {
     mock = await startMockServer();
     const registered: WorkspaceInfo = {
@@ -319,6 +342,38 @@ describe('WorkspacesClient mock server contract', () => {
 
     await expect(client.workspaces.ralphSession('repo/one', 'sess/1')).resolves.toEqual(response);
     expectGetRequest(mock.requests[0], '/api/workspaces/repo%2Fone/ralph-sessions/sess%2F1');
+  });
+
+  it('resumes a Ralph session with AI override controls through the workspace client', async () => {
+    mock = await startMockServer();
+    const response = {
+      resumed: true,
+      sessionId: 'sess/1',
+      workspaceId: 'repo/one',
+      taskId: 'task-1',
+      nextIteration: 4,
+      maxIterations: 10,
+    };
+    mock.on('POST', '/api/workspaces/repo%2Fone/ralph-sessions/sess%2F1/resume', { body: response });
+    const client = createClient(mock);
+
+    await expect(client.workspaces.resumeRalphSession('repo/one', 'sess/1', {
+      provider: 'codex',
+      config: {
+        model: 'gpt-5.3-codex',
+        reasoningEffort: 'high',
+        effortTier: 'medium',
+      },
+    })).resolves.toEqual(response);
+
+    expectJsonRequest(mock.requests[0], 'POST', '/api/workspaces/repo%2Fone/ralph-sessions/sess%2F1/resume', {
+      provider: 'codex',
+      config: {
+        model: 'gpt-5.3-codex',
+        reasoningEffort: 'high',
+        effortTier: 'medium',
+      },
+    });
   });
 });
 

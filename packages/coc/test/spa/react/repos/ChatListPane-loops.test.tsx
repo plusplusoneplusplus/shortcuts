@@ -26,6 +26,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isRalphEnabled: () => false,
     isLoopsEnabled: () => loopsEnabledValue,
     isForEachEnabled: () => false,
+    isMapReduceEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => false,
 }));
 

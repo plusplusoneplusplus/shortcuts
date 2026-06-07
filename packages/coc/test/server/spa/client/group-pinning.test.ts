@@ -7,6 +7,7 @@ import {
     type PinnedGroupEntry,
 } from '../../../../src/server/spa/client/react/features/chat/group-pinning';
 import type { ForEachRunGroup } from '../../../../src/server/spa/client/react/features/chat/for-each-run-grouping';
+import type { MapReduceRunGroup } from '../../../../src/server/spa/client/react/features/chat/map-reduce-run-grouping';
 import type { RalphSession } from '../../../../src/server/spa/client/react/features/chat/ralph-session-grouping';
 
 function makeRalphSession(sessionId: string, overrides: Partial<RalphSession> = {}): RalphSession {
@@ -52,6 +53,37 @@ function makeForEachGroup(runId: string, overrides: Partial<ForEachRunGroup> = {
     };
 }
 
+function makeMapReduceGroup(runId: string, overrides: Partial<MapReduceRunGroup> = {}): MapReduceRunGroup {
+    return {
+        kind: 'map-reduce-run',
+        runId,
+        run: {
+            runId,
+            workspaceId: 'ws-1',
+            status: 'completed',
+            originalRequest: 'Split and aggregate work',
+            childMode: 'ask',
+            reduceInstructions: 'Aggregate outputs.',
+            maxParallel: 3,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            itemCount: 0,
+            itemStatusCounts: {
+                pending: 0,
+                running: 0,
+                completed: 0,
+                failed: 0,
+                skipped: 0,
+            },
+            reduceStatus: 'completed',
+        },
+        children: [],
+        latestTimestamp: Date.parse('2026-01-01T00:00:00.000Z'),
+        hasUnseen: false,
+        ...overrides,
+    };
+}
+
 function pin(type: ProcessGroupPin['type'], groupId: string, pinnedAt: string): ProcessGroupPin {
     return { type, groupId, pinnedAt };
 }
@@ -60,6 +92,7 @@ describe('group-pinning helpers', () => {
     it('keys group pins by type and group id', () => {
         expect(getGroupPinKey('ralph-session', 'same-id')).toBe('ralph-session:same-id');
         expect(getGroupPinKey('for-each-run', 'same-id')).toBe('for-each-run:same-id');
+        expect(getGroupPinKey('map-reduce-run', 'same-id')).toBe('map-reduce-run:same-id');
     });
 
     it('partitions pinned Ralph groups without matching same-id For Each pins', () => {
@@ -82,6 +115,20 @@ describe('group-pinning helpers', () => {
 
         const result = partitionPinnedGroups([group], [
             pin('for-each-run', 'run-1', '2026-01-01T00:05:00.000Z'),
+        ]);
+
+        expect(result.pinnedGroups).toHaveLength(1);
+        expect(result.unpinnedGroups).toEqual([]);
+        expect(result.pinnedGroups[0].children[0]).toBe(child);
+        expect(child).toEqual({ id: 'child-1', pinnedAt: undefined, archived: false });
+    });
+
+    it('partitions pinned Map Reduce groups and leaves child process metadata unchanged', () => {
+        const child = { id: 'child-1', pinnedAt: undefined, archived: false };
+        const group = makeMapReduceGroup('run-1', { children: [child] });
+
+        const result = partitionPinnedGroups([group], [
+            pin('map-reduce-run', 'run-1', '2026-01-01T00:05:00.000Z'),
         ]);
 
         expect(result.pinnedGroups).toHaveLength(1);

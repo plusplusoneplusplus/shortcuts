@@ -21,7 +21,7 @@
  */
 
 import type { Attachment, MCPServerConfig } from '@plusplusoneplusplus/forge';
-import type { ForEachItem } from '@plusplusoneplusplus/coc-client';
+import type { ForEachItem, MapReduceChildMode, MapReduceItem } from '@plusplusoneplusplus/coc-client';
 
 // ============================================================================
 // Target Type
@@ -234,6 +234,18 @@ export interface ChatContext {
     ralph?: RalphContext;
     /** For Each generation or parent-run linkage. */
     forEach?: ForEachContext;
+    /** Map Reduce generation or parent-run linkage. */
+    mapReduce?: MapReduceContext;
+    /** Auto provider selection details captured before execution. */
+    autoProviderRouting?: {
+        requested?: boolean;
+        selectedByAuto?: boolean;
+        provider?: ChatProvider;
+        fallbackUsed?: boolean;
+        warnings?: string[];
+        decisions?: unknown[];
+        fallback?: unknown;
+    };
     /** PR diff classification context — dispatches to ClassificationExecutor. */
     classifyDiff?: {
         repoId: string;
@@ -280,6 +292,52 @@ export interface ForEachGenerationContext {
 }
 
 export type ForEachContext = ForEachChildContext | ForEachGenerationContext;
+
+export interface MapReduceGenerationLatestPlan {
+    turnIndex: number;
+    items: MapReduceItem[];
+    childMode: MapReduceChildMode;
+    sharedInstructions?: string;
+    reduceInstructions: string;
+    maxParallel: number;
+    rawJson?: string;
+    updatedAt?: string;
+}
+
+/** Visible Map Reduce plan-generation chat metadata. */
+export interface MapReduceGenerationContext {
+    kind: 'generation';
+    workspaceId: string;
+    generationId: string;
+    childMode: MapReduceChildMode;
+    originalRequest: string;
+    status: 'draft' | 'approved';
+    runId?: string;
+    latestItemCount?: number;
+    latestPlanTurnIndex?: number;
+    latestPlan?: MapReduceGenerationLatestPlan;
+    lastPlanError?: string;
+    lastPlanErrorTurnIndex?: number;
+}
+
+/** Map Reduce map child chat linkage (mirrored verbatim into AIProcess.metadata.mapReduce). */
+export interface MapReduceMapChildContext {
+    workspaceId: string;
+    runId: string;
+    phase: 'map';
+    itemId: string;
+    childMode: MapReduceChildMode;
+}
+
+/** Map Reduce reduce-step child chat linkage (mirrored verbatim into AIProcess.metadata.mapReduce). */
+export interface MapReduceReduceChildContext {
+    workspaceId: string;
+    runId: string;
+    phase: 'reduce';
+    childMode: MapReduceChildMode;
+}
+
+export type MapReduceContext = MapReduceMapChildContext | MapReduceReduceChildContext | MapReduceGenerationContext;
 
 /** Ralph-mode orchestration context (mirrored verbatim into AIProcess.metadata.ralph). */
 export interface RalphContext {
@@ -546,8 +604,31 @@ export function getForEachContext(
     return null;
 }
 
+export function getMapReduceContext(
+    source: { payload?: unknown; metadata?: unknown } | null | undefined,
+): MapReduceContext | null {
+    if (!source) {
+        return null;
+    }
+    const payload = source.payload as { context?: { mapReduce?: unknown } } | undefined;
+    const fromPayload = payload?.context?.mapReduce;
+    if (fromPayload && typeof fromPayload === 'object') {
+        return fromPayload as MapReduceContext;
+    }
+    const metadata = source.metadata as { mapReduce?: unknown } | undefined;
+    const fromMetadata = metadata?.mapReduce;
+    if (fromMetadata && typeof fromMetadata === 'object') {
+        return fromMetadata as MapReduceContext;
+    }
+    return null;
+}
+
 export function isForEachGenerationContext(context: ForEachContext | null | undefined): context is ForEachGenerationContext {
     return context?.kind === 'generation';
+}
+
+export function isMapReduceGenerationContext(context: MapReduceContext | null | undefined): context is MapReduceGenerationContext {
+    return (context as { kind?: unknown } | null | undefined)?.kind === 'generation';
 }
 
 /**
@@ -567,4 +648,15 @@ export function serializeForEachMetadata(payload: unknown): ForEachContext | und
     if (!isChatPayload(payload as Record<string, unknown>)) return undefined;
     const forEach = (payload as ChatPayload).context?.forEach;
     return forEach ?? undefined;
+}
+
+export function serializeMapReduceMetadata(payload: unknown): MapReduceContext | undefined {
+    if (!payload || typeof payload !== 'object') {
+        return undefined;
+    }
+    if (!isChatPayload(payload as Record<string, unknown>)) {
+        return undefined;
+    }
+    const mapReduce = (payload as ChatPayload).context?.mapReduce;
+    return mapReduce ?? undefined;
 }

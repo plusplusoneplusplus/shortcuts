@@ -17,6 +17,7 @@ import { sendJSON, parseBody } from '../core/api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
 import type { WorkItemStore, WorkItemChange } from '../work-items/types';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
+import { clearWorkItemResponseCacheForWorkspace } from '../work-items/work-item-response-cache';
 
 export interface WorkItemChangesRouteContext {
     routes: Route[];
@@ -72,6 +73,7 @@ export function registerWorkItemChangesRoutes(ctx: WorkItemChangesRouteContext):
             };
 
             await workItemStore.addChange(workItemId, change);
+            clearWorkItemResponseCacheForWorkspace(repoId);
             sendJSON(res, 201, change);
         },
     });
@@ -108,6 +110,7 @@ export function registerWorkItemChangesRoutes(ctx: WorkItemChangesRouteContext):
             if (body.headBefore !== undefined) updates.headBefore = body.headBefore;
 
             await workItemStore.updateChange(workItemId, changeId, updates);
+            clearWorkItemResponseCacheForWorkspace(repoId);
 
             const updatedItem = await workItemStore.getWorkItem(workItemId);
             const updatedChange = updatedItem?.changes?.find(c => c.id === changeId);

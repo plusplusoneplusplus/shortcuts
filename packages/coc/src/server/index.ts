@@ -92,6 +92,7 @@ interface CloseHandlerDeps {
     syncEngines?: Map<string, SyncEngine>;
     workItemGitHubPullPoller?: { dispose(): void };
     workItemAzureBoardsPullPoller?: { dispose(): void };
+    activeWorkspaceBackgroundRefresher?: { dispose(): void };
     agentProvidersQuotaCache?: { dispose(): void };
     containerLink?: { stop(): void };
     activeSockets: Set<import('net').Socket>;
@@ -119,6 +120,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.syncEngines?.forEach(e => e.stop());
         deps.workItemGitHubPullPoller?.dispose();
         deps.workItemAzureBoardsPullPoller?.dispose();
+        deps.activeWorkspaceBackgroundRefresher?.dispose();
         deps.agentProvidersQuotaCache?.dispose();
         deps.containerLink?.stop();
         gitInfoCache.dispose();
@@ -502,7 +504,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     let localBaseUrl = formatLocalBaseUrl(host, port);
     const routes: Route[] = [];
-    const { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, agentProvidersQuotaCache } = registerAllRoutes(routes, {
+    const { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, agentProvidersQuotaCache, activeWorkspaceBackgroundRefresher } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
         dataDir, configPath: options.configPath,
@@ -616,12 +618,15 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 serversEnabled: liveConfig.servers?.enabled ?? false,
                 ralphEnabled: liveConfig.ralph?.enabled ?? false,
                 forEachEnabled: liveConfig.forEach?.enabled ?? false,
+                mapReduceEnabled: liveConfig.mapReduce?.enabled ?? false,
                 vimNavigationEnabled: liveConfig.vimNavigation?.enabled ?? false,
                 loopsEnabled: liveConfig.loops?.enabled ?? false,
                 excalidrawEnabled: liveConfig.excalidraw?.enabled ?? false,
                 mcpOauthEnabled: liveConfig.mcpOauth?.enabled ?? false,
                 focusedDiffEnabled: liveConfig.features?.focusedDiff ?? false,
                 sessionContextAttachmentsEnabled: liveConfig.features?.sessionContextAttachments ?? false,
+                commitChatLensEnabled: liveConfig.features?.commitChatLens ?? false,
+                autoAgentProviderRoutingEnabled: liveConfig.features?.autoAgentProviderRouting ?? false,
                 workItemsHierarchyEnabled: liveConfig.workItems?.hierarchy?.enabled ?? false,
                 workItemsSyncEnabled: liveConfig.workItems?.sync?.enabled ?? false,
                 workItemsAiAuthoringEnabled: liveConfig.workItems?.aiAuthoring?.enabled ?? false,
@@ -681,6 +686,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         const message = error instanceof Error ? error.message : String(error);
         process.stderr.write(`[work-items/azure-boards-poll] Failed to start background polling: ${message}\n`);
     });
+    activeWorkspaceBackgroundRefresher.start();
 
     const address = server.address();
     const actualPort = typeof address === 'object' && address ? address.port : port;
@@ -722,6 +728,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             syncEngines,
             workItemGitHubPullPoller,
             workItemAzureBoardsPullPoller,
+            activeWorkspaceBackgroundRefresher,
             agentProvidersQuotaCache,
             containerLink,
             activeSockets, server,

@@ -48,7 +48,7 @@ export interface PerRepoPreferences {
   /** Max iterations a Ralph loop runs before stopping. Range 1..200. */
   maxRalphIterations?: number;
   /** Last agent provider selected for new chats in this workspace. Persisted per-repo. */
-  lastChatProvider?: 'copilot' | 'codex' | 'claude';
+  lastChatProvider?: 'copilot' | 'codex' | 'claude' | 'auto';
   /** Git-based notes sync settings (only for my_work / my_life virtual workspaces). */
   sync?: {
     gitRemote?: string;

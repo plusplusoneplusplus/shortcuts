@@ -30,6 +30,7 @@ import { usePromptAutocompleteEnabled } from '../hooks/usePromptAutocompleteEnab
 import { useChatPromptHistory } from '../hooks/useChatPromptHistory';
 import { ModalJobAiControls, useModalJobAiSelection } from '../shared/ModalJobAiControls';
 import type { EnqueueTaskRequest } from '@plusplusoneplusplus/coc-client';
+import { mergeAutoProviderRoutingContext } from '../utils/providerSelection';
 import { AttachedContextPreviews } from '../ui/AttachedContextPreviews';
 import { formatAttachedContext, useAttachedContext } from '../features/chat/hooks/useAttachedContext';
 import { isSessionContextAttachmentsEnabled } from '../utils/config';
@@ -328,19 +329,25 @@ export function EnqueueDialog() {
             const contextTaskName = queueState.dialogContextTaskName;
             const resolvedAi = aiSelection.resolved;
             const selectedModel = resolvedAi.model || (selectedTemplateId ? model : undefined);
-            const buildConfig = (): EnqueueTaskRequest['config'] | undefined => {
-                const config: EnqueueTaskRequest['config'] = {
-                    ...(selectedModel ? { model: selectedModel } : {}),
-                    ...(resolvedAi.reasoningEffort ? { reasoningEffort: resolvedAi.reasoningEffort } : {}),
+                const buildConfig = (): EnqueueTaskRequest['config'] | undefined => {
+                    const config: EnqueueTaskRequest['config'] = {
+                        ...(selectedModel ? { model: selectedModel } : {}),
+                        ...(resolvedAi.reasoningEffort ? { reasoningEffort: resolvedAi.reasoningEffort } : {}),
+                        ...(resolvedAi.effortTier ? { effortTier: resolvedAi.effortTier } : {}),
+                    };
+                    return Object.keys(config).length > 0 ? config : undefined;
                 };
-                return Object.keys(config).length > 0 ? config : undefined;
-            };
 
             // Helper to build a single task body, optionally with context files
             const buildBody = (files?: string[], taskNameOverride?: string): any => {
                 const skillLabel = effectiveSkills.length === 1 ? effectiveSkills[0] : effectiveSkills.join(', ');
+                const buildContext = (context?: Record<string, unknown>) => mergeAutoProviderRoutingContext(resolvedAi, context);
                 let body: any;
                 if (isAskMode) {
+                    const context = buildContext({
+                        ...(effectiveSkills.length > 0 ? { skills: effectiveSkills } : {}),
+                        ...(files ? { files } : {}),
+                    });
                     body = {
                         type: 'chat',
                         priority: 'normal',
@@ -350,12 +357,16 @@ export function EnqueueDialog() {
                             prompt: effectivePrompt || `Ask: ${skillLabel}`,
                             workspaceId: workspaceId || undefined,
                             workingDirectory: workingDirectory || undefined,
-                            provider: resolvedAi.provider,
-                            ...(effectiveSkills.length > 0 || files ? { context: { ...(effectiveSkills.length > 0 ? { skills: effectiveSkills } : {}), ...(files ? { files } : {}) } } : {}),
+                            ...(resolvedAi.provider ? { provider: resolvedAi.provider } : {}),
+                            ...(context && Object.keys(context).length > 0 ? { context } : {}),
                         },
                         images: images.length > 0 ? images : undefined,
                     };
                 } else if (effectiveSkills.length > 0) {
+                    const context = buildContext({
+                        skills: effectiveSkills,
+                        ...(files ? { files } : {}),
+                    });
                     const displayLabel = taskNameOverride || contextTaskName;
                     const displayName = displayLabel
                         ? `Follow: ${skillLabel} on ${displayLabel}`
@@ -372,15 +383,13 @@ export function EnqueueDialog() {
                             prompt: effectivePrompt || `Use the ${skillLabel} skill${effectiveSkills.length > 1 ? 's' : ''}.`,
                             workspaceId: workspaceId || undefined,
                             workingDirectory,
-                            provider: resolvedAi.provider,
-                            context: {
-                                skills: effectiveSkills,
-                                ...(files ? { files } : {}),
-                            },
+                            ...(resolvedAi.provider ? { provider: resolvedAi.provider } : {}),
+                            ...(context ? { context } : {}),
                         },
                         images: images.length > 0 ? images : undefined,
                     };
                 } else {
+                    const context = buildContext(files ? { files } : undefined);
                     body = {
                         type: 'chat',
                         priority: 'normal',
@@ -390,8 +399,8 @@ export function EnqueueDialog() {
                             prompt: effectivePrompt,
                             workspaceId: workspaceId || undefined,
                             workingDirectory: workingDirectory || folderPath || undefined,
-                            provider: resolvedAi.provider,
-                            ...(files ? { context: { files } } : {}),
+                            ...(resolvedAi.provider ? { provider: resolvedAi.provider } : {}),
+                            ...(context ? { context } : {}),
                         },
                         images: images.length > 0 ? images : undefined,
                     };

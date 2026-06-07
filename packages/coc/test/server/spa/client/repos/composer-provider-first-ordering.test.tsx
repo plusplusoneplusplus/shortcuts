@@ -49,8 +49,11 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => 'http://localhost:4000/api',
     isRalphEnabled: () => false,
     isForEachEnabled: () => false,
+    isMapReduceEnabled: () => false,
     isLoopsEnabled: () => false,
     getDefaultProvider: () => mockDefaultProvider,
+    getConfiguredDefaultProvider: () => mockDefaultProvider,
+    isAutoAgentProviderRoutingEnabled: () => false,
     isEffortLevelsEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => false,
 }));

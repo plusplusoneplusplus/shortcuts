@@ -104,6 +104,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isLoopsEnabled: () => mockLoopsEnabled,
     isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled,
     isForEachEnabled: () => mockForEachEnabled,
+    isMapReduceEnabled: () => false,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({

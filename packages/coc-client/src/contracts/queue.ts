@@ -2,7 +2,7 @@ import type { JsonObject, ReasoningEffort } from './common';
 
 export type TaskPriority = 'low' | 'normal' | 'high' | string;
 export type QueueStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | string;
-export type EffortTierKey = 'low' | 'medium' | 'high';
+export type EffortTierKey = 'very-low' | 'low' | 'medium' | 'high';
 
 export interface QueueStats {
   queued: number;

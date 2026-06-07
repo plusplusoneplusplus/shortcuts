@@ -66,6 +66,9 @@ export const RALPH_MODE_PILL_OPTION: ModePillOption = getModePillOption('ralph')
 /** Pill option for For Each mode — appended to DEFAULT_MODE_PILL_OPTIONS when For Each is enabled. */
 export const FOR_EACH_MODE_PILL_OPTION: ModePillOption = getModePillOption('for-each');
 
+/** Pill option for Map Reduce mode — appended to DEFAULT_MODE_PILL_OPTIONS when Map Reduce is enabled. */
+export const MAP_REDUCE_MODE_PILL_OPTION: ModePillOption = getModePillOption('map-reduce');
+
 export function ModePillSelector({
     options,
     workflowOptions = [],

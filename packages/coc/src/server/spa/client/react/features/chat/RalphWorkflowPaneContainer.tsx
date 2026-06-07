@@ -11,9 +11,14 @@
 
 import type React from 'react';
 import { useCallback } from 'react';
-import { RalphWorkflowPane } from './RalphWorkflowPane';
+import {
+    buildRalphContinueRequest,
+    buildRalphResumeRequest,
+    RalphWorkflowPane,
+} from './RalphWorkflowPane';
 import { useRalphSessionView } from './useRalphSessionView';
 import { getSpaCocClient } from '../../api/cocClient';
+import type { ResolvedModalJobAiSelection } from '../../shared/ModalJobAiControls';
 
 export interface RalphWorkflowPaneContainerProps {
     workspaceId: string;
@@ -56,6 +61,18 @@ export function RalphWorkflowPaneContainer(
         [onSelectIteration, view, sessionId],
     );
 
+    const handleContinue = useCallback(
+        async (additionalIterations: number, aiSelection?: ResolvedModalJobAiSelection) => {
+            await getSpaCocClient().workspaces.continueRalphSession(
+                workspaceId,
+                sessionId,
+                buildRalphContinueRequest(additionalIterations, aiSelection),
+            );
+            refresh();
+        },
+        [workspaceId, sessionId, refresh],
+    );
+
     const handleNewLoop = useCallback(
         async (newGoal: string, additionalIterations: number) => {
             await getSpaCocClient().workspaces.startNewRalphLoop(workspaceId, sessionId, {
@@ -68,8 +85,12 @@ export function RalphWorkflowPaneContainer(
     );
 
     const handleResume = useCallback(
-        async () => {
-            await getSpaCocClient().workspaces.resumeRalphSession(workspaceId, sessionId);
+        async (aiSelection?: ResolvedModalJobAiSelection) => {
+            await getSpaCocClient().workspaces.resumeRalphSession(
+                workspaceId,
+                sessionId,
+                buildRalphResumeRequest(aiSelection),
+            );
             refresh();
         },
         [workspaceId, sessionId, refresh],
@@ -82,6 +103,7 @@ export function RalphWorkflowPaneContainer(
             view={view}
             onClose={onClose}
             onSelectIteration={onSelectIteration ? handleSelectIteration : undefined}
+            onContinue={handleContinue}
             onNewLoop={handleNewLoop}
             onResume={handleResume}
             selectedFileName={selectedFileName}

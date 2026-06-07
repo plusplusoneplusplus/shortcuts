@@ -51,6 +51,19 @@ export const WORKFLOW_REGISTRY = [
         featureFlag: 'for-each',
         surfaces: ['new-chat'],
     },
+    {
+        mode: 'map-reduce',
+        icon: '🧩',
+        label: 'Map Reduce',
+        tooltip: 'Map Reduce — generate a reviewed parallel map plan, then aggregate with one reduce step',
+        dotClass: 'bg-indigo-500',
+        border: 'border-indigo-500 dark:border-indigo-400',
+        ring: 'focus-within:ring-indigo-500/30',
+        text: 'text-indigo-600 dark:text-indigo-400',
+        category: 'workflow',
+        featureFlag: 'map-reduce',
+        surfaces: ['new-chat'],
+    },
 ] as const;
 
 export type WorkflowRegistryEntry = typeof WORKFLOW_REGISTRY[number];

@@ -17,14 +17,16 @@ import type {
     AutoFolderContext,
     ConversationTurn,
     DeliveryMode,
+    ModelInfo,
     ProcessStore,
     QueuedTask,
     SDKInvocationResult,
     SystemMessageConfig,
     TurnSource,
 } from '@plusplusoneplusplus/forge';
+import type { ReasoningEffort } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { ChatMode, ChatProvider } from '../tasks/task-types';
-import { getForEachContext, isForEachGenerationContext, normalizeChatModeOrDefault } from '../tasks/task-types';
+import { getForEachContext, getMapReduceContext, isForEachGenerationContext, isMapReduceGenerationContext, normalizeChatModeOrDefault } from '../tasks/task-types';
 import {
     approveAllPermissions,
     getLogger,
@@ -35,6 +37,7 @@ import {
 } from '@plusplusoneplusplus/forge';
 import {
     buildForEachGenerationSystemMessage,
+    buildMapReduceGenerationSystemMessage,
     buildModeSystemMessage,
     buildConversationHistoryContext,
     prependSelectedSkillsDirective,
@@ -50,6 +53,7 @@ import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import type { ChatTurnContext } from './chat-turn-context-builder';
 import { updateForEachGenerationMetadataFromAssistantTurn } from '../for-each/for-each-generation-metadata';
+import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduce/map-reduce-generation-metadata';
 // ============================================================================
 // Types
 // ============================================================================
@@ -61,8 +65,87 @@ const CHAT_MODE_TO_AGENT_MODE: Record<ChatMode, AgentMode> = {
     ralph: 'autopilot',
 };
 
+const KNOWN_REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh'] as const satisfies readonly ReasoningEffort[];
+
 function toAgentMode(chatMode: ChatMode | undefined): AgentMode | undefined {
     return chatMode ? CHAT_MODE_TO_AGENT_MODE[chatMode] : undefined;
+}
+
+function isReasoningEffort(value: unknown): value is ReasoningEffort {
+    return typeof value === 'string' && (KNOWN_REASONING_EFFORTS as readonly string[]).includes(value);
+}
+
+function normalizeReasoningEffortList(values: readonly unknown[] | undefined): ReasoningEffort[] | undefined {
+    if (!values) {
+        return undefined;
+    }
+
+    const normalized: ReasoningEffort[] = [];
+    for (const value of values) {
+        if (isReasoningEffort(value) && !normalized.includes(value)) {
+            normalized.push(value);
+        }
+    }
+    return normalized;
+}
+
+function getSupportedReasoningEfforts(model: ModelInfo | undefined): ReasoningEffort[] | undefined {
+    if (!model) {
+        return undefined;
+    }
+
+    const rawCapabilityEfforts = normalizeReasoningEffortList(model.capabilities?.supports?.reasoning_effort);
+    if (rawCapabilityEfforts) {
+        return rawCapabilityEfforts;
+    }
+
+    const contractEfforts = normalizeReasoningEffortList(model.supportedReasoningEfforts);
+    if (contractEfforts) {
+        return contractEfforts;
+    }
+
+    if (model.capabilities?.supports?.reasoningEffort === false) {
+        return [];
+    }
+
+    return undefined;
+}
+
+function formatSupportedReasoningEfforts(model: ModelInfo | undefined): string {
+    const supportedEfforts = getSupportedReasoningEfforts(model);
+    if (supportedEfforts === undefined) {
+        return 'unknown';
+    }
+    return supportedEfforts.length > 0 ? supportedEfforts.join(', ') : 'none';
+}
+
+function resolveFollowUpReasoningSelection(options: {
+    processId: string;
+    sessionProvider: ChatProvider;
+    reasoningModel: string | undefined;
+    requestedEffort: Parameters<typeof resolveReasoningSelection>[0]['requestedEffort'];
+    perTurnReasoningEffort: ReasoningEffort | undefined;
+    modelMetadata: ModelInfo | undefined;
+    logger: ReturnType<typeof getLogger>;
+}): ReturnType<typeof resolveReasoningSelection> {
+    const { processId, sessionProvider, reasoningModel, requestedEffort, perTurnReasoningEffort, modelMetadata, logger } = options;
+    try {
+        return resolveReasoningSelection({
+            modelId: reasoningModel,
+            requestedEffort,
+            model: modelMetadata,
+        });
+    } catch (err) {
+        if (!perTurnReasoningEffort || requestedEffort !== perTurnReasoningEffort || !isReasoningEffort(perTurnReasoningEffort)) {
+            throw err;
+        }
+
+        logger.warn(
+            LogCategory.AI,
+            `[FollowUp] Omitting reasoning effort '${perTurnReasoningEffort}' for process ${processId} because provider '${sessionProvider}' model '${reasoningModel ?? 'provider-default'}' does not support it. Supported efforts: ${formatSupportedReasoningEfforts(modelMetadata)}.`,
+        );
+        return { modelId: reasoningModel };
+    }
 }
 
 export interface FollowUpExecutorOptions extends ChatModeExecutorOptions {
@@ -115,11 +198,11 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         turnSource?: TurnSource,
         /**
          * Per-turn reasoning-effort override. Takes priority over the
-         * persisted per-model preference. Silently ignored when the active
-         * model doesn't support reasoning (the SDK resolver throws otherwise,
-         * but we let it surface as a clear error rather than swallowing).
+         * persisted per-model preference. If the final model does not support
+         * this per-turn effort, the effort is omitted and the follow-up
+         * continues with the resolved model.
          */
-        reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh',
+        reasoningEffort?: ReasoningEffort,
     ): Promise<void> {
         const logger = getLogger();
         const startTime = Date.now();
@@ -199,6 +282,10 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         const forEachGeneration = (() => {
             const context = getForEachContext({ metadata: process.metadata });
             return isForEachGenerationContext(context) ? context : null;
+        })();
+        const mapReduceGeneration = (() => {
+            const context = getMapReduceContext({ metadata: process.metadata });
+            return isMapReduceGenerationContext(context) ? context : null;
         })();
 
         // Capture pre-edit note content for snapshot (note-chat follow-ups only)
@@ -289,6 +376,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             const systemMessage = await systemMessageBuilder()
                 .append(buildModeSystemMessage(currentMode)?.content)
                 .append(buildForEachGenerationSystemMessage(forEachGeneration)?.content)
+                .append(buildMapReduceGenerationSystemMessage(mapReduceGeneration)?.content)
                 .withRepoInstructions(workingDirectory, currentMode)
                 .appendMemoryV2(chatCtx.memoryV2)
                 .appendToolGuidance(chatCtx.toolGuidance)
@@ -341,10 +429,15 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 const persisted = effortMap[reasoningModel];
                 if (persisted) requestedEffort = persisted as _RequestedEffort;
             }
-            const reasoningSelection = resolveReasoningSelection({
-                modelId: reasoningModel,
+            const reasoningModelMetadata = await this.getModelMetadataForReasoning(reasoningModel, sessionProvider, followUpAiService);
+            const reasoningSelection = resolveFollowUpReasoningSelection({
+                processId,
+                sessionProvider,
+                reasoningModel,
                 requestedEffort,
-                model: await this.getModelMetadataForReasoning(reasoningModel, sessionProvider, followUpAiService),
+                perTurnReasoningEffort: reasoningEffort,
+                modelMetadata: reasoningModelMetadata,
+                logger,
             });
 
             const sendOptions = {
@@ -463,11 +556,16 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                             type: current.metadata?.type ?? 'chat',
                             model: result.effectiveModel,
                         };
-                        const metadata = updateForEachGenerationMetadataFromAssistantTurn(
+                        const forEachMetadata = updateForEachGenerationMetadataFromAssistantTurn(
                             baseMetadata,
                             assistantContent,
                             assistantTurnIndex,
                         ) ?? baseMetadata;
+                        const metadata = updateMapReduceGenerationMetadataFromAssistantTurn(
+                            forEachMetadata,
+                            assistantContent,
+                            assistantTurnIndex,
+                        ) ?? forEachMetadata;
                         return {
                             status: 'completed' as const,
                             endTime: new Date(),

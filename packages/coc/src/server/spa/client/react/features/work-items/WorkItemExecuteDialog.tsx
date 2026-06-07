@@ -73,9 +73,11 @@ export function WorkItemExecuteDialog({
         try {
             await getSpaCocClient().workItems.execute(workspaceId, workItemId, {
                 skillNames,
-                provider: aiSelection.resolved.provider,
+                ...(aiSelection.resolved.provider ? { provider: aiSelection.resolved.provider } : {}),
                 ...(aiSelection.resolved.model ? { model: aiSelection.resolved.model } : {}),
                 ...(aiSelection.resolved.reasoningEffort ? { reasoningEffort: aiSelection.resolved.reasoningEffort } : {}),
+                ...(aiSelection.resolved.effortTier ? { effortTier: aiSelection.resolved.effortTier } : {}),
+                ...(aiSelection.resolved.autoProviderRouting ? { autoProviderRouting: true } : {}),
             });
 
             // Track skill usage (fire-and-forget)

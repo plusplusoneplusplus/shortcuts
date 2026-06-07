@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { RequestRunner } from '../../src/request-runner';
+import { denyAllPermissions } from '../../src/types';
 import { SessionManager } from '../../src/session-manager';
 import { createMockSession, createStreamingMockSession } from '../helpers/mock-sdk';
 const DEFAULT_AI_TIMEOUT_MS = 6 * 60 * 60 * 1000;
@@ -463,45 +464,71 @@ describe('RequestRunner.send() — MCP config loading', () => {
 // ============================================================================
 
 describe('RequestRunner.transform()', () => {
-    it('returns raw string when no parse function given', async () => {
+    it('returns a structured success result with response text and metadata', async () => {
         const { runner } = makeRunner();
-        const sendSpy = vi.spyOn(runner, 'send').mockResolvedValue({ success: true, response: 'raw result' });
+        const sendSpy = vi.spyOn(runner, 'send').mockResolvedValue({ success: true, response: 'raw result', effectiveModel: 'gpt-5.4-mini' });
 
         const result = await runner.transform('prompt');
-        expect(result).toBe('raw result');
+        expect(result.success).toBe(true);
+        expect(result.text).toBe('raw result');
+        expect(result.effectiveModel).toBe('gpt-5.4-mini');
         sendSpy.mockRestore();
     });
 
-    it('applies parse function', async () => {
+    it('owns no model default — passes the caller model through', async () => {
         const { runner } = makeRunner();
-        vi.spyOn(runner, 'send').mockResolvedValue({ success: true, response: '42' });
+        const sendSpy = vi.spyOn(runner, 'send').mockResolvedValue({ success: true, response: 'ok' });
 
-        const result = await runner.transform<number>('prompt', (raw) => parseInt(raw, 10));
-        expect(result).toBe(42);
+        await runner.transform('prompt', { model: 'gpt-5.4-mini' });
+        expect(sendSpy).toHaveBeenCalledWith(expect.objectContaining({ model: 'gpt-5.4-mini' }));
     });
 
-    it('uses default model gpt-4.1', async () => {
+    it('does not inject a model when none is supplied', async () => {
         const { runner } = makeRunner();
         const sendSpy = vi.spyOn(runner, 'send').mockResolvedValue({ success: true, response: 'ok' });
 
         await runner.transform('prompt');
-        expect(sendSpy).toHaveBeenCalledWith(expect.objectContaining({ model: 'gpt-4.1' }));
+        expect(sendSpy.mock.calls[0][0].model).toBeUndefined();
+    });
+
+    it('defaults to no MCP and denied permissions', async () => {
+        const { runner } = makeRunner();
+        const sendSpy = vi.spyOn(runner, 'send').mockResolvedValue({ success: true, response: 'ok' });
+
+        await runner.transform('prompt');
+        const opts = sendSpy.mock.calls[0][0];
+        expect(opts.loadDefaultMcpConfig).toBe(false);
+        expect(opts.onPermissionRequest).toBe(denyAllPermissions);
+    });
+
+    it('allows overriding MCP and permission defaults', async () => {
+        const { runner } = makeRunner();
+        const handler = vi.fn();
+        const sendSpy = vi.spyOn(runner, 'send').mockResolvedValue({ success: true, response: 'ok' });
+
+        await runner.transform('prompt', { loadDefaultMcpConfig: true, onPermissionRequest: handler as never });
+        const opts = sendSpy.mock.calls[0][0];
+        expect(opts.loadDefaultMcpConfig).toBe(true);
+        expect(opts.onPermissionRequest).toBe(handler);
     });
 
     it('uses custom sendFn when provided (allows spy on service.sendMessage)', async () => {
         const { runner } = makeRunner();
         const customSend = vi.fn().mockResolvedValue({ success: true, response: 'custom' });
 
-        const result = await runner.transform('prompt', undefined, undefined, customSend);
-        expect(result).toBe('custom');
+        const result = await runner.transform('prompt', undefined, customSend);
+        expect(result.text).toBe('custom');
         expect(customSend).toHaveBeenCalled();
     });
 
-    it('throws when sendMessage returns failure', async () => {
+    it('returns a failure result (does not throw) when sendMessage fails', async () => {
         const { runner } = makeRunner();
         vi.spyOn(runner, 'send').mockResolvedValue({ success: false, error: 'AI error' });
 
-        await expect(runner.transform('prompt')).rejects.toThrow('AI error');
+        const result = await runner.transform('prompt');
+        expect(result.success).toBe(false);
+        expect(result.text).toBe('');
+        expect(result.error).toBe('AI error');
     });
 });
 

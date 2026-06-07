@@ -10,16 +10,16 @@
 
 import { useRef, useState, useEffect } from 'react';
 import { cn } from '../../ui/cn';
-import type { AgentProviderStatus } from '@plusplusoneplusplus/coc-client';
-
-export type ChatProvider = 'copilot' | 'codex' | 'claude';
+import type { AgentSelectorProvider, ChatProvider, ConcreteChatProvider } from '../../utils/providerSelection';
+export type { AgentSelectorProvider, ChatProvider, ConcreteChatProvider };
 
 export interface AgentSelectorChipProps {
-    providers: AgentProviderStatus[];
+    providers: readonly AgentSelectorProvider[];
     loading: boolean;
     selected: ChatProvider;
     onChange: (provider: ChatProvider) => void;
     disabled?: boolean;
+    disabledReason?: string;
     mobileTapTarget?: boolean;
 }
 
@@ -61,13 +61,23 @@ function ClaudeIcon() {
     );
 }
 
+function AutoIcon() {
+    return (
+        <svg width="9" height="9" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
+            <path d="M8 2v3M8 11v3M3.8 4.2l2.1 2.1M10.1 9.7l2.1 2.1M2 8h3M11 8h3M3.8 11.8l2.1-2.1M10.1 6.3l2.1-2.1" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" />
+            <circle cx="8" cy="8" r="1.7" stroke="currentColor" strokeWidth="1.35" />
+        </svg>
+    );
+}
+
 function ProviderIcon({ id }: { id: string }) {
+    if (id === 'auto') return <AutoIcon />;
     if (id === 'codex') return <CodexIcon />;
     if (id === 'claude') return <ClaudeIcon />;
     return <CopilotIcon />;
 }
 
-export function AgentSelectorChip({ providers, loading, selected, onChange, disabled, mobileTapTarget = false }: AgentSelectorChipProps) {
+export function AgentSelectorChip({ providers, loading, selected, onChange, disabled, disabledReason, mobileTapTarget = false }: AgentSelectorChipProps) {
     const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -83,7 +93,18 @@ export function AgentSelectorChip({ providers, loading, selected, onChange, disa
         return () => document.removeEventListener('mousedown', handleClick);
     }, [open]);
 
-    const selectedLabel = selected === 'codex' ? 'Codex' : selected === 'claude' ? 'Claude' : 'Copilot';
+    const selectedLabel = selected === 'auto'
+        ? 'Auto'
+        : selected === 'codex'
+            ? 'Codex'
+            : selected === 'claude'
+                ? 'Claude'
+                : 'Copilot';
+    const title = loading
+        ? 'Loading agent providers'
+        : disabled
+            ? `Agent: ${selectedLabel}${disabledReason ? ` (${disabledReason})` : ''}`
+            : `Agent: ${selectedLabel} (click to switch)`;
 
     return (
         <div ref={containerRef} className="relative shrink-0" data-testid="agent-selector-chip-container">
@@ -100,7 +121,7 @@ export function AgentSelectorChip({ providers, loading, selected, onChange, disa
                     'min-w-0 max-w-[40vw] sm:max-w-[140px] transition-colors',
                     'disabled:opacity-50 disabled:cursor-not-allowed',
                 )}
-                title={`Agent: ${selectedLabel} (click to switch)`}
+                title={title}
                 data-testid="agent-selector-chip-btn"
                 aria-haspopup="listbox"
                 aria-expanded={open}

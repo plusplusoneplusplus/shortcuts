@@ -4,6 +4,7 @@ export * from './db-browser';
 export * from './explorer';
 export * from './for-each';
 export * from './git';
+export * from './map-reduce';
 export * from './memory';
 export * from './notes';
 export * from './preferences';

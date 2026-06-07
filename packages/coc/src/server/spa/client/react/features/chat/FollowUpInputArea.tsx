@@ -834,6 +834,7 @@ export function FollowUpInputArea({
                                 selected={activeProvider ?? 'copilot'}
                                 onChange={() => {}}
                                 disabled={true}
+                                disabledReason="locked to this conversation"
                                 mobileTapTarget={true}
                             />
                             <span aria-hidden="true" data-testid="chat-toolbar-divider-provider" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />

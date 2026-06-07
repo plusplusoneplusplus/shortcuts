@@ -41,10 +41,26 @@ describe('title-generator idempotency', () => {
     });
 
     it('only sends the title request when no title exists', () => {
-        // The title send call must come after the guard
+        // The title transform call must come after the guard
         const guardIdx = source.indexOf('if (existing?.title)');
-        const sendIdx = source.indexOf('.sendMessage({', guardIdx);
+        const sendIdx = source.indexOf('.transform(', guardIdx);
         expect(sendIdx).toBeGreaterThan(guardIdx);
+    });
+
+    it('routes title generation through the SDK transform boundary', () => {
+        expect(source).toContain('this.options.aiService.transform(');
+        // The legacy sendMessage/warm-client path must be gone.
+        expect(source).not.toContain('.sendMessage({');
+        expect(source).not.toContain('getOrCreateWarmClient');
+    });
+
+    it('requests the gpt-5.4-mini model for title generation', () => {
+        expect(source).toContain("export const TITLE_GENERATION_MODEL = 'gpt-5.4-mini'");
+        expect(source).toContain('model: TITLE_GENERATION_MODEL');
+    });
+
+    it('fails when the provider used a different effective model', () => {
+        expect(source).toContain('result.effectiveModel !== TITLE_GENERATION_MODEL');
     });
 
     it('stores the generated title in the process store', () => {

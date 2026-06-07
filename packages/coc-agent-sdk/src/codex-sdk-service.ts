@@ -19,7 +19,8 @@
 
 import type { SendMessageOptions, SystemMessageConfig, TokenUsage } from './types';
 import type { ToolEvent } from './types';
-import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult } from './sdk-service-interface';
+import { denyAllPermissions } from './types';
+import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult, TransformOptions, TransformResult } from './sdk-service-interface';
 import type { IAccountQuotaResult, IAccountQuotaSnapshot } from './copilot-sdk-service';
 import type { ToolCall } from './tool-call';
 import { sdkServiceRegistry, CODEX_PROVIDER } from './sdk-service-registry';
@@ -1049,13 +1050,19 @@ export class CodexSDKService implements ISDKService {
                 const tool = typeof item.tool === 'string' && item.tool ? item.tool : 'mcp_tool';
                 const server = typeof item.server === 'string' ? item.server : undefined;
                 const error = item.error?.message;
+                const toolArguments = (item.arguments && typeof item.arguments === 'object' && !Array.isArray(item.arguments))
+                    ? item.arguments as Record<string, unknown>
+                    : {};
+                const parameters = server === COC_LLM_TOOLS_MCP_SERVER_NAME
+                    ? toolArguments
+                    : {
+                        ...(server ? { server } : {}),
+                        arguments: toolArguments,
+                    };
                 return {
                     id: item.id,
                     toolName: tool,
-                    parameters: {
-                        ...(server ? { server } : {}),
-                        arguments: item.arguments ?? {},
-                    },
+                    parameters,
                     ...(error ? { error } : { result: this.stringifyCodexResult(item.result) }),
                 };
             }
@@ -1167,15 +1174,34 @@ export class CodexSDKService implements ISDKService {
         return model;
     }
 
-    public async transform<T = string>(
-        prompt: string,
-        parse?: (raw: string) => T,
-        options?: { model?: string; timeoutMs?: number; cwd?: string },
-    ): Promise<T> {
-        const result = await this.sendMessage({ prompt, model: options?.model });
-        if (!result.success) throw new Error(result.error ?? 'Codex transform failed');
-        const raw = result.response ?? '';
-        return (parse ? parse(raw) : raw) as T;
+    public async transform(
+        input: string,
+        options?: TransformOptions,
+    ): Promise<TransformResult> {
+        const result = await this.sendMessage({
+            prompt: input,
+            model: options?.model,
+            workingDirectory: options?.cwd,
+            timeoutMs: options?.timeoutMs,
+            signal: options?.signal,
+            loadDefaultMcpConfig: options?.loadDefaultMcpConfig ?? false,
+            onPermissionRequest: options?.onPermissionRequest ?? denyAllPermissions,
+        });
+        if (!result.success) {
+            return {
+                success: false,
+                text: '',
+                error: result.error ?? 'Codex transform failed',
+                effectiveModel: result.effectiveModel,
+                tokenUsage: result.tokenUsage,
+            };
+        }
+        return {
+            success: true,
+            text: result.response ?? '',
+            effectiveModel: result.effectiveModel,
+            tokenUsage: result.tokenUsage,
+        };
     }
 
     // ── Session management ────────────────────────────────────────────────────

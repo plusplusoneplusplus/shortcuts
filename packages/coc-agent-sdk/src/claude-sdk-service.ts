@@ -30,7 +30,8 @@
 
 import type { SendMessageOptions, MCPServerConfig, MCPLocalServerConfig, ReasoningEffort, TokenUsage } from './types';
 import type { ToolEvent } from './types';
-import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult } from './sdk-service-interface';
+import { denyAllPermissions } from './types';
+import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult, TransformOptions, TransformResult } from './sdk-service-interface';
 import type { IAccountQuotaResult, IAccountQuotaSnapshot } from './copilot-sdk-service';
 import type { ToolCall } from './tool-call';
 import type { ClaudeImageSource } from './image-converter';
@@ -1171,19 +1172,34 @@ export class ClaudeSDKService implements ISDKService {
         return { permissionMode: 'acceptEdits' };
     }
 
-    public async transform<T = string>(
-        prompt: string,
-        parse?: (raw: string) => T,
-        options?: { model?: string; timeoutMs?: number; cwd?: string },
-    ): Promise<T> {
+    public async transform(
+        input: string,
+        options?: TransformOptions,
+    ): Promise<TransformResult> {
         const result = await this.sendMessage({
-            prompt,
+            prompt: input,
             model: options?.model,
             workingDirectory: options?.cwd,
+            timeoutMs: options?.timeoutMs,
+            signal: options?.signal,
+            loadDefaultMcpConfig: options?.loadDefaultMcpConfig ?? false,
+            onPermissionRequest: options?.onPermissionRequest ?? denyAllPermissions,
         });
-        if (!result.success) throw new Error(result.error ?? 'Claude transform failed');
-        const raw = result.response ?? '';
-        return (parse ? parse(raw) : raw) as T;
+        if (!result.success) {
+            return {
+                success: false,
+                text: '',
+                error: result.error ?? 'Claude transform failed',
+                effectiveModel: result.effectiveModel,
+                tokenUsage: result.tokenUsage,
+            };
+        }
+        return {
+            success: true,
+            text: result.response ?? '',
+            effectiveModel: result.effectiveModel,
+            tokenUsage: result.tokenUsage,
+        };
     }
 
     // ── Session management ────────────────────────────────────────────────────

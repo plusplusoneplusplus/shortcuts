@@ -18,6 +18,7 @@ import { RalphSessionStore } from '../ralph/ralph-session-store';
 import { buildRalphIterationTask } from '../ralph/enqueue-iteration';
 import {
     findInFlightRalphTask,
+    parseRalphAiSelection,
     recoverIterationPaths,
 } from './ralph-route-utils';
 
@@ -40,8 +41,17 @@ export function registerRalphResumeRoutes(routes: Route[], ctx: RalphResumeRoute
                 return sendError(res, 400, 'Missing workspaceId or sessionId');
             }
 
-            // Accept but ignore an empty body for consistency with /continue.
-            try { await parseBody(req); } catch { /* ignore */ }
+            let body: unknown;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON');
+            }
+
+            const aiSelection = parseRalphAiSelection(body);
+            if ('error' in aiSelection) {
+                return sendError(res, 400, aiSelection.error);
+            }
 
             const journal = new RalphSessionStore({ dataDir });
             const record = await journal.readSessionRecord(workspaceId, sessionId);
@@ -70,7 +80,14 @@ export function registerRalphResumeRoutes(routes: Route[], ctx: RalphResumeRoute
                 return sendError(res, 409, `A Ralph task for this session is still ${inFlight.status}`);
             }
 
-            const { workingDirectory, folderPath } = await recoverIterationPaths(record, store, workspaceId);
+            const recovered = await recoverIterationPaths(record, store, workspaceId);
+            const { workingDirectory, folderPath } = recovered;
+            const provider = aiSelection.value.provider ?? recovered.provider;
+            const effortTier = aiSelection.value.effortTier;
+            const recoverConcreteAiSettings = effortTier === undefined;
+            const model = aiSelection.value.model ?? (recoverConcreteAiSettings ? recovered.model : undefined);
+            const reasoningEffort = aiSelection.value.reasoningEffort
+                ?? (recoverConcreteAiSettings ? recovered.reasoningEffort : undefined);
 
             const nowIso = new Date().toISOString();
             try {
@@ -96,6 +113,11 @@ export function registerRalphResumeRoutes(routes: Route[], ctx: RalphResumeRoute
                 maxIterations: record.maxIterations,
                 dataDir,
                 extraContext: { ralph: { loopIndex } },
+                provider,
+                model,
+                reasoningEffort,
+                effortTier,
+                autoProviderRouting: aiSelection.value.autoProviderRouting,
             });
 
             let taskId: string;

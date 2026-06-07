@@ -21,6 +21,7 @@ import { buildRalphIterationTask } from '../ralph/enqueue-iteration';
 import {
     findInFlightRalphTask,
     parseAdditionalIterations,
+    parseRalphAiSelection,
     recoverIterationPaths,
     resolveRalphAdditionalIterations,
     RALPH_RESUME_ADDITIONAL_LIMIT,
@@ -74,6 +75,11 @@ export function registerRalphContinueRoutes(routes: Route[], ctx: RalphContinueR
             }
             const additionalIterations = additionalIterationsResult.value;
 
+            const aiSelection = parseRalphAiSelection(body);
+            if ('error' in aiSelection) {
+                return sendError(res, 400, aiSelection.error);
+            }
+
             const journal = new RalphSessionStore({ dataDir });
             const record = await journal.readSessionRecord(workspaceId, sessionId);
             if (!record) {
@@ -110,7 +116,14 @@ export function registerRalphContinueRoutes(routes: Route[], ctx: RalphContinueR
                 );
             }
 
-            const { workingDirectory, folderPath } = await recoverIterationPaths(record, store, workspaceId);
+            const recovered = await recoverIterationPaths(record, store, workspaceId);
+            const { workingDirectory, folderPath } = recovered;
+            const provider = aiSelection.value.provider ?? recovered.provider;
+            const effortTier = aiSelection.value.effortTier;
+            const recoverConcreteAiSettings = effortTier === undefined;
+            const model = aiSelection.value.model ?? (recoverConcreteAiSettings ? recovered.model : undefined);
+            const reasoningEffort = aiSelection.value.reasoningEffort
+                ?? (recoverConcreteAiSettings ? recovered.reasoningEffort : undefined);
 
             // Mutate session.json + append continuation marker. Order matters:
             // do the atomic record update first so concurrent continues lose
@@ -150,6 +163,11 @@ export function registerRalphContinueRoutes(routes: Route[], ctx: RalphContinueR
                 maxIterations: newMax,
                 dataDir,
                 extraContext: { ralph: { loopIndex } },
+                provider,
+                model,
+                reasoningEffort,
+                effortTier,
+                autoProviderRouting: aiSelection.value.autoProviderRouting,
             });
 
             let taskId: string;

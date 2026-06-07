@@ -26,6 +26,9 @@ import { DiffCommentsManager } from '../tasks/comments/diff-comments-manager';
 import { buildBatchResolvePrompt } from '../tasks/comments/task-comments-ai';
 import { buildMultiFileBatchResolvePrompt } from '../tasks/comments/diff-comments-ai';
 import { VALID_CHAT_PROVIDERS, VALID_REASONING_EFFORTS, type ChatProvider, type ReasoningEffort } from '../tasks/task-types';
+import { clearWorkItemResponseCacheForWorkspace } from '../work-items/work-item-response-cache';
+
+const VALID_EFFORT_TIERS = new Set(['very-low', 'low', 'medium', 'high']);
 
 export interface WorkItemExecutionRouteContext {
     routes: Route[];
@@ -119,11 +122,21 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                 if (body.reasoningEffort !== undefined && !reasoningEffort) {
                     return handleAPIError(res, badRequest(`Invalid reasoningEffort: '${body.reasoningEffort}'`));
                 }
+                const effortTier: string | undefined = body.effortTier === undefined
+                    ? undefined
+                    : typeof body.effortTier === 'string' && VALID_EFFORT_TIERS.has(body.effortTier)
+                        ? body.effortTier
+                        : undefined;
+                if (body.effortTier !== undefined && !effortTier) {
+                    return handleAPIError(res, badRequest(`Invalid effortTier: '${body.effortTier}'`));
+                }
 
                 const result = await executeWorkItem(workItemId, workItemStore, enqueue, {
                     model: body.model,
                     provider,
                     reasoningEffort,
+                    effortTier,
+                    autoProviderRouting: body.autoProviderRouting === true,
                     mode: body.mode,
                     headBefore,
                     taskFilePath,
@@ -131,6 +144,7 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                 });
                 const updatedItem = await workItemStore.getWorkItem(workItemId);
                 if (updatedItem) {
+                    clearWorkItemResponseCacheForWorkspace(repoId);
                     getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updatedItem });
                 }
                 sendJSON(res, 200, result);
@@ -210,6 +224,7 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
 
                     const updatedItem = await workItemStore.getWorkItem(workItemId);
                     if (updatedItem) {
+                        clearWorkItemResponseCacheForWorkspace(repoId);
                         getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updatedItem });
                     }
                     sendJSON(res, 200, result);
@@ -286,6 +301,7 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
 
                     const updatedItem = await workItemStore.getWorkItem(workItemId);
                     if (updatedItem) {
+                        clearWorkItemResponseCacheForWorkspace(repoId);
                         getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updatedItem });
                     }
                     sendJSON(res, 200, result);
@@ -369,6 +385,7 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                     : 'Auto-generated plan template',
             });
 
+            clearWorkItemResponseCacheForWorkspace(repoId);
             getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-added', workspaceId: repoId, item });
             sendJSON(res, 201, item);
         },

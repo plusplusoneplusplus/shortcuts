@@ -4,6 +4,12 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
+import { mockViewport } from '../../../helpers/viewport-mock';
+import { getReviewChatPlacementStorageKey } from '../../../../../src/server/spa/client/react/features/git/commits/commitChatPlacement';
+
+const configMocks = vi.hoisted(() => ({
+    isCommitChatLensEnabled: vi.fn(() => false),
+}));
 
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
@@ -11,7 +17,10 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isRalphEnabled: () => false,
     getActiveProvider: () => 'copilot',
     getDefaultProvider: () => 'copilot',
+    getConfiguredDefaultProvider: () => 'copilot',
+    isAutoAgentProviderRoutingEnabled: () => false,
     isEffortLevelsEnabled: () => false,
+    isCommitChatLensEnabled: configMocks.isCommitChatLensEnabled,
 }));
 
 const prefsMocks = vi.hoisted(() => ({
@@ -160,6 +169,8 @@ beforeEach(() => {
     prefsMocks.getWorkspacePreferences.mockResolvedValue({});
     prefsMocks.patchWorkspacePreferences.mockResolvedValue(undefined);
     mockDispatch.mockReset();
+    configMocks.isCommitChatLensEnabled.mockReturnValue(false);
+    localStorage.clear();
     Object.defineProperty(window, 'location', {
         writable: true,
         value: { hash: '' },
@@ -544,10 +555,10 @@ describe('tabs', () => {
     });
 });
 
-// ── AI assistant drawer ────────────────────────────────────────────────────────
+// ── AI assistant drawer / lens ─────────────────────────────────────────────────
 
 describe('AI assistant drawer', () => {
-    it('opens when the Ask AI button is clicked', async () => {
+    it('opens the legacy drawer when the chat lens flag is disabled', async () => {
         mockFetchDetail(makePr());
         await act(async () => { await renderDetail(); });
         await waitFor(() => expect(screen.getByTestId('pr-open-ai-assistant')).toBeInTheDocument());
@@ -557,9 +568,74 @@ describe('AI assistant drawer', () => {
 
         fireEvent.click(screen.getByTestId('pr-open-ai-assistant'));
         expect(drawer.getAttribute('aria-hidden')).toBe('false');
+        expect(screen.queryByTestId('pr-chat-lens')).not.toBeInTheDocument();
 
         fireEvent.click(screen.getByTestId('pr-ai-assistant-close'));
         expect(drawer.getAttribute('aria-hidden')).toBe('true');
+    });
+
+    it('opens PR detail chat as a desktop lens and pins back to the drawer position', async () => {
+        configMocks.isCommitChatLensEnabled.mockReturnValue(true);
+        mockFetchDetail(makePr({ headSha: 'head-sha-142' }));
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('pr-open-ai-assistant')).toBeInTheDocument());
+
+        fireEvent.click(screen.getByTestId('pr-open-ai-assistant'));
+
+        await waitFor(() => expect(screen.getByTestId('pr-chat-lens')).toBeInTheDocument());
+        expect(screen.getByTestId('pr-chat-lens-header')).toHaveTextContent('PR Chat');
+        expect(screen.getByTestId('pr-chat-lens-header')).toHaveTextContent('#142');
+        expect(screen.getByTestId('pr-chat-panel')).toBeInTheDocument();
+        expect(screen.queryByTestId('pr-ai-assistant')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('pr-chat-pin-btn'));
+
+        const placementKey = getReviewChatPlacementStorageKey({
+            type: 'pr',
+            workspaceId: 'repo-1',
+            repoId: 'repo-1',
+            prId: '142',
+            headSha: 'head-sha-142',
+        });
+        expect(localStorage.getItem(placementKey)).toBe('side-panel');
+        expect(screen.getByTestId('pr-ai-assistant').getAttribute('aria-hidden')).toBe('false');
+        expect(screen.getByTestId('pr-chat-side-panel')).toBeInTheDocument();
+        expect(screen.queryByTestId('pr-chat-lens')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('pr-chat-unpin-btn'));
+
+        expect(localStorage.getItem(placementKey)).toBeNull();
+        expect(screen.getByTestId('pr-chat-lens')).toBeInTheDocument();
+        expect(screen.queryByTestId('pr-ai-assistant')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('pr-chat-frame-close-btn'));
+        expect(screen.queryByTestId('pr-chat-lens')).not.toBeInTheDocument();
+    });
+
+    it('keeps the legacy drawer on mobile even when the chat lens flag is enabled', async () => {
+        const restoreViewport = mockViewport(500);
+        try {
+            configMocks.isCommitChatLensEnabled.mockReturnValue(true);
+            localStorage.setItem(getReviewChatPlacementStorageKey({
+                type: 'pr',
+                workspaceId: 'repo-1',
+                repoId: 'repo-1',
+                prId: '142',
+                headSha: 'head-sha-142',
+            }), 'side-panel');
+            mockFetchDetail(makePr({ headSha: 'head-sha-142' }));
+            await act(async () => { await renderDetail({ isMobile: true }); });
+            await waitFor(() => expect(screen.getByTestId('pr-open-ai-assistant')).toBeInTheDocument());
+
+            fireEvent.click(screen.getByTestId('pr-open-ai-assistant'));
+
+            expect(screen.getByTestId('pr-ai-assistant').getAttribute('aria-hidden')).toBe('false');
+            expect(screen.queryByTestId('pr-chat-lens')).not.toBeInTheDocument();
+            expect(screen.queryByTestId('pr-chat-side-panel')).not.toBeInTheDocument();
+            expect(screen.queryByTestId('pr-chat-unpin-btn')).not.toBeInTheDocument();
+        } finally {
+            restoreViewport();
+        }
     });
 });
 

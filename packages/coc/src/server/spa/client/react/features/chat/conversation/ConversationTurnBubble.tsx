@@ -37,6 +37,7 @@ import { ScriptTerminalBlock } from './ScriptTerminalBlock';
 import { parseScriptOutput, describeScriptExit } from './scriptOutputParser';
 import { getProviderAvatarClasses, type ChatProvider } from '../ProviderBadge';
 import { AskUserHistoryCard, hasAskUserHistory } from '../AskUserHistoryCard';
+import { CLIENT_PASTE_THRESHOLD, getPastePreviewLines } from '../hooks/useTextPaste';
 import {
     parseAttachedSessionContextBlocks,
     shortenSessionProcessId,
@@ -45,6 +46,8 @@ import {
     type ParsedRalphSessionContextBlock,
     type ParsedSessionContextBlock,
 } from '../hooks/useAttachedContext';
+
+const MAX_LARGE_PASTE_PROMPT_PREFIX_LENGTH = 500;
 
 function escapeAttr(value: string): string {
     return value
@@ -577,6 +580,89 @@ function AttachedContextBlockCard({ context }: { context: ParsedAttachedContextB
     return <AttachedPointerContextBlockCard context={context} />;
 }
 
+interface LargePasteParts {
+    promptContent: string;
+    pasteContent: string;
+}
+
+export function splitLargePasteTurnContent(content: string): LargePasteParts {
+    const boundary = /\r?\n[^\S\r\n]*\r?\n/.exec(content);
+    if (!boundary || boundary.index > MAX_LARGE_PASTE_PROMPT_PREFIX_LENGTH) {
+        return { promptContent: '', pasteContent: content };
+    }
+
+    const promptContent = content.slice(0, boundary.index).trim();
+    const pasteContent = content.slice(boundary.index + boundary[0].length);
+
+    if (promptContent.length > 0 && promptContent.length <= MAX_LARGE_PASTE_PROMPT_PREFIX_LENGTH && pasteContent.length > CLIENT_PASTE_THRESHOLD) {
+        return { promptContent, pasteContent };
+    }
+
+    return { promptContent: '', pasteContent: content };
+}
+
+function LargePasteCard({ content }: { content: string }) {
+    const [expanded, setExpanded] = useState(false);
+    const [copiedFullContent, setCopiedFullContent] = useState(false);
+    const previewLines = useMemo(() => getPastePreviewLines(content), [content]);
+
+    const handleCopy = async () => {
+        try {
+            await copyToClipboard(content);
+            setCopiedFullContent(true);
+            setTimeout(() => setCopiedFullContent(false), 1500);
+        } catch (e) {
+            console.error('Copy large paste content failed:', e);
+        }
+    };
+
+    return (
+        <div
+            className="rounded-lg border border-[#d0d0d0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526] text-[12px] overflow-hidden"
+            data-testid="large-paste-card"
+        >
+            <div className="flex items-center gap-2 px-3 py-2">
+                <span aria-hidden="true">📎</span>
+                <button
+                    type="button"
+                    className="min-w-0 flex-1 bg-transparent border-none p-0 text-left text-[12px] font-medium text-[#1e1e1e] dark:text-[#cccccc] hover:underline"
+                    onClick={() => setExpanded(v => !v)}
+                    aria-expanded={expanded}
+                    data-testid="large-paste-card-toggle"
+                >
+                    Large pasted content ({content.length} chars)
+                    <span className="ml-1 text-[10px] text-[#848484]">{expanded ? '▾' : '▸'}</span>
+                </button>
+                <button
+                    type="button"
+                    className="shrink-0 rounded border border-[#d0d0d0] dark:border-[#3c3c3c] px-2 py-0.5 text-[11px] text-[#616161] dark:text-[#c8c8c8] hover:bg-[#eeeeee] dark:hover:bg-[#333333]"
+                    onClick={handleCopy}
+                    data-testid="large-paste-card-copy"
+                >
+                    {copiedFullContent ? 'Copied' : 'Copy full content'}
+                </button>
+            </div>
+            {expanded ? (
+                <pre
+                    className="max-h-72 overflow-auto border-t border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] p-3 font-mono text-[11px] leading-snug whitespace-pre-wrap break-words text-[#3c3c3c] dark:text-[#c8c8c8]"
+                    data-testid="large-paste-card-full-content"
+                >
+                    {content}
+                </pre>
+            ) : previewLines.length > 0 ? (
+                <div
+                    className="border-t border-[#d0d0d0] dark:border-[#3c3c3c] bg-white/60 dark:bg-[#1e1e1e]/60 px-3 py-2 font-mono text-[11px] leading-snug text-[#616161] dark:text-[#a6a6a6]"
+                    data-testid="large-paste-card-preview"
+                >
+                    {previewLines.map((line, i) => (
+                        <div key={i} className="truncate">{line || '\u00A0'}</div>
+                    ))}
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
 function normalizeToolCall(raw: any, fallbackId: string): RenderToolCall {
     const normalized = normalizeToolForDisplay(raw ?? {});
     const rawId = raw?.id || raw?.toolCallId || raw?.tool_call_id;
@@ -1080,11 +1166,16 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
         [isUser, turn.content],
     );
     const userContentText = isUser ? parsedUserContent.remainingContent : '';
+    const largePasteParts = useMemo(
+        () => isUser && turn.pasteExternalized ? splitLargePasteTurnContent(userContentText) : null,
+        [isUser, turn.pasteExternalized, userContentText],
+    );
+    const visibleUserContentText = largePasteParts ? largePasteParts.promptContent : userContentText;
     const userContentHtml = useMemo(() => {
-        if (!isUser || !userContentText.trim()) return '';
+        if (!isUser || !visibleUserContentText.trim()) return '';
         // Split on backtick-delimited segments so paths inside inline code are not linkified.
         // Segments at even indices are normal text; odd indices are code spans.
-        const parts = userContentText.split(/`([^`]*)`/);
+        const parts = visibleUserContentText.split(/`([^`]*)`/);
         return parts.map((part, i) => {
             if (i % 2 === 1) {
                 // Code span — escape only, no linkification
@@ -1092,7 +1183,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
             }
             return linkifyFilePaths(escapeHtml(part));
         }).join('');
-    }, [isUser, userContentText]);
+    }, [isUser, visibleUserContentText]);
 
     // Lazy image fetching state
     const [imageLoadState, setImageLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
@@ -1570,10 +1661,13 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                             context={context}
                         />
                     ))}
-                    {isUser && !showRaw && userContentText.trim() && (
+                    {isUser && !showRaw && visibleUserContentText.trim() && (
                         <div className="whitespace-pre-wrap break-words text-[13px]" data-testid="user-plain-text"
                             dangerouslySetInnerHTML={{ __html: userContentHtml }}
                         />
+                    )}
+                    {isUser && !showRaw && largePasteParts && (
+                        <LargePasteCard content={largePasteParts.pasteContent} />
                     )}
                     {isUser && showRaw && (
                         <div className="raw-content-view rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#ffffff] dark:bg-[#1e1e1e] overflow-auto max-h-[600px]">
@@ -1608,15 +1702,6 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                         >
                             ⚠ Failed to load images · Retry
                         </button>
-                    )}
-                    {isUser && turn.pasteExternalized && (
-                        <div
-                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] text-[#848484] bg-[#f0f0f0] dark:bg-[#2d2d2d]"
-                            data-testid="paste-externalized-badge"
-                            title="Large pasted content was saved as a file reference for the AI"
-                        >
-                            📎 Content saved as file reference
-                        </div>
                     )}
                     {!isUser && !turn.isError && showRaw && (
                         <div className="raw-content-view rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#ffffff] dark:bg-[#1e1e1e] overflow-auto max-h-[600px]">

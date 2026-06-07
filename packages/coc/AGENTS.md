@@ -31,7 +31,7 @@ all have their own `references/*.md`.
 
 ## Local Invariants
 
-- **627+ Vitest test files** live under `packages/coc/test/server/`. Any
+- **Server Vitest tests** live under `packages/coc/test/server/`. Any
   server change should add or update tests there.
 - **Codex skill mirroring** runs once at server startup (when
   `resolvedConfig.codex?.enabled === true`), not per-install. The
@@ -44,8 +44,10 @@ all have their own `references/*.md`.
   Claude Code discovers them as slash commands. A sidecar marker
   `.coc-<name>.json` tracks CoC-managed commands to distinguish them from
   user-authored ones.
-- **Adding an editable config field** is a single registry entry — do not
-  modify `admin-handler.ts` (see [admin-config.md](../../.github/skills/coc-knowledge/references/admin-config.md)).
+- **Adding an editable config field** is usually a single registry entry. Put
+  field-local validation in `src/server/admin/admin-config-fields.ts`; reserve
+  `admin-handler.ts` changes for cross-field validation shared with config-file
+  loading (see [admin-config.md](../../.github/skills/coc-knowledge/references/admin-config.md)).
 - **Adding a namespaced config field** must update
   `src/config/namespace-registry.ts`; do not expand branch lists in `config.ts`.
 - **MCP REST surface** must never expose secrets (`env`, headers, full `args`).

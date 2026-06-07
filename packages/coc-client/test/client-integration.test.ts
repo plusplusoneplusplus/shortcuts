@@ -6,6 +6,7 @@ import {
   EventsClient,
   GitClient,
   HealthClient,
+  MapReduceClient,
   NotesClient,
   PreferencesClient,
   ProcessesClient,
@@ -96,6 +97,7 @@ describe('CocClient integration wiring', () => {
     });
 
     expect(client.health).toBeInstanceOf(HealthClient);
+    expect(client.mapReduce).toBeInstanceOf(MapReduceClient);
     expect(client.git).toBeInstanceOf(GitClient);
     expect(client.notes).toBeInstanceOf(NotesClient);
     expect(client.preferences).toBeInstanceOf(PreferencesClient);
@@ -118,6 +120,7 @@ describe('CocClient integration wiring', () => {
     const requestSpy = vi.spyOn(transport, 'request').mockResolvedValue({} as never);
     const httpDomains = [
       client.health,
+      client.mapReduce,
       client.git,
       client.notes,
       client.preferences,
@@ -136,6 +139,7 @@ describe('CocClient integration wiring', () => {
     expect(readPrivateProperty<unknown>(client.events, 'options')).toBe(client.options);
 
     await client.health.get();
+    await client.mapReduce.list('repo-a');
     await client.git.getBranchRange('repo-a');
     await client.notes.getTree('repo-a');
     await client.preferences.getGlobal();
@@ -149,6 +153,7 @@ describe('CocClient integration wiring', () => {
 
     expect(requestSpy.mock.calls.map(call => call[0])).toEqual([
       '/health',
+      '/workspaces/repo-a/map-reduce-runs',
       '/workspaces/repo-a/git/branch-range',
       '/workspaces/repo-a/notes/tree',
       '/preferences',
@@ -373,8 +378,10 @@ function typeCheckPublicSurface(): string {
       WorkItemsClient,
       WorkspacesClient,
       EventsClient,
+      MapReduceClient,
       ProcessSseClient,
       ProcessWebSocketConnection,
+      DEFAULT_MAP_REDUCE_MAX_PARALLEL,
       HttpTransport,
       CocApiError,
       CocNetworkError,
@@ -397,6 +404,8 @@ function typeCheckPublicSurface(): string {
       type GlobalPreferences,
       type HealthResponse,
       type MemoryConfig,
+      type MapReduceProcessContext,
+      type MapReduceRun,
       type ModelInfo,
       type NormalizedCocClientOptions,
       type ProcessStreamOptions,
@@ -421,6 +430,7 @@ function typeCheckPublicSurface(): string {
       WorkItemsClient,
       WorkspacesClient,
       EventsClient,
+      MapReduceClient,
       ProcessSseClient,
       ProcessWebSocketConnection,
       HttpTransport,
@@ -452,6 +462,28 @@ function typeCheckPublicSurface(): string {
     };
     const health: HealthResponse = { status: 'ok', uptime: 1, processCount: 0 };
     const memoryConfig: MemoryConfig = { storageDir: 'C:\\\\memory', backend: 'file' };
+    const mapReduceRun: MapReduceRun = {
+      runId: 'map-reduce-run-1',
+      workspaceId: 'repo-a',
+      status: 'reducing',
+      originalRequest: 'Map and reduce',
+      reduceInstructions: 'Aggregate every output.',
+      maxParallel: DEFAULT_MAP_REDUCE_MAX_PARALLEL,
+      childMode: 'autopilot',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      items: [
+        { id: 'item-1', title: 'First', prompt: 'Do first', status: 'completed', output: { ok: true } },
+      ],
+      reduceStep: { status: 'pending' },
+    };
+    const mapReduceContext: MapReduceProcessContext = {
+      workspaceId: 'repo-a',
+      runId: mapReduceRun.runId,
+      phase: 'map',
+      itemId: 'item-1',
+      childMode: 'autopilot',
+    };
     const model: ModelInfo = { id: 'gpt-test', enabled: true };
     const process: AIProcess = {
       id: 'proc-1',
@@ -516,6 +548,8 @@ function typeCheckPublicSurface(): string {
       branchRange,
       health,
       memoryConfig,
+      mapReduceRun,
+      mapReduceContext,
       model,
       process,
       workspace,

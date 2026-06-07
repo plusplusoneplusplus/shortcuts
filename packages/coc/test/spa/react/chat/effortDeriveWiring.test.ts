@@ -31,8 +31,8 @@ describe('NewChatArea effort-derive wiring', () => {
         expect(src).toContain("import { useProviderReasoningEfforts }");
     });
 
-    it('calls useProviderReasoningEfforts with selectedProvider', () => {
-        expect(src).toContain('useProviderReasoningEfforts(selectedProvider)');
+    it('calls useProviderReasoningEfforts with the concrete provider used by provider-scoped hooks', () => {
+        expect(src).toContain('useProviderReasoningEfforts(selectedProviderForClientHooks)');
     });
 
     it('declares userPickedForModelRef', () => {

@@ -1,6 +1,8 @@
 import type {
   BrowseWorkspaceFoldersOptions,
   BrowseWorkspaceFoldersResponse,
+  ActiveWorkspaceReportRequest,
+  ActiveWorkspaceResponse,
   DeleteWorkspaceHistoryFilters,
   DeleteWorkspaceOptions,
   DiscoverWorkspacesResponse,
@@ -16,8 +18,10 @@ import type {
   MyWorkSummaryResponse,
   MyWorkSyncRequest,
   MyWorkSyncResponse,
+  RalphContinueRequest,
   RalphContinueResponse,
   RalphNewLoopResponse,
+  RalphResumeRequest,
   RalphResumeResponse,
   RalphSessionResponse,
   RegisterWorkspaceRequest,
@@ -84,6 +88,17 @@ export class WorkspacesClient {
 
   register(request: RegisterWorkspaceRequest): Promise<WorkspaceInfo> {
     return this.transport.request<WorkspaceInfo>('/workspaces', { method: 'POST', body: { ...request } });
+  }
+
+  getActiveWorkspaces(): Promise<ActiveWorkspaceResponse> {
+    return this.transport.request<ActiveWorkspaceResponse>('/workspaces/active');
+  }
+
+  reportActiveWorkspace(request: ActiveWorkspaceReportRequest): Promise<ActiveWorkspaceResponse> {
+    return this.transport.request<ActiveWorkspaceResponse>('/workspaces/active', {
+      method: 'POST',
+      body: { ...request },
+    });
   }
 
   discover(path: string): Promise<DiscoverWorkspacesResponse> {
@@ -238,11 +253,30 @@ export class WorkspacesClient {
   continueRalphSession(
     workspaceId: string,
     sessionId: string,
-    request: { additionalIterations?: number } = {},
+    request: RalphContinueRequest = {},
   ): Promise<RalphContinueResponse> {
     const body: Record<string, unknown> = {};
     if (typeof request.additionalIterations === 'number') {
       body.additionalIterations = request.additionalIterations;
+    }
+    if (request.provider) {
+      body.provider = request.provider;
+    }
+    const config: Record<string, unknown> = {};
+    if (request.config?.model) {
+      config.model = request.config.model;
+    }
+    if (request.config?.reasoningEffort) {
+      config.reasoningEffort = request.config.reasoningEffort;
+    }
+    if (request.config?.effortTier) {
+      config.effortTier = request.config.effortTier;
+    }
+    if (Object.keys(config).length > 0) {
+      body.config = config;
+    }
+    if (request.autoProviderRouting === true) {
+      body.autoProviderRouting = true;
     }
     return this.transport.request<RalphContinueResponse>(
       `/workspaces/${encodePathSegment(workspaceId)}/ralph-sessions/${encodePathSegment(sessionId)}/continue`,
@@ -277,10 +311,35 @@ export class WorkspacesClient {
   resumeRalphSession(
     workspaceId: string,
     sessionId: string,
+    request: RalphResumeRequest = {},
   ): Promise<RalphResumeResponse> {
+    const body: Record<string, unknown> = {};
+    if (request.provider) {
+      body.provider = request.provider;
+    }
+    const config: Record<string, unknown> = {};
+    if (request.config?.model) {
+      config.model = request.config.model;
+    }
+    if (request.config?.reasoningEffort) {
+      config.reasoningEffort = request.config.reasoningEffort;
+    }
+    if (request.config?.effortTier) {
+      config.effortTier = request.config.effortTier;
+    }
+    if (Object.keys(config).length > 0) {
+      body.config = config;
+    }
+    if (request.autoProviderRouting === true) {
+      body.autoProviderRouting = true;
+    }
+    const options: CocRequestOptions = { method: 'POST' };
+    if (Object.keys(body).length > 0) {
+      options.body = body;
+    }
     return this.transport.request<RalphResumeResponse>(
       `/workspaces/${encodePathSegment(workspaceId)}/ralph-sessions/${encodePathSegment(sessionId)}/resume`,
-      { method: 'POST' },
+      options,
     );
   }
 
