@@ -97,12 +97,12 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/processes/:id/ralph-start` | Start Ralph execution after grilling. Body accepts optional `provider`, `config.model`, and `config.reasoningEffort` overrides for the first execution task; omitted provider resolves through Auto when `defaultProvider: auto` is enabled. |
-| POST | `/api/ralph-launch` | Direct Ralph launch (skip grilling). Body accepts optional `provider`, `config.model`, and `config.reasoningEffort` overrides for the first execution task; omitted provider resolves through Auto when `defaultProvider: auto` is enabled. |
+| POST | `/api/processes/:id/ralph-start` | Start Ralph execution after grilling. Body accepts optional `provider`, `config.model`, `config.reasoningEffort`, `config.effortTier`, and `autoProviderRouting` overrides for the first execution task; omitted provider resolves through Auto when `defaultProvider: auto` is enabled. |
+| POST | `/api/ralph-launch` | Direct Ralph launch (skip grilling). Body accepts optional `provider`, `config.model`, `config.reasoningEffort`, `config.effortTier`, and `autoProviderRouting` overrides for the first execution task; omitted provider resolves through Auto when `defaultProvider: auto` is enabled. |
 | GET | `/api/workspaces/:wsId/ralph-sessions/:sessionId` | Read session journal (`record`, parsed progress `sections`, and alphabetically ordered raw session `files`) |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/continue` | Extend completed session (CAP_REACHED or NO_SIGNAL) by N iterations, preserving the prior concrete provider/model when recoverable |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/new-loop` | New goal loop after RALPH_COMPLETE, preserving the prior concrete provider/model when recoverable |
-| POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/resume` | Resume stuck executing session (no in-flight task), preserving the prior concrete provider/model when recoverable |
+| POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/resume` | Resume stuck executing session (no in-flight task), preserving prior provider/model/reasoning-effort when recoverable and accepting optional `provider`, `config.model`, `config.reasoningEffort`, `config.effortTier`, and `autoProviderRouting` overrides for the resumed iteration |
 
 ## For Each Runs
 

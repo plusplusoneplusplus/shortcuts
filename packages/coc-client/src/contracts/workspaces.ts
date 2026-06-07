@@ -1,5 +1,7 @@
+import type { ChatProvider, ReasoningEffort } from './common';
 import type { ForEachChildMode, ForEachItem } from './for-each';
 import type { MapReduceProcessContext } from './map-reduce';
+import type { EffortTierKey } from './queue';
 
 export interface WorkspaceInfo {
   id: string;
@@ -436,4 +438,14 @@ export interface RalphResumeResponse {
   taskId: string;
   nextIteration: number;
   maxIterations: number;
+}
+
+export interface RalphResumeRequest {
+  provider?: ChatProvider;
+  config?: {
+    model?: string;
+    reasoningEffort?: ReasoningEffort;
+    effortTier?: EffortTierKey;
+  };
+  autoProviderRouting?: boolean;
 }

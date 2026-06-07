@@ -2,6 +2,7 @@ import type { ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import type { RalphSessionRecord } from '../ralph/types';
+import { VALID_CHAT_PROVIDERS, VALID_REASONING_EFFORTS } from '../tasks/task-types';
 import type { ChatProvider, ReasoningEffort } from '../tasks/task-types';
 
 // Shared utilities for Ralph session resume routes and final-check gap loops.
@@ -24,6 +25,22 @@ export interface RecoveredIterationPaths {
     model: string | undefined;
     reasoningEffort: ReasoningEffort | undefined;
 }
+
+export type RalphEffortTier = 'very-low' | 'low' | 'medium' | 'high';
+
+export interface RalphAiSelection {
+    provider: ChatProvider | undefined;
+    model: string | undefined;
+    reasoningEffort: ReasoningEffort | undefined;
+    effortTier: RalphEffortTier | undefined;
+    autoProviderRouting: boolean;
+}
+
+export type RalphAiSelectionParseResult =
+    | { value: RalphAiSelection }
+    | { error: string };
+
+const VALID_RALPH_EFFORT_TIERS: ReadonlySet<string> = new Set(['very-low', 'low', 'medium', 'high']);
 
 export function findInFlightRalphTask(
     bridge: MultiRepoQueueRouter,
@@ -61,6 +78,49 @@ export function parseAdditionalIterations(
     }
 
     return { value: raw };
+}
+
+export function parseRalphAiSelection(body: unknown): RalphAiSelectionParseResult {
+    const request = isRecord(body) ? body : {};
+    const provider = request.provider === undefined
+        ? undefined
+        : request.provider as ChatProvider;
+    if (provider !== undefined && !VALID_CHAT_PROVIDERS.has(provider)) {
+        return { error: `Invalid provider: '${String(request.provider)}'. Valid providers: ${[...VALID_CHAT_PROVIDERS].join(', ')}` };
+    }
+
+    const config = isRecord(request.config) ? request.config : {};
+    const model = typeof config.model === 'string' && config.model.trim()
+        ? config.model.trim()
+        : undefined;
+
+    const rawReasoningEffort = config.reasoningEffort ?? request.reasoningEffort;
+    const reasoningEffort = rawReasoningEffort === undefined
+        ? undefined
+        : rawReasoningEffort as ReasoningEffort;
+    if (reasoningEffort !== undefined && !VALID_REASONING_EFFORTS.has(reasoningEffort)) {
+        return { error: `Invalid reasoningEffort: '${String(rawReasoningEffort)}'. Valid reasoningEffort values: ${[...VALID_REASONING_EFFORTS].join(', ')}` };
+    }
+
+    const rawEffortTier = config.effortTier ?? request.effortTier;
+    const effortTier = rawEffortTier === undefined
+        ? undefined
+        : typeof rawEffortTier === 'string' && VALID_RALPH_EFFORT_TIERS.has(rawEffortTier)
+            ? rawEffortTier as RalphEffortTier
+            : undefined;
+    if (rawEffortTier !== undefined && !effortTier) {
+        return { error: `Invalid effortTier: '${String(rawEffortTier)}'. Valid effortTier values: ${[...VALID_RALPH_EFFORT_TIERS].join(', ')}` };
+    }
+
+    return {
+        value: {
+            provider,
+            model,
+            reasoningEffort,
+            effortTier,
+            autoProviderRouting: request.autoProviderRouting === true,
+        },
+    };
 }
 
 export function resolveRalphAdditionalIterations(

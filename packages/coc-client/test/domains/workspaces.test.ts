@@ -92,4 +92,67 @@ describe('WorkspacesClient', () => {
       '/workspaces/repo%2Fa%20space%2F%E9%9B%AA%25done/history/proc%2F1%20snow%2F%E9%9B%AA%25done',
     ]);
   });
+
+  it('serializes Ralph resume AI overrides', async () => {
+    const adapter = createMockAdapter({});
+    const client = new WorkspacesClient(adapter);
+
+    await client.resumeRalphSession('repo/a', 'sess/1', {
+      provider: 'claude',
+      config: {
+        model: 'claude-sonnet-4.6',
+        reasoningEffort: 'high',
+        effortTier: 'low',
+      },
+    });
+
+    expect(adapter.calls).toHaveLength(1);
+    expect(adapter.calls[0]).toEqual({
+      path: '/workspaces/repo%2Fa/ralph-sessions/sess%2F1/resume',
+      options: {
+        method: 'POST',
+        body: {
+          provider: 'claude',
+          config: {
+            model: 'claude-sonnet-4.6',
+            reasoningEffort: 'high',
+            effortTier: 'low',
+          },
+        },
+      },
+    });
+  });
+
+  it('keeps Ralph resume body empty when no overrides are provided', async () => {
+    const adapter = createMockAdapter({});
+    const client = new WorkspacesClient(adapter);
+
+    await client.resumeRalphSession('repo/a', 'sess/1');
+
+    expect(adapter.calls[0]).toEqual({
+      path: '/workspaces/repo%2Fa/ralph-sessions/sess%2F1/resume',
+      options: { method: 'POST' },
+    });
+  });
+
+  it('serializes Ralph resume Auto routing without a concrete provider', async () => {
+    const adapter = createMockAdapter({});
+    const client = new WorkspacesClient(adapter);
+
+    await client.resumeRalphSession('repo/a', 'sess/1', {
+      autoProviderRouting: true,
+      config: { effortTier: 'medium' },
+    });
+
+    expect(adapter.calls[0]).toEqual({
+      path: '/workspaces/repo%2Fa/ralph-sessions/sess%2F1/resume',
+      options: {
+        method: 'POST',
+        body: {
+          config: { effortTier: 'medium' },
+          autoProviderRouting: true,
+        },
+      },
+    });
+  });
 });

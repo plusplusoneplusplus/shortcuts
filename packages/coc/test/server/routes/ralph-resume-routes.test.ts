@@ -170,6 +170,7 @@ describe('POST /api/workspaces/:wsId/ralph-sessions/:sessionId/resume', () => {
                 mode: 'ralph',
                 prompt: 'last iteration',
                 provider: 'codex',
+                reasoningEffort: 'high',
                 workspaceId: 'ws-provider',
                 workingDirectory: '/repos/provider',
             },
@@ -181,6 +182,62 @@ describe('POST /api/workspaces/:wsId/ralph-sessions/:sessionId/resume', () => {
         const enqueueArg = bridgeStub.enqueue.mock.calls[0][0];
         expect(enqueueArg.payload.provider).toBe('codex');
         expect(enqueueArg.config.model).toBe('gpt-5.3-codex');
+        expect(enqueueArg.config.reasoningEffort).toBe('high');
+    });
+
+    it('uses explicit provider, model, reasoning effort, and effort tier overrides for the resumed iteration', async () => {
+        await seedSession(dataDir, 'ws-overrides', 'sess-overrides');
+        await store.addProcess({
+            id: 'queue_p3',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'last iteration',
+            metadata: {
+                provider: 'codex',
+                model: 'gpt-5.3-codex',
+            },
+            payload: {
+                kind: 'chat',
+                mode: 'ralph',
+                prompt: 'last iteration',
+                provider: 'codex',
+                reasoningEffort: 'medium',
+                workspaceId: 'ws-overrides',
+                workingDirectory: '/repos/overrides',
+            },
+        } as any);
+
+        const res = await post(baseUrl, '/api/workspaces/ws-overrides/ralph-sessions/sess-overrides/resume', {
+            provider: 'claude',
+            config: {
+                model: 'claude-sonnet-4.6',
+                reasoningEffort: 'high',
+                effortTier: 'low',
+            },
+        });
+
+        expect(res.status).toBe(200);
+        const enqueueArg = bridgeStub.enqueue.mock.calls[0][0];
+        expect(enqueueArg.payload.provider).toBe('claude');
+        expect(enqueueArg.config.model).toBe('claude-sonnet-4.6');
+        expect(enqueueArg.config.reasoningEffort).toBe('high');
+        expect(enqueueArg.config.effortTier).toBe('low');
+    });
+
+    it('supports Auto provider routing with an explicit effort tier override', async () => {
+        await seedSession(dataDir, 'ws-auto', 'sess-auto');
+
+        const res = await post(baseUrl, '/api/workspaces/ws-auto/ralph-sessions/sess-auto/resume', {
+            autoProviderRouting: true,
+            config: { effortTier: 'high' },
+        });
+
+        expect(res.status).toBe(200);
+        const enqueueArg = bridgeStub.enqueue.mock.calls[0][0];
+        expect(enqueueArg.payload.provider).toBeUndefined();
+        expect(enqueueArg.config.effortTier).toBe('high');
+        expect(enqueueArg.payload.context.autoProviderRouting).toEqual({ requested: true });
     });
 
     it('resumes a session where last iteration failed', async () => {
@@ -201,6 +258,42 @@ describe('POST /api/workspaces/:wsId/ralph-sessions/:sessionId/resume', () => {
         await seedSession(dataDir, 'ws-3', 'sess-empty-body');
         const res = await post(baseUrl, '/api/workspaces/ws-3/ralph-sessions/sess-empty-body/resume');
         expect(res.status).toBe(200);
+    });
+
+    it('rejects invalid provider overrides', async () => {
+        await seedSession(dataDir, 'ws-invalid-provider', 'sess-invalid-provider');
+
+        const res = await post(baseUrl, '/api/workspaces/ws-invalid-provider/ralph-sessions/sess-invalid-provider/resume', {
+            provider: 'bogus',
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.json().error).toMatch(/Invalid provider/);
+        expect(bridgeStub.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('rejects invalid reasoning effort overrides', async () => {
+        await seedSession(dataDir, 'ws-invalid-effort', 'sess-invalid-effort');
+
+        const res = await post(baseUrl, '/api/workspaces/ws-invalid-effort/ralph-sessions/sess-invalid-effort/resume', {
+            config: { reasoningEffort: 'maximum' },
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.json().error).toMatch(/Invalid reasoningEffort/);
+        expect(bridgeStub.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('rejects invalid effort tier overrides', async () => {
+        await seedSession(dataDir, 'ws-invalid-tier', 'sess-invalid-tier');
+
+        const res = await post(baseUrl, '/api/workspaces/ws-invalid-tier/ralph-sessions/sess-invalid-tier/resume', {
+            config: { effortTier: 'maximum' },
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.json().error).toMatch(/Invalid effortTier/);
+        expect(bridgeStub.enqueue).not.toHaveBeenCalled();
     });
 
     // -----------------------------------------------------------------------

@@ -18,6 +18,7 @@ import type {
   MyWorkSyncResponse,
   RalphContinueResponse,
   RalphNewLoopResponse,
+  RalphResumeRequest,
   RalphResumeResponse,
   RalphSessionResponse,
   RegisterWorkspaceRequest,
@@ -277,10 +278,35 @@ export class WorkspacesClient {
   resumeRalphSession(
     workspaceId: string,
     sessionId: string,
+    request: RalphResumeRequest = {},
   ): Promise<RalphResumeResponse> {
+    const body: Record<string, unknown> = {};
+    if (request.provider) {
+      body.provider = request.provider;
+    }
+    const config: Record<string, unknown> = {};
+    if (request.config?.model) {
+      config.model = request.config.model;
+    }
+    if (request.config?.reasoningEffort) {
+      config.reasoningEffort = request.config.reasoningEffort;
+    }
+    if (request.config?.effortTier) {
+      config.effortTier = request.config.effortTier;
+    }
+    if (Object.keys(config).length > 0) {
+      body.config = config;
+    }
+    if (request.autoProviderRouting === true) {
+      body.autoProviderRouting = true;
+    }
+    const options: CocRequestOptions = { method: 'POST' };
+    if (Object.keys(body).length > 0) {
+      options.body = body;
+    }
     return this.transport.request<RalphResumeResponse>(
       `/workspaces/${encodePathSegment(workspaceId)}/ralph-sessions/${encodePathSegment(sessionId)}/resume`,
-      { method: 'POST' },
+      options,
     );
   }
 

@@ -320,6 +320,38 @@ describe('WorkspacesClient mock server contract', () => {
     await expect(client.workspaces.ralphSession('repo/one', 'sess/1')).resolves.toEqual(response);
     expectGetRequest(mock.requests[0], '/api/workspaces/repo%2Fone/ralph-sessions/sess%2F1');
   });
+
+  it('resumes a Ralph session with AI override controls through the workspace client', async () => {
+    mock = await startMockServer();
+    const response = {
+      resumed: true,
+      sessionId: 'sess/1',
+      workspaceId: 'repo/one',
+      taskId: 'task-1',
+      nextIteration: 4,
+      maxIterations: 10,
+    };
+    mock.on('POST', '/api/workspaces/repo%2Fone/ralph-sessions/sess%2F1/resume', { body: response });
+    const client = createClient(mock);
+
+    await expect(client.workspaces.resumeRalphSession('repo/one', 'sess/1', {
+      provider: 'codex',
+      config: {
+        model: 'gpt-5.3-codex',
+        reasoningEffort: 'high',
+        effortTier: 'medium',
+      },
+    })).resolves.toEqual(response);
+
+    expectJsonRequest(mock.requests[0], 'POST', '/api/workspaces/repo%2Fone/ralph-sessions/sess%2F1/resume', {
+      provider: 'codex',
+      config: {
+        model: 'gpt-5.3-codex',
+        reasoningEffort: 'high',
+        effortTier: 'medium',
+      },
+    });
+  });
 });
 
 function createClient(mock: MockServer): CocClient {
