@@ -19,6 +19,7 @@ export interface AgentSelectorChipProps {
     selected: ChatProvider;
     onChange: (provider: ChatProvider) => void;
     disabled?: boolean;
+    disabledReason?: string;
     mobileTapTarget?: boolean;
 }
 
@@ -76,7 +77,7 @@ function ProviderIcon({ id }: { id: string }) {
     return <CopilotIcon />;
 }
 
-export function AgentSelectorChip({ providers, loading, selected, onChange, disabled, mobileTapTarget = false }: AgentSelectorChipProps) {
+export function AgentSelectorChip({ providers, loading, selected, onChange, disabled, disabledReason, mobileTapTarget = false }: AgentSelectorChipProps) {
     const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -99,6 +100,11 @@ export function AgentSelectorChip({ providers, loading, selected, onChange, disa
             : selected === 'claude'
                 ? 'Claude'
                 : 'Copilot';
+    const title = loading
+        ? 'Loading agent providers'
+        : disabled
+            ? `Agent: ${selectedLabel}${disabledReason ? ` (${disabledReason})` : ''}`
+            : `Agent: ${selectedLabel} (click to switch)`;
 
     return (
         <div ref={containerRef} className="relative shrink-0" data-testid="agent-selector-chip-container">
@@ -115,7 +121,7 @@ export function AgentSelectorChip({ providers, loading, selected, onChange, disa
                     'min-w-0 max-w-[40vw] sm:max-w-[140px] transition-colors',
                     'disabled:opacity-50 disabled:cursor-not-allowed',
                 )}
-                title={`Agent: ${selectedLabel} (click to switch)`}
+                title={title}
                 data-testid="agent-selector-chip-btn"
                 aria-haspopup="listbox"
                 aria-expanded={open}

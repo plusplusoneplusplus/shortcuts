@@ -170,4 +170,16 @@ describe('FollowUpInputArea – disabled AgentSelectorChip', () => {
         chip.click();
         expect(screen.queryByTestId('agent-selector-menu')).toBeNull();
     });
+
+    it('explains that the concrete follow-up provider is locked and never offers Auto', () => {
+        render(<FollowUpInputArea {...defaultProps({ activeProvider: 'codex' })} />);
+        const chip = screen.getByTestId('agent-selector-chip-btn');
+
+        expect(chip).toHaveTextContent('Codex');
+        expect(chip).toHaveAttribute('title', 'Agent: Codex (locked to this conversation)');
+
+        chip.click();
+        expect(screen.queryByTestId('agent-selector-menu')).toBeNull();
+        expect(screen.queryByTestId('agent-option-auto')).toBeNull();
+    });
 });
