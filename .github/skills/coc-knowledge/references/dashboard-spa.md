@@ -82,8 +82,9 @@ workspace changes, and a 60-second heartbeat while a workspace is selected. The
 client ID is session-scoped in `sessionStorage` so multiple dashboard tabs can
 report independent active workspaces without collapsing multi-repo state. The
 server uses these recent active-workspace reports to refresh the active
-workspace's Pull Requests cache immediately on active-workspace changes and then
-on a 5-minute interval while dashboard activity remains present.
+workspace's Pull Requests and Work Items caches immediately on active-workspace
+changes and then on a 5-minute interval while dashboard activity remains
+present.
 
 ## Key Hooks
 
@@ -351,6 +352,8 @@ The top-level `#memory` route is embedded in the Admin shell's Knowledge group a
 ## Work Items
 
 `WorkItemsTab` presents hierarchy mode as two top-level tracker tabs: **Local** and **Remote**. The Local tab passes `tracker=local-only` to the tree endpoint and shows local creation actions for local-only Epic trees. The Remote tab calls `workItems.syncStatus(...)` without a provider override, uses the workspace repo remote-derived `remoteProvider` as the authoritative visible provider, and only requests the matching `tracker=github-backed` or `tracker=azure-boards-backed` tree. When one supported provider is detected, the Remote tab shows only that provider's icon, the provider chip header shows only that provider (no All chip), the title/subtitle/empty copy and import dialog are provider-specific, and unavailable/auth/setup warnings apply only to the detected provider. Available providers do not render a success/ready banner. Missing, unsupported, or unrecognized workspace remotes show a concise setup message and hide provider chips and import affordances. The Remote import action opens directly in the detected provider mode, then the SPA switches to Remote, selects/highlights the imported root Epic row/card, and keeps the provider filter aligned with the imported provider.
+
+The Work Items list, grouped list, hierarchy tree, and remote sync-status routes are backed by a server-side response cache that can be proactively warmed for the currently active workspace. Background warming refreshes the default local list/grouped responses, the Local tracker tree, the Remote sync status, and the detected Remote provider tree when hierarchy and sync are enabled. Failed background refreshes do not clear stale cached responses, and explicit GETs can pass `force=true` to bypass and replace the cached response.
 
 `WorkItemDetail` is an always-editable inline form: title, description, priority, tags, status, parent, success criteria, and plan content remain editable without an Edit-mode toggle. Description and plan use per-field Source/Preview markdown controls. The view tracks a unified dirty draft; Ctrl+S/Cmd+S and the Save button send one `workItems.update` PATCH containing every dirty metadata field plus `plan.content` when changed. There is no instant status save and no standalone plan save from the detail screen. If a remote-backed save returns `WORK_ITEM_SYNC_CONFLICT`, the detail view renders an inline warning panel near the save/error area with per-field "Your draft" versus provider value cards and retries the same PATCH path with `syncConflictResolution` after the user applies choices. Dirty work-item detail pages show an unsaved-changes indicator, install a `beforeunload` warning, guard the local back breadcrumb, block dirty hash route changes when the user cancels, and intercept hash links before navigation.
 Detail fetch and draft state are scoped to the current `workspaceId` + `workItemId`; stale responses from prior selections are ignored, and drafts initialize or save only when the loaded detail item matches the active selection.

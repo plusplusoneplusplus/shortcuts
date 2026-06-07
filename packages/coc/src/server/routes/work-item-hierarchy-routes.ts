@@ -17,25 +17,30 @@ import type { Route } from '../types';
 import { sendJSON } from '../core/api-handler';
 import type { WorkItemStore, WorkItemIndexEntry, WorkItemTrackerKind, WorkItemType } from '../work-items/types';
 import { WORK_ITEM_TYPES, WORK_ITEM_STATUSES, WORK_ITEM_TRACKER_KINDS, getOwnWorkItemTrackerKind } from '../work-items/types';
+import {
+    getOrRefreshWorkItemResponseCacheEntry,
+    makeWorkItemTreeResponseCacheKey,
+    type WorkItemTreeCacheOptions,
+} from '../work-items/work-item-response-cache';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 /** Descendant roll-up for a single tree node. */
-interface WorkItemRollup {
+export interface WorkItemRollup {
     descendantCount: number;
     byType: Record<WorkItemType, number>;
     byStatus: Record<string, number>;
 }
 
 /** One node in the hierarchy tree returned by the tree endpoint. */
-interface WorkItemTreeNode {
+export interface WorkItemTreeNode {
     item: WorkItemIndexEntry;
     children: WorkItemTreeNode[];
     rollup: WorkItemRollup;
 }
 
 /** Response shape from GET /work-items/tree. */
-interface WorkItemTreeResponse {
+export interface WorkItemTreeRouteResponse {
     roots: WorkItemTreeNode[];
     total: number;
     disabled?: boolean;
@@ -220,6 +225,26 @@ function getInheritedTrackerKind(
     return getOwnWorkItemTrackerKind(current);
 }
 
+export async function buildWorkItemTreeRouteResponse(
+    workItemStore: WorkItemStore,
+    repoId: string,
+    options: WorkItemTreeCacheOptions,
+): Promise<WorkItemTreeRouteResponse> {
+    const result = await workItemStore.listWorkItems({ repoId });
+    const entries = result.items as WorkItemIndexEntry[];
+    const filtered = filterWithAncestors(entries, {
+        q: options.q,
+        type: options.type,
+        status: options.status,
+        tracker: options.tracker,
+        includeArchived: options.includeArchived === true,
+        includeDone: options.includeDone === true,
+    });
+
+    const roots = buildTree(filtered);
+    return { roots, total: filtered.length };
+}
+
 // ── Route registration ─────────────────────────────────────────────────────────
 
 export function registerWorkItemHierarchyRoutes(ctx: WorkItemHierarchyRouteContext): void {
@@ -232,7 +257,7 @@ export function registerWorkItemHierarchyRoutes(ctx: WorkItemHierarchyRouteConte
         pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/tree$/,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
             if (!getHierarchyEnabled()) {
-                return sendJSON(res, 200, { disabled: true, roots: [], total: 0 } satisfies WorkItemTreeResponse);
+                return sendJSON(res, 200, { disabled: true, roots: [], total: 0 } satisfies WorkItemTreeRouteResponse);
             }
 
             const repoId = decodeURIComponent(match![1]);
@@ -247,23 +272,24 @@ export function registerWorkItemHierarchyRoutes(ctx: WorkItemHierarchyRouteConte
                 : undefined;
             const includeArchived = query.includeArchived === 'true';
             const includeDone = query.includeDone === 'true';
+            const force = query.force === 'true';
 
-            // Load the full index for this workspace
-            const result = await workItemStore.listWorkItems({ repoId });
-            const entries = result.items as WorkItemIndexEntry[];
-
-            // Filter and preserve ancestors
-            const filtered = filterWithAncestors(entries, {
+            const options: WorkItemTreeCacheOptions = {
                 q,
                 type: typeFilter,
                 status: statusFilter,
                 tracker: trackerFilter,
                 includeArchived,
                 includeDone,
-            });
-
-            const roots = buildTree(filtered);
-            sendJSON(res, 200, { roots, total: filtered.length } satisfies WorkItemTreeResponse);
+            };
+            const response = await getOrRefreshWorkItemResponseCacheEntry(
+                makeWorkItemTreeResponseCacheKey(repoId, options),
+                repoId,
+                'tree',
+                force,
+                () => buildWorkItemTreeRouteResponse(workItemStore, repoId, options),
+            );
+            sendJSON(res, 200, response);
         },
     });
 }

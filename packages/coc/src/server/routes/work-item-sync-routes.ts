@@ -40,6 +40,11 @@ import {
 } from '../work-items/work-item-sync-github-provider';
 import { parseGitHubWorkItemIssue } from '../work-items/work-item-sync-github-issue';
 import type { WorkItem } from '../work-items/types';
+import {
+    clearWorkItemResponseCacheForWorkspace,
+    getOrRefreshWorkItemResponseCacheEntry,
+    makeWorkItemSyncStatusResponseCacheKey,
+} from '../work-items/work-item-response-cache';
 
 export interface WorkItemSyncRouteContext {
     routes: Route[];
@@ -114,6 +119,72 @@ function providerUnavailableError(status: WorkItemSyncProviderStatus): APIError 
         'WORK_ITEM_SYNC_PROVIDER_UNAVAILABLE',
         { provider: status },
     );
+}
+
+function statusResponseForDisabled(reason: WorkItemSyncDisabledReason): WorkItemSyncStatusResponse {
+    return {
+        enabled: false,
+        disabled: true,
+        disabledReason: reason,
+        maxItems: WORK_ITEM_SYNC_MAX_ITEMS,
+        providers: [],
+    };
+}
+
+export async function buildWorkItemSyncStatusRouteResponse(
+    ctx: WorkItemSyncRouteContext,
+    workspaceId: string,
+    providerName?: WorkItemSyncProviderName,
+): Promise<WorkItemSyncStatusResponse> {
+    const reason = disabledReason(ctx);
+    if (reason) {
+        return statusResponseForDisabled(reason);
+    }
+
+    const adapters = new Map<WorkItemSyncProviderName, WorkItemSyncProviderAdapter>(
+        (ctx.providers ?? []).map(adapter => [adapter.provider, adapter]),
+    );
+
+    async function resolveWorkspaceRemote(workspace: WorkspaceInfo | undefined): Promise<WorkspaceInfo | undefined> {
+        if (!workspace || workspace.remoteUrl?.trim()) return workspace;
+        const remoteUrl = await detectRemoteUrl(workspace.rootPath);
+        if (!remoteUrl) return workspace;
+        const updated = await ctx.processStore.updateWorkspace(workspace.id, { remoteUrl });
+        return updated ?? { ...workspace, remoteUrl };
+    }
+
+    async function buildProviderContext(workspaceId: string): Promise<WorkItemSyncProviderContext> {
+        const workspaces = await ctx.processStore.getWorkspaces();
+        const workspace = await resolveWorkspaceRemote(workspaces.find(candidate => candidate.id === workspaceId));
+        return {
+            workspaceId,
+            workspace,
+            preferences: readRepoPreferences(ctx.dataDir, workspaceId),
+        };
+    }
+
+    async function getProviderStatus(provider: WorkItemSyncProviderName, context: WorkItemSyncProviderContext): Promise<WorkItemSyncProviderStatus> {
+        const adapter = adapters.get(provider);
+        if (!adapter) {
+            return unavailableWorkItemSyncProviderStatus(provider);
+        }
+        return adapter.getStatus(context);
+    }
+
+    const providerContext = await buildProviderContext(workspaceId);
+    const remoteProvider = detectWorkItemSyncProviderFromRemoteUrl(providerContext.workspace?.remoteUrl);
+    const providerNames = providerName
+        ? [providerName]
+        : remoteProvider ? [remoteProvider] : [];
+    const providers = await Promise.all(providerNames.map(provider => getProviderStatus(provider, providerContext)));
+    return {
+        enabled: true,
+        disabled: false,
+        maxItems: WORK_ITEM_SYNC_MAX_ITEMS,
+        remoteProvider,
+        provider: providers[0],
+        providers,
+    };
 }
 
 export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void {
@@ -223,16 +294,6 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
         return { context: providerContext, project };
     }
 
-    function statusResponseForDisabled(reason: WorkItemSyncDisabledReason): WorkItemSyncStatusResponse {
-        return {
-            enabled: false,
-            disabled: true,
-            disabledReason: reason,
-            maxItems: WORK_ITEM_SYNC_MAX_ITEMS,
-            providers: [],
-        };
-    }
-
     // GET /api/workspaces/:id/work-items/sync/status
     ctx.routes.push({
         method: 'GET',
@@ -247,20 +308,15 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
 
                 const parsed = url.parse(req.url ?? '/', true);
                 const queryProvider = typeof parsed.query.provider === 'string' ? parsed.query.provider : undefined;
-                const providerContext = await buildProviderContext(workspaceId);
-                const remoteProvider = detectWorkItemSyncProviderFromRemoteUrl(providerContext.workspace?.remoteUrl);
-                const providerNames = queryProvider
-                    ? [parseProvider(queryProvider)]
-                    : remoteProvider ? [remoteProvider] : [];
-                const providers = await Promise.all(providerNames.map(provider => getProviderStatus(provider, providerContext)));
-                const response: WorkItemSyncStatusResponse = {
-                    enabled: true,
-                    disabled: false,
-                    maxItems: WORK_ITEM_SYNC_MAX_ITEMS,
-                    remoteProvider,
-                    provider: providers[0],
-                    providers,
-                };
+                const requestedProvider = queryProvider ? parseProvider(queryProvider) : undefined;
+                const force = parsed.query.force === 'true';
+                const response = await getOrRefreshWorkItemResponseCacheEntry(
+                    makeWorkItemSyncStatusResponseCacheKey(workspaceId, requestedProvider),
+                    workspaceId,
+                    'sync-status',
+                    force,
+                    () => buildWorkItemSyncStatusRouteResponse(ctx, workspaceId, requestedProvider),
+                );
                 return sendJSON(res, 200, response);
             } catch (error) {
                 return handleAPIError(res, error);
@@ -349,6 +405,7 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                     issue,
                     candidateIssues,
                 );
+                clearWorkItemResponseCacheForWorkspace(workspaceId);
                 notifyGitHubBackedEpicTreeChanged(workspaceId);
 
                 return sendJSON(res, 201, result.root);
@@ -422,6 +479,7 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                     rootWorkItem,
                     tree,
                 );
+                clearWorkItemResponseCacheForWorkspace(workspaceId);
                 notifyAzureBoardsBackedEpicTreeChanged(workspaceId);
 
                 return sendJSON(res, 201, result.root);
@@ -452,6 +510,7 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                     transport,
                     root.id,
                 );
+                clearWorkItemResponseCacheForWorkspace(workspaceId);
                 notifyGitHubBackedEpicTreeChanged(workspaceId);
                 return sendJSON(res, 200, result);
             } catch (error) {
@@ -477,6 +536,7 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                     { workspaceId, workItemStore: ctx.workItemStore },
                     root.id,
                 );
+                clearWorkItemResponseCacheForWorkspace(workspaceId);
                 notifyGitHubBackedEpicTreeChanged(workspaceId);
                 return sendJSON(res, 200, result);
             } catch (error) {

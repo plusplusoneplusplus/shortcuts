@@ -20,6 +20,7 @@ import { registerWorkItemHierarchyRoutes } from '../../../src/server/routes/work
 import { registerWorkItemRoutes } from '../../../src/server/routes/work-item-routes';
 import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
 import { WORK_ITEM_TYPES, WORK_ITEM_STATUSES } from '../../../src/server/work-items/types';
+import { clearWorkItemResponseCache } from '../../../src/server/work-items/work-item-response-cache';
 
 const REPO_ID = 'hierarchy-test-repo';
 
@@ -91,6 +92,7 @@ async function request(
 }
 
 beforeEach(async () => {
+    clearWorkItemResponseCache();
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-hier-'));
     store = new FileWorkItemStore({ dataDir: tmpDir });
     hierarchyEnabled = false;
@@ -100,6 +102,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
     await stopServer();
+    clearWorkItemResponseCache();
     await fs.rm(tmpDir, { recursive: true, force: true });
 });
 

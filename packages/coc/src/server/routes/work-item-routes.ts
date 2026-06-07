@@ -33,6 +33,7 @@ import type {
     WorkItemPlanVersion,
     WorkItemChange,
     WorkItemSyncParentReference,
+    WorkItemIndexEntry,
 } from '../work-items/types';
 import { WORK_ITEM_STATUSES, WORK_ITEM_TYPES, WORK_ITEM_TRACKER_KINDS, isValidTransition, HIERARCHY_CONTAINER_TYPES, isValidParentChildTypes, getEffectiveType, isKnownWorkItemStatus } from '../work-items/types';
 import { resolveGitHubWorkItemSyncRepo, type GitHubWorkItemSyncRepo } from '../work-items/work-item-sync-github-repo';
@@ -70,6 +71,12 @@ import {
 } from '../work-items/work-item-sync-provider';
 import { executeWorkItem, type EnqueueFunction } from '../work-items/work-item-executor';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
+import {
+    clearWorkItemResponseCacheForWorkspace,
+    getOrRefreshWorkItemResponseCacheEntry,
+    makeWorkItemGroupedResponseCacheKey,
+    makeWorkItemListResponseCacheKey,
+} from '../work-items/work-item-response-cache';
 
 const VALID_SOURCES: Set<string> = new Set(['manual', 'chat', 'schedule']);
 const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);
@@ -320,6 +327,41 @@ function azureBoardsMirrorIsStale(local: WorkItem, remote: AzureBoardsWorkItem):
     const localUpdatedAt = local.azureBoardsMirror?.updatedAt
         ?? (local.tracker?.kind === 'azure-boards-backed' ? local.tracker.azureBoards.updatedAt : undefined);
     return Boolean(localUpdatedAt && remote.updatedAt && localUpdatedAt !== remote.updatedAt);
+}
+
+export interface WorkItemListRouteResponse {
+    items: WorkItemIndexEntry[];
+    total: number;
+    hasMore: boolean;
+}
+
+export interface WorkItemGroupedRouteResponse {
+    groups: Record<string, { items: WorkItemIndexEntry[]; total: number; hasMore: boolean }>;
+}
+
+export async function buildWorkItemListRouteResponse(
+    workItemStore: WorkItemStore,
+    filter: WorkItemFilter,
+): Promise<WorkItemListRouteResponse> {
+    const result = await workItemStore.listWorkItems(filter);
+    const hasMore = (filter.offset ?? 0) + result.items.length < result.total;
+    return { items: result.items, total: result.total, hasMore };
+}
+
+export async function buildWorkItemGroupedRouteResponse(
+    workItemStore: WorkItemStore,
+    filter: WorkItemFilter,
+): Promise<WorkItemGroupedRouteResponse> {
+    const result = await workItemStore.listWorkItemsGrouped(filter);
+    const groups: WorkItemGroupedRouteResponse['groups'] = {};
+    for (const [status, group] of Object.entries(result.groups)) {
+        groups[status] = {
+            items: group.items,
+            total: group.total,
+            hasMore: group.items.length < group.total,
+        };
+    }
+    return { groups };
 }
 
 export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
@@ -768,6 +810,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             const repoId = decodeURIComponent(match![1]);
             const parsed = url.parse(req.url || '/', true);
             const query = parsed.query;
+            const force = query.force === 'true';
 
             const filter: WorkItemFilter = { repoId };
             if (typeof query.status === 'string' && query.status) {
@@ -805,9 +848,14 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 if (!isNaN(n) && n > 0) filter.limit = n;
             }
 
-            const result = await workItemStore.listWorkItems(filter);
-            const hasMore = (filter.offset ?? 0) + result.items.length < result.total;
-            sendJSON(res, 200, { items: result.items, total: result.total, hasMore });
+            const response = await getOrRefreshWorkItemResponseCacheEntry(
+                makeWorkItemListResponseCacheKey(filter),
+                repoId,
+                'list',
+                force,
+                () => buildWorkItemListRouteResponse(workItemStore, filter),
+            );
+            sendJSON(res, 200, response);
         },
     });
 
@@ -819,6 +867,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             const repoId = decodeURIComponent(match![1]);
             const parsed = url.parse(req.url || '/', true);
             const query = parsed.query;
+            const force = query.force === 'true';
 
             const filter: WorkItemFilter = { repoId };
             if (typeof query.source === 'string' && VALID_SOURCES.has(query.source)) {
@@ -844,17 +893,14 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 if (!isNaN(n) && n > 0) filter.limit = n;
             }
 
-            const result = await workItemStore.listWorkItemsGrouped(filter);
-            // Add hasMore to each group
-            const groups: Record<string, { items: any[]; total: number; hasMore: boolean }> = {};
-            for (const [status, group] of Object.entries(result.groups)) {
-                groups[status] = {
-                    items: group.items,
-                    total: group.total,
-                    hasMore: group.items.length < group.total,
-                };
-            }
-            sendJSON(res, 200, { groups });
+            const response = await getOrRefreshWorkItemResponseCacheEntry(
+                makeWorkItemGroupedResponseCacheKey(filter),
+                repoId,
+                'grouped',
+                force,
+                () => buildWorkItemGroupedRouteResponse(workItemStore, filter),
+            );
+            sendJSON(res, 200, response);
         },
     });
 
@@ -988,6 +1034,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 throw err;
             }
 
+            clearWorkItemResponseCacheForWorkspace(repoId);
             getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-added', workspaceId: repoId, item });
             sendJSON(res, 201, item);
         },
@@ -1198,6 +1245,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                     await executeWorkItem(workItemId, workItemStore, enqueue, { headBefore });
                     const afterExec = await workItemStore.getWorkItem(workItemId);
                     if (afterExec) {
+                        clearWorkItemResponseCacheForWorkspace(repoId);
                         getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: afterExec });
                         return sendJSON(res, 200, afterExec);
                     }
@@ -1206,6 +1254,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 }
             }
 
+            clearWorkItemResponseCacheForWorkspace(repoId);
             getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
             sendJSON(res, 200, updated);
         },
@@ -1276,6 +1325,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             });
 
             if (updated) {
+                clearWorkItemResponseCacheForWorkspace(repoId);
                 getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
             }
 
@@ -1295,6 +1345,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             if (!removed) {
                 return handleAPIError(res, notFound('Work item'));
             }
+            clearWorkItemResponseCacheForWorkspace(repoId);
             getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-removed', workspaceId: repoId, itemId: workItemId });
             sendJSON(res, 204, null);
         },
@@ -1331,6 +1382,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 return handleAPIError(res, notFound('Work item'));
             }
 
+            clearWorkItemResponseCacheForWorkspace(repoId);
             getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
             sendJSON(res, 200, updated);
         },
@@ -1367,6 +1419,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 return handleAPIError(res, notFound('Work item'));
             }
 
+            clearWorkItemResponseCacheForWorkspace(repoId);
             getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
             sendJSON(res, 200, updated);
         },

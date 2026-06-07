@@ -67,6 +67,7 @@ import { registerWorkItemPlanRoutes } from './work-item-plan-routes';
 import { registerWorkItemExecutionRoutes } from './work-item-execution-routes';
 import { registerWorkItemChangesRoutes } from './work-item-changes-routes';
 import { registerWorkItemAiRoutes } from './work-item-ai-routes';
+import { warmWorkItemWorkspaceCache } from './work-item-cache-warming';
 import { createWorkItemAiGenerators } from '../work-items/work-item-ai-generator';
 import { FileWorkItemStore } from '../work-items/work-item-store';
 import { createAzureBoardsWorkItemSyncProviderAdapter } from '../work-items/work-item-sync-azure-boards-provider';
@@ -175,7 +176,7 @@ export interface RegisterRoutesOptions {
     syncEngines?: Map<string, SyncEngine>;
 }
 
-export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; agentProvidersQuotaCache?: AgentProvidersQuotaCache; activeWorkspacePrRefresher: ActiveWorkspaceBackgroundRefresher } {
+export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; agentProvidersQuotaCache?: AgentProvidersQuotaCache; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher } {
     const {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
@@ -298,19 +299,6 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const activeWorkspaceTracker = new ActiveWorkspaceTracker();
     registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.loops?.enabled ?? false, getLiveFeatureFlags, activeWorkspaceTracker);
     const repoTreeService = new RepoTreeService(dataDir, undefined, store);
-    const activeWorkspacePrRefresher = new ActiveWorkspaceBackgroundRefresher({
-        tracker: activeWorkspaceTracker,
-        refreshWorkspace: async (workspaceId) => {
-            const config = opts.runtimeConfigService?.config ?? opts.resolvedConfig;
-            if (config?.pullRequests?.enabled !== true) return;
-            await warmPullRequestWorkspaceCache({
-                dataDir,
-                repoId: workspaceId,
-                service: repoTreeService,
-                suggestionsEnabled: config.pullRequests?.suggestions === true,
-            });
-        },
-    });
     registerRepoRoutes(routes, dataDir, repoTreeService);
     registerPrRoutes(routes, dataDir, repoTreeService, undefined, resolvedAiService);
     // Focused-diff classification routes — always registered so the feature
@@ -698,6 +686,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     // Hierarchy tree route must be registered before generic /:workItemId to win the match
     registerWorkItemHierarchyRoutes({ routes, workItemStore, getHierarchyEnabled: getWorkItemsHierarchyEnabled });
+    const workItemSyncProviders = [
+        createGitHubWorkItemSyncProviderAdapter(),
+        createAzureBoardsWorkItemSyncProviderAdapter({ dataDir }),
+    ];
     registerWorkItemSyncRoutes({
         routes,
         workItemStore,
@@ -705,10 +697,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         dataDir,
         getHierarchyEnabled: getWorkItemsHierarchyEnabled,
         getSyncEnabled: getWorkItemsSyncEnabled,
-        providers: [
-            createGitHubWorkItemSyncProviderAdapter(),
-            createAzureBoardsWorkItemSyncProviderAdapter({ dataDir }),
-        ],
+        providers: workItemSyncProviders,
         onGitHubBackedEpicTreeChanged: (workspaceId) => workItemGitHubPullPoller?.configureWorkspace(workspaceId),
         onAzureBoardsBackedEpicTreeChanged: (workspaceId) => workItemAzureBoardsPullPoller?.configureWorkspace(workspaceId),
     });
@@ -725,6 +714,32 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerWorkItemPlanRoutes({ routes, workItemStore, getWsServer });
     registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer, dataDir });
     registerWorkItemChangesRoutes({ routes, workItemStore, getWsServer });
+
+    const activeWorkspaceBackgroundRefresher = new ActiveWorkspaceBackgroundRefresher({
+        tracker: activeWorkspaceTracker,
+        refreshWorkspace: async (workspaceId) => {
+            const config = opts.runtimeConfigService?.config ?? opts.resolvedConfig;
+            await Promise.all([
+                config?.pullRequests?.enabled === true
+                    ? warmPullRequestWorkspaceCache({
+                        dataDir,
+                        repoId: workspaceId,
+                        service: repoTreeService,
+                        suggestionsEnabled: config.pullRequests?.suggestions === true,
+                    })
+                    : Promise.resolve(),
+                warmWorkItemWorkspaceCache({
+                    workspaceId,
+                    workItemStore,
+                    processStore: store,
+                    dataDir,
+                    getHierarchyEnabled: getWorkItemsHierarchyEnabled,
+                    getSyncEnabled: getWorkItemsSyncEnabled,
+                    providers: workItemSyncProviders,
+                }),
+            ]);
+        },
+    });
 
     // Wire queue task completion → work item status update + commit collection
     bridge.on('queueChange', (event: { type: string; task?: any }) => {
@@ -855,5 +870,5 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
     );
 
-    return { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, agentProvidersQuotaCache, activeWorkspacePrRefresher };
+    return { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, agentProvidersQuotaCache, activeWorkspaceBackgroundRefresher };
 }

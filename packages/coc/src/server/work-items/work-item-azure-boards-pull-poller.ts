@@ -18,6 +18,7 @@ import {
     type WorkItemSyncProviderContext,
     WORK_ITEM_SYNC_MAX_ITEMS,
 } from './work-item-sync-provider';
+import { clearWorkItemResponseCacheForWorkspace } from './work-item-response-cache';
 
 export const DEFAULT_WORK_ITEM_AZURE_BOARDS_PULL_INTERVAL_MINUTES = 5;
 
@@ -207,6 +208,9 @@ export class WorkItemAzureBoardsPullPoller {
             }
         }
 
+        if (result.created > 0 || result.updated > 0 || result.deleted > 0) {
+            clearWorkItemResponseCacheForWorkspace(workspaceId);
+        }
         return result;
     }
 

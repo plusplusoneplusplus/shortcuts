@@ -7,6 +7,7 @@ import type { Route } from '../../../src/server/types';
 import { createRouter } from '../../../src/server/shared/router';
 import { registerWorkItemRoutes } from '../../../src/server/routes/work-item-routes';
 import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
+import { clearWorkItemResponseCache } from '../../../src/server/work-items/work-item-response-cache';
 
 let tmpDir: string;
 let store: FileWorkItemStore;
@@ -86,6 +87,7 @@ async function request(
 }
 
 beforeEach(async () => {
+    clearWorkItemResponseCache();
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-routes-'));
     store = new FileWorkItemStore({ dataDir: tmpDir });
     server = makeServer();
@@ -94,6 +96,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
     await stopServer();
+    clearWorkItemResponseCache();
     await fs.rm(tmpDir, { recursive: true, force: true });
 });
 
@@ -275,6 +278,50 @@ describe('Work Item Routes', () => {
             expect(res.status).toBe(200);
             expect(res.body.items).toEqual([]);
             expect(res.body.total).toBe(0);
+        });
+
+        it('serves cached list responses until force=true requests a live refresh', async () => {
+            const first = await request('GET', `/api/workspaces/${REPO_ID}/work-items?limit=10`);
+            expect(first.status).toBe(200);
+            expect(first.body.total).toBe(2);
+
+            await store.addWorkItem({
+                id: 'direct-store-item',
+                repoId: REPO_ID,
+                title: 'Direct Store Item',
+                description: '',
+                status: 'created',
+                createdAt: '2026-01-01T00:00:00.000Z',
+                updatedAt: '2026-01-01T00:00:00.000Z',
+                source: 'manual',
+            });
+
+            const cached = await request('GET', `/api/workspaces/${REPO_ID}/work-items?limit=10`);
+            expect(cached.status).toBe(200);
+            expect(cached.body.total).toBe(2);
+
+            const forced = await request('GET', `/api/workspaces/${REPO_ID}/work-items?limit=10&force=true`);
+            expect(forced.status).toBe(200);
+            expect(forced.body.total).toBe(3);
+
+            const refreshedCache = await request('GET', `/api/workspaces/${REPO_ID}/work-items?limit=10`);
+            expect(refreshedCache.status).toBe(200);
+            expect(refreshedCache.body.total).toBe(3);
+        });
+
+        it('clears cached grouped responses after route-created work items', async () => {
+            const first = await request('GET', `/api/workspaces/${REPO_ID}/work-items/grouped?limit=20`);
+            expect(first.status).toBe(200);
+            expect(first.body.groups.created.total).toBe(2);
+
+            const created = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Route-created item',
+            });
+            expect(created.status).toBe(201);
+
+            const afterCreate = await request('GET', `/api/workspaces/${REPO_ID}/work-items/grouped?limit=20`);
+            expect(afterCreate.status).toBe(200);
+            expect(afterCreate.body.groups.created.total).toBe(3);
         });
 
         it('filters by type', async () => {
