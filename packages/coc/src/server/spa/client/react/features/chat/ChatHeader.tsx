@@ -14,7 +14,7 @@ import { useFloatingChats } from '../../contexts/FloatingChatsContext';
 import { ChatHeaderOverflowMenu, type OverflowMenuItem } from './ChatHeaderOverflowMenu';
 import type { ClientConversationTurn } from '../../types/dashboard';
 import { LoopBadge } from './LoopBadge';
-import { ProviderBadge, type ChatProvider } from './ProviderBadge';
+import { ProviderBadge, getTaskProviderBadgeProvider } from './ProviderBadge';
 import { isLoopsEnabled } from '../../utils/config';
 
 /**
@@ -377,6 +377,7 @@ export function ChatHeader({
     const isWide = tier === 'wide';
     const isNarrow = tier === 'narrow';
     const showFloatPopout = isWide || (!isNarrow);
+    const providerBadgeProvider = getTaskProviderBadgeProvider(task);
 
     const overflowItems = useMemo(() => buildOverflowItems(tier, {
         task,
@@ -461,8 +462,8 @@ export function ChatHeader({
                 {isLoopsEnabled() && (loopCount ?? 0) > 0 && (
                     <LoopBadge count={loopCount!} hasActiveLoops={hasActiveLoops} onClick={onToggleLoopPanel} />
                 )}
-                {task?.metadata?.provider && (
-                    <ProviderBadge provider={task.metadata.provider as ChatProvider} />
+                {providerBadgeProvider && (
+                    <ProviderBadge provider={providerBadgeProvider} />
                 )}
                 {/* References — only in wide tier (live ctx + duration moved into pill / composer) */}
                 {isWide && (

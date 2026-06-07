@@ -3,7 +3,8 @@
  *
  * Visual contract mirrors `ChatStatusPill` (the "Thinking" pill in the chat
  * header): a rounded-full bordered pill with a leading colored dot followed
- * by the provider label ("Copilot", "Codex", or "Claude"). Provider-specific
+ * by the provider label ("Copilot", "Codex", "Claude", or "Auto (pending)").
+ * Provider-specific
  * brand colors set the dot, text, and border tints:
  *
  *   - Copilot — green (matches the existing assistant avatar accent)
@@ -19,6 +20,7 @@
 import { cn } from '../../ui/cn';
 
 export type ChatProvider = 'copilot' | 'codex' | 'claude';
+export type ProviderBadgeProvider = ChatProvider | 'auto-pending';
 
 interface ProviderColorVariant {
     /** Pill border + bg + text classes (matches ChatStatusPill `variant.pill`). */
@@ -53,11 +55,36 @@ const PROVIDER_VARIANTS: Record<ChatProvider, ProviderColorVariant> = {
     },
 };
 
+const AUTO_PENDING_VARIANT: ProviderColorVariant = {
+    pill: 'border-[#848484]/40 bg-[#848484]/10 text-[#666666] dark:text-[#c5c5c5]',
+    dot: 'bg-[#848484] dark:bg-[#c5c5c5]',
+    avatar: PROVIDER_VARIANTS.copilot.avatar,
+};
+
 export function getTaskChatProvider(task: any): ChatProvider | undefined {
-    const provider = task?.provider ?? task?.metadata?.provider ?? task?.payload?.provider;
+    const provider = task?.provider
+        ?? task?.metadata?.provider
+        ?? task?.metadata?.autoProviderRouting?.provider
+        ?? task?.payload?.provider;
     return provider === 'copilot' || provider === 'codex' || provider === 'claude'
         ? provider
         : undefined;
+}
+
+export function isTaskAutoProviderPending(task: any): boolean {
+    if (getTaskChatProvider(task)) return false;
+    if (task?.status !== 'queued') return false;
+    const routing = task?.payload?.context?.autoProviderRouting ?? task?.metadata?.autoProviderRouting;
+    return Boolean(
+        routing
+        && typeof routing === 'object'
+        && !Array.isArray(routing)
+        && routing.requested === true
+    );
+}
+
+export function getTaskProviderBadgeProvider(task: any): ProviderBadgeProvider | undefined {
+    return getTaskChatProvider(task) ?? (isTaskAutoProviderPending(task) ? 'auto-pending' : undefined);
 }
 
 /**
@@ -81,13 +108,21 @@ export function getProviderDotClasses(provider: ChatProvider | undefined): strin
 }
 
 export interface ProviderBadgeProps {
-    provider: ChatProvider;
+    provider: ProviderBadgeProvider;
     className?: string;
 }
 
 export function ProviderBadge({ provider, className }: ProviderBadgeProps) {
-    const label = provider === 'codex' ? 'Codex' : provider === 'claude' ? 'Claude' : 'Copilot';
-    const variant = PROVIDER_VARIANTS[provider] ?? PROVIDER_VARIANTS.copilot;
+    const label = provider === 'auto-pending'
+        ? 'Auto (pending)'
+        : provider === 'codex'
+            ? 'Codex'
+            : provider === 'claude'
+                ? 'Claude'
+                : 'Copilot';
+    const variant = provider === 'auto-pending'
+        ? AUTO_PENDING_VARIANT
+        : PROVIDER_VARIANTS[provider] ?? PROVIDER_VARIANTS.copilot;
 
     return (
         <span

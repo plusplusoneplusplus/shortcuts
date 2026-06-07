@@ -12,7 +12,14 @@
  */
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ProviderBadge, getProviderAvatarClasses, getProviderDotClasses, getTaskChatProvider } from '../../../../../src/server/spa/client/react/features/chat/ProviderBadge';
+import {
+    ProviderBadge,
+    getProviderAvatarClasses,
+    getProviderDotClasses,
+    getTaskChatProvider,
+    getTaskProviderBadgeProvider,
+    isTaskAutoProviderPending,
+} from '../../../../../src/server/spa/client/react/features/chat/ProviderBadge';
 
 describe('ProviderBadge', () => {
     describe('rendering', () => {
@@ -35,6 +42,14 @@ describe('ProviderBadge', () => {
             const badge = screen.getByTestId('provider-badge');
             expect(badge.textContent).toBe('Copilot');
             expect(badge.getAttribute('data-provider')).toBe('copilot');
+        });
+
+        it('renders "Auto (pending)" label for pending auto resolution', () => {
+            render(<ProviderBadge provider="auto-pending" />);
+            const badge = screen.getByTestId('provider-badge');
+            expect(badge.textContent).toBe('Auto (pending)');
+            expect(badge.getAttribute('data-provider')).toBe('auto-pending');
+            expect(badge.getAttribute('title')).toBe('Agent: Auto (pending)');
         });
 
         it('has title attribute with provider name for codex', () => {
@@ -177,8 +192,33 @@ describe('getTaskChatProvider', () => {
         expect(getTaskChatProvider({ payload: { provider: 'claude' } })).toBe('claude');
     });
 
+    it('falls back to the execution-time auto routing provider in metadata', () => {
+        expect(getTaskChatProvider({
+            metadata: { autoProviderRouting: { requested: true, provider: 'claude' } },
+        })).toBe('claude');
+    });
+
     it('returns undefined for missing or unknown provider values', () => {
         expect(getTaskChatProvider({})).toBeUndefined();
         expect(getTaskChatProvider({ provider: 'future-provider' })).toBeUndefined();
+    });
+
+    it('identifies queued auto tasks as pending only before a concrete provider is assigned', () => {
+        const queuedAutoTask = {
+            status: 'queued',
+            payload: { context: { autoProviderRouting: { requested: true } } },
+        };
+        expect(isTaskAutoProviderPending(queuedAutoTask)).toBe(true);
+        expect(getTaskProviderBadgeProvider(queuedAutoTask)).toBe('auto-pending');
+
+        const resolvedAutoTask = {
+            metadata: {
+                provider: 'codex',
+                autoProviderRouting: { requested: true, provider: 'codex' },
+            },
+            payload: { context: { autoProviderRouting: { requested: true } } },
+        };
+        expect(isTaskAutoProviderPending(resolvedAutoTask)).toBe(false);
+        expect(getTaskProviderBadgeProvider(resolvedAutoTask)).toBe('codex');
     });
 });

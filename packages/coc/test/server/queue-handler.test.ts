@@ -876,6 +876,33 @@ describe('Queue Handler', () => {
             expect(withFolder.folderPath).toBe('/repos/frontend');
             expect(noFolder.folderPath).toBeUndefined();
         });
+
+        it('should include auto-provider pending marker without a concrete provider when listing queued tasks', async () => {
+            const srv = await startServer({
+                defaultProvider: 'auto',
+                features: { autoAgentProviderRouting: true },
+            } as CLIConfig);
+
+            const enqueueRes = await postJSON(`${srv.url}/api/queue`, makeTask({
+                displayName: 'Auto pending',
+                payload: {
+                    kind: 'chat',
+                    mode: 'autopilot',
+                    prompt: 'route me later',
+                },
+            }));
+            expect(enqueueRes.status).toBe(201);
+            const enqueued = JSON.parse(enqueueRes.body).task;
+            expect(enqueued.payload.provider).toBeUndefined();
+            expect(enqueued.payload.context.autoProviderRouting).toEqual({ requested: true });
+
+            const res = await request(`${srv.url}/api/queue`);
+            const body = JSON.parse(res.body);
+            const queuedTask = body.queued.find((t: any) => t.displayName === 'Auto pending');
+            expect(queuedTask).toBeDefined();
+            expect(queuedTask.payload.provider).toBeUndefined();
+            expect(queuedTask.payload.context.autoProviderRouting).toEqual({ requested: true });
+        });
     });
 
     // ========================================================================

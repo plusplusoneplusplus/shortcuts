@@ -621,6 +621,35 @@ describe('ChatHeader', () => {
             expect(badge.getAttribute('data-provider')).toBe('copilot');
         });
 
+        it('shows Auto (pending) when queued task requested auto routing without a concrete provider', () => {
+            render(<ChatHeader {...defaultProps({
+                task: {
+                    status: 'queued',
+                    payload: { context: { autoProviderRouting: { requested: true } } },
+                },
+                isPending: true,
+            })} />);
+            const badge = screen.getByTestId('provider-badge');
+            expect(badge.textContent).toBe('Auto (pending)');
+            expect(badge.getAttribute('data-provider')).toBe('auto-pending');
+        });
+
+        it('shows the resolved provider rather than Auto (pending) after execution-time routing', () => {
+            render(<ChatHeader {...defaultProps({
+                task: {
+                    status: 'running',
+                    metadata: {
+                        provider: 'claude',
+                        autoProviderRouting: { requested: true, provider: 'claude' },
+                    },
+                    payload: { context: { autoProviderRouting: { requested: true } } },
+                },
+            })} />);
+            const badge = screen.getByTestId('provider-badge');
+            expect(badge.textContent).toBe('Claude');
+            expect(badge.getAttribute('data-provider')).toBe('claude');
+        });
+
         it('does NOT show provider badge when task has no metadata.provider', () => {
             render(<ChatHeader {...defaultProps({
                 task: { status: 'completed', duration: 5000 },
