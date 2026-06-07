@@ -337,6 +337,10 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         if (!cfg.features) { cfg.features = {}; }
         cfg.features.sessionContextAttachments = v;
     }),
+    bool('features.commitChatLens', (cfg, v) => {
+        if (!cfg.features) { cfg.features = {}; }
+        cfg.features.commitChatLens = v;
+    }),
     bool('features.autoAgentProviderRouting', (cfg, v) => {
         if (!cfg.features) { cfg.features = {}; }
         cfg.features.autoAgentProviderRouting = v;

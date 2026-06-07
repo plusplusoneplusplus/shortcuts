@@ -625,6 +625,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 mcpOauthEnabled: liveConfig.mcpOauth?.enabled ?? false,
                 focusedDiffEnabled: liveConfig.features?.focusedDiff ?? false,
                 sessionContextAttachmentsEnabled: liveConfig.features?.sessionContextAttachments ?? false,
+                commitChatLensEnabled: liveConfig.features?.commitChatLens ?? false,
                 autoAgentProviderRoutingEnabled: liveConfig.features?.autoAgentProviderRouting ?? false,
                 workItemsHierarchyEnabled: liveConfig.workItems?.hierarchy?.enabled ?? false,
                 workItemsSyncEnabled: liveConfig.workItems?.sync?.enabled ?? false,

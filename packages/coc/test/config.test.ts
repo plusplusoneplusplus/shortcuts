@@ -64,6 +64,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.forEach).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.mapReduce).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.features.gitCrossCloneCherryPick).toBe(true);
+            expect(DEFAULT_CONFIG.features.commitChatLens).toBe(false);
             expect(DEFAULT_CONFIG.features.autoAgentProviderRouting).toBe(false);
             expect(DEFAULT_CONFIG.defaultProvider).toBe('copilot');
             expect(DEFAULT_CONFIG.agentProviderRouting.auto.rules.map(rule => rule.provider)).toEqual(['claude', 'codex', 'copilot']);
@@ -952,6 +953,7 @@ timeout: 300
                 '  focusedDiff: true',
                 '  gitCrossCloneCherryPick: true',
                 '  sessionContextAttachments: true',
+                '  commitChatLens: true',
                 '  autoAgentProviderRouting: true',
                 'memoryPromotion:',
                 '  batchSize: 25',
@@ -1145,6 +1147,7 @@ timeout: 300
                   "features": {
                     "autoAgentProviderRouting": false,
                     "autoMemoryPromotion": true,
+                    "commitChatLens": false,
                     "focusedDiff": true,
                     "gitCommitLookup": false,
                     "gitCrossCloneCherryPick": true,
@@ -1293,6 +1296,7 @@ timeout: 300
                   "excalidraw.enabled": "default",
                   "features.autoAgentProviderRouting": "default",
                   "features.autoMemoryPromotion": "file",
+                  "features.commitChatLens": "default",
                   "features.focusedDiff": "file",
                   "features.gitCrossCloneCherryPick": "default",
                   "features.sessionContextAttachments": "default",

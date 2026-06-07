@@ -12,6 +12,7 @@ describe('loadRuntimeConfig', () => {
     let isForEachEnabled: () => boolean;
     let isGitCrossCloneCherryPickEnabled: () => boolean;
     let isSessionContextAttachmentsEnabled: () => boolean;
+    let isCommitChatLensEnabled: () => boolean;
     let isContainerMode: () => boolean;
     let setCurrentAgentId: (id: string | null) => void;
     let _resetRuntimeConfig: () => void;
@@ -24,6 +25,7 @@ describe('loadRuntimeConfig', () => {
         isForEachEnabled = mod.isForEachEnabled;
         isGitCrossCloneCherryPickEnabled = mod.isGitCrossCloneCherryPickEnabled;
         isSessionContextAttachmentsEnabled = mod.isSessionContextAttachmentsEnabled;
+        isCommitChatLensEnabled = mod.isCommitChatLensEnabled;
         isContainerMode = mod.isContainerMode;
         setCurrentAgentId = mod.setCurrentAgentId;
         _resetRuntimeConfig = mod._resetRuntimeConfig;
@@ -43,6 +45,7 @@ describe('loadRuntimeConfig', () => {
         expect(isForEachEnabled()).toBe(false);
         expect(isGitCrossCloneCherryPickEnabled()).toBe(false);
         expect(isSessionContextAttachmentsEnabled()).toBe(false);
+        expect(isCommitChatLensEnabled()).toBe(false);
 
         vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
             ok: true,
@@ -67,6 +70,7 @@ describe('loadRuntimeConfig', () => {
                     focusedDiffEnabled: false,
                     gitCrossCloneCherryPickEnabled: true,
                     sessionContextAttachmentsEnabled: true,
+                    commitChatLensEnabled: true,
                 },
                 hostname: 'test-host',
                 bindAddress: '127.0.0.1',
@@ -78,6 +82,7 @@ describe('loadRuntimeConfig', () => {
         expect(isForEachEnabled()).toBe(true);
         expect(isGitCrossCloneCherryPickEnabled()).toBe(true);
         expect(isSessionContextAttachmentsEnabled()).toBe(true);
+        expect(isCommitChatLensEnabled()).toBe(true);
     });
 
     it('falls back to bootstrap config on fetch failure', async () => {

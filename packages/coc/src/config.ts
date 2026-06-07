@@ -219,6 +219,8 @@ export interface CLIConfig {
         gitCrossCloneCherryPick?: boolean;
         /** Drag/drop session-context attachments in chat composers. Disabled by default. */
         sessionContextAttachments?: boolean;
+        /** Commit chat bottom-right lens placement on desktop commit-review surfaces. Disabled by default. */
+        commitChatLens?: boolean;
         /** Auto agent provider routing in Admin -> AI Provider. Disabled by default. */
         autoAgentProviderRouting?: boolean;
     };
@@ -477,6 +479,8 @@ export interface ResolvedCLIConfig {
         gitCrossCloneCherryPick: boolean;
         /** Drag/drop session-context attachments in chat composers. Disabled by default. */
         sessionContextAttachments: boolean;
+        /** Commit chat bottom-right lens placement on desktop commit-review surfaces. Disabled by default. */
+        commitChatLens: boolean;
         /** Auto agent provider routing in Admin -> AI Provider. Disabled by default. */
         autoAgentProviderRouting: boolean;
     };
@@ -688,6 +692,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         gitCommitLookup: false,
         gitCrossCloneCherryPick: true,
         sessionContextAttachments: false,
+        commitChatLens: false,
         autoAgentProviderRouting: false,
     },
     memoryPromotion: {

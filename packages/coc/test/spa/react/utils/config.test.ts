@@ -3,6 +3,7 @@ import {
     getConfiguredDefaultProvider,
     getDefaultProvider,
     isAutoAgentProviderRoutingEnabled,
+    isCommitChatLensEnabled,
     isServersEnabled,
 } from '../../../../src/server/spa/client/react/utils/config';
 
@@ -33,6 +34,18 @@ describe('isServersEnabled', () => {
     it('returns false for truthy non-boolean values (strict equality)', () => {
         (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', serversEnabled: 1 as unknown as boolean };
         expect(isServersEnabled()).toBe(false);
+    });
+});
+
+describe('isCommitChatLensEnabled', () => {
+    it('returns false when commitChatLensEnabled is omitted from config', () => {
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws' };
+        expect(isCommitChatLensEnabled()).toBe(false);
+    });
+
+    it('returns true when commitChatLensEnabled is explicitly true', () => {
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', commitChatLensEnabled: true };
+        expect(isCommitChatLensEnabled()).toBe(true);
     });
 });
 

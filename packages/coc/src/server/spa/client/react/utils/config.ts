@@ -31,6 +31,7 @@ interface DashboardConfig {
     mcpOauthEnabled?: boolean;
     focusedDiffEnabled?: boolean;
     sessionContextAttachmentsEnabled?: boolean;
+    commitChatLensEnabled?: boolean;
     containerDefaultAgentEnabled?: boolean;
     bindAddress?: string;
     /** Whether the Codex SDK provider is enabled (feature flag). */
@@ -119,6 +120,7 @@ async function _fetchAndApplyRuntimeConfig(apiBase: string): Promise<void> {
             mcpOauthEnabled: data.features.mcpOauthEnabled,
             focusedDiffEnabled: data.features.focusedDiffEnabled,
             sessionContextAttachmentsEnabled: data.features.sessionContextAttachmentsEnabled,
+            commitChatLensEnabled: data.features.commitChatLensEnabled,
             containerDefaultAgentEnabled: data.features.containerDefaultAgentEnabled,
             codexEnabled: data.features.codexEnabled,
             defaultProvider: data.features.defaultProvider,
@@ -271,6 +273,11 @@ export function isFocusedDiffEnabled(): boolean {
 /** Returns true when drag/drop session-context attachments are enabled. */
 export function isSessionContextAttachmentsEnabled(): boolean {
     return getConfig().sessionContextAttachmentsEnabled === true;
+}
+
+/** Returns true when commit chat lens placement is enabled. */
+export function isCommitChatLensEnabled(): boolean {
+    return getConfig().commitChatLensEnabled === true;
 }
 
 export function isContainerDefaultAgentEnabled(): boolean {

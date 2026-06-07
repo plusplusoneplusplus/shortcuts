@@ -103,6 +103,7 @@ export interface AdminResolvedConfig {
     gitCommitLookup?: boolean;
     gitCrossCloneCherryPick?: boolean;
     sessionContextAttachments?: boolean;
+    commitChatLens?: boolean;
     autoAgentProviderRouting?: boolean;
   };
   workItems?: { hierarchy?: { enabled?: boolean }; sync?: { enabled?: boolean }; aiAuthoring?: { enabled?: boolean } };
@@ -170,6 +171,7 @@ export interface AdminConfigUpdate {
   'workItems.aiAuthoring.enabled'?: boolean;
   'features.gitCrossCloneCherryPick'?: boolean;
   'features.sessionContextAttachments'?: boolean;
+  'features.commitChatLens'?: boolean;
   'features.autoAgentProviderRouting'?: boolean;
   'effortLevels.enabled'?: boolean;
   [key: string]: unknown;
@@ -212,6 +214,7 @@ export interface RuntimeDashboardConfig {
     gitCommitLookupEnabled: boolean;
     gitCrossCloneCherryPickEnabled: boolean;
     sessionContextAttachmentsEnabled: boolean;
+    commitChatLensEnabled: boolean;
     effortLevelsEnabled: boolean;
   };
   hostname?: string;

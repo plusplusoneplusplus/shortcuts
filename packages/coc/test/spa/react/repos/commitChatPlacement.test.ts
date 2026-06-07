@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { SHOW_COMMIT_CHAT_LENS } from '../../../../src/server/spa/client/react/featureFlags';
 import {
     getCommitChatPlacementStorageKey,
     isCommitChatPinned,
@@ -13,10 +12,6 @@ import {
 describe('commit chat placement', () => {
     beforeEach(() => {
         localStorage.clear();
-    });
-
-    it('keeps the lens feature flag disabled by default', () => {
-        expect(SHOW_COMMIT_CHAT_LENS).toBe(false);
     });
 
     it('preserves the legacy global open state key', () => {

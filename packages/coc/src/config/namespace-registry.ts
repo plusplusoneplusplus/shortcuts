@@ -93,6 +93,7 @@ const FEATURES_SOURCE_KEYS = [
     'features.focusedDiff',
     'features.gitCrossCloneCherryPick',
     'features.sessionContextAttachments',
+    'features.commitChatLens',
     'features.autoAgentProviderRouting',
 ] as const;
 const WORK_ITEMS_HIERARCHY_SOURCE_KEYS = ['workItems.hierarchy.enabled'] as const;
@@ -390,6 +391,7 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
                     gitCommitLookup: override?.features?.gitCommitLookup ?? base.features?.gitCommitLookup ?? false,
                     gitCrossCloneCherryPick: override?.features?.gitCrossCloneCherryPick ?? base.features?.gitCrossCloneCherryPick ?? true,
                     sessionContextAttachments: override?.features?.sessionContextAttachments ?? base.features?.sessionContextAttachments ?? false,
+                    commitChatLens: override?.features?.commitChatLens ?? base.features?.commitChatLens ?? false,
                     autoAgentProviderRouting: override?.features?.autoAgentProviderRouting ?? base.features?.autoAgentProviderRouting ?? false,
                 },
             }),

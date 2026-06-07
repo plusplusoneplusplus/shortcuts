@@ -86,6 +86,7 @@ export interface CLIConfig {
     features?: {
         autoMemoryPromotion?: boolean;
         focusedDiff?: boolean;
+        commitChatLens?: boolean;
     };
     store?: {
         backend?: 'file' | 'sqlite';

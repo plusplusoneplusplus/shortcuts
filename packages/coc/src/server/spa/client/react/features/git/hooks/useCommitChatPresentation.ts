@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { SHOW_COMMIT_CHAT_LENS } from '../../../featureFlags';
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
+import { isCommitChatLensEnabled } from '../../../utils/config';
 import {
     isCommitChatPinned,
     pinCommitChat,
@@ -34,20 +34,21 @@ export function useCommitChatPresentation({
     supportsChat = true,
 }: UseCommitChatPresentationOptions): UseCommitChatPresentationReturn {
     const { isDesktop } = useBreakpoint();
+    const lensFeatureEnabled = isCommitChatLensEnabled();
     const [chatOpen, setChatOpen] = useState(() => supportsChat ? readCommitChatOpen() : false);
     const [isPinned, setIsPinned] = useState(() => (
-        SHOW_COMMIT_CHAT_LENS && supportsChat && commitHash
+        lensFeatureEnabled && supportsChat && commitHash
             ? isCommitChatPinned(workspaceId, commitHash)
             : false
     ));
 
     useEffect(() => {
-        if (!supportsChat || !SHOW_COMMIT_CHAT_LENS || !commitHash) {
+        if (!supportsChat || !lensFeatureEnabled || !commitHash) {
             setIsPinned(false);
             return;
         }
         setIsPinned(isCommitChatPinned(workspaceId, commitHash));
-    }, [workspaceId, commitHash, supportsChat]);
+    }, [workspaceId, commitHash, supportsChat, lensFeatureEnabled]);
 
     const toggleChat = useCallback(() => {
         if (!supportsChat) return;
@@ -83,10 +84,10 @@ export function useCommitChatPresentation({
         unpinChat,
         isPinned,
         presentation: resolveCommitChatPresentation({
-            lensEnabled: SHOW_COMMIT_CHAT_LENS,
+            lensEnabled: lensFeatureEnabled,
             isDesktop,
             pinned: isPinned,
         }),
-        lensEnabled: SHOW_COMMIT_CHAT_LENS,
+        lensEnabled: lensFeatureEnabled,
     };
 }

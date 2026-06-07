@@ -48,6 +48,7 @@ describe('ADMIN_EDITABLE_KEYS', () => {
             'agentProviderRouting.auto',
             'features.gitCrossCloneCherryPick',
             'features.sessionContextAttachments',
+            'features.commitChatLens',
             'features.autoAgentProviderRouting',
             'workItems.hierarchy.enabled',
             'workItems.sync.enabled',
@@ -257,6 +258,7 @@ describe('validate()', () => {
         'claude.enabled',
         'features.gitCrossCloneCherryPick',
         'features.sessionContextAttachments',
+        'features.commitChatLens',
         'features.autoAgentProviderRouting',
         'workItems.hierarchy.enabled',
         'workItems.sync.enabled',
@@ -401,6 +403,7 @@ describe('apply()', () => {
         ['mcpOauth.enabled', (c) => c.mcpOauth?.enabled],
         ['features.gitCrossCloneCherryPick', (c) => c.features?.gitCrossCloneCherryPick],
         ['features.sessionContextAttachments', (c) => c.features?.sessionContextAttachments],
+        ['features.commitChatLens', (c) => c.features?.commitChatLens],
         ['workItems.hierarchy.enabled', (c) => c.workItems?.hierarchy?.enabled],
         ['workItems.sync.enabled', (c) => c.workItems?.sync?.enabled],
         ['workItems.aiAuthoring.enabled', (c) => c.workItems?.aiAuthoring?.enabled],
@@ -500,6 +503,7 @@ describe('runtime classification', () => {
         'excalidraw.enabled', 'features.focusedDiff',
         'features.gitCrossCloneCherryPick',
         'features.sessionContextAttachments',
+        'features.commitChatLens',
         'workItems.hierarchy.enabled', 'workItems.sync.enabled', 'workItems.aiAuthoring.enabled',
     ];
 

@@ -18,9 +18,3 @@ export const SHOW_EXCALIDRAW_DIAGRAMS = true;
  * Disabled by default — in active development.
  */
 export const RALPH_MULTI_LOOP = false;
-
-/**
- * Enable commit chat lens mode on desktop commit-review surfaces.
- * Disabled by default — in active development.
- */
-export const SHOW_COMMIT_CHAT_LENS = process.env.SHOW_COMMIT_CHAT_LENS === 'true';

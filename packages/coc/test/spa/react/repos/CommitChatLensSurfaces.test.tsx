@@ -4,11 +4,11 @@ import type { DiffSource } from '../../../../src/server/spa/client/react/feature
 
 const mockQueueDispatch = vi.fn();
 
-vi.mock('../../../../src/server/spa/client/react/featureFlags', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('../../../../src/server/spa/client/react/featureFlags')>();
+vi.mock('../../../../src/server/spa/client/react/utils/config', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../../../src/server/spa/client/react/utils/config')>();
     return {
         ...actual,
-        SHOW_COMMIT_CHAT_LENS: true,
+        isCommitChatLensEnabled: () => true,
     };
 });
 

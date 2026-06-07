@@ -80,6 +80,7 @@ type FeaturesSnapshot = {
     focusedDiff: boolean;
     gitCrossCloneCherryPick: boolean;
     sessionContextAttachments: boolean;
+    commitChatLens: boolean;
     autoAgentProviderRouting: boolean;
     workItemsHierarchy: boolean;
     workItemsSync: boolean;
@@ -378,6 +379,7 @@ export function AdminPanel() {
     const [focusedDiffEnabled, setFocusedDiffEnabled] = useState(false);
     const [gitCrossCloneCherryPickEnabled, setGitCrossCloneCherryPickEnabled] = useState(false);
     const [sessionContextAttachmentsEnabled, setSessionContextAttachmentsEnabled] = useState(false);
+    const [commitChatLensEnabled, setCommitChatLensEnabled] = useState(false);
     const [autoAgentProviderRoutingEnabled, setAutoAgentProviderRoutingEnabled] = useState(false);
     const [workItemsHierarchyEnabled, setWorkItemsHierarchyEnabled] = useState(false);
     const [workItemsSyncEnabled, setWorkItemsSyncEnabled] = useState(false);
@@ -434,7 +436,7 @@ export function AdminPanel() {
         taskCardDensity: 'compact' as 'compact' | 'dense',
         historyGrouping: true,
     });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState<FeaturesSnapshot>({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, forEach: false, mapReduce: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false, gitCrossCloneCherryPick: false, sessionContextAttachments: false, autoAgentProviderRouting: false, workItemsHierarchy: false, workItemsSync: false, workItemsAiAuthoring: false, effortLevels: false });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState<FeaturesSnapshot>({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, forEach: false, mapReduce: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false, gitCrossCloneCherryPick: false, sessionContextAttachments: false, commitChatLens: false, autoAgentProviderRouting: false, workItemsHierarchy: false, workItemsSync: false, workItemsAiAuthoring: false, effortLevels: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -550,10 +552,12 @@ export function AdminPanel() {
             const fde = resolved.features?.focusedDiff ?? false;
             const gccpe = resolved.features?.gitCrossCloneCherryPick ?? false;
             const scae = resolved.features?.sessionContextAttachments ?? false;
+            const ccle = resolved.features?.commitChatLens ?? false;
             const aapre = resolved.features?.autoAgentProviderRouting ?? false;
             setGitCrossCloneCherryPickEnabled(gccpe);
             setFocusedDiffEnabled(fde);
             setSessionContextAttachmentsEnabled(scae);
+            setCommitChatLensEnabled(ccle);
             setAutoAgentProviderRoutingEnabled(aapre);
             const wihe = resolved.workItems?.hierarchy?.enabled ?? false;
             setWorkItemsHierarchyEnabled(wihe);
@@ -571,7 +575,7 @@ export function AdminPanel() {
             const arc = normalizeAutoProviderRoutingConfig(resolved.agentProviderRouting?.auto);
             setDefaultProvider(dp);
             setAutoRoutingConfig(arc);
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, forEach: fee, mapReduce: mre, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde, gitCrossCloneCherryPick: gccpe, sessionContextAttachments: scae, autoAgentProviderRouting: aapre, workItemsHierarchy: wihe, workItemsSync: wise, workItemsAiAuthoring: waae, effortLevels: ele });
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, forEach: fee, mapReduce: mre, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde, gitCrossCloneCherryPick: gccpe, sessionContextAttachments: scae, commitChatLens: ccle, autoAgentProviderRouting: aapre, workItemsHierarchy: wihe, workItemsSync: wise, workItemsAiAuthoring: waae, effortLevels: ele });
             setAiExecSnapshot({ model: form.model, parallel: form.parallel, timeout: form.timeout, output: form.output });
             setDefaultProviderSnapshot({ provider: dp, codexEnabled: cxe, claudeEnabled: cle, autoRoutingConfig: arc });
             const sgr = resolved.sync?.gitRemote ?? '';
@@ -690,6 +694,7 @@ export function AdminPanel() {
         focusedDiffEnabled !== featuresSnapshot.focusedDiff ||
         gitCrossCloneCherryPickEnabled !== featuresSnapshot.gitCrossCloneCherryPick ||
         sessionContextAttachmentsEnabled !== featuresSnapshot.sessionContextAttachments ||
+        commitChatLensEnabled !== featuresSnapshot.commitChatLens ||
         autoAgentProviderRoutingEnabled !== featuresSnapshot.autoAgentProviderRouting ||
         workItemsHierarchyEnabled !== featuresSnapshot.workItemsHierarchy ||
         workItemsSyncEnabled !== featuresSnapshot.workItemsSync ||
@@ -947,6 +952,7 @@ export function AdminPanel() {
                 'features.focusedDiff': focusedDiffEnabled,
                 'features.gitCrossCloneCherryPick': gitCrossCloneCherryPickEnabled,
                 'features.sessionContextAttachments': sessionContextAttachmentsEnabled,
+                'features.commitChatLens': commitChatLensEnabled,
                 'features.autoAgentProviderRouting': autoAgentProviderRoutingEnabled,
                 'workItems.hierarchy.enabled': workItemsHierarchyEnabled,
                 'workItems.sync.enabled': workItemsSyncEnabled,
@@ -963,13 +969,13 @@ export function AdminPanel() {
                 setDefaultProvider('copilot');
                 setDefaultProviderSnapshot(prev => ({ ...prev, provider: 'copilot' }));
             }
-            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, forEach: forEachEnabled, mapReduce: mapReduceEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled, gitCrossCloneCherryPick: gitCrossCloneCherryPickEnabled, sessionContextAttachments: sessionContextAttachmentsEnabled, autoAgentProviderRouting: autoAgentProviderRoutingEnabled, workItemsHierarchy: workItemsHierarchyEnabled, workItemsSync: workItemsSyncEnabled, workItemsAiAuthoring: workItemsAiAuthoringEnabled, effortLevels: effortLevelsEnabled });
+            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, forEach: forEachEnabled, mapReduce: mapReduceEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled, gitCrossCloneCherryPick: gitCrossCloneCherryPickEnabled, sessionContextAttachments: sessionContextAttachmentsEnabled, commitChatLens: commitChatLensEnabled, autoAgentProviderRouting: autoAgentProviderRoutingEnabled, workItemsHierarchy: workItemsHierarchyEnabled, workItemsSync: workItemsSyncEnabled, workItemsAiAuthoring: workItemsAiAuthoringEnabled, effortLevels: effortLevelsEnabled });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, forEachEnabled, mapReduceEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, gitCrossCloneCherryPickEnabled, sessionContextAttachmentsEnabled, autoAgentProviderRoutingEnabled, defaultProvider, workItemsHierarchyEnabled, workItemsSyncEnabled, workItemsAiAuthoringEnabled, effortLevelsEnabled, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, forEachEnabled, mapReduceEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, gitCrossCloneCherryPickEnabled, sessionContextAttachmentsEnabled, commitChatLensEnabled, autoAgentProviderRoutingEnabled, defaultProvider, workItemsHierarchyEnabled, workItemsSyncEnabled, workItemsAiAuthoringEnabled, effortLevelsEnabled, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setTerminalEnabled(featuresSnapshot.terminal);
@@ -992,6 +998,7 @@ export function AdminPanel() {
         setFocusedDiffEnabled(featuresSnapshot.focusedDiff);
         setGitCrossCloneCherryPickEnabled(featuresSnapshot.gitCrossCloneCherryPick);
         setSessionContextAttachmentsEnabled(featuresSnapshot.sessionContextAttachments);
+        setCommitChatLensEnabled(featuresSnapshot.commitChatLens);
         setAutoAgentProviderRoutingEnabled(featuresSnapshot.autoAgentProviderRouting);
         setWorkItemsHierarchyEnabled(featuresSnapshot.workItemsHierarchy);
         setWorkItemsSyncEnabled(featuresSnapshot.workItemsSync);
@@ -1838,6 +1845,13 @@ export function AdminPanel() {
                                     >
                                         <SourceBadge source={sources['features.sessionContextAttachments']} />
                                         <AdminToggle checked={sessionContextAttachmentsEnabled} onChange={setSessionContextAttachmentsEnabled} data-testid="toggle-session-context-attachments-enabled" />
+                                    </AdminRow>
+                                    <AdminRow
+                                        name={<>Commit chat lens <span className="ar-badge ar-badge-accent">Experimental</span></>}
+                                        hint="Open unpinned commit-review chat as a desktop bottom-right lens instead of the side panel. Disabled by default."
+                                    >
+                                        <SourceBadge source={sources['features.commitChatLens']} />
+                                        <AdminToggle checked={commitChatLensEnabled} onChange={setCommitChatLensEnabled} data-testid="toggle-commit-chat-lens-enabled" />
                                     </AdminRow>
                                     <AdminRow
                                         name={<>Auto agent provider routing <span className="ar-badge ar-badge-warning">Restart</span></>}

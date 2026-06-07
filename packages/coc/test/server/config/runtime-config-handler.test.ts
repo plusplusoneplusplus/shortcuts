@@ -35,7 +35,7 @@ function createMockRuntimeConfigService(overrides: Partial<ResolvedCLIConfig> = 
         loops: { enabled: false },
         excalidraw: { enabled: false },
         mcpOauth: { enabled: false },
-        features: { focusedDiff: false, autoMemoryPromotion: false, gitCommitLookup: false, gitCrossCloneCherryPick: true, sessionContextAttachments: false },
+        features: { focusedDiff: false, autoMemoryPromotion: false, gitCommitLookup: false, gitCrossCloneCherryPick: true, sessionContextAttachments: false, commitChatLens: false },
         memoryPromotion: { enabled: false },
         defaultModels: {},
         ...overrides,
@@ -79,6 +79,7 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.focusedDiffEnabled).toBe(false);
         expect(result.features.gitCrossCloneCherryPickEnabled).toBe(true);
         expect(result.features.sessionContextAttachmentsEnabled).toBe(false);
+        expect(result.features.commitChatLensEnabled).toBe(false);
         expect(result.features.autoAgentProviderRoutingEnabled).toBe(false);
         expect(result.features.codexEnabled).toBe(false);
         expect(result.features.defaultProvider).toBe('copilot');
@@ -320,6 +321,36 @@ describe('session context attachments feature flag', () => {
             expect(after.features.sessionContextAttachmentsEnabled).toBe(true);
 
             const effect = updateResult.effects.find(e => e.field === 'features.sessionContextAttachments');
+            expect(effect).toBeDefined();
+            expect(effect!.runtime).toBe('live');
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+});
+
+describe('commit chat lens feature flag', () => {
+    it('features.commitChatLens defaults disabled and updates through runtime config service', async () => {
+        const fs = await import('fs');
+        const path = await import('path');
+        const os = await import('os');
+        const { RuntimeConfigService } = await import('../../../src/config/runtime-config-service');
+
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-commit-chat-lens-'));
+        try {
+            const configPath = path.join(tmpDir, 'config.yaml');
+            const svc = new RuntimeConfigService({ configPath });
+
+            const before = buildRuntimeDashboardConfig(svc, 'test-host', '127.0.0.1');
+            expect(before.features.commitChatLensEnabled).toBe(false);
+
+            const updateResult = await svc.updateConfig({ 'features.commitChatLens': true });
+            expect(updateResult.config.features.commitChatLens).toBe(true);
+
+            const after = buildRuntimeDashboardConfig(svc, 'test-host', '127.0.0.1');
+            expect(after.features.commitChatLensEnabled).toBe(true);
+
+            const effect = updateResult.effects.find(e => e.field === 'features.commitChatLens');
             expect(effect).toBeDefined();
             expect(effect!.runtime).toBe('live');
         } finally {
