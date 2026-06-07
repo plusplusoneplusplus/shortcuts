@@ -1,15 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
-import { isCommitChatLensEnabled } from '../../../utils/config';
-import {
-    isCommitChatPinned,
-    pinCommitChat,
-    readCommitChatOpen,
-    resolveCommitChatPresentation,
-    unpinCommitChat,
-    writeCommitChatOpen,
-} from '../commits/commitChatPlacement';
-import type { CommitChatPresentation } from '../commits/commitChatPlacement';
+import { useMemo } from 'react';
+import { useReviewChatPresentation } from './useReviewChatPresentation';
+import type { CommitChatPresentation, ReviewChatTarget } from '../commits/commitChatPlacement';
 
 export interface UseCommitChatPresentationOptions {
     workspaceId: string;
@@ -33,61 +24,9 @@ export function useCommitChatPresentation({
     commitHash,
     supportsChat = true,
 }: UseCommitChatPresentationOptions): UseCommitChatPresentationReturn {
-    const { isDesktop } = useBreakpoint();
-    const lensFeatureEnabled = isCommitChatLensEnabled();
-    const [chatOpen, setChatOpen] = useState(() => supportsChat ? readCommitChatOpen() : false);
-    const [isPinned, setIsPinned] = useState(() => (
-        lensFeatureEnabled && supportsChat && commitHash
-            ? isCommitChatPinned(workspaceId, commitHash)
-            : false
-    ));
+    const target = useMemo<ReviewChatTarget | undefined>(() => (
+        commitHash ? { type: 'commit', workspaceId, commitHash } : undefined
+    ), [workspaceId, commitHash]);
 
-    useEffect(() => {
-        if (!supportsChat || !lensFeatureEnabled || !commitHash) {
-            setIsPinned(false);
-            return;
-        }
-        setIsPinned(isCommitChatPinned(workspaceId, commitHash));
-    }, [workspaceId, commitHash, supportsChat, lensFeatureEnabled]);
-
-    const toggleChat = useCallback(() => {
-        if (!supportsChat) return;
-        setChatOpen(prev => {
-            const next = !prev;
-            writeCommitChatOpen(next);
-            return next;
-        });
-    }, [supportsChat]);
-
-    const closeChat = useCallback(() => {
-        setChatOpen(false);
-        writeCommitChatOpen(false);
-    }, []);
-
-    const pinChat = useCallback(() => {
-        if (!commitHash) return;
-        pinCommitChat(workspaceId, commitHash);
-        setIsPinned(true);
-    }, [workspaceId, commitHash]);
-
-    const unpinChat = useCallback(() => {
-        if (!commitHash) return;
-        unpinCommitChat(workspaceId, commitHash);
-        setIsPinned(false);
-    }, [workspaceId, commitHash]);
-
-    return {
-        chatOpen,
-        toggleChat,
-        closeChat,
-        pinChat,
-        unpinChat,
-        isPinned,
-        presentation: resolveCommitChatPresentation({
-            lensEnabled: lensFeatureEnabled,
-            isDesktop,
-            pinned: isPinned,
-        }),
-        lensEnabled: lensFeatureEnabled,
-    };
+    return useReviewChatPresentation({ target, supportsChat });
 }
