@@ -285,16 +285,29 @@ def do_cherry_pick(state: State) -> None:
         log(f"cherry-picking {sha}")
         result = git("cherry-pick", sha, check=False, capture=True)
         if result.returncode != 0:
-            auto_abort_on_conflict(
-                state,
-                phase="cherry-pick",
-                commit=sha,
-                detail=(
-                    "merge conflict during cherry-pick; the entire submit "
-                    "has been aborted. Rebase or fix the source commits "
-                    "manually, then re-invoke the skill."
-                ),
-            )
+            # Distinguish an empty commit (changes already in tree) from a
+            # real merge conflict.  When the cherry-pick is empty, the
+            # worktree is clean but CHERRY_PICK_HEAD still exists — git is
+            # just waiting for us to either --skip or --allow-empty.
+            cherry_pick_head = repo_root() / ".git" / "CHERRY_PICK_HEAD"
+            worktree_status = git_out("status", "--porcelain")
+            if cherry_pick_head.exists() and not worktree_status:
+                log(
+                    f"commit {sha[:8]} is empty after cherry-pick "
+                    "(changes already present in base); skipping"
+                )
+                git("cherry-pick", "--skip")
+            else:
+                auto_abort_on_conflict(
+                    state,
+                    phase="cherry-pick",
+                    commit=sha,
+                    detail=(
+                        "merge conflict during cherry-pick; the entire submit "
+                        "has been aborted. Rebase or fix the source commits "
+                        "manually, then re-invoke the skill."
+                    ),
+                )
         state.commits = state.commits[1:]
         state.save()
 
