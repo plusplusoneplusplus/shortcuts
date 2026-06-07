@@ -53,7 +53,7 @@ export function registerRalphLaunchRoutes(routes: Route[], ctx: RalphLaunchRoute
                 : undefined;
             const workingDirectory = typeof body.workingDirectory === 'string' && body.workingDirectory
                 ? body.workingDirectory
-                : folderPath;
+                : undefined;
             const aiSelection = parseRalphAiSelection(body);
             if ('error' in aiSelection) {
                 return sendError(res, 400, aiSelection.error);

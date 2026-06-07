@@ -133,7 +133,23 @@ describe('POST /api/ralph-launch', () => {
         expect(enqueueArg.payload.context.ralph.maxIterations).toBeGreaterThan(0);
     });
 
-    it('passes folderPath and workingDirectory to the enqueued task', async () => {
+    it('keeps folderPath separate from workingDirectory when no execution directory is provided', async () => {
+        const res = await post(baseUrl, '/api/ralph-launch', {
+            goalSpec: 'Build something',
+            workspaceId: 'ws-1',
+            folderPath: '/notes/Plans/my-goal',
+        });
+
+        expect(res.status).toBe(200);
+        const enqueueArg = mockEnqueue.mock.calls[0][0];
+        expect(enqueueArg.repoId).toBe('ws-1');
+        expect(enqueueArg.folderPath).toBe('/notes/Plans/my-goal');
+        expect(enqueueArg.payload.workspaceId).toBe('ws-1');
+        expect(enqueueArg.payload.folderPath).toBe('/notes/Plans/my-goal');
+        expect(enqueueArg.payload.workingDirectory).toBeUndefined();
+    });
+
+    it('passes folderPath and explicit workingDirectory to the enqueued task', async () => {
         const res = await post(baseUrl, '/api/ralph-launch', {
             goalSpec: 'Build something',
             workspaceId: 'ws-1',

@@ -112,9 +112,12 @@ review dialog prefilled from the composer and passes its current
 workspace-scoped provider/model/reasoning-effort selection into the launch. The
 New Chat direct-goal path sends goal text only: attachments and images block
 confirmation, no grilling chat is enqueued, and the pasted goal is not saved as
-a note. The route validates optional `provider` and `reasoningEffort` inputs and
-carries them, alongside optional `config.model`, onto the first queued Ralph
-execution task.
+a note. `folderPath` is the source/context folder for the goal spec, while
+`workingDirectory` is an optional explicit execution directory; when omitted,
+the multi-repo queue router resolves the execution root from `workspaceId`. The
+route validates optional `provider` and `reasoningEffort` inputs and carries
+them, alongside optional `config.model`, onto the first queued Ralph execution
+task.
 
 `POST /api/processes/:id/ralph-start`
 (`packages/coc/src/server/routes/queue-ralph-routes.ts`) starts execution from
