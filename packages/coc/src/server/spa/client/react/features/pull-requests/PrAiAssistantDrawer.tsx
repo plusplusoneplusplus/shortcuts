@@ -8,6 +8,8 @@
 
 import { cn } from '../../ui';
 import { PullRequestChatPanel } from './PullRequestChatPanel';
+import { PullRequestChatPlacementFrame } from './PullRequestChatPlacementFrame';
+import type { ReviewChatPresentation } from '../git/commits/commitChatPlacement';
 
 export interface PrAiAssistantDrawerProps {
     open: boolean;
@@ -19,6 +21,9 @@ export interface PrAiAssistantDrawerProps {
     prTitle?: string;
     /** Repo identifier the PR belongs to (typically equal to workspaceId). */
     repoId?: string;
+    /** When set, render the shared review-chat frame inside the drawer shell. */
+    presentation?: ReviewChatPresentation;
+    onUnpin?: () => void;
 }
 
 export function PrAiAssistantDrawer({
@@ -29,7 +34,51 @@ export function PrAiAssistantDrawer({
     prNumber,
     prTitle,
     repoId,
+    presentation,
+    onUnpin,
 }: PrAiAssistantDrawerProps) {
+    const chatContent = presentation ? (
+        open ? (
+            <PullRequestChatPlacementFrame
+                workspaceId={workspaceId}
+                prId={prId}
+                prNumber={prNumber}
+                prTitle={prTitle}
+                repoId={repoId}
+                presentation={presentation}
+                onClose={onClose}
+                onUnpin={onUnpin}
+            />
+        ) : null
+    ) : (
+        <>
+            <header className="flex items-center justify-between gap-1.5 border-b border-gray-200 px-2 py-1.5 dark:border-gray-700">
+                <h2 className="m-0 text-[13px] font-semibold leading-tight text-gray-900 dark:text-gray-100">
+                    Ask about this PR
+                </h2>
+                <button
+                    type="button"
+                    onClick={onClose}
+                    aria-label="Close assistant"
+                    className="grid h-6 w-6 place-items-center rounded-[5px] border border-gray-300 bg-white text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                    data-testid="pr-ai-assistant-close"
+                >
+                    ×
+                </button>
+            </header>
+            <div className="flex-1 min-h-0">
+                <PullRequestChatPanel
+                    workspaceId={workspaceId}
+                    prId={prId}
+                    prNumber={prNumber}
+                    prTitle={prTitle}
+                    repoId={repoId}
+                    onClose={onClose}
+                />
+            </div>
+        </>
+    );
+
     return (
         <>
             {open && (
@@ -49,30 +98,7 @@ export function PrAiAssistantDrawer({
                 aria-hidden={!open}
                 data-testid="pr-ai-assistant"
             >
-                <header className="flex items-center justify-between gap-1.5 border-b border-gray-200 px-2 py-1.5 dark:border-gray-700">
-                    <h2 className="m-0 text-[13px] font-semibold leading-tight text-gray-900 dark:text-gray-100">
-                        Ask about this PR
-                    </h2>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        aria-label="Close assistant"
-                        className="grid h-6 w-6 place-items-center rounded-[5px] border border-gray-300 bg-white text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                        data-testid="pr-ai-assistant-close"
-                    >
-                        ×
-                    </button>
-                </header>
-                <div className="flex-1 min-h-0">
-                    <PullRequestChatPanel
-                        workspaceId={workspaceId}
-                        prId={prId}
-                        prNumber={prNumber}
-                        prTitle={prTitle}
-                        repoId={repoId}
-                        onClose={onClose}
-                    />
-                </div>
+                {chatContent}
             </aside>
         </>
     );

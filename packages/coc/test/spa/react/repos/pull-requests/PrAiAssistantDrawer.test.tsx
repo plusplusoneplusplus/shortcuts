@@ -125,4 +125,29 @@ describe('PrAiAssistantDrawer', () => {
         fireEvent.click(screen.getByTestId('pr-ai-assistant-backdrop'));
         expect(onClose).toHaveBeenCalledTimes(1);
     });
+
+    it('renders shared framed side-panel chrome with an unpin action when requested', () => {
+        const onUnpin = vi.fn();
+        render(
+            <PrAiAssistantDrawer
+                open
+                onClose={vi.fn()}
+                onUnpin={onUnpin}
+                workspaceId="repo-1"
+                repoId="repo-1"
+                prId="142"
+                prNumber={142}
+                prTitle="Add retry logic"
+                presentation="side-panel"
+            />,
+        );
+
+        expect(screen.getByTestId('pr-chat-side-panel')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-chat-side-panel-header')).toHaveTextContent('PR Chat');
+        expect(screen.getByTestId('pr-chat-side-panel-header')).toHaveTextContent('#142');
+        expect(screen.queryByText('Ask about this PR')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('pr-chat-unpin-btn'));
+        expect(onUnpin).toHaveBeenCalledTimes(1);
+    });
 });

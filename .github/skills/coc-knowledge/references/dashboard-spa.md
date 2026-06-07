@@ -37,7 +37,7 @@ spa/client/react/
 └── featureFlags.ts     # Compile-time feature flags
 ```
 
-When `features.commitChatLens` is enabled from Admin -> Configure -> Features, review chat uses `useReviewChatPresentation()` / `useCommitChatPresentation()` to render unpinned supported chat targets as desktop-only bottom-right lenses; mobile/tablet layouts fall back to the existing side-panel or drawer path. Lens open state and pin state are client-local localStorage scoped by workspace plus review target (`commit` hash or PR repo/id/head discriminator), and pinned chats render in the existing side-panel path with an Unpin action. The flag is disabled by default, so commit review keeps the legacy `coc.commitChat.open` visibility key and `coc.commitChatPanel.width` resizing behavior until the admin flag is enabled.
+When `features.commitChatLens` is enabled from Admin -> Configure -> Features, review chat uses `useReviewChatPresentation()` / `useCommitChatPresentation()` to render unpinned supported chat targets such as commit detail, commit-backed file diff, and PR detail Ask AI as desktop-only bottom-right lenses; mobile/tablet layouts fall back to the existing side-panel or drawer path. Lens open state and pin state are client-local localStorage scoped by workspace plus review target (`commit` hash or PR repo/id/head discriminator), and pinned chats render in the existing side-panel or drawer path with an Unpin action. The flag is disabled by default, so commit review keeps the legacy `coc.commitChat.open` visibility key and `coc.commitChatPanel.width` resizing behavior until the admin flag is enabled.
 
 `features/chat/ChatListPane.tsx` keeps grouped chat-history expansion state
 local to the mounted view. Ralph session groups, For Each run groups, Map

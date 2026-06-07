@@ -28,6 +28,7 @@ export interface UseReviewChatPresentationReturn {
     isPinned: boolean;
     presentation: ReviewChatPresentation;
     lensEnabled: boolean;
+    isDesktop: boolean;
 }
 
 export function useReviewChatPresentation({
@@ -46,7 +47,7 @@ export function useReviewChatPresentation({
         if (lensFeatureEnabled) {
             return target ? readReviewChatOpen(target) : false;
         }
-        return readCommitChatOpen();
+        return target?.type === 'commit' ? readCommitChatOpen() : false;
     }, [supportsChat, lensFeatureEnabled, target, targetStorageId]);
 
     const writeOpenState = useCallback((open: boolean) => {
@@ -54,7 +55,7 @@ export function useReviewChatPresentation({
             if (target) writeReviewChatOpen(target, open);
             return;
         }
-        writeCommitChatOpen(open);
+        if (target?.type === 'commit') writeCommitChatOpen(open);
     }, [lensFeatureEnabled, target, targetStorageId]);
 
     const [chatOpen, setChatOpen] = useState(readOpenState);
@@ -65,8 +66,14 @@ export function useReviewChatPresentation({
     ));
 
     useEffect(() => {
-        setChatOpen(readOpenState());
-    }, [readOpenState]);
+        if (!supportsChat) {
+            setChatOpen(false);
+            return;
+        }
+        if (lensFeatureEnabled || target?.type === 'commit') {
+            setChatOpen(readOpenState());
+        }
+    }, [supportsChat, lensFeatureEnabled, target?.type, readOpenState]);
 
     useEffect(() => {
         if (!supportsChat || !lensFeatureEnabled || !target) {
@@ -115,5 +122,6 @@ export function useReviewChatPresentation({
             pinned: isPinned,
         }),
         lensEnabled: lensFeatureEnabled,
+        isDesktop,
     };
 }

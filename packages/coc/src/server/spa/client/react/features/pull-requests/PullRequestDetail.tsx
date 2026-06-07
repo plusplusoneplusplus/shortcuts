@@ -30,10 +30,13 @@ import { PrCommitTable } from './PrCommitTable';
 import { PrChecksTable, PrMergeReadiness } from './PrChecksAndReadiness';
 import { PrFilesPanel } from './PrFilesPanel';
 import { PrAiAssistantDrawer } from './PrAiAssistantDrawer';
+import { PullRequestChatPlacementFrame } from './PullRequestChatPlacementFrame';
 import { SHOW_FOCUSED_DIFF } from '../../featureFlags';
 import type { ClassificationKey } from '../git/diff/diffSource';
 import { buildGitPrPopOutUrl } from '../../layout/Router';
 import { useGitReviewPopOut, gitReviewPrPopOutKey } from '../../contexts/GitReviewPopOutContext';
+import { useReviewChatPresentation } from '../git/hooks/useReviewChatPresentation';
+import type { ReviewChatTarget } from '../git/commits/commitChatPlacement';
 import {
     buildCheckRowsFromChecks,
     buildCommitRowsFromPrCommits,
@@ -94,7 +97,6 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     const [error, setError] = useState<string | null>(null);
     const initialTab = (state.selectedPrDetailTab as PrDetailTab) ?? 'overview';
     const [detailTab, setDetailTab] = useState<PrDetailTab>(initialTab);
-    const [assistantOpen, setAssistantOpen] = useState(false);
     const [aiPassRunning, setAiPassRunning] = useState(false);
     const [aiPassDone, setAiPassDone] = useState(false);
     const [summaryCopied, setSummaryCopied] = useState(false);
@@ -102,6 +104,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     // Pop-out context for opening PR review in a separate window
     const { markPoppedOut } = useGitReviewPopOut();
     const workspaceId = state.workspace ?? String(repoId);
+    const placementWorkspaceId = state.selectedRepoId ?? String(repoId);
 
     // Classification hook — passes undefined key when feature flag is off or no real headSha yet.
     // Never fall back to sourceBranch: two PRs on the same branch would alias to the same key.
@@ -110,6 +113,27 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
         SHOW_FOCUSED_DIFF && repoId && prId && headSha
             ? { type: 'pr', repoId: String(repoId), identifier: `${prId}:${headSha}` }
             : undefined;
+    const prChatTarget = useMemo<ReviewChatTarget>(() => ({
+        type: 'pr',
+        workspaceId: placementWorkspaceId,
+        repoId: String(repoId),
+        prId: String(prId),
+        headSha,
+    }), [placementWorkspaceId, repoId, prId, headSha]);
+    const {
+        chatOpen: assistantOpen,
+        toggleChat: toggleAssistant,
+        closeChat: closeAssistant,
+        pinChat: pinAssistant,
+        unpinChat: unpinAssistant,
+        isPinned: assistantPinned,
+        presentation: assistantPresentation,
+        lensEnabled: assistantLensEnabled,
+        isDesktop: assistantIsDesktop,
+    } = useReviewChatPresentation({ target: prChatTarget });
+    const openAssistant = useCallback(() => {
+        if (!assistantOpen) toggleAssistant();
+    }, [assistantOpen, toggleAssistant]);
 
     const handleFileClick = useCallback((filePath: string) => {
         const url = buildGitPrPopOutUrl(workspaceId, String(repoId), String(prId));
@@ -410,7 +434,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                         </button>
                         <button
                             type="button"
-                            onClick={() => setAssistantOpen(true)}
+                            onClick={openAssistant}
                             className="inline-flex min-h-[20px] items-center justify-center rounded border border-purple-300 bg-purple-50 px-1.5 py-0 text-[11px] font-semibold leading-none text-purple-700 hover:bg-purple-100 dark:border-purple-700 dark:bg-purple-900/30 dark:text-purple-200"
                             data-testid="pr-open-ai-assistant"
                         >
@@ -606,15 +630,32 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                 )}
             </div>
 
-            <PrAiAssistantDrawer
-                open={assistantOpen}
-                onClose={() => setAssistantOpen(false)}
-                workspaceId={String(repoId)}
-                repoId={String(repoId)}
-                prId={String(prId)}
-                prNumber={pr.number}
-                prTitle={pr.title}
-            />
+            {assistantOpen && assistantPresentation === 'lens' && (
+                <PullRequestChatPlacementFrame
+                    workspaceId={String(repoId)}
+                    repoId={String(repoId)}
+                    prId={String(prId)}
+                    prNumber={pr.number}
+                    prTitle={pr.title}
+                    presentation="lens"
+                    onClose={closeAssistant}
+                    onPin={pinAssistant}
+                />
+            )}
+
+            {assistantPresentation === 'side-panel' && (
+                <PrAiAssistantDrawer
+                    open={assistantOpen}
+                    onClose={closeAssistant}
+                    workspaceId={String(repoId)}
+                    repoId={String(repoId)}
+                    prId={String(prId)}
+                    prNumber={pr.number}
+                    prTitle={pr.title}
+                    presentation={assistantLensEnabled && assistantPinned && assistantIsDesktop ? 'side-panel' : undefined}
+                    onUnpin={assistantLensEnabled && assistantPinned && assistantIsDesktop ? unpinAssistant : undefined}
+                />
+            )}
         </div>
     );
 }

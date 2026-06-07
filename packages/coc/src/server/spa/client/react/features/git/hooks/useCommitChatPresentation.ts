@@ -17,6 +17,7 @@ export interface UseCommitChatPresentationReturn {
     isPinned: boolean;
     presentation: CommitChatPresentation;
     lensEnabled: boolean;
+    isDesktop: boolean;
 }
 
 export function useCommitChatPresentation({

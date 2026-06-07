@@ -1839,8 +1839,8 @@ export function AdminPanel() {
                                         <AdminToggle checked={sessionContextAttachmentsEnabled} onChange={setSessionContextAttachmentsEnabled} data-testid="toggle-session-context-attachments-enabled" />
                                     </AdminRow>
                                     <AdminRow
-                                        name={<>Commit chat lens <span className="ar-badge ar-badge-accent">Experimental</span></>}
-                                        hint="Open unpinned commit-review chat as a desktop bottom-right lens instead of the side panel. Disabled by default."
+                                        name={<>Review chat lens <span className="ar-badge ar-badge-accent">Experimental</span></>}
+                                        hint="Open unpinned commit and pull-request review chat as a desktop bottom-right lens instead of the side panel or drawer. Disabled by default."
                                     >
                                         <SourceBadge source={sources['features.commitChatLens']} />
                                         <AdminToggle checked={commitChatLensEnabled} onChange={setCommitChatLensEnabled} data-testid="toggle-commit-chat-lens-enabled" />
