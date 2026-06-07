@@ -131,6 +131,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getConfiguredDefaultProvider: () => 'copilot',
     isAutoAgentProviderRoutingEnabled: () => false,
     isEffortLevelsEnabled: () => false,
+    isCommitChatLensEnabled: () => false,
 }));
 
 import { PopOutGitReviewShell } from '../../../../src/server/spa/client/react/layout/PopOutGitReviewShell';

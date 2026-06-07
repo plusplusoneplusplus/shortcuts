@@ -24,9 +24,10 @@ export interface PrChatPanelProps {
     /** PR title — forwarded to the AI framing sentence. */
     prTitle?: string;
     onClose: () => void;
+    hideEmptyHeader?: boolean;
 }
 
-export function PrChatPanel({ workspaceId, prId, filePath, repoId, prTitle, onClose }: PrChatPanelProps) {
+export function PrChatPanel({ workspaceId, prId, filePath, repoId, prTitle, onClose, hideEmptyHeader = false }: PrChatPanelProps) {
     const { taskId, loading, error, createChat } = usePrChatBinding({ workspaceId, prId, filePath, repoId, prTitle });
     const [input, setInput] = useState('');
     const richTextRef = useRef<RichTextInputHandle>(null);
@@ -47,7 +48,7 @@ export function PrChatPanel({ workspaceId, prId, filePath, repoId, prTitle, onCl
              data-testid="pr-chat-panel">
 
             {/* Header */}
-            {!taskId && (
+            {!hideEmptyHeader && !taskId && (
                 <div className="flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                     <div className="flex items-center gap-2">
                         <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">💬 PR Chat</span>

@@ -19,6 +19,7 @@ import { ToastContainer, useToast } from '../ui';
 import { getSpaCocClient } from '../api/cocClient';
 import { CommitChatPanel } from '../features/git/commits/CommitChatPanel';
 import { CommitChatPlacementFrame } from '../features/git/commits/CommitChatPlacementFrame';
+import { ReviewChatPlacementFrame } from '../features/git/reviewChat/ReviewChatPlacementFrame';
 import { BranchRangeOverview } from '../features/git/branches/BranchRangeOverview';
 import { FileDiffPanel } from '../features/git/diff/FileDiffPanel';
 import { createCommitDiffSource, createBranchRangeDiffSource, createPrDiffSource } from '../features/git/diff/diffSource';
@@ -26,6 +27,7 @@ import { PopOutFilePanel } from '../features/git/diff/PopOutFilePanel';
 import { Spinner } from '../ui';
 import { useCachedDiff } from '../features/git/hooks/useCommitDiffCache';
 import { useCommitChatPresentation } from '../features/git/hooks/useCommitChatPresentation';
+import { useReviewChatPresentation } from '../features/git/hooks/useReviewChatPresentation';
 import { parseDiffFileList } from '../features/git/diff/UnifiedDiffViewer';
 import { useFileCommentCounts } from '../features/git/hooks/useFileCommentCounts';
 import { computeDiffCommentKey } from '../../comments/diff-comment-utils';
@@ -48,6 +50,7 @@ import type { HunkCategory } from '../features/pull-requests/classification-type
 import { HUNK_CATEGORIES, CATEGORY_LABELS } from '../features/pull-requests/classification-types';
 import { PrChatPanel } from '../features/git/commits/PrChatPanel';
 import type { GitCommitItem } from '../features/git/commits/CommitList';
+import type { ReviewChatTarget } from '../features/git/commits/commitChatPlacement';
 import type { BranchRangeInfo } from '../features/git/branches/BranchChanges';
 import type { BranchRangeFile } from '../features/git/branches/BranchAllFilesDiff';
 import type { FileChange } from '../features/git/diff/FileTree';
@@ -558,8 +561,25 @@ function PrReviewContent({ workspaceId, repoId, prId, onTitleLoaded }: { workspa
     const [hunkTarget, setHunkTarget] = useState<'first' | 'last' | undefined>(undefined);
     const [prTitle, setPrTitle] = useState<string | undefined>(undefined);
     const [headSha, setHeadSha] = useState<string | undefined>(undefined);
-    const [chatOpen, setChatOpen] = useState(false);
     const [prioritySort, setPrioritySort] = useState(false);
+    const prChatTarget = useMemo<ReviewChatTarget>(() => ({
+        type: 'pr',
+        workspaceId,
+        repoId,
+        prId,
+        headSha,
+    }), [workspaceId, repoId, prId, headSha]);
+    const {
+        chatOpen,
+        toggleChat,
+        closeChat,
+        pinChat,
+        unpinChat,
+        isPinned: chatPinned,
+        presentation: chatPresentation,
+        lensEnabled: chatLensEnabled,
+        isDesktop: chatIsDesktop,
+    } = useReviewChatPresentation({ target: prChatTarget });
 
     // Classification hook for PR diff
     const classificationKey: ClassificationKey | undefined =
@@ -719,7 +739,7 @@ function PrReviewContent({ workspaceId, repoId, prId, onTitleLoaded }: { workspa
                 </button>
                 <button
                     type="button"
-                    onClick={() => setChatOpen(prev => !prev)}
+                    onClick={toggleChat}
                     className={`inline-flex h-6 items-center gap-1 rounded border px-2 text-[11px] font-medium ${
                         chatOpen
                             ? 'border-blue-400 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-900/30 dark:text-blue-200'
@@ -810,19 +830,60 @@ function PrReviewContent({ workspaceId, repoId, prId, onTitleLoaded }: { workspa
                     )}
                 </div>
                 {/* PR Chat panel */}
-                {chatOpen && (
+                {chatOpen && chatPresentation === 'side-panel' && (
                     <div className="w-[340px] shrink-0 border-l border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="pr-popout-chat-container">
-                        <PrChatPanel
-                            workspaceId={workspaceId}
-                            prId={prId}
-                            filePath={selectedFilePath ?? undefined}
-                            repoId={repoId}
-                            prTitle={prTitle}
-                            onClose={() => setChatOpen(false)}
-                        />
+                        {chatLensEnabled && chatPinned && chatIsDesktop ? (
+                            <ReviewChatPlacementFrame
+                                title="PR Chat"
+                                identifier={`#${prId}`}
+                                presentation="side-panel"
+                                onClose={closeChat}
+                                onUnpin={unpinChat}
+                                testIdPrefix="pr-chat"
+                            >
+                                <PrChatPanel
+                                    workspaceId={workspaceId}
+                                    prId={prId}
+                                    filePath={selectedFilePath ?? undefined}
+                                    repoId={repoId}
+                                    prTitle={prTitle}
+                                    onClose={closeChat}
+                                    hideEmptyHeader
+                                />
+                            </ReviewChatPlacementFrame>
+                        ) : (
+                            <PrChatPanel
+                                workspaceId={workspaceId}
+                                prId={prId}
+                                filePath={selectedFilePath ?? undefined}
+                                repoId={repoId}
+                                prTitle={prTitle}
+                                onClose={closeChat}
+                            />
+                        )}
                     </div>
                 )}
             </div>
+            {chatOpen && chatPresentation === 'lens' && (
+                <ReviewChatPlacementFrame
+                    title="PR Chat"
+                    identifier={`#${prId}`}
+                    presentation="lens"
+                    onClose={closeChat}
+                    onPin={pinChat}
+                    testIdPrefix="pr-chat"
+                >
+                    <PrChatPanel
+                        workspaceId={workspaceId}
+                        prId={prId}
+                        filePath={selectedFilePath ?? undefined}
+                        repoId={repoId}
+                        prTitle={prTitle}
+                        onClose={closeChat}
+                        hideEmptyHeader
+                    />
+                </ReviewChatPlacementFrame>
+            )}
         </div>
     );
 }
