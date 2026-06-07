@@ -32,7 +32,7 @@ import { registerMemoryV2Routes } from '../memory/memory-v2-routes';
 import { registerRepoRoutes } from '../repos/repo-routes';
 import { registerInstructionRoutes } from '../skills/instruction-handler';
 import { registerProviderRoutes } from '../providers/provider-routes';
-import { registerPrRoutes } from '../repos/pr-routes';
+import { registerPrRoutes, warmPullRequestWorkspaceCache } from '../repos/pr-routes';
 import { registerPrClassificationRoutes } from '../repos/pr-classification-handler';
 import { registerGenericClassificationRoutes } from '../repos/generic-classification-handler';
 import { registerLogsRoutes } from '../logging/logs-routes';
@@ -120,6 +120,8 @@ import { registerContainerSessionRoutes } from '../container-sessions/container-
 import { ContainerSessionStore } from '../container-sessions/container-session-store';
 import type { ContainerAgentInfo } from '../container-sessions/container-session-types';
 import type { ResolveDefaultProviderOptions } from './queue-shared';
+import { ActiveWorkspaceTracker } from '../dashboard/active-workspace-tracker';
+import { ActiveWorkspaceBackgroundRefresher } from '../dashboard/active-workspace-background-refresher';
 
 /** Collect git commits made between headBefore and current HEAD. Non-fatal — returns [] on error. */
 function collectWorkItemCommits(
@@ -173,7 +175,7 @@ export interface RegisterRoutesOptions {
     syncEngines?: Map<string, SyncEngine>;
 }
 
-export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; agentProvidersQuotaCache?: AgentProvidersQuotaCache } {
+export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; agentProvidersQuotaCache?: AgentProvidersQuotaCache; activeWorkspacePrRefresher: ActiveWorkspaceBackgroundRefresher } {
     const {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
@@ -293,8 +295,22 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const getLiveFeatureFlags = opts.runtimeConfigService
         ? () => ({ excalidrawEnabled: opts.runtimeConfigService!.config.excalidraw?.enabled ?? false })
         : () => ({ excalidrawEnabled: opts.resolvedConfig?.excalidraw?.enabled ?? false });
-    registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.loops?.enabled ?? false, getLiveFeatureFlags);
+    const activeWorkspaceTracker = new ActiveWorkspaceTracker();
+    registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.loops?.enabled ?? false, getLiveFeatureFlags, activeWorkspaceTracker);
     const repoTreeService = new RepoTreeService(dataDir, undefined, store);
+    const activeWorkspacePrRefresher = new ActiveWorkspaceBackgroundRefresher({
+        tracker: activeWorkspaceTracker,
+        refreshWorkspace: async (workspaceId) => {
+            const config = opts.runtimeConfigService?.config ?? opts.resolvedConfig;
+            if (config?.pullRequests?.enabled !== true) return;
+            await warmPullRequestWorkspaceCache({
+                dataDir,
+                repoId: workspaceId,
+                service: repoTreeService,
+                suggestionsEnabled: config.pullRequests?.suggestions === true,
+            });
+        },
+    });
     registerRepoRoutes(routes, dataDir, repoTreeService);
     registerPrRoutes(routes, dataDir, repoTreeService, undefined, resolvedAiService);
     // Focused-diff classification routes — always registered so the feature
@@ -839,5 +855,5 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
     );
 
-    return { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, agentProvidersQuotaCache };
+    return { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, agentProvidersQuotaCache, activeWorkspacePrRefresher };
 }

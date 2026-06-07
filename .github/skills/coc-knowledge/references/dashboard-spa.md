@@ -80,7 +80,10 @@ as standalone rows.
 `client.workspaces.reportActiveWorkspace({ clientId, workspaceId })` on mount,
 workspace changes, and a 60-second heartbeat while a workspace is selected. The
 client ID is session-scoped in `sessionStorage` so multiple dashboard tabs can
-report independent active workspaces without collapsing multi-repo state.
+report independent active workspaces without collapsing multi-repo state. The
+server uses these recent active-workspace reports to refresh the active
+workspace's Pull Requests cache immediately on active-workspace changes and then
+on a 5-minute interval while dashboard activity remains present.
 
 ## Key Hooks
 
@@ -367,6 +370,13 @@ The Pull Requests tab is enabled by default through `pullRequests.enabled`. The 
 Queue filters include All, Mine, Team, Blocked, Ready, and the optional For You pill. Team reads the repo-scoped coworker roster through `coc-client`, maps to the existing `scope=all` PR list fetch, and filters the loaded open PRs client-side by provider author id with a displayName fallback. When Team is active, the rail shows roster chips that can be toggled for transient in-session narrowing, removed through the roster API, and extended with an Add coworker picker sourced from distinct authors in the loaded `scope=all` PRs. Its count badge reflects the loaded PR set, so additional roster matches beyond the current page appear after Load more fetches them.
 
 Queue rows use server-enriched provider/git diff stats for file count, review-minute estimates, and deterministic risk tiers: low below 200 changed lines, medium from 200 through 800, and high above 800. Missing diff stats render unavailable queue metadata instead of falling back to mock data.
+
+The PR list route is backed by a server-side cache that can be proactively warmed
+for the currently active workspace. Background warming uses the same provider
+list and diff-stat enrichment path as the tab load, refreshes the default
+`open`/`mine` list without clearing stale data on failure, and reads the
+repo-scoped recently opened list, Team roster, and cached suggestions when PR
+suggestions are enabled.
 
 The PR detail overview renders a deterministic review-summary card from the PR description, parsed/provider diff stats, checks, reviewers, and comment threads. Findings are derived from failing checks and unresolved threads, and the former persona-lens grid is not rendered.
 

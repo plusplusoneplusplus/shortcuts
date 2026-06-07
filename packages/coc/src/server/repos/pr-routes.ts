@@ -124,6 +124,7 @@ const PR_LIST_FETCH_TOP = 100;
 
 interface PrCacheEntry {
     data: any[];
+    fetchedAt: number;
     expiresAt: number;
 }
 
@@ -139,6 +140,85 @@ const prDiffStatsCache = new Map<string, PullRequestDiffStats>();
 
 function makePrCacheKey(repoId: string, status: string, scope: string): string {
     return `${repoId}|${status}|${scope}`;
+}
+
+class PullRequestRouteError extends Error {
+    constructor(
+        readonly statusCode: number,
+        message: string,
+        readonly body?: unknown,
+    ) {
+        super(message);
+        this.name = 'PullRequestRouteError';
+    }
+}
+
+function sendPullRequestRouteError(res: Parameters<Route['handler']>[1], err: unknown): boolean {
+    if (!(err instanceof PullRequestRouteError)) {
+        return false;
+    }
+    if (err.statusCode === 404) {
+        send404(res, err.message);
+        return true;
+    }
+    sendJson(res, err.body ?? { error: err.message }, err.statusCode);
+    return true;
+}
+
+async function resolvePullRequestsService(
+    dataDir: string,
+    svc: RepoTreeService,
+    repoId: string,
+): Promise<IPullRequestsService> {
+    const repo = await svc.resolveRepo(repoId);
+    if (!repo) {
+        throw new PullRequestRouteError(404, `Repo ${repoId} not found`);
+    }
+
+    const cfg = await readProvidersConfig(dataDir);
+    const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+    if (!prSvc || isNoAdoCredentials(prSvc)) {
+        if (isNoAdoCredentials(prSvc)) {
+            throw new PullRequestRouteError(401, 'no-ado-credentials', { error: 'no-ado-credentials' });
+        }
+        const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
+        throw new PullRequestRouteError(401, 'unconfigured', { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl });
+    }
+
+    return prSvc;
+}
+
+async function refreshPullRequestListCache(
+    dataDir: string,
+    svc: RepoTreeService,
+    repoId: string,
+    status: string,
+    scope: 'mine' | 'all',
+): Promise<PrCacheEntry> {
+    const prSvc = await resolvePullRequestsService(dataDir, svc, repoId);
+    let prs = await prSvc.listPullRequests(repoId, { status, top: PR_LIST_FETCH_TOP, scope });
+    prs = await enrichPullRequestsWithDiffStats(repoId, prs, prSvc);
+    const fetchedAt = Date.now();
+    const entry = { data: prs, fetchedAt, expiresAt: fetchedAt + PR_LIST_TTL_MS };
+    prListCache.set(makePrCacheKey(repoId, status, scope), entry);
+    return entry;
+}
+
+export interface WarmPullRequestWorkspaceCacheOptions {
+    dataDir: string;
+    repoId: string;
+    service?: RepoTreeService;
+    suggestionsEnabled?: boolean;
+}
+
+export async function warmPullRequestWorkspaceCache(options: WarmPullRequestWorkspaceCacheOptions): Promise<void> {
+    const svc = options.service ?? new RepoTreeService(options.dataDir);
+    await refreshPullRequestListCache(options.dataDir, svc, options.repoId, 'open', 'mine');
+    listRecentOpenedPullRequests(options.dataDir, options.repoId, options.repoId);
+    listPullRequestCoworkerRoster(options.dataDir, options.repoId, options.repoId);
+    if (options.suggestionsEnabled) {
+        readSuggestionsCache(options.dataDir, options.repoId);
+    }
 }
 
 /** Clear all cached PR list entries. Exported for testing. */
@@ -534,35 +614,20 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 const force = query.force === 'true';
                 const cacheKey = makePrCacheKey(repoId, status, scope);
 
-                let prs: any[];
+                let entry: PrCacheEntry;
 
                 // Serve from cache if valid and not forced
                 const cached = !force ? prListCache.get(cacheKey) : undefined;
                 if (force) prListCache.delete(cacheKey);
 
                 if (cached && cached.expiresAt > Date.now()) {
-                    prs = cached.data;
+                    entry = cached;
                 } else {
-                    const repo = await svc.resolveRepo(repoId);
-                    if (!repo) return send404(res, `Repo ${repoId} not found`);
-
-                    const cfg = await readProvidersConfig(dataDir);
-                    const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
-                    if (!prSvc || isNoAdoCredentials(prSvc)) {
-                        if (isNoAdoCredentials(prSvc)) {
-                            return sendJson(res, { error: 'no-ado-credentials' }, 401);
-                        }
-                        const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
-                        return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
-                    }
-
-                    prs = await prSvc.listPullRequests(repoId, { status, top: PR_LIST_FETCH_TOP, scope });
-                    prs = await enrichPullRequestsWithDiffStats(repoId, prs, prSvc);
-                    prListCache.set(cacheKey, { data: prs, expiresAt: Date.now() + PR_LIST_TTL_MS });
+                    entry = await refreshPullRequestListCache(dataDir, svc, repoId, status, scope);
                 }
 
                 // Apply in-memory pagination
-                let page = prs.slice(skip, skip + top);
+                let page = entry.data.slice(skip, skip + top);
 
                 // Apply server-side author and title filters
                 if (typeof query.author === 'string' && query.author) {
@@ -577,8 +642,9 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                     page = page.filter((pr: any) => pr.title.toLowerCase().includes(searchFilter));
                 }
 
-                sendJson(res, { pullRequests: page, total: page.length });
+                sendJson(res, { pullRequests: page, total: page.length, fetchedAt: entry.fetchedAt });
             } catch (err) {
+                if (sendPullRequestRouteError(res, err)) return;
                 if (isAuthError(err)) {
                     sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 401);
                 } else {
