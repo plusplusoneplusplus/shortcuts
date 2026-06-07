@@ -47,8 +47,8 @@ describe('RuntimeConfigService', () => {
             expect(svc.config.features.autoAgentProviderRouting).toBe(false);
             expect(svc.config.defaultProvider).toBe('copilot');
             expect(svc.config.agentProviderRouting.auto.rules.map(rule => rule.provider)).toEqual(['claude', 'codex', 'copilot']);
-            expect(svc.config.agentProviderRouting.auto.rules.map(rule => rule.minimumRemainingPercent)).toEqual([25, 25, 10]);
-            expect(svc.config.agentProviderRouting.auto.rules.map(rule => rule.weeklyGuard.minimumRemainingPercent)).toEqual([25, 25, 10]);
+            expect(svc.config.agentProviderRouting.auto.rules.map(rule => rule.minimumRemainingPercent)).toEqual([33, 33, 10]);
+            expect(svc.config.agentProviderRouting.auto.rules.map(rule => rule.weeklyGuard.minimumRemainingPercent)).toEqual([33, 33, 10]);
             expect(svc.config.agentProviderRouting.auto.fallbackProvider).toBe('copilot');
             expect(svc.revision).toBe(0);
         });

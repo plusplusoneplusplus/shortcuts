@@ -647,19 +647,19 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
                 {
                     provider: 'claude',
                     enabled: true,
-                    minimumRemainingPercent: 25,
+                    minimumRemainingPercent: 33,
                     weeklyGuard: {
                         enabled: true,
-                        minimumRemainingPercent: 25,
+                        minimumRemainingPercent: 33,
                     },
                 },
                 {
                     provider: 'codex',
                     enabled: true,
-                    minimumRemainingPercent: 25,
+                    minimumRemainingPercent: 33,
                     weeklyGuard: {
                         enabled: true,
-                        minimumRemainingPercent: 25,
+                        minimumRemainingPercent: 33,
                     },
                 },
                 {

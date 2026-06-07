@@ -216,8 +216,8 @@ describe('validate()', () => {
                     {
                         provider: 'claude',
                         enabled: true,
-                        minimumRemainingPercent: 25,
-                        weeklyGuard: { enabled: true, minimumRemainingPercent: 25 },
+                        minimumRemainingPercent: 33,
+                        weeklyGuard: { enabled: true, minimumRemainingPercent: 33 },
                     },
                 ],
                 fallbackProvider: 'copilot',
@@ -452,7 +452,7 @@ describe('apply()', () => {
         it('sets auto routing config', () => {
             const cfg: CLIConfig = {};
             fieldFor('agentProviderRouting.auto').apply(cfg, {
-                rules: [{ provider: 'claude', enabled: true, minimumRemainingPercent: 25 }],
+                rules: [{ provider: 'claude', enabled: true, minimumRemainingPercent: 33 }],
                 fallbackProvider: 'copilot',
             });
             expect(cfg.agentProviderRouting?.auto?.rules?.[0].provider).toBe('claude');

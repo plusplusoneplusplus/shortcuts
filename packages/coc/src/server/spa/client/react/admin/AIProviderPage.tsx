@@ -81,19 +81,19 @@ export const DEFAULT_AUTO_PROVIDER_ROUTING_CONFIG: NormalizedAutoProviderRouting
         {
             provider: 'claude',
             enabled: true,
-            minimumRemainingPercent: 25,
+            minimumRemainingPercent: 33,
             weeklyGuard: {
                 enabled: true,
-                minimumRemainingPercent: 25,
+                minimumRemainingPercent: 33,
             },
         },
         {
             provider: 'codex',
             enabled: true,
-            minimumRemainingPercent: 25,
+            minimumRemainingPercent: 33,
             weeklyGuard: {
                 enabled: true,
-                minimumRemainingPercent: 25,
+                minimumRemainingPercent: 33,
             },
         },
         {

@@ -128,14 +128,14 @@ describe('auto provider router', () => {
                     {
                         provider: 'claude',
                         enabled: false,
-                        minimumRemainingPercent: 25,
-                        weeklyGuard: { enabled: true, minimumRemainingPercent: 25 },
+                        minimumRemainingPercent: 33,
+                        weeklyGuard: { enabled: true, minimumRemainingPercent: 33 },
                     },
                     {
                         provider: 'codex',
                         enabled: true,
-                        minimumRemainingPercent: 25,
-                        weeklyGuard: { enabled: true, minimumRemainingPercent: 25 },
+                        minimumRemainingPercent: 33,
+                        weeklyGuard: { enabled: true, minimumRemainingPercent: 33 },
                     },
                     {
                         provider: 'copilot',
@@ -208,8 +208,8 @@ describe('auto provider router', () => {
                     {
                         provider: 'claude',
                         enabled: true,
-                        minimumRemainingPercent: 25,
-                        weeklyGuard: { enabled: true, minimumRemainingPercent: 25 },
+                        minimumRemainingPercent: 33,
+                        weeklyGuard: { enabled: true, minimumRemainingPercent: 33 },
                     },
                 ],
             },
@@ -236,8 +236,8 @@ describe('auto provider router', () => {
                     {
                         provider: 'claude',
                         enabled: true,
-                        minimumRemainingPercent: 25,
-                        weeklyGuard: { enabled: false, minimumRemainingPercent: 25 },
+                        minimumRemainingPercent: 33,
+                        weeklyGuard: { enabled: false, minimumRemainingPercent: 33 },
                     },
                 ],
             },
@@ -295,8 +295,8 @@ describe('auto provider router', () => {
                     {
                         provider: 'claude',
                         enabled: true,
-                        minimumRemainingPercent: 25,
-                        weeklyGuard: { enabled: true, minimumRemainingPercent: 25 },
+                        minimumRemainingPercent: 33,
+                        weeklyGuard: { enabled: true, minimumRemainingPercent: 33 },
                     },
                 ],
             },

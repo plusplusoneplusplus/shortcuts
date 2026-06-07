@@ -105,14 +105,14 @@ const DEFAULT_AUTO_PROVIDER_ROUTING: ResolvedAutoProviderRoutingConfig = {
         {
             provider: 'claude',
             enabled: true,
-            minimumRemainingPercent: 25,
-            weeklyGuard: { enabled: true, minimumRemainingPercent: 25 },
+            minimumRemainingPercent: 33,
+            weeklyGuard: { enabled: true, minimumRemainingPercent: 33 },
         },
         {
             provider: 'codex',
             enabled: true,
-            minimumRemainingPercent: 25,
-            weeklyGuard: { enabled: true, minimumRemainingPercent: 25 },
+            minimumRemainingPercent: 33,
+            weeklyGuard: { enabled: true, minimumRemainingPercent: 33 },
         },
         {
             provider: 'copilot',

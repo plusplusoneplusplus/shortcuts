@@ -404,10 +404,10 @@ describe('auto agent provider routing schema validation', () => {
                         {
                             provider: 'claude',
                             enabled: true,
-                            minimumRemainingPercent: 25,
+                            minimumRemainingPercent: 33,
                             weeklyGuard: {
                                 enabled: true,
-                                minimumRemainingPercent: 25,
+                                minimumRemainingPercent: 33,
                             },
                         },
                         {

@@ -67,8 +67,8 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.features.autoAgentProviderRouting).toBe(false);
             expect(DEFAULT_CONFIG.defaultProvider).toBe('copilot');
             expect(DEFAULT_CONFIG.agentProviderRouting.auto.rules.map(rule => rule.provider)).toEqual(['claude', 'codex', 'copilot']);
-            expect(DEFAULT_CONFIG.agentProviderRouting.auto.rules.map(rule => rule.minimumRemainingPercent)).toEqual([25, 25, 10]);
-            expect(DEFAULT_CONFIG.agentProviderRouting.auto.rules.map(rule => rule.weeklyGuard.minimumRemainingPercent)).toEqual([25, 25, 10]);
+            expect(DEFAULT_CONFIG.agentProviderRouting.auto.rules.map(rule => rule.minimumRemainingPercent)).toEqual([33, 33, 10]);
+            expect(DEFAULT_CONFIG.agentProviderRouting.auto.rules.map(rule => rule.weeklyGuard.minimumRemainingPercent)).toEqual([33, 33, 10]);
             expect(DEFAULT_CONFIG.agentProviderRouting.auto.fallbackProvider).toBe('copilot');
             expect(DEFAULT_CONFIG.workItems.sync.enabled).toBe(false);
         });
@@ -925,16 +925,16 @@ timeout: 300
                 '    rules:',
                 '      - provider: claude',
                 '        enabled: true',
-                '        minimumRemainingPercent: 25',
+                '        minimumRemainingPercent: 33',
                 '        weeklyGuard:',
                 '          enabled: true',
-                '          minimumRemainingPercent: 25',
+                '          minimumRemainingPercent: 33',
                 '      - provider: codex',
                 '        enabled: true',
-                '        minimumRemainingPercent: 25',
+                '        minimumRemainingPercent: 33',
                 '        weeklyGuard:',
                 '          enabled: true',
-                '          minimumRemainingPercent: 25',
+                '          minimumRemainingPercent: 33',
                 '      - provider: copilot',
                 '        enabled: true',
                 '        minimumRemainingPercent: 10',
@@ -1088,20 +1088,20 @@ timeout: 300
                       "rules": [
                         {
                           "enabled": true,
-                          "minimumRemainingPercent": 25,
+                          "minimumRemainingPercent": 33,
                           "provider": "claude",
                           "weeklyGuard": {
                             "enabled": true,
-                            "minimumRemainingPercent": 25,
+                            "minimumRemainingPercent": 33,
                           },
                         },
                         {
                           "enabled": true,
-                          "minimumRemainingPercent": 25,
+                          "minimumRemainingPercent": 33,
                           "provider": "codex",
                           "weeklyGuard": {
                             "enabled": true,
-                            "minimumRemainingPercent": 25,
+                            "minimumRemainingPercent": 33,
                           },
                         },
                         {

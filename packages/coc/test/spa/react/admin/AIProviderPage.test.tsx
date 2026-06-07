@@ -286,10 +286,10 @@ describe('AIProviderPage', () => {
         expect(screen.getByTestId('auto-provider-rule-claude')).toBeDefined();
         expect(screen.getByTestId('auto-provider-rule-codex')).toBeDefined();
         expect(screen.getByTestId('auto-provider-rule-copilot')).toBeDefined();
-        expect((screen.getByTestId('auto-provider-threshold-claude') as HTMLInputElement).value).toBe('25');
-        expect((screen.getByTestId('auto-provider-threshold-codex') as HTMLInputElement).value).toBe('25');
+        expect((screen.getByTestId('auto-provider-threshold-claude') as HTMLInputElement).value).toBe('33');
+        expect((screen.getByTestId('auto-provider-threshold-codex') as HTMLInputElement).value).toBe('33');
         expect((screen.getByTestId('auto-provider-threshold-copilot') as HTMLInputElement).value).toBe('10');
-        expect((screen.getByTestId('auto-provider-weekly-threshold-claude') as HTMLInputElement).value).toBe('25');
+        expect((screen.getByTestId('auto-provider-weekly-threshold-claude') as HTMLInputElement).value).toBe('33');
         expect((screen.getByTestId('auto-provider-fallback') as HTMLSelectElement).value).toBe('copilot');
     });
 
@@ -366,7 +366,7 @@ describe('AIProviderPage', () => {
 
         const preview = screen.getByTestId('auto-provider-preview');
         expect(within(preview).getByText('Codex')).toBeDefined();
-        expect(screen.getByTestId('auto-provider-weekly-status-claude').textContent).toContain('below the 25% guard');
+        expect(screen.getByTestId('auto-provider-weekly-status-claude').textContent).toContain('below the 33% guard');
         expect(screen.getByTestId('auto-provider-rule-reason-codex').textContent).toContain('passed availability');
     });
 

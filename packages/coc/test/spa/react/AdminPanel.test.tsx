@@ -1587,8 +1587,8 @@ describe('AdminPanel', () => {
                                 agentProviderRouting: {
                                     auto: {
                                         rules: [
-                                            { provider: 'claude', enabled: true, minimumRemainingPercent: 25, weeklyGuard: { enabled: true, minimumRemainingPercent: 25 } },
-                                            { provider: 'codex', enabled: true, minimumRemainingPercent: 25, weeklyGuard: { enabled: true, minimumRemainingPercent: 25 } },
+                                            { provider: 'claude', enabled: true, minimumRemainingPercent: 33, weeklyGuard: { enabled: true, minimumRemainingPercent: 33 } },
+                                            { provider: 'codex', enabled: true, minimumRemainingPercent: 33, weeklyGuard: { enabled: true, minimumRemainingPercent: 33 } },
                                             { provider: 'copilot', enabled: true, minimumRemainingPercent: 10, weeklyGuard: { enabled: true, minimumRemainingPercent: 10 } },
                                         ],
                                         fallbackProvider: 'copilot',
@@ -1656,7 +1656,7 @@ describe('AdminPanel', () => {
                 fallbackProvider: 'copilot',
                 rules: [
                     expect.objectContaining({ provider: 'claude', minimumRemainingPercent: 35 }),
-                    expect.objectContaining({ provider: 'codex', minimumRemainingPercent: 25 }),
+                    expect.objectContaining({ provider: 'codex', minimumRemainingPercent: 33 }),
                     expect.objectContaining({ provider: 'copilot', minimumRemainingPercent: 10 }),
                 ],
             }));
