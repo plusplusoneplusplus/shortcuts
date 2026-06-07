@@ -3,7 +3,13 @@ import { useState, useCallback } from 'react';
 /** Minimum character count before content is considered a "large paste". Matches server-side PASTE_THRESHOLD. */
 export const CLIENT_PASTE_THRESHOLD = 16_384;
 
-const DEFAULT_PREVIEW_LINES = 3;
+export const DEFAULT_PASTE_PREVIEW_LINES = 3;
+
+export function getPastePreviewLines(text: string, maxPreviewLines: number = DEFAULT_PASTE_PREVIEW_LINES): string[] {
+    return text.split('\n')
+        .slice(0, maxPreviewLines)
+        .map(line => line.length > 120 ? line.slice(0, 120) + '…' : line);
+}
 
 export interface UseTextPasteResult {
     /** The raw pasted content (only set when it exceeds the threshold) */
@@ -20,7 +26,7 @@ export interface UseTextPasteResult {
 
 export function useTextPaste(
     threshold: number = CLIENT_PASTE_THRESHOLD,
-    maxPreviewLines: number = DEFAULT_PREVIEW_LINES,
+    maxPreviewLines: number = DEFAULT_PASTE_PREVIEW_LINES,
 ): UseTextPasteResult {
     const [pastedContent, setPastedContent] = useState<string | null>(null);
     const [charCount, setCharCount] = useState(0);
@@ -35,11 +41,7 @@ export function useTextPaste(
 
         setPastedContent(text);
         setCharCount(text.length);
-        setPreviewLines(
-            text.split('\n')
-                .slice(0, maxPreviewLines)
-                .map(line => line.length > 120 ? line.slice(0, 120) + '…' : line),
-        );
+        setPreviewLines(getPastePreviewLines(text, maxPreviewLines));
     }, [threshold, maxPreviewLines]);
 
     const clearPaste = useCallback(() => {

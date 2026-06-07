@@ -105,7 +105,11 @@ present.
   flowing content. The `provider` prop flows from `ChatDetail` →
   `ConversationArea` → `ConversationTurnBubble`; missing/unknown provider
   metadata falls back to the Copilot (green) palette.
-- **User turns:** Right-aligned with `Y` avatar (blue), soft-gray rounded bubbles
+- **User turns:** Right-aligned with `Y` avatar (blue), soft-gray rounded bubbles.
+  Turns with `pasteExternalized: true` keep any detected short typed prompt
+  visible and render the large pasted payload as an in-bubble card with character
+  count, three-line preview, expand/collapse, and Copy full content; no extra
+  persistent display state is stored.
 - **Error turns:** Red error-strip aside with retry button; the avatar
   keeps its dedicated red palette and ignores `provider`.
 - **Script output:** Dark terminal window with PASS/FAIL highlighting; the
