@@ -285,7 +285,7 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
     if (!editor) return null;
 
     const hasHeadings = tocEntries.length > 0;
-    const c = editor.chain().focus.bind(editor.chain());
+    const c = () => editor.chain().focus();
 
     function handleLink() {
         if (editor!.isActive('link')) {
