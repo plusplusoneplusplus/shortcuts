@@ -11,14 +11,18 @@
 import { sendJSON, sendError } from '../core/api-handler';
 import type { Route } from '../types';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { recoverIterationPaths } from './ralph-route-utils';
 
 export interface RalphSessionRouteContext {
     /** Repo-scoped data root (`~/.coc` or override). */
     dataDir: string;
+    /** Optional process store used to recover transient Resume AI defaults. */
+    store?: ProcessStore;
 }
 
 export function registerRalphSessionRoutes(routes: Route[], ctx: RalphSessionRouteContext): void {
-    const { dataDir } = ctx;
+    const { dataDir, store: processStore } = ctx;
 
     routes.push({
         method: 'GET',
@@ -40,8 +44,25 @@ export function registerRalphSessionRoutes(routes: Route[], ctx: RalphSessionRou
             const progressMd = await store.readProgress(workspaceId, sessionId);
             const sections = progressMd ? RalphSessionStore.parseProgressSections(progressMd) : [];
             const files = await store.readSessionFiles(workspaceId, sessionId);
+            const resumeDefaults = processStore
+                ? compactResumeDefaults(await recoverIterationPaths(record, processStore, workspaceId))
+                : undefined;
 
-            sendJSON(res, 200, { record, sections, files });
+            sendJSON(res, 200, {
+                record,
+                sections,
+                files,
+                ...(resumeDefaults ? { resumeDefaults } : {}),
+            });
         },
     });
+}
+
+function compactResumeDefaults(recovered: Awaited<ReturnType<typeof recoverIterationPaths>>) {
+    const result = {
+        ...(recovered.provider ? { provider: recovered.provider } : {}),
+        ...(recovered.model ? { model: recovered.model } : {}),
+        ...(recovered.reasoningEffort ? { reasoningEffort: recovered.reasoningEffort } : {}),
+    };
+    return Object.keys(result).length > 0 ? result : undefined;
 }

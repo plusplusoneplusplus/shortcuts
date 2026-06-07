@@ -57,9 +57,11 @@ The Ralph executor is the only writer. It must:
 Readers, including REST handlers and the SPA `useRalphSessionView` hook, treat
 `session.json` and `progress.md` as source of truth and never mutate them. The
 session read route also returns raw text for every direct file in the session
-folder as `files: { name, content }[]`, sorted alphabetically by filename. A
-missing journal is surfaced as `null` or empty state. A partially written
-`session.json` is tolerated as `null`; the next mutator pass rewrites it.
+folder as `files: { name, content }[]`, sorted alphabetically by filename, plus
+optional transient `resumeDefaults` recovered from the latest iteration process
+for stuck-session Resume controls. A missing journal is surfaced as `null` or
+empty state. A partially written `session.json` is tolerated as `null`; the next
+mutator pass rewrites it.
 
 ## Size Cap
 
@@ -188,7 +190,11 @@ provider/model/reasoning-effort when recoverable.
 
 The SPA `RalphWorkflowPane` shows a "Resume" button (amber) when it detects
 a stuck executing session (phase executing, iterations > 0, no iteration with
-status `running`). `coc-client` exposes `resumeRalphSession()`.
+status `running`). Its confirmation panel renders shared `ModalJobAiControls`
+initialized from `resumeDefaults` when available; unchanged recovered defaults
+are omitted from the request so the route preserves prior settings, while
+changed or unrecovered defaults are sent through `resumeRalphSession()`.
+`coc-client` exposes `resumeRalphSession()`.
 
 ## Scheduled Ralph Runs
 

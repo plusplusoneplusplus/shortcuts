@@ -406,10 +406,19 @@ export interface RalphSessionFile {
   content: string;
 }
 
+export interface RalphResumeAiDefaults {
+  provider?: ChatProvider;
+  model?: string;
+  reasoningEffort?: ReasoningEffort;
+  effortTier?: EffortTierKey;
+  autoProviderRouting?: boolean;
+}
+
 export interface RalphSessionResponse {
   record: RalphSessionRecord;
   sections: ParsedProgressSection[];
   files: RalphSessionFile[];
+  resumeDefaults?: RalphResumeAiDefaults;
 }
 
 export interface RalphContinueResponse {

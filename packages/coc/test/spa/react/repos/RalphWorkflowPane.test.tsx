@@ -9,6 +9,27 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+
+const { mockModalSelection } = vi.hoisted(() => ({
+    mockModalSelection: vi.fn(),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/shared/ModalJobAiControls', () => ({
+    useModalJobAiSelection: (options: unknown) => mockModalSelection(options),
+    ModalJobAiControls: ({
+        testIdPrefix = 'modal-job',
+        disabled = false,
+    }: {
+        testIdPrefix?: string;
+        disabled?: boolean;
+    }) => (
+        <div
+            data-testid={`${testIdPrefix}-ai-controls`}
+            data-disabled={disabled ? 'true' : 'false'}
+        />
+    ),
+}));
+
 import {
     RalphWorkflowPane,
     type RalphSessionView,
@@ -27,6 +48,14 @@ vi.mock('../../../../src/server/spa/client/react/featureFlags', () => ({
     SHOW_FOCUSED_DIFF: true,
     SHOW_EXCALIDRAW_DIAGRAMS: true,
 }));
+
+beforeEach(() => {
+    mockModalSelection.mockReset();
+    mockModalSelection.mockReturnValue({
+        resolved: { provider: 'copilot' },
+        dirty: false,
+    });
+});
 
 function makeRecord(overrides: Partial<RalphSessionRecord> = {}): RalphSessionRecord {
     return {
@@ -387,6 +416,7 @@ describe('RalphWorkflowPane', () => {
         );
         await user.click(screen.getByTestId('ralph-workflow-continue'));
         expect(screen.getByTestId('ralph-workflow-continue-confirm')).toBeInTheDocument();
+        expect(screen.queryByTestId('ralph-workflow-resume-ai-controls')).toBeNull();
         await user.click(screen.getByTestId('ralph-workflow-continue-confirm-button'));
         expect(onContinue).toHaveBeenCalledWith(5);
     });
@@ -456,6 +486,7 @@ describe('RalphWorkflowPane — resume stuck executing session', () => {
         });
         render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
         expect(screen.queryByTestId('ralph-workflow-resume')).toBeNull();
+        expect(screen.queryByTestId('ralph-workflow-resume-ai-controls')).toBeNull();
     });
 
     it('does not show Resume when currentIteration is 0', () => {
@@ -477,6 +508,7 @@ describe('RalphWorkflowPane — resume stuck executing session', () => {
         };
         render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
         expect(screen.queryByTestId('ralph-workflow-resume')).toBeNull();
+        expect(screen.queryByTestId('ralph-workflow-resume-ai-controls')).toBeNull();
     });
 
     it('shows confirmation panel and calls onResume on confirm', async () => {
@@ -493,9 +525,99 @@ describe('RalphWorkflowPane — resume stuck executing session', () => {
         );
         await user.click(screen.getByTestId('ralph-workflow-resume'));
         expect(screen.getByTestId('ralph-workflow-resume-confirm')).toBeInTheDocument();
+        expect(screen.getByTestId('ralph-workflow-resume-ai-controls')).toBeInTheDocument();
         expect(screen.getByText(/iteration 4/)).toBeInTheDocument();
         await user.click(screen.getByTestId('ralph-workflow-resume-confirm-button'));
-        expect(onResume).toHaveBeenCalledOnce();
+        expect(onResume).toHaveBeenCalledWith({ provider: 'copilot' });
+    });
+
+    it('initializes Resume AI controls from recovered defaults and omits unchanged overrides', async () => {
+        const user = userEvent.setup();
+        const onResume = vi.fn().mockResolvedValue(undefined);
+        const resumeDefaults = {
+            provider: 'codex' as const,
+            model: 'gpt-5.3-codex',
+            reasoningEffort: 'high' as const,
+        };
+        const view = { ...makeStuckView(), resumeDefaults };
+        mockModalSelection.mockReturnValue({
+            resolved: resumeDefaults,
+            dirty: false,
+        });
+
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={view}
+                onResume={onResume}
+            />,
+        );
+
+        await user.click(screen.getByTestId('ralph-workflow-resume'));
+        expect(mockModalSelection).toHaveBeenCalledWith({
+            workspaceId: 'ws-1',
+            mode: 'ralph',
+            initialSelection: resumeDefaults,
+        });
+        await user.click(screen.getByTestId('ralph-workflow-resume-confirm-button'));
+
+        expect(onResume).toHaveBeenCalledWith(undefined);
+    });
+
+    it('passes a changed Resume AI selection to onResume', async () => {
+        const user = userEvent.setup();
+        const onResume = vi.fn().mockResolvedValue(undefined);
+        const resumeDefaults = {
+            provider: 'codex' as const,
+            model: 'gpt-5.3-codex',
+            reasoningEffort: 'medium' as const,
+        };
+        const changedSelection = {
+            provider: 'claude' as const,
+            model: 'claude-sonnet-4.6',
+            reasoningEffort: 'high',
+            effortTier: 'low' as const,
+        };
+        mockModalSelection.mockReturnValue({
+            resolved: changedSelection,
+            dirty: true,
+        });
+
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={{ ...makeStuckView(), resumeDefaults }}
+                onResume={onResume}
+            />,
+        );
+
+        await user.click(screen.getByTestId('ralph-workflow-resume'));
+        await user.click(screen.getByTestId('ralph-workflow-resume-confirm-button'));
+
+        expect(onResume).toHaveBeenCalledWith(changedSelection);
+    });
+
+    it('disables Resume AI controls while submitting', async () => {
+        const user = userEvent.setup();
+        let resolveResume!: () => void;
+        const onResume = vi.fn(() => new Promise<void>((resolve) => { resolveResume = resolve; }));
+        const view = makeStuckView();
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={view}
+                onResume={onResume}
+            />,
+        );
+
+        await user.click(screen.getByTestId('ralph-workflow-resume'));
+        expect(screen.getByTestId('ralph-workflow-resume-ai-controls')).toHaveAttribute('data-disabled', 'false');
+        await user.click(screen.getByTestId('ralph-workflow-resume-confirm-button'));
+        expect(screen.getByTestId('ralph-workflow-resume-ai-controls')).toHaveAttribute('data-disabled', 'true');
+        resolveResume();
     });
 
     it('cancel button hides the resume confirmation panel', async () => {

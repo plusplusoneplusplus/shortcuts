@@ -11,9 +11,13 @@
 
 import type React from 'react';
 import { useCallback } from 'react';
-import { RalphWorkflowPane } from './RalphWorkflowPane';
+import {
+    buildRalphResumeRequest,
+    RalphWorkflowPane,
+} from './RalphWorkflowPane';
 import { useRalphSessionView } from './useRalphSessionView';
 import { getSpaCocClient } from '../../api/cocClient';
+import type { ResolvedModalJobAiSelection } from '../../shared/ModalJobAiControls';
 
 export interface RalphWorkflowPaneContainerProps {
     workspaceId: string;
@@ -68,8 +72,12 @@ export function RalphWorkflowPaneContainer(
     );
 
     const handleResume = useCallback(
-        async () => {
-            await getSpaCocClient().workspaces.resumeRalphSession(workspaceId, sessionId);
+        async (aiSelection?: ResolvedModalJobAiSelection) => {
+            await getSpaCocClient().workspaces.resumeRalphSession(
+                workspaceId,
+                sessionId,
+                buildRalphResumeRequest(aiSelection),
+            );
             refresh();
         },
         [workspaceId, sessionId, refresh],
