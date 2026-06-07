@@ -17,7 +17,9 @@ import { DiffMiniMap } from '../diff/DiffMiniMap';
 import { useAllCommitComments } from '../hooks/useAllCommitComments';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { CommitChatPanel } from './CommitChatPanel';
+import { CommitChatPlacementFrame } from './CommitChatPlacementFrame';
 import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
+import { useCommitChatPresentation } from '../hooks/useCommitChatPresentation';
 import { shouldSkipResolveDialog } from '../../../shared/ResolveContextDialog';
 import { useQueue } from '../../../contexts/QueueContext';
 import { useGitReviewPopOut, gitReviewPopOutKey } from '../../../contexts/GitReviewPopOutContext';
@@ -48,21 +50,19 @@ export interface CommitDetailProps {
 
 export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFilePath, onClassified }: CommitDetailProps) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [chatOpen, setChatOpen] = useState(() => {
-        try {
-            return localStorage.getItem('coc.commitChat.open') === 'true';
-        } catch { return false; }
-    });
+    const {
+        chatOpen,
+        toggleChat,
+        closeChat,
+        pinChat,
+        unpinChat,
+        isPinned: chatPinned,
+        presentation: chatPresentation,
+        lensEnabled: chatLensEnabled,
+    } = useCommitChatPresentation({ workspaceId, commitHash: hash });
     // Track currently-navigated file (for priority nav within the unified diff)
     const [navFilePath, setNavFilePath] = useState<string | null>(null);
 
-    const toggleChat = useCallback(() => {
-        setChatOpen(prev => {
-            const next = !prev;
-            try { localStorage.setItem('coc.commitChat.open', String(next)); } catch { /* ignore */ }
-            return next;
-        });
-    }, []);
     const chatResize = useResizablePanel({
         initialWidth: 360,
         minWidth: 200,
@@ -462,7 +462,7 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
             </div>
 
             {/* Diff view + sidebar */}
-            <div className="flex flex-1 min-h-0">
+            <div className="relative flex flex-1 min-h-0">
                 <div ref={scrollContainerRef} className="flex-1 overflow-auto px-1 py-1" data-testid="diff-section">
                     {diffLoading ? (
                         <div className="flex items-center gap-2 text-xs text-[#848484]" data-testid="diff-loading">
@@ -531,7 +531,18 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
                     />
                 )}
 
-                {chatOpen && hash && (
+                {chatOpen && hash && chatPresentation === 'lens' && (
+                    <CommitChatPlacementFrame
+                        workspaceId={workspaceId}
+                        commitHash={hash}
+                        commitMessage={commit?.subject}
+                        presentation="lens"
+                        onClose={closeChat}
+                        onPin={pinChat}
+                    />
+                )}
+
+                {chatOpen && hash && chatPresentation === 'side-panel' && (
                     <>
                         <div
                             className="hidden lg:flex items-center justify-center w-1 cursor-col-resize hover:bg-[#007acc]/30 active:bg-[#007acc]/50 bg-[#e0e0e0] dark:bg-[#3c3c3c] shrink-0"
@@ -541,12 +552,23 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
                             aria-label="Resize chat panel"
                         />
                         <div style={{ width: chatResize.width }} className="shrink-0 h-full">
-                            <CommitChatPanel
-                                workspaceId={workspaceId}
-                                commitHash={hash}
-                                commitMessage={commit?.subject}
-                                onClose={toggleChat}
-                            />
+                            {chatLensEnabled && chatPinned ? (
+                                <CommitChatPlacementFrame
+                                    workspaceId={workspaceId}
+                                    commitHash={hash}
+                                    commitMessage={commit?.subject}
+                                    presentation="side-panel"
+                                    onClose={closeChat}
+                                    onUnpin={unpinChat}
+                                />
+                            ) : (
+                                <CommitChatPanel
+                                    workspaceId={workspaceId}
+                                    commitHash={hash}
+                                    commitMessage={commit?.subject}
+                                    onClose={toggleChat}
+                                />
+                            )}
                         </div>
                     </>
                 )}

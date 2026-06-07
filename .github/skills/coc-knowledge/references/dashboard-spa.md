@@ -37,6 +37,8 @@ spa/client/react/
 └── featureFlags.ts     # Compile-time feature flags
 ```
 
+When `SHOW_COMMIT_CHAT_LENS` is enabled, commit-review chat uses `useCommitChatPresentation()` to render unpinned commit chat as a desktop-only bottom-right lens on `CommitDetail` and commit-backed `FileDiffPanel`; mobile/tablet layouts fall back to the existing right-side panel. Pin state is client-local localStorage scoped by workspace ID and commit hash, and pinned chats render in the existing resizable side-panel path with an Unpin action. The flag is disabled by default, so the legacy `coc.commitChat.open` visibility key and `coc.commitChatPanel.width` resizing behavior remain the default runtime behavior.
+
 `features/chat/ChatListPane.tsx` keeps grouped chat-history expansion state
 local to the mounted view. Ralph session groups, For Each run groups, Map
 Reduce run groups, and plan-file/history groups render collapsed by default on

@@ -12,9 +12,10 @@ export interface CommitChatPanelProps {
     commitHash: string;
     commitMessage?: string;
     onClose: () => void;
+    hideEmptyHeader?: boolean;
 }
 
-export function CommitChatPanel({ workspaceId, commitHash, commitMessage, onClose }: CommitChatPanelProps) {
+export function CommitChatPanel({ workspaceId, commitHash, commitMessage, onClose, hideEmptyHeader = false }: CommitChatPanelProps) {
     const { taskId, loading, error, createChat } = useCommitChatBinding({ workspaceId, commitHash, commitMessage });
     const [input, setInput] = useState('');
     const richTextRef = useRef<RichTextInputHandle>(null);
@@ -35,7 +36,7 @@ export function CommitChatPanel({ workspaceId, commitHash, commitMessage, onClos
              data-testid="commit-chat-panel">
 
             {/* Header — only shown in empty/loading state. ChatDetail has its own header. */}
-            {!taskId && (
+            {!hideEmptyHeader && !taskId && (
                 <div className="flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                     <div className="flex items-center gap-2">
                         <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">💬 Commit Chat</span>
