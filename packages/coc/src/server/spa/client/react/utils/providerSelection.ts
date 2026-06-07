@@ -19,6 +19,7 @@ export interface ResolvedComposerAiSelection {
     model?: string;
     reasoningEffort?: string;
     effortTier?: EffortTierKey;
+    autoProviderRouting?: true;
 }
 
 export const AUTO_PROVIDER_OPTION: AgentSelectorProvider = {
@@ -85,4 +86,17 @@ export function getSelectableComposerDefaultProvider(
 
 export function shouldSendProviderOverride(provider: ChatProvider): provider is ConcreteChatProvider {
     return provider !== 'auto';
+}
+
+export function mergeAutoProviderRoutingContext(
+    selection: Pick<ResolvedComposerAiSelection, 'autoProviderRouting'>,
+    context?: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+    if (!selection.autoProviderRouting) {
+        return context;
+    }
+    return {
+        ...(context ?? {}),
+        autoProviderRouting: { requested: true },
+    };
 }

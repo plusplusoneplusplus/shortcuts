@@ -77,6 +77,7 @@ export function WorkItemExecuteDialog({
                 ...(aiSelection.resolved.model ? { model: aiSelection.resolved.model } : {}),
                 ...(aiSelection.resolved.reasoningEffort ? { reasoningEffort: aiSelection.resolved.reasoningEffort } : {}),
                 ...(aiSelection.resolved.effortTier ? { effortTier: aiSelection.resolved.effortTier } : {}),
+                ...(aiSelection.resolved.autoProviderRouting ? { autoProviderRouting: true } : {}),
             });
 
             // Track skill usage (fire-and-forget)

@@ -227,6 +227,7 @@ export function GenerateTaskDialog({
             provider: aiSelection.resolved.provider,
             reasoningEffort: aiSelection.resolved.reasoningEffort,
             effortTier: aiSelection.resolved.effortTier,
+            autoProviderRouting: aiSelection.resolved.autoProviderRouting,
             mode: includeContext ? 'from-feature' : undefined,
             depth: finalDepth,
             priority: finalPriority,

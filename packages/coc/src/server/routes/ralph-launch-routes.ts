@@ -129,6 +129,7 @@ export function registerRalphLaunchRoutes(routes: Route[], ctx: RalphLaunchRoute
                 model,
                 reasoningEffort,
                 effortTier,
+                autoProviderRouting: body.autoProviderRouting === true,
             });
 
             const taskId = await bridge.enqueue(task);

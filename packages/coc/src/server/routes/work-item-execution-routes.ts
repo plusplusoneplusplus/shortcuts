@@ -135,6 +135,7 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                     provider,
                     reasoningEffort,
                     effortTier,
+                    autoProviderRouting: body.autoProviderRouting === true,
                     mode: body.mode,
                     headBefore,
                     taskFilePath,

@@ -26,6 +26,7 @@ import {
     enqueueViaBridge,
     buildSummarizePrompt,
     type QueueRouteContext,
+    type ResolveDefaultProviderOptions,
     type TaskValidationResult,
     type SummarizeConversation,
 } from './queue-shared';
@@ -460,7 +461,11 @@ export async function resolveDefaultProviderForTask(input: CreateTaskInput, ctx:
     if (isChatProvider(payload.provider)) return;
     if (typeof payload.processId === 'string' && payload.processId.trim()) return;
 
-    const resolution = await resolveDefaultProviderResolution(ctx);
+    const forceAuto = isAutoProviderRoutingRequested(payload);
+    if (forceAuto && !ctx.resolveDefaultProvider) {
+        throw new Error('Auto provider routing is not available for this queue.');
+    }
+    const resolution = await resolveDefaultProviderResolution(ctx, { forceAuto });
     if (!resolution.selectedByAuto) return;
 
     payload.provider = resolution.provider;
@@ -515,14 +520,29 @@ function buildAutoProviderRoutingMetadata(resolution: ResolvedDefaultProviderRes
     };
 }
 
-async function resolveDefaultProviderResolution(ctx: Pick<QueueRouteContext, 'getDefaultProvider' | 'resolveDefaultProvider'>): Promise<ResolvedDefaultProviderResolution> {
+async function resolveDefaultProviderResolution(
+    ctx: Pick<QueueRouteContext, 'getDefaultProvider' | 'resolveDefaultProvider'>,
+    options?: ResolveDefaultProviderOptions,
+): Promise<ResolvedDefaultProviderResolution> {
     const resolution = ctx.resolveDefaultProvider
-        ? await ctx.resolveDefaultProvider()
+        ? await ctx.resolveDefaultProvider(options)
         : concreteDefaultProviderResolution(ctx.getDefaultProvider?.() ?? 'copilot');
     if (!isChatProvider(resolution.provider)) {
         throw new Error(resolution.error ?? 'Default provider resolution did not select a concrete provider.');
     }
     return { ...resolution, provider: resolution.provider };
+}
+
+function isAutoProviderRoutingRequested(payload: Record<string, unknown>): boolean {
+    const context = payload.context;
+    if (!context || typeof context !== 'object' || Array.isArray(context)) return false;
+    const routing = (context as Record<string, unknown>).autoProviderRouting;
+    return Boolean(
+        routing
+        && typeof routing === 'object'
+        && !Array.isArray(routing)
+        && (routing as Record<string, unknown>).requested === true
+    );
 }
 
 function concreteDefaultProviderResolution(provider: ChatProvider): AutoProviderResolutionResult {

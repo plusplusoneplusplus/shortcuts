@@ -56,6 +56,8 @@ interface ClassifyDiffPostBody {
     reasoningEffort?: ReasoningEffort;
     /** Effort tier to expand after provider resolution (optional). */
     effortTier?: 'very-low' | 'low' | 'medium' | 'high';
+    /** Explicit request to route the provider through Auto at enqueue time. */
+    autoProviderRouting?: boolean;
 }
 
 export interface GenericClassificationRouteOptions {
@@ -155,6 +157,7 @@ export function registerGenericClassificationRoutes(routes: Route[], opts: Gener
                         workingDirectory: rootPath,
                         skills: ['classify-diff'],
                         ...(body.provider && VALID_CHAT_PROVIDERS.has(body.provider) ? { provider: body.provider } : {}),
+                        ...(body.autoProviderRouting === true ? { context: { autoProviderRouting: { requested: true } } } : {}),
                     },
                     config: {
                         ...(body.model ? { model: body.model } : {}),

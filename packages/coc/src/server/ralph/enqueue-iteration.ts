@@ -39,6 +39,8 @@ export interface BuildRalphIterationTaskInput {
     reasoningEffort?: ReasoningEffort;
     /** Optional effort tier to expand after provider resolution. */
     effortTier?: RalphEffortTier;
+    /** Explicit request to resolve the provider through Auto at enqueue time. */
+    autoProviderRouting?: boolean;
     /**
      * When set, the enqueued task is tagged as a continuation of this Ralph
      * session, allowing the queue manager to admit it ahead of unrelated
@@ -83,6 +85,7 @@ export function buildRalphIterationTask(input: BuildRalphIterationTaskInput) {
             provider: input.provider,
             context: {
                 ...(input.extraContext ?? {}),
+                ...(input.autoProviderRouting ? { autoProviderRouting: { requested: true } } : {}),
                 ralph: {
                     ...extraRalphContext,
                     phase: 'executing' as const,

@@ -85,6 +85,7 @@ export function RalphLaunchDialog({
             if (resolvedAi.effortTier) config.effortTier = resolvedAi.effortTier;
             const body: Record<string, unknown> = { goalSpec: trimmed, workspaceId };
             if (resolvedAi.provider) body.provider = resolvedAi.provider;
+            if (resolvedAi.autoProviderRouting) body.autoProviderRouting = true;
             if (folderPath) body.folderPath = folderPath;
             if (workingDirectory) body.workingDirectory = workingDirectory;
             if (Object.keys(config).length > 0) body.config = config;

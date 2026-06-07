@@ -103,7 +103,7 @@ The `src/server/` tree is grouped by feature domain. Cross-cutting plumbing stay
 | `for-each/` | Dedicated For Each run records, item-plan validation, file-backed repo-scoped draft/approval storage, and sequential child-chat orchestration |
 | `map-reduce/` | Dedicated Map Reduce plan generation, run records, map-plan validation, reduce-step state, per-run parallelism configuration, file-backed repo-scoped draft/approval/execution storage with parallel map claiming, and child-chat orchestration that auto-chains reduce after successful map completion |
 | `models/` | Model registry endpoints |
-| `agent-providers/` | Agent-provider quota cache, provider status routes, SDK install helpers, and the pure Auto provider router that evaluates configured priority, availability, normal quota thresholds, weekly guards, fallback, and selection warnings before callers expand effort tiers. Queue/fresh-terminal defaults and direct Ralph, For Each, and work-item enqueue surfaces use the shared quota cache and refresh it only when missing or stale. |
+| `agent-providers/` | Agent-provider quota cache, provider status routes, SDK install helpers, and the pure Auto provider router that evaluates configured priority, availability, normal quota thresholds, weekly guards, fallback, and selection warnings before callers expand effort tiers. Queue/fresh-terminal defaults, explicit SPA Auto requests (`context.autoProviderRouting.requested`), direct Ralph, For Each, and work-item enqueue surfaces use the shared quota cache and refresh it only when missing or stale. |
 | `messaging/` | Teams bot integration: manager, command router, per-user state |
 | `spa/` | Dashboard SPA (HTML template, React client) |
 
@@ -141,7 +141,7 @@ output: table
 approvePermissions: false
 mcpConfig: ~/.copilot/mcp-config.json  # global MCP; repo .vscode/mcp.json is also loaded per workspace
 timeout: 1800
-defaultProvider: copilot  # concrete default for new chats/tasks when payload.provider is omitted
+defaultProvider: copilot  # concrete default for new chats/tasks when payload.provider is omitted and Auto is not explicitly requested
 
 serve:
   port: 4000
@@ -211,7 +211,7 @@ Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT.
 2. Auto-migrations: workspace registry JSON → SQLite, file-based process history → SQLite
 3. Chat/follow-up executors initialize model metadata on demand if task starts before cache warm
 4. Variant models with `capabilities.family` base preserved in process metadata but sent to SDK as base model + reasoning effort
-5. `defaultProvider` is resolved at startup and wired into queue infrastructure; chat payloads with `payload.provider` override it, while follow-ups use the provider recorded on the original process
+5. `defaultProvider` is resolved at startup and wired into queue infrastructure; chat payloads with `payload.provider` override it, explicit Auto requests carry `context.autoProviderRouting.requested` and are resolved to a concrete provider before effort-tier expansion, while follow-ups use the provider recorded on the original process
 
 ## Storage Layout
 

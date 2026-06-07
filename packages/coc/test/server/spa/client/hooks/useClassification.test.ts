@@ -431,6 +431,28 @@ describe('useClassification', () => {
         expect(body.reasoningEffort).toBe('high');
     });
 
+    it('classify() sends Auto routing request without a provider override', async () => {
+        const useClassification = await importHook();
+        mocks.requestSpaApi.mockResolvedValueOnce({ status: 'none' }); // initial GET
+        mocks.requestSpaApi.mockResolvedValueOnce({ status: 'started' }); // POST
+
+        const ai = makeAiSelection({ provider: undefined, effortTier: 'medium', autoProviderRouting: true });
+        const { result } = renderHook(() => useClassification(makeKey('1', 'sha1'), ai));
+
+        await waitFor(() => expect(result.current.state.status).toBe('idle'));
+        act(() => { result.current.classify(); });
+        await waitFor(() => expect(result.current.state.status).toBe('loading'));
+
+        const postCall = mocks.requestSpaApi.mock.calls.find(
+            c => typeof c[1] === 'object' && (c[1] as any)?.method === 'POST',
+        );
+        expect(postCall).toBeDefined();
+        const body = JSON.parse((postCall![1] as any).body);
+        expect(body.provider).toBeUndefined();
+        expect(body.autoProviderRouting).toBe(true);
+        expect(body.effortTier).toBe('medium');
+    });
+
     it('classify() uses the latest aiSelection when it changes between renders', async () => {
         const useClassification = await importHook();
         mocks.requestSpaApi.mockResolvedValueOnce({ status: 'none' }); // initial GET
@@ -482,4 +504,3 @@ describe('useClassification', () => {
         expect(body.model).toBeUndefined();
     });
 });
-

@@ -50,6 +50,7 @@ import {
     getSelectableComposerDefaultProvider,
     isChatProvider,
     isSelectableProvider,
+    mergeAutoProviderRoutingContext,
     shouldSendProviderOverride,
 } from '../../utils/providerSelection';
 import {
@@ -420,7 +421,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
 
     function resolveComposerAiSelection(): ResolvedModalJobAiSelection {
         if (autoProviderSelected) {
-            return { effortTier: selectedEffortTier };
+            return { effortTier: selectedEffortTier, autoProviderRouting: true };
         }
         const tierPayload = useEffortTierMode ? resolveEffortTier(selectedEffortTier, effortTierMap) : null;
         const model = tierPayload?.model ?? validModelOverride ?? undefined;
@@ -550,11 +551,9 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             }
             const effectivePrompt = formatAttachedContext(contextItems) + basePrompt;
 
-            // Resolve model + reasoningEffort: tier mode takes priority over legacy controls.
-            const tierPayload = !autoProviderSelected && useEffortTierMode ? resolveEffortTier(selectedEffortTier, effortTierMap) : null;
-            const modelForPayload = tierPayload?.model ?? validModelOverride ?? null;
-            const effortForPayload = tierPayload !== null ? tierPayload.reasoningEffort : effortOverride;
-            const config = autoProviderSelected ? { effortTier: selectedEffortTier } : undefined;
+            const resolvedAi = resolveComposerAiSelection();
+            const context = mergeAutoProviderRoutingContext(resolvedAi, contextOverride);
+            const config = resolvedAi.effortTier ? { effortTier: resolvedAi.effortTier } : undefined;
 
             const result = await getSpaCocClient().queue.enqueue({
                 type: 'chat',
@@ -565,11 +564,11 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                     prompt: effectivePrompt,
                     workingDirectory: workspaceRoot,
                     workspaceId,
-                    ...(contextOverride ? { context: contextOverride } : {}),
+                    ...(context ? { context } : {}),
                     ...(attachmentPayload.length > 0 ? { attachments: attachmentPayload } : {}),
-                    ...(modelForPayload ? { model: modelForPayload } : {}),
-                    ...(effortForPayload ? { reasoningEffort: effortForPayload } : {}),
-                    ...(shouldSendProviderOverride(selectedProvider) ? { provider: selectedProvider } : {}),
+                    ...(resolvedAi.model ? { model: resolvedAi.model } : {}),
+                    ...(resolvedAi.reasoningEffort ? { reasoningEffort: resolvedAi.reasoningEffort } : {}),
+                    ...(resolvedAi.provider ? { provider: resolvedAi.provider } : {}),
                 } as any,
                 ...(config ? { config } : {}),
             });

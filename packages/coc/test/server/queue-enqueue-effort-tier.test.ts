@@ -105,25 +105,33 @@ describe('prepareTaskForEnqueue', () => {
         const stored: StoredEffortTiersMap = {
             high: { model: 'codex-configured-high', reasoningEffort: 'high' },
         };
+        const resolveDefaultProvider = vi.fn(async () => ({
+            provider: 'codex' as const,
+            selectedByAuto: true,
+            fallbackUsed: false,
+            warnings: ['Quota cache was refreshed.'],
+            decisions: [{
+                provider: 'codex',
+                selected: true,
+                reason: 'Provider passed checks.',
+            } as any],
+        }));
         const input = makeInput({
+            payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: 'test',
+                context: { autoProviderRouting: { requested: true } },
+            },
             config: { effortTier: 'high' } as CreateTaskInput['config'] & { effortTier: string },
         });
 
         await prepareTaskForEnqueue(input, makeContext({
-            resolveDefaultProvider: async () => ({
-                provider: 'codex',
-                selectedByAuto: true,
-                fallbackUsed: false,
-                warnings: ['Quota cache was refreshed.'],
-                decisions: [{
-                    provider: 'codex',
-                    selected: true,
-                    reason: 'Provider passed checks.',
-                } as any],
-            }),
+            resolveDefaultProvider,
             getEffortTiersForProvider: (provider) => provider === 'codex' ? stored : undefined,
         }));
 
+        expect(resolveDefaultProvider).toHaveBeenCalledWith({ forceAuto: true });
         expect((input.payload as any).provider).toBe('codex');
         expect((input.payload as any).context.autoProviderRouting).toMatchObject({
             selectedByAuto: true,
@@ -171,7 +179,13 @@ describe('prepareTaskForEnqueue', () => {
             warnings: [],
         }));
         const input = makeInput({
-            payload: { kind: 'chat', mode: 'autopilot', prompt: 'test', provider: 'claude' },
+            payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: 'test',
+                provider: 'claude',
+                context: { autoProviderRouting: { requested: true } },
+            },
             config: { effortTier: 'very-low' } as CreateTaskInput['config'] & { effortTier: string },
         });
 

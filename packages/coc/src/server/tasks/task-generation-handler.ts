@@ -299,7 +299,7 @@ export function registerTaskGenerationRoutes(
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
-            const { prompt, targetFolder, name, model, provider, reasoningEffort, effortTier, mode, depth, priority, images } = body || {};
+            const { prompt, targetFolder, name, model, provider, reasoningEffort, effortTier, autoProviderRouting, mode, depth, priority, images } = body || {};
 
             if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
                 return sendError(res, 400, 'Missing required field: prompt');
@@ -323,6 +323,7 @@ export function registerTaskGenerationRoutes(
                 // process-lifecycle-runner to forward them to the AI SDK.
                 ...(validImages && validImages.length > 0 ? { images: validImages } : {}),
                 context: {
+                    ...(autoProviderRouting === true ? { autoProviderRouting: { requested: true } } : {}),
                     taskGeneration: {
                         targetFolder,
                         name,

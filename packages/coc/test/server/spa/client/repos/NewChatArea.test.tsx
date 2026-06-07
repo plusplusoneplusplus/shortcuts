@@ -496,6 +496,7 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         expect(body.payload.provider).toBeUndefined();
         expect(body.payload.model).toBeUndefined();
         expect(body.payload.reasoningEffort).toBeUndefined();
+        expect(body.payload.context).toEqual({ autoProviderRouting: { requested: true } });
         expect(body.config).toEqual({ effortTier: 'medium' });
     });
 

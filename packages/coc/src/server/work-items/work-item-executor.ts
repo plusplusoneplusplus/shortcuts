@@ -23,6 +23,8 @@ export interface ExecuteWorkItemOptions {
     reasoningEffort?: ReasoningEffort;
     /** Effort tier to expand after the task's provider is resolved. */
     effortTier?: string;
+    /** Explicit request to resolve the provider through Auto at enqueue time. */
+    autoProviderRouting?: boolean;
     /** Chat mode for execution (default: 'autopilot'). */
     mode?: Exclude<ChatMode, 'ralph'> | string;
     /** Git HEAD SHA captured immediately before execution enqueued. */
@@ -104,10 +106,11 @@ export async function executeWorkItem(
 
     const contextFiles = options?.taskFilePath ? [options.taskFilePath] : [];
     const contextSkills = options?.skillNames ?? [];
-    const context = contextFiles.length || contextSkills.length
+    const context = contextFiles.length || contextSkills.length || options?.autoProviderRouting
         ? {
             ...(contextFiles.length ? { files: contextFiles } : {}),
             ...(contextSkills.length ? { skills: contextSkills } : {}),
+            ...(options?.autoProviderRouting ? { autoProviderRouting: { requested: true } } : {}),
         }
         : undefined;
 

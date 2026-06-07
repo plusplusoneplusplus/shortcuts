@@ -212,7 +212,7 @@ export function useModalJobAiSelection({
     const tierPayload = useEffortTierMode ? resolveEffortTier(selectedEffortTier, effortTierMap) : null;
     const resolved = useMemo<ResolvedModalJobAiSelection>(() => {
         if (autoProviderSelected) {
-            return { effortTier: selectedEffortTier };
+            return { effortTier: selectedEffortTier, autoProviderRouting: true };
         }
         const model = tierPayload?.model ?? validModelOverride ?? undefined;
         const reasoningEffort = tierPayload !== null ? (tierPayload.reasoningEffort ?? undefined) : (effortOverride ?? undefined);

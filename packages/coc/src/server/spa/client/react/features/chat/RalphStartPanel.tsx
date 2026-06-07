@@ -105,6 +105,7 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
             if (resolvedAi.effortTier) config.effortTier = resolvedAi.effortTier;
             const body: Record<string, unknown> = { goalSpec: trimmed, workspaceId };
             if (resolvedAi.provider) body.provider = resolvedAi.provider;
+            if (resolvedAi.autoProviderRouting) body.autoProviderRouting = true;
             if (Object.keys(config).length > 0) body.config = config;
             const resp = await fetch(url, {
                 method: 'POST',

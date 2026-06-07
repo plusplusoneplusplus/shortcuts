@@ -256,6 +256,7 @@ export function useClassification(
         if (ai.model) postBody.model = ai.model;
         if (ai.reasoningEffort) postBody.reasoningEffort = ai.reasoningEffort;
         if (ai.effortTier) postBody.effortTier = ai.effortTier;
+        if (ai.autoProviderRouting) postBody.autoProviderRouting = true;
 
         requestSpaApi<ClassifyResponse>(
             buildUrl(''),

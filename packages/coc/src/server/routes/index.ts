@@ -109,7 +109,7 @@ import { registerMcpOauthRoutes } from '../mcp-oauth';
 import type { McpOauthManager } from '../mcp-oauth';
 import { registerAgentProvidersRoutes } from '../agent-providers/agent-providers-routes';
 import { AgentProvidersQuotaCache } from '../agent-providers/quota-cache';
-import { resolveDefaultAgentProvider, type AutoProviderAvailabilityMap, type AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
+import { resolveAutoAgentProvider, type AutoProviderAvailabilityMap, type AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 import { registerProviderInstallRoutes } from '../providers/provider-install-routes';
 import { registerDiagramRoutes } from '../diagrams/diagrams-handler';
 import { registerRuntimeConfigRoutes } from '../config/runtime-config-handler';
@@ -119,6 +119,7 @@ import { registerTeamsMessagingRoutes } from '../messaging/teams-messaging-handl
 import { registerContainerSessionRoutes } from '../container-sessions/container-session-handler';
 import { ContainerSessionStore } from '../container-sessions/container-session-store';
 import type { ContainerAgentInfo } from '../container-sessions/container-session-types';
+import type { ResolveDefaultProviderOptions } from './queue-shared';
 
 /** Collect git commits made between headBefore and current HEAD. Non-fatal — returns [] on error. */
 function collectWorkItemCommits(
@@ -225,10 +226,20 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
         return availability;
     };
-    const resolveDefaultProvider = async (): Promise<AutoProviderResolutionResult> => {
+    const resolveDefaultProvider = async (options?: ResolveDefaultProviderOptions): Promise<AutoProviderResolutionResult> => {
         const config = opts.runtimeConfigService?.config ?? opts.resolvedConfig;
-        if (!config || config.defaultProvider !== 'auto') {
+        const forceAuto = options?.forceAuto === true;
+        if (!config || (!forceAuto && config.defaultProvider !== 'auto')) {
             return concreteDefaultProviderResolution();
+        }
+        if (config.features.autoAgentProviderRouting !== true) {
+            return {
+                selectedByAuto: true,
+                fallbackUsed: false,
+                decisions: [],
+                warnings: [],
+                error: 'Auto provider routing requires features.autoAgentProviderRouting: true',
+            };
         }
         if (!agentProvidersQuotaCache) {
             return {
@@ -240,7 +251,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             };
         }
         const quotaData = await agentProvidersQuotaCache.get({ refreshIfStale: true });
-        return resolveDefaultAgentProvider(config, {
+        return resolveAutoAgentProvider(config.agentProviderRouting.auto, {
             providerAvailability: await getAutoProviderAvailability(),
             quotaData,
             quotaStale: agentProvidersQuotaCache.isStale(),

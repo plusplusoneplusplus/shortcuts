@@ -24,6 +24,10 @@ import type { AutoProviderResolutionResult } from '../agent-providers/auto-provi
 import * as path from 'path';
 import type { ParsedUrlQuery } from 'querystring';
 
+export interface ResolveDefaultProviderOptions {
+    forceAuto?: boolean;
+}
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -80,7 +84,7 @@ export interface QueueRouteContext {
     globalWorkspaceRootPath: string | undefined;
     state: QueueGlobalState;
     getDefaultProvider?: () => ChatProvider;
-    resolveDefaultProvider?: () => Promise<AutoProviderResolutionResult>;
+    resolveDefaultProvider?: (options?: ResolveDefaultProviderOptions) => Promise<AutoProviderResolutionResult>;
     getEffortTiersForProvider?: (provider: ChatProvider) => StoredEffortTiersMap | undefined;
 }
 

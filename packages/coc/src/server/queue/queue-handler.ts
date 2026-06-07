@@ -16,6 +16,7 @@ import { registerQueueFollowUpRoutes } from '../routes/queue-follow-up';
 import { registerQueueImagesRoutes } from '../routes/queue-images';
 import type { ChatProvider } from '../tasks/task-types';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
+import type { ResolveDefaultProviderOptions } from '../routes/queue-shared';
 
 export { buildContextPrompt, buildSummarizePrompt, serializeConversationForSummary } from '../routes/queue-shared';
 export type { SummarizeConversation } from '../routes/queue-shared';
@@ -27,7 +28,7 @@ export function registerQueueRoutes(
     globalWorkspaceRootPath?: string,
     options: {
         getDefaultProvider?: () => ChatProvider;
-        resolveDefaultProvider?: () => Promise<AutoProviderResolutionResult>;
+        resolveDefaultProvider?: (options?: ResolveDefaultProviderOptions) => Promise<AutoProviderResolutionResult>;
         getEffortTiersForProvider?: (provider: ChatProvider) => StoredEffortTiersMap | undefined;
     } = {},
 ): void {

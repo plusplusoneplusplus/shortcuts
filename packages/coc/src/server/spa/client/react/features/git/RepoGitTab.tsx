@@ -48,6 +48,7 @@ import { buildFixupGroups } from './fixup-utils';
 import { rankSkillsByRecency, MRU_SKILL_LIMIT } from './skill-menu-ranking';
 import { isGitCommitLookupEnabled, isGitCrossCloneCherryPickEnabled } from '../../utils/config';
 import type { ResolvedModalJobAiSelection } from '../../shared/ModalJobAiControls';
+import { mergeAutoProviderRoutingContext } from '../../utils/providerSelection';
 import { useCommitClassificationStatus } from './hooks/useCommitClassificationStatus';
 
 /**
@@ -1167,9 +1168,9 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 workingDirectory: ws?.rootPath || '',
                 workspaceId,
                 ...(aiSelection.provider ? { provider: aiSelection.provider } : {}),
-                context: {
+                context: mergeAutoProviderRoutingContext(aiSelection, {
                     skills: [pendingSkillRun.skillName],
-                },
+                }),
             },
             ...(Object.keys(config).length > 0 ? { config } : {}),
         });

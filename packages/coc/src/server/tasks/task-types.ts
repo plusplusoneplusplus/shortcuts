@@ -238,11 +238,12 @@ export interface ChatContext {
     mapReduce?: MapReduceContext;
     /** Auto provider selection details captured before execution. */
     autoProviderRouting?: {
-        selectedByAuto: boolean;
-        provider: ChatProvider;
-        fallbackUsed: boolean;
-        warnings: string[];
-        decisions: unknown[];
+        requested?: boolean;
+        selectedByAuto?: boolean;
+        provider?: ChatProvider;
+        fallbackUsed?: boolean;
+        warnings?: string[];
+        decisions?: unknown[];
         fallback?: unknown;
     };
     /** PR diff classification context — dispatches to ClassificationExecutor. */

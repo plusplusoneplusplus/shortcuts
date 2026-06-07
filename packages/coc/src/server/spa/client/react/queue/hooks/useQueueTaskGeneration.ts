@@ -19,6 +19,7 @@ export interface QueueTaskGenerationParams {
     provider?: string;
     reasoningEffort?: string;
     effortTier?: string;
+    autoProviderRouting?: true;
     mode?: 'from-feature' | string;
     depth?: 'deep' | string;
     priority?: 'high' | 'normal' | 'low';
@@ -74,6 +75,7 @@ export function useQueueTaskGeneration(wsId: string): UseQueueTaskGenerationRetu
         if (params.provider !== undefined) body.provider = params.provider;
         if (params.reasoningEffort !== undefined) body.reasoningEffort = params.reasoningEffort;
         if (params.effortTier !== undefined) body.effortTier = params.effortTier;
+        if (params.autoProviderRouting) body.autoProviderRouting = true;
         if (params.mode !== undefined) body.mode = params.mode;
         if (params.depth !== undefined) body.depth = params.depth;
         if (params.priority !== undefined) body.priority = params.priority;

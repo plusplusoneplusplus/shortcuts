@@ -177,7 +177,7 @@ describe('ModalJobAiControls', () => {
         await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Auto'));
         expect(screen.getByTestId('job-effort-tier-selector')).toBeTruthy();
         expect(screen.queryByTestId('job-model-picker-chip')).toBeNull();
-        expect(readResolved()).toEqual({ effortTier: 'medium' });
+        expect(readResolved()).toEqual({ effortTier: 'medium', autoProviderRouting: true });
     });
 
     it('persists Auto provider changes through repo preferences', async () => {
@@ -190,7 +190,7 @@ describe('ModalJobAiControls', () => {
         fireEvent.click(screen.getByTestId('agent-option-auto'));
 
         expect(mocks.patchRepo).toHaveBeenCalledWith('ws-1', { lastChatProvider: 'auto' });
-        await waitFor(() => expect(readResolved()).toEqual({ effortTier: 'medium' }));
+        await waitFor(() => expect(readResolved()).toEqual({ effortTier: 'medium', autoProviderRouting: true }));
     });
 
     it('omits model and reasoning-effort overrides when legacy controls resolve to defaults only', async () => {

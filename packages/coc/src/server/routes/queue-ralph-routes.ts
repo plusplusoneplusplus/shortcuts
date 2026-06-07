@@ -164,6 +164,7 @@ export function registerRalphRoutes(routes: Route[], ctx: QueueRalphRouteContext
                 model,
                 reasoningEffort,
                 effortTier,
+                autoProviderRouting: body.autoProviderRouting === true,
             }));
 
             sendJSON(res, 200, { processId: toQueueProcessId(taskId) });
