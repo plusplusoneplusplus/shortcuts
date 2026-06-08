@@ -512,6 +512,7 @@ export function WorkItemHierarchyTree({
                 collapsed={collapsed}
                 selected={selectedWorkItemId === id}
                 hasChildren={hasChildren}
+                remoteView={isRemoteView}
                 onSelect={onSelectWorkItem}
                 onToggleCollapse={handleToggleCollapse}
                 onContextMenu={handleContextMenu}
@@ -523,7 +524,7 @@ export function WorkItemHierarchyTree({
                 {!collapsed && node.children.map(child => renderNode(child, depth + 1))}
             </WorkItemHierarchyNode>
         );
-    }, [collapsedIds, selectedWorkItemId, onSelectWorkItem, handleToggleCollapse, handleContextMenu, isMobile, handleAddChild, highlightedWorkItemId, sessionContextDragEnabled, workspaceId]);
+    }, [collapsedIds, selectedWorkItemId, onSelectWorkItem, handleToggleCollapse, handleContextMenu, isMobile, handleAddChild, highlightedWorkItemId, sessionContextDragEnabled, workspaceId, isRemoteView]);
 
     const readyCount = useMemo(() => {
         const countReady = (nodes: WorkItemTreeNode[]): number =>

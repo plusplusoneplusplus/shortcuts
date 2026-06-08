@@ -82,6 +82,7 @@ export interface WorkItemHierarchyNodeProps {
     collapsed: boolean;
     selected: boolean;
     hasChildren: boolean;
+    remoteView?: boolean;
     onSelect: (id: string) => void;
     onToggleCollapse: (id: string) => void;
     onContextMenu: (e: React.MouseEvent, node: WorkItemTreeNode) => void;
@@ -100,6 +101,7 @@ export function WorkItemHierarchyNode({
     collapsed,
     selected,
     hasChildren,
+    remoteView = false,
     onSelect,
     onToggleCollapse,
     onContextMenu,
@@ -118,6 +120,7 @@ export function WorkItemHierarchyNode({
     const statusChipClass = STATUS_CHIP_CLASS[item.status] ?? STATUS_CHIP_CLASS.created;
     const statusLabel = STATUS_LABEL[item.status] ?? item.status;
     const isContainer = ['epic', 'feature', 'pbi'].includes(effectiveType);
+    const showStatusChip = !remoteView;
 
     const depthPadding = depth === 0 ? 5 : depth === 1 ? 19 : depth === 2 ? 34 : 49;
     const guideLeft = depth === 1 ? 11 : depth === 2 ? 26 : depth === 3 ? 41 : 0;
@@ -191,7 +194,7 @@ export function WorkItemHierarchyNode({
                         <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-[12px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc]">
                             {item.title}
                         </strong>
-                        {item.workItemNumber != null && (
+                        {!remoteView && item.workItemNumber != null && (
                             <code className="text-[10px] text-[#656d76] dark:text-[#999] font-mono shrink-0">{typePrefix}-{item.workItemNumber}</code>
                         )}
                     </span>
@@ -219,14 +222,14 @@ export function WorkItemHierarchyNode({
                     <span className="shrink-0 text-[11px] text-[#656d76] dark:text-[#999] font-mono tabular-nums whitespace-nowrap" title="Done / Total descendants">
                         {rollup.byStatus.done}/{rollup.descendantCount}
                     </span>
-                ) : (
+                ) : showStatusChip ? (
                     <span
                         className={cn('shrink-0 inline-flex items-center justify-center h-[18px] px-1.5 rounded-full text-[10px] font-semibold leading-none border whitespace-nowrap', statusChipClass)}
                         data-testid={`hierarchy-node-status-${item.id}`}
                     >
                         {statusLabel}
                     </span>
-                )}
+                ) : null}
 
                 {/* Mobile add-child button — containers only, always visible on mobile */}
                 {isMobile && isContainer && (

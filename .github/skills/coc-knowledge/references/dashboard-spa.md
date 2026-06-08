@@ -96,6 +96,16 @@ present.
 | `useDiffComments` | Inline diff comment state |
 | `useUnseenChat` | Read/unread tracking |
 
+## Work Items UI
+
+The hierarchy tree uses `WorkItemHierarchyTree` and `WorkItemHierarchyNode`.
+Local trees show the work-item number beside the title and a status chip for
+leaf rows. Remote/Synced trees keep the type avatar, title, remote mirror badge,
+and container rollups, but omit local work-item numbers and leaf status chips so
+remote identifiers remain the primary row metadata. Compact GitHub mirror badges
+render the issue number only; full detail-page badges keep the provider label and
+link title.
+
 ## Chat UI Architecture
 
 `ConversationTurnBubble` renders:
