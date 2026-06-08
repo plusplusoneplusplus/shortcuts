@@ -75,6 +75,8 @@ describe('ConversationMetadataPopover', () => {
         expect(screen.getByText('autopilot')).toBeDefined();
         expect(screen.queryByText('Agent Provider')).toBeNull();
         expect(screen.getByText('codex')).toBeDefined();
+        expect(screen.getByText('Reasoning Effort')).toBeDefined();
+        expect(screen.getByText('Default')).toBeDefined();
         expect(screen.getByText('Session ID')).toBeDefined();
         expect(screen.getByText('sdk-sess-789')).toBeDefined();
         expect(screen.getByText('Backend')).toBeDefined();
@@ -214,6 +216,11 @@ describe('compact metadata helpers', () => {
     it('includes reasoning effort as a compact summary item', () => {
         const rows = buildRows({ ...BASE_PROCESS, config: { reasoningEffort: 'high' } });
         expect(buildSummaryItems(rows)).toContain('effort High');
+    });
+
+    it('keeps reasoning effort in compact metadata rows', () => {
+        const rows = buildRows({ ...BASE_PROCESS, config: { reasoningEffort: 'high' } });
+        expect(buildCompactRows(rows).find(row => row.label === 'Reasoning Effort')?.value).toBe('High');
     });
 
     it('merges time, workspace, and Ralph fields into compact rows', () => {
@@ -896,14 +903,17 @@ describe('buildRows – reasoning effort', () => {
         render(<ConversationMetadataPopover process={proc} />);
         const trigger = screen.getByRole('button', { name: /conversation metadata/i });
         await act(async () => { fireEvent.click(trigger); });
-        expect(screen.queryByText('Reasoning Effort')).toBeNull();
+        expect(screen.getByText('Reasoning Effort')).toBeDefined();
+        expect(screen.getByText('X High')).toBeDefined();
         expect(screen.getByText('effort X High')).toBeDefined();
     });
 
-    it('shows the Default effort pill in the popover summary when unset', async () => {
+    it('shows the Default effort in the popover summary and grid when unset', async () => {
         render(<ConversationMetadataPopover process={BASE_PROCESS} />);
         const trigger = screen.getByRole('button', { name: /conversation metadata/i });
         await act(async () => { fireEvent.click(trigger); });
+        expect(screen.getByText('Reasoning Effort')).toBeDefined();
+        expect(screen.getByText('Default')).toBeDefined();
         expect(screen.getByText('effort Default')).toBeDefined();
     });
 

@@ -45,7 +45,6 @@ const SUMMARY_ROW_LABELS = new Set([
     'Mode',
     'Agent Provider',
     'Model',
-    'Reasoning Effort',
 ]);
 
 const TIME_ROW_LABELS = new Set(['Started', 'Ended', 'Duration']);
