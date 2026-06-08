@@ -39,6 +39,33 @@ export const WORK_ITEM_REMOTE_PROVIDER_FILTERS: readonly WorkItemRemoteProviderF
     { kind: 'azure-boards', label: 'Azure Boards' },
 ]);
 
+const DEFAULT_WORK_ITEM_TRACKER_VIEW: WorkItemTrackerViewKind = 'local';
+
+export function getWorkItemTrackerViewStorageKey(workspaceId: string): string {
+    return `coc-work-items-tracker-tab-${workspaceId}`;
+}
+
+export function isWorkItemTrackerViewKind(value: unknown): value is WorkItemTrackerViewKind {
+    return value === 'local' || value === 'remote';
+}
+
+export function readStoredWorkItemTrackerView(workspaceId: string): WorkItemTrackerViewKind {
+    try {
+        const stored = localStorage.getItem(getWorkItemTrackerViewStorageKey(workspaceId));
+        return isWorkItemTrackerViewKind(stored) ? stored : DEFAULT_WORK_ITEM_TRACKER_VIEW;
+    } catch {
+        return DEFAULT_WORK_ITEM_TRACKER_VIEW;
+    }
+}
+
+export function writeStoredWorkItemTrackerView(workspaceId: string, viewKind: WorkItemTrackerViewKind): void {
+    try {
+        localStorage.setItem(getWorkItemTrackerViewStorageKey(workspaceId), viewKind);
+    } catch {
+        // Browser storage is optional; keep the in-memory tab state working.
+    }
+}
+
 export function getRemoteProviderFilterOptions(supportedProvider?: WorkItemSyncProvider): readonly WorkItemRemoteProviderFilterOption[] {
     if (!supportedProvider) return WORK_ITEM_REMOTE_PROVIDER_FILTERS;
     return WORK_ITEM_REMOTE_PROVIDER_FILTERS.filter(option => option.kind === supportedProvider);

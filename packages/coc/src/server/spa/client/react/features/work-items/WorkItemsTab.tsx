@@ -27,8 +27,10 @@ import type { WorkItemSyncProvider, WorkItemTrackerKind } from '@plusplusoneplus
 import {
     WORK_ITEM_TRACKER_TABS,
     getTrackerKindsForView,
+    readStoredWorkItemTrackerView,
     type WorkItemRemoteProviderFilter,
     type WorkItemTrackerViewKind,
+    writeStoredWorkItemTrackerView,
 } from './workItemTrackerViews';
 
 function GitHubIcon({ className, testId }: { className?: string; testId?: string }) {
@@ -64,7 +66,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
     const [showCreateDialog, setShowCreateDialog] = useState(false);
     const [createDialogType, setCreateDialogType] = useState<WorkItemTypeLabel>('work-item');
     const [createDialogParentId, setCreateDialogParentId] = useState<string | undefined>(undefined);
-    const [activeTracker, setActiveTracker] = useState<WorkItemTrackerViewKind>('local');
+    const [activeTracker, setActiveTracker] = useState<WorkItemTrackerViewKind>(() => readStoredWorkItemTrackerView(workspaceId));
     const [remoteProviderFilter, setRemoteProviderFilter] = useState<WorkItemRemoteProviderFilter>('all');
     const [detectedRemoteProvider, setDetectedRemoteProvider] = useState<WorkItemSyncProvider | undefined>(undefined);
     const [mobileShowDetail, setMobileShowDetail] = useState(false);
@@ -258,12 +260,16 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
         () => [importDialogProvider],
         [importDialogProvider],
     );
+    const selectTracker = useCallback((viewKind: WorkItemTrackerViewKind) => {
+        setActiveTracker(viewKind);
+        writeStoredWorkItemTrackerView(workspaceId, viewKind);
+    }, [workspaceId]);
 
     const handleImported = useCallback((item: any, provider?: WorkItemSyncProvider) => {
         const importedProvider: WorkItemRemoteProviderFilter =
             provider
             ?? (item?.tracker?.kind === 'azure-boards-backed' ? 'azure-boards' : item?.tracker?.kind === 'github-backed' ? 'github' : 'all');
-        setActiveTracker('remote');
+        selectTracker('remote');
         setRemoteProviderFilter(importedProvider);
         dispatch({ type: 'WORK_ITEM_ADDED', repoId: workspaceId, item });
         setSelectedWorkItemId(item.id);
@@ -274,7 +280,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
         if (isMobile) setMobileShowDetail(true);
         location.hash = buildWorkItemHash(workspaceId, item.id);
         setTimeout(() => setHighlightedWorkItemId(null), 2000);
-    }, [dispatch, workspaceId, isMobile]);
+    }, [dispatch, workspaceId, isMobile, selectTracker]);
 
     const remoteTrackerKinds = useMemo<WorkItemTrackerKind[]>(
         () => getTrackerKindsForView(activeTracker, remoteProviderFilter),
@@ -305,7 +311,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                                         : 'text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#f0f0f0]',
                                 )}
                                 onClick={() => {
-                                    setActiveTracker(tab.kind);
+                                    selectTracker(tab.kind);
                                     setSelectedWorkItemId(null);
                                     setSelectedSessionTaskId(null);
                                     setSelectedCommitHash(null);
