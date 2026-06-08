@@ -3,7 +3,8 @@ export type CommitChatPresentation = ReviewChatPresentation;
 
 export type ReviewChatTarget =
     | { type: 'commit'; workspaceId: string; commitHash: string }
-    | { type: 'pr'; workspaceId: string; repoId?: string; prId: string; headSha?: string };
+    | { type: 'pr'; workspaceId: string; repoId?: string; prId: string; headSha?: string }
+    | { type: 'work-item'; workspaceId: string; workItemId: string };
 
 const OPEN_STORAGE_KEY = 'coc.commitChat.open';
 const PLACEMENT_STORAGE_PREFIX = 'coc.commitChat.placement';
@@ -44,6 +45,10 @@ function encodeStorageSegments(segments: string[]): string {
 export function getReviewChatTargetStorageId(target: ReviewChatTarget): string {
     if (target.type === 'commit') {
         return encodeStorageSegments(['commit', target.workspaceId, target.commitHash]);
+    }
+
+    if (target.type === 'work-item') {
+        return encodeStorageSegments(['work-item', target.workspaceId, target.workItemId]);
     }
 
     return encodeStorageSegments([
@@ -163,9 +168,10 @@ export function resolveReviewChatPresentation(opts: {
     lensEnabled: boolean;
     isDesktop: boolean;
     pinned: boolean;
+    forceLensOnNonDesktop?: boolean;
 }): ReviewChatPresentation {
     if (!opts.lensEnabled) return 'side-panel';
-    if (!opts.isDesktop) return 'side-panel';
+    if (!opts.isDesktop && !opts.forceLensOnNonDesktop) return 'side-panel';
     return opts.pinned ? 'side-panel' : 'lens';
 }
 

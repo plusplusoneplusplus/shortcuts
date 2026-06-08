@@ -1,10 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
     getCommitChatPlacementStorageKey,
+    getReviewChatMinimizedStorageKey,
+    getReviewChatOpenStorageKey,
+    getReviewChatPlacementStorageKey,
+    getReviewChatTargetStorageId,
     isCommitChatPinned,
     pinCommitChat,
     readCommitChatOpen,
     resolveCommitChatPresentation,
+    resolveReviewChatPresentation,
     unpinCommitChat,
     writeCommitChatOpen,
 } from '../../../../src/server/spa/client/react/features/git/commits/commitChatPlacement';
@@ -77,6 +82,31 @@ describe('commit chat placement', () => {
             lensEnabled: true,
             isDesktop: false,
             pinned: false,
+        })).toBe('side-panel');
+    });
+
+    it('scopes Work Item review-chat storage by workspace and work item', () => {
+        const target = { type: 'work-item' as const, workspaceId: 'repo/one', workItemId: 'WI:123' };
+
+        expect(getReviewChatTargetStorageId(target)).toBe('work-item.repo%2Fone.WI%3A123');
+        expect(getReviewChatOpenStorageKey(target)).toBe('coc.reviewChat.open.work-item.repo%2Fone.WI%3A123');
+        expect(getReviewChatPlacementStorageKey(target)).toBe('coc.reviewChat.placement.work-item.repo%2Fone.WI%3A123');
+        expect(getReviewChatMinimizedStorageKey(target)).toBe('coc.reviewChat.minimized.work-item.repo%2Fone.WI%3A123');
+    });
+
+    it('keeps Work Item lens presentation on non-desktop when requested', () => {
+        expect(resolveReviewChatPresentation({
+            lensEnabled: true,
+            isDesktop: false,
+            pinned: false,
+            forceLensOnNonDesktop: true,
+        })).toBe('lens');
+
+        expect(resolveReviewChatPresentation({
+            lensEnabled: true,
+            isDesktop: false,
+            pinned: true,
+            forceLensOnNonDesktop: true,
         })).toBe('side-panel');
     });
 });

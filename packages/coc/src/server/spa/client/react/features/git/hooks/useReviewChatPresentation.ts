@@ -20,6 +20,7 @@ import type { ReviewChatPresentation, ReviewChatTarget } from '../commits/commit
 export interface UseReviewChatPresentationOptions {
     target: ReviewChatTarget | undefined;
     supportsChat?: boolean;
+    forceLensOnNonDesktop?: boolean;
 }
 
 export interface UseReviewChatPresentationReturn {
@@ -40,6 +41,7 @@ export interface UseReviewChatPresentationReturn {
 export function useReviewChatPresentation({
     target,
     supportsChat = true,
+    forceLensOnNonDesktop = false,
 }: UseReviewChatPresentationOptions): UseReviewChatPresentationReturn {
     const { isDesktop } = useBreakpoint();
     const lensFeatureEnabled = isCommitChatLensEnabled();
@@ -80,6 +82,7 @@ export function useReviewChatPresentation({
         lensEnabled: lensFeatureEnabled,
         isDesktop,
         pinned: isPinned,
+        forceLensOnNonDesktop,
     });
 
     useEffect(() => {
@@ -87,9 +90,7 @@ export function useReviewChatPresentation({
             setChatOpen(false);
             return;
         }
-        if (lensFeatureEnabled || target?.type === 'commit') {
-            setChatOpen(readOpenState());
-        }
+        setChatOpen(readOpenState());
     }, [supportsChat, lensFeatureEnabled, target?.type, readOpenState]);
 
     useEffect(() => {

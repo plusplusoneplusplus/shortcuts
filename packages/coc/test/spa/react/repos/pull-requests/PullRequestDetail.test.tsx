@@ -19,7 +19,11 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getDefaultProvider: () => 'copilot',
     getConfiguredDefaultProvider: () => 'copilot',
     isAutoAgentProviderRoutingEnabled: () => false,
+    isForEachEnabled: () => false,
+    isMapReduceEnabled: () => false,
+    isLoopsEnabled: () => false,
     isEffortLevelsEnabled: () => false,
+    isSessionContextAttachmentsEnabled: () => false,
     isCommitChatLensEnabled: configMocks.isCommitChatLensEnabled,
 }));
 

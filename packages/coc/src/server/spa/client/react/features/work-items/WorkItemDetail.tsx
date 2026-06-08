@@ -36,6 +36,10 @@ import { TYPE_LABELS } from './WorkItemHierarchyNode';
 import { WorkItemAiComposer } from './WorkItemAiComposer';
 import { isWorkItemsAiAuthoringEnabled } from '../../utils/config';
 import { WorkItemRemoteMirrorBadge } from './WorkItemGitHubMirrorBadge';
+import { useReviewChatPresentation } from '../git/hooks/useReviewChatPresentation';
+import type { ReviewChatTarget } from '../git/commits/commitChatPlacement';
+import { WorkItemChatPanel } from './WorkItemChatPanel';
+import { WorkItemChatPlacementFrame } from './WorkItemChatPlacementFrame';
 
 const UNSAVED_CHANGES_MESSAGE = 'You have unsaved changes. Leave without saving?';
 
@@ -251,6 +255,27 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
 
     const [showAiComposer, setShowAiComposer] = useState(false);
     const aiAuthoringEnabled = isWorkItemsAiAuthoringEnabled();
+    const workItemChatTarget = useMemo<ReviewChatTarget>(() => ({
+        type: 'work-item',
+        workspaceId,
+        workItemId,
+    }), [workspaceId, workItemId]);
+    const {
+        chatOpen: workItemChatOpen,
+        toggleChat: toggleWorkItemChat,
+        closeChat: closeWorkItemChat,
+        minimizeChat: minimizeWorkItemChat,
+        restoreChat: restoreWorkItemChat,
+        pinChat: pinWorkItemChat,
+        unpinChat: unpinWorkItemChat,
+        isPinned: workItemChatPinned,
+        isMinimized: workItemChatMinimized,
+        presentation: workItemChatPresentation,
+        lensEnabled: workItemChatLensEnabled,
+    } = useReviewChatPresentation({
+        target: workItemChatTarget,
+        forceLensOnNonDesktop: true,
+    });
     const currentSelectionRef = useRef({ workspaceId, workItemId });
     const previousSelectionRef = useRef({ workspaceId, workItemId });
     const fetchRequestSeqRef = useRef(0);
@@ -676,6 +701,14 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         onBack?.();
     }, [isDirty, onBack]);
 
+    const openWorkItemChat = useCallback(() => {
+        if (workItemChatOpen) {
+            restoreWorkItemChat();
+            return;
+        }
+        toggleWorkItemChat();
+    }, [restoreWorkItemChat, toggleWorkItemChat, workItemChatOpen]);
+
     if (loading) {
         return <div className="flex items-center justify-center h-full text-sm text-[#848484]">Loading…</div>;
     }
@@ -723,8 +756,33 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         : item.status === 'done' ? 'bg-[#1f883d] text-white border-transparent'
         : 'bg-[#fff8c5] text-[#9a6700] border-[color-mix(in_srgb,#9a6700_30%,#d0d7de)]';
 
+    const chatPanelProps = {
+        workspaceId,
+        workItemId,
+        workItemNumber: item.workItemNumber,
+        title: item.title,
+        status: item.status,
+        type: effectiveType,
+        hasUnsavedChanges: isDirty,
+        onClose: closeWorkItemChat,
+    };
+    const workItemChatSurface = !workItemChatOpen ? null
+        : workItemChatPresentation === 'side-panel' && !workItemChatLensEnabled ? (
+            <WorkItemChatPanel {...chatPanelProps} />
+        ) : (
+            <WorkItemChatPlacementFrame
+                {...chatPanelProps}
+                presentation={workItemChatPresentation}
+                isMinimized={workItemChatMinimized}
+                onMinimize={minimizeWorkItemChat}
+                onRestore={restoreWorkItemChat}
+                onPin={workItemChatPresentation === 'lens' ? pinWorkItemChat : undefined}
+                onUnpin={workItemChatLensEnabled && workItemChatPinned ? unpinWorkItemChat : undefined}
+            />
+        );
+
     return (
-        <div className="flex flex-col h-full" data-testid="work-item-detail">
+        <div className="relative flex flex-col h-full overflow-hidden" data-testid="work-item-detail">
             {/* ── Detail header ── */}
             <div className="border-b border-[#d0d7de] dark:border-[#474749] bg-white dark:bg-[#1e1e1e] grid gap-2 shrink-0" style={{ padding: '12px 16px' }}>
                 {/* Breadcrumbs */}
@@ -828,6 +886,16 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                 Run
                             </button>
                         )}
+                        <button
+                            className="inline-flex items-center justify-center min-h-[22px] rounded-[4px] border border-purple-300 bg-purple-50 px-[6px] text-[10px] font-semibold text-purple-700 hover:bg-purple-100 dark:border-purple-700 dark:bg-purple-900/30 dark:text-purple-200 dark:hover:bg-purple-900/50"
+                            onClick={openWorkItemChat}
+                            data-testid="work-item-ask-ai-btn"
+                            aria-pressed={workItemChatOpen}
+                            title={isDirty ? 'Ask AI about the saved Work Item; unsaved edits are not included' : 'Ask AI about this Work Item'}
+                            type="button"
+                        >
+                            Ask AI
+                        </button>
                         {isMobile && isContainer && (
                             <button
                                 className="text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#ccc] text-[11px] bg-transparent border-0 cursor-pointer p-0 whitespace-nowrap"
@@ -1440,6 +1508,17 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
 
                 </div>
             </div>
+
+            {workItemChatOpen && workItemChatPresentation === 'lens' && workItemChatSurface}
+
+            {workItemChatOpen && workItemChatPresentation === 'side-panel' && (
+                <div
+                    className="min-h-[320px] h-[min(45vh,420px)] shrink-0 border-t border-[#d0d7de] bg-[#f8f8f8] dark:border-[#3c3c3c] dark:bg-[#1e1e1e]"
+                    data-testid="work-item-chat-side-panel-container"
+                >
+                    {workItemChatSurface}
+                </div>
+            )}
 
             {showExecuteDialog && (
                 <WorkItemExecuteDialog
