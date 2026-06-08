@@ -286,10 +286,38 @@ describe('resolveAzureDevOpsCliAccessToken', () => {
             return { stdout: '  access-token-value\n', stderr: '' };
         };
 
-        await expect(resolveAzureDevOpsCliAccessToken(run)).resolves.toBe('access-token-value');
+        await expect(resolveAzureDevOpsCliAccessToken(run, 'linux')).resolves.toBe('access-token-value');
         expect(calls).toEqual([{
             file: 'az',
             args: [
+                'account',
+                'get-access-token',
+                '--resource',
+                '499b84ac-1321-427f-aa17-267ca6975798',
+                '--query',
+                'accessToken',
+                '-o',
+                'tsv',
+            ],
+        }]);
+    });
+
+    it('runs Azure CLI through cmd.exe on Windows so az.cmd can be resolved', async () => {
+        const calls: Array<{ file: string; args: string[] }> = [];
+        const run = async (file: string, args: string[]) => {
+            calls.push({ file, args });
+            return { stdout: 'windows-access-token\n', stderr: '' };
+        };
+
+        await expect(resolveAzureDevOpsCliAccessToken(run, 'win32', 'cmd.exe'))
+            .resolves.toBe('windows-access-token');
+        expect(calls).toEqual([{
+            file: 'cmd.exe',
+            args: [
+                '/d',
+                '/s',
+                '/c',
+                'az',
                 'account',
                 'get-access-token',
                 '--resource',

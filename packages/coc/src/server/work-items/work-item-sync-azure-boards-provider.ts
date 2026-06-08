@@ -197,6 +197,16 @@ interface AzureBoardsJsonPatchOperation {
 }
 
 const AZURE_BOARDS_REMOTE_WINS_FIELDS = ['title', 'description', 'status', 'priority', 'tags', 'parentId'];
+const AZURE_DEVOPS_ACCESS_TOKEN_ARGS = [
+    'account',
+    'get-access-token',
+    '--resource',
+    ADO_RESOURCE_ID,
+    '--query',
+    'accessToken',
+    '-o',
+    'tsv',
+];
 
 // Resolve child_process.execFile lazily so importing this module has no
 // load-time side effects (tests with partial child_process mocks would
@@ -1218,18 +1228,21 @@ export async function importAzureBoardsEpicTreeAsWorkItems(
 
 export async function resolveAzureDevOpsCliAccessToken(
     run: ExecFileAsync = execFileAsync,
+    platform: NodeJS.Platform = process.platform,
+    comSpec: string | undefined = process.env.ComSpec,
 ): Promise<string | undefined> {
     try {
-        const { stdout } = await run('az', [
-            'account',
-            'get-access-token',
-            '--resource',
-            ADO_RESOURCE_ID,
-            '--query',
-            'accessToken',
-            '-o',
-            'tsv',
-        ], {
+        const accessTokenArgs = [...AZURE_DEVOPS_ACCESS_TOKEN_ARGS];
+        const command = platform === 'win32'
+            ? {
+                file: comSpec?.trim() || 'cmd.exe',
+                args: ['/d', '/s', '/c', 'az', ...accessTokenArgs],
+            }
+            : {
+                file: 'az',
+                args: accessTokenArgs,
+            };
+        const { stdout } = await run(command.file, command.args, {
             encoding: 'utf8',
             windowsHide: true,
             maxBuffer: 1024 * 1024,
