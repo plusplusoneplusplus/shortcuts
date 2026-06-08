@@ -7,6 +7,12 @@ const mocks = vi.hoisted(() => ({
     dispatch: vi.fn(),
     tree: vi.fn(),
     syncStatus: vi.fn(),
+    appState: {
+        selectedWorkItemId: undefined as string | undefined,
+        selectedWorkItemSessionTaskId: undefined as string | undefined,
+        selectedWorkItemCommitHash: undefined as string | undefined,
+        selectedWorkItemCommitFilePath: undefined as string | undefined,
+    },
 }));
 
 vi.mock('../../../../src/server/spa/client/react/contexts/WorkItemContext', () => ({
@@ -22,12 +28,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/WorkItemContext', () =
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
-        state: {
-            selectedWorkItemId: undefined,
-            selectedWorkItemSessionTaskId: undefined,
-            selectedWorkItemCommitHash: undefined,
-            selectedWorkItemCommitFilePath: undefined,
-        },
+        state: mocks.appState,
         dispatch: vi.fn(),
     }),
 }));
@@ -157,6 +158,10 @@ function syncStatusResponse(provider: 'github' | 'azure-boards' = 'github') {
 describe('WorkItemsTab — remote provider tab icon', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.appState.selectedWorkItemId = undefined;
+        mocks.appState.selectedWorkItemSessionTaskId = undefined;
+        mocks.appState.selectedWorkItemCommitHash = undefined;
+        mocks.appState.selectedWorkItemCommitFilePath = undefined;
         localStorage.clear();
         location.hash = '';
         mocks.tree.mockResolvedValue(emptyTreeResponse());
@@ -181,6 +186,18 @@ describe('WorkItemsTab — remote provider tab icon', () => {
 
         render(<WorkItemsTab workspaceId="ws-test" />);
 
+        expect(screen.getByTestId('work-item-tracker-tab-local')).toHaveAttribute('aria-selected', 'false');
+        expect(screen.getByTestId('work-item-tracker-tab-remote')).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('preserves saved Remote tracker selection when a work item session deep link opens detail', () => {
+        localStorage.setItem(getWorkItemTrackerViewStorageKey('ws-test'), 'remote');
+        mocks.appState.selectedWorkItemId = 'wi-deep-link';
+        mocks.appState.selectedWorkItemSessionTaskId = 'task-deep-link';
+
+        render(<WorkItemsTab workspaceId="ws-test" />);
+
+        expect(screen.getByTestId('mock-work-item-execution-session')).toBeTruthy();
         expect(screen.getByTestId('work-item-tracker-tab-local')).toHaveAttribute('aria-selected', 'false');
         expect(screen.getByTestId('work-item-tracker-tab-remote')).toHaveAttribute('aria-selected', 'true');
     });
