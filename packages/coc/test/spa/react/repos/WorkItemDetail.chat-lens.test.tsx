@@ -210,6 +210,7 @@ describe('WorkItemDetail Work Item chat lens', () => {
 
         fireEvent.click(screen.getByTestId('mock-chat-pin'));
         expect(localStorage.getItem(getReviewChatPlacementStorageKey(targetOne))).toBe('side-panel');
+        expect(localStorage.getItem(getReviewChatMinimizedStorageKey(targetOne))).toBeNull();
         expect(screen.getByTestId('work-item-chat-side-panel').getAttribute('data-work-item-id')).toBe('wi-1');
 
         fireEvent.click(screen.getByTestId('mock-chat-unpin'));
@@ -226,6 +227,34 @@ describe('WorkItemDetail Work Item chat lens', () => {
         await waitFor(() => expect(screen.getByTestId('work-item-chat-lens').getAttribute('data-work-item-id')).toBe('wi-2'));
         expect(localStorage.getItem(getReviewChatOpenStorageKey(targetTwo))).toBe('true');
         expect(localStorage.getItem(getReviewChatMinimizedStorageKey(targetTwo))).toBeNull();
+    });
+
+    it('closes a minimized Work Item chat without clearing another Work Item lens state', async () => {
+        render(<WorkItemDetail workItemId="wi-1" workspaceId="ws-1" onBack={vi.fn()} />);
+
+        const targetOne = { type: 'work-item' as const, workspaceId: 'ws-1', workItemId: 'wi-1' };
+        const targetTwo = { type: 'work-item' as const, workspaceId: 'ws-1', workItemId: 'wi-2' };
+
+        fireEvent.click(await screen.findByTestId('work-item-ask-ai-btn'));
+        await waitFor(() => expect(screen.getByTestId('work-item-chat-lens')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('mock-chat-minimize'));
+        expect(localStorage.getItem(getReviewChatMinimizedStorageKey(targetOne))).toBe('true');
+        localStorage.setItem(getReviewChatMinimizedStorageKey(targetTwo), 'true');
+
+        fireEvent.click(screen.getByTestId('mock-chat-close'));
+
+        await waitFor(() => expect(screen.queryByTestId('work-item-chat-lens')).toBeNull());
+        expect(localStorage.getItem(getReviewChatOpenStorageKey(targetOne))).toBe('false');
+        expect(localStorage.getItem(getReviewChatMinimizedStorageKey(targetOne))).toBeNull();
+        expect(localStorage.getItem(getReviewChatMinimizedStorageKey(targetTwo))).toBe('true');
+
+        fireEvent.click(screen.getByTestId('work-item-ask-ai-btn'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('work-item-chat-lens')).toHaveAttribute('data-work-item-id', 'wi-1');
+        });
+        expect(screen.getByTestId('work-item-chat-lens')).toHaveAttribute('data-minimized', 'false');
     });
 
     it('keeps the lens presentation on non-desktop viewports when the feature flag is enabled', async () => {
