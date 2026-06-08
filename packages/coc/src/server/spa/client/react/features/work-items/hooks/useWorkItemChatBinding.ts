@@ -44,7 +44,6 @@ function buildWorkItemPointerContext(opts: UseWorkItemChatBindingOptions): Attac
         workItemId: opts.workItemId,
         workItemNumber: opts.workItemNumber,
         label,
-        title: opts.title,
         status: opts.status,
         type: opts.type,
         preview: label,
@@ -59,7 +58,7 @@ function prependWorkItemPointer(prompt: string, opts: UseWorkItemChatBindingOpti
 }
 
 export function useWorkItemChatBinding(opts: UseWorkItemChatBindingOptions): UseWorkItemChatBindingReturn {
-    const { workspaceId, workItemId, title, status, type, workItemNumber } = opts;
+    const { workspaceId, workItemId, status, type, workItemNumber } = opts;
     const [taskId, setTaskId] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -102,7 +101,7 @@ export function useWorkItemChatBinding(opts: UseWorkItemChatBindingOptions): Use
         const requestedWorkspaceId = workspaceId;
         const requestedWorkItemId = workItemId;
         try {
-            const promptWithPointer = prependWorkItemPointer(prompt, { workspaceId, workItemId, title, status, type, workItemNumber });
+            const promptWithPointer = prependWorkItemPointer(prompt, { workspaceId, workItemId, status, type, workItemNumber });
             const res = await getSpaCocClient().queue.enqueue({
                 type: 'chat',
                 priority: 'normal',
@@ -138,7 +137,7 @@ export function useWorkItemChatBinding(opts: UseWorkItemChatBindingOptions): Use
             }
             return null;
         }
-    }, [workspaceId, workItemId, title, status, type, workItemNumber, isCurrentRequest]);
+    }, [workspaceId, workItemId, status, type, workItemNumber, isCurrentRequest]);
 
     return { taskId, loading, error, createChat };
 }

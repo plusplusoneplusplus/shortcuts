@@ -163,7 +163,7 @@ describe('useWorkItemChatBinding', () => {
             workspaceId: 'ws-1',
             workItemId: 'wi-123',
             workItemNumber: 123,
-            title: 'Fix saved title',
+            title: 'UI-only saved title',
             status: 'planning',
             type: 'bug',
         }));
@@ -213,7 +213,8 @@ describe('useWorkItemChatBinding', () => {
         expect(enqueueArg.payload.prompt).toContain('work_item_number="123"');
         expect(enqueueArg.payload.prompt).toContain('status="planning"');
         expect(enqueueArg.payload.prompt).toContain('type="bug"');
-        expect(enqueueArg.payload.prompt).toContain('<title>Fix saved title</title>');
+        expect(enqueueArg.payload.prompt).toContain('<title>Work Item #123</title>');
+        expect(enqueueArg.payload.prompt).not.toContain('UI-only saved title');
         expect(enqueueArg.payload.prompt).toContain('What should I do next?');
         expect(enqueueArg.payload.prompt).not.toContain('description');
         expect(enqueueArg.payload.prompt).not.toContain('raw plan content');
