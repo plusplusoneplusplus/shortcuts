@@ -41,6 +41,7 @@ describe('CommitChatPlacementFrame', () => {
         expect(lens.className).toContain('right-4');
         expect(lens.className).toContain('max-w-[420px]');
         expect(lens.className).toContain('max-h-[55vh]');
+        expect(screen.getByTestId('commit-chat-lens-resize-grip')).toHaveClass('cursor-nwse-resize');
         expect(screen.getByTestId('commit-chat-lens-header')).toBeTruthy();
         expect(screen.getByTestId('commit-chat-panel').getAttribute('data-hide-empty-header')).toBe('true');
 
@@ -93,6 +94,7 @@ describe('CommitChatPlacementFrame', () => {
 
         expect(screen.getByTestId('commit-chat-side-panel')).toBeTruthy();
         expect(screen.getByTestId('commit-chat-side-panel-header')).toBeTruthy();
+        expect(screen.queryByTestId('commit-chat-lens-resize-grip')).toBeNull();
         expect(screen.queryByTestId('commit-chat-pin-btn')).toBeNull();
 
         fireEvent.click(screen.getByTestId('commit-chat-unpin-btn'));

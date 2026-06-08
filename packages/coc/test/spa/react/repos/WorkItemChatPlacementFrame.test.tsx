@@ -43,6 +43,7 @@ describe('WorkItemChatPlacementFrame', () => {
         const lens = screen.getByTestId('work-item-chat-lens');
         expect(lens.className).toContain('absolute');
         expect(lens.className).toContain('bottom-4');
+        expect(screen.getByTestId('work-item-chat-lens-resize-grip')).toHaveClass('cursor-nwse-resize');
         expect(screen.getByTestId('work-item-chat-lens-header')).toHaveTextContent('Work Item Chat');
         expect(screen.getByTestId('work-item-chat-lens-header')).toHaveTextContent('BUG-7');
         expect(screen.getByTestId('work-item-chat-panel').getAttribute('data-hide-empty-header')).toBe('true');
@@ -97,6 +98,7 @@ describe('WorkItemChatPlacementFrame', () => {
         );
 
         expect(screen.getByTestId('work-item-chat-side-panel')).toBeTruthy();
+        expect(screen.queryByTestId('work-item-chat-lens-resize-grip')).toBeNull();
         fireEvent.click(screen.getByTestId('work-item-chat-unpin-btn'));
         expect(onUnpin).toHaveBeenCalledOnce();
     });

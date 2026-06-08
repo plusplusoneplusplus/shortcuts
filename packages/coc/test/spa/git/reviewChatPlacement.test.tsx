@@ -1,5 +1,5 @@
 import { act, fireEvent, render, renderHook, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     clearReviewChatMinimized,
     getReviewChatMinimizedStorageKey,
@@ -108,6 +108,24 @@ describe('review chat placement storage', () => {
 });
 
 describe('ReviewChatPlacementFrame', () => {
+    let originalGetBoundingClientRect: typeof Element.prototype.getBoundingClientRect;
+    let originalInnerWidth: number;
+    let originalInnerHeight: number;
+
+    beforeEach(() => {
+        originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+        originalInnerWidth = window.innerWidth;
+        originalInnerHeight = window.innerHeight;
+    });
+
+    afterEach(() => {
+        Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalInnerWidth });
+        Object.defineProperty(window, 'innerHeight', { configurable: true, value: originalInnerHeight });
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+    });
+
     it('renders shared lens chrome with contextual title, identifier, close, minimize, and pin controls', () => {
         const onClose = vi.fn();
         const onMinimize = vi.fn();
@@ -128,6 +146,8 @@ describe('ReviewChatPlacementFrame', () => {
         );
 
         expect(screen.getByTestId('pr-chat-lens')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-chat-lens-resize-grip')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-chat-lens-resize-grip')).toHaveClass('cursor-nwse-resize');
         expect(screen.getByTestId('pr-chat-lens-header')).toHaveTextContent('PR Chat');
         expect(screen.getByTestId('pr-chat-lens-header')).toHaveTextContent('#123');
         expect(screen.getByTestId('chat-body')).toBeInTheDocument();
@@ -160,6 +180,7 @@ describe('ReviewChatPlacementFrame', () => {
         );
 
         expect(screen.getByTestId('commit-chat-lens-minimized')).toHaveTextContent('Commit Chat');
+        expect(screen.queryByTestId('commit-chat-lens-resize-grip')).not.toBeInTheDocument();
         expect(screen.getByTestId('commit-chat-lens-minimized')).toHaveTextContent('abc1234');
         expect(screen.getByTestId('commit-chat-lens-hidden-body')).toHaveClass('hidden');
         expect(screen.getByTestId('chat-body')).toBeInTheDocument();
@@ -193,11 +214,141 @@ describe('ReviewChatPlacementFrame', () => {
 
         expect(screen.getByTestId('commit-chat-side-panel')).toBeInTheDocument();
         expect(screen.queryByTestId('commit-chat-lens-minimized')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('commit-chat-lens-resize-grip')).not.toBeInTheDocument();
         expect(screen.queryByTestId('commit-chat-minimize-btn')).not.toBeInTheDocument();
         expect(screen.queryByTestId('commit-chat-pin-btn')).not.toBeInTheDocument();
 
         fireEvent.click(screen.getByTestId('commit-chat-unpin-btn'));
         expect(onUnpin).toHaveBeenCalledTimes(1);
+    });
+
+    it('resizes the lens from the top-left grip while keeping the bottom-right anchor classes', () => {
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1000 });
+        Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 });
+        Element.prototype.getBoundingClientRect = () => ({
+            left: 564,
+            top: 360,
+            right: 984,
+            bottom: 784,
+            width: 420,
+            height: 424,
+            x: 564,
+            y: 360,
+            toJSON: () => ({}),
+        });
+
+        render(
+            <ReviewChatPlacementFrame
+                title="PR Chat"
+                identifier="#123"
+                presentation="lens"
+                onClose={vi.fn()}
+                testIdPrefix="pr-chat"
+            >
+                <div />
+            </ReviewChatPlacementFrame>,
+        );
+
+        const lens = screen.getByTestId('pr-chat-lens');
+        const grip = screen.getByTestId('pr-chat-lens-resize-grip');
+
+        fireEvent.mouseDown(grip, { clientX: 564, clientY: 360 });
+        fireEvent.mouseMove(window, { clientX: 464, clientY: 260 });
+
+        expect(lens.style.width).toBe('520px');
+        expect(lens.style.height).toBe('524px');
+        expect(lens.className).toContain('bottom-4');
+        expect(lens.className).toContain('right-4');
+
+        fireEvent.mouseMove(window, { clientX: 664, clientY: 460 });
+
+        expect(lens.style.width).toBe('320px');
+        expect(lens.style.height).toBe('324px');
+
+        fireEvent.mouseUp(window);
+    });
+
+    it('clamps top-left resize to viewport bounds', () => {
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 700 });
+        Object.defineProperty(window, 'innerHeight', { configurable: true, value: 600 });
+        Element.prototype.getBoundingClientRect = () => ({
+            left: 264,
+            top: 160,
+            right: 684,
+            bottom: 584,
+            width: 420,
+            height: 424,
+            x: 264,
+            y: 160,
+            toJSON: () => ({}),
+        });
+
+        render(
+            <ReviewChatPlacementFrame
+                title="Commit Chat"
+                identifier="abc1234"
+                presentation="lens"
+                onClose={vi.fn()}
+                testIdPrefix="commit-chat"
+            >
+                <div />
+            </ReviewChatPlacementFrame>,
+        );
+
+        const lens = screen.getByTestId('commit-chat-lens');
+
+        fireEvent.mouseDown(screen.getByTestId('commit-chat-lens-resize-grip'), { clientX: 264, clientY: 160 });
+        fireEvent.mouseMove(window, { clientX: -400, clientY: -400 });
+
+        expect(lens.style.width).toBe('668px');
+        expect(lens.style.height).toBe('568px');
+
+        fireEvent.mouseUp(window);
+    });
+
+    it('does not persist resized dimensions across remounts', () => {
+        Element.prototype.getBoundingClientRect = () => ({
+            left: 564,
+            top: 360,
+            right: 984,
+            bottom: 784,
+            width: 420,
+            height: 424,
+            x: 564,
+            y: 360,
+            toJSON: () => ({}),
+        });
+
+        const view = render(
+            <ReviewChatPlacementFrame
+                title="Work Item Chat"
+                presentation="lens"
+                onClose={vi.fn()}
+                testIdPrefix="work-item-chat"
+            >
+                <div />
+            </ReviewChatPlacementFrame>,
+        );
+
+        fireEvent.mouseDown(screen.getByTestId('work-item-chat-lens-resize-grip'), { clientX: 564, clientY: 360 });
+        fireEvent.mouseMove(window, { clientX: 464, clientY: 260 });
+
+        expect(screen.getByTestId('work-item-chat-lens').style.width).toBe('520px');
+
+        view.unmount();
+        render(
+            <ReviewChatPlacementFrame
+                title="Work Item Chat"
+                presentation="lens"
+                onClose={vi.fn()}
+                testIdPrefix="work-item-chat"
+            >
+                <div />
+            </ReviewChatPlacementFrame>,
+        );
+
+        expect(screen.getByTestId('work-item-chat-lens').style.width).toBe('');
+        expect(localStorage.length).toBe(0);
     });
 });
 

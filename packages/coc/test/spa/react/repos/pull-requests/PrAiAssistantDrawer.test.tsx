@@ -154,6 +154,22 @@ describe('PrAiAssistantDrawer', () => {
 });
 
 describe('PullRequestChatPlacementFrame', () => {
+    it('renders a visible top-left resize grip for PR lenses', () => {
+        render(
+            <PullRequestChatPlacementFrame
+                workspaceId="repo-1"
+                repoId="repo-1"
+                prId="142"
+                prNumber={142}
+                prTitle="Add retry logic"
+                presentation="lens"
+                onClose={vi.fn()}
+            />,
+        );
+
+        expect(screen.getByTestId('pr-chat-lens-resize-grip')).toHaveClass('cursor-nwse-resize');
+    });
+
     it('renders a compact restorable PR lens pill when minimized', () => {
         const onRestore = vi.fn();
 
