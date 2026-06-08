@@ -100,16 +100,24 @@ describe('usePrChatBinding', () => {
             expect(source).toContain('coc.prChat.binding.');
         });
 
+        it('derives binding keys from workspace, repo, PR id, and review target discriminator', () => {
+            expect(source).toContain('getReviewChatTargetStorageId');
+            expect(source).toContain("type: 'pr'");
+            expect(source).toContain('workspaceId: opts.workspaceId');
+            expect(source).toContain('repoId: opts.repoId');
+            expect(source).toContain('prId: opts.prId');
+        });
+
         it('stores binding to localStorage after createChat success', () => {
-            expect(source).toContain('storeBinding(prId, ');
+            expect(source).toContain('storeBinding({ workspaceId, repoId, prId }, newTaskId)');
         });
 
         it('restores binding from localStorage on mount', () => {
-            expect(source).toContain('getStoredBinding(prId)');
+            expect(source).toContain('getStoredBinding({ workspaceId, repoId, prId })');
         });
 
-        it('refreshes binding when prId changes via useEffect', () => {
-            expect(source).toContain('[prId]');
+        it('refreshes binding when the scoped review target identity changes via useEffect', () => {
+            expect(source).toContain('[workspaceId, repoId, prId]');
         });
     });
 
@@ -194,7 +202,59 @@ describe('usePrChatBinding', () => {
                 },
                 config: { effortTier: 'high' },
             });
-            expect(localStorage.getItem('coc.prChat.binding.42')).toBe('task-pr-popout');
+            expect(localStorage.getItem('coc.prChat.binding.pr.ws-1.repo-1.42.current')).toBe('task-pr-popout');
+            expect(localStorage.getItem('coc.prChat.binding.42')).toBeNull();
+        });
+
+        it('does not collide for the same PR id across workspaces or repos', async () => {
+            const { result, rerender } = renderHook(
+                ({ workspaceId, repoId }: { workspaceId: string; repoId: string }) => usePrChatBinding({
+                    workspaceId,
+                    prId: '42',
+                    repoId,
+                    prTitle: 'Improve review chat',
+                }),
+                { initialProps: { workspaceId: 'ws-1', repoId: 'repo-1' } },
+            );
+
+            mockClient.queue.enqueue.mockResolvedValueOnce({ task: { id: 'task-ws-1-repo-1' } });
+            await act(async () => {
+                await result.current.createChat('first workspace prompt');
+            });
+
+            expect(result.current.taskId).toBe('task-ws-1-repo-1');
+            expect(localStorage.getItem('coc.prChat.binding.pr.ws-1.repo-1.42.current')).toBe('task-ws-1-repo-1');
+
+            await act(async () => {
+                rerender({ workspaceId: 'ws-2', repoId: 'repo-1' });
+            });
+            expect(result.current.taskId).toBeNull();
+
+            mockClient.queue.enqueue.mockResolvedValueOnce({ task: { id: 'task-ws-2-repo-1' } });
+            await act(async () => {
+                await result.current.createChat('second workspace prompt');
+            });
+
+            expect(localStorage.getItem('coc.prChat.binding.pr.ws-1.repo-1.42.current')).toBe('task-ws-1-repo-1');
+            expect(localStorage.getItem('coc.prChat.binding.pr.ws-2.repo-1.42.current')).toBe('task-ws-2-repo-1');
+
+            await act(async () => {
+                rerender({ workspaceId: 'ws-2', repoId: 'repo-2' });
+            });
+            expect(result.current.taskId).toBeNull();
+
+            mockClient.queue.enqueue.mockResolvedValueOnce({ task: { id: 'task-ws-2-repo-2' } });
+            await act(async () => {
+                await result.current.createChat('second repo prompt');
+            });
+
+            expect(localStorage.getItem('coc.prChat.binding.pr.ws-2.repo-1.42.current')).toBe('task-ws-2-repo-1');
+            expect(localStorage.getItem('coc.prChat.binding.pr.ws-2.repo-2.42.current')).toBe('task-ws-2-repo-2');
+
+            await act(async () => {
+                rerender({ workspaceId: 'ws-1', repoId: 'repo-1' });
+            });
+            expect(result.current.taskId).toBe('task-ws-1-repo-1');
         });
     });
 
