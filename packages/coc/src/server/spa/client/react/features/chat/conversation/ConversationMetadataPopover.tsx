@@ -76,6 +76,29 @@ function formatInteger(value: number): string {
     return Math.max(0, value).toLocaleString();
 }
 
+const REASONING_EFFORT_DEFAULT = 'Default';
+
+function formatReasoningEffort(value: unknown): string {
+    const raw = toStringValue(value);
+    if (!raw) return REASONING_EFFORT_DEFAULT;
+    switch (raw.toLowerCase()) {
+        case 'low':
+            return 'Low';
+        case 'medium':
+            return 'Medium';
+        case 'high':
+            return 'High';
+        case 'xhigh':
+            return 'X High';
+        default:
+            return raw
+                .split(/[\s_-]+/)
+                .filter(Boolean)
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                .join(' ') || REASONING_EFFORT_DEFAULT;
+    }
+}
+
 function formatUsdCost(usd: number): string {
     if (usd >= 0.01) return '$' + usd.toFixed(2);
     return '$' + usd.toFixed(6).replace(/0+$/, '').replace(/\.$/, '');
@@ -251,7 +274,7 @@ export function buildRows(process: any, turnsCount?: number): MetaRow[] {
     push('Model', process?.metadata?.model || process?.config?.model || process?.model || 'default');
     push('Mode', process?.metadata?.mode || process?.mode);
     push('Agent Provider', getAgentNameFromProcess(process));
-    push('Reasoning Effort', process?.config?.reasoningEffort || process?.metadata?.reasoningEffort);
+    push('Reasoning Effort', formatReasoningEffort(process?.config?.reasoningEffort || process?.metadata?.reasoningEffort));
     push('Session ID', sessionId, { breakAll: true, mono: true, link: sessionId ? `#logs?sessionId=${encodeURIComponent(sessionId)}` : undefined });
     push('Backend', process?.metadata?.backend);
     push('Started', formatTimestamp(startedAt));
