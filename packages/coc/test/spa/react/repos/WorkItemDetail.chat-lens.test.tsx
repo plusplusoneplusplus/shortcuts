@@ -1,12 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 
-const { configMocks, breakpointState } = vi.hoisted(() => ({
+const { configMocks, breakpointState, chatFrameProps } = vi.hoisted(() => ({
     configMocks: {
         isCommitChatLensEnabled: vi.fn(() => true),
     },
     breakpointState: {
         current: { isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' },
+    },
+    chatFrameProps: {
+        last: null as any,
     },
 }));
 
@@ -86,22 +89,25 @@ vi.mock('../../../../src/server/spa/client/react/features/work-items/WorkItemGit
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/work-items/WorkItemChatPlacementFrame', () => ({
-    WorkItemChatPlacementFrame: (props: any) => (
-        <div
-            data-testid={`work-item-chat-${props.presentation}`}
-            data-workspace-id={props.workspaceId}
-            data-work-item-id={props.workItemId}
-            data-title={props.title}
-            data-unsaved={props.hasUnsavedChanges ? 'true' : 'false'}
-            data-minimized={props.isMinimized ? 'true' : 'false'}
-        >
-            <button type="button" data-testid="mock-chat-minimize" onClick={props.onMinimize}>minimize</button>
-            <button type="button" data-testid="mock-chat-restore" onClick={props.onRestore}>restore</button>
-            <button type="button" data-testid="mock-chat-pin" onClick={props.onPin}>pin</button>
-            <button type="button" data-testid="mock-chat-unpin" onClick={props.onUnpin}>unpin</button>
-            <button type="button" data-testid="mock-chat-close" onClick={props.onClose}>close</button>
-        </div>
-    ),
+    WorkItemChatPlacementFrame: (props: any) => {
+        chatFrameProps.last = props;
+        return (
+            <div
+                data-testid={`work-item-chat-${props.presentation}`}
+                data-workspace-id={props.workspaceId}
+                data-work-item-id={props.workItemId}
+                data-title={props.title}
+                data-unsaved={props.hasUnsavedChanges ? 'true' : 'false'}
+                data-minimized={props.isMinimized ? 'true' : 'false'}
+            >
+                <button type="button" data-testid="mock-chat-minimize" onClick={props.onMinimize}>minimize</button>
+                <button type="button" data-testid="mock-chat-restore" onClick={props.onRestore}>restore</button>
+                <button type="button" data-testid="mock-chat-pin" onClick={props.onPin}>pin</button>
+                <button type="button" data-testid="mock-chat-unpin" onClick={props.onUnpin}>unpin</button>
+                <button type="button" data-testid="mock-chat-close" onClick={props.onClose}>close</button>
+            </div>
+        );
+    },
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/work-items/WorkItemChatPanel', () => ({
@@ -160,6 +166,7 @@ describe('WorkItemDetail Work Item chat lens', () => {
         localStorage.clear();
         configMocks.isCommitChatLensEnabled.mockReturnValue(true);
         breakpointState.current = { isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' };
+        chatFrameProps.last = null;
         itemsById = new Map([
             ['wi-1', makeItem('wi-1', 'Saved title one', 7)],
             ['wi-2', makeItem('wi-2', 'Saved title two', 8)],
@@ -314,6 +321,69 @@ describe('WorkItemDetail Work Item chat lens', () => {
         rerender(<WorkItemDetail workItemId="wi-2" workspaceId="ws-1" onBack={vi.fn()} />);
 
         await waitFor(() => expect(screen.queryByTestId('work-item-chat-panel-fallback')).toBeNull());
+    });
+
+    it('passes only safe saved Work Item labels to chat for remote-backed items', async () => {
+        const remoteItem = {
+            ...makeItem('wi-remote', 'Remote issue title', 42),
+            description: 'remote secret description',
+            source: 'github',
+            sourceId: 'remote-provider-id',
+            successCriteria: 'private success criteria',
+            plan: {
+                version: 2,
+                content: 'raw plan content',
+                updatedAt: '2026-06-08T00:00:00.000Z',
+            },
+            githubMirror: {
+                owner: 'octo',
+                repo: 'repo',
+                issueNumber: 42,
+                issueUrl: 'https://github.com/octo/repo/issues/42',
+                lastSyncedAt: '2026-06-08T00:00:00.000Z',
+            },
+            providerCredentials: { token: 'remote-secret-token' },
+        };
+        itemsById.set('wi-remote', remoteItem as ReturnType<typeof makeItem>);
+
+        render(<WorkItemDetail workItemId="wi-remote" workspaceId="ws-1" onBack={vi.fn()} />);
+
+        fireEvent.click(await screen.findByTestId('work-item-ask-ai-btn'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('work-item-chat-lens')).toHaveAttribute('data-work-item-id', 'wi-remote');
+        });
+        const props = chatFrameProps.last as Record<string, unknown>;
+        expect(props).toMatchObject({
+            workspaceId: 'ws-1',
+            workItemId: 'wi-remote',
+            workItemNumber: 42,
+            title: 'Remote issue title',
+            status: 'planning',
+            type: 'bug',
+            hasUnsavedChanges: false,
+        });
+        for (const unsafeField of [
+            'description',
+            'source',
+            'sourceId',
+            'successCriteria',
+            'plan',
+            'githubMirror',
+            'azureBoardsMirror',
+            'providerCredentials',
+            'taskId',
+            'processId',
+            'executionHistory',
+            'changes',
+            'tags',
+        ]) {
+            expect(props).not.toHaveProperty(unsafeField);
+        }
+        expect(JSON.stringify(props)).not.toContain('remote secret description');
+        expect(JSON.stringify(props)).not.toContain('raw plan content');
+        expect(JSON.stringify(props)).not.toContain('remote-secret-token');
+        expect(JSON.stringify(props)).not.toContain('github.com/octo/repo');
     });
 
     it('does not show the Ask AI entry point or restored chat while the Work Item is loading', async () => {
