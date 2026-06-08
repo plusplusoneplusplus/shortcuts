@@ -359,9 +359,10 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     // Navigate back when the item is deleted externally (work-item-removed)
     useEffect(() => {
         if (contextItemWasPresent.current && !contextItem) {
+            closeWorkItemChat();
             onBack?.();
         }
-    }, [contextItem, onBack]);
+    }, [closeWorkItemChat, contextItem, onBack]);
 
     // ── Unified dirty tracking ──────────────────────────────────────────────
     const baseline = useMemo(() => (item ? draftFromItem(item) : null), [item]);
@@ -974,6 +975,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             onClick={async () => {
                                 if (confirm('Delete this work item?')) {
                                     await getSpaCocClient().workItems.delete(workspaceId, workItemId);
+                                    closeWorkItemChat();
                                     onBack?.();
                                 }
                             }}>

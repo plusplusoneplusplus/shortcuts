@@ -265,6 +265,31 @@ describe('WorkItemDetail Work Item chat lens', () => {
         expect(screen.getByTestId('work-item-chat-lens')).toHaveAttribute('data-minimized', 'false');
     });
 
+    it('clears the current Work Item chat visibility state when the Work Item is deleted', async () => {
+        const onBack = vi.fn();
+        const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+        render(<WorkItemDetail workItemId="wi-1" workspaceId="ws-1" onBack={onBack} />);
+
+        const targetOne = { type: 'work-item' as const, workspaceId: 'ws-1', workItemId: 'wi-1' };
+        const targetTwo = { type: 'work-item' as const, workspaceId: 'ws-1', workItemId: 'wi-2' };
+
+        fireEvent.click(await screen.findByTestId('work-item-ask-ai-btn'));
+        await waitFor(() => expect(screen.getByTestId('work-item-chat-lens')).toBeTruthy());
+        fireEvent.click(screen.getByTestId('mock-chat-minimize'));
+        localStorage.setItem(getReviewChatOpenStorageKey(targetTwo), 'true');
+        localStorage.setItem(getReviewChatMinimizedStorageKey(targetTwo), 'true');
+
+        fireEvent.click(screen.getByTestId('work-item-delete-btn'));
+
+        await waitFor(() => expect(mockDelete).toHaveBeenCalledWith('ws-1', 'wi-1'));
+        expect(confirm).toHaveBeenCalledWith('Delete this work item?');
+        expect(onBack).toHaveBeenCalledTimes(1);
+        expect(localStorage.getItem(getReviewChatOpenStorageKey(targetOne))).toBe('false');
+        expect(localStorage.getItem(getReviewChatMinimizedStorageKey(targetOne))).toBeNull();
+        expect(localStorage.getItem(getReviewChatOpenStorageKey(targetTwo))).toBe('true');
+        expect(localStorage.getItem(getReviewChatMinimizedStorageKey(targetTwo))).toBe('true');
+    });
+
     it('keeps the lens presentation on non-desktop viewports when the feature flag is enabled', async () => {
         breakpointState.current = { isMobile: true, isTablet: false, isDesktop: false, breakpoint: 'mobile' };
         render(<WorkItemDetail workItemId="wi-1" workspaceId="ws-1" isMobile onBack={vi.fn()} />);
