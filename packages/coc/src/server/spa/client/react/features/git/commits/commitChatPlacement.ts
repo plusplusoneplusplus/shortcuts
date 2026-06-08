@@ -9,6 +9,7 @@ const OPEN_STORAGE_KEY = 'coc.commitChat.open';
 const PLACEMENT_STORAGE_PREFIX = 'coc.commitChat.placement';
 const REVIEW_OPEN_STORAGE_PREFIX = 'coc.reviewChat.open';
 const REVIEW_PLACEMENT_STORAGE_PREFIX = 'coc.reviewChat.placement';
+const REVIEW_MINIMIZED_STORAGE_PREFIX = 'coc.reviewChat.minimized';
 const SIDE_PANEL_PLACEMENT = 'side-panel';
 
 function storage(): Storage | null {
@@ -62,6 +63,10 @@ export function getReviewChatPlacementStorageKey(target: ReviewChatTarget): stri
     return `${REVIEW_PLACEMENT_STORAGE_PREFIX}.${getReviewChatTargetStorageId(target)}`;
 }
 
+export function getReviewChatMinimizedStorageKey(target: ReviewChatTarget): string {
+    return `${REVIEW_MINIMIZED_STORAGE_PREFIX}.${getReviewChatTargetStorageId(target)}`;
+}
+
 function getLegacyCommitPlacementStorageKey(target: ReviewChatTarget): string | null {
     return target.type === 'commit'
         ? getCommitChatPlacementStorageKey(target.workspaceId, target.commitHash)
@@ -82,6 +87,31 @@ export function writeReviewChatOpen(target: ReviewChatTarget, open: boolean): vo
     } catch {
         /* ignore unavailable client storage */
     }
+}
+
+export function readReviewChatMinimized(target: ReviewChatTarget): boolean {
+    try {
+        return storage()?.getItem(getReviewChatMinimizedStorageKey(target)) === 'true';
+    } catch {
+        return false;
+    }
+}
+
+export function writeReviewChatMinimized(target: ReviewChatTarget, minimized: boolean): void {
+    try {
+        const clientStorage = storage();
+        if (minimized) {
+            clientStorage?.setItem(getReviewChatMinimizedStorageKey(target), 'true');
+        } else {
+            clientStorage?.removeItem(getReviewChatMinimizedStorageKey(target));
+        }
+    } catch {
+        /* ignore unavailable client storage */
+    }
+}
+
+export function clearReviewChatMinimized(target: ReviewChatTarget): void {
+    writeReviewChatMinimized(target, false);
 }
 
 export function isCommitChatPinned(workspaceId: string, commitHash: string): boolean {
@@ -110,7 +140,9 @@ export function isReviewChatPinned(target: ReviewChatTarget): boolean {
 
 export function pinReviewChat(target: ReviewChatTarget): void {
     try {
-        storage()?.setItem(getReviewChatPlacementStorageKey(target), SIDE_PANEL_PLACEMENT);
+        const clientStorage = storage();
+        clientStorage?.setItem(getReviewChatPlacementStorageKey(target), SIDE_PANEL_PLACEMENT);
+        clientStorage?.removeItem(getReviewChatMinimizedStorageKey(target));
     } catch {
         /* ignore unavailable client storage */
     }

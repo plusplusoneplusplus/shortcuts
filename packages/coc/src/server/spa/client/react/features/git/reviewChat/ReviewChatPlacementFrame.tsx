@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { KeyboardEvent, ReactNode } from 'react';
 import type { ReviewChatPresentation } from '../commits/commitChatPlacement';
 
 export interface ReviewChatPlacementFrameProps {
@@ -6,6 +6,9 @@ export interface ReviewChatPlacementFrameProps {
     identifier?: string;
     presentation: ReviewChatPresentation;
     onClose: () => void;
+    isMinimized?: boolean;
+    onMinimize?: () => void;
+    onRestore?: () => void;
     onPin?: () => void;
     onUnpin?: () => void;
     testIdPrefix?: string;
@@ -17,6 +20,9 @@ export function ReviewChatPlacementFrame({
     identifier,
     presentation,
     onClose,
+    isMinimized = false,
+    onMinimize,
+    onRestore,
     onPin,
     onUnpin,
     testIdPrefix = 'review-chat',
@@ -24,9 +30,53 @@ export function ReviewChatPlacementFrame({
 }: ReviewChatPlacementFrameProps) {
     const isLens = presentation === 'lens';
     const placementTestId = isLens ? 'lens' : 'side-panel';
+    const minimized = isLens && isMinimized && onRestore;
     const rootClassName = isLens
         ? 'absolute bottom-4 right-4 z-30 flex h-[55vh] max-h-[55vh] min-h-[320px] w-[min(420px,calc(100%-2rem))] max-w-[420px] flex-col overflow-hidden rounded-lg border border-[#d0d7de] bg-[#f8f8f8] shadow-2xl dark:border-[#3c3c3c] dark:bg-[#1e1e1e]'
         : 'flex h-full w-full flex-col overflow-hidden bg-[#f8f8f8] dark:bg-[#1e1e1e]';
+
+    const handleRestoreKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        onRestore?.();
+    };
+
+    if (minimized) {
+        return (
+            <div
+                role="button"
+                tabIndex={0}
+                onClick={onRestore}
+                onKeyDown={handleRestoreKeyDown}
+                aria-label={`Restore ${title}${identifier ? ` ${identifier}` : ''}`}
+                className="absolute bottom-4 right-4 z-30 flex max-w-[min(360px,calc(100%-2rem))] cursor-pointer items-center gap-2 rounded-full border border-[#d0d7de] bg-[#f8f8f8] px-3 py-2 shadow-2xl hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#0078d4] dark:border-[#3c3c3c] dark:bg-[#1e1e1e] dark:hover:bg-[#252526]"
+                data-testid={`${testIdPrefix}-lens-minimized`}
+            >
+                <div className="flex min-w-0 items-center gap-2">
+                    <span className="truncate text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
+                        💬 {title}
+                    </span>
+                    {identifier && (
+                        <span className="shrink-0 rounded bg-[#e8e8e8] px-1.5 py-0.5 font-mono text-[10px] text-blue-600 dark:bg-[#333] dark:text-blue-400">
+                            {identifier}
+                        </span>
+                    )}
+                </div>
+                <button
+                    type="button"
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        onRestore();
+                    }}
+                    className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]"
+                    data-testid={`${testIdPrefix}-restore-btn`}
+                    title="Restore chat lens"
+                >
+                    Restore
+                </button>
+            </div>
+        );
+    }
 
     return (
         <div
@@ -48,6 +98,17 @@ export function ReviewChatPlacementFrame({
                     )}
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
+                    {isLens && onMinimize && (
+                        <button
+                            type="button"
+                            onClick={onMinimize}
+                            className="rounded px-1.5 py-0.5 text-[11px] font-medium text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]"
+                            data-testid={`${testIdPrefix}-minimize-btn`}
+                            title="Minimize chat lens"
+                        >
+                            Minimize
+                        </button>
+                    )}
                     {isLens && onPin && (
                         <button
                             type="button"

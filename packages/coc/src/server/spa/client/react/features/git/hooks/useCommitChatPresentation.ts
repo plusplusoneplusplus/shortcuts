@@ -12,9 +12,12 @@ export interface UseCommitChatPresentationReturn {
     chatOpen: boolean;
     toggleChat: () => void;
     closeChat: () => void;
+    minimizeChat: () => void;
+    restoreChat: () => void;
     pinChat: () => void;
     unpinChat: () => void;
     isPinned: boolean;
+    isMinimized: boolean;
     presentation: CommitChatPresentation;
     lensEnabled: boolean;
     isDesktop: boolean;

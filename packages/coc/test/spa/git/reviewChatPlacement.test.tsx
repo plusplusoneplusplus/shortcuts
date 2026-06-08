@@ -1,21 +1,33 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+    clearReviewChatMinimized,
+    getReviewChatMinimizedStorageKey,
     getReviewChatOpenStorageKey,
     getReviewChatPlacementStorageKey,
     isCommitChatPinned,
     isReviewChatPinned,
     pinReviewChat,
+    readReviewChatMinimized,
     readReviewChatOpen,
     resolveReviewChatPresentation,
     unpinReviewChat,
+    writeReviewChatMinimized,
     writeReviewChatOpen,
     type ReviewChatTarget,
 } from '../../../src/server/spa/client/react/features/git/commits/commitChatPlacement';
+import { useReviewChatPresentation } from '../../../src/server/spa/client/react/features/git/hooks/useReviewChatPresentation';
 import { ReviewChatPlacementFrame } from '../../../src/server/spa/client/react/features/git/reviewChat/ReviewChatPlacementFrame';
+import { _resetRuntimeConfig } from '../../../src/server/spa/client/react/utils/config';
 
 beforeEach(() => {
     localStorage.clear();
+    _resetRuntimeConfig();
+    (window as any).__DASHBOARD_CONFIG__ = {
+        apiBasePath: '/api',
+        wsPath: '/ws',
+        commitChatLensEnabled: true,
+    };
 });
 
 describe('review chat placement storage', () => {
@@ -47,7 +59,22 @@ describe('review chat placement storage', () => {
 
         expect(getReviewChatOpenStorageKey(target)).toBe('coc.reviewChat.open.pr.ws-a.repo-a.%23123.head%2Fsha');
         expect(getReviewChatPlacementStorageKey(target)).toBe('coc.reviewChat.placement.pr.ws-a.repo-a.%23123.head%2Fsha');
+        expect(getReviewChatMinimizedStorageKey(target)).toBe('coc.reviewChat.minimized.pr.ws-a.repo-a.%23123.head%2Fsha');
         expect(getReviewChatPlacementStorageKey({ ...target, headSha: undefined })).toBe('coc.reviewChat.placement.pr.ws-a.repo-a.%23123.current');
+    });
+
+    it('scopes minimized state by review target and clears it without affecting other workspaces', () => {
+        const first: ReviewChatTarget = { type: 'commit', workspaceId: 'ws-a', commitHash: 'abc123' };
+        const sameCommitOtherWorkspace: ReviewChatTarget = { type: 'commit', workspaceId: 'ws-b', commitHash: 'abc123' };
+
+        writeReviewChatMinimized(first, true);
+
+        expect(readReviewChatMinimized(first)).toBe(true);
+        expect(readReviewChatMinimized(sameCommitOtherWorkspace)).toBe(false);
+
+        clearReviewChatMinimized(first);
+
+        expect(readReviewChatMinimized(first)).toBe(false);
     });
 
     it('scopes pinned placement by review target and preserves legacy commit pinned reads', () => {
@@ -68,11 +95,22 @@ describe('review chat placement storage', () => {
         localStorage.setItem('coc.commitChat.placement.ws-a.abc123', 'side-panel');
         expect(isCommitChatPinned('ws-a', 'abc123')).toBe(true);
     });
+
+    it('clears minimized state when a target is pinned', () => {
+        const target: ReviewChatTarget = { type: 'commit', workspaceId: 'ws-a', commitHash: 'abc123' };
+        writeReviewChatMinimized(target, true);
+
+        pinReviewChat(target);
+
+        expect(isReviewChatPinned(target)).toBe(true);
+        expect(readReviewChatMinimized(target)).toBe(false);
+    });
 });
 
 describe('ReviewChatPlacementFrame', () => {
-    it('renders shared lens chrome with contextual title, identifier, close, and pin controls', () => {
+    it('renders shared lens chrome with contextual title, identifier, close, minimize, and pin controls', () => {
         const onClose = vi.fn();
+        const onMinimize = vi.fn();
         const onPin = vi.fn();
 
         render(
@@ -81,6 +119,7 @@ describe('ReviewChatPlacementFrame', () => {
                 identifier="#123"
                 presentation="lens"
                 onClose={onClose}
+                onMinimize={onMinimize}
                 onPin={onPin}
                 testIdPrefix="pr-chat"
             >
@@ -93,11 +132,43 @@ describe('ReviewChatPlacementFrame', () => {
         expect(screen.getByTestId('pr-chat-lens-header')).toHaveTextContent('#123');
         expect(screen.getByTestId('chat-body')).toBeInTheDocument();
 
+        fireEvent.click(screen.getByTestId('pr-chat-minimize-btn'));
+        expect(onMinimize).toHaveBeenCalledTimes(1);
+
         fireEvent.click(screen.getByTestId('pr-chat-pin-btn'));
         expect(onPin).toHaveBeenCalledTimes(1);
 
         fireEvent.click(screen.getByTestId('pr-chat-frame-close-btn'));
         expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('renders a minimized lens pill that hides body content and restores from the pill or button', () => {
+        const onRestore = vi.fn();
+
+        render(
+            <ReviewChatPlacementFrame
+                title="Commit Chat"
+                identifier="abc1234"
+                presentation="lens"
+                onClose={vi.fn()}
+                isMinimized
+                onRestore={onRestore}
+                testIdPrefix="commit-chat"
+            >
+                <div data-testid="chat-body">Body</div>
+            </ReviewChatPlacementFrame>,
+        );
+
+        expect(screen.getByTestId('commit-chat-lens-minimized')).toHaveTextContent('Commit Chat');
+        expect(screen.getByTestId('commit-chat-lens-minimized')).toHaveTextContent('abc1234');
+        expect(screen.queryByTestId('chat-body')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('commit-chat-lens-minimized'));
+        expect(onRestore).toHaveBeenCalledTimes(1);
+
+        onRestore.mockClear();
+        fireEvent.click(screen.getByTestId('commit-chat-restore-btn'));
+        expect(onRestore).toHaveBeenCalledTimes(1);
     });
 
     it('renders side-panel chrome with an unpin control', () => {
@@ -109,6 +180,9 @@ describe('ReviewChatPlacementFrame', () => {
                 identifier="abc1234"
                 presentation="side-panel"
                 onClose={vi.fn()}
+                isMinimized
+                onMinimize={vi.fn()}
+                onRestore={vi.fn()}
                 onUnpin={onUnpin}
                 testIdPrefix="commit-chat"
             >
@@ -117,9 +191,76 @@ describe('ReviewChatPlacementFrame', () => {
         );
 
         expect(screen.getByTestId('commit-chat-side-panel')).toBeInTheDocument();
+        expect(screen.queryByTestId('commit-chat-lens-minimized')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('commit-chat-minimize-btn')).not.toBeInTheDocument();
         expect(screen.queryByTestId('commit-chat-pin-btn')).not.toBeInTheDocument();
 
         fireEvent.click(screen.getByTestId('commit-chat-unpin-btn'));
         expect(onUnpin).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('useReviewChatPresentation minimize state', () => {
+    it('minimizes and restores lens state without closing the chat', () => {
+        const target: ReviewChatTarget = { type: 'commit', workspaceId: 'ws-a', commitHash: 'abc123' };
+        writeReviewChatOpen(target, true);
+
+        const { result } = renderHook(() => useReviewChatPresentation({ target }));
+
+        expect(result.current.chatOpen).toBe(true);
+        expect(result.current.presentation).toBe('lens');
+        expect(result.current.isMinimized).toBe(false);
+
+        act(() => result.current.minimizeChat());
+
+        expect(result.current.chatOpen).toBe(true);
+        expect(result.current.isMinimized).toBe(true);
+        expect(readReviewChatMinimized(target)).toBe(true);
+
+        act(() => result.current.restoreChat());
+
+        expect(result.current.chatOpen).toBe(true);
+        expect(result.current.isMinimized).toBe(false);
+        expect(readReviewChatMinimized(target)).toBe(false);
+    });
+
+    it('clears minimized state when the chat is closed or pinned', () => {
+        const target: ReviewChatTarget = { type: 'commit', workspaceId: 'ws-a', commitHash: 'abc123' };
+        writeReviewChatOpen(target, true);
+
+        const { result } = renderHook(() => useReviewChatPresentation({ target }));
+
+        act(() => result.current.minimizeChat());
+        act(() => result.current.closeChat());
+
+        expect(result.current.chatOpen).toBe(false);
+        expect(result.current.isMinimized).toBe(false);
+        expect(readReviewChatMinimized(target)).toBe(false);
+
+        act(() => result.current.toggleChat());
+        act(() => result.current.minimizeChat());
+        act(() => result.current.pinChat());
+
+        expect(result.current.presentation).toBe('side-panel');
+        expect(result.current.isMinimized).toBe(false);
+        expect(readReviewChatMinimized(target)).toBe(false);
+    });
+
+    it('ignores minimized state outside lens presentation', () => {
+        const target: ReviewChatTarget = { type: 'commit', workspaceId: 'ws-a', commitHash: 'abc123' };
+        (window as any).__DASHBOARD_CONFIG__ = {
+            apiBasePath: '/api',
+            wsPath: '/ws',
+            commitChatLensEnabled: false,
+        };
+
+        const { result } = renderHook(() => useReviewChatPresentation({ target }));
+
+        expect(result.current.presentation).toBe('side-panel');
+
+        act(() => result.current.minimizeChat());
+
+        expect(result.current.isMinimized).toBe(false);
+        expect(readReviewChatMinimized(target)).toBe(false);
     });
 });

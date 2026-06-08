@@ -2,14 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { isCommitChatLensEnabled } from '../../../utils/config';
 import {
+    clearReviewChatMinimized,
     isReviewChatPinned,
     getReviewChatTargetStorageId,
     readCommitChatOpen,
+    readReviewChatMinimized,
     readReviewChatOpen,
     resolveReviewChatPresentation,
     pinReviewChat,
     unpinReviewChat,
     writeCommitChatOpen,
+    writeReviewChatMinimized,
     writeReviewChatOpen,
 } from '../commits/commitChatPlacement';
 import type { ReviewChatPresentation, ReviewChatTarget } from '../commits/commitChatPlacement';
@@ -23,9 +26,12 @@ export interface UseReviewChatPresentationReturn {
     chatOpen: boolean;
     toggleChat: () => void;
     closeChat: () => void;
+    minimizeChat: () => void;
+    restoreChat: () => void;
     pinChat: () => void;
     unpinChat: () => void;
     isPinned: boolean;
+    isMinimized: boolean;
     presentation: ReviewChatPresentation;
     lensEnabled: boolean;
     isDesktop: boolean;
@@ -64,6 +70,17 @@ export function useReviewChatPresentation({
             ? isReviewChatPinned(target)
             : false
     ));
+    const [isMinimized, setIsMinimized] = useState(() => (
+        lensFeatureEnabled && supportsChat && target
+            ? readReviewChatMinimized(target)
+            : false
+    ));
+
+    const presentation = resolveReviewChatPresentation({
+        lensEnabled: lensFeatureEnabled,
+        isDesktop,
+        pinned: isPinned,
+    });
 
     useEffect(() => {
         if (!supportsChat) {
@@ -83,24 +100,48 @@ export function useReviewChatPresentation({
         setIsPinned(isReviewChatPinned(target));
     }, [supportsChat, lensFeatureEnabled, target, targetStorageId]);
 
+    useEffect(() => {
+        if (!supportsChat || !lensFeatureEnabled || !target) {
+            setIsMinimized(false);
+            return;
+        }
+        setIsMinimized(readReviewChatMinimized(target));
+    }, [supportsChat, lensFeatureEnabled, target, targetStorageId]);
+
     const toggleChat = useCallback(() => {
         if (!supportsChat) return;
-        setChatOpen(prev => {
-            const next = !prev;
-            writeOpenState(next);
-            return next;
-        });
-    }, [supportsChat, writeOpenState]);
+        const next = !chatOpen;
+        writeOpenState(next);
+        setChatOpen(next);
+        if (!next) {
+            if (target) clearReviewChatMinimized(target);
+            setIsMinimized(false);
+        }
+    }, [chatOpen, supportsChat, target, targetStorageId, writeOpenState]);
 
     const closeChat = useCallback(() => {
         setChatOpen(false);
         writeOpenState(false);
-    }, [writeOpenState]);
+        if (target) clearReviewChatMinimized(target);
+        setIsMinimized(false);
+    }, [target, targetStorageId, writeOpenState]);
+
+    const minimizeChat = useCallback(() => {
+        if (!target || presentation !== 'lens') return;
+        writeReviewChatMinimized(target, true);
+        setIsMinimized(true);
+    }, [presentation, target, targetStorageId]);
+
+    const restoreChat = useCallback(() => {
+        if (target) clearReviewChatMinimized(target);
+        setIsMinimized(false);
+    }, [target, targetStorageId]);
 
     const pinChat = useCallback(() => {
         if (!target) return;
         pinReviewChat(target);
         setIsPinned(true);
+        setIsMinimized(false);
     }, [target, targetStorageId]);
 
     const unpinChat = useCallback(() => {
@@ -113,14 +154,13 @@ export function useReviewChatPresentation({
         chatOpen,
         toggleChat,
         closeChat,
+        minimizeChat,
+        restoreChat,
         pinChat,
         unpinChat,
         isPinned,
-        presentation: resolveReviewChatPresentation({
-            lensEnabled: lensFeatureEnabled,
-            isDesktop,
-            pinned: isPinned,
-        }),
+        isMinimized: presentation === 'lens' && isMinimized,
+        presentation,
         lensEnabled: lensFeatureEnabled,
         isDesktop,
     };

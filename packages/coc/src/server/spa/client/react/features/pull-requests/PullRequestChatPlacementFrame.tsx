@@ -10,6 +10,9 @@ export interface PullRequestChatPlacementFrameProps {
     repoId?: string;
     presentation: ReviewChatPresentation;
     onClose: () => void;
+    isMinimized?: boolean;
+    onMinimize?: () => void;
+    onRestore?: () => void;
     onPin?: () => void;
     onUnpin?: () => void;
 }
@@ -22,6 +25,9 @@ export function PullRequestChatPlacementFrame({
     repoId,
     presentation,
     onClose,
+    isMinimized,
+    onMinimize,
+    onRestore,
     onPin,
     onUnpin,
 }: PullRequestChatPlacementFrameProps) {
@@ -33,6 +39,9 @@ export function PullRequestChatPlacementFrame({
             identifier={prLabel}
             presentation={presentation}
             onClose={onClose}
+            isMinimized={isMinimized}
+            onMinimize={onMinimize}
+            onRestore={onRestore}
             onPin={onPin}
             onUnpin={onUnpin}
             testIdPrefix="pr-chat"
