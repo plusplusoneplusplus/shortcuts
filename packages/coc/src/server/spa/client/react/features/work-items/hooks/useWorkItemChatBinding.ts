@@ -100,6 +100,9 @@ export function useWorkItemChatBinding(opts: UseWorkItemChatBindingOptions): Use
         if (!workItemId) return null;
         const requestedWorkspaceId = workspaceId;
         const requestedWorkItemId = workItemId;
+        if (isCurrentRequest(requestedWorkspaceId, requestedWorkItemId)) {
+            setError(null);
+        }
         try {
             const promptWithPointer = prependWorkItemPointer(prompt, { workspaceId, workItemId, status, type, workItemNumber });
             const res = await getSpaCocClient().queue.enqueue({
@@ -128,6 +131,7 @@ export function useWorkItemChatBinding(opts: UseWorkItemChatBindingOptions): Use
             await getSpaCocClient().workItems.createChatBinding(workspaceId, workItemId, newTaskId);
 
             if (isCurrentRequest(requestedWorkspaceId, requestedWorkItemId)) {
+                setError(null);
                 setTaskId(newTaskId);
             }
             return newTaskId;

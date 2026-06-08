@@ -224,6 +224,34 @@ describe('useWorkItemChatBinding', () => {
         expect(result.current.taskId).toBe('task-work-item');
     });
 
+    it('clears a failed create error when retrying and restoring the created chat', async () => {
+        mockClient.queue.enqueue
+            .mockRejectedValueOnce(new Error('temporary queue outage'))
+            .mockResolvedValueOnce({ task: { id: 'task-retry' } });
+
+        const { result } = renderHook(() => useWorkItemChatBinding({
+            workspaceId: 'ws-1',
+            workItemId: 'wi-1',
+            status: 'planning',
+            type: 'bug',
+        }));
+
+        await act(async () => {
+            await result.current.createChat('First try');
+        });
+
+        expect(result.current.taskId).toBeNull();
+        expect(result.current.error).toBe('temporary queue outage');
+
+        await act(async () => {
+            await result.current.createChat('Retry');
+        });
+
+        expect(result.current.taskId).toBe('task-retry');
+        expect(result.current.error).toBeNull();
+        expect(mockClient.workItems.createChatBinding).toHaveBeenCalledWith('ws-1', 'wi-1', 'task-retry');
+    });
+
     it('returns null without creating chat when no work item is selected', async () => {
         const { result } = renderHook(() => useWorkItemChatBinding({
             workspaceId: 'ws-1',
