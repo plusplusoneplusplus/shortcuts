@@ -1716,163 +1716,192 @@ export function AdminPanel() {
                                     onCancel={handleCancelFeatures}
                                     data-testid="settings-features"
                                 >
-                                    <AdminRow name={<>Terminal <span className="ar-badge ar-badge-warning">Restart</span></>} hint="Web terminal for shell access to the server machine. Toggling requires a server restart.">
-                                        <SourceBadge source={sources['terminal.enabled']} />
-                                        <AdminToggle checked={terminalEnabled} onChange={setTerminalEnabled} data-testid="toggle-terminal-enabled" />
-                                    </AdminRow>
-                                    <AdminRow name="Notes" hint="Markdown notebooks for creating and editing notes.">
-                                        <SourceBadge source={sources['notes.enabled']} />
-                                        <AdminToggle checked={notesEnabled} onChange={setNotesEnabled} data-testid="toggle-notes-enabled" />
-                                    </AdminRow>
-                                    <AdminRow name="My Work" hint="Personal landing page with action items and weekly summaries.">
-                                        <SourceBadge source={sources['myWork.enabled']} />
-                                        <AdminToggle checked={myWorkEnabled} onChange={setMyWorkEnabled} data-testid="toggle-mywork-enabled" />
-                                    </AdminRow>
-                                    <AdminRow name="My Life" hint="Personal page with goals, journal, and life admin.">
-                                        <SourceBadge source={sources['myLife.enabled']} />
-                                        <AdminToggle checked={myLifeEnabled} onChange={setMyLifeEnabled} data-testid="toggle-mylife-enabled" />
-                                    </AdminRow>
-                                    <AdminRow name="Scratchpad panel" hint="Bottom-split note editor inside the chat detail view.">
-                                        <SourceBadge source={sources['scratchpad.enabled']} />
-                                        <AdminToggle checked={scratchpadEnabled} onChange={setScratchpadEnabled} data-testid="toggle-scratchpad-enabled" />
-                                    </AdminRow>
-                                    {scratchpadEnabled && (
-                                        <AdminRow name="Layout" hint="Split direction for conversation and scratchpad.">
-                                            <SourceBadge source={sources['scratchpad.layout']} />
-                                            <select
-                                                className="ar-select ar-med"
-                                                value={scratchpadLayout}
-                                                onChange={e => setScratchpadLayout(e.target.value as 'horizontal' | 'vertical')}
-                                                data-testid="select-scratchpad-layout"
-                                            >
-                                                <option value="horizontal">Horizontal (top/bottom)</option>
-                                                <option value="vertical">Vertical (left/right)</option>
-                                            </select>
+                                    {/* ── Dashboard Modules ── */}
+                                    <div className="ar-feature-group" data-testid="feature-group-dashboard">
+                                        <div className="ar-feature-group-head">Dashboard Modules</div>
+                                        <AdminRow name="Notes" hint="Markdown notebooks for creating and editing notes.">
+                                            <SourceBadge source={sources['notes.enabled']} />
+                                            <AdminToggle checked={notesEnabled} onChange={setNotesEnabled} data-testid="toggle-notes-enabled" />
                                         </AdminRow>
-                                    )}
-                                    <AdminRow name="Workflows Tab" hint="YAML workflow runner tab in repo view.">
-                                        <SourceBadge source={sources['workflows.enabled']} />
-                                        <AdminToggle checked={workflowsEnabled} onChange={setWorkflowsEnabled} data-testid="toggle-workflows-enabled" />
-                                    </AdminRow>
-                                    <AdminRow name="Pull Requests Tab" hint="Pull request list tab in repo view.">
-                                        <SourceBadge source={sources['pullRequests.enabled']} />
-                                        <AdminToggle checked={pullRequestsEnabled} onChange={setPullRequestsEnabled} data-testid="toggle-pull-requests-enabled" />
-                                    </AdminRow>
-                                    {pullRequestsEnabled && (
-                                        <AdminRow name="PR Review Suggestions" hint="AI-ranked suggestions for which open PRs to review, based on your review history. Adds a 'For You' filter pill to the PR queue.">
-                                            <SourceBadge source={sources['pullRequests.suggestions']} />
-                                            <AdminToggle checked={pullRequestsSuggestionsEnabled} onChange={setPullRequestsSuggestionsEnabled} data-testid="toggle-pull-requests-suggestions-enabled" />
+                                        <AdminRow name="My Work" hint="Personal landing page with action items and weekly summaries.">
+                                            <SourceBadge source={sources['myWork.enabled']} />
+                                            <AdminToggle checked={myWorkEnabled} onChange={setMyWorkEnabled} data-testid="toggle-mywork-enabled" />
                                         </AdminRow>
-                                    )}
-                                    <AdminRow name="Servers" hint="Multi-server connection manager (devtunnel).">
-                                        <SourceBadge source={sources['servers.enabled']} />
-                                        <AdminToggle checked={serversEnabled} onChange={setServersEnabled} data-testid="toggle-servers-enabled" />
-                                    </AdminRow>
-                                    <AdminRow
-                                        name={<>Ralph Mode <span className="ar-badge ar-badge-accent">Experimental</span></>}
-                                        hint="Autonomous iterative coding loop — stateless agents with fresh context per iteration."
-                                    >
-                                        <SourceBadge source={sources['ralph.enabled']} />
-                                        <AdminToggle checked={ralphEnabled} onChange={setRalphEnabled} data-testid="toggle-ralph-enabled" />
-                                    </AdminRow>
-                                    <AdminRow
-                                        name={<>For Each Mode <span className="ar-badge ar-badge-accent">Experimental</span></>}
-                                        hint="Generate a reviewed item plan from New Chat, then run each item as a separate child chat. Disabled by default."
-                                    >
-                                        <SourceBadge source={sources['forEach.enabled']} />
-                                        <AdminToggle checked={forEachEnabled} onChange={setForEachEnabled} data-testid="toggle-for-each-enabled" />
-                                    </AdminRow>
-                                    <AdminRow
-                                        name={<>Map Reduce Mode <span className="ar-badge ar-badge-accent">Experimental</span></>}
-                                        hint="Generate a reviewed map plan from New Chat, run items in parallel, then reduce outputs into one result. Disabled by default."
-                                    >
-                                        <SourceBadge source={sources['mapReduce.enabled']} />
-                                        <AdminToggle checked={mapReduceEnabled} onChange={setMapReduceEnabled} data-testid="toggle-map-reduce-enabled" />
-                                    </AdminRow>
-                                    <AdminRow
-                                        name="Vim-style navigation"
-                                        hint="Enable hjkl pane navigation, j/k to step through chats and messages, gg/G to jump, i to focus the input, Esc to blur. Disabled by default."
-                                    >
-                                        <SourceBadge source={sources['vimNavigation.enabled']} />
-                                        <AdminToggle checked={vimNavigationEnabled} onChange={setVimNavigationEnabled} data-testid="toggle-vim-navigation-enabled" />
-                                    </AdminRow>
-                                    <AdminRow
-                                        name={<>Loops &amp; Wakeups <span className="ar-badge ar-badge-warning">Restart</span></>}
-                                        hint="Recurring follow-up loops and one-shot scheduleWakeup tool. Disabled by default — toggling requires a server restart to (de)wire infrastructure."
-                                    >
-                                        <SourceBadge source={sources['loops.enabled']} />
-                                        <AdminToggle checked={loopsEnabled} onChange={setLoopsEnabled} data-testid="toggle-loops-enabled" />
-                                    </AdminRow>
-                                    <AdminRow
-                                        name="Excalidraw diagrams"
-                                        hint="AI can generate and read Excalidraw diagrams during conversations. Disabled by default."
-                                    >
-                                        <SourceBadge source={sources['excalidraw.enabled']} />
-                                        <AdminToggle checked={excalidrawEnabled} onChange={setExcalidrawEnabled} data-testid="toggle-excalidraw-enabled" />
-                                    </AdminRow>
-                                    <AdminRow
-                                        name={<>MCP OAuth <span className="ar-badge ar-badge-warning">Restart</span></>}
-                                        hint="Handle OAuth flows for MCP servers that require authentication. Disabled by default — toggling requires a server restart."
-                                    >
-                                        <SourceBadge source={sources['mcpOauth.enabled']} />
-                                        <AdminToggle checked={mcpOauthEnabled} onChange={setMcpOauthEnabled} data-testid="toggle-mcp-oauth-enabled" />
-                                    </AdminRow>
-                                    <AdminRow
-                                        name="Focused Diff"
-                                        hint="AI-powered hunk classification for PR diffs. Highlights logic changes and dims mechanical edits."
-                                    >
-                                        <SourceBadge source={sources['features.focusedDiff']} />
-                                        <AdminToggle checked={focusedDiffEnabled} onChange={setFocusedDiffEnabled} data-testid="toggle-focused-diff-enabled" />
-                                    </AdminRow>
-                                    <AdminRow
-                                        name={<>Cross-clone cherry-pick <span className="ar-badge ar-badge-accent">Experimental</span></>}
-                                        hint="Adds a Git commit context-menu action that transfers one commit to another registered clone using patch export/apply. Enabled by default."
-                                    >
-                                        <SourceBadge source={sources['features.gitCrossCloneCherryPick']} />
-                                        <AdminToggle checked={gitCrossCloneCherryPickEnabled} onChange={setGitCrossCloneCherryPickEnabled} data-testid="toggle-git-cross-clone-cherry-pick-enabled" />
-                                    </AdminRow>
-                                    <AdminRow
-                                        name={<>Session context attachments <span className="ar-badge ar-badge-accent">Experimental</span></>}
-                                        hint="Allow dragging existing same-workspace chat sessions into chat composers as pointer-only context. Disabled by default."
-                                    >
-                                        <SourceBadge source={sources['features.sessionContextAttachments']} />
-                                        <AdminToggle checked={sessionContextAttachmentsEnabled} onChange={setSessionContextAttachmentsEnabled} data-testid="toggle-session-context-attachments-enabled" />
-                                    </AdminRow>
-                                    <AdminRow
-                                        name={<>Review chat lens <span className="ar-badge ar-badge-accent">Experimental</span></>}
-                                        hint="Open unpinned commit and pull-request review chat as a desktop bottom-right lens instead of the side panel or drawer. Disabled by default."
-                                    >
-                                        <SourceBadge source={sources['features.commitChatLens']} />
-                                        <AdminToggle checked={commitChatLensEnabled} onChange={setCommitChatLensEnabled} data-testid="toggle-commit-chat-lens-enabled" />
-                                    </AdminRow>
-                                    <AdminRow
-                                        name="Work Items Hierarchy Board"
-                                        hint="Extends the Work Items tab into an Epic → Feature → PBI → Work Item / Bug hierarchy board. Enabled by default."
-                                    >
-                                        <SourceBadge source={sources['workItems.hierarchy.enabled']} />
-                                        <AdminToggle checked={workItemsHierarchyEnabled} onChange={setWorkItemsHierarchyEnabled} data-testid="toggle-work-items-hierarchy-enabled" />
-                                    </AdminRow>
-                                    <AdminRow
-                                        name={<>Remote Work Items <span className="ar-badge ar-badge-accent">Preview</span></>}
-                                        hint="Enables remote provider integration for hierarchy mode: provider status, imports, save-to-provider updates, and background polling. Requires the hierarchy board and never stores provider tokens."
-                                    >
-                                        <SourceBadge source={sources['workItems.sync.enabled']} />
-                                        <AdminToggle checked={workItemsSyncEnabled} onChange={setWorkItemsSyncEnabled} data-testid="toggle-work-items-sync-enabled" />
-                                    </AdminRow>
-                                    <AdminRow
-                                        name={<>Work Items AI Authoring <span className="ar-badge ar-badge-accent">Experimental</span></>}
-                                        hint="Adds AI-assisted work item creation and improvement to the Work Items tab. Disabled by default."
-                                    >
-                                        <SourceBadge source={sources['workItems.aiAuthoring.enabled']} />
-                                        <AdminToggle checked={workItemsAiAuthoringEnabled} onChange={setWorkItemsAiAuthoringEnabled} data-testid="toggle-work-items-ai-authoring-enabled" />
-                                    </AdminRow>
-                                    <AdminRow
-                                        name={<>Effort Tiers <span className="ar-badge ar-badge-accent">Experimental</span></>}
-                                        hint="Replace the model picker + reasoning-effort pill in the chat composer with a single Low / Medium / High effort selector. Configure tier mappings per provider on the AI Provider page. Disabled by default."
-                                    >
-                                        <SourceBadge source={sources['effortLevels.enabled']} />
-                                        <AdminToggle checked={effortLevelsEnabled} onChange={setEffortLevelsEnabled} data-testid="toggle-effort-levels-enabled" />
-                                    </AdminRow>
+                                        <AdminRow name="My Life" hint="Personal page with goals, journal, and life admin.">
+                                            <SourceBadge source={sources['myLife.enabled']} />
+                                            <AdminToggle checked={myLifeEnabled} onChange={setMyLifeEnabled} data-testid="toggle-mylife-enabled" />
+                                        </AdminRow>
+                                        <AdminRow name="Scratchpad panel" hint="Bottom-split note editor inside the chat detail view.">
+                                            <SourceBadge source={sources['scratchpad.enabled']} />
+                                            <AdminToggle checked={scratchpadEnabled} onChange={setScratchpadEnabled} data-testid="toggle-scratchpad-enabled" />
+                                        </AdminRow>
+                                        {scratchpadEnabled && (
+                                            <AdminRow name="Layout" hint="Split direction for conversation and scratchpad.">
+                                                <SourceBadge source={sources['scratchpad.layout']} />
+                                                <select
+                                                    className="ar-select ar-med"
+                                                    value={scratchpadLayout}
+                                                    onChange={e => setScratchpadLayout(e.target.value as 'horizontal' | 'vertical')}
+                                                    data-testid="select-scratchpad-layout"
+                                                >
+                                                    <option value="horizontal">Horizontal (top/bottom)</option>
+                                                    <option value="vertical">Vertical (left/right)</option>
+                                                </select>
+                                            </AdminRow>
+                                        )}
+                                    </div>
+
+                                    {/* ── Development Tools ── */}
+                                    <div className="ar-feature-group" data-testid="feature-group-dev-tools">
+                                        <div className="ar-feature-group-head">Development Tools</div>
+                                        <AdminRow name={<>Terminal <span className="ar-badge ar-badge-warning">Restart</span></>} hint="Web terminal for shell access to the server machine. Toggling requires a server restart.">
+                                            <SourceBadge source={sources['terminal.enabled']} />
+                                            <AdminToggle checked={terminalEnabled} onChange={setTerminalEnabled} data-testid="toggle-terminal-enabled" />
+                                        </AdminRow>
+                                        <AdminRow name="Workflows Tab" hint="YAML workflow runner tab in repo view.">
+                                            <SourceBadge source={sources['workflows.enabled']} />
+                                            <AdminToggle checked={workflowsEnabled} onChange={setWorkflowsEnabled} data-testid="toggle-workflows-enabled" />
+                                        </AdminRow>
+                                        <AdminRow name="Pull Requests Tab" hint="Pull request list tab in repo view.">
+                                            <SourceBadge source={sources['pullRequests.enabled']} />
+                                            <AdminToggle checked={pullRequestsEnabled} onChange={setPullRequestsEnabled} data-testid="toggle-pull-requests-enabled" />
+                                        </AdminRow>
+                                        {pullRequestsEnabled && (
+                                            <AdminRow name="PR Review Suggestions" hint="AI-ranked suggestions for which open PRs to review, based on your review history. Adds a 'For You' filter pill to the PR queue.">
+                                                <SourceBadge source={sources['pullRequests.suggestions']} />
+                                                <AdminToggle checked={pullRequestsSuggestionsEnabled} onChange={setPullRequestsSuggestionsEnabled} data-testid="toggle-pull-requests-suggestions-enabled" />
+                                            </AdminRow>
+                                        )}
+                                        <AdminRow name="Servers" hint="Multi-server connection manager (devtunnel).">
+                                            <SourceBadge source={sources['servers.enabled']} />
+                                            <AdminToggle checked={serversEnabled} onChange={setServersEnabled} data-testid="toggle-servers-enabled" />
+                                        </AdminRow>
+                                    </div>
+
+                                    {/* ── Work Items ── */}
+                                    <div className="ar-feature-group" data-testid="feature-group-work-items">
+                                        <div className="ar-feature-group-head">Work Items</div>
+                                        <AdminRow
+                                            name="Work Items Hierarchy Board"
+                                            hint="Extends the Work Items tab into an Epic → Feature → PBI → Work Item / Bug hierarchy board. Enabled by default."
+                                        >
+                                            <SourceBadge source={sources['workItems.hierarchy.enabled']} />
+                                            <AdminToggle checked={workItemsHierarchyEnabled} onChange={setWorkItemsHierarchyEnabled} data-testid="toggle-work-items-hierarchy-enabled" />
+                                        </AdminRow>
+                                        <AdminRow
+                                            name={<>Remote Work Items <span className="ar-badge ar-badge-accent">Preview</span></>}
+                                            hint="Enables remote provider integration for hierarchy mode: provider status, imports, save-to-provider updates, and background polling. Requires the hierarchy board and never stores provider tokens."
+                                        >
+                                            <SourceBadge source={sources['workItems.sync.enabled']} />
+                                            <AdminToggle checked={workItemsSyncEnabled} onChange={setWorkItemsSyncEnabled} data-testid="toggle-work-items-sync-enabled" />
+                                        </AdminRow>
+                                        <AdminRow
+                                            name={<>Work Items AI Authoring <span className="ar-badge ar-badge-accent">Experimental</span></>}
+                                            hint="Adds AI-assisted work item creation and improvement to the Work Items tab. Disabled by default."
+                                        >
+                                            <SourceBadge source={sources['workItems.aiAuthoring.enabled']} />
+                                            <AdminToggle checked={workItemsAiAuthoringEnabled} onChange={setWorkItemsAiAuthoringEnabled} data-testid="toggle-work-items-ai-authoring-enabled" />
+                                        </AdminRow>
+                                    </div>
+
+                                    {/* ── AI Execution Modes ── */}
+                                    <div className="ar-feature-group" data-testid="feature-group-ai-modes">
+                                        <div className="ar-feature-group-head">AI Execution Modes</div>
+                                        <AdminRow
+                                            name={<>Ralph Mode <span className="ar-badge ar-badge-accent">Experimental</span></>}
+                                            hint="Autonomous iterative coding loop — stateless agents with fresh context per iteration."
+                                        >
+                                            <SourceBadge source={sources['ralph.enabled']} />
+                                            <AdminToggle checked={ralphEnabled} onChange={setRalphEnabled} data-testid="toggle-ralph-enabled" />
+                                        </AdminRow>
+                                        <AdminRow
+                                            name={<>For Each Mode <span className="ar-badge ar-badge-accent">Experimental</span></>}
+                                            hint="Generate a reviewed item plan from New Chat, then run each item as a separate child chat. Disabled by default."
+                                        >
+                                            <SourceBadge source={sources['forEach.enabled']} />
+                                            <AdminToggle checked={forEachEnabled} onChange={setForEachEnabled} data-testid="toggle-for-each-enabled" />
+                                        </AdminRow>
+                                        <AdminRow
+                                            name={<>Map Reduce Mode <span className="ar-badge ar-badge-accent">Experimental</span></>}
+                                            hint="Generate a reviewed map plan from New Chat, run items in parallel, then reduce outputs into one result. Disabled by default."
+                                        >
+                                            <SourceBadge source={sources['mapReduce.enabled']} />
+                                            <AdminToggle checked={mapReduceEnabled} onChange={setMapReduceEnabled} data-testid="toggle-map-reduce-enabled" />
+                                        </AdminRow>
+                                        <AdminRow
+                                            name={<>Effort Tiers <span className="ar-badge ar-badge-accent">Experimental</span></>}
+                                            hint="Replace the model picker + reasoning-effort pill in the chat composer with a single Low / Medium / High effort selector. Configure tier mappings per provider on the AI Provider page. Disabled by default."
+                                        >
+                                            <SourceBadge source={sources['effortLevels.enabled']} />
+                                            <AdminToggle checked={effortLevelsEnabled} onChange={setEffortLevelsEnabled} data-testid="toggle-effort-levels-enabled" />
+                                        </AdminRow>
+                                    </div>
+
+                                    {/* ── Code Review & Collaboration ── */}
+                                    <div className="ar-feature-group" data-testid="feature-group-review">
+                                        <div className="ar-feature-group-head">Code Review &amp; Collaboration</div>
+                                        <AdminRow
+                                            name="Focused Diff"
+                                            hint="AI-powered hunk classification for PR diffs. Highlights logic changes and dims mechanical edits."
+                                        >
+                                            <SourceBadge source={sources['features.focusedDiff']} />
+                                            <AdminToggle checked={focusedDiffEnabled} onChange={setFocusedDiffEnabled} data-testid="toggle-focused-diff-enabled" />
+                                        </AdminRow>
+                                        <AdminRow
+                                            name={<>Cross-clone cherry-pick <span className="ar-badge ar-badge-accent">Experimental</span></>}
+                                            hint="Adds a Git commit context-menu action that transfers one commit to another registered clone using patch export/apply. Enabled by default."
+                                        >
+                                            <SourceBadge source={sources['features.gitCrossCloneCherryPick']} />
+                                            <AdminToggle checked={gitCrossCloneCherryPickEnabled} onChange={setGitCrossCloneCherryPickEnabled} data-testid="toggle-git-cross-clone-cherry-pick-enabled" />
+                                        </AdminRow>
+                                        <AdminRow
+                                            name={<>Session context attachments <span className="ar-badge ar-badge-accent">Experimental</span></>}
+                                            hint="Allow dragging existing same-workspace chat sessions into chat composers as pointer-only context. Disabled by default."
+                                        >
+                                            <SourceBadge source={sources['features.sessionContextAttachments']} />
+                                            <AdminToggle checked={sessionContextAttachmentsEnabled} onChange={setSessionContextAttachmentsEnabled} data-testid="toggle-session-context-attachments-enabled" />
+                                        </AdminRow>
+                                        <AdminRow
+                                            name={<>Review chat lens <span className="ar-badge ar-badge-accent">Experimental</span></>}
+                                            hint="Open unpinned commit and pull-request review chat as a desktop bottom-right lens instead of the side panel or drawer. Disabled by default."
+                                        >
+                                            <SourceBadge source={sources['features.commitChatLens']} />
+                                            <AdminToggle checked={commitChatLensEnabled} onChange={setCommitChatLensEnabled} data-testid="toggle-commit-chat-lens-enabled" />
+                                        </AdminRow>
+                                        <AdminRow
+                                            name="Excalidraw diagrams"
+                                            hint="AI can generate and read Excalidraw diagrams during conversations. Disabled by default."
+                                        >
+                                            <SourceBadge source={sources['excalidraw.enabled']} />
+                                            <AdminToggle checked={excalidrawEnabled} onChange={setExcalidrawEnabled} data-testid="toggle-excalidraw-enabled" />
+                                        </AdminRow>
+                                    </div>
+
+                                    {/* ── Infrastructure ── */}
+                                    <div className="ar-feature-group" data-testid="feature-group-infrastructure">
+                                        <div className="ar-feature-group-head">Infrastructure</div>
+                                        <AdminRow
+                                            name={<>Loops &amp; Wakeups <span className="ar-badge ar-badge-warning">Restart</span></>}
+                                            hint="Recurring follow-up loops and one-shot scheduleWakeup tool. Disabled by default — toggling requires a server restart to (de)wire infrastructure."
+                                        >
+                                            <SourceBadge source={sources['loops.enabled']} />
+                                            <AdminToggle checked={loopsEnabled} onChange={setLoopsEnabled} data-testid="toggle-loops-enabled" />
+                                        </AdminRow>
+                                        <AdminRow
+                                            name={<>MCP OAuth <span className="ar-badge ar-badge-warning">Restart</span></>}
+                                            hint="Handle OAuth flows for MCP servers that require authentication. Disabled by default — toggling requires a server restart."
+                                        >
+                                            <SourceBadge source={sources['mcpOauth.enabled']} />
+                                            <AdminToggle checked={mcpOauthEnabled} onChange={setMcpOauthEnabled} data-testid="toggle-mcp-oauth-enabled" />
+                                        </AdminRow>
+                                        <AdminRow
+                                            name="Vim-style navigation"
+                                            hint="Enable hjkl pane navigation, j/k to step through chats and messages, gg/G to jump, i to focus the input, Esc to blur. Disabled by default."
+                                        >
+                                            <SourceBadge source={sources['vimNavigation.enabled']} />
+                                            <AdminToggle checked={vimNavigationEnabled} onChange={setVimNavigationEnabled} data-testid="toggle-vim-navigation-enabled" />
+                                        </AdminRow>
+                                    </div>
                                 </SettingsCard>
                                 )}
 

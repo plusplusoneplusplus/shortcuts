@@ -55,4 +55,6 @@ When adding UI to the admin page, prefer the existing primitives:
 - **AI Provider page:** the `agents` tab content lives in `AIProviderPage.tsx` (not inline in `AdminPanel`). It uses a tab bar (`ar-subtab-row`) with two tabs: Provider routing (summary grid + routing table plus feature-gated Auto routing editor/preview) and Model catalog (lazy-loaded `ProviderModelsSection` + `ProviderEffortTiersSection`). All styles use `aip-*` classes in `admin-redesign.css`.
 - **New top-level tabs:** add to `AdminSubTab`, `TAB_LABELS`, `TAB_ICONS`, and `TAB_DESCRIPTIONS`, then place the destination in the grouped `navGroups` definition near the bottom of `AdminPanel.tsx` so the sidebar and mobile select expose it in the right user-intent group.
 
+- **Feature groups:** Inside the Features settings card, toggles are organized into named sections using `<div className="ar-feature-group">` with a `<div className="ar-feature-group-head">` heading. Groups are: Dashboard Modules, Development Tools, Work Items, AI Execution Modes, Code Review & Collaboration, and Infrastructure. New feature toggles should be added to the appropriate group.
+
 Avoid introducing Tailwind utilities or inline `bg-*`/`text-*` classes for admin-only UI — extend `admin-redesign.css` instead so the look stays cohesive.

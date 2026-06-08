@@ -592,6 +592,21 @@
 .admin-redesign .ar-card-body {
   padding: 4px 0;
 }
+.admin-redesign .ar-feature-group {
+  padding-top: 4px;
+}
+.admin-redesign .ar-feature-group + .ar-feature-group {
+  border-top: 1px solid var(--ar-border);
+  margin-top: 4px;
+}
+.admin-redesign .ar-feature-group-head {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ar-text-dim);
+  padding: 8px 20px 2px;
+}
 .admin-redesign .ar-card-foot {
   display: flex;
   align-items: center;
