@@ -3,15 +3,35 @@
  * diff stats, checks, reviewers, and comment threads.
  */
 
+import { useMemo } from 'react';
+import { Marked } from 'marked';
 import { cn } from '../../ui';
 import { findingTagClass } from './pr-derived-data';
 import type { PrReviewSummary } from './pr-detail-summary';
+
+const summaryMarked = new Marked({
+    gfm: true,
+    breaks: true,
+    renderer: {
+        link(href: string, _title: string | null | undefined, text: string) {
+            if (href && /^mailto:/i.test(href)) {
+                return `<span>${text}</span>`;
+            }
+            return `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+        },
+    },
+});
 
 interface PrReviewSummaryPanelProps {
     summary: PrReviewSummary;
 }
 
 export function PrReviewSummaryPanel({ summary }: PrReviewSummaryPanelProps) {
+    const summaryHtml = useMemo(
+        () => summary.summary ? String(summaryMarked.parse(summary.summary)) : '',
+        [summary.summary],
+    );
+
     return (
         <article
             className="relative overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
@@ -30,12 +50,11 @@ export function PrReviewSummaryPanel({ summary }: PrReviewSummaryPanelProps) {
                 </span>
             </header>
             <div className="p-2">
-                <p
-                    className="m-0 mb-1.5 text-[13px] leading-[1.38] text-gray-800 dark:text-gray-200"
+                <div
+                    className="markdown-body m-0 mb-1.5 text-[13px] leading-[1.38] text-gray-800 dark:text-gray-200"
                     data-testid="pr-review-summary-copy"
-                >
-                    {summary.summary}
-                </p>
+                    dangerouslySetInnerHTML={{ __html: summaryHtml }}
+                />
                 <div className="mb-1.5 grid grid-cols-2 gap-[5px] sm:grid-cols-5" data-testid="pr-review-metrics">
                     {summary.metrics.map(metric => (
                         <div
