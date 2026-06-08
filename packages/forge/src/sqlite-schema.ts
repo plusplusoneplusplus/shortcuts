@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 19;
+export const SCHEMA_VERSION = 20;
 
 /**
  * Read the current schema version from the database.
@@ -336,6 +336,22 @@ export function initializeDatabase(db: Database.Database): void {
                 ON pull_request_chat_bindings(workspace_id);
         `);
 
+        // ── work_item_chat_bindings ─────────────────────────────────
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS work_item_chat_bindings (
+                workspace_id  TEXT NOT NULL,
+                work_item_id  TEXT NOT NULL,
+                task_id       TEXT NOT NULL,
+                created_at    TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, work_item_id)
+            )
+        `);
+
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_work_item_chat_bindings_workspace
+                ON work_item_chat_bindings(workspace_id);
+        `);
+
         // ── incremental migrations for existing databases ───────────
         // Guards use only `versionBefore < N` (not `>= 1`) so that
         // databases at version 0 with pre-existing tables still get
@@ -391,6 +407,9 @@ export function initializeDatabase(db: Database.Database): void {
         }
         if (versionBefore < 19) {
             migrateV18toV19(db);
+        }
+        if (versionBefore < 20) {
+            migrateV19toV20(db);
         }
 
         // Stamp the schema version
@@ -643,6 +662,26 @@ function migrateV18toV19(db: Database.Database): void {
     ensureColumn(db, 'processes', 'system_tokens', 'INTEGER');
     ensureColumn(db, 'processes', 'tool_definitions_tokens', 'INTEGER');
     ensureColumn(db, 'processes', 'conversation_tokens', 'INTEGER');
+}
+
+/**
+ * V19 -> V20: add `work_item_chat_bindings` table for one remembered chat per
+ * workspace + work item.
+ */
+function migrateV19toV20(db: Database.Database): void {
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS work_item_chat_bindings (
+            workspace_id  TEXT NOT NULL,
+            work_item_id  TEXT NOT NULL,
+            task_id       TEXT NOT NULL,
+            created_at    TEXT NOT NULL,
+            PRIMARY KEY (workspace_id, work_item_id)
+        )
+    `);
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_work_item_chat_bindings_workspace
+            ON work_item_chat_bindings(workspace_id);
+    `);
 }
 
 /**

@@ -15,6 +15,8 @@ import type {
   WorkItemSyncStatusResponse,
   UpdateWorkItemRequest,
   WorkItem,
+  WorkItemChatBinding,
+  WorkItemChatBindingListResponse,
   WorkItemAiGenerationResponse,
   WorkItemFilter,
   WorkItemGroupedResponse,
@@ -172,6 +174,30 @@ export class WorkItemsClient {
       method: 'POST',
       body: { ...request },
     });
+  }
+
+  listChatBindings(workspaceId: string): Promise<WorkItemChatBindingListResponse> {
+    return this.transport.request<WorkItemChatBindingListResponse>(`/workspaces/${encodePathSegment(workspaceId)}/work-item-chat-bindings`);
+  }
+
+  getChatBinding(workspaceId: string, workItemId: string): Promise<WorkItemChatBinding> {
+    return this.transport.request<WorkItemChatBinding>(
+      `/workspaces/${encodePathSegment(workspaceId)}/work-item-chat-bindings/${encodePathSegment(workItemId)}`,
+    );
+  }
+
+  createChatBinding(workspaceId: string, workItemId: string, taskId: string): Promise<WorkItemChatBinding> {
+    return this.transport.request<WorkItemChatBinding>(
+      `/workspaces/${encodePathSegment(workspaceId)}/work-item-chat-bindings`,
+      { method: 'POST', body: { workItemId, taskId } },
+    );
+  }
+
+  deleteChatBinding(workspaceId: string, workItemId: string): Promise<void> {
+    return this.transport.request<void>(
+      `/workspaces/${encodePathSegment(workspaceId)}/work-item-chat-bindings/${encodePathSegment(workItemId)}`,
+      { method: 'DELETE' },
+    );
   }
 
   tree(workspaceId: string, filter?: WorkItemTreeFilter): Promise<WorkItemTreeResponse> {

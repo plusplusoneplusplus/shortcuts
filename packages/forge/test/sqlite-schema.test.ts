@@ -31,6 +31,7 @@ describe('sqlite-schema', () => {
         expect(tables).toContain('queue_tasks');
         expect(tables).toContain('queue_repo_state');
         expect(tables).toContain('commit_chat_bindings');
+        expect(tables).toContain('work_item_chat_bindings');
         expect(tables).toContain('loops');
     });
 
@@ -62,6 +63,7 @@ describe('sqlite-schema', () => {
             'idx_commit_chat_bindings_workspace',
             'idx_note_chat_bindings_task',
             'idx_pull_request_chat_bindings_workspace',
+            'idx_work_item_chat_bindings_workspace',
             'idx_processes_ws_status_activity',
         ];
 
@@ -97,7 +99,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(19);
+        expect(SCHEMA_VERSION).toBe(20);
     });
 
     it('creates context-window breakdown columns on processes', () => {
@@ -798,6 +800,39 @@ describe('sqlite-schema', () => {
             expect(row.system_tokens).toBeNull();
             expect(row.tool_definitions_tokens).toBeNull();
             expect(row.conversation_tokens).toBeNull();
+        });
+    });
+
+    describe('V19 → V20 migration (work item chat bindings)', () => {
+        it('adds work_item_chat_bindings to existing databases', () => {
+            db.exec(`
+                CREATE TABLE processes (
+                    id                    TEXT PRIMARY KEY,
+                    workspace_id          TEXT NOT NULL,
+                    type                  TEXT,
+                    status                TEXT NOT NULL,
+                    start_time            TEXT NOT NULL,
+                    parent_process_id     TEXT,
+                    sdk_session_id        TEXT,
+                    archived              INTEGER DEFAULT 0,
+                    system_tokens         INTEGER,
+                    tool_definitions_tokens INTEGER,
+                    conversation_tokens   INTEGER
+                )
+            `);
+            db.pragma('user_version = 19');
+
+            initializeDatabase(db);
+
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+            const table = db
+                .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='work_item_chat_bindings'")
+                .get();
+            const index = db
+                .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_work_item_chat_bindings_workspace'")
+                .get();
+            expect(table).toBeTruthy();
+            expect(index).toBeTruthy();
         });
     });
 });

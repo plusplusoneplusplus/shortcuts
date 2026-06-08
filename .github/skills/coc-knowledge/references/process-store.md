@@ -6,7 +6,7 @@ Location: `packages/forge/src/` (`process-store.ts`, `sqlite-process-store.ts`, 
 
 ## SqliteProcessStore
 
-Default backend. Single `processes.db` file at `~/.coc/processes.db`. Schema version 19.
+Default backend. Single `processes.db` file at `~/.coc/processes.db`. Schema version 20.
 
 ### Tables
 
@@ -19,6 +19,7 @@ Default backend. Single `processes.db` file at `~/.coc/processes.db`. Schema ver
 | `schedule_runs` | Schedule execution history |
 | `commit_chat_bindings` | commitHash → taskId mappings |
 | `pull_request_chat_bindings` | prId → taskId mappings (one persistent chat per PR per workspace) |
+| `work_item_chat_bindings` | workItemId → taskId mappings (one persistent chat per Work Item per workspace) |
 
 ### Key Features
 

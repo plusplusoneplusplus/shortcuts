@@ -33,6 +33,7 @@ import { registerApiProcessRoutes } from '../routes/api-process-routes';
 import { registerApiFsRoutes } from '../routes/api-fs-routes';
 import { registerCommitChatRoutes } from '../routes/api-commit-chat-routes';
 import { registerPrChatRoutes } from '../routes/api-pr-chat-routes';
+import { registerWorkItemChatRoutes } from '../routes/api-work-item-chat-routes';
 import { registerNoteChatBindingRoutes } from '../notes/note-chat-bindings-handler';
 import type { ApiRouteContext } from '../routes/api-shared';
 import { GIT_MAX_BUFFER } from '../routes/api-shared';
@@ -302,6 +303,7 @@ export function registerApiRoutes(
         registerApiProcessRoutes(ctx);
         registerCommitChatRoutes(ctx);
         registerPrChatRoutes(ctx);
+        registerWorkItemChatRoutes(ctx);
         registerNoteChatBindingRoutes(ctx);
 
         // Register global skill routes first so /skills/all is matched
