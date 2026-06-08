@@ -102,6 +102,12 @@ describe('PullRequestChatPanel', () => {
         expect(screen.getByTestId('pr-chat-panel')).toBeTruthy();
         expect(screen.getByText('Chat about this PR')).toBeTruthy();
         expect(screen.getByTestId('pr-chat-send-btn')).toBeTruthy();
+        expect(screen.getByTestId('agent-selector-chip-btn')).toBeTruthy();
+        expect(screen.getByTestId('mode-selector')).toBeTruthy();
+        expect(screen.getByTestId('model-picker-chip')).toBeTruthy();
+        expect(screen.getByTestId('effort-pill-selector')).toBeTruthy();
+        expect(screen.getByTestId('chat-toolbar-slash-btn')).toBeTruthy();
+        expect(screen.getByTestId('pr-chat-attach-btn')).toBeTruthy();
     });
 
     // ========================================================================
@@ -277,7 +283,11 @@ describe('PullRequestChatPanel', () => {
             fireEvent.click(screen.getByTestId('pr-chat-send-btn'));
         });
 
-        expect(mockCreateChat).toHaveBeenCalledWith('check this', fakePayload);
+        expect(mockCreateChat).toHaveBeenCalledWith('check this', expect.objectContaining({
+            mode: 'ask',
+            attachments: fakePayload,
+            provider: 'copilot',
+        }));
     });
 
     it('does not pass attachments when toPayload returns empty', async () => {
@@ -292,6 +302,10 @@ describe('PullRequestChatPanel', () => {
             fireEvent.click(screen.getByTestId('pr-chat-send-btn'));
         });
 
-        expect(mockCreateChat).toHaveBeenCalledWith('hello', undefined);
+        expect(mockCreateChat).toHaveBeenCalledWith('hello', expect.objectContaining({
+            mode: 'ask',
+            attachments: undefined,
+            provider: 'copilot',
+        }));
     });
 });

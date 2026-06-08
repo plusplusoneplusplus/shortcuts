@@ -65,6 +65,7 @@ import { RalphLaunchDialog } from '../../shared/RalphLaunchDialog';
 import type { ResolvedModalJobAiSelection } from '../../shared/ModalJobAiControls';
 import { AttachedContextPreviews } from '../../ui/AttachedContextPreviews';
 import { formatAttachedContext, useAttachedContext } from './hooks/useAttachedContext';
+import type { AttachmentPayload } from '../../types/attachments';
 import {
     dataTransferHasAnyData,
     dataTransferHasSessionContext,
@@ -79,7 +80,101 @@ export interface NewChatAreaProps {
     onBack?: () => void;
 }
 
+export interface InitialChatComposerSubmission {
+    mode: string;
+    prompt: string;
+    workspaceId?: string;
+    workingDirectory?: string;
+    context?: Record<string, unknown>;
+    attachments?: AttachmentPayload[];
+    provider?: ChatProvider;
+    model?: string;
+    reasoningEffort?: EffortLevel;
+    config?: { effortTier?: EffortTierKey };
+}
+
+export interface InitialChatComposerProps {
+    workspaceId?: string;
+    workspaceRoot?: string;
+    onBack?: () => void;
+    onSubmit: (submission: InitialChatComposerSubmission) => Promise<string | null | void>;
+    onSubmitted?: (taskId: string | null) => Promise<void> | void;
+    heroTitle?: string;
+    heroDescription?: string;
+    placeholder?: string;
+    testIdPrefix?: string;
+    draftKey?: string;
+    sourceLabel?: string;
+    enableRalphDirectGoal?: boolean;
+}
+
 export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
+    const { dispatch: queueDispatch } = useQueue();
+    const { state: appState } = useApp();
+    const { updateOnboarding } = useOnboardingPreferences();
+
+    function getSelectedWorkspaceRoot(): string | undefined {
+        const ws = appState.workspaces?.find((w: any) => w.id === workspaceId);
+        return ws?.rootPath;
+    }
+
+    async function handleSubmit(submission: InitialChatComposerSubmission): Promise<string | null> {
+        const result = await getSpaCocClient().queue.enqueue({
+            type: 'chat',
+            priority: 'normal',
+            payload: {
+                kind: 'chat',
+                mode: submission.mode as any,
+                prompt: submission.prompt,
+                workingDirectory: submission.workingDirectory,
+                workspaceId: submission.workspaceId,
+                ...(submission.context ? { context: submission.context } : {}),
+                ...(submission.attachments && submission.attachments.length > 0 ? { attachments: submission.attachments } : {}),
+                ...(submission.model ? { model: submission.model } : {}),
+                ...(submission.reasoningEffort ? { reasoningEffort: submission.reasoningEffort } : {}),
+                ...(submission.provider ? { provider: submission.provider } : {}),
+            } as any,
+            ...(submission.config ? { config: submission.config } : {}),
+        });
+
+        const rawId = result.task?.id ?? (result as any).id;
+        return isQueueProcessId(rawId) ? rawId : toQueueProcessId(rawId);
+    }
+
+    async function handleSubmitted(processId: string | null) {
+        if (processId) {
+            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: workspaceId });
+        }
+        if (!appState.onboardingProgress?.hasUsedChat) {
+            await updateOnboarding({ hasUsedChat: true }).catch(() => {});
+        }
+    }
+
+    return (
+        <InitialChatComposer
+            workspaceId={workspaceId}
+            workspaceRoot={getSelectedWorkspaceRoot()}
+            onBack={onBack}
+            onSubmit={handleSubmit}
+            onSubmitted={handleSubmitted}
+        />
+    );
+}
+
+export function InitialChatComposer({
+    workspaceId,
+    workspaceRoot,
+    onBack,
+    onSubmit,
+    onSubmitted,
+    heroTitle = 'Start a new conversation',
+    heroDescription = 'Type a message below to begin',
+    placeholder = 'Reply to CoC, or type / for commands...',
+    testIdPrefix = 'new-chat',
+    draftKey,
+    sourceLabel = 'New Chat composer',
+    enableRalphDirectGoal = true,
+}: InitialChatComposerProps) {
     const [input, setInput] = useState('');
     const [cursorPos, setCursorPos] = useState(0);
     const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
@@ -105,10 +200,6 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const attachedContext = useAttachedContext();
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(workspaceId, sessionContextAttachmentsEnabled);
-
-    const { dispatch: queueDispatch } = useQueue();
-    const { state: appState } = useApp();
-    const { updateOnboarding } = useOnboardingPreferences();
 
     // Agent providers for the agent selector chip
     const { providers: rawAgentProviders, loading: providersLoading } = useAgentProviders();
@@ -173,9 +264,9 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     // effortOverride is intentionally NOT restored from the draft — it is
     // always re-derived from the current provider/model preferences so that
     // Admin → AI Provider settings updated since the last draft take effect.
-    const draftKey = useMemo(() => newChatDraftKey(workspaceId), [workspaceId]);
+    const draftStorageKey = useMemo(() => draftKey ?? newChatDraftKey(workspaceId), [draftKey, workspaceId]);
     useEffect(() => {
-        const draft = getDraft(draftKey);
+        const draft = getDraft(draftStorageKey);
         if (draft) {
             setInput(draft.text);
             setCursorPos(draft.text.length);
@@ -193,7 +284,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             setCursorPos(0);
             setSelectedMode('ask');
         }
-    }, [draftKey, visibleModes]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [draftStorageKey, visibleModes]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Restore last-picked effort tier from localStorage on mount / workspace switch.
     useEffect(() => {
@@ -222,10 +313,10 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     useEffect(() => {
         if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
         saveTimerRef.current = setTimeout(() => {
-            setDraft(draftKey, input, selectedMode, modelCommand.modelOverride, effortOverride);
+            setDraft(draftStorageKey, input, selectedMode, modelCommand.modelOverride, effortOverride);
         }, 300);
         return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-    }, [draftKey, input, selectedMode, modelCommand.modelOverride, effortOverride]);
+    }, [draftStorageKey, input, selectedMode, modelCommand.modelOverride, effortOverride]);
 
     // Fetch skills when workspaceId changes
     useEffect(() => {
@@ -415,8 +506,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     }
 
     function getSelectedWorkspaceRoot(): string | undefined {
-        const ws = appState.workspaces?.find((w: any) => w.id === workspaceId);
-        return ws?.rootPath;
+        return workspaceRoot;
     }
 
     function resolveComposerAiSelection(): ResolvedModalJobAiSelection {
@@ -555,37 +645,26 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             const context = mergeAutoProviderRoutingContext(resolvedAi, contextOverride);
             const config = resolvedAi.effortTier ? { effortTier: resolvedAi.effortTier } : undefined;
 
-            const result = await getSpaCocClient().queue.enqueue({
-                type: 'chat',
-                priority: 'normal',
-                payload: {
-                    kind: 'chat',
-                    mode: mode as any,
-                    prompt: effectivePrompt,
-                    workingDirectory: workspaceRoot,
-                    workspaceId,
-                    ...(context ? { context } : {}),
-                    ...(attachmentPayload.length > 0 ? { attachments: attachmentPayload } : {}),
-                    ...(resolvedAi.model ? { model: resolvedAi.model } : {}),
-                    ...(resolvedAi.reasoningEffort ? { reasoningEffort: resolvedAi.reasoningEffort } : {}),
-                    ...(resolvedAi.provider ? { provider: resolvedAi.provider } : {}),
-                } as any,
+            const submittedTaskId = await onSubmit({
+                mode,
+                prompt: effectivePrompt,
+                workingDirectory: workspaceRoot,
+                workspaceId,
+                ...(context ? { context } : {}),
+                ...(attachmentPayload.length > 0 ? { attachments: attachmentPayload } : {}),
+                ...(resolvedAi.model ? { model: resolvedAi.model } : {}),
+                ...(resolvedAi.reasoningEffort ? { reasoningEffort: resolvedAi.reasoningEffort } : {}),
+                ...(resolvedAi.provider ? { provider: resolvedAi.provider } : {}),
                 ...(config ? { config } : {}),
             });
-
-            const rawId = result.task?.id ?? (result as any).id;
-            const processId = isQueueProcessId(rawId) ? rawId : toQueueProcessId(rawId);
-            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: workspaceId });
-            if (!appState.onboardingProgress?.hasUsedChat) {
-                await updateOnboarding({ hasUsedChat: true }).catch(() => {});
-            }
+            await onSubmitted?.(typeof submittedTaskId === 'string' ? submittedTaskId : null);
             setInput('');
             setCursorPos(0);
             richTextRef.current?.setValue('');
             clearAttachments();
             attachedContext.clear();
             promptHistory.reset();
-            clearDraft(draftKey);
+            clearDraft(draftStorageKey);
         } catch (err: any) {
             if (err?.name !== 'AbortError') {
                 setError(getSpaCocClientErrorMessage(err, 'Failed to create task'));
@@ -603,10 +682,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     }
 
     async function handleRalphDirectGoalLaunched(processId: string) {
-        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: workspaceId });
-        if (!appState.onboardingProgress?.hasUsedChat) {
-            await updateOnboarding({ hasUsedChat: true }).catch(() => {});
-        }
+        await onSubmitted?.(processId);
         setRalphDirectGoalDraft(null);
         setInput('');
         setCursorPos(0);
@@ -614,7 +690,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         clearAttachments();
         attachedContext.clear();
         promptHistory.reset();
-        clearDraft(draftKey);
+        clearDraft(draftStorageKey);
     }
 
     function handleStop() {
@@ -701,12 +777,12 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     }
 
     return (
-        <div className="flex flex-col h-full bg-white dark:bg-[#1e1e1e]" data-testid="new-chat-area">
-            {ralphDirectGoalDraft !== null && (
+        <div className="flex flex-col h-full bg-white dark:bg-[#1e1e1e]" data-testid={`${testIdPrefix}-area`}>
+            {enableRalphDirectGoal && ralphDirectGoalDraft !== null && (
                 <RalphLaunchDialog
                     open={ralphDirectGoalDraft !== null}
                     workspaceId={workspaceId ?? ''}
-                    sourceLabel="New Chat composer"
+                    sourceLabel={sourceLabel}
                     goalSpec={ralphDirectGoalDraft}
                     folderPath={getSelectedWorkspaceRoot()}
                     workingDirectory={getSelectedWorkspaceRoot()}
@@ -725,7 +801,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                     <button
                         type="button"
                         onClick={onBack}
-                        data-testid="new-chat-back-btn"
+                        data-testid={`${testIdPrefix}-back-btn`}
                         aria-label="Back to list"
                         className="inline-flex items-center gap-1 text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff]"
                     >
@@ -740,24 +816,24 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             <div className="flex-1 flex items-center justify-center">
                 <div className="text-center text-[#848484]">
                     <div className="text-3xl mb-2">💬</div>
-                    <div className="text-sm font-medium mb-1">Start a new conversation</div>
-                    <div className="text-xs">Type a message below to begin</div>
+                    <div className="text-sm font-medium mb-1">{heroTitle}</div>
+                    <div className="text-xs">{heroDescription}</div>
                 </div>
             </div>
 
             {/* Input area */}
             <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-3 py-2 space-y-1.5">
-                {error && <div className="text-xs text-[#f14c4c]" data-testid="new-chat-error">{error}</div>}
+                {error && <div className="text-xs text-[#f14c4c]" data-testid={`${testIdPrefix}-error`}>{error}</div>}
                 {attachmentError && (
-                    <div className="text-xs text-[#f14c4c]" data-testid="new-chat-attachment-error">{attachmentError}</div>
+                    <div className="text-xs text-[#f14c4c]" data-testid={`${testIdPrefix}-attachment-error`}>{attachmentError}</div>
                 )}
                 {sessionContextDropError && (
-                    <div className="text-xs text-[#f14c4c]" data-testid="new-chat-session-context-error">{sessionContextDropError}</div>
+                    <div className="text-xs text-[#f14c4c]" data-testid={`${testIdPrefix}-session-context-error`}>{sessionContextDropError}</div>
                 )}
                 <AttachedContextPreviews
                     items={attachedContext.items}
                     onRemove={attachedContext.remove}
-                    data-testid="new-chat-attached-context-previews"
+                    data-testid={`${testIdPrefix}-attached-context-previews`}
                 />
                 <AttachmentPreviews attachments={attachments} onRemove={removeAttachment} />
                 <input
@@ -765,7 +841,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                     type="file"
                     multiple
                     className="hidden"
-                    data-testid="new-chat-file-input-hidden"
+                    data-testid={`${testIdPrefix}-file-input-hidden`}
                     onChange={(e) => {
                         if (e.target.files && e.target.files.length > 0) {
                             addFromFileInput(e.target.files);
@@ -804,7 +880,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         disabled={sending}
                         value={input}
                         ghostText={slashCommands.activeCommandHint ?? autocomplete.completion}
-                        placeholder="Reply to CoC, or type / for commands..."
+                        placeholder={placeholder}
                         // border-transparent + focus:ring-transparent neutralize the
                         // base RichTextInput's 1px gray border and default blue
                         // focus:ring-2, so the inner contenteditable adds no visible
@@ -887,7 +963,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                             }
                         }}
                         onPaste={addFromPaste}
-                        data-testid="new-chat-input"
+                        data-testid={`${testIdPrefix}-input`}
                     />
                     <div
                         className="flex flex-wrap items-center gap-x-px gap-y-0.5 pl-2 pr-1.5 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
@@ -1042,7 +1118,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                             disabled={sending}
                             onClick={() => fileInputRef.current?.click()}
                             className="ctool shrink-0 inline-flex items-center justify-center h-[22px] w-[22px] rounded-sm text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                            data-testid="new-chat-attach-btn"
+                            data-testid={`${testIdPrefix}-attach-btn`}
                             aria-label="Attach file"
                             title="Attach files"
                         >
@@ -1062,22 +1138,52 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                 type="button"
                                 className="shrink-0 h-[24px] px-1.5 rounded-md bg-[#f14c4c] text-white text-[11px] font-medium hover:bg-[#d93636]"
                                 onClick={handleStop}
-                                data-testid="new-chat-stop-btn"
+                                data-testid={`${testIdPrefix}-stop-btn`}
                                 title="Stop generation"
                             >
                                 Stop
                             </button>
                         ) : selectedMode === 'ralph' && isRalphEnabled() ? (
-                            <div
-                                className="shrink-0 inline-flex h-[24px] rounded-md shadow-sm"
-                                data-testid="new-chat-ralph-submit-split"
-                            >
+                            enableRalphDirectGoal ? (
+                                <div
+                                    className="shrink-0 inline-flex h-[24px] rounded-md shadow-sm"
+                                    data-testid={`${testIdPrefix}-ralph-submit-split`}
+                                >
+                                    <button
+                                        type="button"
+                                        disabled={!input.trim() && attachments.length === 0 && attachedContext.items.length === 0}
+                                        className="inline-flex items-center gap-1 h-[24px] pl-2 pr-2 rounded-l-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                        onClick={() => { void handleSend(); }}
+                                        data-testid={`${testIdPrefix}-send-btn`}
+                                        title="Grill (Enter) · Shift+Enter for newline"
+                                    >
+                                        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                            <path
+                                                d="M3 4h10a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H6.5L4 13v-2H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"
+                                                stroke="currentColor"
+                                                strokeWidth="1.2"
+                                                strokeLinejoin="round"
+                                            />
+                                        </svg>
+                                        <span>Grill</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="inline-flex items-center h-[24px] px-2 -ml-px rounded-r-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
+                                        onClick={handleOpenRalphDirectGoalDialog}
+                                        data-testid={`${testIdPrefix}-ralph-start-from-goal-btn`}
+                                        title="Review pasted goal text and start Ralph execution"
+                                    >
+                                        Start from goal...
+                                    </button>
+                                </div>
+                            ) : (
                                 <button
                                     type="button"
                                     disabled={!input.trim() && attachments.length === 0 && attachedContext.items.length === 0}
-                                    className="inline-flex items-center gap-1 h-[24px] pl-2 pr-2 rounded-l-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    className="shrink-0 inline-flex items-center gap-1 h-[24px] pl-2 pr-1.5 rounded-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                     onClick={() => { void handleSend(); }}
-                                    data-testid="new-chat-send-btn"
+                                    data-testid={`${testIdPrefix}-send-btn`}
                                     title="Grill (Enter) · Shift+Enter for newline"
                                 >
                                     <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -1090,23 +1196,14 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                     </svg>
                                     <span>Grill</span>
                                 </button>
-                                <button
-                                    type="button"
-                                    className="inline-flex items-center h-[24px] px-2 -ml-px rounded-r-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
-                                    onClick={handleOpenRalphDirectGoalDialog}
-                                    data-testid="new-chat-ralph-start-from-goal-btn"
-                                    title="Review pasted goal text and start Ralph execution"
-                                >
-                                    Start from goal...
-                                </button>
-                            </div>
+                            )
                         ) : selectedMode === 'for-each' && isForEachEnabled() ? (
                             <button
                                 type="button"
                                 disabled={!input.trim() && attachments.length === 0 && attachedContext.items.length === 0}
                                 className="shrink-0 inline-flex items-center gap-1 h-[24px] pl-2 pr-1.5 rounded-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                 onClick={() => { void handleSend(); }}
-                                data-testid="new-chat-send-btn"
+                                data-testid={`${testIdPrefix}-send-btn`}
                                 title="Generate a reviewed For Each item plan"
                             >
                                 <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -1131,7 +1228,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                 disabled={!input.trim() && attachments.length === 0 && attachedContext.items.length === 0}
                                 className="shrink-0 inline-flex items-center gap-1 h-[24px] pl-2 pr-1.5 rounded-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                 onClick={() => { void handleSend(); }}
-                                data-testid="new-chat-send-btn"
+                                data-testid={`${testIdPrefix}-send-btn`}
                                 title="Send (Enter) · Shift+Enter for newline"
                             >
                                 <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">

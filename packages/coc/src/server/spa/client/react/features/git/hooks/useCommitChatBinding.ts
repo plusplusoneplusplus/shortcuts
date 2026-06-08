@@ -8,6 +8,17 @@ export interface UseCommitChatBindingOptions {
     commitMessage?: string;
 }
 
+export interface ReviewChatComposerSendOptions {
+    mode?: string;
+    context?: Record<string, unknown>;
+    attachments?: AttachmentPayload[];
+    provider?: string;
+    model?: string;
+    reasoningEffort?: string;
+    config?: { effortTier?: string };
+    workingDirectory?: string;
+}
+
 export interface UseCommitChatBindingReturn {
     /** The queue task ID bound to this commit, or null if no chat exists */
     taskId: string | null;
@@ -16,7 +27,7 @@ export interface UseCommitChatBindingReturn {
     /** Error message if binding fetch failed */
     error: string | null;
     /** Create a new chat for this commit. Returns the new taskId. */
-    createChat: (prompt: string, attachments?: AttachmentPayload[]) => Promise<string | null>;
+    createChat: (prompt: string, options?: ReviewChatComposerSendOptions) => Promise<string | null>;
 }
 
 export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseCommitChatBindingReturn {
@@ -46,7 +57,7 @@ export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseComm
     }, [workspaceId, commitHash]);
 
     // Create a new chat for this commit
-    const createChat = useCallback(async (prompt: string, attachments?: AttachmentPayload[]): Promise<string | null> => {
+    const createChat = useCallback(async (prompt: string, options: ReviewChatComposerSendOptions = {}): Promise<string | null> => {
         if (!commitHash) return null;
         try {
             // Create queue task
@@ -55,14 +66,20 @@ export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseComm
                 priority: 'normal',
                 payload: {
                     kind: 'chat',
-                    mode: 'ask',
+                    mode: options.mode ?? 'ask',
                     prompt,
+                    ...(options.workingDirectory ? { workingDirectory: options.workingDirectory } : {}),
                     workspaceId,
-                    ...(attachments && attachments.length > 0 ? { attachments } : {}),
+                    ...(options.attachments && options.attachments.length > 0 ? { attachments: options.attachments } : {}),
+                    ...(options.provider ? { provider: options.provider } : {}),
+                    ...(options.model ? { model: options.model } : {}),
+                    ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
                     context: {
+                        ...(options.context ?? {}),
                         commitChat: { commitHash, commitMessage },
                     },
                 },
+                ...(options.config ? { config: options.config } : {}),
             });
             const newTaskId = res.task?.id ?? (res as { id?: string }).id;
             if (!newTaskId) throw new Error('Failed to create commit chat task');

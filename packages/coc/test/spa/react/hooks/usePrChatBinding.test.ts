@@ -5,10 +5,26 @@
  * sends correct pullRequestChat context (workspaceId, prId, repoId, prTitle) so the
  * backend prompt-builder emits the PR framing sentence, and manages loading/error/taskId states.
  */
+/* @vitest-environment jsdom */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { act, renderHook } from '@testing-library/react';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
+
+const { mockClient } = vi.hoisted(() => ({
+    mockClient: {
+        queue: {
+            enqueue: vi.fn(),
+        },
+    },
+}));
+
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => mockClient,
+}));
+
+import { usePrChatBinding } from '../../../../src/server/spa/client/react/features/git/hooks/usePrChatBinding';
 
 const HOOK_PATH = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'hooks', 'usePrChatBinding.ts'
@@ -19,6 +35,12 @@ describe('usePrChatBinding', () => {
 
     beforeAll(() => {
         source = fs.readFileSync(HOOK_PATH, 'utf-8');
+    });
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        localStorage.clear();
+        mockClient.queue.enqueue.mockResolvedValue({ task: { id: 'task-pr-popout' } });
     });
 
     it('exports UsePrChatBindingOptions interface', () => {
@@ -114,11 +136,65 @@ describe('usePrChatBinding', () => {
         });
 
         it('sets mode to ask', () => {
-            expect(source).toContain("mode: 'ask'");
+            expect(source).toContain("mode: options.mode ?? 'ask'");
         });
 
         it('includes workspaceId in payload so agent CWD resolves to workspace rootPath', () => {
             expect(source).toContain('workspaceId,');
+        });
+
+        it('forwards composer AI selection and attachments into the queue payload', () => {
+            expect(source).toContain('options.attachments');
+            expect(source).toContain('provider: options.provider');
+            expect(source).toContain('model: options.model');
+            expect(source).toContain('reasoningEffort: options.reasoningEffort');
+            expect(source).toContain('config: options.config');
+        });
+
+        it('preserves composer send options while binding pull request context', async () => {
+            const attachments = [{ name: 'risk.txt', mimeType: 'text/plain', size: 4, dataUrl: 'data:text/plain;base64,cmlzaw==' }];
+            const { result } = renderHook(() => usePrChatBinding({
+                workspaceId: 'ws-1',
+                prId: '42',
+                filePath: 'src/app.ts',
+                repoId: 'repo-1',
+                prTitle: 'Improve review chat',
+            }));
+
+            await act(async () => {
+                await result.current.createChat('review prompt', {
+                    mode: 'autopilot',
+                    context: { skills: ['reviewer'] },
+                    attachments,
+                    provider: 'claude',
+                    model: 'claude-sonnet-4.6',
+                    reasoningEffort: 'high',
+                    config: { effortTier: 'high' },
+                    workingDirectory: '/workspace',
+                });
+            });
+
+            expect(mockClient.queue.enqueue).toHaveBeenCalledWith({
+                type: 'chat',
+                priority: 'normal',
+                payload: {
+                    kind: 'chat',
+                    mode: 'autopilot',
+                    prompt: 'review prompt',
+                    workingDirectory: '/workspace',
+                    workspaceId: 'ws-1',
+                    attachments,
+                    provider: 'claude',
+                    model: 'claude-sonnet-4.6',
+                    reasoningEffort: 'high',
+                    context: {
+                        skills: ['reviewer'],
+                        pullRequestChat: { prId: '42', repoId: 'repo-1', prTitle: 'Improve review chat' },
+                    },
+                },
+                config: { effortTier: 'high' },
+            });
+            expect(localStorage.getItem('coc.prChat.binding.42')).toBe('task-pr-popout');
         });
     });
 

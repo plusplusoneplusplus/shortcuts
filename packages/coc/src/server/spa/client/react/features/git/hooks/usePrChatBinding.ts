@@ -13,11 +13,22 @@ export interface UsePrChatBindingOptions {
     prTitle?: string;
 }
 
+export interface ReviewChatComposerSendOptions {
+    mode?: string;
+    context?: Record<string, unknown>;
+    attachments?: AttachmentPayload[];
+    provider?: string;
+    model?: string;
+    reasoningEffort?: string;
+    config?: { effortTier?: string };
+    workingDirectory?: string;
+}
+
 export interface UsePrChatBindingReturn {
     taskId: string | null;
     loading: boolean;
     error: string | null;
-    createChat: (prompt: string, attachments?: AttachmentPayload[]) => Promise<string | null>;
+    createChat: (prompt: string, options?: ReviewChatComposerSendOptions) => Promise<string | null>;
 }
 
 const BINDING_STORAGE_PREFIX = 'coc.prChat.binding.';
@@ -51,7 +62,7 @@ export function usePrChatBinding(opts: UsePrChatBindingOptions): UsePrChatBindin
         setTaskId(stored);
     }, [prId]);
 
-    const createChat = useCallback(async (prompt: string, attachments?: AttachmentPayload[]): Promise<string | null> => {
+    const createChat = useCallback(async (prompt: string, options: ReviewChatComposerSendOptions = {}): Promise<string | null> => {
         setLoading(true);
         setError(null);
         try {
@@ -60,14 +71,20 @@ export function usePrChatBinding(opts: UsePrChatBindingOptions): UsePrChatBindin
                 priority: 'normal',
                 payload: {
                     kind: 'chat',
-                    mode: 'ask',
+                    mode: options.mode ?? 'ask',
                     prompt,
+                    ...(options.workingDirectory ? { workingDirectory: options.workingDirectory } : {}),
                     workspaceId,
-                    ...(attachments && attachments.length > 0 ? { attachments } : {}),
+                    ...(options.attachments && options.attachments.length > 0 ? { attachments: options.attachments } : {}),
+                    ...(options.provider ? { provider: options.provider } : {}),
+                    ...(options.model ? { model: options.model } : {}),
+                    ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
                     context: {
+                        ...(options.context ?? {}),
                         pullRequestChat: { prId, repoId, prTitle },
                     },
                 },
+                ...(options.config ? { config: options.config } : {}),
             });
             const newTaskId = res.task?.id ?? (res as { id?: string }).id;
             if (!newTaskId) throw new Error('Failed to create PR chat task');

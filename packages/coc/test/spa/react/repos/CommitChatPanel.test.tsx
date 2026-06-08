@@ -101,6 +101,12 @@ describe('CommitChatPanel', () => {
         expect(screen.getByTestId('commit-chat-panel')).toBeTruthy();
         expect(screen.getByText('Chat about this commit')).toBeTruthy();
         expect(screen.getByTestId('commit-chat-send-btn')).toBeTruthy();
+        expect(screen.getByTestId('agent-selector-chip-btn')).toBeTruthy();
+        expect(screen.getByTestId('mode-selector')).toBeTruthy();
+        expect(screen.getByTestId('model-picker-chip')).toBeTruthy();
+        expect(screen.getByTestId('effort-pill-selector')).toBeTruthy();
+        expect(screen.getByTestId('chat-toolbar-slash-btn')).toBeTruthy();
+        expect(screen.getByTestId('commit-chat-attach-btn')).toBeTruthy();
     });
 
     // ========================================================================
@@ -258,7 +264,11 @@ describe('CommitChatPanel', () => {
             fireEvent.click(screen.getByTestId('commit-chat-send-btn'));
         });
 
-        expect(mockCreateChat).toHaveBeenCalledWith('check this', fakePayload);
+        expect(mockCreateChat).toHaveBeenCalledWith('check this', expect.objectContaining({
+            mode: 'ask',
+            attachments: fakePayload,
+            provider: 'copilot',
+        }));
     });
 
     it('does not pass attachments when toPayload returns empty', async () => {
@@ -273,7 +283,11 @@ describe('CommitChatPanel', () => {
             fireEvent.click(screen.getByTestId('commit-chat-send-btn'));
         });
 
-        expect(mockCreateChat).toHaveBeenCalledWith('hello', undefined);
+        expect(mockCreateChat).toHaveBeenCalledWith('hello', expect.objectContaining({
+            mode: 'ask',
+            attachments: undefined,
+            provider: 'copilot',
+        }));
     });
 
     it('sends the first hidden-header lens message through the existing binding exactly once', async () => {
@@ -295,6 +309,10 @@ describe('CommitChatPanel', () => {
         });
 
         expect(mockCreateChat).toHaveBeenCalledTimes(1);
-        expect(mockCreateChat).toHaveBeenCalledWith('summarize the risky changes', undefined);
+        expect(mockCreateChat).toHaveBeenCalledWith('summarize the risky changes', expect.objectContaining({
+            mode: 'ask',
+            attachments: undefined,
+            provider: 'copilot',
+        }));
     });
 });

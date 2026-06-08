@@ -70,7 +70,8 @@ describe('CommitChatPlacementFrame', () => {
 
         expect(screen.getByTestId('commit-chat-lens-minimized')).toHaveTextContent('Commit Chat');
         expect(screen.getByTestId('commit-chat-lens-minimized')).toHaveTextContent('abc123d');
-        expect(screen.queryByTestId('commit-chat-panel')).toBeNull();
+        expect(screen.getByTestId('commit-chat-lens-hidden-body')).toHaveClass('hidden');
+        expect(screen.getByTestId('commit-chat-panel')).toBeTruthy();
 
         fireEvent.click(screen.getByTestId('commit-chat-restore-btn'));
 

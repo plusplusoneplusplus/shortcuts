@@ -107,6 +107,12 @@ describe('PrChatPanel', () => {
             expect(screen.getByTestId('pr-chat-panel')).toBeDefined();
             expect(screen.getByText('Chat about this PR')).toBeDefined();
             expect(screen.getByText('Ask questions about the changes')).toBeDefined();
+            expect(screen.getByTestId('agent-selector-chip-btn')).toBeDefined();
+            expect(screen.getByTestId('mode-selector')).toBeDefined();
+            expect(screen.getByTestId('model-picker-chip')).toBeDefined();
+            expect(screen.getByTestId('effort-pill-selector')).toBeDefined();
+            expect(screen.getByTestId('chat-toolbar-slash-btn')).toBeDefined();
+            expect(screen.getByTestId('pr-chat-attach-btn')).toBeDefined();
         });
 
         it('shows PR ID badge', () => {
@@ -146,7 +152,11 @@ describe('PrChatPanel', () => {
                 fireEvent.click(screen.getByTestId('pr-chat-send-btn'));
             });
 
-            expect(mockCreateChat).toHaveBeenCalledWith('Explain this change', undefined);
+            expect(mockCreateChat).toHaveBeenCalledWith('Explain this change', expect.objectContaining({
+                mode: 'ask',
+                attachments: undefined,
+                provider: 'copilot',
+            }));
         });
 
         it('sends on Enter key (without Shift)', async () => {
@@ -159,7 +169,11 @@ describe('PrChatPanel', () => {
                 fireEvent.keyDown(input, { key: 'Enter', shiftKey: false });
             });
 
-            expect(mockCreateChat).toHaveBeenCalledWith('Hello', undefined);
+            expect(mockCreateChat).toHaveBeenCalledWith('Hello', expect.objectContaining({
+                mode: 'ask',
+                attachments: undefined,
+                provider: 'copilot',
+            }));
         });
 
         it('does not send on Shift+Enter', async () => {

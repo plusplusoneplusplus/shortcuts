@@ -161,7 +161,8 @@ describe('ReviewChatPlacementFrame', () => {
 
         expect(screen.getByTestId('commit-chat-lens-minimized')).toHaveTextContent('Commit Chat');
         expect(screen.getByTestId('commit-chat-lens-minimized')).toHaveTextContent('abc1234');
-        expect(screen.queryByTestId('chat-body')).not.toBeInTheDocument();
+        expect(screen.getByTestId('commit-chat-lens-hidden-body')).toHaveClass('hidden');
+        expect(screen.getByTestId('chat-body')).toBeInTheDocument();
 
         fireEvent.click(screen.getByTestId('commit-chat-lens-minimized'));
         expect(onRestore).toHaveBeenCalledTimes(1);

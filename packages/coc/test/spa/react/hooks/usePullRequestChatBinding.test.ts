@@ -5,10 +5,30 @@
  * task creation + binding POST with pullRequestChat context blocks, and
  * error handling. Mirrors the useCommitChatBinding test contract.
  */
+/* @vitest-environment jsdom */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { act, renderHook } from '@testing-library/react';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
+
+const { mockClient } = vi.hoisted(() => ({
+    mockClient: {
+        queue: {
+            enqueue: vi.fn(),
+        },
+        pullRequests: {
+            getChatBinding: vi.fn(),
+            createChatBinding: vi.fn(),
+        },
+    },
+}));
+
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => mockClient,
+}));
+
+import { usePullRequestChatBinding } from '../../../../src/server/spa/client/react/features/pull-requests/hooks/usePullRequestChatBinding';
 
 const HOOK_PATH = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'pull-requests', 'hooks', 'usePullRequestChatBinding.ts',
@@ -19,6 +39,13 @@ describe('usePullRequestChatBinding', () => {
 
     beforeAll(() => {
         source = fs.readFileSync(HOOK_PATH, 'utf-8');
+    });
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockClient.pullRequests.getChatBinding.mockResolvedValue({ taskId: null });
+        mockClient.pullRequests.createChatBinding.mockResolvedValue({});
+        mockClient.queue.enqueue.mockResolvedValue({ task: { id: 'task-pr' } });
     });
 
     it('exports UsePullRequestChatBindingOptions interface', () => {
@@ -86,11 +113,19 @@ describe('usePullRequestChatBinding', () => {
         it('POSTs to /queue with chat payload', () => {
             expect(source).toContain('queue.enqueue');
             expect(source).toContain("kind: 'chat'");
-            expect(source).toContain("mode: 'ask'");
+            expect(source).toContain("mode: options.mode ?? 'ask'");
         });
 
         it('includes pullRequestChat in context', () => {
             expect(source).toContain('pullRequestChat: { prId, prNumber, prTitle, repoId }');
+        });
+
+        it('forwards composer AI selection and attachments into the queue payload', () => {
+            expect(source).toContain('options.attachments');
+            expect(source).toContain('provider: options.provider');
+            expect(source).toContain('model: options.model');
+            expect(source).toContain('reasoningEffort: options.reasoningEffort');
+            expect(source).toContain('config: options.config');
         });
 
         it('extracts taskId from nested task object (server returns { task: { id } })', () => {
@@ -104,6 +139,52 @@ describe('usePullRequestChatBinding', () => {
         it('sets taskId on success', () => {
             expect(source).toContain('setTaskId(newTaskId)');
             expect(source).toContain('return newTaskId');
+        });
+
+        it('preserves composer send options while binding pull request context', async () => {
+            const attachments = [{ name: 'risk.txt', mimeType: 'text/plain', size: 4, dataUrl: 'data:text/plain;base64,cmlzaw==' }];
+            const { result } = renderHook(() => usePullRequestChatBinding({
+                workspaceId: 'ws-1',
+                prId: '142',
+                prNumber: 142,
+                prTitle: 'Add retry logic',
+                repoId: 'repo-1',
+            }));
+
+            await act(async () => {
+                await result.current.createChat('review prompt', {
+                    mode: 'autopilot',
+                    context: { skills: ['reviewer'] },
+                    attachments,
+                    provider: 'codex',
+                    model: 'gpt-5.4',
+                    reasoningEffort: 'medium',
+                    config: { effortTier: 'medium' },
+                    workingDirectory: '/workspace',
+                });
+            });
+
+            expect(mockClient.queue.enqueue).toHaveBeenCalledWith({
+                type: 'chat',
+                priority: 'normal',
+                payload: {
+                    kind: 'chat',
+                    mode: 'autopilot',
+                    prompt: 'review prompt',
+                    workingDirectory: '/workspace',
+                    workspaceId: 'ws-1',
+                    attachments,
+                    provider: 'codex',
+                    model: 'gpt-5.4',
+                    reasoningEffort: 'medium',
+                    context: {
+                        skills: ['reviewer'],
+                        pullRequestChat: { prId: '142', prNumber: 142, prTitle: 'Add retry logic', repoId: 'repo-1' },
+                    },
+                },
+                config: { effortTier: 'medium' },
+            });
+            expect(mockClient.pullRequests.createChatBinding).toHaveBeenCalledWith('ws-1', '142', 'task-pr');
         });
     });
 
