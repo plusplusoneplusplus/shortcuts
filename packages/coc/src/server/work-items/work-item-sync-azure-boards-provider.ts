@@ -324,8 +324,9 @@ export function azureBoardsProjectFromRemoteUrl(remoteUrl?: string | null): Avai
     }
     if (host.endsWith('.visualstudio.com')) {
         const org = host.slice(0, -'.visualstudio.com'.length);
-        const [project, marker] = segments;
-        if (org && project && marker?.toLowerCase() === '_git') {
+        const markerIndex = segments.findIndex(segment => segment.toLowerCase() === '_git');
+        const project = markerIndex > 0 ? segments[markerIndex - 1] : undefined;
+        if (org && project) {
             return availableProject(devAzureOrgUrl(org), project, 'workspaceRemote');
         }
     }

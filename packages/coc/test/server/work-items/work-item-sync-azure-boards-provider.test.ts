@@ -50,6 +50,16 @@ describe('azureBoardsProjectFromRemoteUrl', () => {
             project: 'Project Alpha',
             source: 'workspaceRemote',
         });
+        expect(azureBoardsProjectFromRemoteUrl('https://octo-org.visualstudio.com/DefaultCollection/Project%20Alpha/_git/octo-repo')).toMatchObject({
+            organizationUrl: 'https://dev.azure.com/octo-org',
+            project: 'Project Alpha',
+            source: 'workspaceRemote',
+        });
+        expect(azureBoardsProjectFromRemoteUrl('https://octo-org.visualstudio.com/LegacyCollection/Project%20Alpha/_git/octo-repo')).toMatchObject({
+            organizationUrl: 'https://dev.azure.com/octo-org',
+            project: 'Project Alpha',
+            source: 'workspaceRemote',
+        });
         expect(azureBoardsProjectFromRemoteUrl('git@ssh.dev.azure.com:v3/octo-org/Project%20Alpha/octo-repo')).toMatchObject({
             organizationUrl: 'https://dev.azure.com/octo-org',
             project: 'Project Alpha',
@@ -99,6 +109,36 @@ describe('Azure Boards work item sync provider status adapter', () => {
         });
 
         const status = await provider.getStatus(makeContext(undefined, 'https://dev.azure.com/octo-org/Project%20Alpha/_git/octo-repo'));
+
+        expect(status).toMatchObject({
+            provider: 'azure-boards',
+            available: true,
+            repository: {
+                provider: 'azure-boards',
+                organizationUrl: 'https://dev.azure.com/octo-org',
+                project: 'Project Alpha',
+                projectId: 'Project Alpha',
+                url: 'https://dev.azure.com/octo-org/Project%20Alpha',
+                source: 'workspaceRemote',
+            },
+            auth: {
+                mode: 'external',
+                authenticated: true,
+            },
+        });
+        expect(JSON.stringify(status)).not.toMatch(/secret-bearer-token|token|bearer|authorization/i);
+    });
+
+    it('reports available status from legacy visualstudio.com collection remotes without saved provider config', async () => {
+        const provider = createAzureBoardsWorkItemSyncProviderAdapter({
+            dataDir: tmpDir,
+            resolveAccessToken: async () => 'secret-bearer-token',
+        });
+
+        const status = await provider.getStatus(makeContext(
+            undefined,
+            'https://octo-org.visualstudio.com/DefaultCollection/Project%20Alpha/_git/octo-repo',
+        ));
 
         expect(status).toMatchObject({
             provider: 'azure-boards',
