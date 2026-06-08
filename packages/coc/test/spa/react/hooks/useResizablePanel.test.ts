@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useResizablePanel } from '../../../../src/server/spa/client/react/hooks/ui/useResizablePanel';
 
 describe('useResizablePanel', () => {
@@ -158,6 +158,33 @@ describe('useResizablePanel', () => {
         );
 
         expect(result.current.width).toBe(400);
+    });
+
+    it('reloads width from localStorage when the storage key changes', async () => {
+        const firstKey = 'test-sidebar-width:first';
+        const secondKey = 'test-sidebar-width:second';
+        const emptyKey = 'test-sidebar-width:empty';
+        localStorage.setItem(firstKey, '280');
+        localStorage.setItem(secondKey, '420');
+
+        const { result, rerender } = renderHook(
+            ({ storageKey }) => useResizablePanel({
+                initialWidth: 360,
+                minWidth: 200,
+                maxWidth: 600,
+                storageKey,
+            }),
+            { initialProps: { storageKey: firstKey } },
+        );
+
+        expect(result.current.width).toBe(280);
+
+        rerender({ storageKey: secondKey });
+        await waitFor(() => expect(result.current.width).toBe(420));
+
+        rerender({ storageKey: emptyKey });
+        await waitFor(() => expect(result.current.width).toBe(360));
+        expect(localStorage.getItem(secondKey)).toBe('420');
     });
 
     it('ignores invalid localStorage values', () => {

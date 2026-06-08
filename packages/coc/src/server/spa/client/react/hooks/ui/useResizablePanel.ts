@@ -38,6 +38,10 @@ function loadPersistedWidth(key: string | undefined, fallback: number): number {
     return fallback;
 }
 
+function clampWidth(width: number, minWidth: number, maxWidth: number): number {
+    return Math.min(Math.max(width, minWidth), maxWidth);
+}
+
 export function useResizablePanel(options: UseResizablePanelOptions = {}): UseResizablePanelReturn {
     const {
         initialWidth = 320,
@@ -49,16 +53,17 @@ export function useResizablePanel(options: UseResizablePanelOptions = {}): UseRe
 
     const [width, setWidth] = useState(() => {
         const persisted = loadPersistedWidth(storageKey, initialWidth);
-        return Math.min(Math.max(persisted, minWidth), maxWidth);
+        return clampWidth(persisted, minWidth, maxWidth);
     });
     const [isDragging, setIsDragging] = useState(false);
     const startXRef = useRef(0);
     const startWidthRef = useRef(0);
+    const skipNextPersistRef = useRef(false);
 
     const onMove = useCallback((clientX: number) => {
         const rawDelta = clientX - startXRef.current;
         const delta = direction === 'right' ? -rawDelta : rawDelta;
-        const newWidth = Math.min(Math.max(startWidthRef.current + delta, minWidth), maxWidth);
+        const newWidth = clampWidth(startWidthRef.current + delta, minWidth, maxWidth);
         setWidth(newWidth);
     }, [minWidth, maxWidth, direction]);
 
@@ -66,8 +71,19 @@ export function useResizablePanel(options: UseResizablePanelOptions = {}): UseRe
         setIsDragging(false);
     }, []);
 
+    useEffect(() => {
+        if (isDragging) return;
+        skipNextPersistRef.current = true;
+        const persisted = loadPersistedWidth(storageKey, initialWidth);
+        setWidth(clampWidth(persisted, minWidth, maxWidth));
+    }, [initialWidth, maxWidth, minWidth, storageKey]);
+
     // Persist width when dragging ends
     useEffect(() => {
+        if (skipNextPersistRef.current) {
+            skipNextPersistRef.current = false;
+            return;
+        }
         if (!isDragging && storageKey) {
             try { localStorage.setItem(storageKey, String(width)); } catch { /* ignore */ }
         }

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 
-const { configMocks, breakpointState, chatFrameProps } = vi.hoisted(() => ({
+const { configMocks, breakpointState, chatFrameProps, resizeMocks } = vi.hoisted(() => ({
     configMocks: {
         isCommitChatLensEnabled: vi.fn(() => true),
     },
@@ -10,6 +10,13 @@ const { configMocks, breakpointState, chatFrameProps } = vi.hoisted(() => ({
     },
     chatFrameProps: {
         last: null as any,
+    },
+    resizeMocks: {
+        calls: [] as any[],
+        width: 432,
+        handleMouseDown: vi.fn(),
+        handleTouchStart: vi.fn(),
+        resetWidth: vi.fn(),
     },
 }));
 
@@ -35,6 +42,19 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
 
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => breakpointState.current,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useResizablePanel', () => ({
+    useResizablePanel: (options: any) => {
+        resizeMocks.calls.push(options);
+        return {
+            width: resizeMocks.width,
+            isDragging: false,
+            handleMouseDown: resizeMocks.handleMouseDown,
+            handleTouchStart: resizeMocks.handleTouchStart,
+            resetWidth: resizeMocks.resetWidth,
+        };
+    },
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
@@ -167,6 +187,8 @@ describe('WorkItemDetail Work Item chat lens', () => {
         configMocks.isCommitChatLensEnabled.mockReturnValue(true);
         breakpointState.current = { isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' };
         chatFrameProps.last = null;
+        resizeMocks.calls = [];
+        resizeMocks.width = 432;
         itemsById = new Map([
             ['wi-1', makeItem('wi-1', 'Saved title one', 7)],
             ['wi-2', makeItem('wi-2', 'Saved title two', 8)],
@@ -244,6 +266,37 @@ describe('WorkItemDetail Work Item chat lens', () => {
         expect(localStorage.getItem(getReviewChatMinimizedStorageKey(targetTwo))).toBeNull();
     });
 
+    it('pins feature-flagged Work Item chat into a resizable desktop side column', async () => {
+        render(<WorkItemDetail workItemId="wi-1" workspaceId="ws-1" onBack={vi.fn()} />);
+
+        fireEvent.click(await screen.findByTestId('work-item-ask-ai-btn'));
+        await waitFor(() => expect(screen.getByTestId('work-item-chat-lens')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('mock-chat-pin'));
+
+        const target = { type: 'work-item' as const, workspaceId: 'ws-1', workItemId: 'wi-1' };
+        await waitFor(() => expect(screen.getByTestId('work-item-chat-side-column')).toBeTruthy());
+        expect(screen.getByTestId('work-item-detail-content')).toBeTruthy();
+        expect(screen.getByTestId('work-item-chat-side-column')).toHaveStyle({ width: '432px' });
+        expect(screen.getByTestId('work-item-chat-side-panel').getAttribute('data-work-item-id')).toBe('wi-1');
+        expect(screen.queryByTestId('work-item-chat-side-panel-container')).toBeNull();
+        expect(localStorage.getItem(getReviewChatPlacementStorageKey(target))).toBe('side-panel');
+        expect(chatFrameProps.last.onPin).toBeUndefined();
+        expect(chatFrameProps.last.onUnpin).toEqual(expect.any(Function));
+
+        fireEvent.mouseDown(screen.getByTestId('work-item-chat-resize-handle'), { clientX: 500 });
+        expect(resizeMocks.handleMouseDown).toHaveBeenCalledTimes(1);
+        const lastResizeCall = resizeMocks.calls[resizeMocks.calls.length - 1];
+        expect(lastResizeCall).toMatchObject({
+            initialWidth: 360,
+            minWidth: 200,
+            maxWidth: 600,
+            storageKey: 'coc.workItemChatPanel.width.ws-1.wi-1',
+            direction: 'right',
+        });
+        expect(lastResizeCall.storageKey).not.toBe('coc.commitChatPanel.width');
+    });
+
     it('closes a minimized Work Item chat without clearing another Work Item lens state', async () => {
         render(<WorkItemDetail workItemId="wi-1" workspaceId="ws-1" onBack={vi.fn()} />);
 
@@ -306,6 +359,13 @@ describe('WorkItemDetail Work Item chat lens', () => {
 
         await waitFor(() => expect(screen.getByTestId('work-item-chat-lens')).toBeTruthy());
         expect(screen.queryByTestId('work-item-chat-side-panel')).toBeNull();
+
+        fireEvent.click(screen.getByTestId('mock-chat-pin'));
+
+        await waitFor(() => expect(screen.getByTestId('work-item-chat-side-panel-container')).toBeTruthy());
+        expect(screen.getByTestId('work-item-chat-side-panel')).toBeTruthy();
+        expect(screen.queryByTestId('work-item-chat-side-column')).toBeNull();
+        expect(screen.queryByTestId('work-item-chat-resize-handle')).toBeNull();
     });
 
     it('keeps the lens presentation on tablet viewports when the feature flag is enabled', async () => {

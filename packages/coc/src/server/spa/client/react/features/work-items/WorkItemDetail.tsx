@@ -38,10 +38,16 @@ import { isWorkItemsAiAuthoringEnabled } from '../../utils/config';
 import { WorkItemRemoteMirrorBadge } from './WorkItemGitHubMirrorBadge';
 import { useReviewChatPresentation } from '../git/hooks/useReviewChatPresentation';
 import type { ReviewChatTarget } from '../git/commits/commitChatPlacement';
+import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { WorkItemChatPanel } from './WorkItemChatPanel';
 import { WorkItemChatPlacementFrame } from './WorkItemChatPlacementFrame';
 
 const UNSAVED_CHANGES_MESSAGE = 'You have unsaved changes. Leave without saving?';
+const WORK_ITEM_CHAT_PANEL_WIDTH_STORAGE_PREFIX = 'coc.workItemChatPanel.width';
+
+function getWorkItemChatPanelWidthStorageKey(workspaceId: string, workItemId: string): string {
+    return `${WORK_ITEM_CHAT_PANEL_WIDTH_STORAGE_PREFIX}.${encodeURIComponent(workspaceId)}.${encodeURIComponent(workItemId)}`;
+}
 
 const STATUS_LABELS: Record<string, { label: string; badgeStatus: string }> = {
     created:          { label: 'Created',          badgeStatus: 'queued' },
@@ -272,9 +278,17 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         isMinimized: workItemChatMinimized,
         presentation: workItemChatPresentation,
         lensEnabled: workItemChatLensEnabled,
+        isDesktop: workItemChatIsDesktop,
     } = useReviewChatPresentation({
         target: workItemChatTarget,
         forceLensOnNonDesktop: true,
+    });
+    const workItemChatResize = useResizablePanel({
+        initialWidth: 360,
+        minWidth: 200,
+        maxWidth: 600,
+        storageKey: getWorkItemChatPanelWidthStorageKey(workspaceId, workItemId),
+        direction: 'right',
     });
     const currentSelectionRef = useRef({ workspaceId, workItemId });
     const previousSelectionRef = useRef({ workspaceId, workItemId });
@@ -781,6 +795,11 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                 onUnpin={workItemChatLensEnabled && workItemChatPinned ? unpinWorkItemChat : undefined}
             />
         );
+    const renderWorkItemChatSideColumn = workItemChatOpen
+        && workItemChatPresentation === 'side-panel'
+        && workItemChatLensEnabled
+        && workItemChatPinned
+        && workItemChatIsDesktop;
 
     return (
         <div className="relative flex flex-col h-full overflow-hidden" data-testid="work-item-detail">
@@ -986,7 +1005,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
             </div>
 
             {/* ── Body ── */}
-            <div className="flex-1 overflow-y-auto min-h-0 bg-white dark:bg-[#1e1e1e]">
+            <div className="flex min-h-0 flex-1">
+            <div className="min-w-0 flex-1 overflow-y-auto min-h-0 bg-white dark:bg-[#1e1e1e]" data-testid="work-item-detail-content">
                 <div className="grid gap-3 items-start" style={{ gridTemplateColumns: 'minmax(0, 1fr)', padding: '12px 16px 18px' }}>
                 {error && (
                     <div className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 rounded p-2 flex items-start justify-between gap-2">
@@ -1510,10 +1530,30 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
 
                 </div>
             </div>
+            {renderWorkItemChatSideColumn && (
+                <>
+                    <div
+                        className="hidden lg:flex items-center justify-center w-1 cursor-col-resize hover:bg-[#007acc]/30 active:bg-[#007acc]/50 bg-[#e0e0e0] dark:bg-[#3c3c3c] shrink-0"
+                        onMouseDown={workItemChatResize.handleMouseDown}
+                        onTouchStart={workItemChatResize.handleTouchStart}
+                        role="separator"
+                        aria-label="Resize Work Item chat panel"
+                        data-testid="work-item-chat-resize-handle"
+                    />
+                    <div
+                        style={{ width: workItemChatResize.width }}
+                        className="hidden lg:block shrink-0 h-full"
+                        data-testid="work-item-chat-side-column"
+                    >
+                        {workItemChatSurface}
+                    </div>
+                </>
+            )}
+            </div>
 
             {workItemChatOpen && workItemChatPresentation === 'lens' && workItemChatSurface}
 
-            {workItemChatOpen && workItemChatPresentation === 'side-panel' && (
+            {workItemChatOpen && workItemChatPresentation === 'side-panel' && !renderWorkItemChatSideColumn && (
                 <div
                     className="min-h-[320px] h-[min(45vh,420px)] shrink-0 border-t border-[#d0d7de] bg-[#f8f8f8] dark:border-[#3c3c3c] dark:bg-[#1e1e1e]"
                     data-testid="work-item-chat-side-panel-container"
