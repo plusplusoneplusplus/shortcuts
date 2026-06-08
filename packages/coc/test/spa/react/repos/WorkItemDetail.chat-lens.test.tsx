@@ -308,6 +308,17 @@ describe('WorkItemDetail Work Item chat lens', () => {
         expect(screen.queryByTestId('work-item-chat-side-panel')).toBeNull();
     });
 
+    it('keeps the lens presentation on tablet viewports when the feature flag is enabled', async () => {
+        breakpointState.current = { isMobile: false, isTablet: true, isDesktop: false, breakpoint: 'tablet' };
+        render(<WorkItemDetail workItemId="wi-1" workspaceId="ws-1" onBack={vi.fn()} />);
+
+        await screen.findByTestId('work-item-ask-ai-btn');
+        fireEvent.click(screen.getByTestId('work-item-ask-ai-btn'));
+
+        await waitFor(() => expect(screen.getByTestId('work-item-chat-lens')).toBeTruthy());
+        expect(screen.queryByTestId('work-item-chat-side-panel')).toBeNull();
+    });
+
     it('uses the non-lens fallback panel when the commit chat lens flag is disabled', async () => {
         configMocks.isCommitChatLensEnabled.mockReturnValue(false);
         const { rerender } = render(<WorkItemDetail workItemId="wi-1" workspaceId="ws-1" onBack={vi.fn()} />);
