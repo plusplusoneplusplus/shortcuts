@@ -1,17 +1,25 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
+    clearReviewChatMinimized,
     getCommitChatPlacementStorageKey,
     getReviewChatMinimizedStorageKey,
     getReviewChatOpenStorageKey,
     getReviewChatPlacementStorageKey,
     getReviewChatTargetStorageId,
     isCommitChatPinned,
+    isReviewChatPinned,
     pinCommitChat,
+    pinReviewChat,
     readCommitChatOpen,
+    readReviewChatMinimized,
+    readReviewChatOpen,
     resolveCommitChatPresentation,
     resolveReviewChatPresentation,
     unpinCommitChat,
+    unpinReviewChat,
     writeCommitChatOpen,
+    writeReviewChatMinimized,
+    writeReviewChatOpen,
 } from '../../../../src/server/spa/client/react/features/git/commits/commitChatPlacement';
 
 describe('commit chat placement', () => {
@@ -92,6 +100,41 @@ describe('commit chat placement', () => {
         expect(getReviewChatOpenStorageKey(target)).toBe('coc.reviewChat.open.work-item.repo%2Fone.WI%3A123');
         expect(getReviewChatPlacementStorageKey(target)).toBe('coc.reviewChat.placement.work-item.repo%2Fone.WI%3A123');
         expect(getReviewChatMinimizedStorageKey(target)).toBe('coc.reviewChat.minimized.work-item.repo%2Fone.WI%3A123');
+    });
+
+    it('updates only the matching Work Item review-chat open, minimized, and pinned state', () => {
+        const targetOne = { type: 'work-item' as const, workspaceId: 'repo/one', workItemId: 'WI:123' };
+        const targetTwo = { type: 'work-item' as const, workspaceId: 'repo/one', workItemId: 'WI:456' };
+        const otherWorkspaceTarget = { type: 'work-item' as const, workspaceId: 'repo/two', workItemId: 'WI:123' };
+
+        writeReviewChatOpen(targetOne, true);
+        writeReviewChatMinimized(targetOne, true);
+        writeReviewChatOpen(targetTwo, true);
+        writeReviewChatMinimized(targetTwo, true);
+        writeReviewChatOpen(otherWorkspaceTarget, true);
+        writeReviewChatMinimized(otherWorkspaceTarget, true);
+
+        pinReviewChat(targetOne);
+
+        expect(readReviewChatOpen(targetOne)).toBe(true);
+        expect(isReviewChatPinned(targetOne)).toBe(true);
+        expect(readReviewChatMinimized(targetOne)).toBe(false);
+        expect(readReviewChatOpen(targetTwo)).toBe(true);
+        expect(readReviewChatMinimized(targetTwo)).toBe(true);
+        expect(readReviewChatOpen(otherWorkspaceTarget)).toBe(true);
+        expect(readReviewChatMinimized(otherWorkspaceTarget)).toBe(true);
+
+        unpinReviewChat(targetOne);
+        writeReviewChatOpen(targetOne, false);
+        clearReviewChatMinimized(targetOne);
+
+        expect(readReviewChatOpen(targetOne)).toBe(false);
+        expect(isReviewChatPinned(targetOne)).toBe(false);
+        expect(readReviewChatMinimized(targetOne)).toBe(false);
+        expect(readReviewChatOpen(targetTwo)).toBe(true);
+        expect(readReviewChatMinimized(targetTwo)).toBe(true);
+        expect(readReviewChatOpen(otherWorkspaceTarget)).toBe(true);
+        expect(readReviewChatMinimized(otherWorkspaceTarget)).toBe(true);
     });
 
     it('keeps Work Item lens presentation on non-desktop when requested', () => {
