@@ -171,7 +171,14 @@ describe('useWorkItemChatBinding', () => {
         await act(async () => {
             await result.current.createChat('What should I do next?', {
                 mode: 'ask',
-                context: { source: 'work-item-detail' },
+                context: {
+                    source: 'work-item-detail',
+                    workItemChat: {
+                        workspaceId: 'spoofed-ws',
+                        workItemId: 'spoofed-wi',
+                        title: 'Unsafe caller-supplied title',
+                    },
+                },
                 attachments,
                 provider: 'codex',
                 model: 'gpt-5.4',
@@ -197,6 +204,7 @@ describe('useWorkItemChatBinding', () => {
                 context: {
                     source: 'work-item-detail',
                     workItemChat: {
+                        workspaceId: 'ws-1',
                         workItemId: 'wi-123',
                         status: 'planning',
                         type: 'bug',
@@ -219,6 +227,8 @@ describe('useWorkItemChatBinding', () => {
         expect(enqueueArg.payload.prompt).not.toContain('description');
         expect(enqueueArg.payload.prompt).not.toContain('raw plan content');
         expect(enqueueArg.payload.prompt).not.toContain('provider details');
+        expect(enqueueArg.payload.context.workItemChat.workspaceId).toBe('ws-1');
+        expect(enqueueArg.payload.context.workItemChat.workItemId).toBe('wi-123');
         expect(enqueueArg.payload.context.workItemChat.title).toBeUndefined();
         expect(mockClient.workItems.createChatBinding).toHaveBeenCalledWith('ws-1', 'wi-123', 'task-work-item');
         expect(result.current.taskId).toBe('task-work-item');

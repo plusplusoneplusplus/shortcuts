@@ -120,7 +120,7 @@ export function useWorkItemChatBinding(opts: UseWorkItemChatBindingOptions): Use
                     ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
                     context: {
                         ...(options.context ?? {}),
-                        workItemChat: { workItemId, status, type, workItemNumber },
+                        workItemChat: { workspaceId, workItemId, status, type, workItemNumber },
                     },
                 },
                 ...(options.config ? { config: options.config } : {}),
