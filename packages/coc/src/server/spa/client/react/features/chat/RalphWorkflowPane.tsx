@@ -76,6 +76,7 @@ const PHASE_BADGE: Record<RalphSessionRecord['phase'], { label: string; cls: str
 
 const TERMINAL_LABEL: Record<RalphTerminalReason, string> = {
     RALPH_COMPLETE: 'Completed',
+    MANUAL_VERIFICATION_ONLY: 'Manual verification needed',
     CAP_REACHED: 'Iteration cap reached',
     CANCELLED: 'Cancelled',
     NO_SIGNAL: 'Stopped — no signal',

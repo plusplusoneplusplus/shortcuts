@@ -27,10 +27,12 @@ const EVALUATION_INSTRUCTIONS = `## Evaluation Steps
 
 Treat the following as gaps:
 - An acceptance criterion has no recorded evidence it was tested/validated.
-- A "Remaining:" entry in the journal was not addressed.
+- A "Remaining:" entry in the journal was not addressed, unless it is explicitly manual-verification-only or final-check-only.
 - Validation commands referenced in the spec fail or are missing.
 - The diff contradicts a claim in progress.md (e.g., a file listed as created does not exist).
 - A Definition of Done step is not satisfied with documented evidence.
+
+Do not report gaps for manual demos, product review, unavailable credentials, human approval, or other user-only verification when the journal explicitly says no autonomous implementation or automatable validation work remains. Mention those manual follow-ups in the summary instead.
 
 ## Output Format
 

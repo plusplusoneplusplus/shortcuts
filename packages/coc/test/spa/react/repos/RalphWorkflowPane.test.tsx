@@ -179,6 +179,22 @@ describe('RalphWorkflowPane', () => {
         expect(screen.getByTestId('ralph-workflow-terminal-reason')).toHaveTextContent(/Iteration cap reached/);
     });
 
+    it('renders the manual-verification-needed terminal reason', () => {
+        const view: RalphSessionView = {
+            record: makeRecord({
+                phase: 'complete',
+                currentIteration: 4,
+                completedAt: new Date().toISOString(),
+                terminalReason: 'MANUAL_VERIFICATION_ONLY',
+                iterations: [makeIter(1), makeIter(2), makeIter(3), makeIter(4)],
+            }),
+            sections: [makeSection(4)],
+        };
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.getByTestId('ralph-workflow-terminal-reason')).toHaveTextContent(/Manual verification needed/);
+    });
+
+
     it('renders the grilling-only state with the empty timeline', () => {
         const view: RalphSessionView = {
             record: makeRecord({ phase: 'grilling', currentIteration: 0, iterations: [] }),
@@ -400,6 +416,22 @@ describe('RalphWorkflowPane', () => {
         render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
         expect(screen.queryByTestId('ralph-workflow-continue')).toBeNull();
     });
+
+    it('hides the Continue loop button when only manual verification remains', () => {
+        const view: RalphSessionView = {
+            record: makeRecord({
+                phase: 'complete',
+                currentIteration: 4,
+                completedAt: new Date().toISOString(),
+                terminalReason: 'MANUAL_VERIFICATION_ONLY',
+                iterations: [makeIter(4)],
+            }),
+            sections: [makeSection(4)],
+        };
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.queryByTestId('ralph-workflow-continue')).toBeNull();
+    });
+
 
     it('shows the Continue loop button when NO_SIGNAL did not reach the cap (early agent failure)', () => {
         const view: RalphSessionView = {

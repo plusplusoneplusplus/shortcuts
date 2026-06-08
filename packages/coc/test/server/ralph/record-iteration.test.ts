@@ -127,6 +127,24 @@ describe('recordRalphIteration', () => {
         expect(r.record!.terminalReason).toBe('CAP_REACHED');
     });
 
+    it('honors explicit terminalReason=MANUAL_VERIFICATION_ONLY for manual-only RALPH_NEXT', async () => {
+        const r = await recordRalphIteration({
+            dataDir,
+            workspaceId: WS,
+            sessionId: SID,
+            iteration: 2,
+            maxIterations: 5,
+            signal: 'RALPH_NEXT',
+            progressBody: 'Remaining: manual verification only',
+            taskId: 't2',
+            processId: 'p2',
+            shouldContinue: false,
+            terminalReason: 'MANUAL_VERIFICATION_ONLY',
+        });
+        expect(r.record!.phase).toBe('complete');
+        expect(r.record!.terminalReason).toBe('MANUAL_VERIFICATION_ONLY');
+    });
+
     it('marks terminalReason=NO_SIGNAL when no signal was emitted', async () => {
         const r = await recordRalphIteration({
             dataDir,

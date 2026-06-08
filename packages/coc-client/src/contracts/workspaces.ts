@@ -338,6 +338,7 @@ export type RalphSessionPhase = 'grilling' | 'executing' | 'complete';
 
 export type RalphTerminalReason =
   | 'RALPH_COMPLETE'
+  | 'MANUAL_VERIFICATION_ONLY'
   | 'CAP_REACHED'
   | 'CANCELLED'
   | 'NO_SIGNAL';

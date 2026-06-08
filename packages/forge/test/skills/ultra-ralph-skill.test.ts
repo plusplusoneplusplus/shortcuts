@@ -33,4 +33,11 @@ describe('ultra-ralph bundled skill', () => {
         const content = fs.readFileSync(SKILL_FILE, 'utf8');
         expect(content).toContain('name: ultra-ralph');
     });
+
+    it('defines RALPH_NEXT and RALPH_COMPLETE in terms of autonomous work', () => {
+        const content = fs.readFileSync(SKILL_FILE, 'utf8');
+        expect(content).toContain('Emit RALPH_NEXT only when a specific autonomous subtask remains');
+        expect(content).toContain('Remaining: manual verification only');
+        expect(content).toContain('human-only verification');
+    });
 });

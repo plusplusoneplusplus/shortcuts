@@ -57,6 +57,10 @@ all have their own `references/*.md`.
   `RalphExecutor` must use validation-only system instructions whenever
   `context.ralph.finalCheck` is present. Do not route final checks through the
   normal implementation-loop system prompt.
+- **Ralph manual-only completion** treats explicit manual-verification-only
+  `Remaining:` progress as complete autonomous work: do not queue another
+  implementation iteration; enqueue final-check and preserve the manual
+  verification-needed terminal status.
 - **Loop ticks** must route completion through
   `ProcessLifecycleRunner → onLoopTickComplete → LoopExecutor.onTickComplete`;
   bookkeeping errors must never mask the follow-up's actual result.

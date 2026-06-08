@@ -5,15 +5,19 @@
  *  1. Ask coc-workflow/ralph for portable iteration action intents via
  *     decideRalphIterationActions.
  *  2. Apply CoC-owned side effects: journal writes, task enqueueing, WS broadcast.
- *  3. When the signal is RALPH_COMPLETE, enqueue a final-check task with
- *     in-memory + persistent idempotency guards.
+ *  3. When the decision says autonomous work is complete, enqueue a final-check
+ *     task with in-memory + persistent idempotency guards.
  *
  * The queue-executor-bridge delegates to this function after a ralph-mode task
  * completes, making the bridge thin — it no longer directly encodes the
  * iteration/final-check branching policy.
  */
 
-import { decideRalphIterationActions } from '@plusplusoneplusplus/coc-workflow/ralph';
+import {
+    decideRalphIterationActions,
+    type ParsedProgressSection,
+    type RalphIterationCompletionReason,
+} from '@plusplusoneplusplus/coc-workflow/ralph';
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import { RalphSessionStore } from './ralph-session-store';
 import { recordRalphIteration } from './record-iteration';
@@ -110,6 +114,12 @@ export async function orchestrateRalphIteration(input: OrchestrateRalphIteration
         deps,
     } = input;
     const logger = getLogger();
+    const recentProgressSections = await readRecentProgressSections({
+        dataDir: deps.dataDir,
+        workspaceId,
+        sessionId,
+        logger,
+    });
 
     const decision = decideRalphIterationActions({
         responseText,
@@ -122,6 +132,7 @@ export async function orchestrateRalphIteration(input: OrchestrateRalphIteration
         maxIterations,
         iterationStartMs,
         adapterContext,
+        recentProgressSections,
     });
 
     for (const action of decision.actions) {
@@ -139,6 +150,7 @@ export async function orchestrateRalphIteration(input: OrchestrateRalphIteration
                     processId: action.processId,
                     shouldContinue: action.shouldContinue,
                     originalGoal: action.originalGoal,
+                    terminalReason: action.terminalReason,
                     iterationStartMs: action.iterationStartMs,
                 }).catch(err => {
                     logger.debug(LogCategory.AI, `[Ralph] journal persist failed for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
@@ -201,6 +213,7 @@ export async function orchestrateRalphIteration(input: OrchestrateRalphIteration
                     workspaceId: action.workspaceId,
                     sessionId: action.sessionId,
                     sourceIteration: action.sourceIteration,
+                    completionReason: action.completionReason,
                     completedTaskId,
                     processId,
                     ralphCtx,
@@ -243,6 +256,7 @@ interface EnqueueFinalCheckInput {
     workspaceId?: string;
     sessionId?: string;
     sourceIteration: number;
+    completionReason: Extract<RalphIterationCompletionReason, 'signal' | 'manual-verification-only'>;
     completedTaskId: string;
     processId: string;
     ralphCtx?: Record<string, unknown>;
@@ -250,26 +264,26 @@ interface EnqueueFinalCheckInput {
 }
 
 /**
- * Enqueue a final-check task after a RALPH_COMPLETE iteration, with
+ * Enqueue a final-check task after an autonomous-complete iteration, with
  * in-memory + persistent idempotency guards.
  *
- * Falls back to broadcasting a 'signal' session-complete event when no
- * dataDir is configured (no journal to check against).
+ * Falls back to broadcasting the decision's completion reason when no dataDir
+ * is configured (no journal to check against).
  */
 async function enqueueFinalCheckForSession(input: EnqueueFinalCheckInput): Promise<void> {
-    const { workspaceId, sessionId, sourceIteration, completedTaskId, processId, ralphCtx, deps } = input;
+    const { workspaceId, sessionId, sourceIteration, completionReason, completedTaskId, processId, ralphCtx, deps } = input;
     const logger = getLogger();
 
     if (!workspaceId || !sessionId) return;
 
     if (!deps.dataDir) {
-        // No journal configured — fall back to direct session-complete signal.
+        // No journal configured — fall back to direct session-complete event.
         deps.broadcastSessionComplete({
             workspaceId,
             sessionId,
             processId: completedTaskId,
             totalIterations: sourceIteration,
-            reason: 'signal',
+            reason: completionReason,
         });
         return;
     }
@@ -358,4 +372,27 @@ function isAutoProviderRoutingRequested(context: Record<string, unknown> | undef
         && !Array.isArray(routing)
         && (routing as Record<string, unknown>).requested === true
     );
+}
+
+async function readRecentProgressSections(input: {
+    dataDir?: string;
+    workspaceId?: string;
+    sessionId?: string;
+    logger: ReturnType<typeof getLogger>;
+}): Promise<Pick<ParsedProgressSection, 'signal' | 'body'>[] | undefined> {
+    const { dataDir, workspaceId, sessionId, logger } = input;
+    if (!dataDir || !workspaceId || !sessionId) {
+        return undefined;
+    }
+
+    try {
+        const store = new RalphSessionStore({ dataDir });
+        const progress = await store.readProgress(workspaceId, sessionId);
+        return RalphSessionStore.parseProgressSections(progress)
+            .slice(-3)
+            .map(section => ({ signal: section.signal, body: section.body }));
+    } catch (err) {
+        logger.debug(LogCategory.AI, `[Ralph] Could not read recent progress sections for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
+        return undefined;
+    }
 }

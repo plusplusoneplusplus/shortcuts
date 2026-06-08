@@ -81,8 +81,14 @@ A. Append a new section to the progress journal with this exact header
    response with. Use the iteration counter from the system prompt.
 
 B. End the response with exactly one of:
-       RALPH_COMPLETE
-       RALPH_NEXT
+        RALPH_COMPLETE
+        RALPH_NEXT
+
+Signal rules:
+- Emit RALPH_NEXT only when a specific autonomous subtask remains, such as source changes, tests, docs tied directly to the change, build fixes, or automatable validation.
+- Emit RALPH_COMPLETE when all implementation, tests, builds, code-search assertions, and other automatable checks you can perform are complete.
+- Do not keep emitting RALPH_NEXT solely because manual demos, product review, unavailable credentials, or other human-only verification remain.
+- When only manual verification remains, write `Remaining: manual verification only - <what the user should verify>` in the journal and emit RALPH_COMPLETE.
 
 If you cannot append to the file, fall back to the legacy format and
 the server will write the section for you:
@@ -107,7 +113,7 @@ Honor the decision-tagging convention used by the grill-me skill:
 - [assumption] items may be revised. If you revise one, record the change and rationale in progress.md for this iteration.
 - [open] items are unresolved. Either ask the user, or pick a value and justify the choice in progress.md.
 
-A slice is done only when its Definition of Done is satisfied. Record evidence (test command output, demo transcript, code-search results) in progress.md before marking the iteration complete. Do not declare the overall Ralph session complete until every functional AC's Definition of Done is satisfied.
+A slice is done only when its autonomous Definition of Done is satisfied. Record evidence (test command output, demo transcript, code-search results) in progress.md before marking the iteration complete. If the only unsatisfied items are manual demos, product review, unavailable credentials, or human-only verification, record them as manual follow-up evidence with `Remaining: manual verification only - <details>` and declare the overall Ralph session complete.
 </spec_contract>
 
 ## Section: final-check

@@ -35,7 +35,7 @@ const PROCESS_ID = 'proc-01';
 const TASK_ID = 'task-01';
 
 function makeNextResponse(): string {
-    return 'Work done.\n\nRALPH_PROGRESS:\nFiles: a.ts\nDecisions: did x\nRemaining: more\nRALPH_NEXT';
+    return 'Work done.\n\nRALPH_PROGRESS:\nFiles: a.ts\nDecisions: did x\nRemaining: implement filter persistence tests\nRALPH_NEXT';
 }
 
 function makeCompleteResponse(): string {
@@ -44,6 +44,18 @@ function makeCompleteResponse(): string {
 
 function makeNoSignalResponse(): string {
     return 'Some text without any signal.';
+}
+
+function makeManualOnlyNextResponse(): string {
+    return [
+        'Autonomous work is done.',
+        '',
+        'RALPH_PROGRESS:',
+        'Files: src/a.ts, test/a.test.ts',
+        'Decisions: implementation, tests, and build are complete.',
+        'Remaining: manual verification only - user should run the product demo.',
+        'RALPH_NEXT',
+    ].join('\n');
 }
 
 function makeDeps(overrides?: Partial<OrchestrateRalphIterationDeps>): OrchestrateRalphIterationDeps {
@@ -183,6 +195,34 @@ describe('orchestrateRalphIteration — RALPH_NEXT (continue)', () => {
         const record = await store.readSessionRecord(WS, SID);
         expect(record?.currentIteration).toBe(1);
         expect(record?.phase).toBe('executing');
+    });
+
+    it('does not queue another implementation iteration when RALPH_NEXT is manual-verification-only', async () => {
+        const deps = makeDeps({ dataDir });
+        await orchestrateRalphIteration({
+            responseText: makeManualOnlyNextResponse(),
+            completedTaskId: TASK_ID,
+            processId: PROCESS_ID,
+            workspaceId: WS,
+            sessionId: SID,
+            originalGoal: 'Do the goal.',
+            currentIteration: 2,
+            maxIterations: 5,
+            deps,
+        });
+
+        expect(deps.enqueueTask).toHaveBeenCalledTimes(1);
+        const enqueuedTask = (deps.enqueueTask as ReturnType<typeof vi.fn>).mock.calls[0][0];
+        expect(enqueuedTask.displayName).toContain('final check');
+        expect(enqueuedTask.payload.context.ralph.finalCheck).toBeDefined();
+        expect(enqueuedTask.payload.context.ralph.finalCheck.sourceIteration).toBe(2);
+        expect(deps.broadcastSessionComplete).not.toHaveBeenCalled();
+
+        const store = new RalphSessionStore({ dataDir });
+        const record = await store.readSessionRecord(WS, SID);
+        expect(record?.phase).toBe('complete');
+        expect(record?.terminalReason).toBe('MANUAL_VERIFICATION_ONLY');
+        expect(record?.finalChecks?.[0]?.status).toBe('queued');
     });
 });
 

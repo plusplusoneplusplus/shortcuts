@@ -30,6 +30,8 @@ export interface RecordIterationInput {
     processId: string;
     /** True when the loop will continue with another iteration. */
     shouldContinue: boolean;
+    /** Optional explicit terminal reason from the portable decision layer. */
+    terminalReason?: RalphTerminalReason;
     /** Goal text used to seed `session.json` if it does not yet exist. */
     originalGoal?: string;
     /** Override clock for tests. Defaults to `new Date().toISOString()`. */
@@ -81,7 +83,8 @@ export async function recordRalphIteration(
     const phase: 'executing' | 'complete' = input.shouldContinue ? 'executing' : 'complete';
     let terminalReason: RalphTerminalReason | undefined;
     if (!input.shouldContinue) {
-        if (input.signal === 'RALPH_COMPLETE') terminalReason = 'RALPH_COMPLETE';
+        if (input.terminalReason) terminalReason = input.terminalReason;
+        else if (input.signal === 'RALPH_COMPLETE') terminalReason = 'RALPH_COMPLETE';
         else if (input.signal === 'NONE') terminalReason = 'NO_SIGNAL';
         else terminalReason = 'CAP_REACHED';
     }

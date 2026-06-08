@@ -23,12 +23,14 @@ export type RalphSessionPhase = 'grilling' | 'executing' | 'complete';
 
 export type RalphTerminalReason =
     | 'RALPH_COMPLETE'
+    | 'MANUAL_VERIFICATION_ONLY'
     | 'CAP_REACHED'
     | 'CANCELLED'
     | 'NO_SIGNAL';
 
 export type RalphSessionCompleteReason =
     | 'signal'
+    | 'manual-verification-only'
     | 'cap'
     | 'final-check-failed'
     | 'final-check-enqueue-failed'

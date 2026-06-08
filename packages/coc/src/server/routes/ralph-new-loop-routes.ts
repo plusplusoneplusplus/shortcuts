@@ -76,6 +76,8 @@ export function registerRalphNewLoopRoutes(routes: Route[], ctx: RalphNewLoopRou
                 let detail: string;
                 if (record.phase !== 'complete') {
                     detail = `Session phase is "${record.phase}"; new-loop requires RALPH_COMPLETE`;
+                } else if (record.terminalReason === 'MANUAL_VERIFICATION_ONLY') {
+                    detail = 'Session has manual verification pending; start a new session if more autonomous work is needed';
                 } else {
                     detail = 'Session was not marked RALPH_COMPLETE; use /continue or start a new session';
                 }
