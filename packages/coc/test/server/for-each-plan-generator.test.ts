@@ -105,7 +105,12 @@ describe('createForEachPlanGenerator', () => {
         expect((selectedService.sendMessage as any).mock.calls[0][0]).toMatchObject({
             model: 'claude-sonnet-4.6',
             reasoningEffort: 'high',
+            systemMessage: {
+                mode: 'replace',
+            },
         });
+        expect((selectedService.sendMessage as any).mock.calls[0][0].systemMessage.content).toContain('STRICT OUTPUT CONTRACT');
+        expect((selectedService.sendMessage as any).mock.calls[0][0].systemMessage.content).toContain('"items"');
         expect((defaultService.sendMessage as any).mock.calls).toHaveLength(0);
     });
 

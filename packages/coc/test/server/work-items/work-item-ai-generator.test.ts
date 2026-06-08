@@ -368,6 +368,10 @@ describe('createWorkItemAiGenerators', () => {
             expect(result.workItem.title).toBe('Search Feature');
             expect(result.goal).toContain('Build search');
         }
+        const call = (service.sendMessage as any).mock.calls[0][0];
+        expect(call.systemMessage).toMatchObject({ mode: 'replace' });
+        expect(call.systemMessage.content).toContain('STRICT OUTPUT CONTRACT');
+        expect(call.systemMessage.content).toContain('"kind": "draft"');
     });
 
     it('generateNewItemDraft returns a clarification from the AI service', async () => {
