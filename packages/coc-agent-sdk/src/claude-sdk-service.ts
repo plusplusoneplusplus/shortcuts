@@ -28,7 +28,7 @@
  * themselves.
  */
 
-import type { SendMessageOptions, MCPServerConfig, MCPLocalServerConfig, ReasoningEffort, TokenUsage } from './types';
+import type { SendMessageOptions, MCPServerConfig, MCPLocalServerConfig, ReasoningEffort, SystemMessageConfig, TokenUsage } from './types';
 import type { ToolEvent } from './types';
 import { denyAllPermissions } from './types';
 import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult, TransformOptions, TransformResult } from './sdk-service-interface';
@@ -651,6 +651,7 @@ export class ClaudeSDKService implements ISDKService {
             const { servers: mcpServers, allowedTools, cleanup } = await this.buildClaudeMcpServers(options);
             mcpServerNames = Object.keys(mcpServers).sort();
             mcpCleanup = cleanup;
+            const systemPromptOptions = resolveClaudeSystemPromptOptions(options.systemMessage);
             const queryOptions: ClaudeQueryOptions = {
                 prompt: this.buildClaudePrompt(options),
                 abortController,
@@ -659,8 +660,7 @@ export class ClaudeSDKService implements ISDKService {
                     additionalDirectories: this.resolveAdditionalDirectories(options),
                     ...(model ? { model } : {}),
                     ...(effort ? { effort } : {}),
-                    ...(options.systemMessage?.mode === 'append' ? { appendSystemPrompt: options.systemMessage.content } : {}),
-                    ...(options.systemMessage?.mode === 'replace' ? { customSystemPrompt: options.systemMessage.content } : {}),
+                    ...systemPromptOptions,
                     ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
                     ...(allowedTools.length > 0 ? { allowedTools } : {}),
                     ...(options.sessionId ? { resume: options.sessionId } : { sessionId }),
@@ -1395,6 +1395,16 @@ function inferClaudeMcpServerNamesFromOptions(options: SendMessageOptions): stri
         names.add(COC_LLM_TOOLS_MCP_SERVER_NAME);
     }
     return Array.from(names).sort();
+}
+
+function resolveClaudeSystemPromptOptions(
+    systemMessage: SystemMessageConfig | undefined,
+): Pick<NonNullable<ClaudeQueryOptions['options']>, 'appendSystemPrompt' | 'customSystemPrompt'> {
+    const content = systemMessage?.content;
+    if (!content || content.trim().length === 0) return {};
+    return systemMessage.mode === 'replace'
+        ? { customSystemPrompt: content }
+        : { appendSystemPrompt: content };
 }
 
 function collectClaudeRequestSensitiveValues(options: SendMessageOptions): string[] {

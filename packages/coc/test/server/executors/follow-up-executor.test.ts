@@ -363,6 +363,34 @@ describe('FollowUpExecutor', () => {
         );
     });
 
+    it('passes the composed system message while resuming Claude follow-up sessions', async () => {
+        mockBuildModeSystemMessage.mockReturnValueOnce({
+            mode: 'append',
+            content: 'Claude follow-up system instructions',
+        });
+        const proc = makeProcess({
+            id: 'proc-claude-system-follow',
+            sdkSessionId: 'claude-sdk-session',
+            metadata: { type: 'chat', provider: 'claude', mode: 'ask' },
+        });
+        await store.addProcess(proc);
+        const resolveAiServiceForProvider = vi.fn().mockReturnValue(sdkMocks.service as any);
+
+        const executor = makeExecutor(store, { resolveAiServiceForProvider });
+        await executor.executeFollowUp('proc-claude-system-follow', 'msg');
+
+        expect(resolveAiServiceForProvider).toHaveBeenCalledWith('claude');
+        const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callArg).toMatchObject({
+            prompt: 'msg',
+            sessionId: 'claude-sdk-session',
+            systemMessage: {
+                mode: 'append',
+                content: 'Claude follow-up system instructions',
+            },
+        });
+    });
+
     it('passes infiniteSessions enabled to sendMessage', async () => {
         const proc = makeProcess({ id: 'proc-inf', sdkSessionId: 'sdk-inf' });
         await store.addProcess(proc);

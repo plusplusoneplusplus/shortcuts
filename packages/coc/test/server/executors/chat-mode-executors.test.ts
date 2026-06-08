@@ -150,6 +150,45 @@ describe('ChatBaseExecutor provider routing', () => {
         expect(resolveAiServiceForProvider).toHaveBeenCalledWith('claude');
     });
 
+    it('passes CoC-built system messages with repo instructions to Claude-selected chats', async () => {
+        const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-claude-system-'));
+        try {
+            const instructionDir = path.join(tmpRoot, '.github', 'coc');
+            fs.mkdirSync(instructionDir, { recursive: true });
+            fs.writeFileSync(path.join(instructionDir, 'instructions.md'), 'Base CoC repo instruction\n');
+            fs.writeFileSync(path.join(instructionDir, 'instructions-ask.md'), 'Ask-only CoC repo instruction\n');
+
+            const resolveAiServiceForProvider = vi.fn().mockReturnValue(sdkMocks.service as any);
+            const executor = new ChatExecutor(store, makeOptions(store, {
+                provider: 'copilot',
+                resolveAiServiceForProvider,
+            }));
+            const task = makeChatTask('ask', 'task-claude-system');
+            task.payload = {
+                ...(task.payload as any),
+                provider: 'claude',
+                workingDirectory: tmpRoot,
+                workspaceId: 'ws-claude',
+            } as any;
+
+            await executor.execute(task, 'Hello Claude');
+
+            expect(resolveAiServiceForProvider).toHaveBeenCalledWith('claude');
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            expect(call.prompt).toBe('Hello Claude');
+            expect(call.workingDirectory).toBe(tmpRoot);
+            expect(call.systemMessage?.mode).toBe('append');
+            expect(call.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+            expect(call.systemMessage?.content).toContain('Base CoC repo instruction');
+            expect(call.systemMessage?.content).toContain('Ask-only CoC repo instruction');
+            expect(call.systemMessage?.content).toContain('<chosen-folder>');
+            expect(call.prompt).not.toContain('Base CoC repo instruction');
+            expect(call.prompt).not.toContain('Ask-only CoC repo instruction');
+        } finally {
+            fs.rmSync(tmpRoot, { recursive: true, force: true });
+        }
+    });
+
     it('drops cross-provider model before sending to Codex', async () => {
         const resolveAiServiceForProvider = vi.fn().mockReturnValue(sdkMocks.service as any);
         const executor = new ChatExecutor(store, makeOptions(store, {
