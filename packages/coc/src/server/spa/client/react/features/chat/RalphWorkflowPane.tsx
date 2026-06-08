@@ -14,6 +14,7 @@ import { renderMarkdownToHtml } from '../../../diff/markdown-renderer';
 import type {
     ParsedProgressSection,
     RalphContinueRequest,
+    RalphFinalCheckRecord,
     RalphResumeAiDefaults,
     RalphResumeRequest,
     RalphLoopRecord,
@@ -22,6 +23,7 @@ import type {
     RalphTerminalReason,
 } from '@plusplusoneplusplus/coc-client';
 import { RalphWorkflowNode } from './RalphWorkflowNode';
+import { RalphFinalCheckNode } from './RalphFinalCheckNode';
 import { getSpaCocClient } from '../../api/cocClient';
 import { RALPH_MULTI_LOOP } from '../../featureFlags';
 import { ModalJobAiControls, type ResolvedModalJobAiSelection, useModalJobAiSelection } from '../../shared/ModalJobAiControls';
@@ -43,6 +45,9 @@ export interface RalphWorkflowPaneProps {
     /** Click handler for an iteration node — wired to the chat detail
      *  switch in commit 7. */
     onSelectIteration?: (iteration: number) => void;
+    /** Click handler for a final-check node — called with the recorded
+     *  final-check `processId` so the host can open that chat process. */
+    onSelectFinalCheck?: (processId: string) => void;
     onClose?: () => void;
     /** Override clock for tests. */
     now?: number;
@@ -268,6 +273,7 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
         sessionId,
         view,
         onSelectIteration,
+        onSelectFinalCheck,
         onClose,
         continueDefaultIterations = 20,
         onContinue,
@@ -418,12 +424,65 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
         }
     };
 
-    // Build a map of loop-start iterations → loop record for dividers.
-    // Only populated when multi-loop is enabled and there are multiple loops.
+    // Build a map of loop-start iterations → loop record for generic
+    // multi-loop dividers. Only populated when multi-loop is enabled and there
+    // are multiple loops (preserves the existing RALPH_MULTI_LOOP semantics).
     const loopStartMap = new Map<number, RalphLoopRecord>();
     if (RALPH_MULTI_LOOP && record.loops && record.loops.length > 1) {
         for (const loop of record.loops) {
             if (loop.loopIndex > 1) loopStartMap.set(loop.startIteration, loop);
+        }
+    }
+
+    // Identify gap-fix loops from final-check metadata. These dividers are not
+    // gated behind RALPH_MULTI_LOOP — a gap-fix loop is the visible outcome of
+    // a final check, so its divider follows final-check visibility. Maps the
+    // loop's start iteration → loop record so the divider can render in place.
+    const finalChecks = record.finalChecks ?? [];
+    const gapFixLoopIndexes = new Set<number>();
+    for (const check of finalChecks) {
+        if (check.gapLoopStarted && typeof check.gapLoopIndex === 'number') {
+            gapFixLoopIndexes.add(check.gapLoopIndex);
+        }
+    }
+    const gapFixDividerMap = new Map<number, RalphLoopRecord>();
+    for (const loop of record.loops ?? []) {
+        if (gapFixLoopIndexes.has(loop.loopIndex)) {
+            gapFixDividerMap.set(loop.startIteration, loop);
+        }
+    }
+
+    // Group final checks by the iteration they validate so each renders right
+    // after its source iteration (and therefore before the first iteration of
+    // any gap-fix loop it starts).
+    const finalChecksBySource = new Map<number, RalphFinalCheckRecord[]>();
+    for (const check of finalChecks) {
+        const list = finalChecksBySource.get(check.sourceIteration);
+        if (list) list.push(check);
+        else finalChecksBySource.set(check.sourceIteration, [check]);
+    }
+    for (const list of finalChecksBySource.values()) {
+        list.sort((a, b) => a.checkIndex - b.checkIndex);
+    }
+
+    // Unified, ordered task list: each iteration node followed by the
+    // final-check nodes that validate it. Orphan final checks (whose source
+    // iteration is unknown) are appended at the end so nothing is dropped.
+    type TimelineItem =
+        | { kind: 'iteration'; iter: number }
+        | { kind: 'finalCheck'; check: RalphFinalCheckRecord };
+    const timelineItems: TimelineItem[] = [];
+    const placedCheckIndexes = new Set<number>();
+    for (const iter of allIters) {
+        timelineItems.push({ kind: 'iteration', iter });
+        for (const check of finalChecksBySource.get(iter) ?? []) {
+            timelineItems.push({ kind: 'finalCheck', check });
+            placedCheckIndexes.add(check.checkIndex);
+        }
+    }
+    for (const check of [...finalChecks].sort((a, b) => a.checkIndex - b.checkIndex)) {
+        if (!placedCheckIndexes.has(check.checkIndex)) {
+            timelineItems.push({ kind: 'finalCheck', check });
         }
     }
 
@@ -665,23 +724,41 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
                             </div>
                         </div>
                     )}
-                    {allIters.length === 0 ? (
+                    {timelineItems.length === 0 ? (
                         <div className="text-xs italic text-zinc-500 dark:text-zinc-400">
                             Waiting for the first iteration to complete…
                         </div>
                     ) : (
                         <ol className="flex flex-col gap-2">
-                            {allIters.map(iter => {
-                                const loopDivider = loopStartMap.get(iter);
+                            {timelineItems.map(item => {
+                                if (item.kind === 'finalCheck') {
+                                    return (
+                                        <li key={`fc-${item.check.checkIndex}`}>
+                                            <RalphFinalCheckNode
+                                                check={item.check}
+                                                onSelect={onSelectFinalCheck}
+                                            />
+                                        </li>
+                                    );
+                                }
+                                const iter = item.iter;
+                                // Gap-fix dividers (from final-check metadata) take
+                                // precedence over generic multi-loop dividers and use
+                                // explicit gap-fix wording.
+                                const gapFixDivider = gapFixDividerMap.get(iter);
+                                const loopDivider = gapFixDivider ?? loopStartMap.get(iter);
+                                const isGapFixDivider = Boolean(gapFixDivider);
                                 return (
-                                    <li key={iter}>
+                                    <li key={`iter-${iter}`}>
                                         {loopDivider && (
                                             <div
                                                 className="mb-2 mt-3 flex items-center gap-2"
                                                 data-testid={`ralph-loop-divider-${loopDivider.loopIndex}`}
                                             >
                                                 <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-400">
-                                                    Loop {loopDivider.loopIndex}
+                                                    {isGapFixDivider
+                                                        ? `Gap fix loop ${loopDivider.loopIndex}`
+                                                        : `Loop ${loopDivider.loopIndex}`}
                                                 </span>
                                                 <span className="min-w-0 truncate text-[10px] text-zinc-500 dark:text-zinc-400">
                                                     {singleLine(loopDivider.goal, 100)}

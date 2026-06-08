@@ -36,6 +36,7 @@ import {
 } from '../../../../src/server/spa/client/react/features/chat/RalphWorkflowPane';
 import type {
     ParsedProgressSection,
+    RalphFinalCheckRecord,
     RalphIterationRecord,
     RalphLoopRecord,
     RalphSessionRecord,
@@ -89,6 +90,30 @@ function makeSection(n: number, signal: ParsedProgressSection['signal'] = 'RALPH
         signal,
         timestamp: new Date(Date.now() - 30_000).toISOString(),
         body: `Files: src/file${n}.ts\nDecisions: chose path A\nRemaining: tests`,
+    };
+}
+
+function makeFinalCheck(overrides: Partial<RalphFinalCheckRecord> = {}): RalphFinalCheckRecord {
+    return {
+        checkIndex: 1,
+        loopIndex: 1,
+        sourceIteration: 1,
+        processId: 'fc-proc-1',
+        startedAt: new Date(Date.now() - 20_000).toISOString(),
+        completedAt: new Date(Date.now() - 10_000).toISOString(),
+        status: 'completed',
+        hasGaps: false,
+        ...overrides,
+    };
+}
+
+function makeLoop(overrides: Partial<RalphLoopRecord> = {}): RalphLoopRecord {
+    return {
+        loopIndex: 1,
+        goal: 'Original goal',
+        startIteration: 1,
+        startedAt: new Date(Date.now() - 60_000).toISOString(),
+        ...overrides,
     };
 }
 
@@ -547,6 +572,211 @@ describe('RalphWorkflowPane', () => {
         await user.click(screen.getByTestId('ralph-workflow-continue-confirm-button'));
         expect(screen.getByTestId('ralph-workflow-continue-ai-controls')).toHaveAttribute('data-disabled', 'true');
         resolveContinue();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Final-check timeline nodes + gap-fix loop dividers
+// (RALPH_MULTI_LOOP stays false — final-check visibility is not flag-gated)
+// ---------------------------------------------------------------------------
+
+describe('RalphWorkflowPane — final-check timeline', () => {
+    it('renders a final-check node labeled with its index after the source iteration', () => {
+        const view: RalphSessionView = {
+            record: makeRecord({
+                phase: 'complete',
+                currentIteration: 2,
+                completedAt: new Date().toISOString(),
+                terminalReason: 'RALPH_COMPLETE',
+                iterations: [makeIter(1), makeIter(2)],
+                finalChecks: [makeFinalCheck({ checkIndex: 1, sourceIteration: 2, hasGaps: false })],
+            }),
+            sections: [makeSection(1), makeSection(2)],
+        };
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+
+        const node = screen.getByTestId('ralph-final-check-node-1');
+        expect(node).toHaveTextContent('Final check #1');
+        expect(screen.getByTestId('ralph-final-check-status-1')).toHaveTextContent('Completed');
+
+        // Ordered after the source iteration (#2).
+        const iter2 = screen.getByTestId('ralph-workflow-node-2');
+        expect(
+            iter2.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+    });
+
+    it.each([
+        [{ status: 'completed' as const, hasGaps: false }, 'No gaps'],
+        [{ status: 'completed' as const, hasGaps: true, gapCount: 0 }, 'No gaps'],
+        [{ status: 'completed' as const, hasGaps: true, gapCount: 1 }, '1 gap'],
+        [{ status: 'completed' as const, hasGaps: true, gapCount: 3 }, '3 gaps'],
+        [{ status: 'running' as const, completedAt: undefined }, 'Checking for gaps'],
+        [{ status: 'queued' as const, completedAt: undefined }, 'Queued for validation'],
+        [{ status: 'failed' as const }, 'Check did not complete'],
+    ])('renders gap-summary copy %o → %s', (partial, expected) => {
+        const view: RalphSessionView = {
+            record: makeRecord({
+                currentIteration: 1,
+                iterations: [makeIter(1)],
+                finalChecks: [makeFinalCheck({ checkIndex: 1, sourceIteration: 1, ...partial })],
+            }),
+            sections: [makeSection(1)],
+        };
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.getByTestId('ralph-final-check-gaps-1')).toHaveTextContent(expected);
+    });
+
+    it('calls onSelectFinalCheck with the recorded processId when clicked', async () => {
+        const user = userEvent.setup();
+        const onSelectFinalCheck = vi.fn();
+        const view: RalphSessionView = {
+            record: makeRecord({
+                currentIteration: 1,
+                iterations: [makeIter(1)],
+                finalChecks: [makeFinalCheck({ checkIndex: 1, sourceIteration: 1, processId: 'fc-proc-77' })],
+            }),
+            sections: [makeSection(1)],
+        };
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={view}
+                onSelectFinalCheck={onSelectFinalCheck}
+            />,
+        );
+        await user.click(screen.getByTestId('ralph-final-check-node-1'));
+        expect(onSelectFinalCheck).toHaveBeenCalledWith('fc-proc-77');
+    });
+
+    it('renders a final-check node without a processId as disabled and non-clickable', async () => {
+        const user = userEvent.setup();
+        const onSelectFinalCheck = vi.fn();
+        const view: RalphSessionView = {
+            record: makeRecord({
+                currentIteration: 1,
+                iterations: [makeIter(1)],
+                finalChecks: [makeFinalCheck({ checkIndex: 1, sourceIteration: 1, processId: undefined, status: 'running', completedAt: undefined })],
+            }),
+            sections: [makeSection(1)],
+        };
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={view}
+                onSelectFinalCheck={onSelectFinalCheck}
+            />,
+        );
+        const node = screen.getByTestId('ralph-final-check-node-1');
+        expect(node).toBeDisabled();
+        await user.click(node);
+        expect(onSelectFinalCheck).not.toHaveBeenCalled();
+    });
+
+    it('renders a "Gap fix loop" divider before the gap-fix loop and after its final-check node', () => {
+        const view: RalphSessionView = {
+            record: makeRecord({
+                phase: 'complete',
+                currentIteration: 3,
+                completedAt: new Date().toISOString(),
+                terminalReason: 'RALPH_COMPLETE',
+                iterations: [makeIter(1), makeIter(2), makeIter(3)],
+                loops: [
+                    makeLoop({ loopIndex: 1, goal: 'Original goal', startIteration: 1 }),
+                    makeLoop({ loopIndex: 2, goal: 'Close the validation gaps', startIteration: 3 }),
+                ],
+                finalChecks: [
+                    makeFinalCheck({
+                        checkIndex: 1,
+                        loopIndex: 1,
+                        sourceIteration: 2,
+                        processId: 'fc-proc-1',
+                        status: 'completed',
+                        hasGaps: true,
+                        gapCount: 2,
+                        gapLoopStarted: true,
+                        gapLoopIndex: 2,
+                    }),
+                ],
+            }),
+            sections: [makeSection(1), makeSection(2), makeSection(3)],
+        };
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+
+        const divider = screen.getByTestId('ralph-loop-divider-2');
+        expect(divider).toHaveTextContent('Gap fix loop 2');
+        expect(divider).toHaveTextContent('Close the validation gaps');
+
+        const fcNode = screen.getByTestId('ralph-final-check-node-1');
+        const iter3 = screen.getByTestId('ralph-workflow-node-3');
+        // final-check node → divider → gap-fix iteration, in DOM order.
+        expect(
+            fcNode.compareDocumentPosition(divider) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+        expect(
+            divider.compareDocumentPosition(iter3) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+    });
+
+    it('keeps gap-fix iteration nodes clickable as ordinary iteration nodes', async () => {
+        const user = userEvent.setup();
+        const onSelectIteration = vi.fn();
+        const view: RalphSessionView = {
+            record: makeRecord({
+                phase: 'complete',
+                currentIteration: 3,
+                completedAt: new Date().toISOString(),
+                terminalReason: 'RALPH_COMPLETE',
+                iterations: [makeIter(1), makeIter(2), { ...makeIter(3), loopIndex: 2 }],
+                loops: [
+                    makeLoop({ loopIndex: 1, startIteration: 1 }),
+                    makeLoop({ loopIndex: 2, goal: 'fix gaps', startIteration: 3 }),
+                ],
+                finalChecks: [
+                    makeFinalCheck({
+                        checkIndex: 1,
+                        sourceIteration: 2,
+                        gapLoopStarted: true,
+                        gapLoopIndex: 2,
+                        hasGaps: true,
+                        gapCount: 1,
+                    }),
+                ],
+            }),
+            sections: [makeSection(1), makeSection(2), makeSection(3)],
+        };
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={view}
+                onSelectIteration={onSelectIteration}
+            />,
+        );
+        await user.click(screen.getByTestId('ralph-workflow-node-3'));
+        expect(onSelectIteration).toHaveBeenCalledWith(3);
+    });
+
+    it('does not render a generic Loop divider when RALPH_MULTI_LOOP is off and the loop is not a gap-fix loop', () => {
+        const view: RalphSessionView = {
+            record: makeRecord({
+                phase: 'complete',
+                currentIteration: 3,
+                completedAt: new Date().toISOString(),
+                terminalReason: 'RALPH_COMPLETE',
+                iterations: [makeIter(1), makeIter(2), makeIter(3)],
+                loops: [
+                    makeLoop({ loopIndex: 1, startIteration: 1 }),
+                    makeLoop({ loopIndex: 2, goal: 'second goal', startIteration: 3 }),
+                ],
+                finalChecks: [],
+            }),
+            sections: [makeSection(1), makeSection(2), makeSection(3)],
+        };
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.queryByTestId('ralph-loop-divider-2')).toBeNull();
     });
 });
 

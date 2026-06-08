@@ -264,3 +264,11 @@ gap-loop creation failures use `reason='final-check-gap-loop-start-failed'`,
 and gap-loop enqueue failures use `reason='final-check-gap-enqueue-failed'`. A
 successful gap-fix enqueue does not broadcast completion because the next loop
 continues the session.
+
+The SPA `RalphWorkflowPane` timeline surfaces these `RalphFinalCheckRecord`
+entries as distinct `Final check #<checkIndex>` nodes placed after their
+`sourceIteration`, and labels the gap-fix loop divider `Gap fix loop <N>` when a
+record reports `gapLoopStarted`/`gapLoopIndex`. This is display/navigation only —
+it reads already-persisted `finalChecks` from the session read route and adds no
+new persistence. The `coc-client` `RalphFinalCheckStatus` contract includes the
+persisted `queued` state.
