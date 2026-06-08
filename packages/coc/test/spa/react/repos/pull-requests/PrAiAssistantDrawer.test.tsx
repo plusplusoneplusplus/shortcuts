@@ -173,7 +173,8 @@ describe('PullRequestChatPlacementFrame', () => {
 
         expect(screen.getByTestId('pr-chat-lens-minimized')).toHaveTextContent('PR Chat');
         expect(screen.getByTestId('pr-chat-lens-minimized')).toHaveTextContent('#142');
-        expect(screen.queryByTestId('pr-chat-panel-stub')).not.toBeInTheDocument();
+        expect(screen.getByTestId('pr-chat-lens-hidden-body')).toHaveClass('hidden');
+        expect(screen.getByTestId('pr-chat-panel-stub')).toBeInTheDocument();
 
         fireEvent.click(screen.getByTestId('pr-chat-restore-btn'));
 
