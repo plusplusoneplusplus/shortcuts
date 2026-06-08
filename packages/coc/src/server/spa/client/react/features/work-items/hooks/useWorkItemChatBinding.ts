@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { getSpaCocClient } from '../../../api/cocClient';
 import type { AttachmentPayload } from '../../../types/attachments';
 import { formatAttachedContext, type AttachedWorkItemContextItem } from '../../chat/hooks/useAttachedContext';
@@ -63,6 +63,20 @@ export function useWorkItemChatBinding(opts: UseWorkItemChatBindingOptions): Use
     const [taskId, setTaskId] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const mountedRef = useRef(false);
+    const currentRequestRef = useRef({ workspaceId, workItemId });
+    currentRequestRef.current = { workspaceId, workItemId };
+
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+    }, []);
+
+    const isCurrentRequest = useCallback((requestedWorkspaceId: string, requestedWorkItemId: string | undefined) => (
+        mountedRef.current
+        && currentRequestRef.current.workspaceId === requestedWorkspaceId
+        && currentRequestRef.current.workItemId === requestedWorkItemId
+    ), []);
 
     useEffect(() => {
         if (!workItemId) { setTaskId(null); return; }
@@ -85,6 +99,8 @@ export function useWorkItemChatBinding(opts: UseWorkItemChatBindingOptions): Use
 
     const createChat = useCallback(async (prompt: string, options: WorkItemChatComposerSendOptions = {}): Promise<string | null> => {
         if (!workItemId) return null;
+        const requestedWorkspaceId = workspaceId;
+        const requestedWorkItemId = workItemId;
         try {
             const promptWithPointer = prependWorkItemPointer(prompt, { workspaceId, workItemId, title, status, type, workItemNumber });
             const res = await getSpaCocClient().queue.enqueue({
@@ -112,13 +128,17 @@ export function useWorkItemChatBinding(opts: UseWorkItemChatBindingOptions): Use
 
             await getSpaCocClient().workItems.createChatBinding(workspaceId, workItemId, newTaskId);
 
-            setTaskId(newTaskId);
+            if (isCurrentRequest(requestedWorkspaceId, requestedWorkItemId)) {
+                setTaskId(newTaskId);
+            }
             return newTaskId;
         } catch (err: any) {
-            setError(err?.message ?? 'Failed to create work item chat');
+            if (isCurrentRequest(requestedWorkspaceId, requestedWorkItemId)) {
+                setError(err?.message ?? 'Failed to create work item chat');
+            }
             return null;
         }
-    }, [workspaceId, workItemId, title, status, type, workItemNumber]);
+    }, [workspaceId, workItemId, title, status, type, workItemNumber, isCurrentRequest]);
 
     return { taskId, loading, error, createChat };
 }

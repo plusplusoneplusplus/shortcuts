@@ -125,6 +125,38 @@ describe('useWorkItemChatBinding', () => {
         expect(mockClient.workItems.getChatBinding).toHaveBeenCalledWith('ws-2', 'same-id');
     });
 
+    it('does not apply a completed chat create after the selected Work Item changes', async () => {
+        const createRequest = deferred<{ task: { id: string } }>();
+        mockClient.queue.enqueue.mockReturnValueOnce(createRequest.promise);
+
+        const { result, rerender } = renderHook(
+            ({ workItemId }) => useWorkItemChatBinding({
+                workspaceId: 'ws-1',
+                workItemId,
+                title: workItemId === 'wi-1' ? 'Saved title one' : 'Saved title two',
+            }),
+            { initialProps: { workItemId: 'wi-1' } },
+        );
+
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const createPromise = result.current.createChat('Start from saved state');
+        rerender({ workItemId: 'wi-2' });
+
+        await act(async () => {
+            createRequest.resolve({ task: { id: 'task-wi-1' } });
+            await createPromise;
+            await Promise.resolve();
+        });
+
+        expect(await createPromise).toBe('task-wi-1');
+        expect(mockClient.workItems.createChatBinding).toHaveBeenCalledWith('ws-1', 'wi-1', 'task-wi-1');
+        expect(result.current.taskId).toBeNull();
+        expect(result.current.error).toBeNull();
+    });
+
     it('creates a normal chat task with pointer-only Work Item context, then saves the binding', async () => {
         const attachments = [{ name: 'image.png', mimeType: 'image/png', size: 3, dataUrl: 'data:image/png;base64,abc' }];
         const { result } = renderHook(() => useWorkItemChatBinding({
