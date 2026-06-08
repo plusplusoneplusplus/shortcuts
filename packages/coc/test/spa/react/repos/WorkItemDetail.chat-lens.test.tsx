@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 
 const { configMocks, breakpointState } = vi.hoisted(() => ({
     configMocks: {
@@ -144,6 +144,14 @@ function makeItem(id: string, title: string, workItemNumber: number) {
     };
 }
 
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((res) => {
+        resolve = res;
+    });
+    return { promise, resolve };
+}
+
 describe('WorkItemDetail Work Item chat lens', () => {
     let itemsById: Map<string, ReturnType<typeof makeItem>>;
 
@@ -281,5 +289,38 @@ describe('WorkItemDetail Work Item chat lens', () => {
         rerender(<WorkItemDetail workItemId="wi-2" workspaceId="ws-1" onBack={vi.fn()} />);
 
         await waitFor(() => expect(screen.queryByTestId('work-item-chat-panel-fallback')).toBeNull());
+    });
+
+    it('does not show the Ask AI entry point or restored chat while the Work Item is loading', async () => {
+        const pendingItem = deferred<ReturnType<typeof makeItem>>();
+        const target = { type: 'work-item' as const, workspaceId: 'ws-1', workItemId: 'wi-1' };
+        localStorage.setItem(getReviewChatOpenStorageKey(target), 'true');
+        mockGet.mockReturnValueOnce(pendingItem.promise);
+
+        render(<WorkItemDetail workItemId="wi-1" workspaceId="ws-1" onBack={vi.fn()} />);
+
+        expect(screen.queryByTestId('work-item-ask-ai-btn')).toBeNull();
+        expect(screen.queryByTestId('work-item-chat-lens')).toBeNull();
+
+        await act(async () => {
+            pendingItem.resolve(makeItem('wi-1', 'Saved title one', 7));
+            await pendingItem.promise;
+        });
+
+        expect(await screen.findByTestId('work-item-ask-ai-btn')).toBeTruthy();
+        await waitFor(() => expect(screen.getByTestId('work-item-chat-lens')).toHaveAttribute('data-work-item-id', 'wi-1'));
+    });
+
+    it('does not restore persisted chat state after the selected Work Item fails to load', async () => {
+        const target = { type: 'work-item' as const, workspaceId: 'ws-1', workItemId: 'wi-1' };
+        localStorage.setItem(getReviewChatOpenStorageKey(target), 'true');
+        mockGet.mockRejectedValueOnce(new Error('Failed to load selected Work Item'));
+
+        render(<WorkItemDetail workItemId="wi-1" workspaceId="ws-1" onBack={vi.fn()} />);
+
+        expect(await screen.findByText('Failed to load selected Work Item')).toBeTruthy();
+        expect(screen.queryByTestId('work-item-ask-ai-btn')).toBeNull();
+        expect(screen.queryByTestId('work-item-chat-lens')).toBeNull();
+        expect(localStorage.getItem(getReviewChatOpenStorageKey(target))).toBe('true');
     });
 });
