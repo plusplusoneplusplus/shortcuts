@@ -24,6 +24,16 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
 
 import { useWorkItemChatBinding } from '../../../../src/server/spa/client/react/features/work-items/hooks/useWorkItemChatBinding';
 
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+    });
+    return { promise, resolve, reject };
+}
+
 describe('useWorkItemChatBinding', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -79,6 +89,40 @@ describe('useWorkItemChatBinding', () => {
 
         expect(mockClient.workItems.getChatBinding).toHaveBeenCalledWith('ws-1', 'wi-1');
         expect(mockClient.workItems.getChatBinding).toHaveBeenCalledWith('ws-1', 'wi-2');
+    });
+
+    it('ignores stale binding results after changing workspace selection', async () => {
+        const firstWorkspaceLookup = deferred<{ workItemId: string; taskId: string }>();
+        const secondWorkspaceLookup = deferred<{ workItemId: string; taskId: string }>();
+        mockClient.workItems.getChatBinding.mockImplementation((workspaceId: string, workItemId: string) => {
+            if (workspaceId === 'ws-1' && workItemId === 'same-id') return firstWorkspaceLookup.promise;
+            if (workspaceId === 'ws-2' && workItemId === 'same-id') return secondWorkspaceLookup.promise;
+            return Promise.resolve({ taskId: null });
+        });
+
+        const { result, rerender } = renderHook(
+            ({ workspaceId, workItemId }) => useWorkItemChatBinding({ workspaceId, workItemId }),
+            { initialProps: { workspaceId: 'ws-1', workItemId: 'same-id' } },
+        );
+
+        rerender({ workspaceId: 'ws-2', workItemId: 'same-id' });
+
+        await act(async () => {
+            secondWorkspaceLookup.resolve({ workItemId: 'same-id', taskId: 'task-ws-2' });
+            await secondWorkspaceLookup.promise;
+        });
+
+        expect(result.current.taskId).toBe('task-ws-2');
+
+        await act(async () => {
+            firstWorkspaceLookup.resolve({ workItemId: 'same-id', taskId: 'task-ws-1' });
+            await firstWorkspaceLookup.promise;
+            await Promise.resolve();
+        });
+
+        expect(result.current.taskId).toBe('task-ws-2');
+        expect(mockClient.workItems.getChatBinding).toHaveBeenCalledWith('ws-1', 'same-id');
+        expect(mockClient.workItems.getChatBinding).toHaveBeenCalledWith('ws-2', 'same-id');
     });
 
     it('creates a normal chat task with pointer-only Work Item context, then saves the binding', async () => {
