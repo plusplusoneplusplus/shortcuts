@@ -357,15 +357,37 @@ describe('NewChatArea', () => {
         expect(btn.textContent).toContain('Send');
     });
 
-    it('keeps the Activity initial composer on the full AI toolbar by default', () => {
+    it('keeps the Activity initial composer on the full AI toolbar at desktop width', () => {
+        vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(900);
+
         render(<NewChatArea workspaceId="ws-1" />);
 
+        expect(screen.getByTestId('new-chat-area').getAttribute('data-settings-layout')).toBe('full');
         expect(screen.queryByTestId('compact-ai-settings-chip')).toBeNull();
         expect(screen.getByTestId('agent-selector-chip-btn')).toBeTruthy();
         expect(screen.getByTestId('mode-selector')).toBeTruthy();
         expect(screen.getByTestId('model-picker-chip')).toBeTruthy();
         expect(screen.getByTestId('effort-pill-selector')).toBeTruthy();
         expect(screen.getByTestId('chat-toolbar-mention-btn')).toBeTruthy();
+    });
+
+    it('uses the compact AI settings chip when the Activity composer container is narrow', async () => {
+        vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(420);
+
+        render(<NewChatArea workspaceId="ws-1" />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('new-chat-area').getAttribute('data-settings-layout')).toBe('compact');
+        });
+        expect(screen.getByTestId('compact-ai-settings-chip')).toBeTruthy();
+        expect(screen.queryByTestId('agent-selector-chip-btn')).toBeNull();
+        expect(screen.queryByTestId('mode-selector')).toBeNull();
+        expect(screen.queryByTestId('model-picker-chip')).toBeNull();
+        expect(screen.queryByTestId('effort-pill-selector')).toBeNull();
+        expect(screen.queryByTestId('chat-toolbar-mention-btn')).toBeNull();
+        expect(screen.getByTestId('chat-toolbar-slash-btn')).toBeTruthy();
+        expect(screen.getByTestId('new-chat-attach-btn')).toBeTruthy();
+        expect(screen.getByTestId('new-chat-send-btn')).toBeTruthy();
     });
 
     it('send button is enabled after typing', () => {

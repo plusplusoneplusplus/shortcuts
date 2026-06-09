@@ -74,6 +74,7 @@ import {
     validateSessionContextAttachmentsForSend,
     validateSessionContextDrop,
 } from './sessionContextDrop';
+import { useContainerWidth } from './hooks/useContainerWidth';
 
 export interface NewChatAreaProps {
     workspaceId?: string;
@@ -93,7 +94,7 @@ export interface InitialChatComposerSubmission {
     config?: { effortTier?: EffortTierKey };
 }
 
-export type InitialChatComposerSettingsLayout = 'full' | 'compact';
+export type InitialChatComposerSettingsLayout = 'full' | 'compact' | 'responsive';
 
 export interface InitialChatComposerProps {
     workspaceId?: string;
@@ -185,6 +186,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             onBack={onBack}
             onSubmit={handleSubmit}
             onSubmitted={handleSubmitted}
+            settingsLayout="responsive"
         />
     );
 }
@@ -217,6 +219,7 @@ export function InitialChatComposer({
     const [selectedEffortTier, setSelectedEffortTier] = useState<EffortTierKey>('medium');
     const [ralphDirectGoalDraft, setRalphDirectGoalDraft] = useState<string | null>(null);
     const [settingsEditorOpen, setSettingsEditorOpen] = useState(false);
+    const composerRootRef = useRef<HTMLDivElement>(null);
     const richTextRef = useRef<RichTextInputHandle>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const settingsEditorRef = useRef<HTMLDivElement>(null);
@@ -231,6 +234,11 @@ export function InitialChatComposer({
     const attachedContext = useAttachedContext();
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(workspaceId, sessionContextAttachmentsEnabled);
+    const composerWidth = useContainerWidth(composerRootRef);
+    const effectiveSettingsLayout: Exclude<InitialChatComposerSettingsLayout, 'responsive'> =
+        settingsLayout === 'responsive'
+            ? (composerWidth.width > 0 && composerWidth.isNarrow ? 'compact' : 'full')
+            : settingsLayout;
 
     // Agent providers for the agent selector chip
     const { providers: rawAgentProviders, loading: providersLoading } = useAgentProviders();
@@ -325,6 +333,14 @@ export function InitialChatComposer({
             document.removeEventListener('keydown', handleKeyDown);
         };
     }, [modelCommand.dismissModelMenu, modelCommand.modelMenuVisible, settingsEditorOpen]);
+
+    useEffect(() => {
+        if (effectiveSettingsLayout === 'compact' || !settingsEditorOpen) return;
+        setSettingsEditorOpen(false);
+        if (modelCommand.modelMenuVisible) {
+            modelCommand.dismissModelMenu();
+        }
+    }, [effectiveSettingsLayout, modelCommand.dismissModelMenu, modelCommand.modelMenuVisible, settingsEditorOpen]);
 
     // Restore draft from localStorage on mount / workspace switch.
     // effortOverride is intentionally NOT restored from the draft — it is
@@ -1042,7 +1058,12 @@ export function InitialChatComposer({
     }
 
     return (
-        <div className="flex flex-col h-full bg-white dark:bg-[#1e1e1e]" data-testid={`${testIdPrefix}-area`}>
+        <div
+            ref={composerRootRef}
+            className="flex flex-col h-full bg-white dark:bg-[#1e1e1e]"
+            data-testid={`${testIdPrefix}-area`}
+            data-settings-layout={effectiveSettingsLayout}
+        >
             {enableRalphDirectGoal && ralphDirectGoalDraft !== null && (
                 <RalphLaunchDialog
                     open={ralphDirectGoalDraft !== null}
@@ -1234,7 +1255,7 @@ export function InitialChatComposer({
                         className="flex flex-wrap items-center gap-x-px gap-y-0.5 pl-2 pr-1.5 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
                         data-testid="chat-input-toolbar"
                     >
-                        {settingsLayout === 'compact' ? (
+                        {effectiveSettingsLayout === 'compact' ? (
                             renderCompactSettingsChip()
                         ) : (
                             <>
@@ -1294,7 +1315,7 @@ export function InitialChatComposer({
                             </svg>
                             <span aria-hidden="true" className="font-mono text-[9px] text-[#848484]">/</span>
                         </button>
-                        {settingsLayout !== 'compact' && (
+                        {effectiveSettingsLayout !== 'compact' && (
                             <button
                                 type="button"
                                 className="ctool shrink-0 inline-flex items-center gap-0.5 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
