@@ -28,6 +28,27 @@ const DORMANT_GHOST_OPACITY = 0.18;
 const DORMANT_GHOST_SCALE = 0.94;
 const HIT_PAD_PX = 12;
 const HIT_PAD_PILL_PX = 8;
+export const LENS_SIZE_STORAGE_KEY = 'coc.commitChatLens.size';
+
+function readPersistedLensSize(): { width: number; height: number } | null {
+    try {
+        const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(LENS_SIZE_STORAGE_KEY) : null;
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (typeof parsed?.width === 'number' && typeof parsed?.height === 'number') {
+            return clampLensSize(parsed.width, parsed.height);
+        }
+    } catch { /* ignore malformed data */ }
+    return null;
+}
+
+function writePersistedLensSize(width: number, height: number): void {
+    try {
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(LENS_SIZE_STORAGE_KEY, JSON.stringify({ width, height }));
+        }
+    } catch { /* ignore unavailable storage */ }
+}
 
 function MinimizeIcon() {
     return (
@@ -163,7 +184,9 @@ export function ReviewChatPlacementFrame({
 }: ReviewChatPlacementFrameProps) {
     const cardRef = useRef<HTMLDivElement | null>(null);
     const pillRef = useRef<HTMLDivElement | null>(null);
-    const [lensSize, setLensSize] = useState<{ width: number; height: number } | null>(null);
+    const [lensSize, setLensSize] = useState<{ width: number; height: number } | null>(() =>
+        readPersistedLensSize(),
+    );
     const isLens = presentation === 'lens';
     const placementTestId = isLens ? 'lens' : 'side-panel';
     const explicitlyMinimized = isLens && isMinimized && !!onRestore;
@@ -255,6 +278,7 @@ export function ReviewChatPlacementFrame({
         const startHeight = frameRect.height;
         const originalCursor = document.body.style.cursor;
         const originalUserSelect = document.body.style.userSelect;
+        let finalSize = clampLensSize(startWidth, startHeight);
 
         document.body.style.cursor = 'nwse-resize';
         document.body.style.userSelect = 'none';
@@ -262,7 +286,8 @@ export function ReviewChatPlacementFrame({
         const handleMouseMove = (moveEvent: MouseEvent) => {
             const nextWidth = startWidth - (moveEvent.clientX - startX);
             const nextHeight = startHeight - (moveEvent.clientY - startY);
-            setLensSize(clampLensSize(nextWidth, nextHeight));
+            finalSize = clampLensSize(nextWidth, nextHeight);
+            setLensSize(finalSize);
         };
 
         const handleMouseUp = () => {
@@ -270,11 +295,12 @@ export function ReviewChatPlacementFrame({
             document.body.style.userSelect = originalUserSelect;
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
+            writePersistedLensSize(finalSize.width, finalSize.height);
         };
 
         window.addEventListener('mousemove', handleMouseMove);
         window.addEventListener('mouseup', handleMouseUp);
-        setLensSize(clampLensSize(startWidth, startHeight));
+        setLensSize(finalSize);
     }, []);
 
     if (explicitlyMinimized) {

@@ -20,14 +20,17 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChat
 }));
 
 import { CommitChatPlacementFrame } from '../../../../src/server/spa/client/react/features/git/commits/CommitChatPlacementFrame';
+import { LENS_SIZE_STORAGE_KEY } from '../../../../src/server/spa/client/react/features/git/reviewChat/ReviewChatPlacementFrame';
 
 beforeEach(() => {
     dormantModeState.value = 'ghost';
     vi.useFakeTimers();
+    localStorage.removeItem(LENS_SIZE_STORAGE_KEY);
 });
 
 afterEach(() => {
     vi.useRealTimers();
+    localStorage.removeItem(LENS_SIZE_STORAGE_KEY);
 });
 
 const KNOWN_RECT: DOMRect = {
@@ -308,5 +311,96 @@ describe('CommitChatPlacementFrame', () => {
         );
 
         expect(screen.queryByTestId('commit-chat-lens-dormant-pill')).toBeNull();
+    });
+
+    it('uses default size when localStorage is empty', () => {
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        const lens = screen.getByTestId('commit-chat-lens');
+        expect(lens.style.width).not.toMatch(/^\d+px$/);
+    });
+
+    it('restores persisted lens size from localStorage on mount', () => {
+        localStorage.setItem(LENS_SIZE_STORAGE_KEY, JSON.stringify({ width: 500, height: 450 }));
+
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        const lens = screen.getByTestId('commit-chat-lens');
+        expect(lens.style.width).toBe('500px');
+        expect(lens.style.height).toBe('450px');
+    });
+
+    it('persists lens size to localStorage after resize completes', () => {
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        const grip = screen.getByTestId('commit-chat-lens-resize-grip');
+        const card = screen.getByTestId('commit-chat-lens-card');
+
+        vi.spyOn(card, 'getBoundingClientRect').mockReturnValue({
+            left: 500, top: 200, right: 920, bottom: 600,
+            width: 420, height: 400, x: 500, y: 200, toJSON: () => ({}),
+        });
+
+        fireEvent.mouseDown(grip, { clientX: 500, clientY: 200 });
+        fireEvent(window, new MouseEvent('mousemove', { clientX: 450, clientY: 150 }));
+        fireEvent(window, new MouseEvent('mouseup'));
+
+        const stored = JSON.parse(localStorage.getItem(LENS_SIZE_STORAGE_KEY)!);
+        expect(stored.width).toBeGreaterThanOrEqual(320);
+        expect(stored.height).toBeGreaterThanOrEqual(320);
+    });
+
+    it('ignores malformed localStorage data gracefully', () => {
+        localStorage.setItem(LENS_SIZE_STORAGE_KEY, 'not-json');
+
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        const lens = screen.getByTestId('commit-chat-lens');
+        expect(lens.style.width).not.toMatch(/^\d+px$/);
+    });
+
+    it('clamps persisted size to valid range', () => {
+        localStorage.setItem(LENS_SIZE_STORAGE_KEY, JSON.stringify({ width: 100, height: 50 }));
+
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        const lens = screen.getByTestId('commit-chat-lens');
+        expect(lens.style.width).toBe('320px');
+        expect(lens.style.height).toBe('320px');
     });
 });
