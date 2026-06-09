@@ -82,6 +82,7 @@ type FeaturesSnapshot = {
     gitCrossCloneCherryPick: boolean;
     sessionContextAttachments: boolean;
     commitChatLens: boolean;
+    commitChatLensDormantMode: 'ghost' | 'pill';
     autoAgentProviderRouting: boolean;
     workItemsHierarchy: boolean;
     workItemsSync: boolean;
@@ -383,6 +384,7 @@ export function AdminPanel() {
     const [gitCrossCloneCherryPickEnabled, setGitCrossCloneCherryPickEnabled] = useState(false);
     const [sessionContextAttachmentsEnabled, setSessionContextAttachmentsEnabled] = useState(false);
     const [commitChatLensEnabled, setCommitChatLensEnabled] = useState(false);
+    const [commitChatLensDormantMode, setCommitChatLensDormantMode] = useState<'ghost' | 'pill'>('ghost');
     const [autoAgentProviderRoutingEnabled, setAutoAgentProviderRoutingEnabled] = useState(false);
     const [workItemsHierarchyEnabled, setWorkItemsHierarchyEnabled] = useState(false);
     const [workItemsSyncEnabled, setWorkItemsSyncEnabled] = useState(false);
@@ -440,7 +442,7 @@ export function AdminPanel() {
         taskCardDensity: 'compact' as 'compact' | 'dense',
         historyGrouping: true,
     });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState<FeaturesSnapshot>({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, forEach: false, mapReduce: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, mcpOauthAutoRefresh: false, focusedDiff: false, gitCrossCloneCherryPick: false, sessionContextAttachments: false, commitChatLens: false, autoAgentProviderRouting: false, workItemsHierarchy: false, workItemsSync: false, workItemsAiAuthoring: false, effortLevels: false });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState<FeaturesSnapshot>({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, forEach: false, mapReduce: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, mcpOauthAutoRefresh: false, focusedDiff: false, gitCrossCloneCherryPick: false, sessionContextAttachments: false, commitChatLens: false, commitChatLensDormantMode: 'ghost', autoAgentProviderRouting: false, workItemsHierarchy: false, workItemsSync: false, workItemsAiAuthoring: false, effortLevels: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -559,11 +561,13 @@ export function AdminPanel() {
             const gccpe = resolved.features?.gitCrossCloneCherryPick ?? false;
             const scae = resolved.features?.sessionContextAttachments ?? false;
             const ccle = resolved.features?.commitChatLens ?? false;
+            const ccldm = (resolved.features?.commitChatLensDormantMode === 'pill' ? 'pill' : 'ghost') as 'ghost' | 'pill';
             const aapre = resolved.features?.autoAgentProviderRouting ?? false;
             setGitCrossCloneCherryPickEnabled(gccpe);
             setFocusedDiffEnabled(fde);
             setSessionContextAttachmentsEnabled(scae);
             setCommitChatLensEnabled(ccle);
+            setCommitChatLensDormantMode(ccldm);
             setAutoAgentProviderRoutingEnabled(aapre);
             const wihe = resolved.workItems?.hierarchy?.enabled ?? false;
             setWorkItemsHierarchyEnabled(wihe);
@@ -581,7 +585,7 @@ export function AdminPanel() {
             const arc = normalizeAutoProviderRoutingConfig(resolved.agentProviderRouting?.auto);
             setDefaultProvider(dp);
             setAutoRoutingConfig(arc);
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, forEach: fee, mapReduce: mre, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, mcpOauthAutoRefresh: moare, focusedDiff: fde, gitCrossCloneCherryPick: gccpe, sessionContextAttachments: scae, commitChatLens: ccle, autoAgentProviderRouting: aapre, workItemsHierarchy: wihe, workItemsSync: wise, workItemsAiAuthoring: waae, effortLevels: ele });
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, forEach: fee, mapReduce: mre, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, mcpOauthAutoRefresh: moare, focusedDiff: fde, gitCrossCloneCherryPick: gccpe, sessionContextAttachments: scae, commitChatLens: ccle, commitChatLensDormantMode: ccldm, autoAgentProviderRouting: aapre, workItemsHierarchy: wihe, workItemsSync: wise, workItemsAiAuthoring: waae, effortLevels: ele });
             setAiExecSnapshot({ model: form.model, parallel: form.parallel, timeout: form.timeout, output: form.output });
             setDefaultProviderSnapshot({ provider: dp, codexEnabled: cxe, claudeEnabled: cle, autoAgentProviderRouting: aapre, autoRoutingConfig: arc });
             const sgr = resolved.sync?.gitRemote ?? '';
@@ -703,6 +707,7 @@ export function AdminPanel() {
         gitCrossCloneCherryPickEnabled !== featuresSnapshot.gitCrossCloneCherryPick ||
         sessionContextAttachmentsEnabled !== featuresSnapshot.sessionContextAttachments ||
         commitChatLensEnabled !== featuresSnapshot.commitChatLens ||
+        commitChatLensDormantMode !== featuresSnapshot.commitChatLensDormantMode ||
         workItemsHierarchyEnabled !== featuresSnapshot.workItemsHierarchy ||
         workItemsSyncEnabled !== featuresSnapshot.workItemsSync ||
         workItemsAiAuthoringEnabled !== featuresSnapshot.workItemsAiAuthoring ||
@@ -960,6 +965,7 @@ export function AdminPanel() {
                 'features.gitCrossCloneCherryPick': gitCrossCloneCherryPickEnabled,
                 'features.sessionContextAttachments': sessionContextAttachmentsEnabled,
                 'features.commitChatLens': commitChatLensEnabled,
+                'features.commitChatLensDormantMode': commitChatLensDormantMode,
                 'workItems.hierarchy.enabled': workItemsHierarchyEnabled,
                 'workItems.sync.enabled': workItemsSyncEnabled,
                 'workItems.aiAuthoring.enabled': workItemsAiAuthoringEnabled,
@@ -968,13 +974,13 @@ export function AdminPanel() {
             await getSpaCocClient().admin.updateConfig(payload);
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setFeaturesSnapshot(prev => ({ ...prev, terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, forEach: forEachEnabled, mapReduce: mapReduceEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, mcpOauthAutoRefresh: mcpOauthAutoRefreshEnabled, focusedDiff: focusedDiffEnabled, gitCrossCloneCherryPick: gitCrossCloneCherryPickEnabled, sessionContextAttachments: sessionContextAttachmentsEnabled, commitChatLens: commitChatLensEnabled, autoAgentProviderRouting: prev.autoAgentProviderRouting, workItemsHierarchy: workItemsHierarchyEnabled, workItemsSync: workItemsSyncEnabled, workItemsAiAuthoring: workItemsAiAuthoringEnabled, effortLevels: effortLevelsEnabled }));
+            setFeaturesSnapshot(prev => ({ ...prev, terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, forEach: forEachEnabled, mapReduce: mapReduceEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, mcpOauthAutoRefresh: mcpOauthAutoRefreshEnabled, focusedDiff: focusedDiffEnabled, gitCrossCloneCherryPick: gitCrossCloneCherryPickEnabled, sessionContextAttachments: sessionContextAttachmentsEnabled, commitChatLens: commitChatLensEnabled, commitChatLensDormantMode: commitChatLensDormantMode, autoAgentProviderRouting: prev.autoAgentProviderRouting, workItemsHierarchy: workItemsHierarchyEnabled, workItemsSync: workItemsSyncEnabled, workItemsAiAuthoring: workItemsAiAuthoringEnabled, effortLevels: effortLevelsEnabled }));
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, forEachEnabled, mapReduceEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, mcpOauthAutoRefreshEnabled, focusedDiffEnabled, gitCrossCloneCherryPickEnabled, sessionContextAttachmentsEnabled, commitChatLensEnabled, workItemsHierarchyEnabled, workItemsSyncEnabled, workItemsAiAuthoringEnabled, effortLevelsEnabled, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, forEachEnabled, mapReduceEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, mcpOauthAutoRefreshEnabled, focusedDiffEnabled, gitCrossCloneCherryPickEnabled, sessionContextAttachmentsEnabled, commitChatLensEnabled, commitChatLensDormantMode, workItemsHierarchyEnabled, workItemsSyncEnabled, workItemsAiAuthoringEnabled, effortLevelsEnabled, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setTerminalEnabled(featuresSnapshot.terminal);
@@ -999,6 +1005,7 @@ export function AdminPanel() {
         setGitCrossCloneCherryPickEnabled(featuresSnapshot.gitCrossCloneCherryPick);
         setSessionContextAttachmentsEnabled(featuresSnapshot.sessionContextAttachments);
         setCommitChatLensEnabled(featuresSnapshot.commitChatLens);
+        setCommitChatLensDormantMode(featuresSnapshot.commitChatLensDormantMode);
         setWorkItemsHierarchyEnabled(featuresSnapshot.workItemsHierarchy);
         setWorkItemsSyncEnabled(featuresSnapshot.workItemsSync);
         setWorkItemsAiAuthoringEnabled(featuresSnapshot.workItemsAiAuthoring);
@@ -1883,6 +1890,23 @@ export function AdminPanel() {
                                                             <SourceBadge source={sources['features.commitChatLens']} isDefault={isDefaultValue('features.commitChatLens')} />
                                                             <AdminToggle checked={commitChatLensEnabled} onChange={setCommitChatLensEnabled} data-testid="toggle-commit-chat-lens-enabled" />
                                                         </AdminRow>
+                                                        {commitChatLensEnabled && (
+                                                            <AdminRow
+                                                                name="Lens dormant mode"
+                                                                hint="How the lens recedes when your cursor leaves it. Ghost fades to near-transparent; Pill collapses to a compact status pill."
+                                                            >
+                                                                <SourceBadge source={sources['features.commitChatLensDormantMode']} isDefault={isDefaultValue('features.commitChatLensDormantMode')} />
+                                                                <select
+                                                                    className="ar-select ar-med"
+                                                                    value={commitChatLensDormantMode}
+                                                                    onChange={e => setCommitChatLensDormantMode(e.target.value as 'ghost' | 'pill')}
+                                                                    data-testid="select-commit-chat-lens-dormant-mode"
+                                                                >
+                                                                    <option value="ghost">Ghost fade</option>
+                                                                    <option value="pill">Collapse to pill</option>
+                                                                </select>
+                                                            </AdminRow>
+                                                        )}
                                                         <AdminRow
                                                             name="Excalidraw diagrams"
                                                             hint="AI can generate and read Excalidraw diagrams during conversations. Disabled by default."

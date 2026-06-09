@@ -341,6 +341,15 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         if (!cfg.features) { cfg.features = {}; }
         cfg.features.commitChatLens = v;
     }),
+    {
+        key: 'features.commitChatLensDormantMode',
+        runtime: 'live' as AdminConfigFieldRuntime,
+        validate: (v) => (v === 'ghost' || v === 'pill') ? undefined : `features.commitChatLensDormantMode must be 'ghost' or 'pill'`,
+        apply: (cfg, v) => {
+            if (!cfg.features) { cfg.features = {}; }
+            cfg.features.commitChatLensDormantMode = v as 'ghost' | 'pill';
+        },
+    },
     bool('features.autoAgentProviderRouting', (cfg, v) => {
         if (!cfg.features) { cfg.features = {}; }
         cfg.features.autoAgentProviderRouting = v;

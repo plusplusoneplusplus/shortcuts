@@ -157,6 +157,7 @@ export const CLIConfigSchema = z.object({
         gitCrossCloneCherryPick: z.boolean().optional(),
         sessionContextAttachments: z.boolean().optional(),
         commitChatLens: z.boolean().optional(),
+        commitChatLensDormantMode: z.enum(['ghost', 'pill']).optional(),
         autoAgentProviderRouting: z.boolean().optional(),
     }).passthrough().optional(),
     memoryPromotion: z.object({

@@ -1,5 +1,11 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
+
+const dormantModeState = { value: 'ghost' as 'ghost' | 'pill' };
+
+vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    getCommitChatLensDormantMode: () => dormantModeState.value,
+}));
 
 vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChatPanel', () => ({
     CommitChatPanel: (props: any) => (
@@ -14,6 +20,11 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChat
 }));
 
 import { CommitChatPlacementFrame } from '../../../../src/server/spa/client/react/features/git/commits/CommitChatPlacementFrame';
+
+beforeEach(() => {
+    dormantModeState.value = 'ghost';
+    vi.useFakeTimers();
+});
 
 describe('CommitChatPlacementFrame', () => {
     it('renders a bottom-right lens frame with close and pin actions', () => {
@@ -39,8 +50,6 @@ describe('CommitChatPlacementFrame', () => {
         expect(lens.className).toContain('absolute');
         expect(lens.className).toContain('bottom-4');
         expect(lens.className).toContain('right-4');
-        expect(lens.className).toContain('max-w-[420px]');
-        expect(lens.className).toContain('max-h-[55vh]');
         expect(screen.getByTestId('commit-chat-lens-resize-grip')).toHaveClass('cursor-nwse-resize');
         expect(screen.getByTestId('commit-chat-lens-header')).toBeTruthy();
         expect(screen.getByTestId('commit-chat-panel').getAttribute('data-hide-empty-header')).toBe('true');
@@ -100,5 +109,146 @@ describe('CommitChatPlacementFrame', () => {
         fireEvent.click(screen.getByTestId('commit-chat-unpin-btn'));
 
         expect(onUnpin).toHaveBeenCalledOnce();
+    });
+
+    it('sets data-dormant-mode and data-focused attributes on lens', () => {
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        const lens = screen.getByTestId('commit-chat-lens');
+        expect(lens.getAttribute('data-dormant-mode')).toBe('ghost');
+        expect(lens.getAttribute('data-focused')).toBe('true');
+    });
+
+    it('does not set dormant data attributes on side-panel presentation', () => {
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="side-panel"
+                onClose={() => {}}
+            />,
+        );
+
+        const panel = screen.getByTestId('commit-chat-side-panel');
+        expect(panel.getAttribute('data-dormant-mode')).toBeNull();
+        expect(panel.getAttribute('data-focused')).toBeNull();
+    });
+
+    it('transitions to ghost dormant state after mouse leaves and delay', () => {
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        const lens = screen.getByTestId('commit-chat-lens');
+        const card = screen.getByTestId('commit-chat-lens-card');
+
+        expect(lens.getAttribute('data-focused')).toBe('true');
+        expect(card.style.opacity).toBe('1');
+
+        fireEvent.mouseLeave(lens);
+        act(() => { vi.advanceTimersByTime(700); });
+
+        expect(lens.getAttribute('data-focused')).toBe('false');
+        expect(card.style.opacity).toBe('0.18');
+        expect(card.style.pointerEvents).toBe('none');
+    });
+
+    it('cancels dormant transition when mouse re-enters before delay', () => {
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        const lens = screen.getByTestId('commit-chat-lens');
+
+        fireEvent.mouseLeave(lens);
+        act(() => { vi.advanceTimersByTime(300); });
+
+        fireEvent.mouseEnter(lens);
+        act(() => { vi.advanceTimersByTime(500); });
+
+        expect(lens.getAttribute('data-focused')).toBe('true');
+    });
+
+    it('shows dormant pill when mode is pill and cursor leaves', () => {
+        dormantModeState.value = 'pill';
+
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        const lens = screen.getByTestId('commit-chat-lens');
+        expect(lens.getAttribute('data-dormant-mode')).toBe('pill');
+
+        fireEvent.mouseLeave(lens);
+        act(() => { vi.advanceTimersByTime(700); });
+
+        const pill = screen.getByTestId('commit-chat-lens-dormant-pill');
+        expect(pill.style.opacity).toBe('1');
+        expect(pill.style.pointerEvents).toBe('auto');
+
+        const card = screen.getByTestId('commit-chat-lens-card');
+        expect(card.style.opacity).toBe('0');
+        expect(card.style.pointerEvents).toBe('none');
+    });
+
+    it('restores from pill dormant when mouse enters pill', () => {
+        dormantModeState.value = 'pill';
+
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        const lens = screen.getByTestId('commit-chat-lens');
+        fireEvent.mouseLeave(lens);
+        act(() => { vi.advanceTimersByTime(700); });
+
+        const pill = screen.getByTestId('commit-chat-lens-dormant-pill');
+        fireEvent.mouseEnter(pill);
+
+        expect(lens.getAttribute('data-focused')).toBe('true');
+        const card = screen.getByTestId('commit-chat-lens-card');
+        expect(card.style.opacity).toBe('1');
+    });
+
+    it('does not render dormant pill in ghost mode', () => {
+        dormantModeState.value = 'ghost';
+
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        expect(screen.queryByTestId('commit-chat-lens-dormant-pill')).toBeNull();
     });
 });

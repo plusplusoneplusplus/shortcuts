@@ -32,6 +32,7 @@ interface DashboardConfig {
     focusedDiffEnabled?: boolean;
     sessionContextAttachmentsEnabled?: boolean;
     commitChatLensEnabled?: boolean;
+    commitChatLensDormantMode?: 'ghost' | 'pill';
     containerDefaultAgentEnabled?: boolean;
     bindAddress?: string;
     /** Whether the Codex SDK provider is enabled (feature flag). */
@@ -121,6 +122,7 @@ async function _fetchAndApplyRuntimeConfig(apiBase: string): Promise<void> {
             focusedDiffEnabled: data.features.focusedDiffEnabled,
             sessionContextAttachmentsEnabled: data.features.sessionContextAttachmentsEnabled,
             commitChatLensEnabled: data.features.commitChatLensEnabled,
+            commitChatLensDormantMode: data.features.commitChatLensDormantMode,
             containerDefaultAgentEnabled: data.features.containerDefaultAgentEnabled,
             codexEnabled: data.features.codexEnabled,
             defaultProvider: data.features.defaultProvider,
@@ -278,6 +280,11 @@ export function isSessionContextAttachmentsEnabled(): boolean {
 /** Returns true when commit chat lens placement is enabled. */
 export function isCommitChatLensEnabled(): boolean {
     return getConfig().commitChatLensEnabled === true;
+}
+
+/** Returns the dormant mode for the lens: 'ghost' (fade) or 'pill' (collapse). */
+export function getCommitChatLensDormantMode(): 'ghost' | 'pill' {
+    return getConfig().commitChatLensDormantMode === 'pill' ? 'pill' : 'ghost';
 }
 
 export function isContainerDefaultAgentEnabled(): boolean {

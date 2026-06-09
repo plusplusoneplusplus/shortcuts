@@ -221,6 +221,8 @@ export interface CLIConfig {
         sessionContextAttachments?: boolean;
         /** Commit chat bottom-right lens placement on desktop commit-review surfaces. Disabled by default. */
         commitChatLens?: boolean;
+        /** Dormant mode for the lens when the cursor leaves: 'ghost' fades to near-transparent, 'pill' collapses to a compact pill. Defaults to 'ghost'. */
+        commitChatLensDormantMode?: 'ghost' | 'pill';
         /** Auto agent provider routing in Admin -> AI Provider. Disabled by default. */
         autoAgentProviderRouting?: boolean;
     };
@@ -481,6 +483,8 @@ export interface ResolvedCLIConfig {
         sessionContextAttachments: boolean;
         /** Commit chat bottom-right lens placement on desktop commit-review surfaces. Disabled by default. */
         commitChatLens: boolean;
+        /** Dormant mode for the lens when the cursor leaves: 'ghost' fades to near-transparent, 'pill' collapses to a compact pill. Defaults to 'ghost'. */
+        commitChatLensDormantMode: 'ghost' | 'pill';
         /** Auto agent provider routing in Admin -> AI Provider. Disabled by default. */
         autoAgentProviderRouting: boolean;
     };
@@ -693,6 +697,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         gitCrossCloneCherryPick: true,
         sessionContextAttachments: false,
         commitChatLens: false,
+        commitChatLensDormantMode: 'ghost',
         autoAgentProviderRouting: false,
     },
     memoryPromotion: {
