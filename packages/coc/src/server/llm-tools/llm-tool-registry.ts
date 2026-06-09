@@ -51,9 +51,9 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         enabledByDefault: true,
     },
     {
-        name: 'create_work_item',
-        label: 'Create Work Item',
-        description: 'Creates work items for tracking features or tasks.',
+        name: 'create_update_work_item',
+        label: 'Create/Update Work Item',
+        description: 'Creates work items and saves revised plan versions for existing items.',
         enabledByDefault: true,
     },
     {
@@ -131,7 +131,7 @@ export const DEFAULT_DISABLED_LLM_TOOLS: string[] = LLM_TOOL_REGISTRY
 
 /** Additional tool names disabled by default when the dashboard uses classic mode. */
 export const CLASSIC_MODE_EXTRA_DISABLED_TOOLS: string[] = [
-    'create_work_item',
+    'create_update_work_item',
     'create_bug',
 ];
 

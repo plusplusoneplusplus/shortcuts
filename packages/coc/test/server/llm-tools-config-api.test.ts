@@ -142,7 +142,7 @@ describe('LLM Tools Config API endpoints', () => {
             const data = res.json();
             expect(data.disabledLlmTools).toEqual(getEffectiveDefaultDisabledTools(undefined));
             expect(data.disabledLlmTools).toEqual(
-                expect.arrayContaining(['create_work_item', 'create_bug', 'tavily_web_search']),
+                expect.arrayContaining(['create_update_work_item', 'create_bug', 'tavily_web_search']),
             );
         });
 
@@ -169,7 +169,7 @@ describe('LLM Tools Config API endpoints', () => {
             const data = res.json();
             expect(data.disabledLlmTools).toEqual(getEffectiveDefaultDisabledTools('dev-workflow'));
             expect(data.disabledLlmTools).not.toEqual(
-                expect.arrayContaining(['create_work_item', 'create_bug']),
+                expect.arrayContaining(['create_update_work_item', 'create_bug']),
             );
         });
 

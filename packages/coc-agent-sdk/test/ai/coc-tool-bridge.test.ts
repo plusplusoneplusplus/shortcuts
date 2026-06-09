@@ -76,16 +76,16 @@ describe('CocToolBridgeServer', () => {
     it('routes /call to the original handler with the provided arguments', async () => {
         server = new CocToolBridgeServer();
         const handler = vi.fn(async (args: { title?: string }) => `created ${args.title}`);
-        const runtime = new CocToolRuntime([tool('create_work_item', handler as Tool<any>['handler'])], {
+        const runtime = new CocToolRuntime([tool('create_update_work_item', handler as Tool<any>['handler'])], {
             workspaceId: 'ws-1',
             processId: 'proc-1',
         });
         const reg = await server.register(runtime);
 
-        const res = await postJson(reg.endpoint, '/call', reg.token, { name: 'create_work_item', arguments: { title: 'Hi' } });
+        const res = await postJson(reg.endpoint, '/call', reg.token, { name: 'create_update_work_item', arguments: { title: 'Hi' } });
         expect(res.status).toBe(200);
         expect(res.json).toEqual({ content: [{ type: 'text', text: 'created Hi' }], isError: false });
-        expect(handler).toHaveBeenCalledWith({ title: 'Hi' }, expect.objectContaining({ toolName: 'create_work_item' }));
+        expect(handler).toHaveBeenCalledWith({ title: 'Hi' }, expect.objectContaining({ toolName: 'create_update_work_item' }));
     });
 
     it('blocks /call until a deferred (ask_user) handler resolves, then returns the answer', async () => {

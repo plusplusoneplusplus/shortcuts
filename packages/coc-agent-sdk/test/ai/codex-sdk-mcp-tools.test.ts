@@ -64,7 +64,7 @@ describe('CodexSDKService MCP tool wiring', () => {
         (svc as unknown as { codexCtor: unknown }).codexCtor = ctor;
         (svc as unknown as { availabilityCache: unknown }).availabilityCache = { available: true };
 
-        const result = await svc.sendMessage({ prompt: 'hi', tools: [tool('ask_user'), tool('create_work_item')] });
+        const result = await svc.sendMessage({ prompt: 'hi', tools: [tool('ask_user'), tool('create_update_work_item')] });
         expect(result.success).toBe(true);
 
         // A fresh client was constructed for this request (not the default one).
@@ -77,7 +77,7 @@ describe('CodexSDKService MCP tool wiring', () => {
         expect(entry).toBeDefined();
         expect(entry.command).toBe(process.execPath);
         expect(Array.isArray(entry.args)).toBe(true);
-        expect(entry.enabled_tools).toEqual(['ask_user', 'create_work_item']);
+        expect(entry.enabled_tools).toEqual(['ask_user', 'create_update_work_item']);
         // Blocking tools (e.g. ask_user) must not be aborted by Codex's default MCP
         // tool timeout: the server entry pins an effectively-unbounded tool_timeout_sec.
         expect(entry.tool_timeout_sec).toBe(31_536_000);

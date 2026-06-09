@@ -55,9 +55,9 @@ vi.mock('../../src/server/suggest-follow-ups-tool', () => ({
     createSuggestFollowUpsTool: () => mockCreateSuggestFollowUpsTool(),
 }));
 
-const mockCreateWorkItemTool = vi.fn(() => ({ tool: { name: 'create_work_item' } }));
-vi.mock('../../src/server/llm-tools/create-work-item-tool', () => ({
-    createWorkItemTool: (...args: any[]) => mockCreateWorkItemTool(...args),
+const mockCreateUpdateWorkItemTool = vi.fn(() => ({ tool: { name: 'create_update_work_item' } }));
+vi.mock('../../src/server/llm-tools/create-update-work-item-tool', () => ({
+    createCreateUpdateWorkItemTool: (...args: any[]) => mockCreateUpdateWorkItemTool(...args),
 }));
 
 const mockCreateBugTool = vi.fn(() => ({ tool: { name: 'create_bug' } }));
@@ -605,9 +605,9 @@ describe('buildSearchConversationsAddon', () => {
 
 describe('buildCreateWorkItemAddon', () => {
     beforeEach(() => {
-        mockCreateWorkItemTool.mockReset();
+        mockCreateUpdateWorkItemTool.mockReset();
         mockCreateBugTool.mockReset();
-        mockCreateWorkItemTool.mockReturnValue({ tool: { name: 'create_work_item' } });
+        mockCreateUpdateWorkItemTool.mockReturnValue({ tool: { name: 'create_update_work_item' } });
         mockCreateBugTool.mockReturnValue({ tool: { name: 'create_bug' } });
     });
 
@@ -623,17 +623,17 @@ describe('buildCreateWorkItemAddon', () => {
         expect(result.suffix).toBe('');
     });
 
-    it('returns both create_work_item and create_bug tools', () => {
+    it('returns both create_update_work_item and create_bug tools', () => {
         const result = buildCreateWorkItemAddon('/data', 'repo-1');
         expect(result.tools).toHaveLength(2);
-        expect(result.tools[0].name).toBe('create_work_item');
+        expect(result.tools[0].name).toBe('create_update_work_item');
         expect(result.tools[1].name).toBe('create_bug');
     });
 
     it('passes dataDir, repoId, and broadcastFn to factories', () => {
         const broadcast = vi.fn();
         buildCreateWorkItemAddon('/data', 'repo-1', broadcast);
-        expect(mockCreateWorkItemTool).toHaveBeenCalledWith('/data', 'repo-1', broadcast);
+        expect(mockCreateUpdateWorkItemTool).toHaveBeenCalledWith('/data', 'repo-1', broadcast);
         expect(mockCreateBugTool).toHaveBeenCalledWith('/data', 'repo-1', broadcast);
     });
 

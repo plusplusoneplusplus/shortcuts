@@ -66,7 +66,7 @@ describe('ClaudeSDKService MCP tool wiring', () => {
     it('passes a mcpServers map with the coc bridge entry when tools are present', async () => {
         queryFn.mockReturnValue(makeHandle([SUCCESS]));
 
-        const result = await svc.sendMessage({ prompt: 'hi', tools: [tool('ask_user'), tool('create_work_item')] });
+        const result = await svc.sendMessage({ prompt: 'hi', tools: [tool('ask_user'), tool('create_update_work_item')] });
         expect(result.success).toBe(true);
 
         const callOptions = queryFn.mock.calls[0][0] as { options?: { mcpServers?: Record<string, any> } };

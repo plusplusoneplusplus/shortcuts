@@ -32,7 +32,7 @@ import { createGetConversationTool } from '../llm-tools/get-conversation-tool';
 import { createSuggestFollowUpsTool } from '../llm-tools/suggest-follow-ups-tool';
 import { createAskUserTool } from '../llm-tools/ask-user-tool';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
-import { createWorkItemTool, type BroadcastWorkItemFn } from '../llm-tools/create-work-item-tool';
+import { createCreateUpdateWorkItemTool, type BroadcastWorkItemFn } from '../llm-tools/create-update-work-item-tool';
 import { createBugTool } from '../llm-tools/create-bug-tool';
 import type { ChatMode, ChatPayload, PrClassificationPayload, RunScriptPayload } from '../tasks/task-types';
 import {
@@ -520,11 +520,11 @@ export function buildAskUserAddon(
 }
 
 // ============================================================================
-// Create Work Item
+// Create/Update Work Item
 // ============================================================================
 
 /**
- * Builds the tools array and prompt suffix for the `create_work_item` and `create_bug` tools.
+ * Builds the tools array and prompt suffix for the `create_update_work_item` and `create_bug` tools.
  * The tools are only injected when a valid dataDir and repoId are available.
  *
  * @param dataDir     - Base data directory (e.g. `~/.coc`).
@@ -540,7 +540,7 @@ export function buildCreateWorkItemAddon(
         return { tools: [], suffix: '' };
     }
 
-    const { tool: workItemTool } = createWorkItemTool(dataDir, repoId, broadcastFn);
+    const { tool: workItemTool } = createCreateUpdateWorkItemTool(dataDir, repoId, broadcastFn);
     const { tool: bugTool } = createBugTool(dataDir, repoId, broadcastFn);
 
     return { tools: [workItemTool, bugTool], suffix: '' };

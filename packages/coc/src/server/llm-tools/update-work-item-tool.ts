@@ -13,7 +13,7 @@ import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import { FileWorkItemStore } from '../work-items/work-item-store';
 import type { WorkItemPriority } from '../work-items/types';
 import { WORK_ITEM_PLAN_TEMPLATE } from '../work-items/plan-template';
-import type { BroadcastWorkItemFn } from './create-work-item-tool';
+import type { BroadcastWorkItemFn } from './create-update-work-item-tool';
 
 // ============================================================================
 // Types
@@ -37,7 +37,7 @@ export interface UpdateWorkItemArgs {
 
 /**
  * Detect when a model puts the plan markdown into `description` and move it to `plan`.
- * Mirrors the guard in create-work-item-tool.ts.
+ * Mirrors the guard in create-update-work-item-tool.ts.
  */
 function normalizePlanFromDescription(args: UpdateWorkItemArgs): UpdateWorkItemArgs {
     if (args.plan?.trim()) return args;

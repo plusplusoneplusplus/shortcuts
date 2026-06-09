@@ -21,7 +21,8 @@ describe('LLM_TOOL_REGISTRY', () => {
         expect(names).toContain('search_conversations');
         expect(names).toContain('get_conversation');
         expect(names).toContain('ask_user');
-        expect(names).toContain('create_work_item');
+        expect(names).toContain('create_update_work_item');
+        expect(names).not.toContain('create_work_item');
         expect(names).toContain('create_bug');
         expect(names).toContain('memory');
         expect(names).toContain('tavily_web_search');
@@ -70,7 +71,7 @@ describe('DEFAULT_DISABLED_LLM_TOOLS', () => {
 describe('getEffectiveDefaultDisabledTools', () => {
     it('disables work item, bug, and web search tools in classic mode', () => {
         expect(getEffectiveDefaultDisabledTools('classic')).toEqual(
-            expect.arrayContaining(['create_work_item', 'create_bug', 'tavily_web_search']),
+            expect.arrayContaining(['create_update_work_item', 'create_bug', 'tavily_web_search']),
         );
     });
 

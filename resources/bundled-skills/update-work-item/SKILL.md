@@ -5,7 +5,7 @@ description: Interactively update an existing work item — patch common fields 
 
 # Update Work Item
 
-Guide the user through updating an existing work item and persisting changes via the `update_work_item` tool or CoC REST API. Always look up the work item first, present a draft of changes, iterate on feedback, then update only when the user confirms.
+Guide the user through updating an existing work-item plan via the `create_update_work_item` tool or CoC REST API. Always look up the work item first, present the complete revised plan, iterate on feedback, then update only when the user confirms.
 
 ## Instructions
 
@@ -32,12 +32,7 @@ Guide the user through updating an existing work item and persisting changes via
 
 ### Phase 2 — Draft Changes
 
-4. Based on the user's request, determine which fields to update:
-   - **Title**: Short, imperative phrase
-   - **Description**: Markdown paragraph
-   - **Priority**: `high`, `normal`, or `low`
-   - **Tags**: Updated label list
-   - **Plan**: Full revised plan using the standard template (creates a new plan version)
+4. Based on the user's request, produce a **full revised plan** using the standard template. Do not append raw text to the existing plan body and do not submit a partial diff.
 
 5. Present the draft changes as an **update summary**:
 
@@ -45,18 +40,11 @@ Guide the user through updating an existing work item and persisting changes via
    ✏️ Work Item Update Draft
    ──────────────────
    ID:       <id> (WI-<number>)
-   Title:    <current → new, or "unchanged">
-   Priority: <current → new, or "unchanged">
-   Tags:     <current → new, or "unchanged">
-
-   Description:
-   <new description, or "unchanged">
-
-   Plan (new version v<N+1>):
-   <new plan markdown, or "unchanged — no new version will be created">
-   ──────────────────
-   Confirm to update, or give feedback to refine.
-   ```
+    Plan (new version v<N+1>):
+    <complete revised plan markdown>
+    ──────────────────
+    Confirm to update, or give feedback to refine.
+    ```
 
 ### Phase 3 — Refine
 
@@ -65,30 +53,28 @@ Guide the user through updating an existing work item and persisting changes via
 
 ### Phase 4 — Update
 
-8. Call the `update_work_item` tool with the confirmed changes:
+8. Call the `create_update_work_item` tool with the confirmed complete revised plan:
 
    ```
-   update_work_item({
-     workItemId:  "<id>",
-     title:       "<new title>",          // omit if unchanged
-     description: "<new description>",    // omit if unchanged
-     priority:    "<new priority>",        // omit if unchanged
-     tags:        ["<tag1>", "<tag2>"],   // omit if unchanged
-     plan:        "<new plan markdown>"   // omit if no plan change
+   create_update_work_item({
+     target:  "<id or WI-N>",
+     plan:    "<complete revised plan markdown>",
+     summary: "<short summary of the plan change>"   // optional
    })
    ```
 
-   The tool patches the specified fields, saves a new plan version if `plan` is provided, and always resets status to `planning`.
+   The tool saves a new plan version, resets status to `planning`, opens a change record, and broadcasts a dashboard update.
 
-   If the `update_work_item` tool is unavailable, fall back to the REST API:
+   If the `create_update_work_item` tool is unavailable, fall back to the REST API with `PATCH /api/workspaces/:workspaceId/work-items/:workItemId` and a `plan` object:
 
    ```powershell
    $body = @{
-     title       = "<new title>"
-     description = "<new description>"
-     priority    = "<new priority>"
-     tags        = @("<tag1>", "<tag2>")
-     status      = "planning"
+     plan = @{
+       content    = "<complete revised plan markdown>"
+       resolvedBy = "ai"
+       summary    = "<short summary of the plan change>"
+     }
+     status = "planning"
    } | ConvertTo-Json -Depth 5
 
    Invoke-RestMethod `
@@ -98,7 +84,7 @@ Guide the user through updating an existing work item and persisting changes via
        -Body $body
    ```
 
-   For plan updates via REST, use the plan endpoint:
+   For plan-only REST workflows, the dedicated endpoint is `PUT /api/workspaces/:workspaceId/work-items/:workItemId/plan`:
 
    ```powershell
    $planBody = @{
@@ -107,7 +93,7 @@ Guide the user through updating an existing work item and persisting changes via
    } | ConvertTo-Json -Depth 5
 
    Invoke-RestMethod `
-       -Method Post `
+       -Method Put `
        -Uri "http://localhost:4000/api/workspaces/$workspaceId/work-items/<workItemId>/plan" `
        -ContentType "application/json" `
        -Body $planBody
@@ -128,8 +114,8 @@ Guide the user through updating an existing work item and persisting changes via
 ## Edge Cases
 
 - **Work item not found**: If the provided ID doesn't match any work item, list recent items and ask the user to confirm.
-- **No fields changed**: If the user's request doesn't change any fields, confirm with the user before calling the tool.
-- **Plan only**: If only the plan is being updated (no field changes), call the tool with just `workItemId` and `plan`.
+- **No plan change**: If the user's request does not produce a changed complete plan, do not call the tool.
+- **Plan only**: Call the tool with `target` and `plan`; the plan must be the complete revised Markdown body.
 - **Multiple workspaces**: Match the workspace whose `rootPath` most closely matches the current working directory.
 - **Server not running**: If `localhost:4000` is unreachable, tell the user: "Start the CoC server with `coc serve` then try again."
 

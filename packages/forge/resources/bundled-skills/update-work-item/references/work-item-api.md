@@ -71,7 +71,9 @@ PATCH /api/workspaces/:workspaceId/work-items/:workItemId
 Content-Type: application/json
 ```
 
-**Updatable fields:** `title`, `description`, `status`, `priority`, `tags`, `autoExecute`, `reviewComments`.
+**Updatable fields:** `title`, `description`, `status`, `priority`, `tags`, `autoExecute`, `reviewComments`, and `plan`.
+
+`plan` accepts `{ content, resolvedBy?, summary? }`. When `plan.content` is present, the server saves the next plan version, updates the current work-item plan, opens a change record, broadcasts `work-item-updated`, and returns the updated work item.
 
 **Response: 200** — Updated `WorkItem` object.
 
@@ -82,7 +84,7 @@ Content-Type: application/json
 Saves a new plan version and updates the work item's current plan.
 
 ```
-POST /api/workspaces/:workspaceId/work-items/:workItemId/plan
+PUT /api/workspaces/:workspaceId/work-items/:workItemId/plan
 Content-Type: application/json
 ```
 
@@ -94,7 +96,7 @@ Content-Type: application/json
 | `resolvedBy` | `"ai" \| "user"` | | Who generated the plan (default: `"user"`) |
 | `summary` | string | | Short description of what changed |
 
-**Response: 200** — Updated `WorkItem` object with incremented `plan.version`.
+**Response: 200** — `{ plan, version }` with incremented `plan.version`.
 
 ---
 
@@ -121,7 +123,7 @@ created → planning → readyToExecute → executing → aiDone → done | fail
 
 Terminal states (`done`, `failed`) can be re-opened back to `created`.
 
-The `update_work_item` tool always resets status to `planning` after a successful update.
+The `create_update_work_item` tool saves full revised plans as new versions and resets status to `planning` after a successful plan update.
 
 ---
 

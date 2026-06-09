@@ -46,7 +46,7 @@ import {
 import type { ChatPayload, ChatProvider, PrClassificationPayload } from '../tasks/task-types';
 import { getForEachContext, getMapReduceContext, isForEachGenerationContext, isMapReduceGenerationContext, normalizeChatModeOrDefault } from '../tasks/task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
-import type { BroadcastWorkItemFn } from '../llm-tools/create-work-item-tool';
+import type { BroadcastWorkItemFn } from '../llm-tools/create-update-work-item-tool';
 import { BaseExecutor } from './base-executor';
 import { resolveDefaultModel } from '../preferences-handler';
 import { loadConfigFile } from '../../config';
