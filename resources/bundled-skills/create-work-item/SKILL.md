@@ -5,7 +5,7 @@ description: Interactively create a work item for this repository with title, de
 
 # Create Work Item
 
-Guide the user through creating a well-structured work item and persisting it to the **Work Items** page via the CoC REST API. Always present a draft summary first, iterate on feedback, then create only when the user confirms.
+Guide the user through creating a well-structured work item and persisting it to the **Work Items** page via the `create_update_work_item` tool. Always present a draft summary first, iterate on feedback, then create only when the user confirms.
 
 ## Instructions
 
@@ -68,21 +68,21 @@ Guide the user through creating a well-structured work item and persisting it to
 
 ### Phase 3 — Create
 
-6. Call the `create_work_item` tool with the confirmed details:
+6. Call the `create_update_work_item` tool with the confirmed details and no existing work item target:
 
    ```
-   create_work_item({
+   create_update_work_item({
      title:       "<confirmed title>",
      description: "<confirmed description>",
      priority:    "<confirmed priority>",
      tags:        ["<tag1>", "<tag2>"],   // omit if none
-     plan:        { content: "<confirmed plan markdown>", resolvedBy: "ai" }
+     plan:        "<confirmed plan markdown>"
    })
    ```
 
    The tool persists the work item to the Work Items page and broadcasts a live update to any connected dashboard.
 
-   If the `create_work_item` tool is unavailable, fall back to the REST API:
+   If the `create_update_work_item` tool is unavailable, fall back to the REST API:
 
    ```powershell
    $workspaceId = (Invoke-RestMethod -Uri "http://localhost:4000/api/workspaces").workspaces |

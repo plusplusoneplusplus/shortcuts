@@ -51,15 +51,9 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         enabledByDefault: true,
     },
     {
-        name: 'create_work_item',
-        label: 'Create Work Item',
-        description: 'Creates work items for tracking features or tasks.',
-        enabledByDefault: true,
-    },
-    {
-        name: 'create_bug',
-        label: 'Create Bug',
-        description: 'Files bug reports from the conversation context.',
+        name: 'create_update_work_item',
+        label: 'Create/Update Work Item',
+        description: 'Creates typed work items and bugs, patches common fields, and saves revised plan versions.',
         enabledByDefault: true,
     },
     {
@@ -131,9 +125,20 @@ export const DEFAULT_DISABLED_LLM_TOOLS: string[] = LLM_TOOL_REGISTRY
 
 /** Additional tool names disabled by default when the dashboard uses classic mode. */
 export const CLASSIC_MODE_EXTRA_DISABLED_TOOLS: string[] = [
-    'create_work_item',
-    'create_bug',
+    'create_update_work_item',
 ];
+
+const REMOVED_LLM_TOOL_NAMES = new Set([
+    'create_bug',
+]);
+
+export function isRemovedLlmToolName(toolName: string): boolean {
+    return REMOVED_LLM_TOOL_NAMES.has(toolName);
+}
+
+export function filterRemovedLlmToolNames(toolNames: readonly string[]): string[] {
+    return toolNames.filter(name => !isRemovedLlmToolName(name));
+}
 
 /**
  * Resolve the default disabled tools for the current UI layout mode.
@@ -160,19 +165,22 @@ export function isLlmToolEnabled(
     toolName: string,
     disabledLlmTools: string[] | undefined,
 ): boolean {
-    const disabled = disabledLlmTools ?? DEFAULT_DISABLED_LLM_TOOLS;
+    if (isRemovedLlmToolName(toolName)) {
+        return false;
+    }
+    const disabled = filterRemovedLlmToolNames(disabledLlmTools ?? DEFAULT_DISABLED_LLM_TOOLS);
     return !disabled.includes(toolName);
 }
 
 /**
- * Filters an array of tools, removing any whose name appears in the
- * disabled tools list (or the default disabled list when undefined).
+ * Filters an array of tools, removing removed tool names and any names
+ * present in the disabled tools list (or the default disabled list when undefined).
  */
 export function filterDisabledLlmTools<T extends { name: string }>(
     tools: T[],
     disabledLlmTools: string[] | undefined,
 ): T[] {
-    const disabled = disabledLlmTools ?? DEFAULT_DISABLED_LLM_TOOLS;
-    if (disabled.length === 0) return tools;
-    return tools.filter(t => !disabled.includes(t.name));
+    const disabled = filterRemovedLlmToolNames(disabledLlmTools ?? DEFAULT_DISABLED_LLM_TOOLS);
+    if (disabled.length === 0) return tools.filter(t => !isRemovedLlmToolName(t.name));
+    return tools.filter(t => !isRemovedLlmToolName(t.name) && !disabled.includes(t.name));
 }

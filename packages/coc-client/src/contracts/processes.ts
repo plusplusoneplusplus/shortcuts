@@ -228,6 +228,9 @@ export interface AskUserResponseRequest {
     questionId: string;
     answer?: string | string[] | boolean;
     skipped?: boolean;
+    deferred?: boolean;
+    reason?: 'needs-context';
+    note?: string;
   }>;
 }
 

@@ -39,7 +39,7 @@ describe('ADMIN_EDITABLE_KEYS', () => {
             'chat.askUser.enabled',
             'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled',
             'scratchpad.enabled', 'scratchpad.layout',
-            'workflows.enabled', 'pullRequests.enabled', 'servers.enabled',
+            'workflows.enabled', 'pullRequests.enabled', 'pullRequests.autoClassifyTeam', 'servers.enabled',
             'ralph.enabled', 'forEach.enabled', 'vimNavigation.enabled', 'loops.enabled',
             'excalidraw.enabled',
             'mcpOauth.enabled', 'mcpOauth.autoRefresh.enabled',
@@ -54,6 +54,7 @@ describe('ADMIN_EDITABLE_KEYS', () => {
             'workItems.hierarchy.enabled',
             'workItems.sync.enabled',
             'workItems.aiAuthoring.enabled',
+            'workItems.workflow.enabled',
             'effortLevels.enabled',
         ];
         for (const k of expected) {
@@ -262,7 +263,7 @@ describe('validate()', () => {
         'showReportIntent', 'groupSingleLineMessages',
         'chat.followUpSuggestions.enabled', 'chat.askUser.enabled',
         'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled',
-        'scratchpad.enabled', 'workflows.enabled', 'pullRequests.enabled',
+        'scratchpad.enabled', 'workflows.enabled', 'pullRequests.enabled', 'pullRequests.autoClassifyTeam',
         'servers.enabled', 'ralph.enabled', 'forEach.enabled', 'vimNavigation.enabled', 'loops.enabled',
         'excalidraw.enabled',
         'mcpOauth.enabled',
@@ -276,6 +277,7 @@ describe('validate()', () => {
         'workItems.hierarchy.enabled',
         'workItems.sync.enabled',
         'workItems.aiAuthoring.enabled',
+        'workItems.workflow.enabled',
         'effortLevels.enabled',
     ];
 
@@ -407,6 +409,7 @@ describe('apply()', () => {
         ['scratchpad.enabled', (c) => c.scratchpad?.enabled],
         ['workflows.enabled', (c) => c.workflows?.enabled],
         ['pullRequests.enabled', (c) => c.pullRequests?.enabled],
+        ['pullRequests.autoClassifyTeam', (c) => c.pullRequests?.autoClassifyTeam],
         ['servers.enabled', (c) => c.servers?.enabled],
         ['ralph.enabled', (c) => c.ralph?.enabled],
         ['forEach.enabled', (c) => c.forEach?.enabled],
@@ -420,6 +423,7 @@ describe('apply()', () => {
         ['workItems.hierarchy.enabled', (c) => c.workItems?.hierarchy?.enabled],
         ['workItems.sync.enabled', (c) => c.workItems?.sync?.enabled],
         ['workItems.aiAuthoring.enabled', (c) => c.workItems?.aiAuthoring?.enabled],
+        ['workItems.workflow.enabled', (c) => c.workItems?.workflow?.enabled],
         ['effortLevels.enabled', (c) => c.effortLevels?.enabled],
     ];
 
@@ -519,7 +523,7 @@ describe('runtime classification', () => {
 
     const liveFeatures = [
         'notes.enabled', 'myWork.enabled', 'myLife.enabled',
-        'scratchpad.enabled', 'workflows.enabled', 'pullRequests.enabled',
+        'scratchpad.enabled', 'workflows.enabled', 'pullRequests.enabled', 'pullRequests.autoClassifyTeam',
         'servers.enabled', 'ralph.enabled', 'forEach.enabled', 'vimNavigation.enabled',
         'excalidraw.enabled', 'features.focusedDiff',
         'features.gitCrossCloneCherryPick',

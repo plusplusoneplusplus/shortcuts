@@ -99,7 +99,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(20);
+        expect(SCHEMA_VERSION).toBe(21);
     });
 
     it('creates context-window breakdown columns on processes', () => {
@@ -833,6 +833,60 @@ describe('sqlite-schema', () => {
                 .get();
             expect(table).toBeTruthy();
             expect(index).toBeTruthy();
+        });
+    });
+
+    describe('V20 → V21 migration (interrupted turn metadata)', () => {
+        it('adds interrupted metadata columns to existing conversation_turns tables', () => {
+            db.exec(`
+                CREATE TABLE processes (
+                    id                    TEXT PRIMARY KEY,
+                    workspace_id          TEXT NOT NULL,
+                    type                  TEXT,
+                    status                TEXT NOT NULL,
+                    start_time            TEXT NOT NULL,
+                    parent_process_id     TEXT,
+                    sdk_session_id        TEXT,
+                    archived              INTEGER DEFAULT 0,
+                    last_event_at         TEXT
+                );
+
+                CREATE TABLE conversation_turns (
+                    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                    process_id        TEXT NOT NULL REFERENCES processes(id) ON DELETE CASCADE,
+                    turn_index        INTEGER NOT NULL,
+                    role              TEXT NOT NULL,
+                    content           TEXT,
+                    timestamp         TEXT NOT NULL,
+                    streaming         INTEGER DEFAULT 0,
+                    tool_calls        TEXT,
+                    timeline          TEXT,
+                    UNIQUE(process_id, turn_index)
+                );
+            `);
+            db.prepare(`
+                INSERT INTO processes (id, workspace_id, status, start_time)
+                VALUES ('p-v20', 'ws1', 'completed', '2026-01-01T00:00:00.000Z')
+            `).run();
+            db.prepare(`
+                INSERT INTO conversation_turns (process_id, turn_index, role, content, timestamp)
+                VALUES ('p-v20', 0, 'assistant', 'partial', '2026-01-01T00:00:01.000Z')
+            `).run();
+            db.pragma('user_version = 20');
+
+            initializeDatabase(db);
+
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+            const cols = db.prepare("PRAGMA table_info(conversation_turns)").all() as Array<{ name: string }>;
+            const colNames = cols.map(c => c.name);
+            expect(colNames).toContain('interrupted');
+            expect(colNames).toContain('interruption_reason');
+            const row = db.prepare(`
+                SELECT interrupted, interruption_reason
+                FROM conversation_turns WHERE process_id = 'p-v20'
+            `).get() as any;
+            expect(row.interrupted).toBe(0);
+            expect(row.interruption_reason).toBeNull();
         });
     });
 });

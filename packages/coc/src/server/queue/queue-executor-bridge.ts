@@ -13,6 +13,7 @@ import { orchestrateRalphIteration } from '../ralph/orchestrate-iteration';
 import { orchestrateFinalCheck } from '../ralph/orchestrate-final-check';
 import { loadConfigFile, DEFAULT_CONFIG } from '../../config';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
+import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
 
 export const DEFAULT_FOLLOW_UP_SUGGESTIONS = { enabled: true, count: 3 } as const;
 
@@ -49,11 +50,11 @@ export interface QueueExecutorBridge {
     cancelProcess?(processId: string): Promise<void>;
     steerProcess?(processId: string, message: string): Promise<boolean>;
     /** Answer a pending ask-user question. Returns true if the question was found and answered. */
-    answerAskUserQuestion?(processId: string, questionId: string, answer: string | string[] | boolean): Promise<boolean>;
+    answerAskUserQuestion?(processId: string, questionId: string, answer: AskUserAnswerValue): Promise<boolean>;
     /** Skip a pending ask-user question. Returns true if the question was found and skipped. */
     skipAskUserQuestion?(processId: string, questionId: string): Promise<boolean>;
     /** Resolve a pending ask-user question batch. Returns true only if every answer resolves. */
-    answerAskUserQuestions?(processId: string, batchId: string, answers: Array<{ questionId: string; answer?: string | string[] | boolean; skipped?: boolean }>): Promise<boolean>;
+    answerAskUserQuestions?(processId: string, batchId: string, answers: AskUserAnswerInput[]): Promise<boolean>;
     /** Update the execution-time Auto provider resolver for existing bridges. */
     setResolveDefaultProvider?(resolveDefaultProvider: ResolveDefaultProviderForExecution): void;
 }
@@ -389,7 +390,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         }
     }
 
-    async answerAskUserQuestion(processId: string, questionId: string, answer: string | string[] | boolean): Promise<boolean> {
+    async answerAskUserQuestion(processId: string, questionId: string, answer: AskUserAnswerValue): Promise<boolean> {
         const handles = this.executors.getAskUserHandles(processId);
         if (!handles) return false;
         const resolved = handles.answerQuestion(questionId, answer);
@@ -409,7 +410,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         return resolved;
     }
 
-    async answerAskUserQuestions(processId: string, batchId: string, answers: Array<{ questionId: string; answer?: string | string[] | boolean; skipped?: boolean }>): Promise<boolean> {
+    async answerAskUserQuestions(processId: string, batchId: string, answers: AskUserAnswerInput[]): Promise<boolean> {
         const handles = this.executors.getAskUserHandles(processId);
         if (!handles) return false;
         const proc = await this.store.getProcess(processId);

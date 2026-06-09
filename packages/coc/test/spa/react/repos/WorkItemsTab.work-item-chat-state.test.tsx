@@ -86,6 +86,7 @@ vi.mock('../../../../src/server/spa/client/comments/diff-comment-utils', () => (
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isWorkItemsHierarchyEnabled: () => true,
     isWorkItemsAiAuthoringEnabled: () => false,
+    isWorkItemsWorkflowEnabled: () => false,
     isCommitChatLensEnabled: () => true,
     isWorkItemsSyncEnabled: () => true,
     isSessionContextAttachmentsEnabled: () => false,
@@ -285,5 +286,18 @@ describe('WorkItemsTab Work Item chat state integration', () => {
         });
         expect(screen.getByTestId('mock-work-item-chat-frame')).toHaveAttribute('data-work-item-id', 'wi-local');
         expect(localStorage.getItem(getReviewChatOpenStorageKey(otherWorkspaceTarget))).toBe('true');
+    });
+
+    it('hides child, pin, and archive actions from the detail header', async () => {
+        render(<WorkItemsTab workspaceId="ws-a" />);
+
+        fireEvent.click(screen.getByTestId('select-local-work-item'));
+        await screen.findByTestId('work-item-ask-ai-btn');
+
+        expect(screen.queryByTestId('wi-new-child-btn')).toBeNull();
+        expect(screen.queryByTestId('wi-add-child-btn')).toBeNull();
+        expect(screen.queryByTestId('work-item-pin-btn')).toBeNull();
+        expect(screen.queryByTestId('work-item-archive-btn')).toBeNull();
+        expect(screen.getByTestId('work-item-delete-btn')).toBeTruthy();
     });
 });

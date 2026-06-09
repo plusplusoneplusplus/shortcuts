@@ -171,6 +171,16 @@ describe('generateDashboardHtml', () => {
         const html = generateDashboardHtml({ serversEnabled: true });
         expect(html).toContain('serversEnabled: true');
     });
+
+    it('defaults workItemsWorkflowEnabled to false in __DASHBOARD_CONFIG__', () => {
+        const html = generateDashboardHtml();
+        expect(html).toContain('workItemsWorkflowEnabled: false');
+    });
+
+    it('reflects workItemsWorkflowEnabled=true in __DASHBOARD_CONFIG__', () => {
+        const html = generateDashboardHtml({ workItemsWorkflowEnabled: true });
+        expect(html).toContain('workItemsWorkflowEnabled: true');
+    });
 });
 
 describe('generateDashboardHtml bundle hot-reload', () => {

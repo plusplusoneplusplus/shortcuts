@@ -7,6 +7,8 @@ import { render, screen, waitFor, act, fireEvent, within } from '@testing-librar
 
 const configMock = vi.hoisted(() => ({
     pullRequestsSuggestionsEnabled: false,
+    pullRequestsAutoClassifyTeamEnabled: false,
+    focusedDiffEnabled: true,
 }));
 
 const prefsMocks = vi.hoisted(() => ({
@@ -20,6 +22,8 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '',
     isRalphEnabled: () => false,
     isPullRequestsSuggestionsEnabled: () => configMock.pullRequestsSuggestionsEnabled,
+    isPullRequestsAutoClassifyTeamEnabled: () => configMock.pullRequestsAutoClassifyTeamEnabled,
+    isFocusedDiffEnabled: () => configMock.focusedDiffEnabled,
     getActiveProvider: () => 'copilot',
     getDefaultProvider: () => 'copilot',
     getConfiguredDefaultProvider: () => 'copilot',
@@ -128,6 +132,8 @@ beforeEach(() => {
     prefsMocks.getWorkspacePreferences.mockResolvedValue({});
     prefsMocks.patchWorkspacePreferences.mockResolvedValue(undefined);
     configMock.pullRequestsSuggestionsEnabled = false;
+    configMock.pullRequestsAutoClassifyTeamEnabled = false;
+    configMock.focusedDiffEnabled = true;
     mockDispatch.mockReset();
     mockSelectedPrId = null;
     mockWorkspaces = [];
@@ -532,6 +538,205 @@ describe('queue filter pills', () => {
         )).toBe(true);
         expect(consoleError).not.toHaveBeenCalled();
         consoleError.mockRestore();
+    });
+
+    it('shows disabled Team auto-classification status when the flag is off', async () => {
+        const fetchMock = vi.fn((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('/coworker-roster')) {
+                return Promise.resolve(jsonResponse({ entries: [makeCoworkerEntry({ id: 'bob-1', displayName: 'Bob Dev' })] }));
+            }
+            if (url.includes('/recent-opened')) {
+                return Promise.resolve(jsonResponse({ entries: [] }));
+            }
+            if (url.includes('scope=all')) {
+                return Promise.resolve(jsonResponse({
+                    pullRequests: [makePr({ id: 2, number: 2, title: 'Bob PR', author: { id: 'bob-1', displayName: 'Bob Dev' }, headSha: 'head-2' })],
+                }));
+            }
+            return Promise.resolve(jsonResponse({ pullRequests: [makePr()] }));
+        });
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        await act(async () => { fireEvent.click(screen.getByTestId('pr-queue-filter-team')); });
+
+        await waitFor(() => expect(screen.getByTestId('team-auto-classification-status')).toHaveAttribute('data-status-mode', 'disabled'));
+        expect(screen.getByTestId('team-auto-classification-summary')).toHaveTextContent('Auto-classification is off');
+        expect(screen.queryByTestId('team-auto-classification-button')).not.toBeInTheDocument();
+        expect(fetchMock.mock.calls.some(call => String(call[0]).includes('/classify-diff/batch-status'))).toBe(false);
+    });
+
+    it('shows enabled idle Team auto-classification status when no loaded Team PRs are eligible', async () => {
+        configMock.pullRequestsAutoClassifyTeamEnabled = true;
+        const fetchMock = vi.fn((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('/coworker-roster')) {
+                return Promise.resolve(jsonResponse({ entries: [makeCoworkerEntry({ id: 'bob-1', displayName: 'Bob Dev' })] }));
+            }
+            if (url.includes('/recent-opened')) {
+                return Promise.resolve(jsonResponse({ entries: [] }));
+            }
+            if (url.includes('scope=all')) {
+                return Promise.resolve(jsonResponse({
+                    pullRequests: [makePr({ id: 2, number: 2, title: 'Alice PR', author: { id: 'alice-1', displayName: 'Alice Dev' }, headSha: 'head-2' })],
+                }));
+            }
+            return Promise.resolve(jsonResponse({ pullRequests: [makePr()] }));
+        });
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        await act(async () => { fireEvent.click(screen.getByTestId('pr-queue-filter-team')); });
+
+        await waitFor(() => expect(screen.getByTestId('team-auto-classification-status')).toHaveAttribute('data-status-mode', 'idle'));
+        expect(screen.getByTestId('team-auto-classification-summary')).toHaveTextContent('No loaded Team PRs to classify');
+        expect(screen.getByTestId('team-auto-classification-button')).toBeDisabled();
+        expect(screen.queryByTestId('team-auto-classification-ready-count')).not.toBeInTheDocument();
+    });
+
+    it('shows ready/running/missing counts and row badges without changing Team row order', async () => {
+        configMock.pullRequestsAutoClassifyTeamEnabled = true;
+        const allPrs = [
+            makePr({ id: 2, number: 2, title: 'Ready PR', author: { id: 'bob-1', displayName: 'Bob Dev' }, headSha: 'ready-head' }),
+            makePr({ id: 3, number: 3, title: 'Running PR', author: { id: 'bob-1', displayName: 'Bob Dev' }, headSha: 'running-head' }),
+            makePr({ id: 4, number: 4, title: 'Missing PR', author: { id: 'bob-1', displayName: 'Bob Dev' }, headSha: 'missing-head' }),
+        ];
+        const fetchMock = vi.fn((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('/classify-diff/batch-status')) {
+                return Promise.resolve(jsonResponse({
+                    statuses: {
+                        '2:ready-head': 'ready',
+                        '3:running-head': 'running',
+                        '4:missing-head': 'none',
+                    },
+                }));
+            }
+            if (url.includes('/coworker-roster')) {
+                return Promise.resolve(jsonResponse({ entries: [makeCoworkerEntry({ id: 'bob-1', displayName: 'Bob Dev' })] }));
+            }
+            if (url.includes('/recent-opened')) {
+                return Promise.resolve(jsonResponse({ entries: [] }));
+            }
+            if (url.includes('scope=all')) {
+                return Promise.resolve(jsonResponse({ pullRequests: allPrs }));
+            }
+            return Promise.resolve(jsonResponse({ pullRequests: [makePr({ id: 1, number: 1, title: 'Mine PR' })] }));
+        });
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        await act(async () => { fireEvent.click(screen.getByTestId('pr-queue-filter-team')); });
+
+        await waitFor(() => expect(screen.getByTestId('team-auto-classification-ready-count')).toHaveTextContent('1 cached'));
+        expect(screen.getByTestId('team-auto-classification-running-count')).toHaveTextContent('1 running');
+        expect(screen.getByTestId('team-auto-classification-missing-count')).toHaveTextContent('1 missing');
+        expect(screen.getByTestId('team-auto-classification-status')).toHaveAttribute('data-status-mode', 'running');
+        expect(screen.getByTestId('team-auto-classification-button')).toHaveAccessibleName('Classify Team pull requests now');
+
+        const rows = screen.getAllByTestId('pr-row');
+        expect(rows.map(row => within(row).getByText(/Ready PR|Running PR|Missing PR/).textContent)).toEqual([
+            'Ready PR',
+            'Running PR',
+            'Missing PR',
+        ]);
+        const badges = screen.getAllByTestId('pr-classification-badge');
+        expect(badges.map(badge => badge.getAttribute('data-classification-status'))).toEqual(['ready', 'running', 'missing']);
+        expect(screen.getByTestId('pr-queue-filter-team')).toHaveTextContent('3');
+    });
+
+    it('updates Team auto-classification status after a refresh observes queued work', async () => {
+        configMock.pullRequestsAutoClassifyTeamEnabled = true;
+        const allPrs = [
+            makePr({ id: 2, number: 2, title: 'Queue me', author: { id: 'bob-1', displayName: 'Bob Dev' }, headSha: 'head-2' }),
+        ];
+        let statusCalls = 0;
+        const fetchMock = vi.fn((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('/classify-diff/batch-status')) {
+                statusCalls++;
+                return Promise.resolve(jsonResponse({
+                    statuses: { '2:head-2': statusCalls === 1 ? 'none' : 'running' },
+                }));
+            }
+            if (url.includes('/coworker-roster')) {
+                return Promise.resolve(jsonResponse({ entries: [makeCoworkerEntry({ id: 'bob-1', displayName: 'Bob Dev' })] }));
+            }
+            if (url.includes('/recent-opened')) {
+                return Promise.resolve(jsonResponse({ entries: [] }));
+            }
+            if (url.includes('scope=all')) {
+                return Promise.resolve(jsonResponse({ pullRequests: allPrs }));
+            }
+            return Promise.resolve(jsonResponse({ pullRequests: [makePr()] }));
+        });
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        await act(async () => { fireEvent.click(screen.getByTestId('pr-queue-filter-team')); });
+        await waitFor(() => expect(screen.getByTestId('team-auto-classification-missing-count')).toHaveTextContent('1 missing'));
+
+        await act(async () => { fireEvent.click(screen.getByTestId('refresh-button')); });
+
+        await waitFor(() => expect(screen.getByTestId('team-auto-classification-running-count')).toHaveTextContent('1 running'));
+        expect(screen.getByTestId('team-auto-classification-status')).toHaveAttribute('data-status-mode', 'running');
+        expect(screen.getByTestId('pr-classification-badge')).toHaveAttribute('data-classification-status', 'running');
+    });
+
+    it('queues Team classifications through the bounded server endpoint when requested manually', async () => {
+        configMock.pullRequestsAutoClassifyTeamEnabled = true;
+        const allPrs = [
+            makePr({ id: 2, number: 2, title: 'Manual queue PR', author: { id: 'bob-1', displayName: 'Bob Dev' }, headSha: 'head-2' }),
+        ];
+        let queued = false;
+        const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            if (url.includes('/team-auto-classification')) {
+                queued = true;
+                const body = JSON.parse(init?.body as string);
+                expect(init?.method).toBe('POST');
+                expect(body.workspaceId).toBe('ws-1');
+                expect(body.pullRequests).toHaveLength(1);
+                expect(body.pullRequests[0]).toMatchObject({ number: 2, headSha: 'head-2' });
+                return Promise.resolve(jsonResponse({
+                    eligible: 1,
+                    considered: 1,
+                    skippedMissingHeadSha: 0,
+                    skippedMissingNumber: 0,
+                    ready: 0,
+                    running: 0,
+                    started: 1,
+                    notFound: 0,
+                    errors: [],
+                }));
+            }
+            if (url.includes('/classify-diff/batch-status')) {
+                return Promise.resolve(jsonResponse({
+                    statuses: { '2:head-2': queued ? 'running' : 'none' },
+                }));
+            }
+            if (url.includes('/coworker-roster')) {
+                return Promise.resolve(jsonResponse({ entries: [makeCoworkerEntry({ id: 'bob-1', displayName: 'Bob Dev' })] }));
+            }
+            if (url.includes('/recent-opened')) {
+                return Promise.resolve(jsonResponse({ entries: [] }));
+            }
+            if (url.includes('scope=all')) {
+                return Promise.resolve(jsonResponse({ pullRequests: allPrs }));
+            }
+            return Promise.resolve(jsonResponse({ pullRequests: [makePr()] }));
+        });
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        await act(async () => { fireEvent.click(screen.getByTestId('pr-queue-filter-team')); });
+        await waitFor(() => expect(screen.getByTestId('team-auto-classification-missing-count')).toHaveTextContent('1 missing'));
+
+        await act(async () => { fireEvent.click(screen.getByTestId('team-auto-classification-button')); });
+
+        await waitFor(() => expect(screen.getByTestId('team-auto-classification-running-count')).toHaveTextContent('1 running'));
+        expect(fetchMock.mock.calls.some(call => String(call[0]).includes('/team-auto-classification'))).toBe(true);
     });
 
     it('"Mine" stays on scope=mine and does not refetch when re-clicked', async () => {

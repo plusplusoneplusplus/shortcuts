@@ -12,6 +12,7 @@ import {
     getEffectiveDefaultDisabledTools,
     isLlmToolEnabled,
     filterDisabledLlmTools,
+    filterRemovedLlmToolNames,
 } from '../../../src/server/llm-tools/llm-tool-registry';
 
 describe('LLM_TOOL_REGISTRY', () => {
@@ -21,8 +22,10 @@ describe('LLM_TOOL_REGISTRY', () => {
         expect(names).toContain('search_conversations');
         expect(names).toContain('get_conversation');
         expect(names).toContain('ask_user');
-        expect(names).toContain('create_work_item');
-        expect(names).toContain('create_bug');
+        expect(names).toContain('create_update_work_item');
+        expect(names).not.toContain('create_work_item');
+        expect(names).not.toContain('update_work_item');
+        expect(names).not.toContain('create_bug');
         expect(names).toContain('memory');
         expect(names).toContain('tavily_web_search');
     });
@@ -68,10 +71,11 @@ describe('DEFAULT_DISABLED_LLM_TOOLS', () => {
 });
 
 describe('getEffectiveDefaultDisabledTools', () => {
-    it('disables work item, bug, and web search tools in classic mode', () => {
+    it('disables the unified work item and web search tools in classic mode', () => {
         expect(getEffectiveDefaultDisabledTools('classic')).toEqual(
-            expect.arrayContaining(['create_work_item', 'create_bug', 'tavily_web_search']),
+            expect.arrayContaining(['create_update_work_item', 'tavily_web_search']),
         );
+        expect(getEffectiveDefaultDisabledTools('classic')).not.toContain('create_bug');
     });
 
     it('uses classic mode defaults when layout mode is undefined', () => {
@@ -83,6 +87,15 @@ describe('getEffectiveDefaultDisabledTools', () => {
         expect(getEffectiveDefaultDisabledTools('dev-workflow')).not.toEqual(
             expect.arrayContaining(CLASSIC_MODE_EXTRA_DISABLED_TOOLS),
         );
+    });
+});
+
+describe('filterRemovedLlmToolNames', () => {
+    it('drops stale create_bug disabled-tool preferences', () => {
+        expect(filterRemovedLlmToolNames(['suggest_follow_ups', 'create_bug', 'memory'])).toEqual([
+            'suggest_follow_ups',
+            'memory',
+        ]);
     });
 });
 
@@ -112,6 +125,11 @@ describe('isLlmToolEnabled', () => {
     it('handles unknown tool names gracefully', () => {
         expect(isLlmToolEnabled('unknown_tool', undefined)).toBe(true);
         expect(isLlmToolEnabled('unknown_tool', ['unknown_tool'])).toBe(false);
+    });
+
+    it('treats removed create_bug as disabled', () => {
+        expect(isLlmToolEnabled('create_bug', undefined)).toBe(false);
+        expect(isLlmToolEnabled('create_bug', [])).toBe(false);
     });
 });
 
@@ -152,6 +170,15 @@ describe('filterDisabledLlmTools', () => {
         const filtered = filterDisabledLlmTools(mockTools, ['tavily_web_search']);
         expect(filtered[0]).toBe(mockTools[0]);
         expect(filtered[1]).toBe(mockTools[2]);
+    });
+
+    it('removes stale create_bug tools even when explicitly enabled', () => {
+        const filtered = filterDisabledLlmTools([
+            { name: 'create_update_work_item', handler: () => {} },
+            { name: 'create_bug', handler: () => {} },
+        ], []);
+
+        expect(filtered.map(t => t.name)).toEqual(['create_update_work_item']);
     });
 });
 

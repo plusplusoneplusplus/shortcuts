@@ -8,7 +8,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 |--------|------|-------------|
 | GET | `/api/health` | Health check |
 | GET | `/api/config` | Server configuration |
-| GET | `/api/config/runtime` | Runtime dashboard feature flags and config revision, including provider feature flags, `defaultProvider`, and `autoAgentProviderRoutingEnabled` |
+| GET | `/api/config/runtime` | Runtime dashboard feature flags and config revision, including provider feature flags, `defaultProvider`, `autoAgentProviderRoutingEnabled`, Pull Requests flags such as `pullRequestsAutoClassifyTeamEnabled`, and Work Items flags such as `workItemsWorkflowEnabled` |
 | GET | `/api/preferences` | Global UI preferences |
 | PUT | `/api/preferences` | Update global preferences |
 | GET | `/api/logs` | Server log ring buffer |
@@ -40,7 +40,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | PATCH | `/api/workspaces/:id/preferences` | Update per-repo preferences |
 | GET | `/api/workspaces/:id/instructions` | List custom instruction files for active modes: base, Ask, and Autopilot |
 | GET/PUT/DELETE | `/api/workspaces/:id/instructions/:mode` | Read, update, or delete one custom instruction file. Active modes are `base`, `ask`, and `autopilot`; legacy `plan` route inputs are accepted as an Ask alias. |
-| GET/PUT | `/api/workspaces/:id/llm-tools-config` | List/update per-workspace disabled LLM tools. Response includes `conversationRetrievalAvailable`, derived from the active process store's conversation search support. |
+| GET/PUT | `/api/workspaces/:id/llm-tools-config` | List/update per-workspace disabled LLM tools. Response includes `conversationRetrievalAvailable`, derived from the active process store's conversation search support. Removed tool names such as `create_bug` are filtered from responses and from rewritten preferences. |
 | GET | `/api/workspaces/:id/summary` | Aggregated workspace summary |
 | GET | `/api/workspaces/:id/endev/status` | Cached EnDev xDPU eligibility status; `?refresh=true` revalidates |
 | POST | `/api/workspaces/:id/endev/revalidate` | Force EnDev xDPU eligibility revalidation |
@@ -70,6 +70,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | GET | `/api/processes/:id` | Process detail |
 | DELETE | `/api/processes/:id` | Delete process |
 | POST | `/api/processes/:id/message` | Follow-up message. Body accepts `content`, optional `mode` (`ask` or `autopilot`; legacy `plan` is accepted as Ask), `deliveryMode`, `images`, `skillNames`, `model`, and `reasoningEffort` (`'low'\|'medium'\|'high'\|'xhigh'`) for a per-turn override. |
+| POST | `/api/processes/:id/ask-user-response` | Resolve the active ask-user batch. Body `{ batchId, answers }`; each answer has `questionId` plus either `answer`, `skipped: true`, or `deferred: true` with `reason: "needs-context"` and optional `note`. |
 | POST | `/api/processes/:id/cancel` | Cancel running process |
 | POST | `/api/processes/:id/promote-to-ralph` | Promote completed ask-mode chat to Ralph session (see [ralph.md](ralph.md)) |
 | PATCH | `/api/processes/:id/pin` | Pin/unpin process |
@@ -243,7 +244,7 @@ Users can add up to **10** additional notes roots per workspace — subfolders i
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/repos/:repoId/pull-requests` | List pull requests; rows are enriched with `diffStats` (`additions`, `deletions`, `changedFiles`) when the provider exposes PR diffs, include `fetchedAt`, and can be served from the active-workspace background-warmed server cache unless `force=true` is supplied |
+| GET | `/api/repos/:repoId/pull-requests` | List pull requests; accepts optional `workspaceId` for workspace-scoped Team roster behavior, rows are enriched with `diffStats` (`additions`, `deletions`, `changedFiles`) when the provider exposes PR diffs, include `fetchedAt`, and can be served from the active-workspace background-warmed server cache unless `force=true` is supplied. When Pull Requests, focused diff, and `pullRequests.autoClassifyTeam` are enabled, loaded open Team PRs with `headSha` opportunistically enqueue missing low-priority diff classifications using the existing classify-diff pipeline. |
 | GET | `/api/repos/:repoId/pull-requests/:prId` | Fetch and cache PR detail, including provider SHA fields (`baseSha`, `headSha`) when available |
 | GET | `/api/repos/:repoId/pull-requests/:prId/diff` | Fetch and cache the provider unified diff for a PR |
 | GET | `/api/repos/:repoId/pull-requests/:prId/diff/files/:path` | Return the hunk diff for one PR file; with `fullContext=true`, the server uses cached or freshly fetched PR detail and attempts to fetch missing PR commits into the requested repo checkout before falling back to the hunk diff with `fullContextUnavailable: true` |
@@ -253,6 +254,7 @@ Users can add up to **10** additional notes roots per workspace — subfolders i
 | GET | `/api/repos/:repoId/pull-requests/coworker-roster` | List persisted Team roster coworkers for a workspace/repo (`workspaceId` query, defaults to `repoId`) |
 | POST | `/api/repos/:repoId/pull-requests/coworker-roster` | Add or update a Team roster coworker for a workspace/repo; body includes `workspaceId`, `displayName`, optional `id`, `email`, `avatarUrl` |
 | DELETE | `/api/repos/:repoId/pull-requests/coworker-roster/:coworkerKey` | Remove a Team roster coworker by provider id or displayName fallback key (`workspaceId` query, defaults to `repoId`) |
+| POST | `/api/repos/:repoId/pull-requests/team-auto-classification` | Manually trigger the same bounded Team PR auto-classification helper used by PR list/background warm paths. Requires the live Team auto-classification gate; body includes `workspaceId` and loaded PR list items. Returns counts for eligible/considered/skipped/ready/running/started/notFound/errors, uses low priority, and caps each call at 10 new enqueues. |
 | GET | `/api/repos/:repoId/pull-requests/review-history` | Read cached PR review history |
 | POST | `/api/repos/:repoId/pull-requests/review-history/refresh` | Fetch and cache PR review history |
 | GET | `/api/repos/:repoId/pull-requests/suggestions` | Read cached AI-ranked PR suggestions |
@@ -307,7 +309,11 @@ See [mcp-settings.md](mcp-settings.md).
 | GET | `/api/workspaces/:id/work-items/:itemId` | Read work item |
 | PATCH | `/api/workspaces/:id/work-items/:itemId` | Update work item. `tracker` metadata is accepted only on root Epic items. Core field edits on GitHub- and Azure Boards-backed mirror items push provider-owned fields before local storage; stale provider snapshots return a typed sync conflict unless the request includes a matching reviewed `syncConflictResolution`. Legacy `syncLinks` payloads are rejected. |
 | DELETE | `/api/workspaces/:id/work-items/:itemId` | Delete work item |
-| POST | `/api/workspaces/:id/work-items/:itemId/execute` | Enqueue a work-item implementation run. Body accepts optional `skillNames`, `provider`, `model`, and `reasoningEffort` overrides. |
+| GET | `/api/workspaces/:id/work-items/:itemId/plan/versions/compare?base=N&target=M` | Compare two immutable plan/content versions for a local-only `work-item` or `goal`. Requires `workItems.workflow.enabled`. |
+| POST | `/api/workspaces/:id/work-items/:itemId/plan/versions/:version/restore` | Restore an older plan/content version for a local-only `work-item` or `goal` by creating a new current version. Requires `workItems.workflow.enabled`; body accepts optional `summary` and `reason`. |
+| POST | `/api/workspaces/:id/work-items/:itemId/execute` | Enqueue a work-item implementation run. Body accepts optional `executionMode` (`one-shot` or `ralph`), `skillNames`, `provider`, `model`, `reasoningEffort`, `effortTier`, and `autoProviderRouting`. One-shot uses the existing single queued implementation task and remains the default for Work Items. When `workItems.workflow.enabled` is true, local-only Goals default to Ralph execution; Ralph mode is accepted only for local-only `work-item` and `goal` items and returns `ralphSessionId` alongside `taskId`. |
+| POST | `/api/workspaces/:id/work-items/:itemId/ai-review` | Explicitly start an optional AI review for a Review-state local-only `work-item`/`goal`. Requires `workItems.workflow.enabled`; enqueues an Ask-mode `code-review` chat, records a non-mutating `work-item-ai-review` execution-history entry, and leaves the item in Review even if the review fails. |
+| POST | `/api/workspaces/:id/work-items/:itemId/submit-pr` | Explicitly submit the latest eligible Review-state local-only `work-item`/`goal` change with commits as a pull request. Requires `workItems.workflow.enabled`, a clean workspace, a registered workspace root, `gh` authentication, and no existing PR metadata on the target change. Body accepts optional `changeId`, `title`, `body`, `baseBranch`, and `branchName`; success records branch/PR metadata on the change, links the PR URL on the execution, and marks the item Done. |
 | POST | `/api/workspaces/:id/work-items/:itemId/convert-to-github` | Convert a local-only root Epic tree to GitHub-backed tracking by creating GitHub issues for the root and each descendant in the workspace-configured repo, encoding parent links in hidden body metadata, and storing mirror metadata locally. |
 | POST | `/api/workspaces/:id/work-items/:itemId/convert-to-local` | Detach a GitHub-backed root Epic tree into local-only tracking by removing GitHub mirror metadata from the root and descendants while preserving local lifecycle status, plans, execution history, runs, and commits. |
 | GET | `/api/workspaces/:id/work-items/tree` | Read the hierarchy tree. Supports `tracker=local-only\|github-backed\|azure-boards-backed`; descendants inherit the tracker identity of their root Epic. Active-workspace Local and detected Remote tree responses can be served from the warmed server cache unless `force=true` is supplied. |
@@ -328,11 +334,17 @@ Work items use Epic-rooted tracker identity. A root Epic may carry `tracker: { k
 
 The sync route layer retains provider status for GitHub and Azure Boards availability checks while Epic-rooted operations use explicit import, pull, and conversion endpoints. GitHub Issues is registered by default and uses external authentication through `gh`/environment-backed GitHub auth without persisting tokens; its status adapter resolves workspace owner/repo and reports provider availability. Azure Boards is registered by default for status checks, reports missing org URL/project/Azure CLI auth explicitly, and returns only sanitized org/project metadata. Remote provider visibility is workspace-scoped and based on the workspace repo remote URL (`github.com` for GitHub, `dev.azure.com`, `ssh.dev.azure.com`, or `*.visualstudio.com` for Azure Boards); provider configuration does not make unsupported remote hosts visible.
 
-`PATCH /api/workspaces/:id/work-items/:itemId` accepts work-item metadata fields and an optional `plan: { content, resolvedBy?, summary? }` object in the same request. When `plan.content` is present, the server creates the next plan version, stores it on the work item, opens the corresponding change record, broadcasts one `work-item-updated` event, and returns the updated work item. The dedicated `PUT /plan` endpoint remains available for plan-only workflows.
+`PATCH /api/workspaces/:id/work-items/:itemId` accepts work-item metadata fields and an optional `plan: { content, resolvedBy?, summary?, reason? }` object in the same request. `plan.content` must contain non-whitespace Markdown. When `plan.content` is present, the server creates the next immutable plan/content version, records source/author metadata (`user` or `ai`), stores the explicit current-version pointer on `plan.currentVersion` and `currentContentVersion`, opens the corresponding change record, broadcasts one `work-item-updated` event, and returns the updated work item. The dedicated `PUT /api/workspaces/:id/work-items/:itemId/plan` endpoint remains available for plan-only workflows and uses the same non-empty content requirement. Execution records and queued task payloads include the selected `planVersion` so runs can be traced back to the exact version that was executed.
+
+Work-Item-bound Goal grilling is queue-driven rather than a dedicated REST endpoint: when a completed chat task carries `context.workItemGoalGrilling` and `workItems.workflow.enabled` is true, the server extracts the final assistant `## Goal` block and saves it to the addressed local-only `goal` as the next AI-authored immutable content version.
 
 ### AI Authoring (gated by `workItems.aiAuthoring` flag, default `false`)
 
-Draft generation is ephemeral — no data is persisted until the caller explicitly applies it via the standard create/update/plan endpoints.
+The `ai-draft` generation endpoints are ephemeral — no data is persisted until
+the caller explicitly applies the generated content. The workflow
+`ai-draft/apply` endpoint is the direct apply path for saved local-only
+`work-item` shells and stores an immutable AI-authored plan/content version after
+checking the caller's base snapshot.
 
 Response shape: `{ kind: 'clarification', questions: string[], clarificationCount: number }` or `{ kind: 'draft', workItem: {...}, goal?: string, childTasks?: [...] }`.
 
@@ -340,6 +352,7 @@ Response shape: `{ kind: 'clarification', questions: string[], clarificationCoun
 |--------|------|-------------|
 | POST | `/api/workspaces/:id/work-items/ai-draft` | Generate a draft for a **new** work item from a prompt. Body: `{ prompt, type?, parentId?, clarificationAnswers?, clarificationCount? }`. Returns clarification (up to 3 rounds) or a draft. |
 | POST | `/api/workspaces/:id/work-items/:itemId/ai-draft` | Generate an **improvement** draft for an existing work item. Body: `{ prompt, targets?: ['fields','goal','childTasks'], clarificationAnswers?, clarificationCount? }`. Returns clarification or a draft. |
+| POST | `/api/workspaces/:id/work-items/:itemId/ai-draft/apply` | Explicitly generate and apply an AI draft to a saved local-only `work-item`, creating the next immutable plan/content version. Requires both `workItems.aiAuthoring.enabled` and `workItems.workflow.enabled`; body requires `{ prompt, baseUpdatedAt, baseContentVersion?, targets?, clarificationAnswers?, clarificationCount?, summary?, reason? }`. The server checks the base snapshot before and after AI generation and returns `409 WORK_ITEM_AI_DRAFT_STALE` instead of overwriting newer edits. |
 
 ## Seen State
 

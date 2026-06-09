@@ -73,7 +73,11 @@ const MY_WORK_SOURCE_KEYS = ['myWork.enabled'] as const;
 const MY_LIFE_SOURCE_KEYS = ['myLife.enabled'] as const;
 const SCRATCHPAD_SOURCE_KEYS = ['scratchpad.enabled', 'scratchpad.layout'] as const;
 const WORKFLOWS_SOURCE_KEYS = ['workflows.enabled'] as const;
-const PULL_REQUESTS_SOURCE_KEYS = ['pullRequests.enabled', 'pullRequests.suggestions'] as const;
+const PULL_REQUESTS_SOURCE_KEYS = [
+    'pullRequests.enabled',
+    'pullRequests.suggestions',
+    'pullRequests.autoClassifyTeam',
+] as const;
 const SERVERS_SOURCE_KEYS = ['servers.enabled'] as const;
 const RALPH_SOURCE_KEYS = ['ralph.enabled'] as const;
 const RALPH_FINAL_CHECK_SOURCE_KEYS = ['ralph.finalCheck.maxGapFixLoops'] as const;
@@ -100,6 +104,7 @@ const FEATURES_SOURCE_KEYS = [
 const WORK_ITEMS_HIERARCHY_SOURCE_KEYS = ['workItems.hierarchy.enabled'] as const;
 const WORK_ITEMS_SYNC_SOURCE_KEYS = ['workItems.sync.enabled'] as const;
 const WORK_ITEMS_AI_AUTHORING_SOURCE_KEYS = ['workItems.aiAuthoring.enabled'] as const;
+const WORK_ITEMS_WORKFLOW_SOURCE_KEYS = ['workItems.workflow.enabled'] as const;
 const EFFORT_LEVELS_SOURCE_KEYS = ['effortLevels.enabled'] as const;
 
 const DEFAULT_AUTO_PROVIDER_ROUTING: ResolvedAutoProviderRoutingConfig = {
@@ -169,6 +174,7 @@ export const CONFIG_NAMESPACE_SOURCE_KEYS = [
     ...WORK_ITEMS_HIERARCHY_SOURCE_KEYS,
     ...WORK_ITEMS_SYNC_SOURCE_KEYS,
     ...WORK_ITEMS_AI_AUTHORING_SOURCE_KEYS,
+    ...WORK_ITEMS_WORKFLOW_SOURCE_KEYS,
     ...EFFORT_LEVELS_SOURCE_KEYS,
 ] as const;
 
@@ -294,7 +300,13 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
         {
             name: 'pullRequests',
             sourceDescriptors: [source('pullRequests.', ['pullRequests'], PULL_REQUESTS_SOURCE_KEYS)],
-            merge: (base, override) => ({ pullRequests: { enabled: override?.pullRequests?.enabled ?? base.pullRequests?.enabled ?? true, suggestions: override?.pullRequests?.suggestions ?? base.pullRequests?.suggestions ?? false } }),
+            merge: (base, override) => ({
+                pullRequests: {
+                    enabled: override?.pullRequests?.enabled ?? base.pullRequests?.enabled ?? true,
+                    suggestions: override?.pullRequests?.suggestions ?? base.pullRequests?.suggestions ?? false,
+                    autoClassifyTeam: override?.pullRequests?.autoClassifyTeam ?? base.pullRequests?.autoClassifyTeam ?? false,
+                },
+            }),
         },
         {
             name: 'servers',
@@ -465,6 +477,7 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
                 source('workItems.hierarchy.', ['workItems', 'hierarchy'], WORK_ITEMS_HIERARCHY_SOURCE_KEYS),
                 source('workItems.sync.', ['workItems', 'sync'], WORK_ITEMS_SYNC_SOURCE_KEYS),
                 source('workItems.aiAuthoring.', ['workItems', 'aiAuthoring'], WORK_ITEMS_AI_AUTHORING_SOURCE_KEYS),
+                source('workItems.workflow.', ['workItems', 'workflow'], WORK_ITEMS_WORKFLOW_SOURCE_KEYS),
             ],
             merge: (base, override) => ({
                 workItems: {
@@ -476,6 +489,9 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
                     },
                     aiAuthoring: {
                         enabled: override?.workItems?.aiAuthoring?.enabled ?? base.workItems?.aiAuthoring?.enabled ?? false,
+                    },
+                    workflow: {
+                        enabled: override?.workItems?.workflow?.enabled ?? base.workItems?.workflow?.enabled ?? false,
                     },
                 },
             }),

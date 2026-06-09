@@ -7,7 +7,7 @@ metadata:
 
 # Create Work Item
 
-Guide the user through creating a well-structured work item and persisting it to the **Work Items** page via the CoC REST API. Always present a draft summary first, iterate on feedback, then create only when the user confirms.
+Guide the user through creating a well-structured work item and persisting it to the **Work Items** page via the `create_update_work_item` tool. Always present a draft summary first, iterate on feedback, then create only when the user confirms.
 
 ## Instructions
 
@@ -79,23 +79,23 @@ Skip this phase only if the request is purely non-code (e.g. documentation, conf
 
 ### Phase 3 — Create
 
-6. **You MUST use the `create_work_item` tool.** Do NOT substitute PowerShell API calls when the tool is available. Inline string encoding will corrupt or truncate long plan content. Only use the REST fallback if the tool explicitly throws an error.
+6. **You MUST use the `create_update_work_item` tool.** Do NOT substitute PowerShell API calls when the tool is available. Inline string encoding can corrupt or truncate long plan content. Only use the REST fallback if the tool explicitly throws an error.
 
-   Call the `create_work_item` tool with the confirmed details:
+   Call the `create_update_work_item` tool with the confirmed details and no existing work item target:
 
    ```
-   create_work_item({
+   create_update_work_item({
      title:       "<confirmed title>",
      description: "<confirmed description>",
      priority:    "<confirmed priority>",
      tags:        ["<tag1>", "<tag2>"],   // omit if none
-     plan:        { content: "<confirmed plan markdown>", resolvedBy: "ai" }
+     plan:        "<confirmed plan markdown>"
    })
    ```
 
    The tool persists the work item to the Work Items page and broadcasts a live update to any connected dashboard.
 
-   If the `create_work_item` tool is unavailable (throws an error), fall back to the REST API using a temp file to safely handle long markdown content:
+   If the `create_update_work_item` tool is unavailable (throws an error), fall back to the REST API using a temp file to safely handle long markdown content:
 
    ```powershell
    $workspaceId = (Invoke-RestMethod -Uri "http://localhost:4000/api/workspaces").workspaces |

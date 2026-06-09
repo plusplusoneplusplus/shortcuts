@@ -246,6 +246,10 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         if (!cfg.pullRequests) { cfg.pullRequests = {}; }
         cfg.pullRequests.suggestions = v;
     }),
+    bool('pullRequests.autoClassifyTeam', (cfg, v) => {
+        if (!cfg.pullRequests) { cfg.pullRequests = {}; }
+        cfg.pullRequests.autoClassifyTeam = v;
+    }),
     bool('servers.enabled', (cfg, v) => {
         if (!cfg.servers) { cfg.servers = {}; }
         cfg.servers.enabled = v;
@@ -371,6 +375,12 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         if (!cfg.workItems) { cfg.workItems = {}; }
         if (!cfg.workItems.aiAuthoring) { cfg.workItems.aiAuthoring = {}; }
         cfg.workItems.aiAuthoring.enabled = v;
+    }),
+
+    bool('workItems.workflow.enabled', (cfg, v) => {
+        if (!cfg.workItems) { cfg.workItems = {}; }
+        if (!cfg.workItems.workflow) { cfg.workItems.workflow = {}; }
+        cfg.workItems.workflow.enabled = v;
     }),
 
     bool('effortLevels.enabled', (cfg, v) => {

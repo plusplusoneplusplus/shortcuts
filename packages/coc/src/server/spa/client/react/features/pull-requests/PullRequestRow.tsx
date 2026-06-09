@@ -17,6 +17,8 @@ import { deriveQueueRisk, estimateReviewMinutes, formatTimestamp } from './pr-ut
 import type { PullRequest, QueueRiskBadge } from './pr-utils';
 import { type PullRequestContextDragPayload, writePointerContextDragData } from '../chat/sessionContextDrag';
 
+export type PrClassificationBadgeStatus = 'ready' | 'running' | 'missing';
+
 interface PullRequestRowProps {
     pr: PullRequest;
     onClick: () => void;
@@ -44,6 +46,8 @@ interface PullRequestRowProps {
     isSuggested?: boolean;
     /** Pointer-only context payload used by chat/task composer drag targets. */
     sessionContextPayload?: PullRequestContextDragPayload | null;
+    /** Lightweight Team auto-classification status for this loaded PR. */
+    classificationStatus?: PrClassificationBadgeStatus;
 }
 
 const RISK_LABEL: Record<QueueRiskBadge, string> = {
@@ -51,6 +55,24 @@ const RISK_LABEL: Record<QueueRiskBadge, string> = {
     med: 'Med',
     high: 'High',
     unknown: 'N/A',
+};
+
+const CLASSIFICATION_BADGE: Record<PrClassificationBadgeStatus, { label: string; ariaLabel: string; className: string }> = {
+    ready: {
+        label: 'AI ready',
+        ariaLabel: 'AI classification ready',
+        className: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200',
+    },
+    running: {
+        label: 'AI running',
+        ariaLabel: 'AI classification running',
+        className: 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200',
+    },
+    missing: {
+        label: 'AI missing',
+        ariaLabel: 'AI classification missing',
+        className: 'border-gray-200 bg-gray-50 text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300',
+    },
 };
 
 function deriveDotState(pr: PullRequest, risk: QueueRiskBadge): QueueDotState {
@@ -72,6 +94,7 @@ export function PullRequestRow({
     risk,
     isSuggested,
     sessionContextPayload,
+    classificationStatus,
 }: PullRequestRowProps) {
     const effectiveRisk: QueueRiskBadge = risk ?? deriveQueueRisk(pr.diffStats);
     const effectiveDot: QueueDotState = dotState ?? deriveDotState(pr, effectiveRisk);
@@ -191,16 +214,32 @@ export function PullRequestRow({
                     )}
                 </div>
             </div>
-            <span
-                className={cn(
-                    'pr-risk inline-flex h-[18px] min-w-[38px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold uppercase tracking-normal leading-none',
-                    queueRiskClass(effectiveRisk),
+            <div className="flex flex-col items-end gap-1">
+                {classificationStatus && (
+                    <span
+                        className={cn(
+                            'inline-flex h-[18px] max-w-[74px] items-center rounded-full border px-1.5 text-[10px] font-semibold leading-none',
+                            CLASSIFICATION_BADGE[classificationStatus].className,
+                        )}
+                        data-testid="pr-classification-badge"
+                        data-classification-status={classificationStatus}
+                        aria-label={CLASSIFICATION_BADGE[classificationStatus].ariaLabel}
+                        title={CLASSIFICATION_BADGE[classificationStatus].ariaLabel}
+                    >
+                        {CLASSIFICATION_BADGE[classificationStatus].label}
+                    </span>
                 )}
-                data-testid="pr-risk-pill"
-                data-risk={effectiveRisk}
-            >
-                {RISK_LABEL[effectiveRisk]}
-            </span>
+                <span
+                    className={cn(
+                        'pr-risk inline-flex h-[18px] min-w-[38px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold uppercase tracking-normal leading-none',
+                        queueRiskClass(effectiveRisk),
+                    )}
+                    data-testid="pr-risk-pill"
+                    data-risk={effectiveRisk}
+                >
+                    {RISK_LABEL[effectiveRisk]}
+                </span>
+            </div>
         </div>
     );
 }

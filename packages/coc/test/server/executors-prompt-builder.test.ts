@@ -55,14 +55,9 @@ vi.mock('../../src/server/suggest-follow-ups-tool', () => ({
     createSuggestFollowUpsTool: () => mockCreateSuggestFollowUpsTool(),
 }));
 
-const mockCreateWorkItemTool = vi.fn(() => ({ tool: { name: 'create_work_item' } }));
-vi.mock('../../src/server/llm-tools/create-work-item-tool', () => ({
-    createWorkItemTool: (...args: any[]) => mockCreateWorkItemTool(...args),
-}));
-
-const mockCreateBugTool = vi.fn(() => ({ tool: { name: 'create_bug' } }));
-vi.mock('../../src/server/llm-tools/create-bug-tool', () => ({
-    createBugTool: (...args: any[]) => mockCreateBugTool(...args),
+const mockCreateUpdateWorkItemTool = vi.fn(() => ({ tool: { name: 'create_update_work_item' } }));
+vi.mock('../../src/server/llm-tools/create-update-work-item-tool', () => ({
+    createCreateUpdateWorkItemTool: (...args: any[]) => mockCreateUpdateWorkItemTool(...args),
 }));
 
 import {
@@ -540,6 +535,26 @@ describe('buildConversationHistoryContext', () => {
         const result = buildConversationHistoryContext(turns);
         expect(result).not.toContain('(truncated)');
     });
+
+    it('skips interrupted assistant turns so partial output is not replayed', () => {
+        const turns = [
+            { role: 'user' as const, content: 'Original question', timestamp: new Date(), turnIndex: 0, timeline: [] },
+            {
+                role: 'assistant' as const,
+                content: 'Partial output that timed out',
+                timestamp: new Date(),
+                turnIndex: 1,
+                timeline: [],
+                interrupted: true,
+                interruptionReason: 'Timed out',
+            },
+            { role: 'user' as const, content: 'Continue', timestamp: new Date(), turnIndex: 2, timeline: [] },
+        ];
+        const result = buildConversationHistoryContext(turns);
+        expect(result).toContain('[User]: Original question');
+        expect(result).toContain('[User]: Continue');
+        expect(result).not.toContain('Partial output that timed out');
+    });
 });
 
 // ============================================================================
@@ -605,10 +620,8 @@ describe('buildSearchConversationsAddon', () => {
 
 describe('buildCreateWorkItemAddon', () => {
     beforeEach(() => {
-        mockCreateWorkItemTool.mockReset();
-        mockCreateBugTool.mockReset();
-        mockCreateWorkItemTool.mockReturnValue({ tool: { name: 'create_work_item' } });
-        mockCreateBugTool.mockReturnValue({ tool: { name: 'create_bug' } });
+        mockCreateUpdateWorkItemTool.mockReset();
+        mockCreateUpdateWorkItemTool.mockReturnValue({ tool: { name: 'create_update_work_item' } });
     });
 
     it('returns empty tools when dataDir is undefined', () => {
@@ -623,18 +636,18 @@ describe('buildCreateWorkItemAddon', () => {
         expect(result.suffix).toBe('');
     });
 
-    it('returns both create_work_item and create_bug tools', () => {
+    it('returns only the unified create_update_work_item tool', () => {
         const result = buildCreateWorkItemAddon('/data', 'repo-1');
-        expect(result.tools).toHaveLength(2);
-        expect(result.tools[0].name).toBe('create_work_item');
-        expect(result.tools[1].name).toBe('create_bug');
+        expect(result.tools).toHaveLength(1);
+        expect(result.tools[0].name).toBe('create_update_work_item');
+        expect(result.tools.map(t => t.name)).not.toContain('update_work_item');
+        expect(result.tools.map(t => t.name)).not.toContain('create_bug');
     });
 
     it('passes dataDir, repoId, and broadcastFn to factories', () => {
         const broadcast = vi.fn();
         buildCreateWorkItemAddon('/data', 'repo-1', broadcast);
-        expect(mockCreateWorkItemTool).toHaveBeenCalledWith('/data', 'repo-1', broadcast);
-        expect(mockCreateBugTool).toHaveBeenCalledWith('/data', 'repo-1', broadcast);
+        expect(mockCreateUpdateWorkItemTool).toHaveBeenCalledWith('/data', 'repo-1', broadcast);
     });
 
 });

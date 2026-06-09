@@ -35,6 +35,7 @@ const { mockState } = vi.hoisted(() => ({
         setDraft: vi.fn(),
         pruneExpired: vi.fn(),
         clearDraft: vi.fn(),
+        clearAskUserDraftsForProcess: vi.fn(),
         addFromPaste: vi.fn(),
         removeAttachment: vi.fn(),
         clearAttachments: vi.fn(),
@@ -183,6 +184,15 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useDraftSto
     setDraft: (...args: any[]) => mockState.setDraft(...args),
     clearDraft: (...args: any[]) => mockState.clearDraft(...args),
     pruneExpired: () => mockState.pruneExpired(),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useAskUserDraftStore', () => ({
+    getAskUserDraft: () => null,
+    setAskUserDraft: vi.fn(),
+    clearAskUserDraft: vi.fn(),
+    clearOtherAskUserDraftsForProcess: vi.fn(),
+    pruneExpiredAskUserDrafts: vi.fn(),
+    clearAskUserDraftsForProcess: (...args: any[]) => mockState.clearAskUserDraftsForProcess(...args),
 }));
 
 // useSlashCommands
@@ -396,6 +406,7 @@ beforeEach(() => {
     mockState.setDraft.mockReset();
     mockState.pruneExpired.mockReset();
     mockState.clearDraft.mockReset();
+    mockState.clearAskUserDraftsForProcess.mockReset();
     mockState.addFromPaste.mockReset();
     mockState.removeAttachment.mockReset();
     mockState.clearAttachments.mockReset();
@@ -702,6 +713,17 @@ describe('ChatDetail', () => {
             await waitFor(() => {
                 const sendBtn = screen.getByTestId('activity-chat-send-btn');
                 expect(sendBtn.hasAttribute('disabled')).toBe(true);
+            });
+        });
+
+        it('clears ask-user drafts when the loaded process is cancelled', async () => {
+            const task = makeTask({ status: 'cancelled', processId: 'proc-1' });
+            const proc = makeProcess({ id: 'proc-1', status: 'cancelled' });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
+
+            await waitFor(() => {
+                expect(mockState.clearAskUserDraftsForProcess).toHaveBeenCalledWith('proc-1');
             });
         });
 

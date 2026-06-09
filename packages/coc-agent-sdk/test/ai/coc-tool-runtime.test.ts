@@ -60,18 +60,18 @@ describe('CocToolRuntime', () => {
         it('invokes the original handler with a synthesized invocation envelope', async () => {
             const handler = vi.fn(async () => 'ok');
             const runtime = new CocToolRuntime(
-                [tool('create_work_item', { handler })],
+                [tool('create_update_work_item', { handler })],
                 { sessionId: 'sess-1', workspaceId: 'ws-1', processId: 'proc-1' },
             );
 
-            const result = await runtime.callTool('create_work_item', { title: 'x' });
+            const result = await runtime.callTool('create_update_work_item', { title: 'x' });
 
             expect(result).toEqual({ content: [{ type: 'text', text: 'ok' }], isError: false });
             expect(handler).toHaveBeenCalledTimes(1);
             const [args, invocation] = handler.mock.calls[0] as [unknown, ToolInvocation];
             expect(args).toEqual({ title: 'x' });
             expect(invocation.sessionId).toBe('sess-1');
-            expect(invocation.toolName).toBe('create_work_item');
+            expect(invocation.toolName).toBe('create_update_work_item');
             expect(typeof invocation.toolCallId).toBe('string');
             expect(invocation.arguments).toEqual({ title: 'x' });
         });
@@ -220,7 +220,7 @@ describe('CocToolRuntime', () => {
                 toJSONSchema: () => ({ type: 'object', properties: { name: { type: 'string' } }, required: ['name'] }),
             };
             const handler = vi.fn(async () => 'created');
-            const tool = defineTool('create_work_item', {
+            const tool = defineTool('create_update_work_item', {
                 description: 'Create a work item',
                 parameters: zodLike as never,
                 handler,
@@ -229,7 +229,7 @@ describe('CocToolRuntime', () => {
 
             // defineTool is a pure data-merge — no SDK runtime wrapping.
             expect(tool).toEqual({
-                name: 'create_work_item',
+                name: 'create_update_work_item',
                 description: 'Create a work item',
                 parameters: zodLike,
                 handler,
@@ -238,7 +238,7 @@ describe('CocToolRuntime', () => {
 
             const runtime = new CocToolRuntime([tool], { sessionId: 'sess-9' });
             const [descriptor] = runtime.listTools();
-            expect(descriptor.name).toBe('create_work_item');
+            expect(descriptor.name).toBe('create_update_work_item');
             expect(descriptor.description).toBe('Create a work item');
             // Zod-like schema is resolved via toJSONSchema().
             expect(descriptor.inputSchema).toEqual({
@@ -247,12 +247,12 @@ describe('CocToolRuntime', () => {
                 required: ['name'],
             });
 
-            const result = await runtime.callTool('create_work_item', { name: 'x' });
+            const result = await runtime.callTool('create_update_work_item', { name: 'x' });
             expect(result).toEqual({ content: [{ type: 'text', text: 'created' }], isError: false });
             // Handler receives the native ToolInvocation envelope.
             const [, invocation] = handler.mock.calls[0] as [unknown, ToolInvocation];
             expect(invocation.sessionId).toBe('sess-9');
-            expect(invocation.toolName).toBe('create_work_item');
+            expect(invocation.toolName).toBe('create_update_work_item');
             expect(invocation.arguments).toEqual({ name: 'x' });
         });
     });

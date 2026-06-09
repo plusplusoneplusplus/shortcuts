@@ -1,4 +1,6 @@
 import type {
+  ClassificationBatchStatusQuery,
+  ClassificationBatchStatusResponse,
   ClassificationStatusResponse,
   AddPullRequestCoworkerRosterEntryRequest,
   ClassifyDiffRequest,
@@ -18,6 +20,8 @@ import type {
   RecentOpenedPullRequestsResponse,
   RecordRecentOpenedPullRequestRequest,
   SanitizedProviderConfigResponse,
+  TeamPrAutoClassificationRequest,
+  TeamPrAutoClassificationResponse,
 } from '../contracts';
 import type { CocRequestOptions, NormalizedCocClientOptions, RequestAdapter } from '../types';
 import { encodePathSegment } from '../url';
@@ -25,6 +29,7 @@ import { encodePathSegment } from '../url';
 function serializePrListQuery(query?: PullRequestListQuery): CocRequestOptions['query'] {
   if (!query) return undefined;
   return {
+    workspaceId: query.workspaceId,
     status: query.status,
     scope: query.scope,
     top: query.top,
@@ -232,6 +237,33 @@ export class PullRequestsClient {
       `/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/classification`,
       {
         query: { headSha },
+        signal: options?.signal,
+      },
+    );
+  }
+
+  /** Get cached/running status for a batch of classification identifiers. */
+  getClassificationBatchStatus(repoId: string, query: ClassificationBatchStatusQuery, options?: Pick<CocRequestOptions, 'signal'>): Promise<ClassificationBatchStatusResponse> {
+    return this.transport.request<ClassificationBatchStatusResponse>(
+      `/repos/${encodePathSegment(repoId)}/classify-diff/batch-status`,
+      {
+        query: {
+          type: query.type,
+          identifiers: query.identifiers.join(','),
+          workspaceId: query.workspaceId,
+        },
+        signal: options?.signal,
+      },
+    );
+  }
+
+  /** Trigger bounded Team PR auto-classification using the server cap/skip helper. */
+  autoClassifyTeam(repoId: string, body: TeamPrAutoClassificationRequest, options?: Pick<CocRequestOptions, 'signal'>): Promise<TeamPrAutoClassificationResponse> {
+    return this.transport.request<TeamPrAutoClassificationResponse>(
+      `/repos/${encodePathSegment(repoId)}/pull-requests/team-auto-classification`,
+      {
+        method: 'POST',
+        body: { ...body },
         signal: options?.signal,
       },
     );

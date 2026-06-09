@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 20;
+export const SCHEMA_VERSION = 21;
 
 /**
  * Read the current schema version from the database.
@@ -79,6 +79,8 @@ export function initializeDatabase(db: Database.Database): void {
                 content           TEXT,
                 timestamp         TEXT NOT NULL,
                 streaming         INTEGER DEFAULT 0,
+                interrupted       INTEGER DEFAULT 0,
+                interruption_reason TEXT,
                 tool_calls        TEXT,
                 timeline          TEXT,
                 images            TEXT,
@@ -411,6 +413,9 @@ export function initializeDatabase(db: Database.Database): void {
         if (versionBefore < 20) {
             migrateV19toV20(db);
         }
+        if (versionBefore < 21) {
+            migrateV20toV21(db);
+        }
 
         // Stamp the schema version
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -682,6 +687,15 @@ function migrateV19toV20(db: Database.Database): void {
         CREATE INDEX IF NOT EXISTS idx_work_item_chat_bindings_workspace
             ON work_item_chat_bindings(workspace_id);
     `);
+}
+
+/**
+ * V20 -> V21: add turn-level interruption metadata for preserved partial
+ * assistant output after mid-stream failures/timeouts.
+ */
+function migrateV20toV21(db: Database.Database): void {
+    ensureColumn(db, 'conversation_turns', 'interrupted', 'INTEGER DEFAULT 0');
+    ensureColumn(db, 'conversation_turns', 'interruption_reason', 'TEXT');
 }
 
 /**

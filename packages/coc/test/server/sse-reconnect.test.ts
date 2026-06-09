@@ -173,4 +173,85 @@ describe('SSE reconnect-after-refresh', () => {
         expect(data2.turns[1].streaming).toBe(true);
         expect(data2.turns[1].content).toBe('So far...');
     });
+
+    it('snapshot after timeout preserves interrupted text and tool history without replaying tool events', async () => {
+        const interruptedTurn: ConversationTurn = {
+            ...makeTurn('assistant', 'I inspected the file before timing out.'),
+            turnIndex: 1,
+            interrupted: true,
+            interruptionReason: 'Request timed out after 90000ms',
+            timeline: [
+                {
+                    type: 'content',
+                    timestamp: new Date('2026-01-01T00:00:01Z'),
+                    content: 'I inspected the file before timing out.',
+                },
+                {
+                    type: 'tool-start',
+                    timestamp: new Date('2026-01-01T00:00:02Z'),
+                    toolCall: {
+                        id: 'tool-1',
+                        name: 'bash',
+                        status: 'running',
+                        startTime: new Date('2026-01-01T00:00:02Z'),
+                        args: { command: 'echo preserved' },
+                    },
+                },
+                {
+                    type: 'tool-complete',
+                    timestamp: new Date('2026-01-01T00:00:03Z'),
+                    toolCall: {
+                        id: 'tool-1',
+                        name: 'bash',
+                        status: 'completed',
+                        startTime: new Date('2026-01-01T00:00:02Z'),
+                        endTime: new Date('2026-01-01T00:00:03Z'),
+                        args: { command: 'echo preserved' },
+                        result: 'preserved',
+                    },
+                },
+            ],
+        };
+        const process = createProcessFixture({
+            id: 'p-timeout',
+            status: 'failed',
+            error: 'Request timed out after 90000ms',
+            conversationTurns: [
+                { ...makeTurn('user', 'Please inspect it'), turnIndex: 0 },
+                interruptedTurn,
+            ],
+        });
+        store.processes.set('p-timeout', process);
+
+        const req = createMockReq();
+        const res = createMockRes();
+        await handleProcessStream(req as any, res as any, 'p-timeout', store);
+
+        const frames = parseSSEFrames(res._chunks);
+        const snapshot = frames.find(f => f.event === 'conversation-snapshot');
+        expect(snapshot).toBeDefined();
+        const data = snapshot!.data as any;
+        expect(data.turns).toHaveLength(2);
+        expect(data.turns[1]).toMatchObject({
+            role: 'assistant',
+            content: 'I inspected the file before timing out.',
+            interrupted: true,
+            interruptionReason: 'Request timed out after 90000ms',
+        });
+        expect(data.turns[1].timeline).toHaveLength(3);
+        expect(data.turns[1].timeline[1].type).toBe('tool-start');
+        expect(data.turns[1].timeline[1].toolCall.name).toBe('bash');
+        expect(data.turns[1].timeline[2].type).toBe('tool-complete');
+        expect(data.turns[1].timeline[2].toolCall.result).toBe('preserved');
+
+        const statusFrame = frames.find(f => f.event === 'status');
+        expect(statusFrame?.data).toMatchObject({
+            status: 'failed',
+            error: 'Request timed out after 90000ms',
+        });
+        expect(frames.filter(f => f.event === 'tool-start')).toHaveLength(0);
+        expect(frames.filter(f => f.event === 'tool-complete')).toHaveLength(0);
+        expect(store.onProcessOutput).not.toHaveBeenCalled();
+        expect(res._ended).toBe(true);
+    });
 });

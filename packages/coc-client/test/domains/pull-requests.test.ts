@@ -284,6 +284,60 @@ describe('PullRequestsClient', () => {
     expect(adapter.calls[0].options?.signal).toBe(controller.signal);
   });
 
+  it('getClassificationBatchStatus sends encoded batch-status query params', async () => {
+    const adapter = createMockAdapter({ statuses: {} });
+    const client = new PullRequestsClient(adapter);
+    const controller = new AbortController();
+
+    await client.getClassificationBatchStatus('repo/a', {
+      type: 'pr',
+      identifiers: ['1:abc', '2:def'],
+      workspaceId: 'ws/a',
+    }, { signal: controller.signal });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/repos/repo%2Fa/classify-diff/batch-status',
+        options: {
+          query: {
+            type: 'pr',
+            identifiers: '1:abc,2:def',
+            workspaceId: 'ws/a',
+          },
+          signal: controller.signal,
+        },
+      },
+    ]);
+  });
+
+  it('autoClassifyTeam sends POST with workspace and loaded PR payload', async () => {
+    const adapter = createMockAdapter({ started: 1 });
+    const client = new PullRequestsClient(adapter);
+
+    await client.autoClassifyTeam('repo/a', {
+      workspaceId: 'ws/a',
+      pullRequests: [
+        { number: 42, status: 'open', headSha: 'abc123', author: { id: 'u1', displayName: 'Mona Dev' } },
+      ],
+    });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/repos/repo%2Fa/pull-requests/team-auto-classification',
+        options: {
+          method: 'POST',
+          body: {
+            workspaceId: 'ws/a',
+            pullRequests: [
+              { number: 42, status: 'open', headSha: 'abc123', author: { id: 'u1', displayName: 'Mona Dev' } },
+            ],
+          },
+          signal: undefined,
+        },
+      },
+    ]);
+  });
+
   it('prFileDiffPath returns encoded per-file diff path', () => {
     const adapter = createMockAdapter({});
     const client = new PullRequestsClient(adapter);

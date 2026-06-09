@@ -137,14 +137,30 @@ export interface WorkItemSyncStatusResponse {
 
 export interface WorkItemPlan {
   version: number;
+  currentVersion?: number;
   content: string;
   updatedAt?: string;
   resolvedBy?: 'user' | 'ai' | string;
+  source?: 'user' | 'ai' | 'system' | string;
+  reason?: string;
+  restoredFromVersion?: number;
 }
 
 export interface WorkItemPlanVersion extends WorkItemPlan {
   createdAt?: string;
+  authorType?: 'user' | 'ai' | 'system' | string;
   summary?: string;
+}
+
+export interface WorkItemPlanVersionDiffChunk {
+  type: 'equal' | 'added' | 'removed';
+  lines: string[];
+}
+
+export interface WorkItemPlanVersionComparison {
+  base: WorkItemPlanVersion;
+  target: WorkItemPlanVersion;
+  diff: WorkItemPlanVersionDiffChunk[];
 }
 
 export interface WorkItemPlanResponse {
@@ -155,6 +171,15 @@ export interface WorkItemPlanResponse {
 export interface WorkItemPlanUpdateResponse {
   plan: WorkItemPlanVersion;
   version: number;
+}
+
+export interface WorkItemPlanRestoreRequest extends JsonObject {
+  summary?: string;
+  reason?: string;
+}
+
+export interface WorkItemPlanRestoreResponse extends WorkItemPlanUpdateResponse {
+  restoredFromVersion: number;
 }
 
 export interface WorkItemPlanRefineRequest extends JsonObject {
@@ -195,6 +220,7 @@ export interface WorkItem {
   autoReExecuteCycles?: number;
   plan?: WorkItemPlan;
   planVersion?: number;
+  currentContentVersion?: number;
   /** Success criteria defining "done" for a `goal` item (markdown). */
   successCriteria?: string;
   /** Linked spec-drafting (Ralph grilling) chat process ID for a `goal` item. */
@@ -410,12 +436,14 @@ export interface ExecuteWorkItemRequest extends JsonObject {
   provider?: ChatProvider;
   reasoningEffort?: ReasoningEffort;
   effortTier?: EffortTierKey;
+  executionMode?: 'one-shot' | 'ralph';
   mode?: string;
   skillNames?: string[];
 }
 
 export interface ExecuteWorkItemResponse {
   taskId: string;
+  ralphSessionId?: string;
 }
 
 export interface RequestWorkItemChangesRequest extends JsonObject {
@@ -428,6 +456,36 @@ export interface RequestWorkItemChangesResponse {
   newVersion: number;
 }
 
+export interface SubmitWorkItemPullRequestRequest extends JsonObject {
+  changeId?: string;
+  title?: string;
+  body?: string;
+  baseBranch?: string;
+  branchName?: string;
+}
+
+export interface SubmitWorkItemPullRequestResponse {
+  workItem: WorkItem;
+  changeId: string;
+  branchName: string;
+  prNumber?: number;
+  prUrl: string;
+  prStatus: 'open' | string;
+}
+
+export interface StartWorkItemAiReviewRequest extends JsonObject {
+  model?: string;
+  provider?: ChatProvider;
+  reasoningEffort?: ReasoningEffort;
+  effortTier?: EffortTierKey;
+  autoProviderRouting?: boolean;
+}
+
+export interface StartWorkItemAiReviewResponse {
+  taskId: string;
+  workItem?: WorkItem;
+}
+
 export interface ResolveWorkItemCommentsRequest extends JsonObject {
   type: 'plan' | 'commit';
   model?: string;
@@ -438,6 +496,17 @@ export interface ResolveWorkItemCommentsRequest extends JsonObject {
 export interface WorkItemExecution {
   taskId: string;
   processId?: string;
+  planVersion?: number;
+  executionMode?: 'one-shot' | 'ralph' | string;
+  ralphSessionId?: string;
+  aiSettings?: {
+    provider?: string;
+    model?: string;
+    reasoningEffort?: string;
+    effortTier?: string;
+    autoProviderRouting?: boolean;
+  };
+  skillNames?: string[];
   startedAt: string;
   completedAt?: string;
   status: 'running' | 'completed' | 'failed' | 'cancelled' | string;
@@ -448,6 +517,8 @@ export interface WorkItemExecution {
   kind?: string;
   prIteration?: number;
   prUrl?: string;
+  reviewedChangeId?: string;
+  reviewedTaskId?: string;
 }
 
 export interface ReviewComment {
@@ -598,3 +669,33 @@ export interface ImproveWorkItemAiDraftRequest extends JsonObject {
   /** Number of clarification rounds already completed. */
   clarificationCount?: number;
 }
+
+/** Request body for POST /api/workspaces/:id/work-items/:workItemId/ai-draft/apply */
+export interface ApplyWorkItemAiDraftRequest extends JsonObject {
+  /** Instruction for what to draft or revise. Required. */
+  prompt: string;
+  /** Applyable targets. Defaults to ['fields', 'goal']; childTasks are not applied by this route. */
+  targets?: Array<'fields' | 'goal'>;
+  /** Answers to previous clarification questions. */
+  clarificationAnswers?: string[];
+  /** Number of clarification rounds already completed. */
+  clarificationCount?: number;
+  /** Work item updatedAt value reviewed before starting AI drafting. */
+  baseUpdatedAt: string;
+  /** Optional current content version reviewed before starting AI drafting; null means no current version. */
+  baseContentVersion?: number | null;
+  /** Optional summary stored on the immutable plan/content version. */
+  summary?: string;
+  /** Optional reason stored on the immutable plan/content version. */
+  reason?: string;
+}
+
+export interface AppliedWorkItemAiDraftResponse {
+  kind: 'applied';
+  item: WorkItem;
+  plan: WorkItemPlanVersion;
+  version: number;
+  previousVersion?: number;
+}
+
+export type ApplyWorkItemAiDraftResponse = WorkItemAiClarificationResponse | AppliedWorkItemAiDraftResponse;

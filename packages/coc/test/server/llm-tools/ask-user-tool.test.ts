@@ -80,17 +80,61 @@ describe('createAskUserTool', () => {
 
     it('answerQuestions is all-or-nothing for unknown questions or missing answers', async () => {
         const { tool, answerQuestions, cancelAll } = createAskUserTool(deps);
-        const promise = tool.handler({ questions: [{ question: 'Q', type: 'text' }] });
-        const payload = (emitQuestions.mock.calls[0][0] as AskUserSSEPayload[])[0];
+        const promise = tool.handler({ questions: [{ question: 'Q1', type: 'text' }, { question: 'Q2', type: 'text' }] });
+        const payloads = emitQuestions.mock.calls[0][0] as AskUserSSEPayload[];
 
-        expect(answerQuestions([{ questionId: 'bogus', answer: 'nope' }])).toBe(false);
-        expect(answerQuestions([{ questionId: payload.questionId }])).toBe(false);
-        expect(answerQuestions([{ questionId: payload.questionId, answer: 'ok' }])).toBe(true);
+        expect(answerQuestions([{ questionId: payloads[0].questionId, answer: 'partial' }])).toBe(false);
+        expect(answerQuestions([
+            { questionId: payloads[0].questionId, answer: 'duplicate' },
+            { questionId: payloads[0].questionId, answer: 'duplicate' },
+        ])).toBe(false);
+        expect(answerQuestions([
+            { questionId: 'bogus', answer: 'nope' },
+            { questionId: payloads[1].questionId, answer: 'ok' },
+        ])).toBe(false);
+        expect(answerQuestions([
+            { questionId: payloads[0].questionId },
+            { questionId: payloads[1].questionId, answer: 'ok' },
+        ])).toBe(false);
+        expect(answerQuestions([
+            { questionId: payloads[0].questionId, answer: 'ok' },
+            { questionId: payloads[1].questionId, skipped: true },
+        ])).toBe(true);
 
         await expect(promise).resolves.toEqual([
-            { questionId: payload.questionId, answer: 'ok', skipped: false },
+            { questionId: payloads[0].questionId, answer: 'ok', skipped: false },
+            { questionId: payloads[1].questionId, answer: null, skipped: true, reason: 'user-skipped' },
         ]);
         expect(() => cancelAll()).not.toThrow();
+    });
+
+    it('resolves need-more-context responses as deferred instead of skipped', async () => {
+        const { tool, answerQuestions } = createAskUserTool(deps);
+        const promise = tool.handler({
+            questions: [
+                { question: 'Q1', type: 'text' },
+                { question: 'Q2', type: 'text' },
+            ],
+        });
+        const payloads = emitQuestions.mock.calls[0][0] as AskUserSSEPayload[];
+
+        expect(answerQuestions([
+            { questionId: payloads[0].questionId, answer: 'known' },
+            { questionId: payloads[1].questionId, deferred: true, reason: 'needs-context', note: ' Need the API boundary. ' },
+        ])).toBe(true);
+
+        await expect(promise).resolves.toEqual([
+            { questionId: payloads[0].questionId, answer: 'known', skipped: false },
+            {
+                questionId: payloads[1].questionId,
+                answer: null,
+                skipped: false,
+                deferred: true,
+                reason: 'needs-context',
+                note: 'Need the API boundary.',
+                guidance: expect.stringContaining('Provide the missing context'),
+            },
+        ]);
     });
 
     it('skipQuestion and cancelAll resolve pending questions as skipped', async () => {

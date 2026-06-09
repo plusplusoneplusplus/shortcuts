@@ -1,7 +1,7 @@
 /**
  * Chat Mode Executor Unit Tests
  *
- * Tests for ChatExecutor and AutopilotExecutor.
+ * Tests for ChatExecutor, AutopilotExecutor, and ClassificationExecutor.
  *
  * Verified for each executor:
  * - Happy path: AI SDK called with correct agentMode, systemMessage, returns result
@@ -103,6 +103,32 @@ function makeChatTask(mode: 'ask' | 'autopilot', id = 'task-1'): QueuedTask {
         config: {},
         displayName: 'Hello',
     };
+}
+
+function makeClassificationTask(
+    id = 'task-classify-1',
+    payloadOverrides: Record<string, unknown> = {},
+): QueuedTask {
+    return {
+        id,
+        type: 'pr-classification',
+        priority: 'normal',
+        status: 'running',
+        createdAt: Date.now(),
+        payload: {
+            kind: 'pr-classification',
+            prompt: 'Classify PR #42',
+            workspaceId: 'ws-1',
+            repoId: 'repo-1',
+            prId: '42',
+            headSha: 'deadbeef',
+            workingDirectory: '/fake/ws',
+            skills: ['classify-diff'],
+            ...payloadOverrides,
+        },
+        config: {},
+        displayName: 'Classify PR #42',
+    } as unknown as QueuedTask;
 }
 
 // ============================================================================
@@ -617,6 +643,73 @@ describe('AutopilotExecutor has no system message', () => {
     });
 });
 
+describe('ClassificationExecutor ask-mode behavior', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1', toolCalls: [] });
+    });
+
+    it('runs classification in interactive ask mode with read-only system instructions', async () => {
+        const executor = new ClassificationExecutor(store, makeOptions(store));
+        const task = makeClassificationTask('task-classify-ask-mode');
+
+        await executor.execute(task, 'Classify PR #42');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.mode).toBe('interactive');
+        expect(call.systemMessage?.mode).toBe('append');
+        expect(call.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+    });
+
+    it('loads ask repo instructions instead of autopilot repo instructions', async () => {
+        const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-classify-ask-instructions-'));
+        try {
+            const instructionDir = path.join(tmpRoot, '.github', 'coc');
+            fs.mkdirSync(instructionDir, { recursive: true });
+            fs.writeFileSync(path.join(instructionDir, 'instructions.md'), 'Base classification instruction\n');
+            fs.writeFileSync(path.join(instructionDir, 'instructions-ask.md'), 'Ask classification instruction\n');
+            fs.writeFileSync(path.join(instructionDir, 'instructions-autopilot.md'), 'Autopilot classification instruction\n');
+
+            const executor = new ClassificationExecutor(store, makeOptions(store));
+            const task = makeClassificationTask('task-classify-ask-instructions', {
+                workingDirectory: tmpRoot,
+            });
+
+            await executor.execute(task, 'Classify PR #42');
+
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            const content = call.systemMessage?.content ?? '';
+            expect(content).toContain('Base classification instruction');
+            expect(content).toContain('Ask classification instruction');
+            expect(content).not.toContain('Autopilot classification instruction');
+        } finally {
+            fs.rmSync(tmpRoot, { recursive: true, force: true });
+        }
+    });
+
+    it('keeps saveClassification available when running in ask mode', async () => {
+        const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-classify-save-tool-'));
+        try {
+            const executor = new ClassificationExecutor(store, makeOptions(store), dataDir);
+            const task = makeClassificationTask('task-classify-save-tool');
+
+            await executor.execute(task, 'Classify PR #42');
+
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            const toolNames = (call.tools ?? []).map((t: any) => t.name);
+            expect(call.mode).toBe('interactive');
+            expect(toolNames).toContain('saveClassification');
+            expect(call.systemMessage?.content).toContain('saveClassification');
+        } finally {
+            fs.rmSync(dataDir, { recursive: true, force: true });
+        }
+    });
+});
+
 // ============================================================================
 // Ralph grilling phase — ask_user clarification protocol
 // ============================================================================
@@ -909,7 +1002,7 @@ describe('ChatBaseExecutor selected skills', () => {
         expect(call.prompt).toContain('The user explicitly selected these skills: classify-diff.');
         expect(call.prompt).toContain('Classify PR #42');
         expect(call.prompt.indexOf('<selected_skills>')).toBeLessThan(call.prompt.indexOf('Classify PR #42'));
-        expect(call.mode).toBe('autopilot');
+        expect(call.mode).toBe('interactive');
     });
 
     it('adds resolved SKILL.md paths for top-level classification skills', async () => {
@@ -951,10 +1044,10 @@ describe('ChatBaseExecutor selected skills', () => {
 });
 
 // ============================================================================
-// All three executors include create_work_item + create_bug tools
+// Live chat executors include the unified create_update_work_item tool
 // ============================================================================
 
-describe('create_work_item / create_bug tool wiring', () => {
+describe('create_update_work_item tool wiring', () => {
     let store: ReturnType<typeof createMockProcessStore>;
     let dataDir: string;
 
@@ -1002,7 +1095,7 @@ describe('create_work_item / create_bug tool wiring', () => {
         };
     }
 
-    it('ChatExecutor includes create_work_item and create_bug tools', async () => {
+    it('ChatExecutor includes create_update_work_item and not create_bug', async () => {
         const executor = new ChatExecutor(store, makeOptions(store), dataDir);
         const task = makeTaskWithWorkspace('ask', 'task-wi-ask');
 
@@ -1010,11 +1103,13 @@ describe('create_work_item / create_bug tool wiring', () => {
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         const toolNames = (call.tools ?? []).map((t: any) => t.name);
-        expect(toolNames).toContain('create_work_item');
-        expect(toolNames).toContain('create_bug');
+        expect(toolNames).toContain('create_update_work_item');
+        expect(toolNames).not.toContain('create_work_item');
+        expect(toolNames).not.toContain('update_work_item');
+        expect(toolNames).not.toContain('create_bug');
     });
 
-    it('AutopilotExecutor includes create_work_item and create_bug tools', async () => {
+    it('AutopilotExecutor includes create_update_work_item and not create_bug', async () => {
         const executor = new AutopilotExecutor(store, makeOptions(store), dataDir);
         const task = makeTaskWithWorkspace('autopilot', 'task-wi-auto');
 
@@ -1022,11 +1117,13 @@ describe('create_work_item / create_bug tool wiring', () => {
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         const toolNames = (call.tools ?? []).map((t: any) => t.name);
-        expect(toolNames).toContain('create_work_item');
-        expect(toolNames).toContain('create_bug');
+        expect(toolNames).toContain('create_update_work_item');
+        expect(toolNames).not.toContain('create_work_item');
+        expect(toolNames).not.toContain('update_work_item');
+        expect(toolNames).not.toContain('create_bug');
     });
 
-    it('all live initial executors include create_work_item and create_bug tools', async () => {
+    it('all live initial executors include create_update_work_item and not create_bug', async () => {
         for (const { mode, Ctor, id } of [
             { mode: 'ask' as const, Ctor: ChatExecutor, id: 'sfx-ask' },
             { mode: 'autopilot' as const, Ctor: AutopilotExecutor, id: 'sfx-auto' },
@@ -1042,8 +1139,10 @@ describe('create_work_item / create_bug tool wiring', () => {
 
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
             const toolNames = (call.tools ?? []).map((t: any) => t.name);
-            expect(toolNames).toContain('create_work_item');
-            expect(toolNames).toContain('create_bug');
+            expect(toolNames).toContain('create_update_work_item');
+            expect(toolNames).not.toContain('create_work_item');
+            expect(toolNames).not.toContain('update_work_item');
+            expect(toolNames).not.toContain('create_bug');
         }
     });
 
@@ -1071,7 +1170,7 @@ describe('create_work_item / create_bug tool wiring', () => {
         }
     });
 
-    it('classic mode disables create_work_item and create_bug tools by default', async () => {
+    it('classic mode disables create_update_work_item by default', async () => {
         writeLayoutMode('classic');
 
         for (const { mode, Ctor, id } of [
@@ -1089,7 +1188,9 @@ describe('create_work_item / create_bug tool wiring', () => {
 
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
             const toolNames = (call.tools ?? []).map((t: any) => t.name);
+            expect(toolNames).not.toContain('create_update_work_item');
             expect(toolNames).not.toContain('create_work_item');
+            expect(toolNames).not.toContain('update_work_item');
             expect(toolNames).not.toContain('create_bug');
             expect(call.prompt).not.toContain('create-work-item');
             expect(call.prompt).not.toContain('create-bug');

@@ -47,6 +47,7 @@ import {
 } from './prompt-builder';
 import { cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
 import { buildLiveConversationCostEstimate } from '../processes/process-metadata-read-model';
+import { finalizeOrphanedProcess } from '../processes/finalize-orphaned-turn';
 import {
     isChatFollowUp,
     isChatPayload,
@@ -743,6 +744,8 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                     timestamp: new Date(),
                                     turnIndex,
                                     timeline: partialTimeline,
+                                    interrupted: true,
+                                    interruptionReason: errorMsg,
                                     ...(partialSuggestions ? { suggestions: partialSuggestions } : {}),
                                 }),
                                 {
@@ -769,10 +772,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                             });
                         }
                     } else {
-                        await this.store.updateProcess(processId, {
+                        await finalizeOrphanedProcess(this.store, processId, errorMsg, {
                             status: finalStatus,
-                            endTime: new Date(),
-                            ...(wasCancelled ? {} : { error: errorMsg }),
+                            workspaceId: (task.payload as any)?.workspaceId as string | undefined,
                         });
                     }
                     this.store.emitProcessComplete(processId, finalStatus, `${duration}ms`);

@@ -19,10 +19,9 @@ import { useWorkItems } from '../../contexts/WorkItemContext';
 import { useCommitCommentTotals } from '../git/hooks/useCommitCommentTotals';
 import type { DiffComment } from '../../../comments/diff-comment-types';
 import { computeStorageKey, patchDiffComment } from '../../utils/diffCommentApi';
-import { isWorkItemsHierarchyEnabled } from '../../utils/config';
+import { isWorkItemsAiAuthoringEnabled, isWorkItemsHierarchyEnabled, isWorkItemsWorkflowEnabled } from '../../utils/config';
 import { WorkItemParentPicker } from './WorkItemParentPicker';
 import {
-    ALLOWED_CHILD_TYPES,
     WORK_ITEM_SYNC_CONFLICT_CODE,
     type UpdateWorkItemRequest,
     type WorkItemAzureBoardsMirrorMetadata,
@@ -34,13 +33,15 @@ import {
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
 import { TYPE_LABELS } from './WorkItemHierarchyNode';
 import { WorkItemAiComposer } from './WorkItemAiComposer';
-import { isWorkItemsAiAuthoringEnabled } from '../../utils/config';
 import { WorkItemRemoteMirrorBadge } from './WorkItemGitHubMirrorBadge';
 import { useReviewChatPresentation } from '../git/hooks/useReviewChatPresentation';
 import type { ReviewChatTarget } from '../git/commits/commitChatPlacement';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
+import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { WorkItemChatPanel } from './WorkItemChatPanel';
 import { WorkItemChatPlacementFrame } from './WorkItemChatPlacementFrame';
+import { WorkItemAiDraftApplyDialog } from './WorkItemAiDraftApplyDialog';
+import { ensureQueueProcessId } from '../../utils/queue-process-id';
 
 const UNSAVED_CHANGES_MESSAGE = 'You have unsaved changes. Leave without saving?';
 const WORK_ITEM_CHAT_PANEL_WIDTH_STORAGE_PREFIX = 'coc.workItemChatPanel.width';
@@ -60,6 +61,36 @@ const STATUS_LABELS: Record<string, { label: string; badgeStatus: string }> = {
     done:             { label: 'Done',              badgeStatus: 'completed' },
     failed:           { label: 'Failed',            badgeStatus: 'failed' },
 };
+
+function statusConfigFor(status: string, workflowCommandCenter: boolean, type: string): { label: string; badgeStatus: string } {
+    const fallback = STATUS_LABELS[status] || STATUS_LABELS.created;
+    if (!workflowCommandCenter) return fallback;
+    if (status === 'created') return { ...fallback, label: 'Draft' };
+    if (status === 'drafting') return { ...fallback, label: type === 'goal' ? 'Grilling' : 'Drafting' };
+    if (status === 'planning') return { ...fallback, label: type === 'goal' ? 'Grilling' : 'Planning' };
+    if (status === 'readyToExecute') return { ...fallback, label: 'Ready' };
+    if (status === 'aiDone') return { ...fallback, label: 'Review' };
+    if (status === 'aiFailed') return { ...fallback, label: 'Failed' };
+    return fallback;
+}
+
+function formatExecutionModeLabel(mode: string | undefined): string | undefined {
+    if (mode === 'ralph') return 'Ralph';
+    if (mode === 'one-shot') return 'One-shot';
+    return mode;
+}
+
+function formatProviderLabel(provider: string): string {
+    return provider.charAt(0).toUpperCase() + provider.slice(1);
+}
+
+function isCommentResolveExecution(exec: { sessionCategory?: string }): boolean {
+    return exec.sessionCategory === 'resolve-plan-comments' || exec.sessionCategory === 'resolve-commit-comments';
+}
+
+function isWorkflowAiReviewExecution(exec: { sessionCategory?: string; kind?: string }): boolean {
+    return exec.sessionCategory === 'work-item-ai-review' || exec.kind === 'ai-review';
+}
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
     created:        ['drafting', 'planning', 'readyToExecute', 'done', 'failed'],
@@ -84,10 +115,6 @@ interface WorkItemDetailProps {
     onViewCommit?: (sha: string) => void;
     /** Called when the user wants to view a completed task in the Tasks tab. */
     onNavigateToTasksTab?: (taskId: string) => void;
-    /** When true, renders the mobile 'Add Child' button for container items. */
-    isMobile?: boolean;
-    /** Open the create dialog for a given child type with this item as parent. */
-    onCreateChild?: (type: WorkItemTypeLabel, parentId: string) => void;
 }
 
 interface WorkItemFull {
@@ -97,11 +124,37 @@ interface WorkItemFull {
     successCriteria?: string;
     grillSessionId?: string;
     priority?: string; source?: string; sourceId?: string;
+    tracker?: { kind: string };
     createdAt: string; updatedAt: string; completedAt?: string;
-    pinnedAt?: string; archivedAt?: string;
-    plan?: { version: number; content: string; updatedAt?: string; resolvedBy?: string };
+    plan?: { version: number; currentVersion?: number; content: string; updatedAt?: string; resolvedBy?: string };
     taskId?: string; processId?: string;
-    executionHistory?: Array<{ taskId: string; processId?: string; startedAt: string; completedAt?: string; status: string; error?: string; autoReExecuted?: boolean; title?: string; sessionCategory?: string }>;
+    currentContentVersion?: number;
+    executionHistory?: Array<{
+        taskId: string;
+        processId?: string;
+        planVersion?: number;
+        startedAt: string;
+        completedAt?: string;
+        status: string;
+        error?: string;
+        autoReExecuted?: boolean;
+        title?: string;
+        sessionCategory?: string;
+        executionMode?: string;
+        ralphSessionId?: string;
+        aiSettings?: {
+            provider?: string;
+            model?: string;
+            reasoningEffort?: string;
+            effortTier?: string;
+            autoProviderRouting?: boolean;
+        };
+        skillNames?: string[];
+        prUrl?: string;
+        kind?: string;
+        reviewedChangeId?: string;
+        reviewedTaskId?: string;
+    }>;
     tags?: string[];
     githubMirror?: WorkItemGitHubMirrorMetadata;
     azureBoardsMirror?: WorkItemAzureBoardsMirrorMetadata;
@@ -117,6 +170,10 @@ interface WorkItemFull {
         completedAt?: string;
         taskId?: string;
         status: 'open' | 'closed';
+        branchName?: string;
+        prNumber?: number;
+        prUrl?: string;
+        prStatus?: string;
     }>;
 }
 
@@ -197,6 +254,27 @@ function applyConflictChoices(draft: WorkItemDraft, conflict: WorkItemSyncConfli
     return next;
 }
 
+function buildGoalGrillingPrompt(item: WorkItemFull): string {
+    const parts = [
+        `Please grill me to turn this saved Goal into a precise implementation-ready goal spec.\n\nGoal title: ${item.title}`,
+    ];
+    if (item.description?.trim()) {
+        parts.push(`Saved description:\n${item.description.trim()}`);
+    }
+    if (item.successCriteria?.trim()) {
+        parts.push(`Current success criteria:\n${item.successCriteria.trim()}`);
+    }
+    if (item.plan?.content?.trim()) {
+        parts.push(`Current Goal content version v${item.plan.version}:\n${item.plan.content.trim()}`);
+    }
+    parts.push('Ask focused clarification questions until the goal is clear, then emit the final goal spec as a Markdown block starting with `## Goal`.');
+    return parts.join('\n\n');
+}
+
+function createRalphSessionId(): string {
+    return `ralph-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function conflictResolutionFor(conflict: WorkItemSyncConflictDetails): WorkItemSyncConflictResolution {
     return {
         provider: conflict.provider,
@@ -234,7 +312,7 @@ function ConflictValueCard({ label, value, selected, onSelect }: { label: string
     );
 }
 
-export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, onViewTask, onViewCommit, onNavigateToTasksTab, isMobile = false, onCreateChild }: WorkItemDetailProps) {
+export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, onViewTask, onViewCommit, onNavigateToTasksTab }: WorkItemDetailProps) {
     const [item, setItem] = useState<WorkItemFull | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -242,6 +320,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const [reviewComment, setReviewComment] = useState('');
     const [requestingChanges, setRequestingChanges] = useState(false);
     const [acceptingDone, setAcceptingDone] = useState(false);
+    const [submittingPr, setSubmittingPr] = useState(false);
+    const [startingAiReview, setStartingAiReview] = useState(false);
     const [resolvingDiffComments, setResolvingDiffComments] = useState(false);
     const [resolvingCommitSha, setResolvingCommitSha] = useState<string | null>(null);
     const [resolvingChangeIdx, setResolvingChangeIdx] = useState<number | null>(null);
@@ -252,15 +332,16 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const [syncConflict, setSyncConflict] = useState<WorkItemSyncConflictDetails | null>(null);
     const [syncConflictChoices, setSyncConflictChoices] = useState<ConflictChoices>({});
     const [showParentPicker, setShowParentPicker] = useState(false);
-    // ── Mobile add-child type picker state ──
-    const [showChildTypePicker, setShowChildTypePicker] = useState(false);
     /** Plan content draft, lifted from WorkItemPlanSection into the unified batch. */
     const [planDraft, setPlanDraft] = useState<string | null>(null);
     const [descViewMode, setDescViewMode] = useState<DescriptionViewMode>('source');
     const [planViewMode, setPlanViewMode] = useState<PlanViewMode>('preview');
 
     const [showAiComposer, setShowAiComposer] = useState(false);
+    const [showAiDraftApplyDialog, setShowAiDraftApplyDialog] = useState(false);
+    const [startingGoalGrilling, setStartingGoalGrilling] = useState(false);
     const aiAuthoringEnabled = isWorkItemsAiAuthoringEnabled();
+    const { isMobile } = useBreakpoint();
     const workItemChatTarget = useMemo<ReviewChatTarget>(() => ({
         type: 'work-item',
         workspaceId,
@@ -467,6 +548,42 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
             setError(err.message || 'Failed to request changes');
         } finally {
             setRequestingChanges(false);
+        }
+    };
+
+    const handleSubmitPr = async () => {
+        if (!latestReviewChange) return;
+        setSubmittingPr(true);
+        setError(null);
+        try {
+            await getSpaCocClient().workItems.submitPullRequest(workspaceId, workItemId, {
+                changeId: latestReviewChange.id,
+            });
+            await fetchItem();
+        } catch (err: any) {
+            setError(err.message || 'Failed to submit PR');
+        } finally {
+            setSubmittingPr(false);
+        }
+    };
+
+    const handleStartAiReview = async () => {
+        if (!item || !workflowCommandCenter) return;
+        setStartingAiReview(true);
+        setError(null);
+        try {
+            const result = await getSpaCocClient().workItems.startAiReview(workspaceId, workItemId);
+            if (result.workItem) {
+                dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item: result.workItem as any });
+            }
+            if (result.taskId && onViewTask) {
+                onViewTask(result.taskId);
+            }
+            await fetchItem();
+        } catch (err: any) {
+            setError(err.message || 'Failed to start AI review');
+        } finally {
+            setStartingAiReview(false);
         }
     };
 
@@ -724,6 +841,63 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         toggleWorkItemChat();
     }, [restoreWorkItemChat, toggleWorkItemChat, workItemChatOpen]);
 
+    const handleGoalGrilling = useCallback(async () => {
+        if (!item || item.id !== workItemId) return;
+        if (item.grillSessionId) {
+            openWorkItemChat();
+            return;
+        }
+        setStartingGoalGrilling(true);
+        setError(null);
+        try {
+            const sessionId = createRalphSessionId();
+            const result = await getSpaCocClient().queue.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: {
+                    kind: 'chat',
+                    mode: 'ask',
+                    prompt: buildGoalGrillingPrompt(item),
+                    workspaceId,
+                    context: {
+                        skills: ['grill-me'],
+                        ralph: {
+                            phase: 'grilling',
+                            sessionId,
+                        },
+                        workItemGoalGrilling: {
+                            workspaceId,
+                            workItemId,
+                            title: item.title,
+                            contentVersion: item.currentContentVersion ?? item.plan?.currentVersion ?? item.plan?.version ?? null,
+                        },
+                        workItemChat: {
+                            workspaceId,
+                            workItemId,
+                            workItemNumber: item.workItemNumber,
+                            status: item.status,
+                            type: item.type ?? 'work-item',
+                        },
+                    },
+                },
+            });
+            const taskId = result.task?.id ?? (result as { id?: string }).id;
+            if (!taskId) throw new Error('Failed to create Goal grilling chat task');
+
+            await getSpaCocClient().workItems.createChatBinding(workspaceId, workItemId, taskId);
+            await getSpaCocClient().workItems.update(workspaceId, workItemId, {
+                grillSessionId: ensureQueueProcessId(taskId),
+                ...(item.status === 'created' ? { status: 'drafting' } : {}),
+            });
+            await fetchItem();
+            openWorkItemChat();
+        } catch (err: any) {
+            setError(err.message || 'Failed to start Goal grilling');
+        } finally {
+            setStartingGoalGrilling(false);
+        }
+    }, [fetchItem, item, openWorkItemChat, workItemId, workspaceId]);
+
     if (loading) {
         return <div className="flex items-center justify-center h-full text-sm text-[#848484]">Loading…</div>;
     }
@@ -745,12 +919,46 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
 
     const effectiveType = item.type ?? 'work-item';
     const isContainer = ['epic', 'feature', 'pbi'].includes(effectiveType);
-    const statusCfg = STATUS_LABELS[item.status] || STATUS_LABELS.created;
+    const hierarchyEnabled = isWorkItemsHierarchyEnabled();
+    const workflowEnabled = isWorkItemsWorkflowEnabled();
+    const isLocalOnlyWorkflowItem = (effectiveType === 'work-item' || effectiveType === 'goal')
+        && (!item.tracker || item.tracker.kind === 'local-only')
+        && !item.githubMirror
+        && !item.azureBoardsMirror;
+    const workflowCommandCenter = workflowEnabled && isLocalOnlyWorkflowItem;
+    const compactWorkflowLayout = workflowCommandCenter && isMobile;
+    const compactWorkflowActionClass = compactWorkflowLayout
+        ? 'min-h-10 flex-1 px-3 text-[12px]'
+        : 'min-h-[22px] px-[6px] text-[10px]';
+    const compactWorkflowReviewButtonClass = compactWorkflowLayout ? 'flex-1 justify-center' : undefined;
+    const compactWorkflowIconButtonClass = compactWorkflowLayout
+        ? 'inline-flex min-h-10 w-10 items-center justify-center rounded-[4px] border border-red-200 bg-red-50 text-[15px] dark:border-red-800 dark:bg-red-900/20'
+        : 'text-[12px] bg-transparent border-0 p-0';
+    const statusCfg = statusConfigFor(item.status, workflowCommandCenter, effectiveType);
     const canExecute = !isContainer && item.status === 'readyToExecute';
     const canEditPlan = !isContainer && ['created', 'planning', 'readyToExecute'].includes(item.status);
     const isAiDone = !isContainer && item.status === 'aiDone';
     const validNextStatuses = VALID_TRANSITIONS[item.status] ?? [];
-    const hierarchyEnabled = isWorkItemsHierarchyEnabled();
+    const isLocalOnlyWorkflowWorkItem = effectiveType === 'work-item' && isLocalOnlyWorkflowItem;
+    const canUseGoalGrilling = workflowEnabled && effectiveType === 'goal' && isLocalOnlyWorkflowItem;
+    const canDraftWithAi = workflowEnabled && aiAuthoringEnabled && isLocalOnlyWorkflowWorkItem;
+    const canUseVersionWorkflowActions = workflowEnabled && isLocalOnlyWorkflowItem;
+    const canSelectExecutionMode = workflowEnabled && isLocalOnlyWorkflowItem;
+    const defaultExecutionMode = workflowEnabled && effectiveType === 'goal' && isLocalOnlyWorkflowItem ? 'ralph' : 'one-shot';
+    const latestReviewExecution = item.executionHistory
+        ?.map((exec, index) => ({ exec, index }))
+        .filter(({ exec }) => exec.status === 'completed' && !isCommentResolveExecution(exec) && !isWorkflowAiReviewExecution(exec))
+        .at(-1);
+    const latestReviewChange = latestReviewExecution
+        ? item.changes?.find(change => change.taskId === latestReviewExecution.exec.taskId)
+        : undefined;
+    const canSubmitPr = workflowCommandCenter
+        && isAiDone
+        && !!latestReviewChange
+        && latestReviewChange.commits.length > 0
+        && !latestReviewChange.prUrl;
+    const hasRunningAiReview = item.executionHistory?.some(exec => isWorkflowAiReviewExecution(exec) && exec.status === 'running') ?? false;
+    const canStartAiReview = workflowCommandCenter && isAiDone;
 
     const typePrefix = effectiveType === 'epic' ? 'E'
         : effectiveType === 'feature' ? 'F'
@@ -804,7 +1012,10 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     return (
         <div className="relative flex flex-col h-full overflow-hidden" data-testid="work-item-detail">
             {/* ── Detail header ── */}
-            <div className="border-b border-[#d0d7de] dark:border-[#474749] bg-white dark:bg-[#1e1e1e] grid gap-2 shrink-0" style={{ padding: '12px 16px' }}>
+            <div
+                className="border-b border-[#d0d7de] dark:border-[#474749] bg-white dark:bg-[#1e1e1e] grid gap-2 shrink-0"
+                style={{ padding: compactWorkflowLayout ? '10px 12px' : '12px 16px' }}
+            >
                 {/* Breadcrumbs */}
                 <div className="flex items-center gap-1.5 text-[12px] text-[#656d76] dark:text-[#999] min-w-0" id="crumbs">
                     {onBack && (
@@ -825,7 +1036,10 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                 </div>
 
                 {/* Title row with Save + Run */}
-                <div className="grid gap-2 items-start" style={{ gridTemplateColumns: 'minmax(0, 1fr) auto auto' }}>
+                <div
+                    className="grid gap-2 items-start"
+                    style={{ gridTemplateColumns: compactWorkflowLayout ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) auto auto' }}
+                >
                     <input
                         type="text"
                         className="w-full border border-[#d0d7de] dark:border-[#555] rounded-md bg-white dark:bg-[#1e1e1e] text-[#1f2328] dark:text-[#cccccc] px-2 py-[5px] text-[18px] leading-[1.25] font-semibold tracking-[-0.01em] outline-none focus:border-[#0969da] focus:shadow-[0_0_0_3px_rgba(9,105,218,0.16)]"
@@ -836,7 +1050,10 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                         aria-label="Title"
                     />
                     <button
-                        className="inline-flex items-center justify-center gap-[5px] min-h-7 border border-[rgba(31,35,40,0.15)] rounded-md bg-[#1f883d] text-white px-2 text-[12px] font-semibold tracking-[0.02em] whitespace-nowrap hover:bg-[#1a7f37] disabled:opacity-50 dark:bg-[#238636] dark:hover:bg-[#2ea043]"
+                        className={cn(
+                            'inline-flex items-center justify-center gap-[5px] border border-[rgba(31,35,40,0.15)] rounded-md bg-[#1f883d] text-white px-2 text-[12px] font-semibold tracking-[0.02em] whitespace-nowrap hover:bg-[#1a7f37] disabled:opacity-50 dark:bg-[#238636] dark:hover:bg-[#2ea043]',
+                            compactWorkflowLayout ? 'min-h-10 w-full' : 'min-h-7',
+                        )}
                         onClick={handleSave}
                         disabled={!isDirty || saving}
                         data-testid="wi-save-btn"
@@ -845,11 +1062,11 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     >
                         Save
                     </button>
-                    <span />
+                    {!compactWorkflowLayout && <span />}
                 </div>
 
                 {/* Meta grid + inline actions */}
-                <div className="flex items-center gap-1.5 flex-wrap">
+                <div className={cn('flex items-center gap-1.5 flex-wrap', compactWorkflowLayout && 'gap-2')}>
                     <span className={cn('inline-flex items-center rounded-full text-[11px] leading-[1.25] px-[7px] py-px border whitespace-nowrap', typePillClass)}>
                         {TYPE_LABELS[effectiveType as WorkItemTypeLabel] ?? effectiveType}
                     </span>
@@ -864,7 +1081,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     >
                         <option value={item.status}>{statusCfg.label}</option>
                         {validNextStatuses.map(s => (
-                            <option key={s} value={s}>{STATUS_LABELS[s]?.label ?? s}</option>
+                            <option key={s} value={s}>{statusConfigFor(s, workflowCommandCenter, effectiveType).label}</option>
                         ))}
                     </select>
                     <WorkItemRemoteMirrorBadge
@@ -894,10 +1111,19 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                         Updated {formatRelativeTime(item.updatedAt)}
                     </span>
                     {/* Inline action icons — compact, right-aligned */}
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div
+                        className={cn(
+                            'flex items-center gap-2 shrink-0',
+                            compactWorkflowLayout && 'order-last w-full flex-wrap gap-2 pt-1',
+                        )}
+                        data-testid="work-item-primary-actions"
+                    >
                         {!isContainer && (
                             <button
-                                className="inline-flex items-center justify-center min-h-[22px] border border-[#0969da] rounded-[4px] bg-[#0969da] text-white px-[6px] text-[10px] font-semibold whitespace-nowrap hover:bg-[#0550ae] disabled:opacity-40"
+                                className={cn(
+                                    'inline-flex items-center justify-center border border-[#0969da] rounded-[4px] bg-[#0969da] text-white font-semibold whitespace-nowrap hover:bg-[#0550ae] disabled:opacity-40',
+                                    compactWorkflowActionClass,
+                                )}
                                 onClick={() => setShowExecuteDialog(true)}
                                 disabled={!canExecute}
                                 data-testid="work-item-execute-btn"
@@ -907,7 +1133,10 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             </button>
                         )}
                         <button
-                            className="inline-flex items-center justify-center min-h-[22px] rounded-[4px] border border-purple-300 bg-purple-50 px-[6px] text-[10px] font-semibold text-purple-700 hover:bg-purple-100 dark:border-purple-700 dark:bg-purple-900/30 dark:text-purple-200 dark:hover:bg-purple-900/50"
+                            className={cn(
+                                'inline-flex items-center justify-center rounded-[4px] border border-purple-300 bg-purple-50 font-semibold text-purple-700 hover:bg-purple-100 dark:border-purple-700 dark:bg-purple-900/30 dark:text-purple-200 dark:hover:bg-purple-900/50',
+                                compactWorkflowActionClass,
+                            )}
                             onClick={openWorkItemChat}
                             data-testid="work-item-ask-ai-btn"
                             aria-pressed={workItemChatOpen}
@@ -916,43 +1145,37 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                         >
                             Ask AI
                         </button>
-                        {isMobile && isContainer && (
+                        {canDraftWithAi && (
                             <button
-                                className="text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#ccc] text-[11px] bg-transparent border-0 cursor-pointer p-0 whitespace-nowrap"
-                                onClick={() => {
-                                    const childTypes = ALLOWED_CHILD_TYPES[effectiveType as WorkItemTypeLabel] ?? [];
-                                    if (childTypes.length === 0) return;
-                                    if (childTypes.length === 1) {
-                                        onCreateChild?.(childTypes[0] as WorkItemTypeLabel, item.id);
-                                    } else {
-                                        setShowChildTypePicker(true);
-                                    }
-                                }}
-                                data-testid="wi-add-child-btn"
+                                className={cn(
+                                    'inline-flex items-center justify-center rounded-[4px] border border-purple-300 bg-purple-50 font-semibold text-purple-700 hover:bg-purple-100 disabled:opacity-40 dark:border-purple-700 dark:bg-purple-900/30 dark:text-purple-200 dark:hover:bg-purple-900/50',
+                                    compactWorkflowActionClass,
+                                )}
+                                onClick={() => setShowAiDraftApplyDialog(true)}
+                                disabled={isDirty || saving}
+                                data-testid="work-item-draft-with-ai-btn"
+                                title={isDirty ? 'Save or discard local edits before drafting with AI' : item.plan?.content ? 'Create a new AI-authored plan version' : 'Draft description and v1 plan with AI'}
                                 type="button"
                             >
-                                + Add Child
+                                {item.plan?.content ? 'Revise with AI' : 'Draft with AI'}
                             </button>
                         )}
-                        {!isMobile && (
+                        {canUseGoalGrilling && (
                             <button
-                                className="text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#ccc] text-[11px] bg-transparent border-0 cursor-pointer p-0 whitespace-nowrap"
-                                onClick={() => {
-                                    const childTypes = ALLOWED_CHILD_TYPES[effectiveType as WorkItemTypeLabel] ?? [];
-                                    if (childTypes.length === 0) return;
-                                    if (childTypes.length === 1) {
-                                        onCreateChild?.(childTypes[0] as WorkItemTypeLabel, item.id);
-                                    } else {
-                                        setShowChildTypePicker(true);
-                                    }
-                                }}
-                                data-testid="wi-new-child-btn"
+                                className={cn(
+                                    'inline-flex items-center justify-center rounded-[4px] border border-amber-300 bg-amber-50 font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-40 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200 dark:hover:bg-amber-900/50',
+                                    compactWorkflowActionClass,
+                                )}
+                                onClick={handleGoalGrilling}
+                                disabled={isDirty || saving || startingGoalGrilling}
+                                data-testid="work-item-goal-grilling-btn"
+                                title={isDirty ? 'Save or discard local edits before grilling this Goal' : item.grillSessionId ? 'Resume the Goal grilling chat' : 'Start a Goal grilling chat'}
                                 type="button"
                             >
-                                + child
+                                {startingGoalGrilling ? 'Starting…' : item.grillSessionId ? 'Continue grilling' : 'Start grilling'}
                             </button>
                         )}
-                        {aiAuthoringEnabled && (
+                        {aiAuthoringEnabled && !canDraftWithAi && (
                             <button
                                 className="text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#ccc] text-[12px] bg-transparent border-0 cursor-pointer p-0 leading-none"
                                 onClick={() => setShowAiComposer(true)}
@@ -963,33 +1186,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                 ✨
                             </button>
                         )}
-                        <button className="text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#ccc] text-[12px] bg-transparent border-0 cursor-pointer p-0 leading-none" data-testid="work-item-pin-btn"
-                            title={item.pinnedAt ? 'Unpin' : 'Pin'}
-                            type="button"
-                            onClick={async () => {
-                                try {
-                                    await getSpaCocClient().workItems.pin(workspaceId, workItemId, !item.pinnedAt);
-                                    await fetchItem();
-                                } catch (err: any) {
-                                    setError(err.message || 'Failed to update pin');
-                                }
-                            }}>
-                            📌
-                        </button>
-                        <button className="text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#ccc] text-[12px] bg-transparent border-0 cursor-pointer p-0 leading-none" data-testid="work-item-archive-btn"
-                            title={item.archivedAt ? 'Unarchive' : 'Archive'}
-                            type="button"
-                            onClick={async () => {
-                                try {
-                                    await getSpaCocClient().workItems.archive(workspaceId, workItemId, !item.archivedAt);
-                                    await fetchItem();
-                                } catch (err: any) {
-                                    setError(err.message || 'Failed to update archive');
-                                }
-                            }}>
-                            🗄️
-                        </button>
-                        <button className="text-[#cf222e] hover:text-[#a40e26] dark:text-red-400 dark:hover:text-red-300 text-[12px] bg-transparent border-0 cursor-pointer p-0 leading-none" data-testid="work-item-delete-btn"
+                        <button className={cn('text-[#cf222e] hover:text-[#a40e26] dark:text-red-400 dark:hover:text-red-300 cursor-pointer leading-none', compactWorkflowIconButtonClass)} data-testid="work-item-delete-btn"
                             type="button"
                             onClick={async () => {
                                 if (confirm('Delete this work item?')) {
@@ -1007,7 +1204,13 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
             {/* ── Body ── */}
             <div className="flex min-h-0 flex-1">
             <div className="min-w-0 flex-1 overflow-y-auto min-h-0 bg-white dark:bg-[#1e1e1e]" data-testid="work-item-detail-content">
-                <div className="grid gap-3 items-start" style={{ gridTemplateColumns: 'minmax(0, 1fr)', padding: '12px 16px 18px' }}>
+                <div
+                    className="grid gap-3 items-start"
+                    style={{
+                        gridTemplateColumns: 'minmax(0, 1fr)',
+                        padding: compactWorkflowLayout ? '10px 10px 18px' : '12px 16px 18px',
+                    }}
+                >
                 {error && (
                     <div className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 rounded p-2 flex items-start justify-between gap-2">
                         <span>{error}</span>
@@ -1145,6 +1348,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             onNavigateToTasksTab={onNavigateToTasksTab}
                             viewMode={planViewMode}
                             onViewModeChange={setPlanViewMode}
+                            enableVersionActions={canUseVersionWorkflowActions}
+                            hasUnsavedChanges={isDirty}
                         />
                     </div>
                 </article>
@@ -1242,16 +1447,59 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                 </article>
 
 
-                {/* AI Review section (aiDone only) */}
+                {/* Review section (aiDone only) */}
                 {isAiDone && (
                     <section className="bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800 rounded-lg p-3" data-testid="work-item-review-section">
-                        <h3 className="text-xs font-medium text-purple-700 dark:text-purple-400 uppercase mb-2">🔄 AI Done — Review Required</h3>
+                        <h3 className="text-xs font-medium text-purple-700 dark:text-purple-400 uppercase mb-2">
+                            🔄 {workflowCommandCenter ? 'Review Required' : 'AI Done — Review Required'}
+                        </h3>
                         {item.executionHistory && item.executionHistory.length > 0 && (
                             <div className="text-xs text-[#606060] dark:text-[#aaa] mb-2">
                                 Run #{item.executionHistory.length}
                                 {item.processId && (
                                     <a href={`#process/${item.processId}`} className="ml-2 text-[#0078d4] hover:underline">
                                         View session →
+                                    </a>
+                                )}
+                            </div>
+                        )}
+                        {workflowCommandCenter && latestReviewExecution && (
+                            <div className="mb-3 rounded-md border border-purple-200 bg-white/70 p-2 text-[11px] text-[#3c3c3c] dark:border-purple-800 dark:bg-[#1e1e1e]/70 dark:text-[#cccccc]" data-testid="work-item-review-run-summary">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                    <span className="font-semibold">Latest run #{latestReviewExecution.index + 1}</span>
+                                    {latestReviewExecution.exec.title && <span>{latestReviewExecution.exec.title}</span>}
+                                    {latestReviewExecution.exec.planVersion !== undefined && (
+                                        <span className="rounded-full border border-purple-200 bg-purple-50 px-1.5 py-px text-[10px] text-purple-700 dark:border-purple-700 dark:bg-purple-900/30 dark:text-purple-200">
+                                            v{latestReviewExecution.exec.planVersion}
+                                        </span>
+                                    )}
+                                    {formatExecutionModeLabel(latestReviewExecution.exec.executionMode) && (
+                                        <span className="rounded-full border border-[#d0d7de] bg-[#f6f8fa] px-1.5 py-px text-[10px] text-[#656d76] dark:border-[#555] dark:bg-transparent dark:text-[#999]">
+                                            {formatExecutionModeLabel(latestReviewExecution.exec.executionMode)}
+                                        </span>
+                                    )}
+                                    <span className="text-[#656d76] dark:text-[#999]">
+                                        {latestReviewChange?.commits.length ?? 0} commit{(latestReviewChange?.commits.length ?? 0) === 1 ? '' : 's'}
+                                    </span>
+                                </div>
+                                {latestReviewChange && latestReviewChange.commits.length > 0 && (
+                                    <div className="mt-1 flex flex-wrap gap-1">
+                                        {latestReviewChange.commits.map(commit => (
+                                            <code key={commit.sha} className="rounded bg-purple-100 px-1 py-px text-[10px] text-purple-800 dark:bg-purple-900/40 dark:text-purple-200">
+                                                {commit.sha.slice(0, 7)}
+                                            </code>
+                                        ))}
+                                    </div>
+                                )}
+                                {latestReviewChange?.prUrl && (
+                                    <a
+                                        href={latestReviewChange.prUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="mt-1 inline-flex text-[10px] text-[#0969da] hover:underline"
+                                        data-testid="work-item-review-pr-link"
+                                    >
+                                        PR {latestReviewChange.prNumber ? `#${latestReviewChange.prNumber}` : 'submitted'} →
                                     </a>
                                 )}
                             </div>
@@ -1265,11 +1513,24 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                 onChange={e => setReviewComment(e.target.value)}
                                 data-testid="work-item-review-comment"
                             />
-                            <div className="flex gap-2">
-                                <Button variant="primary" size="sm" onClick={handleAcceptDone} disabled={acceptingDone} loading={acceptingDone} data-testid="work-item-accept-done-btn">
+                            <div
+                                className={cn('flex gap-2', compactWorkflowLayout && 'flex-wrap')}
+                                data-testid="work-item-review-actions"
+                            >
+                                <Button variant="primary" size="sm" onClick={handleAcceptDone} disabled={acceptingDone} loading={acceptingDone} data-testid="work-item-accept-done-btn" className={compactWorkflowReviewButtonClass}>
                                     ✅ Accept &amp; Done
                                 </Button>
-                                <Button variant="ghost" size="sm" onClick={handleRequestChanges} disabled={requestingChanges} loading={requestingChanges} data-testid="work-item-request-changes-btn">
+                                {canSubmitPr && (
+                                    <Button variant="success" size="sm" onClick={handleSubmitPr} disabled={submittingPr} loading={submittingPr} data-testid="work-item-submit-pr-btn" className={compactWorkflowReviewButtonClass}>
+                                        Submit PR
+                                    </Button>
+                                )}
+                                {canStartAiReview && (
+                                    <Button variant="secondary" size="sm" onClick={handleStartAiReview} disabled={startingAiReview || hasRunningAiReview} loading={startingAiReview} data-testid="work-item-ai-review-btn" className={compactWorkflowReviewButtonClass}>
+                                        {hasRunningAiReview ? 'AI review running' : 'AI Review'}
+                                    </Button>
+                                )}
+                                <Button variant="ghost" size="sm" onClick={handleRequestChanges} disabled={requestingChanges} loading={requestingChanges} data-testid="work-item-request-changes-btn" className={compactWorkflowReviewButtonClass}>
                                     🔄 Request Changes
                                 </Button>
                             </div>
@@ -1298,7 +1559,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                 <span className="text-base select-none" aria-hidden="true">✅</span>
                                 <div className="flex-1 min-w-0">
                                     <div className="text-xs font-medium text-[#3c3c3c] dark:text-[#cccccc]">
-                                        AI Completed — Running Session
+                                        {workflowCommandCenter ? 'Ready for Review — Execution Session' : 'AI Completed — Running Session'}
                                     </div>
                                     <div className="text-[10px] text-[#848484] truncate" title={item.taskId}>
                                         Task: {item.taskId}
@@ -1345,11 +1606,32 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                 const matchingChange = item.changes?.find(c => c.taskId === exec.taskId);
                                 const commits = matchingChange?.commits ?? [];
                                 const execOpenCommentCount = commits.reduce((sum, c) => sum + (commentTotals.get(c.sha)?.open ?? 0), 0);
+                                const executionModeLabel = formatExecutionModeLabel(exec.executionMode);
+                                const metadataChips: Array<{ key: string; label: string; title?: string }> = [];
+                                if (exec.planVersion !== undefined) metadataChips.push({ key: 'version', label: `Version v${exec.planVersion}` });
+                                if (executionModeLabel) metadataChips.push({ key: 'mode', label: executionModeLabel });
+                                if (exec.ralphSessionId) metadataChips.push({ key: 'ralph', label: `Ralph ${exec.ralphSessionId}`, title: exec.ralphSessionId });
+                                if (exec.aiSettings?.autoProviderRouting) metadataChips.push({ key: 'auto-provider', label: 'Auto provider' });
+                                if (exec.aiSettings?.provider) metadataChips.push({ key: 'provider', label: `Provider ${formatProviderLabel(exec.aiSettings.provider)}` });
+                                if (exec.aiSettings?.model) metadataChips.push({ key: 'model', label: `Model ${exec.aiSettings.model}`, title: exec.aiSettings.model });
+                                if (exec.aiSettings?.reasoningEffort) metadataChips.push({ key: 'effort', label: `Effort ${exec.aiSettings.reasoningEffort}` });
+                                if (exec.aiSettings?.effortTier) metadataChips.push({ key: 'tier', label: `Tier ${exec.aiSettings.effortTier}` });
+                                if (exec.skillNames?.length) metadataChips.push({ key: 'skills', label: `Skills ${exec.skillNames.join(', ')}`, title: exec.skillNames.join(', ') });
+                                if (matchingChange?.prUrl) metadataChips.push({
+                                    key: 'pr',
+                                    label: matchingChange.prNumber ? `PR #${matchingChange.prNumber}` : 'PR submitted',
+                                    title: matchingChange.prUrl,
+                                });
                                 return (
                                     <div key={i} className="rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] text-xs" data-testid={`exec-entry-${i}`}>
-                                        <div className="flex items-center gap-2 px-3 py-2">
+                                        <div
+                                            className={cn('flex gap-2 px-3 py-2', compactWorkflowLayout ? 'items-start flex-wrap gap-y-1' : 'items-center')}
+                                            data-testid={`exec-header-${i}`}
+                                        >
                                             <span>{exec.status === 'running' ? '🔵' : exec.status === 'completed' ? '🟢' : exec.status === 'failed' ? '🔴' : '⚪'}</span>
-                                            <span className="font-medium text-[#3c3c3c] dark:text-[#cccccc]">Run #{i + 1}{exec.title ? `: ${exec.title}` : ''}</span>
+                                            <span className={cn('font-medium text-[#3c3c3c] dark:text-[#cccccc]', compactWorkflowLayout && 'min-w-0 flex-1 basis-[calc(100%-1.75rem)]')}>
+                                                Run #{i + 1}{exec.title ? `: ${exec.title}` : ''}
+                                            </span>
                                             {exec.autoReExecuted && (
                                                 <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[9px]" data-testid={`exec-auto-reexecute-badge-${i}`}>
                                                     🔄 Auto re-executed
@@ -1360,9 +1642,28 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                                     💬 {exec.sessionCategory === 'resolve-plan-comments' ? 'Plan' : 'Code'} comment resolve
                                                 </span>
                                             )}
-                                            <span className="text-[#848484]">{formatRelativeTime(exec.startedAt)}</span>
+                                            {isWorkflowAiReviewExecution(exec) && (
+                                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-[9px]" data-testid={`exec-ai-review-badge-${i}`}>
+                                                    🔎 AI review
+                                                </span>
+                                            )}
+                                            <span className={cn('text-[#848484]', compactWorkflowLayout && 'basis-full pl-6')}>{formatRelativeTime(exec.startedAt)}</span>
                                             {exec.completedAt && <span className="text-[#848484]">· {formatRelativeTime(exec.completedAt)}</span>}
                                         </div>
+                                        {metadataChips.length > 0 && (
+                                            <div className="px-3 pb-1.5 flex flex-wrap gap-1.5" data-testid={`exec-metadata-${i}`}>
+                                                {metadataChips.map(chip => (
+                                                    <span
+                                                        key={chip.key}
+                                                        title={chip.title}
+                                                        className="inline-flex max-w-full min-w-0 items-center rounded-full border border-[#d0d7de] bg-white px-1.5 py-px text-[10px] text-[#656d76] dark:border-[#555] dark:bg-transparent dark:text-[#999]"
+                                                        data-testid={`exec-metadata-chip-${i}-${chip.key}`}
+                                                    >
+                                                        <span className="truncate">{chip.label}</span>
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
                                         <div className="px-3 pb-1.5 flex items-center gap-2 flex-wrap">
                                             {onViewTask ? (
                                                 <button onClick={() => onViewTask(exec.taskId)} className="text-[#0078d4] hover:underline bg-transparent border-none cursor-pointer p-0 text-[10px]" data-testid={`exec-view-session-${i}`}>View Session →</button>
@@ -1387,6 +1688,17 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                                     {resolvingChangeIdx === i ? '⏳ Resolving…' : `Resolve all (${execOpenCommentCount})`}
                                                 </button>
                                             )}
+                                            {matchingChange?.prUrl && (
+                                                <a
+                                                    href={matchingChange.prUrl}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="text-[#0078d4] hover:underline text-[10px]"
+                                                    data-testid={`exec-pr-link-${i}`}
+                                                >
+                                                    PR {matchingChange.prNumber ? `#${matchingChange.prNumber}` : 'submitted'} →
+                                                </a>
+                                            )}
                                         </div>
                                         {exec.error && (
                                             <div className="px-3 pb-2 text-[10px] text-red-500 truncate">{exec.error}</div>
@@ -1398,7 +1710,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                                     const openCount = ct?.open ?? 0;
                                                     const resolvedCount = ct?.resolved ?? 0;
                                                     return (
-                                                        <div key={c.sha} className="flex items-start gap-1.5 text-[10px]">
+                                                        <div key={c.sha} className={cn('flex items-start gap-1.5 text-[10px]', compactWorkflowLayout && 'flex-wrap')}>
                                                             {onViewCommit ? (
                                                                 <button onClick={() => onViewCommit(c.sha)} className="text-[#0078d4] hover:underline shrink-0 font-mono bg-transparent border-none cursor-pointer p-0" title={c.message} data-testid={`exec-commit-${c.sha.slice(0, 7)}`}>
                                                                     {c.sha.slice(0, 7)}
@@ -1436,7 +1748,13 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                                                     {resolvingCommitSha === c.sha ? '⏳ ' : ''}Resolve with agent
                                                                 </button>
                                                             )}
-                                                            <span className="text-[#3c3c3c] dark:text-[#cccccc] truncate" title={c.message}>{c.message}</span>
+                                                            <span
+                                                                className={cn('text-[#3c3c3c] dark:text-[#cccccc] truncate', compactWorkflowLayout && 'basis-full whitespace-normal break-words pl-0')}
+                                                                title={c.message}
+                                                                data-testid={`exec-commit-message-${c.sha.slice(0, 7)}`}
+                                                            >
+                                                                {c.message}
+                                                            </span>
                                                             {c.author && <span className="text-[#848484] shrink-0">— {c.author}</span>}
                                                         </div>
                                                     );
@@ -1568,6 +1886,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     workspaceId={workspaceId}
                     workItemId={workItemId}
                     workItemTitle={item.title}
+                    defaultExecutionMode={defaultExecutionMode}
+                    allowExecutionModeSelection={canSelectExecutionMode}
                     onClose={() => setShowExecuteDialog(false)}
                     onExecuted={handleExecuteDialogDone}
                 />
@@ -1586,6 +1906,24 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                 }}
                 onImproved={fetchItem}
             />
+            {showAiDraftApplyDialog && (
+                <WorkItemAiDraftApplyDialog
+                    open={showAiDraftApplyDialog}
+                    workspaceId={workspaceId}
+                    item={{
+                        id: item.id,
+                        title: item.title,
+                        updatedAt: item.updatedAt,
+                        currentContentVersion: item.currentContentVersion,
+                        plan: item.plan,
+                    }}
+                    onClose={() => setShowAiDraftApplyDialog(false)}
+                    onApplied={(updated) => {
+                        dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item: updated as any });
+                        void fetchItem();
+                    }}
+                />
+            )}
             {showParentPicker && (
                 <WorkItemParentPicker
                     workspaceId={workspaceId}
@@ -1596,43 +1934,6 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     onParentChanged={(newParentId) => updateDraft('parentId', newParentId)}
                     onClose={() => setShowParentPicker(false)}
                 />
-            )}
-            {/* ── Mobile child type picker ── */}
-            {showChildTypePicker && (
-                <div
-                    className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
-                    onClick={() => setShowChildTypePicker(false)}
-                    data-testid="wi-child-type-picker-overlay"
-                >
-                    <div
-                        className="w-full max-w-sm bg-white dark:bg-[#1e1e1e] rounded-t-xl p-4 pb-8 shadow-2xl"
-                        onClick={e => e.stopPropagation()}
-                        data-testid="wi-child-type-picker-modal"
-                    >
-                        <p className="text-xs font-medium text-[#848484] dark:text-[#999] mb-3 uppercase tracking-wide">
-                            Add child to "{item.title}"
-                        </p>
-                        <div className="flex flex-col gap-2">
-                            {(ALLOWED_CHILD_TYPES[effectiveType as WorkItemTypeLabel] ?? []).map(childType => (
-                                <button
-                                    key={childType}
-                                    className="w-full text-left px-3 py-2.5 rounded-lg border border-[#e0e0e0] dark:border-[#444] text-sm text-[#3c3c3c] dark:text-[#cccccc] hover:bg-[#f5f5f5] dark:hover:bg-[#2a2d2e] active:bg-[#e8e8e8] dark:active:bg-[#333]"
-                                    onClick={() => { onCreateChild?.(childType as WorkItemTypeLabel, item.id); setShowChildTypePicker(false); }}
-                                    data-testid={`wi-child-type-option-${childType}`}
-                                >
-                                    {TYPE_LABELS[childType as WorkItemTypeLabel] ?? childType}
-                                </button>
-                            ))}
-                        </div>
-                        <button
-                            className="mt-3 w-full text-center text-xs text-[#848484] py-2"
-                            onClick={() => setShowChildTypePicker(false)}
-                            data-testid="wi-child-type-picker-cancel"
-                        >
-                            Cancel
-                        </button>
-                    </div>
-                </div>
             )}
         </div>
     );

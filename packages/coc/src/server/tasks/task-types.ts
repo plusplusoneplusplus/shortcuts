@@ -215,6 +215,21 @@ export interface ChatContext {
         /** PR title — used to enrich the AI prompt. */
         prTitle?: string;
     };
+    /** Work Item chat preset (side-by-side chat anchored to a local Work Item/Goal). */
+    workItemChat?: {
+        workspaceId: string;
+        workItemId: string;
+        workItemNumber?: number;
+        status?: string;
+        type?: string;
+    };
+    /** Local Goal grilling chat; final spec is intended for the Work Item store, not Notes. */
+    workItemGoalGrilling?: {
+        workspaceId: string;
+        workItemId: string;
+        title?: string;
+        contentVersion?: number | null;
+    };
     /** Note-chat preset (side-by-side chat anchored to a specific note). */
     noteChat?: {
         notePath: string;

@@ -7,10 +7,13 @@
  */
 
 import * as crypto from 'crypto';
-import type { WorkItemStore, WorkItem, WorkItemExecution, WorkItemChange, WorkItemPlanVersion } from './types';
-import { isValidTransition } from './types';
+import type { WorkItemStore, WorkItem, WorkItemExecution, WorkItemChange, WorkItemPlanVersion, WorkItemExecutionMode, WorkItemExecutionAiSettings } from './types';
+import { getOwnWorkItemTrackerKind, isValidTransition } from './types';
 import type { ChatMode, ChatProvider, ReasoningEffort } from '../tasks/task-types';
 import { normalizeChatModeOrDefault } from '../tasks/task-types';
+import { buildRalphIterationTask, type RalphEffortTier } from '../ralph/enqueue-iteration';
+import { RalphSessionStore } from '../ralph/ralph-session-store';
+import { RALPH_DEFAULT_MAX_ITERATIONS } from '../preferences-handler';
 
 import type { SessionCategory } from '@plusplusoneplusplus/forge';
 
@@ -27,6 +30,12 @@ export interface ExecuteWorkItemOptions {
     autoProviderRouting?: boolean;
     /** Chat mode for execution (default: 'autopilot'). */
     mode?: Exclude<ChatMode, 'ralph'> | string;
+    /** Work Item execution strategy for this run. */
+    executionMode?: WorkItemExecutionMode | string;
+    /** Repo-scoped CoC data root; required to initialize Ralph journals. */
+    dataDir?: string;
+    /** Optional maximum iteration count for Ralph execution. */
+    maxRalphIterations?: number;
     /** Git HEAD SHA captured immediately before execution enqueued. */
     headBefore?: string;
     /** Whether this execution was triggered automatically after comment resolution. */
@@ -45,6 +54,9 @@ export interface ExecuteWorkItemOptions {
 export interface EnqueueFunction {
     (input: {
         type: string;
+        repoId?: string;
+        folderPath?: string;
+        continuationOfSessionId?: string;
         priority: string;
         payload: Record<string, unknown>;
         config: Record<string, unknown>;
@@ -78,6 +90,27 @@ export function buildExecutionPrompt(item: WorkItem): string {
     return parts.join('\n');
 }
 
+function mintRalphSessionId(): string {
+    return `ralph-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeExecutionMode(item: WorkItem, value: unknown): WorkItemExecutionMode {
+    if (value === 'ralph') return 'ralph';
+    if (value === 'one-shot') return 'one-shot';
+    return item.type === 'goal' ? 'ralph' : 'one-shot';
+}
+
+function buildAiSettings(options: ExecuteWorkItemOptions | undefined): WorkItemExecutionAiSettings | undefined {
+    const settings: WorkItemExecutionAiSettings = {
+        ...(options?.provider ? { provider: options.provider } : {}),
+        ...(options?.model ? { model: options.model } : {}),
+        ...(options?.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
+        ...(options?.effortTier ? { effortTier: options.effortTier } : {}),
+        ...(options?.autoProviderRouting ? { autoProviderRouting: true } : {}),
+    };
+    return Object.keys(settings).length > 0 ? settings : undefined;
+}
+
 /**
  * Execute a work item by enqueuing it as a task.
  *
@@ -88,7 +121,7 @@ export async function executeWorkItem(
     store: WorkItemStore,
     enqueue: EnqueueFunction,
     options?: ExecuteWorkItemOptions,
-): Promise<{ taskId: string }> {
+): Promise<{ taskId: string; ralphSessionId?: string }> {
     const item = await store.getWorkItem(workItemId);
     if (!item) {
         throw new Error(`Work item not found: ${workItemId}`);
@@ -101,8 +134,10 @@ export async function executeWorkItem(
     }
 
     const prompt = buildExecutionPrompt(item);
+    const executionMode = normalizeExecutionMode(item, options?.executionMode);
     const mode = normalizeChatModeOrDefault(options?.mode, 'autopilot');
     const runNumber = (item.executionHistory?.length ?? 0) + 1;
+    const selectedPlanVersion = item.currentContentVersion ?? item.plan?.currentVersion ?? item.plan?.version;
 
     const contextFiles = options?.taskFilePath ? [options.taskFilePath] : [];
     const contextSkills = options?.skillNames ?? [];
@@ -114,35 +149,91 @@ export async function executeWorkItem(
         }
         : undefined;
 
-    const taskId = await enqueue({
-        type: 'run-workflow',
-        priority: item.priority ?? 'normal',
-        payload: {
-            kind: 'chat',
-            mode,
-            prompt,
+    const ralphSessionId = executionMode === 'ralph' ? mintRalphSessionId() : undefined;
+    const executionTitle = executionMode === 'ralph' ? 'Ralph Implement' : 'Code Implement';
+    const displayName = `Run #${runNumber}: ${executionTitle}`;
+    const priority = item.priority ?? 'normal';
+    let taskId: string;
+    if (executionMode === 'ralph') {
+        const maxIterations = options?.maxRalphIterations ?? RALPH_DEFAULT_MAX_ITERATIONS;
+        if (options?.dataDir) {
+            await new RalphSessionStore({ dataDir: options.dataDir }).initSession(item.repoId, ralphSessionId!, {
+                originalGoal: prompt,
+                maxIterations,
+            });
+        }
+        const ralphContext = {
+            ...(context ?? {}),
+            workItemExecution: {
+                workspaceId: item.repoId,
+                workItemId: item.id,
+                executionMode,
+                ...(selectedPlanVersion !== undefined ? { planVersion: selectedPlanVersion } : {}),
+            },
+        };
+        const ralphTask = buildRalphIterationTask({
             workspaceId: item.repoId,
-            sessionCategory: 'generating-code' satisfies SessionCategory,
-            workItemId: item.id,
-            ...(options?.provider ? { provider: options.provider } : {}),
-            ...(options?.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
-            ...(context ? { context } : {}),
-        },
-        config: {
-            ...(options?.model ? { model: options.model } : {}),
-            ...(options?.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
-            ...(options?.effortTier ? { effortTier: options.effortTier } : {}),
-        },
-        displayName: `Run #${runNumber}: Code Implement`,
-    });
+            sessionId: ralphSessionId!,
+            originalGoal: prompt,
+            iteration: 1,
+            maxIterations,
+            dataDir: options?.dataDir,
+            extraContext: ralphContext,
+            displayName,
+            priority,
+            provider: options?.provider,
+            model: options?.model,
+            reasoningEffort: options?.reasoningEffort,
+            effortTier: options?.effortTier as RalphEffortTier | undefined,
+            autoProviderRouting: options?.autoProviderRouting,
+        });
+        taskId = await enqueue({
+            ...ralphTask,
+            payload: {
+                ...ralphTask.payload,
+                sessionCategory: 'generating-code' satisfies SessionCategory,
+                workItemId: item.id,
+                ...(selectedPlanVersion !== undefined ? { planVersion: selectedPlanVersion } : {}),
+            },
+        });
+    } else {
+        taskId = await enqueue({
+            type: 'run-workflow',
+            priority,
+            payload: {
+                kind: 'chat',
+                mode,
+                prompt,
+                workspaceId: item.repoId,
+                sessionCategory: 'generating-code' satisfies SessionCategory,
+                workItemId: item.id,
+                ...(selectedPlanVersion !== undefined ? { planVersion: selectedPlanVersion } : {}),
+                ...(options?.provider ? { provider: options.provider } : {}),
+                ...(options?.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
+                ...(context ? { context } : {}),
+            },
+            config: {
+                ...(options?.model ? { model: options.model } : {}),
+                ...(options?.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
+                ...(options?.effortTier ? { effortTier: options.effortTier } : {}),
+            },
+            displayName,
+        });
+    }
 
     // Record the execution
+    const aiSettings = buildAiSettings(options);
     const execution: WorkItemExecution = {
         taskId,
+        ...(selectedPlanVersion !== undefined ? { planVersion: selectedPlanVersion } : {}),
+        executionMode,
+        ...(ralphSessionId ? { ralphSessionId } : {}),
+        ...(aiSettings ? { aiSettings } : {}),
+        ...(contextSkills.length ? { skillNames: contextSkills } : {}),
         startedAt: new Date().toISOString(),
         status: 'running',
         sessionCategory: 'generating-code',
-        title: 'Code Implement',
+        title: executionTitle,
         ...(options?.autoReExecuted ? { autoReExecuted: true } : {}),
     };
     await store.addExecution(workItemId, execution);
@@ -150,7 +241,7 @@ export async function executeWorkItem(
     // Open or reuse a Change entry for this execution cycle
     const existingChanges = await store.getChanges(workItemId);
     const openChange = existingChanges.find(
-        c => c.planVersion === (item.plan?.version ?? 0) && c.status === 'open' && !c.taskId,
+        c => c.planVersion === (selectedPlanVersion ?? 0) && c.status === 'open' && !c.taskId,
     );
     if (openChange) {
         await store.updateChange(workItemId, openChange.id, {
@@ -161,7 +252,7 @@ export async function executeWorkItem(
     } else {
         const change: WorkItemChange = {
             id: crypto.randomUUID(),
-            planVersion: item.plan?.version ?? 0,
+            planVersion: selectedPlanVersion ?? 0,
             commits: [],
             startedAt: execution.startedAt,
             status: 'open',
@@ -174,7 +265,7 @@ export async function executeWorkItem(
     // Transition to executing
     await store.updateWorkItem(workItemId, { status: 'executing' });
 
-    return { taskId };
+    return { taskId, ...(ralphSessionId ? { ralphSessionId } : {}) };
 }
 
 // ============================================================================
@@ -261,6 +352,11 @@ export function isResolveSessionCategory(category: string | undefined): boolean 
     return category === 'resolve-plan-comments' || category === 'resolve-commit-comments';
 }
 
+/** Check whether a session category represents an optional Work Item review task. */
+export function isWorkItemReviewSessionCategory(category: string | undefined): boolean {
+    return category === 'work-item-ai-review';
+}
+
 /**
  * Handle task completion for a work item.
  * Called when a queue task linked to a work item finishes.
@@ -289,8 +385,8 @@ export async function handleWorkItemTaskComplete(
     // Check if this is a comment-resolve session — skip status transition
     const item = await store.getWorkItem(workItemId);
     const matchedExec = item?.executionHistory?.find(e => e.taskId === taskId);
-    if (isResolveSessionCategory(matchedExec?.sessionCategory)) {
-        // Only update the processId reference, do not change work item status
+    if (isResolveSessionCategory(matchedExec?.sessionCategory) || isWorkItemReviewSessionCategory(matchedExec?.sessionCategory)) {
+        // Non-implementation sessions are timeline entries only; they must not move the item out of Review.
         await store.updateWorkItem(workItemId, { processId: result.processId });
         return;
     }
@@ -357,15 +453,118 @@ export async function autoVersionPlanFromResolvedComments(
         content: revisedContent,
         createdAt: now,
         resolvedBy: 'ai',
+        source: 'ai',
+        authorType: 'ai',
+        reason: 'Plan updated from resolved comments',
         summary: 'Plan updated from resolved comments',
     };
     await store.savePlanVersion(workItemId, planVersion);
     return store.updateWorkItem(workItemId, {
+        currentContentVersion: newVersion,
         plan: {
             version: newVersion,
+            currentVersion: newVersion,
             content: revisedContent,
             updatedAt: now,
             resolvedBy: 'ai',
+            source: 'ai',
+            reason: planVersion.reason,
         },
     });
+}
+
+export interface SaveGoalGrillingSpecOptions {
+    workspaceId: string;
+    workItemId: string;
+    responseText: string | undefined;
+    processId?: string;
+    store: WorkItemStore;
+}
+
+const GOAL_GRILLING_READY_STATUSES = new Set(['created', 'drafting', 'planning', 'readyToExecute', 'aiFailed']);
+
+/** Extract the final Ralph grilling goal spec block from an assistant response. */
+export function extractGoalSpecFromGrillingResponse(responseText: string | undefined): string | undefined {
+    const raw = responseText?.trim();
+    if (!raw) return undefined;
+
+    const fenced = raw.match(/^```(?:markdown|md)?\s*\n([\s\S]*?)\n```$/i);
+    const body = (fenced?.[1] ?? raw).trim();
+    const matches = [...body.matchAll(/^## Goal\b.*$/gm)];
+    const lastGoalHeading = matches.at(-1);
+    if (!lastGoalHeading || lastGoalHeading.index === undefined) return undefined;
+
+    const spec = body.slice(lastGoalHeading.index).trim();
+    return spec.length > '## Goal'.length ? spec : undefined;
+}
+
+function isLocalOnlyGoal(item: WorkItem, workspaceId: string): boolean {
+    return item.repoId === workspaceId
+        && item.type === 'goal'
+        && getOwnWorkItemTrackerKind(item) === 'local-only'
+        && !item.githubMirror
+        && !item.azureBoardsMirror;
+}
+
+/**
+ * Save the final Work-Item-bound Goal grilling spec as a new immutable
+ * AI-authored content version. Returns undefined when the response is still a
+ * clarification turn or the target is not a local-only Goal.
+ */
+export async function saveGoalGrillingSpecFromResponse(options: SaveGoalGrillingSpecOptions): Promise<WorkItem | undefined> {
+    const content = extractGoalSpecFromGrillingResponse(options.responseText);
+    if (!content) return undefined;
+
+    const item = await options.store.getWorkItem(options.workItemId, options.workspaceId);
+    if (!item || !isLocalOnlyGoal(item, options.workspaceId)) return undefined;
+
+    const versions = await options.store.getPlanVersions(options.workItemId);
+    const reason = 'Goal spec synthesized from grilling session';
+    const summary = options.processId
+        ? `Goal spec synthesized from ${options.processId}`
+        : reason;
+    const existingFromProcess = options.processId
+        ? versions.find(version => version.source === 'ai' && version.summary === summary && version.content.trim() === content.trim())
+        : undefined;
+    if (existingFromProcess) return item;
+
+    const newVersion = Math.max(item.plan?.version ?? 0, ...versions.map(version => version.version), 0) + 1;
+    const now = new Date().toISOString();
+    const planVersion: WorkItemPlanVersion = {
+        version: newVersion,
+        content,
+        createdAt: now,
+        resolvedBy: 'ai',
+        source: 'ai',
+        authorType: 'ai',
+        reason,
+        summary,
+    };
+
+    await options.store.savePlanVersion(options.workItemId, planVersion);
+    const nextStatus = GOAL_GRILLING_READY_STATUSES.has(item.status) ? 'readyToExecute' : item.status;
+    const updated = await options.store.updateWorkItem(options.workItemId, {
+        currentContentVersion: newVersion,
+        status: nextStatus,
+        plan: {
+            version: newVersion,
+            currentVersion: newVersion,
+            content,
+            updatedAt: now,
+            resolvedBy: 'ai',
+            source: 'ai',
+            reason,
+        },
+    });
+    if (!updated) return undefined;
+
+    await options.store.addChange(options.workItemId, {
+        id: crypto.randomUUID(),
+        planVersion: newVersion,
+        commits: [],
+        startedAt: now,
+        status: 'open',
+    });
+
+    return updated;
 }

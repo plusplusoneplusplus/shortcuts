@@ -622,7 +622,7 @@ export async function getOrCreateManagerByRepoIdentifier(
  * Build a context prompt from prior conversation turns for cold session resume.
  */
 export function buildContextPrompt(turns: ConversationTurn[]): string {
-    const recent = turns.slice(-MAX_RESUME_CONTEXT_TURNS);
+    const recent = turns.filter(turn => !turn.interrupted).slice(-MAX_RESUME_CONTEXT_TURNS);
     const formatted = recent
         .map(t => `${t.role === 'user' ? 'User' : 'Assistant'}: ${t.content}`)
         .join('\n\n');

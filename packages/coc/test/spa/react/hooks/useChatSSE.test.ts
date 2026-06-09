@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useChatSSE } from '../../../../src/server/spa/client/react/features/chat/hooks/useChatSSE';
 import type { UseChatSSEOptions } from '../../../../src/server/spa/client/react/features/chat/hooks/useChatSSE';
+import type { ClientConversationTurn } from '../../../../src/server/spa/client/react/types/dashboard';
 
 // ── Minimal EventSource mock ──────────────────────────────────────────
 
@@ -192,6 +193,61 @@ describe('useChatSSE', () => {
             });
         });
         expect(setTurnsAndRef).toHaveBeenCalledWith([{ role: 'user', content: 'hi' }]);
+    });
+
+    it('rehydrates preserved interrupted turns with tool history and later follow-ups from snapshots only', () => {
+        const setTurnsAndRef = vi.fn();
+        const snapshotTurns: ClientConversationTurn[] = [
+            { role: 'user', content: 'Start the task', turnIndex: 0, timeline: [] },
+            {
+                role: 'assistant',
+                content: 'Partial answer before timeout.',
+                turnIndex: 1,
+                interrupted: true,
+                interruptionReason: 'Request timed out after 90000ms',
+                timeline: [
+                    {
+                        type: 'content',
+                        timestamp: '2026-01-15T14:19:01Z',
+                        content: 'Partial answer before timeout.',
+                    },
+                    {
+                        type: 'tool-start',
+                        timestamp: '2026-01-15T14:19:02Z',
+                        toolCall: {
+                            id: 'tool-1',
+                            toolName: 'bash',
+                            args: { command: 'echo persisted' },
+                            status: 'running',
+                            startTime: '2026-01-15T14:19:02Z',
+                        },
+                    },
+                    {
+                        type: 'tool-complete',
+                        timestamp: '2026-01-15T14:19:03Z',
+                        toolCall: {
+                            id: 'tool-1',
+                            toolName: 'bash',
+                            args: { command: 'echo persisted' },
+                            result: 'persisted',
+                            status: 'completed',
+                            startTime: '2026-01-15T14:19:02Z',
+                            endTime: '2026-01-15T14:19:03Z',
+                        },
+                    },
+                ],
+            },
+            { role: 'user', content: 'Please continue', turnIndex: 2, timeline: [] },
+            { role: 'assistant', content: 'Fresh answer after retry.', turnIndex: 3, timeline: [] },
+        ];
+
+        renderHook(() => useChatSSE(makeOptions({ setTurnsAndRef })));
+        act(() => {
+            MockEventSource.last._emit('conversation-snapshot', { turns: snapshotTurns });
+        });
+
+        expect(setTurnsAndRef).toHaveBeenCalledTimes(1);
+        expect(setTurnsAndRef).toHaveBeenCalledWith(snapshotTurns);
     });
 
     it('hydrates context breakdown fields from conversation-snapshot', () => {

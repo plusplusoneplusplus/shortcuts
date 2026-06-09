@@ -21,8 +21,8 @@ spa/client/react/
 ├── features/
 │   ├── chat/           # Chat UI: ChatDetail, ChatListPane, ConversationArea
 │   ├── memory/         # Memory V2 route, facts/review/episodes tabs, repo memory settings section
-│   ├── notes/          # Notes UI: NoteEditor, Mermaid zoom/pan, sidebar, multi-root dropdown (useNotesRoots)
-│   ├── pull-requests/  # PR dashboard: attention groups, provider-derived PR helpers, provider-id/displayName author matching, real diff-stat queue badges/risk, deterministic review summary, BatchCommandPanel
+│   ├── notes/          # Notes UI: NoteEditor, Mermaid zoom/pan, sidebar, multi-root dropdown with modifier/range root selection and bulk root removal (useNotesRoots)
+│   ├── pull-requests/  # PR dashboard: attention groups, provider-derived PR helpers, shared provider-id/displayName Team author matching, Team auto-classification triggers, real diff-stat queue badges/risk, deterministic review summary, BatchCommandPanel
 │   └── terminal/       # Terminal UI: TerminalView, pin/unpin
 ├── processes/          # Process detail, DAG visualization
 ├── queue/              # Queue management (EnqueueDialog, QueueView)
@@ -106,6 +106,32 @@ remote identifiers remain the primary row metadata. Compact GitHub mirror badges
 render the issue number only; full detail-page badges keep the provider label and
 link title.
 
+`workItems.workflow.enabled` is the disabled-by-default durable workflow gate for
+turning local Work Items and Goals into the command-center planning/execution
+surface. The SPA receives it as `workItemsWorkflowEnabled` from bootstrap config
+and `GET /api/config/runtime`; use `isWorkItemsWorkflowEnabled()` for UI gates so
+legacy Work Items and Chat behavior remains unchanged while the flag is off.
+When the flag is on, the local create dialog exposes a Work Item vs Goal type
+selector for title-first shell creation even when hierarchy mode is off; existing
+bug and hierarchy-type creation paths keep their prior behavior. Saved local-only
+Work Item and Goal details render as a command center around the editable current
+version, primary actions, review state, and execution timeline. The mobile detail
+layout keeps the same Work Item-centered flow with full-width touch-friendly
+primary actions, wrapping Review buttons, lens-compatible chat behavior, and a
+readable version/run timeline on narrow screens. Saved local-only Goal details
+expose a Start/Continue grilling action that opens the existing Work Item chat
+lens with Ralph grilling context (`grill-me` plus
+`context.ralph.phase='grilling'`) and records the chat process on
+`grillSessionId`. This Goal workflow keeps the Work Item system as the source of
+truth and does not require a Notes-backed `.goal.md` mirror. The Work Item
+execute dialog is also workflow-aware for saved local-only Work Items and Goals:
+it exposes a per-run One-shot vs Ralph mode selector, defaults Work Items to
+One-shot, defaults Goals to Ralph, and sends the selected execution mode through
+the typed Work Items client. In Review, local-only Work Items/Goals expose an
+explicit AI Review action that enqueues a `code-review` chat as a non-mutating
+timeline entry, plus a Submit PR action only when the implementation change has
+eligible commits and no recorded PR.
+
 ## Chat UI Architecture
 
 `ConversationTurnBubble` renders:
@@ -122,6 +148,10 @@ link title.
   persistent display state is stored.
 - **Error turns:** Red error-strip aside with retry button; the avatar
   keeps its dedicated red palette and ignores `provider`.
+- **Interrupted assistant turns:** Amber "Partial response preserved" banner
+  renders above the still-visible partial transcript and tool timeline. The
+  Continue / retry button focuses the normal follow-up composer; it does not
+  replay preserved partial content into a prompt.
 - **Script output:** Dark terminal window with PASS/FAIL highlighting; the
   avatar keeps its dedicated dark-terminal palette and ignores `provider`.
 
@@ -182,14 +212,23 @@ output such as `[branch abc1234] subject`, or compact verification output such
 as `abc1234 subject` from the same commit-creating command, as commits;
 assistant prose and read-only git command output are ignored.
 
-Completed `ask_user` tool calls render as read-only historical question cards via
-`AskUserHistoryCard` inside `ConversationTurnBubble`. Live unanswered questions
-remain owned by `ChatDetail`/`ConversationArea` through `processDetails.pendingAskUser`
-and `AskUserInline`; the history card only displays persisted `args.questions[]`
-plus the completed answer/skip result, with a compatibility unwrap for older
-Codex MCP captures stored as `args.arguments.questions[]`, and is kept visible
-outside whisper collapse. Generic `ToolCallView` still handles `ask_user` as a fallback and
-summarizes `args.questions[0].question` when present.
+Live unanswered `ask_user` batches remain owned by
+`ChatDetail`/`ConversationArea` through `processDetails.pendingAskUser` and
+`AskUserInline`. Each live question card has a compact response-type dropdown
+with Answer, Skip / not applicable, and Need more context choices; the deferred
+choice marks that question complete for batch submission and reveals an optional
+short note field. Unsubmitted live-batch drafts are saved in browser
+localStorage scoped by process id and batch id, restored after navigation or
+refresh for the same batch, and cleared on accepted submission, skip-all,
+process cancellation, or replacement by a newer batch id. Completed `ask_user`
+tool calls render as read-only historical
+question cards via `AskUserHistoryCard` inside `ConversationTurnBubble`; the
+history card displays persisted `args.questions[]` plus the completed
+answer/skip/deferred result, including "Need more context" notes, with a
+compatibility unwrap for older Codex MCP captures stored as
+`args.arguments.questions[]`, and is kept visible outside whisper collapse.
+Generic `ToolCallView` still handles `ask_user` as a fallback and summarizes
+`args.questions[0].question` when present.
 
 `toolNormalization.ts` → `normalizeToolName()` canonicalises SDK-specific names before display and storage. Notable aliases: `read_file`/`open_file` → `view`, `edit_file`/`str_replace`/`str_replace_editor` → `edit`, `write_file`/`create_file` → `create`, `command_execution` → `shell`, `file_change` → `apply_patch`, `Skill` (Claude Code SDK PascalCase) → `skill`. All downstream logic (`getToolKindInfo`, `getToolSummary`, `filterWhisperChunks` skill counting) operates on the normalised lowercase name.
 For Codex `file_change` calls normalized to `apply_patch`, `ToolCallView`
@@ -361,7 +400,7 @@ The top-level `#memory` route is embedded in the Admin shell's Knowledge group a
 
 ## Feature Flags
 
-`featureFlags.ts` defines compile-time flags (e.g., `SHOW_WELCOME_TUTORIAL`). Runtime feature flags are exposed through `GET /api/config/runtime` and SPA helpers in `utils/config.ts`; `workItems.sync.enabled` only reports usable sync UI when both it and `workItems.hierarchy.enabled` are true. Most features gated by flags are disabled by default. The Git tab's cross-clone cherry-pick UI is gated by `features.gitCrossCloneCherryPick` / `gitCrossCloneCherryPickEnabled` and is enabled by default. Chat composer drag/drop session-context attachments are gated by `features.sessionContextAttachments` / `sessionContextAttachmentsEnabled`; when enabled, same-workspace chat rows, process cards, queue/history process rows, process search result cards, Ralph session group rows, Work Item rows/cards, Git commit rows, Git branch-range headers, and Pull Request rows become copy-drag sources using custom pointer-only MIME payloads, and desktop repo-header Ask/Queue Task buttons become copy drop targets that seed queue-dialog chips. Single-session payloads contain workspace ID, process ID, title/preview, status, and last-activity metadata; Ralph group payloads contain workspace ID, Ralph session ID, phase/status, title/display label, last activity, and ordered child process IDs. Work Item, commit, range, and PR payloads contain stable IDs/references plus safe display metadata only.
+`featureFlags.ts` defines compile-time flags (e.g., `SHOW_WELCOME_TUTORIAL`). Runtime feature flags are exposed through `GET /api/config/runtime` and SPA helpers in `utils/config.ts`; `workItems.sync.enabled` only reports usable sync UI when both it and `workItems.hierarchy.enabled` are true. Most features gated by flags are disabled by default. Pull Requests Team auto-classification is gated by `pullRequests.autoClassifyTeam` / `pullRequestsAutoClassifyTeamEnabled` and is disabled by default. The Git tab's cross-clone cherry-pick UI is gated by `features.gitCrossCloneCherryPick` / `gitCrossCloneCherryPickEnabled` and is enabled by default. Chat composer drag/drop session-context attachments are gated by `features.sessionContextAttachments` / `sessionContextAttachmentsEnabled`; when enabled, same-workspace chat rows, process cards, queue/history process rows, process search result cards, Ralph session group rows, Work Item rows/cards, Git commit rows, Git branch-range headers, and Pull Request rows become copy-drag sources using custom pointer-only MIME payloads, and desktop repo-header Ask/Queue Task buttons become copy drop targets that seed queue-dialog chips. Single-session payloads contain workspace ID, process ID, title/preview, status, and last-activity metadata; Ralph group payloads contain workspace ID, Ralph session ID, phase/status, title/display label, last activity, and ordered child process IDs. Work Item, commit, range, and PR payloads contain stable IDs/references plus safe display metadata only.
 
 ## Work Items
 
@@ -369,10 +408,22 @@ The top-level `#memory` route is embedded in the Admin shell's Knowledge group a
 
 The Work Items list, grouped list, hierarchy tree, and remote sync-status routes are backed by a server-side response cache that can be proactively warmed for the currently active workspace. Background warming refreshes the default local list/grouped responses, the Local tracker tree, the Remote sync status, and the detected Remote provider tree when hierarchy and sync are enabled. Failed background refreshes do not clear stale cached responses, and explicit GETs can pass `force=true` to bypass and replace the cached response.
 
-`WorkItemDetail` is an always-editable inline form: title, description, priority, tags, status, parent, success criteria, and plan content remain editable without an Edit-mode toggle. Description and plan use per-field Source/Preview markdown controls. The view tracks a unified dirty draft; Ctrl+S/Cmd+S and the Save button send one `workItems.update` PATCH containing every dirty metadata field plus `plan.content` when changed. There is no instant status save and no standalone plan save from the detail screen. If a remote-backed save returns `WORK_ITEM_SYNC_CONFLICT`, the detail view renders an inline warning panel near the save/error area with per-field "Your draft" versus provider value cards and retries the same PATCH path with `syncConflictResolution` after the user applies choices. Dirty work-item detail pages show an unsaved-changes indicator, install a `beforeunload` warning, guard the local back breadcrumb, block dirty hash route changes when the user cancels, and intercept hash links before navigation.
+`WorkItemDetail` is an always-editable inline form: title, description, priority, tags, status, parent, success criteria, and plan content remain editable without an Edit-mode toggle. Description and plan use per-field Source/Preview markdown controls. The view tracks a unified dirty draft; Ctrl+S/Cmd+S and the Save button send one `workItems.update` PATCH containing every dirty metadata field plus `plan.content` when changed. There is no instant status save and no standalone plan save from the detail screen. If a remote-backed save returns `WORK_ITEM_SYNC_CONFLICT`, the detail view renders an inline warning panel near the save/error area with per-field "Your draft" versus provider value cards and retries the same PATCH path with `syncConflictResolution` after the user applies choices. Dirty work-item detail pages show an unsaved-changes indicator, install a `beforeunload` warning, guard the local back breadcrumb, block dirty hash route changes when the user cancels, and intercept hash links before navigation. When `workItems.workflow.enabled` is on and the selected item is a local-only `work-item` or `goal`, legacy `aiDone` is presented as the user-facing **Review** state, Goal `drafting`/`planning` is presented as **Grilling**, and the execution history becomes a compact command-center timeline that shows the selected content version, execution mode, Ralph session ID, AI settings, selected skills, linked commits, PR linkage, errors, and the latest Review run summary. The Review section shows **Submit PR** only when the latest completed change has commits and no recorded PR; clicking it calls the explicit Work Items PR submission endpoint, and successful submission records branch/PR metadata before the item moves to Done. The plan version tabs expose workflow-only **Compare to current** and **Restore as latest** actions for historical versions. Compare opens a diff modal backed by the immutable version compare API. Restore is disabled while the detail has unsaved edits and calls the restore API, which creates a new current version rather than overwriting the historical version or the current record in place.
 Detail fetch and draft state are scoped to the current `workspaceId` + `workItemId`; stale responses from prior selections are ignored, and drafts initialize or save only when the loaded detail item matches the active selection.
 
+With both `workItems.workflow.enabled` and `workItems.aiAuthoring.enabled` on,
+saved local-only `work-item` details show **Draft with AI** for items without
+plan content and **Revise with AI** for items with an existing plan. The action is
+hidden for remote-backed items and non-`work-item` types, disabled while the
+inline draft is dirty, opens `WorkItemAiDraftApplyDialog`, and auto-starts the
+typed `workItems.applyAiDraft(...)` call with the loaded `updatedAt` plus current
+content-version guard. The dialog surfaces generating, clarification, retry,
+failure, and cancel states; successful apply refreshes the detail and updates the
+Work Items context with the returned immutable AI-authored version.
+
 `WorkItemDetail` has a compact **Ask AI** action in the header. It opens `WorkItemChatPanel`, which restores the workspace-scoped remembered chat binding for the selected Work Item or starts a normal `chat` task through the same `InitialChatComposer` capabilities used by commit/PR chat. The composer frame is titled for the selected Work Item and displays the stable Work Item identifier plus saved title. If the inline form is dirty, the chat still uses the saved `item` state and shows an unsaved-edits warning until the Work Item is saved. The initial Work Item chat prompt uses pointer-only `<attached_pointer_context>` metadata plus safe Work Item labels/status/type/number; raw descriptions, plan content, provider payloads, file contents, diffs, credentials, and local paths are not inlined. With `features.commitChatLens` enabled, unpinned Work Item chat renders as a bottom-right lens inside the detail pane on desktop, tablet, and mobile; close/minimize/restore/pin/unpin state is localStorage-scoped by workspace and Work Item. With the flag disabled, the detail pane uses the non-lens embedded fallback and closes that fallback when selection changes.
+
+With `workItems.workflow.enabled` on, saved local-only `goal` details show **Start grilling** or **Continue grilling** near the item actions. The action is hidden for remote-backed and non-Goal items, disabled while inline edits are dirty, starts a Work-Item-bound Ralph grilling chat in the lens, and records the chat process as `grillSessionId`. When the bound chat completes with a final `## Goal` block, the server saves that block as the next AI-authored immutable Goal content version and moves draft/planning Goals to Ready.
 
 The split Local/Remote tracker views do not show the legacy per-item preview/import/export/sync toolbar, and remote-backed Epic roots do not expose manual provider pull actions. Initial import remains the user-facing Remote tracker seeding action; subsequent remote-to-local refreshes are owned by background provider polling. Adding children under GitHub- or Azure-backed roots still uses the normal create flow, which pushes the new child to the backing provider before storing its mirror metadata. Tree rows and detail headers use provider-specific mirror badges that link to the GitHub issue or Azure Boards work item when the remote URL is available.
 
@@ -384,7 +435,7 @@ Local React hooks (`fetchApi`, `useWebSocket`, `seenStateApi`) wrap the client f
 
 ## Pull Requests Tab
 
-The Pull Requests tab is enabled by default through `pullRequests.enabled`. The left queue rail starts with the "Open PR by # or URL" input; successful opens from that input are validated through the PR detail API, recorded through the repo-scoped recent-opened PR API, and shown in a compact "Recently opened" list directly below the input. Recent entries stay hidden when empty or when the rail is collapsed, open through the same overview navigation path, and confirmed 404s remove the stale entry from the list.
+The Pull Requests tab is enabled by default through `pullRequests.enabled`. Admin -> Configure -> Features exposes both `pullRequests.suggestions` and `pullRequests.autoClassifyTeam`; both are disabled by default and flow through runtime config helpers. When Pull Requests, focused diff, and Team auto-classification are enabled, PR list load/refresh and active-workspace background warming ask the server to enqueue at most 10 missing low-priority classifications for loaded open Team PRs with `headSha`, skipping cached or running classifications through the existing classify-diff store/pending markers. The Team toolbar reads `classify-diff/batch-status` for loaded Team PR identifiers, shows disabled/idle/queueing/running/ready status text plus cached/running/missing counts, and adds row-level AI classification badges without changing filters, grouping, ordering, or deterministic risk tiers. Its "Classify now" control posts to the bounded Team auto-classification endpoint, so manual requests use the same server cap/skip logic instead of client-side POST loops. The left queue rail starts with the "Open PR by # or URL" input; successful opens from that input are validated through the PR detail API, recorded through the repo-scoped recent-opened PR API, and shown in a compact "Recently opened" list directly below the input. Recent entries stay hidden when empty or when the rail is collapsed, open through the same overview navigation path, and confirmed 404s remove the stale entry from the list.
 
 Queue filters include All, Mine, Team, Blocked, Ready, and the optional For You pill. Team reads the repo-scoped coworker roster through `coc-client`, maps to the existing `scope=all` PR list fetch, and filters the loaded open PRs client-side by provider author id with a displayName fallback. When Team is active, the rail shows roster chips that can be toggled for transient in-session narrowing, removed through the roster API, and extended with an Add coworker picker sourced from distinct authors in the loaded `scope=all` PRs. Its count badge reflects the loaded PR set, so additional roster matches beyond the current page appear after Load more fetches them.
 
@@ -394,8 +445,8 @@ The PR list route is backed by a server-side cache that can be proactively warme
 for the currently active workspace. Background warming uses the same provider
 list and diff-stat enrichment path as the tab load, refreshes the default
 `open`/`mine` list without clearing stale data on failure, and reads the
-repo-scoped recently opened list, Team roster, and cached suggestions when PR
-suggestions are enabled.
+workspace/repo-scoped recently opened list, Team roster, and cached suggestions
+when PR suggestions are enabled.
 
 The PR detail overview renders a deterministic review-summary card from the PR description, parsed/provider diff stats, checks, reviewers, and comment threads. Findings are derived from failing checks and unresolved threads, and the former persona-lens grid is not rendered.
 

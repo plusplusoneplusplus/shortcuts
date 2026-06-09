@@ -638,14 +638,24 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             const duration = Date.now() - startTime;
             logger.error(LogCategory.AI, `[FollowUp] Failed for ${processId} in ${duration}ms: ${errorMsg}`);
 
+            const session = this.sessions.get(processId);
+            const partialContent = session?.outputBuffer ?? '';
+            const partialTimeline = session?.timelineBuffer
+                ? mergeConsecutiveContentItems([...session.timelineBuffer])
+                : [];
+            const partialSuggestions = session?.pendingSuggestions;
+            const hasPartial = partialContent.length > 0 || partialTimeline.length > 0;
+
             await this.store.appendConversationTurn(
                 processId,
                 (turnIndex) => ({
                     role: 'assistant' as const,
-                    content: `Error: ${errorMsg}`,
+                    content: hasPartial ? partialContent : `Error: ${errorMsg}`,
                     timestamp: new Date(),
                     turnIndex,
-                    timeline: [],
+                    timeline: hasPartial ? partialTimeline : [],
+                    ...(hasPartial ? { interrupted: true, interruptionReason: errorMsg } : {}),
+                    ...(hasPartial && partialSuggestions ? { suggestions: partialSuggestions } : {}),
                     ...(turnSource ? { turnSource } : {}),
                 }),
                 {

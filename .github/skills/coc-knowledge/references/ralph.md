@@ -145,6 +145,17 @@ provider plus optional `config.model`/`config.reasoningEffort`; the route
 validates those overrides and applies them only to the first queued execution
 task.
 
+Work Item execution can also start a Ralph loop through
+`POST /api/workspaces/:workspaceId/work-items/:itemId/execute` with
+`executionMode='ralph'`. That path is gated by `workItems.workflow.enabled` and
+limited to local-only `work-item` and `goal` items. Local-only Goals default to
+Ralph when the mode is omitted; Work Items default to one-shot execution. The
+executor initializes the repo-scoped Ralph journal, enqueues the first iteration
+with the standard Ralph task shape, preserves the top-level `payload.workItemId`
+for Work Item completion hooks, and records `ralphSessionId`, selected content
+version, execution mode, skills, and AI settings in the Work Item execution
+history.
+
 ## Promote Ask-Mode Chat to Ralph
 
 A completed ask-mode chat can be promoted to a Ralph session in place via
@@ -175,7 +186,15 @@ with a `*.goal.md` filename. This keeps the goal file out of the repository
 working tree and lets the Notes/scratchpad UI open and edit it (`isGoalFile`
 detects `*.goal.md`). The generic bundled `grill-me` skill stays host-agnostic:
 it defers to whatever save location the host supplies and only falls back to a
-working-directory-relative `Plans/<area>/<feature>/` when none is given.
+working-directory-relative `Plans/<area>/<feature>/` when none is given. Work
+Item Goal grilling passes `context.workItemGoalGrilling`, which makes
+`buildRalphGrillSuffix(...)` omit the Notes goal-file directive and tell the
+model to emit the final `## Goal` spec in chat for immutable Work Item content
+versioning instead. When that bound grilling chat completes and the durable Work
+Items workflow flag is still enabled, the queue completion hook extracts the
+final `## Goal` block from the assistant turn and saves it on the local-only
+Goal as the next AI-authored immutable content version, moving draft/planning
+Goals to `readyToExecute`.
 
 ## Resume Routes
 

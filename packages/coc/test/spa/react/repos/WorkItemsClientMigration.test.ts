@@ -39,12 +39,12 @@ describe('work items SPA client migration', () => {
             'workItems.update(workspaceId, workItemId',
             'workItems.requestChanges(workspaceId, workItemId',
             'workItems.resolveComments(workspaceId, workItemId',
-            'workItems.pin(workspaceId, workItemId',
-            'workItems.archive(workspaceId, workItemId',
             'workItems.delete(workspaceId, workItemId)',
         ]) {
             expect(detail).toContain(call);
         }
+        expect(detail).not.toContain('workItems.pin(workspaceId, workItemId');
+        expect(detail).not.toContain('workItems.archive(workspaceId, workItemId');
         expect(detail).not.toContain('/work-items/${');
     });
 

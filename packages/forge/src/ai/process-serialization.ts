@@ -46,6 +46,8 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
             timestamp: turn.timestamp.toISOString(),
             turnIndex: turn.turnIndex,
             streaming: turn.streaming,
+            interrupted: turn.interrupted,
+            interruptionReason: turn.interruptionReason,
             toolCalls: turn.toolCalls?.map(tc => ({
                 id: tc.id,
                 name: tc.name,
@@ -156,6 +158,8 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
             timestamp: new Date(turn.timestamp),
             turnIndex: turn.turnIndex,
             streaming: turn.streaming,
+            interrupted: turn.interrupted,
+            interruptionReason: turn.interruptionReason,
             toolCalls: turn.toolCalls?.map(tc => ({
                 id: tc.id,
                 name: tc.name,

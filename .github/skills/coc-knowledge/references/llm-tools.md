@@ -12,29 +12,29 @@ AI tool factories injected into chat executor sessions. Each factory follows a p
 
 Exports: `DEFAULT_DISABLED_LLM_TOOLS`, `isLlmToolEnabled()`, `filterDisabledLlmTools()`.
 
-**Mode-aware defaults:** `getEffectiveDefaultDisabledTools(uiLayoutMode)` disables `tavily_web_search` at registry level, and also disables `create_work_item` and `create_bug` in classic mode.
+**Mode-aware defaults:** `getEffectiveDefaultDisabledTools(uiLayoutMode)` disables `tavily_web_search` at registry level, and also disables `create_update_work_item` in classic mode.
 
 **Per-repo overrides:** `PerRepoPreferences.disabledLlmTools` explicitly overrides defaults (empty array = enable all). API: `GET/PUT /api/workspaces/:id/llm-tools-config`.
 The GET/PUT response also includes `conversationRetrievalAvailable`, which is
 true only when the active `ProcessStore` supports `searchConversations`; the SPA
 uses it with the `get_conversation` toggle to decide whether session-context
-attachments can be dropped into chat composers.
+attachments can be dropped into chat composers. Removed tool names such as
+`create_bug` are filtered from config responses and from preferences when those
+preferences are rewritten.
 
 ## Tool Factories
 
 | File | Tool Name | Description |
 |------|-----------|-------------|
 | `add-diff-comment-tool.ts` | `add_diff_comment` | Anchored review comments on commit diff lines. Pre-binds workspace/commit context. Persists via `DiffCommentsManager`, broadcasts via WebSocket. |
-| `ask-user-tool.ts` | `ask_user` | Structured questions (select, multi-select, yes/no, confirm, text). Blocks until user responds. Persists pending payload on `AIProcess.pendingAskUser`, emits SSE event. |
+| `ask-user-tool.ts` | `ask_user` | Structured questions (select, multi-select, yes/no, confirm, text). Blocks until user responds. Persists pending payload on `AIProcess.pendingAskUser`, emits SSE event. Results distinguish normal answers, skips, cancellations, and `deferred: true` / `reason: "needs-context"` responses with optional user notes. |
 | `resolve-comment-tool.ts` | `resolve_comment` | Marks inline comments as resolved. Tracks resolved IDs in per-invocation Map. |
 | `save-classification-tool.ts` | `saveClassification` | Persists complete per-hunk diff classifications for PR/commit/branch-range review. Valid categories are `logic`, `mechanical`, `test`, `simple`, and `generated`; newly saved `test` hunks require `testFidelityComment`, `logic` hunks require `summaryComment`, and critical metadata is validated instead of dropped. |
 | `search-conversations-tool.ts` | `search_conversations` | FTS5 full-text search over past conversation history. Requires SQLite-backed `ProcessStore`. |
 | `get-conversation-tool.ts` | `get_conversation` | Full transcript by processId, compacted to token budget. 5-level progressive compaction. Supports `fromTurn`/`toTurn` paging. |
 | `suggest-follow-ups-tool.ts` | `suggest_follow_ups` | Emits follow-up action suggestions after AI response. |
 | `tavily-web-search-tool.ts` | `tavily_web_search` | Live web search via Tavily API. Key from `~/.coc/providers.json`. Disabled by default. |
-| `create-bug-tool.ts` | `create_bug` | Queues a bug work item. |
-| `create-work-item-tool.ts` | `create_work_item` | Creates a work item. |
-| `update-work-item-tool.ts` | `update_work_item` | Updates an existing work item. |
+| `create-update-work-item-tool.ts` | `create_update_work_item` | Creates typed work items and bugs (`work-item`, `bug`, `goal`, `epic`, `feature`, `pbi`), patches common fields on existing items, or saves a full revised plan as the next version for an existing item. |
 
 ## Supporting Modules
 
@@ -74,6 +74,6 @@ needed — providers opt in based on `options.tools`.
 
 - **Per-invocation:** Each AI call gets fresh tool instances — no shared state
 - **Pre-binding:** Tools like `add_diff_comment` pre-bind context (workspace, commit) at creation
-- **Blocking tools:** `ask_user` returns a Promise resolved externally by the SPA
+- **Blocking tools:** `ask_user` returns a Promise resolved externally by the SPA. A needs-context response is not a skip: the result tells the AI to explain the missing context and re-ask if the question is still needed.
 - **Progressive compaction:** `get_conversation` applies 5 compaction levels to fit token budgets
 - **WebSocket broadcasting:** Side-effect tools broadcast events for real-time SPA updates

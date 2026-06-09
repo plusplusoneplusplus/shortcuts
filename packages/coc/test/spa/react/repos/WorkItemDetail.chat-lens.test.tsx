@@ -60,6 +60,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useResizablePanel', ()
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isWorkItemsHierarchyEnabled: () => false,
     isWorkItemsAiAuthoringEnabled: () => false,
+    isWorkItemsWorkflowEnabled: () => false,
     isCommitChatLensEnabled: configMocks.isCommitChatLensEnabled,
 }));
 

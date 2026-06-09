@@ -109,6 +109,7 @@ export const CLIConfigSchema = z.object({
     pullRequests: z.object({
         enabled: z.boolean().optional(),
         suggestions: z.boolean().optional(),
+        autoClassifyTeam: z.boolean().optional(),
     }).passthrough().optional(),
     servers: z.object({
         enabled: z.boolean().optional(),
@@ -193,6 +194,9 @@ export const CLIConfigSchema = z.object({
             enabled: z.boolean().optional(),
         }).passthrough().optional(),
         aiAuthoring: z.object({
+            enabled: z.boolean().optional(),
+        }).passthrough().optional(),
+        workflow: z.object({
             enabled: z.boolean().optional(),
         }).passthrough().optional(),
     }).passthrough().optional(),

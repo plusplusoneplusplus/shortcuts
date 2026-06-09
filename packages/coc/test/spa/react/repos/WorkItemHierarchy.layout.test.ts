@@ -510,57 +510,30 @@ describe('WorkItemHierarchyTree — type-picker modal for mobile add-child (AC-0
     });
 });
 
-describe('WorkItemDetail — mobile Add Child button (AC-03 / AC-04)', () => {
+describe('WorkItemDetail — secondary detail actions', () => {
     let src: string;
 
     beforeAll(() => {
         src = fs.readFileSync(DETAIL_SRC_PATH, 'utf-8');
     });
 
-    it('accepts isMobile prop', () => {
-        expect(src).toContain('isMobile');
+    it('does not own mobile child creation props', () => {
+        expect(src).not.toContain('isMobile?:');
+        expect(src).not.toContain('onCreateChild?:');
     });
 
-    it('accepts onCreateChild callback prop', () => {
-        expect(src).toContain('onCreateChild');
+    it('keeps add-child buttons out of the detail header', () => {
+        expect(src).not.toContain('wi-add-child-btn');
+        expect(src).not.toContain('wi-new-child-btn');
     });
 
-    it('renders Add Child button guarded by isMobile and isContainer', () => {
-        expect(src).toContain('wi-add-child-btn');
-        const btnIdx = src.indexOf('wi-add-child-btn');
-        expect(btnIdx).toBeGreaterThan(-1);
-        // Check that isMobile and isContainer guards appear before this button
-        const before = src.slice(0, btnIdx);
-        expect(before).toContain('isMobile');
-        expect(before).toContain('isContainer');
+    it('keeps child type picker UI in the hierarchy tree instead of detail', () => {
+        expect(src).not.toContain('wi-child-type-picker-overlay');
+        expect(src).not.toContain('wi-child-type-picker-modal');
     });
 
-    it('does not gate the Add Child button by hierarchyEnabled', () => {
-        // The button should exist outside the isContainer && hierarchyEnabled block.
-        // Find the nearest isMobile && isContainer guard before the button testid.
-        const addChildIdx = src.indexOf('wi-add-child-btn');
-        expect(addChildIdx).toBeGreaterThan(-1);
-        // The isMobile && isContainer guard must appear somewhere before the testid
-        const before = src.slice(0, addChildIdx);
-        expect(before).toContain('isMobile && isContainer');
-        // The guard controlling the button must NOT be coupled to hierarchyEnabled
-        // Find the last occurrence of the isMobile guard before the testid
-        const isMobileGuardIdx = before.lastIndexOf('isMobile && isContainer');
-        const excerpt = src.slice(isMobileGuardIdx, addChildIdx + 20);
-        expect(excerpt).not.toContain('hierarchyEnabled &&');
-    });
-
-    it('renders child type picker overlay with testid wi-child-type-picker-overlay', () => {
-        expect(src).toContain('wi-child-type-picker-overlay');
-    });
-
-    it('renders child type picker modal with testid wi-child-type-picker-modal', () => {
-        expect(src).toContain('wi-child-type-picker-modal');
-    });
-
-    it('imports ALLOWED_CHILD_TYPES from coc-client', () => {
-        expect(src).toContain("ALLOWED_CHILD_TYPES");
-        expect(src).toContain('@plusplusoneplusplus/coc-client');
+    it('does not import ALLOWED_CHILD_TYPES for removed detail-header child creation', () => {
+        expect(src).not.toContain('ALLOWED_CHILD_TYPES');
     });
 });
 
@@ -578,18 +551,12 @@ describe('WorkItemsTab — passes isMobile to tree and detail (AC-04)', () => {
         expect(treeBlock).toContain('isMobile={isMobile}');
     });
 
-    it('passes isMobile to WorkItemDetail', () => {
+    it('does not pass mobile add-child props to WorkItemDetail', () => {
         const detailIdx = src.indexOf('<WorkItemDetail');
         expect(detailIdx).toBeGreaterThan(-1);
         const detailBlock = src.slice(detailIdx, src.indexOf('/>', detailIdx) + 2);
-        expect(detailBlock).toContain('isMobile={isMobile}');
-    });
-
-    it('passes onCreateChild to WorkItemDetail', () => {
-        const detailIdx = src.indexOf('<WorkItemDetail');
-        expect(detailIdx).toBeGreaterThan(-1);
-        const detailBlock = src.slice(detailIdx, src.indexOf('/>', detailIdx) + 2);
-        expect(detailBlock).toContain('onCreateChild');
+        expect(detailBlock).not.toContain('isMobile={isMobile}');
+        expect(detailBlock).not.toContain('onCreateChild');
     });
 });
 

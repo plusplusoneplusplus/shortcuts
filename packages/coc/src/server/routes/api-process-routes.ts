@@ -32,6 +32,7 @@ import type { ChatProvider } from '../tasks/task-types';
 import type { ApiRouteContext } from './api-shared';
 import { createRoute, asString } from './route-utils';
 import { buildMetadataProcess } from '../processes/process-metadata-read-model';
+import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
 
 /** Valid AIProcessStatus values for validation. */
 const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 'completed', 'failed', 'cancelled']);
@@ -41,6 +42,37 @@ const TERMINAL_STATUSES: Set<string> = new Set(['completed', 'failed', 'cancelle
 
 /** Non-terminal statuses where a task may still be executing. */
 const NONTERMINAL_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 'created']);
+
+type AskUserRouteAnswer = {
+    questionId?: unknown;
+    answer?: unknown;
+    skipped?: unknown;
+    deferred?: unknown;
+    reason?: unknown;
+    note?: unknown;
+};
+
+function normalizeAskUserRouteAnswer(answer: AskUserRouteAnswer): AskUserAnswerInput {
+    const questionId = answer.questionId as string;
+    if (answer.skipped === true) {
+        return { questionId, skipped: true };
+    }
+    if (answer.deferred === true) {
+        const note = typeof answer.note === 'string' ? answer.note.trim() : '';
+        return {
+            questionId,
+            skipped: false,
+            deferred: true,
+            reason: 'needs-context',
+            ...(note ? { note } : {}),
+        };
+    }
+    return {
+        questionId,
+        answer: answer.answer as AskUserAnswerValue,
+        skipped: false,
+    };
+}
 
 /**
  * Synthesize a minimal AIProcess from a QueuedTask.
@@ -789,12 +821,30 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             if (!Array.isArray(body.answers) || body.answers.length === 0) {
                 return void handleAPIError(res, missingFields(['answers']));
             }
-            const answers = body.answers as Array<{ questionId?: unknown; answer?: unknown; skipped?: unknown }>;
+            const answers = body.answers as AskUserRouteAnswer[];
             for (const answer of answers) {
                 if (!answer.questionId || typeof answer.questionId !== 'string') {
                     return void handleAPIError(res, missingFields(['answers[].questionId']));
                 }
-                if (answer.skipped !== true && answer.answer === undefined) {
+                if (answer.deferred !== undefined && typeof answer.deferred !== 'boolean') {
+                    return void handleAPIError(res, badRequest('answers[].deferred must be boolean'));
+                }
+                if (answer.reason !== undefined && answer.reason !== 'needs-context') {
+                    return void handleAPIError(res, badRequest('answers[].reason must be "needs-context" when provided'));
+                }
+                if (answer.note !== undefined && typeof answer.note !== 'string') {
+                    return void handleAPIError(res, badRequest('answers[].note must be a string'));
+                }
+                if (answer.skipped === true && answer.deferred === true) {
+                    return void handleAPIError(res, badRequest('answers[] cannot be both skipped and deferred'));
+                }
+                if (answer.deferred === true && answer.reason !== 'needs-context') {
+                    return void handleAPIError(res, badRequest('Deferred answers require reason "needs-context"'));
+                }
+                if (answer.reason === 'needs-context' && answer.deferred !== true) {
+                    return void handleAPIError(res, badRequest('Need-more-context answers require deferred=true'));
+                }
+                if (answer.skipped !== true && answer.deferred !== true && answer.answer === undefined) {
                     return void handleAPIError(res, missingFields(['answers[].answer']));
                 }
             }
@@ -803,11 +853,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 return void handleAPIError(res, notFound('Bridge not available'));
             }
 
-            const resolved = await bridge.answerAskUserQuestions?.(id, body.batchId as string, answers.map(answer => ({
-                questionId: answer.questionId as string,
-                answer: answer.answer as string | string[] | boolean | undefined,
-                skipped: answer.skipped === true,
-            }))) ?? false;
+            const resolved = await bridge.answerAskUserQuestions?.(id, body.batchId as string, answers.map(normalizeAskUserRouteAnswer)) ?? false;
 
             if (!resolved) {
                 return void handleAPIError(res, notFound('Question batch not found or already answered'));

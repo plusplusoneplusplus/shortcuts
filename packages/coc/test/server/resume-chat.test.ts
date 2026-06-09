@@ -127,6 +127,52 @@ describe('buildContextPrompt', () => {
 
         expect(prompt).toContain('User: Only message');
     });
+
+    it('should skip interrupted assistant turns and tool history in cold resume context', () => {
+        const turns: ConversationTurn[] = [
+            makeTurn('user', 'Before timeout', 0),
+            {
+                ...makeTurn('assistant', 'Partial timeout output', 1),
+                interrupted: true,
+                interruptionReason: 'Timed out',
+                timeline: [
+                    {
+                        type: 'tool-start',
+                        timestamp: new Date(),
+                        toolCall: {
+                            id: 'tool-1',
+                            name: 'bash',
+                            status: 'running',
+                            startTime: new Date(),
+                            args: { command: 'echo already-ran' },
+                        },
+                    },
+                    {
+                        type: 'tool-complete',
+                        timestamp: new Date(),
+                        toolCall: {
+                            id: 'tool-1',
+                            name: 'bash',
+                            status: 'completed',
+                            startTime: new Date(),
+                            endTime: new Date(),
+                            args: { command: 'echo already-ran' },
+                            result: 'already-ran',
+                        },
+                    },
+                ],
+            },
+            makeTurn('user', 'Continue after timeout', 2),
+        ];
+
+        const prompt = buildContextPrompt(turns);
+
+        expect(prompt).toContain('User: Before timeout');
+        expect(prompt).toContain('User: Continue after timeout');
+        expect(prompt).not.toContain('Partial timeout output');
+        expect(prompt).not.toContain('echo already-ran');
+        expect(prompt).not.toContain('already-ran');
+    });
 });
 
 // ============================================================================

@@ -41,7 +41,7 @@ export async function finalizeOrphanedProcess(
     try {
         const turns = typeof store.getConversationTurns === 'function'
             ? await store.getConversationTurns(processId)
-            : undefined;
+            : (await store.getProcess(processId, options.workspaceId))?.conversationTurns;
 
         const streamingTurn = turns?.find(t => t.role === 'assistant' && t.streaming);
 
@@ -54,6 +54,8 @@ export async function finalizeOrphanedProcess(
                     timestamp: new Date(),
                     turnIndex,
                     timeline: streamingTurn.timeline ?? [],
+                    interrupted: true,
+                    interruptionReason: status === 'cancelled' ? 'Process cancelled' : error,
                 }),
                 {
                     filterStreaming: true,

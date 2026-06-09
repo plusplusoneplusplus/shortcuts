@@ -66,6 +66,9 @@ Each turn contains:
 - `content` — message text
 - `toolCalls` — array of tool invocations
 - `metadata` — model, token usage, timing
+- `interrupted` / `interruptionReason` — assistant turns preserved after a
+  mid-stream failure/timeout for display and audit only; prompt-history builders
+  skip these turns so partial output is not replayed automatically.
 
 ## Seen State
 

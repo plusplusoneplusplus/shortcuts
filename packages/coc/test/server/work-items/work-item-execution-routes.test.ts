@@ -16,9 +16,10 @@ let baseUrl: string;
 
 const mockProcessStore = {
     getProcess: vi.fn(),
+    getWorkspaces: vi.fn(),
 } as any;
 
-function makeServer(enqueue?: any, opts: { dataDir?: string } = {}): http.Server {
+function makeServer(enqueue?: any, opts: { dataDir?: string; workflowEnabled?: boolean; runCommand?: any } = {}): http.Server {
     const routes: Route[] = [];
     registerWorkItemRoutes({ routes, workItemStore: store });
     registerWorkItemExecutionRoutes({
@@ -27,6 +28,8 @@ function makeServer(enqueue?: any, opts: { dataDir?: string } = {}): http.Server
         processStore: mockProcessStore,
         enqueue,
         dataDir: opts.dataDir,
+        getWorkflowEnabled: () => opts.workflowEnabled === true,
+        runCommand: opts.runCommand,
     });
     const handler = createRouter({ routes, spaHtml: '' });
     return http.createServer(handler);
@@ -80,6 +83,11 @@ async function request(
 const REPO_ID = 'test-repo';
 
 describe('Work Item Execution Routes', () => {
+    beforeEach(() => {
+        mockProcessStore.getProcess.mockReset();
+        mockProcessStore.getWorkspaces.mockReset();
+    });
+
     describe('POST /execute', () => {
         beforeEach(async () => {
             tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-exec-routes-'));
@@ -255,6 +263,85 @@ describe('Work Item Execution Routes', () => {
             const call = enqueueMock.mock.calls[0][0];
             expect(call.payload.context.skills).toEqual(['impl', 'test']);
         });
+
+        it('defaults local-only Goals to Ralph execution when the workflow flag is enabled', async () => {
+            await stopServer();
+            server = makeServer(enqueueMock, { dataDir: tmpDir, workflowEnabled: true });
+            await startServer();
+
+            await store.addWorkItem({
+                id: 'goal-route-1',
+                repoId: REPO_ID,
+                title: 'Ralph Goal',
+                description: '',
+                status: 'readyToExecute',
+                type: 'goal',
+                source: 'manual',
+                tracker: { kind: 'local-only' },
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                plan: { version: 1, currentVersion: 1, content: '## Goal\nShip it', updatedAt: new Date().toISOString() },
+                currentContentVersion: 1,
+            });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/goal-route-1/execute`, {
+                skillNames: ['impl'],
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body.ralphSessionId).toMatch(/^ralph-/);
+            const call = enqueueMock.mock.calls[0][0];
+            expect(call.type).toBe('chat');
+            expect(call.payload.mode).toBe('ralph');
+            expect(call.payload.workItemId).toBe('goal-route-1');
+            expect(call.payload.context.ralph.sessionId).toBe(res.body.ralphSessionId);
+
+            const updated = await store.getWorkItem('goal-route-1', REPO_ID);
+            expect(updated!.executionHistory![0].executionMode).toBe('ralph');
+            expect(updated!.executionHistory![0].ralphSessionId).toBe(res.body.ralphSessionId);
+        });
+
+        it('rejects Ralph execution when the workflow flag is disabled', async () => {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Flag gated' });
+            const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
+            const id = list.body.items[0].id;
+            await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${id}`, { status: 'readyToExecute' });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/execute`, {
+                executionMode: 'ralph',
+            });
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('workItems.workflow.enabled');
+            expect(enqueueMock).not.toHaveBeenCalled();
+        });
+
+        it('rejects Ralph execution for remote-backed items', async () => {
+            await stopServer();
+            server = makeServer(enqueueMock, { dataDir: tmpDir, workflowEnabled: true });
+            await startServer();
+            await store.addWorkItem({
+                id: 'wi-remote-ralph',
+                repoId: REPO_ID,
+                title: 'Remote item',
+                description: '',
+                status: 'readyToExecute',
+                type: 'work-item',
+                source: 'manual',
+                tracker: { kind: 'github-backed', provider: 'github', github: { issueNumber: 1 } },
+                githubMirror: { issueNumber: 1 },
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+            });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/wi-remote-ralph/execute`, {
+                executionMode: 'ralph',
+            });
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('local-only');
+            expect(enqueueMock).not.toHaveBeenCalled();
+        });
     });
 
     describe('POST /from-chat', () => {
@@ -377,6 +464,315 @@ describe('Work Item Execution Routes', () => {
                 processId: 'nonexistent',
             });
             expect(res.status).toBe(404);
+        });
+    });
+
+    describe('POST /submit-pr', () => {
+        let runCommand: ReturnType<typeof vi.fn>;
+
+        beforeEach(async () => {
+            tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-submit-pr-'));
+            store = new FileWorkItemStore({ dataDir: tmpDir });
+            mockProcessStore.getWorkspaces.mockResolvedValue([{ id: REPO_ID, rootPath: path.join(tmpDir, 'repo') }]);
+            runCommand = vi.fn(async (command: string, args: string[]) => {
+                if (command === 'git' && args.join(' ') === 'status --porcelain') return { stdout: '', stderr: '' };
+                if (command === 'git' && args.join(' ') === 'rev-parse --abbrev-ref HEAD') return { stdout: 'feature/current\n', stderr: '' };
+                if (command === 'git' && args.join(' ') === 'symbolic-ref --quiet --short refs/remotes/origin/HEAD') return { stdout: 'origin/main\n', stderr: '' };
+                if (command === 'gh' && args[0] === 'pr' && args[1] === 'create') return { stdout: 'https://github.com/example/repo/pull/123\n', stderr: '' };
+                return { stdout: '', stderr: '' };
+            });
+            server = makeServer(undefined, { workflowEnabled: true, runCommand });
+            await startServer();
+        });
+
+        afterEach(async () => {
+            await stopServer();
+            await fs.rm(tmpDir, { recursive: true, force: true });
+        });
+
+        async function addReviewItem(overrides: Partial<Parameters<typeof store.addWorkItem>[0]> = {}) {
+            const now = new Date().toISOString();
+            await store.addWorkItem({
+                id: 'wi-submit-pr',
+                repoId: REPO_ID,
+                title: 'Submit PR item',
+                description: 'Create a PR from this work item.',
+                status: 'aiDone',
+                type: 'work-item',
+                source: 'manual',
+                tracker: { kind: 'local-only' },
+                createdAt: now,
+                updatedAt: now,
+                plan: { version: 2, currentVersion: 2, content: '## Plan\nShip it', updatedAt: now },
+                currentContentVersion: 2,
+                executionHistory: [{
+                    taskId: 'task-submit-pr',
+                    status: 'completed',
+                    startedAt: now,
+                    completedAt: now,
+                    planVersion: 2,
+                    title: 'Code Implement',
+                }],
+                changes: [{
+                    id: 'change-submit-pr',
+                    planVersion: 2,
+                    taskId: 'task-submit-pr',
+                    startedAt: now,
+                    completedAt: now,
+                    status: 'closed',
+                    commits: [
+                        { sha: '1111111111111111111111111111111111111111', message: 'First commit' },
+                        { sha: '2222222222222222222222222222222222222222', message: 'Second commit' },
+                    ],
+                }],
+                ...overrides,
+            });
+        }
+
+        it('submits eligible Review commits as an explicit PR and records metadata', async () => {
+            await addReviewItem();
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/wi-submit-pr/submit-pr`, {
+                branchName: 'coc/work-items/submit-pr-item',
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body.prUrl).toBe('https://github.com/example/repo/pull/123');
+            expect(res.body.prNumber).toBe(123);
+            expect(res.body.branchName).toBe('coc/work-items/submit-pr-item');
+            const commands = runCommand.mock.calls.map(call => `${call[0]} ${call[1].join(' ')}`);
+            expect(commands).toContain('git switch -c coc/work-items/submit-pr-item origin/main');
+            expect(commands).toContain('git cherry-pick 2222222222222222222222222222222222222222');
+            expect(commands).toContain('git cherry-pick 1111111111111111111111111111111111111111');
+            expect(commands).toContain('git switch feature/current');
+
+            const updated = await store.getWorkItem('wi-submit-pr', REPO_ID);
+            expect(updated?.status).toBe('done');
+            expect(updated?.changes?.[0].prUrl).toBe('https://github.com/example/repo/pull/123');
+            expect(updated?.changes?.[0].prNumber).toBe(123);
+            expect(updated?.changes?.[0].branchName).toBe('coc/work-items/submit-pr-item');
+            expect(updated?.executionHistory?.[0].prUrl).toBe('https://github.com/example/repo/pull/123');
+        });
+
+        it('rejects PR submission when the workflow flag is disabled', async () => {
+            await stopServer();
+            server = makeServer(undefined, { workflowEnabled: false, runCommand });
+            await startServer();
+            await addReviewItem();
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/wi-submit-pr/submit-pr`, {});
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('workItems.workflow.enabled');
+            expect(runCommand).not.toHaveBeenCalled();
+        });
+
+        it('rejects remote-backed items even when commits exist', async () => {
+            await addReviewItem({
+                tracker: { kind: 'github-backed', provider: 'github', github: { issueNumber: 1 } },
+                githubMirror: { issueNumber: 1 },
+            });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/wi-submit-pr/submit-pr`, {});
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('local-only');
+            expect(runCommand).not.toHaveBeenCalled();
+        });
+
+        it('rejects Review items without eligible commits', async () => {
+            await addReviewItem({
+                changes: [{
+                    id: 'change-empty',
+                    planVersion: 2,
+                    taskId: 'task-submit-pr',
+                    startedAt: new Date().toISOString(),
+                    completedAt: new Date().toISOString(),
+                    status: 'closed',
+                    commits: [],
+                }],
+            });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/wi-submit-pr/submit-pr`, {});
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('No eligible execution commits');
+            expect(runCommand).not.toHaveBeenCalled();
+        });
+
+        it('rejects already-submitted changes', async () => {
+            await addReviewItem({
+                changes: [{
+                    id: 'change-submitted',
+                    planVersion: 2,
+                    taskId: 'task-submit-pr',
+                    startedAt: new Date().toISOString(),
+                    completedAt: new Date().toISOString(),
+                    status: 'closed',
+                    commits: [{ sha: '3333333333333333333333333333333333333333', message: 'Existing PR commit' }],
+                    prUrl: 'https://github.com/example/repo/pull/5',
+                    prNumber: 5,
+                    prStatus: 'open',
+                }],
+            });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/wi-submit-pr/submit-pr`, {
+                changeId: 'change-submitted',
+            });
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('already has a submitted PR');
+            expect(runCommand).not.toHaveBeenCalled();
+        });
+
+        it('rejects dirty workspaces before creating a PR branch', async () => {
+            await addReviewItem();
+            runCommand.mockImplementation(async (command: string, args: string[]) => {
+                if (command === 'git' && args.join(' ') === 'status --porcelain') return { stdout: ' M file.ts\n', stderr: '' };
+                return { stdout: '', stderr: '' };
+            });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/wi-submit-pr/submit-pr`, {});
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('uncommitted changes');
+            expect(runCommand).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe('POST /ai-review', () => {
+        let enqueue: ReturnType<typeof vi.fn>;
+
+        beforeEach(async () => {
+            tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-ai-review-'));
+            store = new FileWorkItemStore({ dataDir: tmpDir });
+            enqueue = vi.fn().mockResolvedValue('task-ai-review');
+            server = makeServer(enqueue, { workflowEnabled: true });
+            await startServer();
+        });
+
+        afterEach(async () => {
+            await stopServer();
+            await fs.rm(tmpDir, { recursive: true, force: true });
+        });
+
+        async function addReviewItem(overrides: Partial<Parameters<typeof store.addWorkItem>[0]> = {}) {
+            const now = new Date().toISOString();
+            await store.addWorkItem({
+                id: 'wi-ai-review',
+                repoId: REPO_ID,
+                title: 'AI review item',
+                description: 'Review this result.',
+                status: 'aiDone',
+                type: 'work-item',
+                source: 'manual',
+                tracker: { kind: 'local-only' },
+                createdAt: now,
+                updatedAt: now,
+                plan: { version: 4, currentVersion: 4, content: '## Plan\nCheck the result', updatedAt: now },
+                currentContentVersion: 4,
+                executionHistory: [{
+                    taskId: 'task-impl',
+                    processId: 'proc-impl',
+                    status: 'completed',
+                    startedAt: now,
+                    completedAt: now,
+                    planVersion: 4,
+                    executionMode: 'one-shot',
+                    sessionCategory: 'generating-code',
+                    title: 'Code Implement',
+                }],
+                changes: [{
+                    id: 'change-ai-review',
+                    planVersion: 4,
+                    taskId: 'task-impl',
+                    startedAt: now,
+                    completedAt: now,
+                    status: 'closed',
+                    commits: [{ sha: 'abcabcabcabcabcabcabcabcabcabcabcabcabca', message: 'Implement AI review target' }],
+                }],
+                ...overrides,
+            });
+        }
+
+        it('enqueues an explicit AI review and records it in execution history without leaving Review', async () => {
+            await addReviewItem();
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/wi-ai-review/ai-review`, {
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+                reasoningEffort: 'high',
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body.taskId).toBe('task-ai-review');
+            expect(enqueue).toHaveBeenCalledOnce();
+            const call = enqueue.mock.calls[0][0];
+            expect(call.displayName).toBe('Run #2: AI Review');
+            expect(call.payload).toMatchObject({
+                kind: 'chat',
+                mode: 'ask',
+                workspaceId: REPO_ID,
+                workItemId: 'wi-ai-review',
+                sessionCategory: 'work-item-ai-review',
+                planVersion: 4,
+                provider: 'claude',
+                reasoningEffort: 'high',
+            });
+            expect(call.payload.prompt).toContain('abcabcabcabcabcabcabcabcabcabcabcabcabca');
+            expect(call.payload.context.skills).toEqual(['code-review']);
+            expect(call.payload.context.workItemReview).toMatchObject({
+                workItemId: 'wi-ai-review',
+                executionTaskId: 'task-impl',
+                changeId: 'change-ai-review',
+                commits: ['abcabcabcabcabcabcabcabcabcabcabcabcabca'],
+            });
+            expect(call.config.model).toBe('claude-sonnet-4.6');
+
+            const updated = await store.getWorkItem('wi-ai-review', REPO_ID);
+            expect(updated?.status).toBe('aiDone');
+            expect(updated?.executionHistory?.[1]).toMatchObject({
+                taskId: 'task-ai-review',
+                status: 'running',
+                sessionCategory: 'work-item-ai-review',
+                title: 'AI Review',
+                kind: 'ai-review',
+                planVersion: 4,
+                reviewedChangeId: 'change-ai-review',
+                reviewedTaskId: 'task-impl',
+                skillNames: ['code-review'],
+                aiSettings: {
+                    provider: 'claude',
+                    model: 'claude-sonnet-4.6',
+                    reasoningEffort: 'high',
+                },
+            });
+        });
+
+        it('rejects AI review when the workflow flag is disabled', async () => {
+            await stopServer();
+            server = makeServer(enqueue, { workflowEnabled: false });
+            await startServer();
+            await addReviewItem();
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/wi-ai-review/ai-review`, {});
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('workItems.workflow.enabled');
+            expect(enqueue).not.toHaveBeenCalled();
+        });
+
+        it('rejects AI review for remote-backed items', async () => {
+            await addReviewItem({
+                tracker: { kind: 'github-backed', provider: 'github', github: { issueNumber: 1 } },
+                githubMirror: { issueNumber: 1 },
+            });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/wi-ai-review/ai-review`, {});
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('local-only');
+            expect(enqueue).not.toHaveBeenCalled();
         });
     });
 

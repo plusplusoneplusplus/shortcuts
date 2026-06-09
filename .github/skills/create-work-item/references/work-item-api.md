@@ -34,7 +34,7 @@ Content-Type: application/json
 | `plan.content` | string | | Markdown plan body |
 | `plan.resolvedBy` | `"ai" \| "user"` | | Who generated the plan |
 
-**Response: 201** — Full `WorkItem` object including `id`, `status: "created"`.
+**Response: 201** — Full `WorkItem` object including `id`, `status`, and `plan` when provided.
 
 ---
 

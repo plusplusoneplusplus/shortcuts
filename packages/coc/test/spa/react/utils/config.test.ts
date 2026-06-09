@@ -5,6 +5,7 @@ import {
     getCommitChatLensDormantMode,
     isAutoAgentProviderRoutingEnabled,
     isCommitChatLensEnabled,
+    isPullRequestsAutoClassifyTeamEnabled,
     isServersEnabled,
 } from '../../../../src/server/spa/client/react/utils/config';
 
@@ -47,6 +48,22 @@ describe('isCommitChatLensEnabled', () => {
     it('returns true when commitChatLensEnabled is explicitly true', () => {
         (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', commitChatLensEnabled: true };
         expect(isCommitChatLensEnabled()).toBe(true);
+    });
+});
+
+describe('isPullRequestsAutoClassifyTeamEnabled', () => {
+    it('returns false when omitted from config', () => {
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws' };
+        expect(isPullRequestsAutoClassifyTeamEnabled()).toBe(false);
+    });
+
+    it('returns true when explicitly true', () => {
+        (window as any).__DASHBOARD_CONFIG__ = {
+            apiBasePath: '/api',
+            wsPath: '/ws',
+            pullRequestsAutoClassifyTeamEnabled: true,
+        };
+        expect(isPullRequestsAutoClassifyTeamEnabled()).toBe(true);
     });
 });
 

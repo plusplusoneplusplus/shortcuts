@@ -15,10 +15,13 @@ let store: FileWorkItemStore;
 let server: http.Server;
 let baseUrl: string;
 
-function makeServer(refineWithAI?: (plan: string, desc: string, title: string, instructions?: string) => Promise<string>): http.Server {
+function makeServer(
+    refineWithAI?: (plan: string, desc: string, title: string, instructions?: string) => Promise<string>,
+    workflowEnabled = false,
+): http.Server {
     const routes: Route[] = [];
     registerWorkItemRoutes({ routes, workItemStore: store });
-    registerWorkItemPlanRoutes({ routes, workItemStore: store, refineWithAI });
+    registerWorkItemPlanRoutes({ routes, workItemStore: store, refineWithAI, getWorkflowEnabled: () => workflowEnabled });
     const handler = createRouter({ routes, spaHtml: '' });
     return http.createServer(handler);
 }
@@ -124,12 +127,20 @@ describe('Work Item Plan Routes', () => {
             const res = await request('PUT', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/plan`, {
                 content: 'Plan v1 content',
                 resolvedBy: 'user',
+                reason: 'Initial user draft',
             });
 
             expect(res.status).toBe(200);
             expect(res.body.version).toBe(1);
             expect(res.body.plan.content).toBe('Plan v1 content');
             expect(res.body.plan.resolvedBy).toBe('user');
+            expect(res.body.plan.source).toBe('user');
+            expect(res.body.plan.authorType).toBe('user');
+            expect(res.body.plan.reason).toBe('Initial user draft');
+
+            const detail = await request('GET', `/api/workspaces/${REPO_ID}/work-items/${workItemId}`);
+            expect(detail.body.currentContentVersion).toBe(1);
+            expect(detail.body.plan.currentVersion).toBe(1);
         });
 
         it('auto-increments version', async () => {
@@ -150,6 +161,20 @@ describe('Work Item Plan Routes', () => {
                 summary: 'No content',
             });
             expect(res.status).toBe(400);
+        });
+
+        it('rejects blank content without creating a plan version', async () => {
+            const res = await request('PUT', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/plan`, {
+                content: '   \n\t  ',
+                summary: 'Blank content',
+            });
+
+            expect(res.status).toBe(400);
+            expect(await store.getPlanVersions(workItemId)).toEqual([]);
+
+            const detail = await request('GET', `/api/workspaces/${REPO_ID}/work-items/${workItemId}`);
+            expect(detail.status).toBe(200);
+            expect(detail.body.plan).toBeUndefined();
         });
 
         it('returns 404 for non-existent work item', async () => {
@@ -212,6 +237,104 @@ describe('Work Item Plan Routes', () => {
         it('returns 404 for non-existent version', async () => {
             const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/plan/versions/99`);
             expect(res.status).toBe(404);
+        });
+    });
+
+    describe('workflow-gated version compare and restore', () => {
+        it('requires the workflow flag for compare and restore actions', async () => {
+            await request('PUT', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/plan`, {
+                content: 'v1',
+            });
+
+            const compare = await request('GET', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/plan/versions/compare?base=1&target=1`);
+            expect(compare.status).toBe(403);
+
+            const restore = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/plan/versions/1/restore`, {});
+            expect(restore.status).toBe(403);
+        });
+
+        it('compares two local-only work item versions when workflow is enabled', async () => {
+            await stopServer();
+            server = makeServer(undefined, true);
+            await startServer();
+            const item = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Compare item' });
+            await request('PUT', `/api/workspaces/${REPO_ID}/work-items/${item.body.id}/plan`, { content: 'one\ntwo\nthree' });
+            await request('PUT', `/api/workspaces/${REPO_ID}/work-items/${item.body.id}/plan`, { content: 'one\nTWO\nthree\nfour' });
+
+            const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items/${item.body.id}/plan/versions/compare?base=1&target=2`);
+
+            expect(res.status).toBe(200);
+            expect(res.body.base.version).toBe(1);
+            expect(res.body.target.version).toBe(2);
+            expect(res.body.diff).toEqual([
+                { type: 'equal', lines: ['one'] },
+                { type: 'removed', lines: ['two'] },
+                { type: 'added', lines: ['TWO'] },
+                { type: 'equal', lines: ['three'] },
+                { type: 'added', lines: ['four'] },
+            ]);
+        });
+
+        it('restores an older local-only goal version by creating a new current version', async () => {
+            await stopServer();
+            server = makeServer(undefined, true);
+            await startServer();
+            const item = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Goal item',
+                type: 'goal',
+            });
+            await request('PUT', `/api/workspaces/${REPO_ID}/work-items/${item.body.id}/plan`, {
+                content: 'goal spec v1',
+                resolvedBy: 'ai',
+            });
+            await request('PUT', `/api/workspaces/${REPO_ID}/work-items/${item.body.id}/plan`, {
+                content: 'goal spec v2',
+                resolvedBy: 'user',
+            });
+
+            const restore = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${item.body.id}/plan/versions/1/restore`, {
+                reason: 'Restore clearer goal spec',
+            });
+            expect(restore.status).toBe(200);
+            expect(restore.body).toMatchObject({
+                version: 3,
+                restoredFromVersion: 1,
+                plan: {
+                    version: 3,
+                    content: 'goal spec v1',
+                    source: 'user',
+                    authorType: 'user',
+                    reason: 'Restore clearer goal spec',
+                    restoredFromVersion: 1,
+                },
+            });
+
+            const detail = await request('GET', `/api/workspaces/${REPO_ID}/work-items/${item.body.id}`);
+            expect(detail.body.currentContentVersion).toBe(3);
+            expect(detail.body.plan.currentVersion).toBe(3);
+            expect(detail.body.plan.content).toBe('goal spec v1');
+
+            const versions = await request('GET', `/api/workspaces/${REPO_ID}/work-items/${item.body.id}/plan/versions`);
+            expect(versions.body.map((version: any) => version.version)).toEqual([1, 2, 3]);
+            expect(versions.body[2].restoredFromVersion).toBe(1);
+        });
+
+        it('rejects workflow version actions for remote-backed items', async () => {
+            await stopServer();
+            server = makeServer(undefined, true);
+            await startServer();
+            const item = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Remote item' });
+            await store.updateWorkItem(item.body.id, {
+                githubMirror: {
+                    issueNumber: 123,
+                    issueUrl: 'https://github.com/example/repo/issues/123',
+                },
+            });
+            await request('PUT', `/api/workspaces/${REPO_ID}/work-items/${item.body.id}/plan`, { content: 'v1' });
+
+            const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items/${item.body.id}/plan/versions/compare?base=1&target=1`);
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('local-only work-item and goal');
         });
     });
 

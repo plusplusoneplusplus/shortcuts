@@ -1,13 +1,13 @@
 ---
 name: create-bug
-description: Interactively create a bug report for this repository with title, description, priority, and an AI-generated plan. Use when the user asks to file a bug, report a defect, or log an issue. Never execute the bug fix inside the chat session — queue it via the API instead.
+description: Interactively create a bug work item for this repository with title, description, priority, tags, and an optional AI-generated plan. Use when the user asks to file a bug, report a defect, or log an issue. Never execute the bug fix inside the chat session — queue it through the unified work-item tool instead.
 metadata:
   version: "0.0.1"
 ---
 
 # Create Bug
 
-Guide the user through creating a well-structured bug report and persisting it to the **Work Items** page (as a bug) via the CoC REST API. Always present a draft summary first, iterate on feedback, then create only when the user confirms.
+Guide the user through creating a well-structured bug report and persisting it to the **Work Items** page as a typed bug through `create_update_work_item` with `type: "bug"`. Always present a draft summary first, iterate on feedback, then create only when the user confirms.
 
 ## Instructions
 
@@ -18,7 +18,7 @@ Guide the user through creating a well-structured bug report and persisting it t
    - **Description**: Markdown paragraph with what's broken, reproduction steps, and expected behavior
    - **Priority**: `high`, `normal` (default), or `low`
    - **Tags**: Optional labels (e.g. `["regression", "ui"]`)
-   - **Plan**: Complete markdown plan using the standard template
+   - **Plan**: Optional complete markdown plan using the standard template
 
 2. Generate a plan using this exact template:
 
@@ -70,21 +70,22 @@ Guide the user through creating a well-structured bug report and persisting it t
 
 ### Phase 3 — Create
 
-6. Call the `create_bug` tool with the confirmed details:
+6. Call `create_update_work_item` with the confirmed details:
 
    ```
-   create_bug({
+   create_update_work_item({
+     type:        "bug",
      title:       "<confirmed title>",
      description: "<confirmed description>",
      priority:    "<confirmed priority>",
      tags:        ["<tag1>", "<tag2>"],   // omit if none
-     plan:        { content: "<confirmed plan markdown>", resolvedBy: "ai" }
+     plan:        "<confirmed plan markdown>" // omit when no plan was confirmed
    })
    ```
 
-   The tool persists the bug to the Work Items page and broadcasts a live update to any connected dashboard.
+   The tool persists the bug to the Work Items page and broadcasts a live update to any connected dashboard. Bugs with a plan are created in `planning`; bugs without a plan are created in `created`.
 
-   If the `create_bug` tool is unavailable, fall back to the REST API:
+   If the chat-facing work-item tool is unavailable, fall back to the REST API:
 
    ```powershell
    $workspaceId = (Invoke-RestMethod -Uri "http://localhost:4000/api/workspaces").workspaces |
@@ -113,7 +114,7 @@ Guide the user through creating a well-structured bug report and persisting it t
    ✅ Bug report created!
    ID:     <id>
    Title:  <title>
-   Status: created
+   Status: <created or planning>
 
    View it in the Work Items tab of the CoC dashboard.
    ```

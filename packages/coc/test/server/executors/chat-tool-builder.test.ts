@@ -44,15 +44,16 @@ describe('buildChatToolBundle', () => {
 
         expect(result.tools.map(t => t.name).sort()).toEqual([
             'ask_user',
-            'create_bug',
             'create_or_update_excalidraw',
-            'create_work_item',
+            'create_update_work_item',
             'get_conversation',
             'read_excalidraw',
             'search_conversations',
             'suggest_follow_ups',
             'tavily_web_search',
         ]);
+        expect(result.tools.map(t => t.name)).not.toContain('update_work_item');
+        expect(result.tools.map(t => t.name)).not.toContain('create_bug');
         expect(result.toolGuidance).toContain('tavily_web_search');
         expect(result.toolGuidance).toContain('search_conversations');
         expect(result.toolGuidance).toContain('3 suggestions');

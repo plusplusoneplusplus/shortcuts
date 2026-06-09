@@ -80,7 +80,7 @@ export interface AdminResolvedConfig {
     layout?: 'horizontal' | 'vertical';
   };
   workflows?: { enabled?: boolean };
-  pullRequests?: { enabled?: boolean; suggestions?: boolean };
+  pullRequests?: { enabled?: boolean; suggestions?: boolean; autoClassifyTeam?: boolean };
   servers?: { enabled?: boolean };
   forEach?: { enabled?: boolean };
   mapReduce?: { enabled?: boolean };
@@ -107,7 +107,7 @@ export interface AdminResolvedConfig {
     commitChatLensDormantMode?: 'ghost' | 'pill';
     autoAgentProviderRouting?: boolean;
   };
-  workItems?: { hierarchy?: { enabled?: boolean }; sync?: { enabled?: boolean }; aiAuthoring?: { enabled?: boolean } };
+  workItems?: { hierarchy?: { enabled?: boolean }; sync?: { enabled?: boolean }; aiAuthoring?: { enabled?: boolean }; workflow?: { enabled?: boolean } };
   effortLevels?: { enabled?: boolean };
   [key: string]: unknown;
 }
@@ -159,6 +159,7 @@ export interface AdminConfigUpdate {
   'workflows.enabled'?: boolean;
   'pullRequests.enabled'?: boolean;
   'pullRequests.suggestions'?: boolean;
+  'pullRequests.autoClassifyTeam'?: boolean;
   'servers.enabled'?: boolean;
   'forEach.enabled'?: boolean;
   'mapReduce.enabled'?: boolean;
@@ -172,6 +173,7 @@ export interface AdminConfigUpdate {
   'workItems.hierarchy.enabled'?: boolean;
   'workItems.sync.enabled'?: boolean;
   'workItems.aiAuthoring.enabled'?: boolean;
+  'workItems.workflow.enabled'?: boolean;
   'features.gitCrossCloneCherryPick'?: boolean;
   'features.sessionContextAttachments'?: boolean;
   'features.commitChatLens'?: boolean;
@@ -198,6 +200,7 @@ export interface RuntimeDashboardConfig {
     workflowsEnabled: boolean;
     pullRequestsEnabled: boolean;
     pullRequestsSuggestionsEnabled: boolean;
+    pullRequestsAutoClassifyTeamEnabled: boolean;
     serversEnabled: boolean;
     ralphEnabled: boolean;
     forEachEnabled: boolean;
@@ -215,6 +218,7 @@ export interface RuntimeDashboardConfig {
     workItemsHierarchyEnabled: boolean;
     workItemsSyncEnabled: boolean;
     workItemsAiAuthoringEnabled: boolean;
+    workItemsWorkflowEnabled: boolean;
     gitCommitLookupEnabled: boolean;
     gitCrossCloneCherryPickEnabled: boolean;
     sessionContextAttachmentsEnabled: boolean;

@@ -69,6 +69,7 @@ type FeaturesSnapshot = {
     workflows: boolean;
     pullRequests: boolean;
     pullRequestsSuggestions: boolean;
+    pullRequestsAutoClassifyTeam: boolean;
     servers: boolean;
     ralph: boolean;
     forEach: boolean;
@@ -87,6 +88,7 @@ type FeaturesSnapshot = {
     workItemsHierarchy: boolean;
     workItemsSync: boolean;
     workItemsAiAuthoring: boolean;
+    workItemsWorkflow: boolean;
     effortLevels: boolean;
 };
 
@@ -371,6 +373,7 @@ export function AdminPanel() {
     const [workflowsEnabled, setWorkflowsEnabled] = useState(false);
     const [pullRequestsEnabled, setPullRequestsEnabled] = useState(false);
     const [pullRequestsSuggestionsEnabled, setPullRequestsSuggestionsEnabled] = useState(false);
+    const [pullRequestsAutoClassifyTeamEnabled, setPullRequestsAutoClassifyTeamEnabled] = useState(false);
     const [serversEnabled, setServersEnabled] = useState(false);
     const [ralphEnabled, setRalphEnabled] = useState(false);
     const [forEachEnabled, setForEachEnabled] = useState(false);
@@ -389,6 +392,7 @@ export function AdminPanel() {
     const [workItemsHierarchyEnabled, setWorkItemsHierarchyEnabled] = useState(false);
     const [workItemsSyncEnabled, setWorkItemsSyncEnabled] = useState(false);
     const [workItemsAiAuthoringEnabled, setWorkItemsAiAuthoringEnabled] = useState(false);
+    const [workItemsWorkflowEnabled, setWorkItemsWorkflowEnabled] = useState(false);
     const [effortLevelsEnabled, setEffortLevelsEnabled] = useState(false);
     const [codexEnabled, setCodexEnabled] = useState(false);
     const [claudeEnabled, setClaudeEnabled] = useState(false);
@@ -442,7 +446,7 @@ export function AdminPanel() {
         taskCardDensity: 'compact' as 'compact' | 'dense',
         historyGrouping: true,
     });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState<FeaturesSnapshot>({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, forEach: false, mapReduce: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, mcpOauthAutoRefresh: false, focusedDiff: false, gitCrossCloneCherryPick: false, sessionContextAttachments: false, commitChatLens: false, commitChatLensDormantMode: 'ghost', autoAgentProviderRouting: false, workItemsHierarchy: false, workItemsSync: false, workItemsAiAuthoring: false, effortLevels: false });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState<FeaturesSnapshot>({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal', workflows: false, pullRequests: false, pullRequestsSuggestions: false, pullRequestsAutoClassifyTeam: false, servers: false, ralph: false, forEach: false, mapReduce: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, mcpOauthAutoRefresh: false, focusedDiff: false, gitCrossCloneCherryPick: false, sessionContextAttachments: false, commitChatLens: false, commitChatLensDormantMode: 'ghost', autoAgentProviderRouting: false, workItemsHierarchy: false, workItemsSync: false, workItemsAiAuthoring: false, workItemsWorkflow: false, effortLevels: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -539,6 +543,8 @@ export function AdminPanel() {
             setPullRequestsEnabled(pre);
             const prse = resolved.pullRequests?.suggestions ?? false;
             setPullRequestsSuggestionsEnabled(prse);
+            const pratce = resolved.pullRequests?.autoClassifyTeam ?? false;
+            setPullRequestsAutoClassifyTeamEnabled(pratce);
             const svre = resolved.servers?.enabled ?? false;
             setServersEnabled(svre);
             const re = resolved.ralph?.enabled ?? false;
@@ -575,6 +581,8 @@ export function AdminPanel() {
             setWorkItemsSyncEnabled(wise);
             const waae = resolved.workItems?.aiAuthoring?.enabled ?? false;
             setWorkItemsAiAuthoringEnabled(waae);
+            const wiwfe = resolved.workItems?.workflow?.enabled ?? false;
+            setWorkItemsWorkflowEnabled(wiwfe);
             const ele = resolved.effortLevels?.enabled ?? false;
             setEffortLevelsEnabled(ele);
             const cxe = resolved.codex?.enabled ?? false;
@@ -585,7 +593,7 @@ export function AdminPanel() {
             const arc = normalizeAutoProviderRoutingConfig(resolved.agentProviderRouting?.auto);
             setDefaultProvider(dp);
             setAutoRoutingConfig(arc);
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, forEach: fee, mapReduce: mre, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, mcpOauthAutoRefresh: moare, focusedDiff: fde, gitCrossCloneCherryPick: gccpe, sessionContextAttachments: scae, commitChatLens: ccle, commitChatLensDormantMode: ccldm, autoAgentProviderRouting: aapre, workItemsHierarchy: wihe, workItemsSync: wise, workItemsAiAuthoring: waae, effortLevels: ele });
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, pullRequestsAutoClassifyTeam: pratce, servers: svre, ralph: re, forEach: fee, mapReduce: mre, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, mcpOauthAutoRefresh: moare, focusedDiff: fde, gitCrossCloneCherryPick: gccpe, sessionContextAttachments: scae, commitChatLens: ccle, commitChatLensDormantMode: ccldm, autoAgentProviderRouting: aapre, workItemsHierarchy: wihe, workItemsSync: wise, workItemsAiAuthoring: waae, workItemsWorkflow: wiwfe, effortLevels: ele });
             setAiExecSnapshot({ model: form.model, parallel: form.parallel, timeout: form.timeout, output: form.output });
             setDefaultProviderSnapshot({ provider: dp, codexEnabled: cxe, claudeEnabled: cle, autoAgentProviderRouting: aapre, autoRoutingConfig: arc });
             const sgr = resolved.sync?.gitRemote ?? '';
@@ -694,6 +702,7 @@ export function AdminPanel() {
         workflowsEnabled !== featuresSnapshot.workflows ||
         pullRequestsEnabled !== featuresSnapshot.pullRequests ||
         pullRequestsSuggestionsEnabled !== featuresSnapshot.pullRequestsSuggestions ||
+        pullRequestsAutoClassifyTeamEnabled !== featuresSnapshot.pullRequestsAutoClassifyTeam ||
         serversEnabled !== featuresSnapshot.servers ||
         ralphEnabled !== featuresSnapshot.ralph ||
         forEachEnabled !== featuresSnapshot.forEach ||
@@ -711,6 +720,7 @@ export function AdminPanel() {
         workItemsHierarchyEnabled !== featuresSnapshot.workItemsHierarchy ||
         workItemsSyncEnabled !== featuresSnapshot.workItemsSync ||
         workItemsAiAuthoringEnabled !== featuresSnapshot.workItemsAiAuthoring ||
+        workItemsWorkflowEnabled !== featuresSnapshot.workItemsWorkflow ||
         effortLevelsEnabled !== featuresSnapshot.effortLevels;
 
     // ── AI & Execution card ──
@@ -952,6 +962,7 @@ export function AdminPanel() {
                 'workflows.enabled': workflowsEnabled,
                 'pullRequests.enabled': pullRequestsEnabled,
                 'pullRequests.suggestions': pullRequestsSuggestionsEnabled,
+                'pullRequests.autoClassifyTeam': pullRequestsAutoClassifyTeamEnabled,
                 'servers.enabled': serversEnabled,
                 'ralph.enabled': ralphEnabled,
                 'forEach.enabled': forEachEnabled,
@@ -969,18 +980,19 @@ export function AdminPanel() {
                 'workItems.hierarchy.enabled': workItemsHierarchyEnabled,
                 'workItems.sync.enabled': workItemsSyncEnabled,
                 'workItems.aiAuthoring.enabled': workItemsAiAuthoringEnabled,
+                'workItems.workflow.enabled': workItemsWorkflowEnabled,
                 'effortLevels.enabled': effortLevelsEnabled,
             };
             await getSpaCocClient().admin.updateConfig(payload);
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setFeaturesSnapshot(prev => ({ ...prev, terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, forEach: forEachEnabled, mapReduce: mapReduceEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, mcpOauthAutoRefresh: mcpOauthAutoRefreshEnabled, focusedDiff: focusedDiffEnabled, gitCrossCloneCherryPick: gitCrossCloneCherryPickEnabled, sessionContextAttachments: sessionContextAttachmentsEnabled, commitChatLens: commitChatLensEnabled, commitChatLensDormantMode: commitChatLensDormantMode, autoAgentProviderRouting: prev.autoAgentProviderRouting, workItemsHierarchy: workItemsHierarchyEnabled, workItemsSync: workItemsSyncEnabled, workItemsAiAuthoring: workItemsAiAuthoringEnabled, effortLevels: effortLevelsEnabled }));
+            setFeaturesSnapshot(prev => ({ ...prev, terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, pullRequestsAutoClassifyTeam: pullRequestsAutoClassifyTeamEnabled, servers: serversEnabled, ralph: ralphEnabled, forEach: forEachEnabled, mapReduce: mapReduceEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, mcpOauthAutoRefresh: mcpOauthAutoRefreshEnabled, focusedDiff: focusedDiffEnabled, gitCrossCloneCherryPick: gitCrossCloneCherryPickEnabled, sessionContextAttachments: sessionContextAttachmentsEnabled, commitChatLens: commitChatLensEnabled, commitChatLensDormantMode: commitChatLensDormantMode, autoAgentProviderRouting: prev.autoAgentProviderRouting, workItemsHierarchy: workItemsHierarchyEnabled, workItemsSync: workItemsSyncEnabled, workItemsAiAuthoring: workItemsAiAuthoringEnabled, workItemsWorkflow: workItemsWorkflowEnabled, effortLevels: effortLevelsEnabled }));
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, forEachEnabled, mapReduceEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, mcpOauthAutoRefreshEnabled, focusedDiffEnabled, gitCrossCloneCherryPickEnabled, sessionContextAttachmentsEnabled, commitChatLensEnabled, commitChatLensDormantMode, workItemsHierarchyEnabled, workItemsSyncEnabled, workItemsAiAuthoringEnabled, effortLevelsEnabled, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, pullRequestsAutoClassifyTeamEnabled, serversEnabled, ralphEnabled, forEachEnabled, mapReduceEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, mcpOauthAutoRefreshEnabled, focusedDiffEnabled, gitCrossCloneCherryPickEnabled, sessionContextAttachmentsEnabled, commitChatLensEnabled, commitChatLensDormantMode, workItemsHierarchyEnabled, workItemsSyncEnabled, workItemsAiAuthoringEnabled, workItemsWorkflowEnabled, effortLevelsEnabled, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setTerminalEnabled(featuresSnapshot.terminal);
@@ -992,6 +1004,7 @@ export function AdminPanel() {
         setWorkflowsEnabled(featuresSnapshot.workflows);
         setPullRequestsEnabled(featuresSnapshot.pullRequests);
         setPullRequestsSuggestionsEnabled(featuresSnapshot.pullRequestsSuggestions);
+        setPullRequestsAutoClassifyTeamEnabled(featuresSnapshot.pullRequestsAutoClassifyTeam);
         setServersEnabled(featuresSnapshot.servers);
         setRalphEnabled(featuresSnapshot.ralph);
         setForEachEnabled(featuresSnapshot.forEach);
@@ -1009,6 +1022,7 @@ export function AdminPanel() {
         setWorkItemsHierarchyEnabled(featuresSnapshot.workItemsHierarchy);
         setWorkItemsSyncEnabled(featuresSnapshot.workItemsSync);
         setWorkItemsAiAuthoringEnabled(featuresSnapshot.workItemsAiAuthoring);
+        setWorkItemsWorkflowEnabled(featuresSnapshot.workItemsWorkflow);
         setEffortLevelsEnabled(featuresSnapshot.effortLevels);
     }, [featuresSnapshot]);
 
@@ -1789,10 +1803,16 @@ export function AdminPanel() {
                                                             <AdminToggle checked={pullRequestsEnabled} onChange={setPullRequestsEnabled} data-testid="toggle-pull-requests-enabled" />
                                                         </AdminRow>
                                                         {pullRequestsEnabled && (
-                                                            <AdminRow name="PR Review Suggestions" hint="AI-ranked suggestions for which open PRs to review, based on your review history. Adds a 'For You' filter pill to the PR queue.">
-                                                                <SourceBadge source={sources['pullRequests.suggestions']} isDefault={isDefaultValue('pullRequests.suggestions')} />
-                                                                <AdminToggle checked={pullRequestsSuggestionsEnabled} onChange={setPullRequestsSuggestionsEnabled} data-testid="toggle-pull-requests-suggestions-enabled" />
-                                                            </AdminRow>
+                                                            <>
+                                                                <AdminRow name="PR Review Suggestions" hint="AI-ranked suggestions for which open PRs to review, based on your review history. Adds a 'For You' filter pill to the PR queue.">
+                                                                    <SourceBadge source={sources['pullRequests.suggestions']} isDefault={isDefaultValue('pullRequests.suggestions')} />
+                                                                    <AdminToggle checked={pullRequestsSuggestionsEnabled} onChange={setPullRequestsSuggestionsEnabled} data-testid="toggle-pull-requests-suggestions-enabled" />
+                                                                </AdminRow>
+                                                                <AdminRow name="Auto-classify Team PRs" hint="Automatically queues lightweight diff classification for open Pull Requests tab Team roster PRs. Disabled by default.">
+                                                                    <SourceBadge source={sources['pullRequests.autoClassifyTeam']} isDefault={isDefaultValue('pullRequests.autoClassifyTeam')} />
+                                                                    <AdminToggle checked={pullRequestsAutoClassifyTeamEnabled} onChange={setPullRequestsAutoClassifyTeamEnabled} data-testid="toggle-pull-requests-auto-classify-team-enabled" />
+                                                                </AdminRow>
+                                                            </>
                                                         )}
                                                         <AdminRow name="Servers" hint="Multi-server connection manager (devtunnel).">
                                                             <SourceBadge source={sources['servers.enabled']} isDefault={isDefaultValue('servers.enabled')} />
@@ -1823,6 +1843,13 @@ export function AdminPanel() {
                                                         >
                                                             <SourceBadge source={sources['workItems.aiAuthoring.enabled']} isDefault={isDefaultValue('workItems.aiAuthoring.enabled')} />
                                                             <AdminToggle checked={workItemsAiAuthoringEnabled} onChange={setWorkItemsAiAuthoringEnabled} data-testid="toggle-work-items-ai-authoring-enabled" />
+                                                        </AdminRow>
+                                                        <AdminRow
+                                                            name={<>Work Items Workflow <span className="ar-badge ar-badge-accent">Experimental</span></>}
+                                                            hint="Enables the durable Work Items/Goals command-center workflow. Disabled by default."
+                                                        >
+                                                            <SourceBadge source={sources['workItems.workflow.enabled']} isDefault={isDefaultValue('workItems.workflow.enabled')} />
+                                                            <AdminToggle checked={workItemsWorkflowEnabled} onChange={setWorkItemsWorkflowEnabled} data-testid="toggle-work-items-workflow-enabled" />
                                                         </AdminRow>
                                                     </div>
 

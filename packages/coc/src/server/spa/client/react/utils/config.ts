@@ -20,6 +20,7 @@ interface DashboardConfig {
     workflowsEnabled?: boolean;
     pullRequestsEnabled?: boolean;
     pullRequestsSuggestionsEnabled?: boolean;
+    pullRequestsAutoClassifyTeamEnabled?: boolean;
     serversEnabled?: boolean;
     ralphEnabled?: boolean;
     forEachEnabled?: boolean;
@@ -47,6 +48,8 @@ interface DashboardConfig {
     workItemsSyncEnabled?: boolean;
     /** Whether the AI-assisted work item authoring composer is enabled (feature flag). */
     workItemsAiAuthoringEnabled?: boolean;
+    /** Whether the durable Work Items/Goals workflow command center is enabled (feature flag). */
+    workItemsWorkflowEnabled?: boolean;
     /** Whether direct commit SHA lookup in the Git tab is enabled (feature flag). */
     gitCommitLookupEnabled?: boolean;
     /** Whether cross-clone cherry-pick transfer in the Git tab is enabled (feature flag). */
@@ -111,6 +114,7 @@ async function _fetchAndApplyRuntimeConfig(apiBase: string): Promise<void> {
             workflowsEnabled: data.features.workflowsEnabled,
             pullRequestsEnabled: data.features.pullRequestsEnabled,
             pullRequestsSuggestionsEnabled: data.features.pullRequestsSuggestionsEnabled,
+            pullRequestsAutoClassifyTeamEnabled: data.features.pullRequestsAutoClassifyTeamEnabled,
             serversEnabled: data.features.serversEnabled,
             ralphEnabled: data.features.ralphEnabled,
             forEachEnabled: data.features.forEachEnabled,
@@ -130,6 +134,7 @@ async function _fetchAndApplyRuntimeConfig(apiBase: string): Promise<void> {
             workItemsHierarchyEnabled: data.features.workItemsHierarchyEnabled,
             workItemsSyncEnabled: data.features.workItemsSyncEnabled,
             workItemsAiAuthoringEnabled: data.features.workItemsAiAuthoringEnabled,
+            workItemsWorkflowEnabled: data.features.workItemsWorkflowEnabled,
             gitCommitLookupEnabled: data.features.gitCommitLookupEnabled,
             gitCrossCloneCherryPickEnabled: data.features.gitCrossCloneCherryPickEnabled,
             effortLevelsEnabled: data.features.effortLevelsEnabled,
@@ -232,6 +237,10 @@ export function isPullRequestsSuggestionsEnabled(): boolean {
     return getConfig().pullRequestsSuggestionsEnabled === true;
 }
 
+export function isPullRequestsAutoClassifyTeamEnabled(): boolean {
+    return getConfig().pullRequestsAutoClassifyTeamEnabled === true;
+}
+
 export function isServersEnabled(): boolean {
     return getConfig().serversEnabled === true;
 }
@@ -315,6 +324,11 @@ export function isWorkItemsSyncEnabled(): boolean {
 /** Returns true when the AI-assisted work item authoring composer feature flag is enabled. */
 export function isWorkItemsAiAuthoringEnabled(): boolean {
     return getConfig().workItemsAiAuthoringEnabled === true;
+}
+
+/** Returns true when the durable Work Items/Goals workflow feature flag is enabled. */
+export function isWorkItemsWorkflowEnabled(): boolean {
+    return getConfig().workItemsWorkflowEnabled === true;
 }
 
 /** Returns true when direct commit SHA lookup in the Git tab is enabled. */

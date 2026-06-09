@@ -27,7 +27,7 @@ Published workspaces (`coc`, `coc-workflow`, `forge`, `coc-agent-sdk`, `coc-memo
 
 **How workspace packages are consumed:** `coc` and `deep-wiki` depend on published workspace packages via caret ranges. During local development, npm workspaces symlink them automatically. There is no bundling or copying into consumer packages — packages are resolved from `node_modules` at runtime.
 
-**CoC build order:** `packages/coc-agent-sdk` builds before `coc-workflow`; `coc-workflow` builds before `forge` and `coc`; and `coc` depends on compiled `coc-client`, `coc-workflow`, and `coc-memory` output. The root `build:packages` script builds `coc-agent-sdk`, `coc-workflow`, `forge`, `coc-client`, and `coc-memory` before `coc`. Direct `packages/forge` builds run `scripts/prebuild.mjs` to build `coc-agent-sdk` and `coc-workflow` before `tsc`; direct `packages/coc` builds run `scripts/prebuild.mjs` to build `coc-client`, `coc-workflow`, and `coc-memory` before `tsc`.
+**CoC build order:** `packages/coc-agent-sdk` builds before `coc-workflow`; `coc-workflow` builds before `forge` and `coc`; and `coc` depends on compiled `coc-client`, `coc-workflow`, and `coc-memory` output. The root `build:packages` script builds `coc-agent-sdk`, `coc-workflow`, `forge`, `coc-client`, and `coc-memory` before `coc`. Direct `packages/forge` builds run `scripts/prebuild.mjs` to build `coc-agent-sdk` and `coc-workflow` before `tsc`; direct `packages/coc` builds run `scripts/prebuild.mjs` to build `coc-client`, `coc-workflow`, and `coc-memory`, then clean `dist` before `tsc` emits package artifacts.
 
 **Versioning workflow:**
 1. Add a changeset: `npm run changeset` (interactive prompt for affected packages and semver bump)

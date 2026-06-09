@@ -10,6 +10,8 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '',
     isRalphEnabled: () => false,
     isPullRequestsSuggestionsEnabled: () => false,
+    isPullRequestsAutoClassifyTeamEnabled: () => false,
+    isFocusedDiffEnabled: () => true,
     getActiveProvider: () => 'copilot',
     isSessionContextAttachmentsEnabled: () => false,
 }));

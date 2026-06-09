@@ -32,6 +32,7 @@ import {
     type RalphSessionCompleteEvent,
 } from './queue-executor-bridge';
 import { normalizeChatMode } from '../tasks/task-types';
+import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
 
 // ============================================================================
 // Types
@@ -294,7 +295,7 @@ export class MultiRepoQueueRouter extends EventEmitter {
     }
 
     /** Answer a pending ask-user question across all per-repo bridges. */
-    async answerAskUserQuestion(processId: string, questionId: string, answer: string | string[] | boolean): Promise<boolean> {
+    async answerAskUserQuestion(processId: string, questionId: string, answer: AskUserAnswerValue): Promise<boolean> {
         const handled = await this.dispatchToOwnerBridge(
             async (bridge) => await bridge.answerAskUserQuestion?.(processId, questionId, answer) === true,
             async () => true,
@@ -312,7 +313,7 @@ export class MultiRepoQueueRouter extends EventEmitter {
     }
 
     /** Resolve a pending ask-user question batch across all per-repo bridges. */
-    async answerAskUserQuestions(processId: string, batchId: string, answers: Array<{ questionId: string; answer?: string | string[] | boolean; skipped?: boolean }>): Promise<boolean> {
+    async answerAskUserQuestions(processId: string, batchId: string, answers: AskUserAnswerInput[]): Promise<boolean> {
         const handled = await this.dispatchToOwnerBridge(
             async (bridge) => await bridge.answerAskUserQuestions?.(processId, batchId, answers) === true,
             async () => true,

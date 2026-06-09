@@ -4492,6 +4492,69 @@ describe('Queue execution via HTTP API', () => {
             expect(content).toBe('partial1partial2');
         });
 
+        it('should preserve queued Ralph grilling partial output as an interrupted turn on timeout', async () => {
+            mockSendMessage.mockImplementation(async (opts: any) => {
+                opts.onStreamingChunk?.('Partial grilling transcript');
+                opts.onToolEvent?.({
+                    type: 'tool-start',
+                    toolCallId: 'tool-grill-1',
+                    toolName: 'ask_user',
+                    parameters: { question: 'Clarify scope?' },
+                });
+                opts.onToolEvent?.({
+                    type: 'tool-failed',
+                    toolCallId: 'tool-grill-1',
+                    toolName: 'ask_user',
+                    error: 'timed out before answer',
+                });
+                throw new Error('Timed out waiting for model');
+            });
+
+            const executor = new CLITaskExecutor(store, { dataDir: tmpDir });
+
+            const task: QueuedTask = {
+                id: 'task-ralph-grill-timeout',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'chat' as const,
+                    mode: 'ask',
+                    prompt: 'Grill me on this idea',
+                    context: {
+                        ralph: { phase: 'grilling', sessionId: 'sess-grill-timeout' },
+                        skills: ['grill-me'],
+                    },
+                },
+                config: {},
+            };
+
+            const result = await executor.execute(task);
+            expect(result.success).toBe(false);
+
+            const process = store.processes.get('queue_task-ralph-grill-timeout');
+            expect(process?.status).toBe('failed');
+            expect(process?.error).toBe('Timed out waiting for model');
+
+            const assistantTurn = process?.conversationTurns?.find(
+                turn => turn.role === 'assistant' && !turn.streaming,
+            );
+            expect(assistantTurn).toMatchObject({
+                role: 'assistant',
+                content: 'Partial grilling transcript',
+                interrupted: true,
+                interruptionReason: 'Timed out waiting for model',
+            });
+            expect(assistantTurn?.timeline?.map(item => item.type)).toEqual([
+                'content',
+                'tool-start',
+                'tool-failed',
+            ]);
+            expect(assistantTurn?.timeline?.[1].toolCall?.name).toBe('ask_user');
+            expect(assistantTurn?.timeline?.[2].toolCall?.error).toBe('timed out before answer');
+        });
+
         it('should still emit streaming chunks to store alongside file persistence', async () => {
             mockSendMessage.mockImplementation(async (opts: any) => {
                 opts.onStreamingChunk?.('chunk-a');

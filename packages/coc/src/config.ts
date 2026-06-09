@@ -143,6 +143,8 @@ export interface CLIConfig {
         enabled?: boolean;
         /** AI-suggested reviews: surfaces a ranked "For You" section in the PR queue. Disabled by default. */
         suggestions?: boolean;
+        /** Automatically classify open Team PR diffs. Disabled by default. */
+        autoClassifyTeam?: boolean;
     };
     /** Servers configuration (multi-server connection manager). */
     servers?: {
@@ -269,6 +271,10 @@ export interface CLIConfig {
         };
         /** AI-assisted work item authoring — Create/Improve with AI composer. Disabled by default. */
         aiAuthoring?: {
+            enabled?: boolean;
+        };
+        /** Durable Work Items/Goals workflow command-center experience. Disabled by default. */
+        workflow?: {
             enabled?: boolean;
         };
     };
@@ -399,6 +405,7 @@ export interface ResolvedCLIConfig {
     pullRequests: {
         enabled: boolean;
         suggestions: boolean;
+        autoClassifyTeam: boolean;
     };
     /** Servers configuration (multi-server connection manager). */
     servers: {
@@ -533,6 +540,10 @@ export interface ResolvedCLIConfig {
         aiAuthoring: {
             enabled: boolean;
         };
+        /** Durable Work Items/Goals workflow command-center feature. */
+        workflow: {
+            enabled: boolean;
+        };
     };
     /** Effort Tiers configuration — single Low/Medium/High selector replacing model picker + effort pill. */
     effortLevels: {
@@ -615,6 +626,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     pullRequests: {
         enabled: true,
         suggestions: false,
+        autoClassifyTeam: false,
     },
     servers: {
         enabled: true,
@@ -733,6 +745,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
             enabled: false,
         },
         aiAuthoring: {
+            enabled: false,
+        },
+        workflow: {
             enabled: false,
         },
     },

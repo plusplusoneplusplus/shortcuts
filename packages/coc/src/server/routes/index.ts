@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { Route } from '../types';
 import type { ProcessStore, TaskQueueManager, ISDKService, AIInvoker, CreateTaskInput } from '@plusplusoneplusplus/forge';
-import { modelMetadataStore, sdkServiceRegistry, CopilotSDKService, CodexSDKService, ClaudeSDKService, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_CODEX } from '@plusplusoneplusplus/forge';
+import { modelMetadataStore, sdkServiceRegistry, CopilotSDKService, CodexSDKService, ClaudeSDKService, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_CODEX, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import type { SqliteQueuePersistence } from '../queue/sqlite-queue-persistence';
@@ -74,9 +74,10 @@ import { createAzureBoardsWorkItemSyncProviderAdapter } from '../work-items/work
 import { createGitHubWorkItemSyncProviderAdapter } from '../work-items/work-item-sync-github-provider';
 import { WorkItemAzureBoardsPullPoller } from '../work-items/work-item-azure-boards-pull-poller';
 import { WorkItemGitHubPullPoller } from '../work-items/work-item-github-pull-poller';
-import { handleWorkItemTaskComplete, autoVersionPlanFromResolvedComments } from '../work-items/work-item-executor';
+import { handleWorkItemTaskComplete, autoVersionPlanFromResolvedComments, saveGoalGrillingSpecFromResponse } from '../work-items/work-item-executor';
 import type { EnqueueFunction } from '../work-items/work-item-executor';
 import { upsertWorkItemTaskFile, toTaskFileStatus } from '../work-items/work-item-task-file';
+import { clearWorkItemResponseCacheForWorkspace } from '../work-items/work-item-response-cache';
 import { execGit } from '@plusplusoneplusplus/forge';
 import type { WorkItemChangeCommit } from '../work-items/types';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
@@ -142,6 +143,26 @@ function collectWorkItemCommits(
     } catch {
         return [];
     }
+}
+
+function getLatestAssistantResponse(process: Awaited<ReturnType<ProcessStore['getProcess']>> | undefined): string | undefined {
+    const assistantTurn = [...(process?.conversationTurns ?? [])]
+        .reverse()
+        .find(turn => turn.role === 'assistant' && typeof turn.content === 'string' && turn.content.trim());
+    if (assistantTurn) return assistantTurn.content;
+
+    const result = process?.result;
+    if (typeof result !== 'string' || !result.trim()) return undefined;
+    try {
+        const parsed = JSON.parse(result) as unknown;
+        if (parsed && typeof parsed === 'object') {
+            const response = (parsed as Record<string, unknown>).response;
+            if (typeof response === 'string' && response.trim()) return response;
+        }
+    } catch {
+        return result;
+    }
+    return undefined;
 }
 
 export interface RegisterRoutesOptions {
@@ -310,7 +331,18 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.loops?.enabled ?? false, getLiveFeatureFlags, activeWorkspaceTracker);
     const repoTreeService = new RepoTreeService(dataDir, undefined, store);
     registerRepoRoutes(routes, dataDir, repoTreeService);
-    registerPrRoutes(routes, dataDir, repoTreeService, undefined, resolvedAiService);
+    const isPullRequestTeamAutoClassificationEnabled = (): boolean => {
+        const config = opts.runtimeConfigService?.config ?? opts.resolvedConfig;
+        return config?.pullRequests?.enabled === true
+            && config.pullRequests?.autoClassifyTeam === true
+            && config.features?.focusedDiff === true;
+    };
+    registerPrRoutes(routes, dataDir, repoTreeService, store, resolvedAiService, {
+        store,
+        bridge,
+        prepareTaskForEnqueue: prepareEnqueueTask,
+        getEnabled: isPullRequestTeamAutoClassificationEnabled,
+    });
     // Focused-diff classification routes — always registered so the feature
     // can be toggled live via admin config. The SPA gates the UI based on
     // runtime config; having the routes present when disabled is harmless.
@@ -685,13 +717,18 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const getWorkItemsAiAuthoringEnabled = opts.runtimeConfigService
         ? () => opts.runtimeConfigService!.config.workItems?.aiAuthoring?.enabled ?? false
         : () => opts.resolvedConfig?.workItems?.aiAuthoring?.enabled ?? false;
+    const getWorkItemsWorkflowEnabled = opts.runtimeConfigService
+        ? () => opts.runtimeConfigService!.config.workItems?.workflow?.enabled ?? false
+        : () => opts.resolvedConfig?.workItems?.workflow?.enabled ?? false;
     // AI-draft route must be registered before generic /:workItemId routes to prevent "ai-draft" from matching as an ID
     const workItemAiGenerators = createWorkItemAiGenerators({ aiService: resolvedAiService });
     registerWorkItemAiRoutes({
         routes,
         workItemStore,
         getAiAuthoringEnabled: getWorkItemsAiAuthoringEnabled,
+        getWorkflowEnabled: getWorkItemsWorkflowEnabled,
         getHierarchyEnabled: getWorkItemsHierarchyEnabled,
+        getWsServer,
         generateNewItemDraft: workItemAiGenerators.generateNewItemDraft,
         generateImproveItemDraft: workItemAiGenerators.generateImproveItemDraft,
     });
@@ -722,8 +759,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         getSyncEnabled: getWorkItemsSyncEnabled,
         dataDir,
     });
-    registerWorkItemPlanRoutes({ routes, workItemStore, getWsServer });
-    registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer, dataDir });
+    registerWorkItemPlanRoutes({ routes, workItemStore, getWsServer, getWorkflowEnabled: getWorkItemsWorkflowEnabled });
+    registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer, dataDir, getWorkflowEnabled: getWorkItemsWorkflowEnabled });
     registerWorkItemChangesRoutes({ routes, workItemStore, getWsServer });
 
     const activeWorkspaceBackgroundRefresher = new ActiveWorkspaceBackgroundRefresher({
@@ -734,9 +771,14 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                 config?.pullRequests?.enabled === true
                     ? warmPullRequestWorkspaceCache({
                         dataDir,
+                        workspaceId,
                         repoId: workspaceId,
+                        store,
+                        bridge,
                         service: repoTreeService,
                         suggestionsEnabled: config.pullRequests?.suggestions === true,
+                        autoClassifyTeamEnabled: isPullRequestTeamAutoClassificationEnabled(),
+                        prepareTaskForEnqueue: prepareEnqueueTask,
                     })
                     : Promise.resolve(),
                 warmWorkItemWorkspaceCache({
@@ -756,9 +798,42 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     bridge.on('queueChange', (event: { type: string; task?: any }) => {
         if (event.type !== 'updated' || !event.task) return;
         const task = event.task;
+        const taskStatus: string = task.status;
+
+        if (taskStatus === 'completed' && getWorkItemsWorkflowEnabled()) {
+            const goalGrilling = task.payload?.context?.workItemGoalGrilling;
+            if (goalGrilling?.workspaceId && goalGrilling?.workItemId) {
+                void (async () => {
+                    try {
+                        const process = task.processId
+                            ? await store.getProcess(task.processId, goalGrilling.workspaceId).catch(() => undefined)
+                            : undefined;
+                        const updatedGoal = await saveGoalGrillingSpecFromResponse({
+                            workspaceId: goalGrilling.workspaceId,
+                            workItemId: goalGrilling.workItemId,
+                            responseText: getLatestAssistantResponse(process),
+                            processId: task.processId,
+                            store: workItemStore,
+                        });
+                        if (!updatedGoal) return;
+                        clearWorkItemResponseCacheForWorkspace(updatedGoal.repoId);
+                        getWsServer?.()?.broadcastProcessEvent({
+                            type: 'work-item-updated',
+                            workspaceId: updatedGoal.repoId,
+                            item: updatedGoal,
+                        });
+                    } catch (error) {
+                        getLogger().warn(
+                            LogCategory.AI,
+                            `[WorkItems] Failed to persist Goal grilling spec for ${goalGrilling.workItemId}: ${error instanceof Error ? error.message : String(error)}`,
+                        );
+                    }
+                })();
+            }
+        }
+
         const workItemId = task.payload?.workItemId as string | undefined;
         if (!workItemId) return;
-        const taskStatus: string = task.status;
         if (taskStatus !== 'completed' && taskStatus !== 'failed' && taskStatus !== 'cancelled') return;
 
         handleWorkItemTaskComplete(

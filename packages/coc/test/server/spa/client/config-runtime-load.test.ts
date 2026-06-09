@@ -13,6 +13,7 @@ describe('loadRuntimeConfig', () => {
     let isGitCrossCloneCherryPickEnabled: () => boolean;
     let isSessionContextAttachmentsEnabled: () => boolean;
     let isCommitChatLensEnabled: () => boolean;
+    let isPullRequestsAutoClassifyTeamEnabled: () => boolean;
     let isContainerMode: () => boolean;
     let setCurrentAgentId: (id: string | null) => void;
     let _resetRuntimeConfig: () => void;
@@ -26,6 +27,7 @@ describe('loadRuntimeConfig', () => {
         isGitCrossCloneCherryPickEnabled = mod.isGitCrossCloneCherryPickEnabled;
         isSessionContextAttachmentsEnabled = mod.isSessionContextAttachmentsEnabled;
         isCommitChatLensEnabled = mod.isCommitChatLensEnabled;
+        isPullRequestsAutoClassifyTeamEnabled = mod.isPullRequestsAutoClassifyTeamEnabled;
         isContainerMode = mod.isContainerMode;
         setCurrentAgentId = mod.setCurrentAgentId;
         _resetRuntimeConfig = mod._resetRuntimeConfig;
@@ -46,6 +48,7 @@ describe('loadRuntimeConfig', () => {
         expect(isGitCrossCloneCherryPickEnabled()).toBe(false);
         expect(isSessionContextAttachmentsEnabled()).toBe(false);
         expect(isCommitChatLensEnabled()).toBe(false);
+        expect(isPullRequestsAutoClassifyTeamEnabled()).toBe(false);
 
         vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
             ok: true,
@@ -60,6 +63,7 @@ describe('loadRuntimeConfig', () => {
                     scratchpadLayout: 'horizontal',
                     workflowsEnabled: false,
                     pullRequestsEnabled: false,
+                    pullRequestsAutoClassifyTeamEnabled: true,
                     serversEnabled: false,
                     ralphEnabled: true,
                     forEachEnabled: true,
@@ -83,6 +87,7 @@ describe('loadRuntimeConfig', () => {
         expect(isGitCrossCloneCherryPickEnabled()).toBe(true);
         expect(isSessionContextAttachmentsEnabled()).toBe(true);
         expect(isCommitChatLensEnabled()).toBe(true);
+        expect(isPullRequestsAutoClassifyTeamEnabled()).toBe(true);
     });
 
     it('falls back to bootstrap config on fetch failure', async () => {

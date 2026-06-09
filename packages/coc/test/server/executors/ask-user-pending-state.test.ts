@@ -163,11 +163,11 @@ describe('CLITaskExecutor ask-user pending state', () => {
 
         await expect(executor.answerAskUserQuestions(processId, 'batch-1', [
             { questionId: 'q1', answer: true },
-            { questionId: 'q2', skipped: true },
+            { questionId: 'q2', deferred: true, reason: 'needs-context', note: 'Need more details.' },
         ])).resolves.toBe(true);
         expect(answerQuestions).toHaveBeenCalledWith([
             { questionId: 'q1', answer: true },
-            { questionId: 'q2', skipped: true },
+            { questionId: 'q2', deferred: true, reason: 'needs-context', note: 'Need more details.' },
         ]);
         expect(store.processes.get(processId)?.pendingAskUser).toBeUndefined();
     });

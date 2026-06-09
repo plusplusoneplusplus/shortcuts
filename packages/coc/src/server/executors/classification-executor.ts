@@ -29,6 +29,7 @@ import {
     buildFollowUpSuggestionsAddon,
     buildSearchConversationsAddon,
     buildTavilyWebSearchAddon,
+    buildModeSystemMessage,
     applyLlmToolPreferences,
 } from './prompt-builder';
 import { systemMessageBuilder } from './system-message-builder';
@@ -96,12 +97,13 @@ export class ClassificationExecutor extends ChatBaseExecutor {
         toolGuidance += filteredGuidance;
 
         const systemMessage = await systemMessageBuilder()
-            .withRepoInstructions(workingDirectory, 'autopilot')
+            .append(buildModeSystemMessage('ask')?.content)
+            .withRepoInstructions(workingDirectory, 'ask')
             .appendToolGuidance(toolGuidance)
             .build();
 
         return {
-            agentMode: 'autopilot' as AgentMode,
+            agentMode: 'interactive' as AgentMode,
             systemMessage,
             tools,
             effectivePrompt: prompt,

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Dialog } from '../../ui/Dialog';
 import { Button } from '../../ui';
 import { getSpaCocClient } from '../../api/cocClient';
-import { isWorkItemsHierarchyEnabled } from '../../utils/config';
+import { isWorkItemsHierarchyEnabled, isWorkItemsWorkflowEnabled } from '../../utils/config';
 
 type WorkItemTypeAll = 'work-item' | 'bug' | 'goal' | 'epic' | 'feature' | 'pbi';
 
@@ -38,6 +38,7 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const hierarchyEnabled = isWorkItemsHierarchyEnabled();
+    const workflowEnabled = isWorkItemsWorkflowEnabled();
 
     useEffect(() => {
         if (open) {
@@ -88,10 +89,18 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
     const effectiveType = selectedType;
     const isBug = effectiveType === 'bug';
     const isContainer = ['epic', 'feature', 'pbi'].includes(effectiveType);
+    const workflowShellType = workflowEnabled && (effectiveType === 'work-item' || effectiveType === 'goal');
+    const showTypeSelector = hierarchyEnabled || workflowShellType;
+    const typeOptions: WorkItemTypeAll[] = hierarchyEnabled
+        ? ['epic', 'feature', 'pbi', 'work-item', 'bug', 'goal']
+        : ['work-item', 'goal'];
     const dialogTitle = hierarchyEnabled
         ? `Create ${TYPE_LABELS[effectiveType]}`
+        : workflowShellType ? 'Create Work Item or Goal'
         : (isBug ? 'Create Bug' : 'Create Work Item');
-    const titlePlaceholder = isBug ? 'Bug title' : isContainer ? `${TYPE_LABELS[effectiveType]} title` : 'Work item title';
+    const titlePlaceholder = effectiveType === 'goal'
+        ? 'Goal title'
+        : isBug ? 'Bug title' : isContainer ? `${TYPE_LABELS[effectiveType]} title` : 'Work item title';
 
     return (
         <Dialog
@@ -116,8 +125,8 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
             )}
             {!fromChatId && (
                 <div className="space-y-3">
-                    {/* Type selector — only shown when hierarchy is enabled */}
-                    {hierarchyEnabled && (
+                    {/* Type selector — hierarchy shows all types; workflow v1 exposes Work Item vs Goal. */}
+                    {showTypeSelector && (
                         <div>
                             <label className="block text-xs font-medium text-[#848484] dark:text-[#999] mb-1">Type</label>
                             <select
@@ -127,12 +136,9 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
                                 disabled={loading}
                                 data-testid="create-work-item-type"
                             >
-                                <option value="epic">Epic</option>
-                                <option value="feature">Feature</option>
-                                <option value="pbi">PBI / Story</option>
-                                <option value="work-item">Work Item</option>
-                                <option value="bug">Bug</option>
-                                <option value="goal">Goal</option>
+                                {typeOptions.map(type => (
+                                    <option key={type} value={type}>{TYPE_LABELS[type]}</option>
+                                ))}
                             </select>
                         </div>
                     )}

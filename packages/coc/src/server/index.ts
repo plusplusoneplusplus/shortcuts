@@ -631,6 +631,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 workItemsHierarchyEnabled: liveConfig.workItems?.hierarchy?.enabled ?? false,
                 workItemsSyncEnabled: liveConfig.workItems?.sync?.enabled ?? false,
                 workItemsAiAuthoringEnabled: liveConfig.workItems?.aiAuthoring?.enabled ?? false,
+                workItemsWorkflowEnabled: liveConfig.workItems?.workflow?.enabled ?? false,
                 bindAddress: host,
             });
         },

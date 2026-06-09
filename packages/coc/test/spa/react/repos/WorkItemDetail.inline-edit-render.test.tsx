@@ -50,6 +50,7 @@ vi.mock(`../../../../src/server/spa/client/react/features/git/hooks/useCommitCom
 vi.mock(`../../../../src/server/spa/client/react/utils/config`, () => ({
     isWorkItemsHierarchyEnabled: () => false,
     isWorkItemsAiAuthoringEnabled: () => false,
+    isWorkItemsWorkflowEnabled: () => false,
     isCommitChatLensEnabled: () => false,
 }));
 

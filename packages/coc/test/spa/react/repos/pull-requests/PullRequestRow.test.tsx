@@ -147,6 +147,25 @@ describe('PullRequestRow — risk pill', () => {
     });
 });
 
+describe('PullRequestRow — classification badge', () => {
+    it('renders accessible Team auto-classification badge states', () => {
+        const { rerender } = render(<PullRequestRow pr={makePr()} onClick={vi.fn()} classificationStatus="ready" />);
+        expect(screen.getByTestId('pr-classification-badge')).toHaveTextContent('AI ready');
+        expect(screen.getByTestId('pr-classification-badge')).toHaveAccessibleName('AI classification ready');
+
+        rerender(<PullRequestRow pr={makePr()} onClick={vi.fn()} classificationStatus="running" />);
+        expect(screen.getByTestId('pr-classification-badge')).toHaveTextContent('AI running');
+
+        rerender(<PullRequestRow pr={makePr()} onClick={vi.fn()} classificationStatus="missing" />);
+        expect(screen.getByTestId('pr-classification-badge')).toHaveTextContent('AI missing');
+    });
+
+    it('omits the classification badge in compact mode', () => {
+        render(<PullRequestRow pr={makePr()} onClick={vi.fn()} compact classificationStatus="ready" />);
+        expect(screen.queryByTestId('pr-classification-badge')).toBeNull();
+    });
+});
+
 describe('PullRequestRow — selection styling', () => {
     it('applies the selected styling when isSelected is true', () => {
         render(<PullRequestRow pr={makePr()} onClick={vi.fn()} isSelected />);

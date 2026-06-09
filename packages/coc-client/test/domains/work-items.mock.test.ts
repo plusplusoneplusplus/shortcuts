@@ -200,6 +200,7 @@ describe('WorkItemsClient mock coverage', () => {
     await client.pin('repo/a', 'wi/1', true);
     await client.archive('repo/a', 'wi/1', false);
     await client.requestChanges('repo/a', 'wi/1', { comments: ['Fix this'], source: 'diff-comments' });
+    await client.startAiReview('repo/a', 'wi/1', { provider: 'claude' });
 
     expect(adapter.calls).toEqual([
       {
@@ -235,6 +236,13 @@ describe('WorkItemsClient mock coverage', () => {
         options: {
           method: 'POST',
           body: { comments: ['Fix this'], source: 'diff-comments' },
+        },
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/wi%2F1/ai-review',
+        options: {
+          method: 'POST',
+          body: { provider: 'claude' },
         },
       },
     ]);
@@ -348,6 +356,8 @@ describe('WorkItemsClient mock coverage', () => {
 
     await client.planVersions('repo/a', 'wi/1');
     await client.getPlanVersion('repo/a', 'wi/1', 3);
+    await client.comparePlanVersions('repo/a', 'wi/1', 1, 3);
+    await client.restorePlanVersion('repo/a', 'wi/1', 1, { reason: 'Restore v1' });
     await client.refinePlan('repo/a', 'wi/1', { instructions: 'Tighten scope', summary: 'Refine' });
     await client.resolveComments('repo/a', 'wi/1', { type: 'commit', commitSha: 'abc123', sourceRunIndex: 2, model: 'gpt-5.5' });
 
@@ -361,6 +371,19 @@ describe('WorkItemsClient mock coverage', () => {
         options: undefined,
       },
       {
+        path: '/workspaces/repo%2Fa/work-items/wi%2F1/plan/versions/compare',
+        options: {
+          query: { base: 1, target: 3 },
+        },
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/wi%2F1/plan/versions/1/restore',
+        options: {
+          method: 'POST',
+          body: { reason: 'Restore v1' },
+        },
+      },
+      {
         path: '/workspaces/repo%2Fa/work-items/wi%2F1/plan/refine',
         options: {
           method: 'POST',
@@ -372,6 +395,41 @@ describe('WorkItemsClient mock coverage', () => {
         options: {
           method: 'POST',
           body: { type: 'commit', commitSha: 'abc123', sourceRunIndex: 2, model: 'gpt-5.5' },
+        },
+      },
+    ]);
+  });
+
+  it('sends explicit AI draft apply requests with optimistic base metadata', async () => {
+    const adapter = createMockAdapter({ kind: 'applied', version: 2 });
+    const client = new WorkItemsClient(adapter);
+
+    await client.applyAiDraft('repo/a', 'wi/1', {
+      prompt: 'Draft implementation details',
+      targets: ['fields', 'goal'],
+      clarificationAnswers: ['Use the existing dashboard'],
+      clarificationCount: 1,
+      baseUpdatedAt: '2026-01-01T00:00:00.000Z',
+      baseContentVersion: 1,
+      summary: 'AI draft v2',
+      reason: 'User clicked Draft with AI',
+    });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/workspaces/repo%2Fa/work-items/wi%2F1/ai-draft/apply',
+        options: {
+          method: 'POST',
+          body: {
+            prompt: 'Draft implementation details',
+            targets: ['fields', 'goal'],
+            clarificationAnswers: ['Use the existing dashboard'],
+            clarificationCount: 1,
+            baseUpdatedAt: '2026-01-01T00:00:00.000Z',
+            baseContentVersion: 1,
+            summary: 'AI draft v2',
+            reason: 'User clicked Draft with AI',
+          },
         },
       },
     ]);

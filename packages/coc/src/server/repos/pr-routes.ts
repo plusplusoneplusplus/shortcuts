@@ -18,6 +18,7 @@
  * GET  /api/repos/:repoId/pull-requests/coworker-roster  — list Team roster coworkers
  * POST /api/repos/:repoId/pull-requests/coworker-roster  — add/update a Team roster coworker
  * DELETE /api/repos/:repoId/pull-requests/coworker-roster/:coworkerKey — remove a Team roster coworker
+ * POST /api/repos/:repoId/pull-requests/team-auto-classification — enqueue bounded Team PR classifications
  * GET  /api/repos/:repoId/pull-requests/:prId/review-progress — get reviewer progress (AC-04)
  * PUT  /api/repos/:repoId/pull-requests/:prId/review-progress — save reviewer progress (AC-04)
  *
@@ -28,6 +29,7 @@ import * as url from 'url';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import type { Route } from '../types';
+import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import { sendJson, send404, send400, send500, readJsonBody } from '../router';
 import { RepoTreeService } from './tree-service';
 import {
@@ -51,8 +53,12 @@ import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
 import { computeSummary, parseFullDiff } from '@plusplusoneplusplus/forge';
-import type { IPullRequestsService, ISDKService, ProcessStore, ProviderPullRequest } from '@plusplusoneplusplus/forge';
+import type { CreateTaskInput, IPullRequestsService, ISDKService, ProcessStore, ProviderPullRequest } from '@plusplusoneplusplus/forge';
 import { readReviewHistoryCache, fetchAndCacheReviewHistory, readSuggestionsCache, rankAndCacheSuggestions, toPrMetadata } from './pr-suggestions';
+import {
+    autoClassifyTeamPullRequests,
+    type TeamAutoClassifiablePullRequest,
+} from './pr-team-auto-classification';
 
 // ============================================================================
 // Helpers
@@ -107,6 +113,47 @@ function parseWorkspaceId(req: Parameters<Route['handler']>[0], body: unknown, r
     }
     const parsed = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`);
     return parsed.searchParams.get('workspaceId')?.trim() || repoId;
+}
+
+function parseTeamAutoClassificationPullRequests(raw: unknown): TeamAutoClassifiablePullRequest[] | string {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return 'Body must be an object';
+    }
+    const pullRequests = (raw as Record<string, unknown>).pullRequests;
+    if (!Array.isArray(pullRequests)) {
+        return 'pullRequests must be an array';
+    }
+    if (pullRequests.length > 200) {
+        return 'pullRequests must contain at most 200 entries';
+    }
+
+    const parsed: TeamAutoClassifiablePullRequest[] = [];
+    for (const [index, value] of pullRequests.entries()) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            return `pullRequests[${index}] must be an object`;
+        }
+        const item = value as Record<string, unknown>;
+        const author = item.author && typeof item.author === 'object' && !Array.isArray(item.author)
+            ? item.author as Record<string, unknown>
+            : undefined;
+        const number = typeof item.number === 'number' || typeof item.number === 'string'
+            ? item.number
+            : undefined;
+        const status = typeof item.status === 'string' ? item.status : undefined;
+        const headSha = typeof item.headSha === 'string' ? item.headSha : undefined;
+        const authorId = typeof author?.id === 'number' || typeof author?.id === 'string'
+            ? author.id
+            : undefined;
+        const displayName = typeof author?.displayName === 'string' ? author.displayName : undefined;
+
+        parsed.push({
+            ...(number !== undefined ? { number } : {}),
+            ...(status !== undefined ? { status } : {}),
+            ...(headSha !== undefined ? { headSha } : {}),
+            ...(author ? { author: { ...(authorId !== undefined ? { id: authorId } : {}), ...(displayName !== undefined ? { displayName } : {}) } } : {}),
+        });
+    }
+    return parsed;
 }
 
 function parsePositiveIntegerPathSegment(raw: string): number | null {
@@ -206,16 +253,34 @@ async function refreshPullRequestListCache(
 
 export interface WarmPullRequestWorkspaceCacheOptions {
     dataDir: string;
+    workspaceId: string;
     repoId: string;
+    store?: ProcessStore;
+    bridge?: MultiRepoQueueRouter;
     service?: RepoTreeService;
     suggestionsEnabled?: boolean;
+    autoClassifyTeamEnabled?: boolean;
+    prepareTaskForEnqueue?: (input: CreateTaskInput) => Promise<void>;
 }
 
 export async function warmPullRequestWorkspaceCache(options: WarmPullRequestWorkspaceCacheOptions): Promise<void> {
     const svc = options.service ?? new RepoTreeService(options.dataDir);
     await refreshPullRequestListCache(options.dataDir, svc, options.repoId, 'open', 'mine');
-    listRecentOpenedPullRequests(options.dataDir, options.repoId, options.repoId);
-    listPullRequestCoworkerRoster(options.dataDir, options.repoId, options.repoId);
+    listRecentOpenedPullRequests(options.dataDir, options.workspaceId, options.repoId);
+    listPullRequestCoworkerRoster(options.dataDir, options.workspaceId, options.repoId);
+    if (options.autoClassifyTeamEnabled === true && options.bridge && options.store) {
+        const allOpen = await refreshPullRequestListCache(options.dataDir, svc, options.repoId, 'open', 'all');
+        await triggerTeamAutoClassification({
+            dataDir: options.dataDir,
+            store: options.store,
+            bridge: options.bridge,
+            repoTreeService: svc,
+            prepareTaskForEnqueue: options.prepareTaskForEnqueue,
+            workspaceId: options.workspaceId,
+            repoId: options.repoId,
+            pullRequests: allOpen.data,
+        });
+    }
     if (options.suggestionsEnabled) {
         readSuggestionsCache(options.dataDir, options.repoId);
     }
@@ -584,6 +649,54 @@ async function getCachedCombinedDiff(
 }
 
 // ============================================================================
+// Auto-classification
+// ============================================================================
+
+export interface PullRequestAutoClassificationOptions {
+    store: ProcessStore;
+    bridge: MultiRepoQueueRouter;
+    prepareTaskForEnqueue?: (input: CreateTaskInput) => Promise<void>;
+    getEnabled?: () => boolean;
+}
+
+interface TriggerTeamAutoClassificationOptions {
+    dataDir: string;
+    store: ProcessStore;
+    bridge: MultiRepoQueueRouter;
+    repoTreeService?: RepoTreeService;
+    prepareTaskForEnqueue?: (input: CreateTaskInput) => Promise<void>;
+    workspaceId: string;
+    repoId: string;
+    pullRequests: readonly TeamAutoClassifiablePullRequest[];
+}
+
+async function triggerTeamAutoClassification(options: TriggerTeamAutoClassificationOptions): Promise<void> {
+    try {
+        const result = await autoClassifyTeamPullRequests(options);
+        if (result.errors.length > 0) {
+            const first = result.errors[0];
+            console.warn(
+                `[pr-auto-classify-team] ${result.errors.length} enqueue error(s) for workspace=${options.workspaceId} repo=${options.repoId}; first=${first.identifier ?? '(unknown)'}: ${first.message}`,
+            );
+        }
+    } catch (err) {
+        console.warn(
+            `[pr-auto-classify-team] failed for workspace=${options.workspaceId} repo=${options.repoId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+    }
+}
+
+function isTeamAutoClassificationEnabled(options?: PullRequestAutoClassificationOptions): boolean {
+    if (!options) return false;
+    try {
+        return options.getEnabled?.() === true;
+    } catch (err) {
+        console.warn(`[pr-auto-classify-team] failed to read config gate: ${err instanceof Error ? err.message : String(err)}`);
+        return false;
+    }
+}
+
+// ============================================================================
 // Registration
 // ============================================================================
 
@@ -595,7 +708,14 @@ async function getCachedCombinedDiff(
  * @param dataDir - CoC data directory (e.g. ~/.coc)
  * @param service - Shared RepoTreeService instance (singleton)
  */
-export function registerPrRoutes(routes: Route[], dataDir: string, service?: RepoTreeService, store?: ProcessStore, aiService?: ISDKService): void {
+export function registerPrRoutes(
+    routes: Route[],
+    dataDir: string,
+    service?: RepoTreeService,
+    store?: ProcessStore,
+    aiService?: ISDKService,
+    autoClassification?: PullRequestAutoClassificationOptions,
+): void {
     const svc = service ?? new RepoTreeService(dataDir, undefined, store);
 
     // -- List PRs -------------------------------------------------------------
@@ -612,6 +732,9 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 const top = Math.min(+(query.top ?? 25), 100);
                 const skip = +(query.skip ?? 0);
                 const force = query.force === 'true';
+                const workspaceId = typeof query.workspaceId === 'string' && query.workspaceId.trim()
+                    ? query.workspaceId.trim()
+                    : repoId;
                 const cacheKey = makePrCacheKey(repoId, status, scope);
 
                 let entry: PrCacheEntry;
@@ -640,6 +763,19 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 if (typeof query.search === 'string' && query.search) {
                     const searchFilter = query.search.toLowerCase();
                     page = page.filter((pr: any) => pr.title.toLowerCase().includes(searchFilter));
+                }
+
+                if (isTeamAutoClassificationEnabled(autoClassification)) {
+                    await triggerTeamAutoClassification({
+                        dataDir,
+                        store: autoClassification!.store,
+                        bridge: autoClassification!.bridge,
+                        repoTreeService: svc,
+                        prepareTaskForEnqueue: autoClassification!.prepareTaskForEnqueue,
+                        workspaceId,
+                        repoId,
+                        pullRequests: page,
+                    });
                 }
 
                 sendJson(res, { pullRequests: page, total: page.length, fetchedAt: entry.fetchedAt });
@@ -933,6 +1069,51 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 const workspaceId = parseWorkspaceId(req, undefined, repoId);
                 const entries = removePullRequestCoworkerFromRoster(dataDir, workspaceId, repoId, coworkerKey);
                 return sendJson(res, { entries });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    // -- Trigger bounded Team auto-classification ------------------------------
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/team-auto-classification$/,
+        handler: async (req, res, match) => {
+            try {
+                if (!isTeamAutoClassificationEnabled(autoClassification)) {
+                    return sendJson(res, { error: 'Pull Requests Team auto-classification is disabled' }, 403);
+                }
+
+                const repoId = decodeURIComponent(match![1]);
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+
+                let raw: unknown;
+                try {
+                    raw = await readJsonBody<unknown>(req);
+                } catch {
+                    return send400(res, 'Invalid JSON body');
+                }
+
+                const validation = parseTeamAutoClassificationPullRequests(raw);
+                if (typeof validation === 'string') {
+                    return send400(res, validation);
+                }
+
+                const workspaceId = parseWorkspaceId(req, raw, repoId);
+                const result = await autoClassifyTeamPullRequests({
+                    dataDir,
+                    store: autoClassification!.store,
+                    bridge: autoClassification!.bridge,
+                    repoTreeService: svc,
+                    prepareTaskForEnqueue: autoClassification!.prepareTaskForEnqueue,
+                    workspaceId,
+                    repoId,
+                    pullRequests: validation,
+                });
+                return sendJson(res, result);
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
             }

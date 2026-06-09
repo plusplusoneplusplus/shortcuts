@@ -14,6 +14,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Button, cn } from '../../ui';
+import { Dialog } from '../../ui/Dialog';
 import { fetchApi } from '../../hooks/useApi';
 import { getSpaCocClient } from '../../api/cocClient';
 import { formatRelativeTime } from '../../utils/format';
@@ -32,6 +33,7 @@ import {
     createAnchorData,
     DEFAULT_ANCHOR_MATCH_CONFIG,
 } from '@plusplusoneplusplus/forge/editor/anchor';
+import type { WorkItemPlanVersionComparison } from '@plusplusoneplusplus/coc-client';
 import { selectionToSourcePosition } from '../../utils/selection-position';
 import { extractDocumentContext } from '../../utils/document-context';
 import { DASHBOARD_AI_COMMANDS } from '../../shared/ai-commands';
@@ -72,6 +74,10 @@ interface WorkItemPlanSectionProps {
     viewMode?: PlanViewMode;
     /** Callback when the view mode changes. */
     onViewModeChange?: (mode: PlanViewMode) => void;
+    /** Enables workflow-only immutable version compare and restore actions. */
+    enableVersionActions?: boolean;
+    /** Parent-level dirty state; restore must not clobber unsaved metadata or plan edits. */
+    hasUnsavedChanges?: boolean;
 }
 
 export type PlanViewMode = 'preview' | 'source';
@@ -87,6 +93,18 @@ const MIN_SELECTION_LENGTH = 3;
 /** Synthetic task-comments path for work item plan inline comments. */
 function planCommentPath(workItemId: string): string {
     return `__wi-plan__/${workItemId}`;
+}
+
+function diffChunkClass(type: WorkItemPlanVersionComparison['diff'][number]['type']): string {
+    if (type === 'added') return 'bg-green-50 text-green-800 dark:bg-green-900/20 dark:text-green-200';
+    if (type === 'removed') return 'bg-red-50 text-red-800 dark:bg-red-900/20 dark:text-red-200';
+    return 'bg-transparent text-[#656d76] dark:text-[#999]';
+}
+
+function diffLinePrefix(type: WorkItemPlanVersionComparison['diff'][number]['type']): string {
+    if (type === 'added') return '+';
+    if (type === 'removed') return '-';
+    return ' ';
 }
 
 /** Build anchor data for a plan selection, returning undefined on failure. */
@@ -106,7 +124,7 @@ function buildPlanAnchor(
 
 export function WorkItemPlanSection({
     workspaceId, workItemId, plan, canEdit, draftContent, onDraftChange, onUpdated, onError, onNavigateToTasksTab,
-    viewMode: controlledMode, onViewModeChange,
+    viewMode: controlledMode, onViewModeChange, enableVersionActions = false, hasUnsavedChanges = false,
 }: WorkItemPlanSectionProps) {
     // ── Plan version state ──────────────────────────────────────────────────
     const [versions, setVersions] = useState<PlanVersionMeta[]>([]);
@@ -117,6 +135,11 @@ export function WorkItemPlanSection({
     const viewMode = controlledMode ?? internalMode;
     const setViewMode = onViewModeChange ?? setInternalMode;
     const [resolving, setResolving] = useState(false);
+    const [comparison, setComparison] = useState<WorkItemPlanVersionComparison | null>(null);
+    const [comparisonOpen, setComparisonOpen] = useState(false);
+    const [comparisonLoading, setComparisonLoading] = useState(false);
+    const [comparisonError, setComparisonError] = useState<string | null>(null);
+    const [restoreLoading, setRestoreLoading] = useState(false);
 
     const currentVersion = plan?.version ?? null;
 
@@ -210,6 +233,46 @@ export function WorkItemPlanSection({
     // versions are read-only snapshots fetched on demand.
     const displayedContent = isCurrentSelected ? currentDraft : (selectedContent ?? '');
     const canEditNow = canEdit && isCurrentSelected;
+    const selectedVersionMeta = versions.find(v => v.version === selectedVersion);
+    const canActOnSelectedVersion = enableVersionActions && !isCurrentSelected && selectedVersion !== null && currentVersion !== null;
+    const hasBlockingUnsavedChanges = hasUnsavedChanges || isPlanDirty;
+    const restoreDisabled = restoreLoading || hasBlockingUnsavedChanges;
+
+    const handleCompareSelectedToCurrent = useCallback(async () => {
+        if (!canActOnSelectedVersion || selectedVersion === null || currentVersion === null) return;
+        setComparisonOpen(true);
+        setComparisonLoading(true);
+        setComparison(null);
+        setComparisonError(null);
+        try {
+            const data = await getSpaCocClient().workItems.comparePlanVersions(workspaceId, workItemId, selectedVersion, currentVersion);
+            setComparison(data);
+        } catch (err: any) {
+            setComparison(null);
+            setComparisonError(err.message || 'Failed to compare plan versions');
+        } finally {
+            setComparisonLoading(false);
+        }
+    }, [canActOnSelectedVersion, currentVersion, selectedVersion, workspaceId, workItemId]);
+
+    const handleRestoreSelectedVersion = useCallback(async () => {
+        if (!canActOnSelectedVersion || selectedVersion === null || restoreDisabled) return;
+        if (!window.confirm(`Restore plan v${selectedVersion} as a new current version?`)) return;
+        setRestoreLoading(true);
+        try {
+            await getSpaCocClient().workItems.restorePlanVersion(workspaceId, workItemId, selectedVersion, {
+                reason: `Restored plan v${selectedVersion} from version history`,
+                summary: `Restored plan v${selectedVersion}`,
+            });
+            setSelectedVersion(null);
+            setSelectedContent(null);
+            await onUpdated();
+        } catch (err: any) {
+            onError(err.message || 'Failed to restore plan version');
+        } finally {
+            setRestoreLoading(false);
+        }
+    }, [canActOnSelectedVersion, onError, onUpdated, restoreDisabled, selectedVersion, workspaceId, workItemId]);
 
     // Resolve inline comments with AI — creates a Run# execution session
     const handleResolveAllWithAI = useCallback(async () => {
@@ -445,10 +508,35 @@ export function WorkItemPlanSection({
                     })}
                     {versions.length > 0 && !isCurrentSelected && (
                         <span className="text-[10px] text-[#848484] italic ml-1">
-                            {versions.find(v => v.version === selectedVersion)?.summary
-                                ? `"${versions.find(v => v.version === selectedVersion)!.summary}"`
+                            {selectedVersionMeta?.summary
+                                ? `"${selectedVersionMeta.summary}"`
                                 : 'Read-only snapshot'}
                         </span>
+                    )}
+                    {canActOnSelectedVersion && (
+                        <div className="flex items-center gap-1 ml-auto">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={handleCompareSelectedToCurrent}
+                                disabled={comparisonLoading}
+                                loading={comparisonLoading}
+                                data-testid="plan-version-compare-btn"
+                            >
+                                Compare to current
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={handleRestoreSelectedVersion}
+                                disabled={restoreDisabled}
+                                loading={restoreLoading}
+                                title={hasBlockingUnsavedChanges ? 'Save or discard unsaved edits before restoring a version' : `Restore v${selectedVersion} as a new current version`}
+                                data-testid="plan-version-restore-btn"
+                            >
+                                Restore as latest
+                            </Button>
+                        </div>
                     )}
                 </div>
             )}
@@ -586,7 +674,62 @@ export function WorkItemPlanSection({
                     isDeleting={deletingIds.has(activePopoverComment.id)}
                 />
             )}
+
+            <Dialog
+                open={comparisonOpen}
+                onClose={() => setComparisonOpen(false)}
+                title={comparison ? `Compare v${comparison.base.version} → v${comparison.target.version}` : 'Compare versions'}
+                className="max-w-[760px]"
+                id="plan-version-compare-dialog"
+                footer={
+                    <Button variant="secondary" onClick={() => setComparisonOpen(false)} data-testid="plan-version-compare-close-btn">
+                        Close
+                    </Button>
+                }
+            >
+                <div className="space-y-3" data-testid="plan-version-compare-body">
+                    {comparisonLoading && (
+                        <div className="text-xs text-[#848484] py-4 text-center">Comparing versions…</div>
+                    )}
+                    {comparisonError && (
+                        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300" data-testid="plan-version-compare-error">
+                            {comparisonError}
+                        </div>
+                    )}
+                    {comparison && !comparisonLoading && (
+                        <>
+                            <div className="grid gap-2 text-xs sm:grid-cols-2">
+                                <div className="rounded-md border border-[#d0d7de] dark:border-[#474749] p-2">
+                                    <div className="font-semibold text-[#1f2328] dark:text-[#cccccc]">Base v{comparison.base.version}</div>
+                                    <div className="text-[#656d76] dark:text-[#999]">
+                                        {comparison.base.summary || comparison.base.reason || 'Historical version'}
+                                    </div>
+                                </div>
+                                <div className="rounded-md border border-[#d0d7de] dark:border-[#474749] p-2">
+                                    <div className="font-semibold text-[#1f2328] dark:text-[#cccccc]">Current v{comparison.target.version}</div>
+                                    <div className="text-[#656d76] dark:text-[#999]">
+                                        {comparison.target.summary || comparison.target.reason || 'Current version'}
+                                    </div>
+                                </div>
+                            </div>
+                            <pre className="max-h-[52vh] overflow-auto rounded-md border border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#1e1e1e] p-0 text-[11px] leading-[1.45]" data-testid="plan-version-compare-diff">
+                                {comparison.diff.map((chunk, chunkIndex) => (
+                                    <span key={`${chunk.type}-${chunkIndex}`}>
+                                        {chunk.lines.map((line, lineIndex) => (
+                                            <span
+                                                key={`${chunk.type}-${chunkIndex}-${lineIndex}`}
+                                                className={cn('block px-3 whitespace-pre-wrap', diffChunkClass(chunk.type))}
+                                            >
+                                                {diffLinePrefix(chunk.type)} {line || ' '}
+                                            </span>
+                                        ))}
+                                    </span>
+                                ))}
+                            </pre>
+                        </>
+                    )}
+                </div>
+            </Dialog>
         </div>
     );
 }
-

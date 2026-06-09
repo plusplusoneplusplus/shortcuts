@@ -1012,10 +1012,13 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             if (body.plan?.content) {
                 item.plan = {
                     version: 1,
+                    currentVersion: 1,
                     content: body.plan.content,
                     updatedAt: now,
                     resolvedBy: body.plan.resolvedBy || 'user',
+                    source: body.plan.resolvedBy === 'ai' ? 'ai' : 'user',
                 };
+                item.currentContentVersion = 1;
             }
 
             try {
@@ -1114,6 +1117,9 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 if (!isObject(body.plan) || typeof body.plan.content !== 'string') {
                     return handleAPIError(res, badRequest('plan.content must be a string'));
                 }
+                if (!body.plan.content.trim()) {
+                    return handleAPIError(res, badRequest('plan.content must contain non-whitespace content'));
+                }
                 const now = new Date().toISOString();
                 const newVersion = (current.plan?.version ?? 0) + 1;
                 const resolvedBy = body.plan.resolvedBy === 'ai' ? 'ai' : 'user';
@@ -1122,13 +1128,20 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                     content: body.plan.content,
                     createdAt: now,
                     resolvedBy,
+                    source: resolvedBy,
+                    authorType: resolvedBy,
+                    reason: typeof body.plan.reason === 'string' ? body.plan.reason : undefined,
                     summary: typeof body.plan.summary === 'string' ? body.plan.summary : undefined,
                 };
+                updates.currentContentVersion = newVersion;
                 updates.plan = {
                     version: newVersion,
+                    currentVersion: newVersion,
                     content: body.plan.content,
                     updatedAt: now,
                     resolvedBy,
+                    source: resolvedBy,
+                    reason: pendingPlanVersion.reason,
                 };
             }
             if (body.tracker !== undefined) {
@@ -1307,6 +1320,11 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 content: newContent,
                 createdAt: now,
                 resolvedBy: 'user' as const,
+                source: 'user' as const,
+                authorType: 'user' as const,
+                reason: source === 'diff-comments'
+                    ? `Incorporated ${comments.length} diff review comment(s)`
+                    : `Incorporated ${comments.length} review comment(s)`,
                 summary: source === 'diff-comments'
                     ? `Incorporated ${comments.length} diff review comment(s)`
                     : `Incorporated ${comments.length} review comment(s)`,
@@ -1315,11 +1333,15 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             await workItemStore.savePlanVersion(workItemId, planVersion);
             const updated = await workItemStore.updateWorkItem(workItemId, {
                 status: 'readyToExecute',
+                currentContentVersion: newVersion,
                 plan: {
                     version: newVersion,
+                    currentVersion: newVersion,
                     content: newContent,
                     updatedAt: now,
                     resolvedBy: 'user',
+                    source: 'user',
+                    reason: planVersion.reason,
                 },
                 reviewComments: [],
             });

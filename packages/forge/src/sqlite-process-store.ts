@@ -103,6 +103,8 @@ interface TurnRow {
     content: string | null;
     timestamp: string;
     streaming: number;
+    interrupted: number;
+    interruption_reason: string | null;
     tool_calls: string | null;
     timeline: string | null;
     images: string | null;
@@ -430,6 +432,8 @@ function turnToRow(turn: ConversationTurn, processId: string): Record<string, un
         content: turn.content ?? null,
         timestamp: turn.timestamp.toISOString(),
         streaming: boolToInt(turn.streaming),
+        interrupted: boolToInt(turn.interrupted),
+        interruption_reason: turn.interruptionReason ?? null,
         tool_calls: turn.toolCalls ? JSON.stringify(turn.toolCalls.map(serializeToolCall)) : null,
         timeline: JSON.stringify((turn.timeline ?? []).map(serializeTimelineItem)),
         images: turn.images ? JSON.stringify(turn.images) : null,
@@ -481,6 +485,8 @@ function rowToTurn(row: TurnRow): ConversationTurn {
         timestamp: new Date(row.timestamp),
         turnIndex: row.turn_index,
         streaming: intToBool(row.streaming),
+        interrupted: intToBool(row.interrupted),
+        interruptionReason: row.interruption_reason ?? undefined,
         toolCalls,
         timeline,
         images: jsonParse<string[]>(row.images),
@@ -618,11 +624,11 @@ export class SqliteProcessStore implements ProcessStore {
         this.insertTurnStmt = this.db.prepare(`
             INSERT INTO conversation_turns (
                 process_id, turn_index, role, content, timestamp, streaming,
-                tool_calls, timeline, images, historical, suggestions,
+                interrupted, interruption_reason, tool_calls, timeline, images, historical, suggestions,
                 token_usage, paste_externalized, model, mode
             ) VALUES (
                 @process_id, @turn_index, @role, @content, @timestamp, @streaming,
-                @tool_calls, @timeline, @images, @historical, @suggestions,
+                @interrupted, @interruption_reason, @tool_calls, @timeline, @images, @historical, @suggestions,
                 @token_usage, @paste_externalized, @model, @mode
             )
         `);
@@ -774,11 +780,11 @@ export class SqliteProcessStore implements ProcessStore {
             const copyTurnsSQL = `
                 INSERT INTO conversation_turns
                   (process_id, turn_index, role, content, timestamp, streaming,
-                   tool_calls, timeline, images, historical, suggestions,
+                   interrupted, interruption_reason, tool_calls, timeline, images, historical, suggestions,
                    token_usage, paste_externalized, model, mode)
                 SELECT
                   ?, turn_index, role, content, timestamp, 0,
-                  tool_calls, timeline, images, 1, suggestions,
+                  interrupted, interruption_reason, tool_calls, timeline, images, 1, suggestions,
                   token_usage, paste_externalized, model, mode
                 FROM conversation_turns
                 WHERE process_id = ?
@@ -1219,6 +1225,8 @@ export class SqliteProcessStore implements ProcessStore {
                     content,
                     timestamp: new Date().toISOString(),
                     streaming: boolToInt(streaming),
+                    interrupted: 0,
+                    interruption_reason: null,
                     tool_calls: null,
                     timeline: JSON.stringify((timeline ?? []).map(serializeTimelineItem)),
                     images: null,

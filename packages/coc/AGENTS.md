@@ -67,7 +67,13 @@ all have their own `references/*.md`.
 - **Follow-up enqueue sites** must call `resolveFollowUpMode(...)` and set
   `payload.mode`. `FollowUpExecutor.executeFollowUp` fail-loud warns + defaults
   to `'ask'` if missing.
+- **Pull Requests Team auto-classification** must stay gated by
+  `pullRequests.enabled`, `pullRequests.autoClassifyTeam`, and
+  `features.focusedDiff`; use the generic classify-diff enqueue helper with the
+  per-trigger cap and low priority instead of adding client-side POST loops.
+  The Team toolbar status UI should read batch status and route manual
+  "Classify now" actions through the same bounded server helper.
 - **Direct package builds** use `scripts/prebuild.mjs` to build
   `@plusplusoneplusplus/coc-client`, `@plusplusoneplusplus/coc-workflow`, and `@plusplusoneplusplus/coc-memory`
-  before `tsc` and to generate
+  before `tsc`, clean `dist` before emitting, and generate
   `src/server/core/build-info.ts`; keep this script cross-platform.

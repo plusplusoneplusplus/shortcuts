@@ -2,6 +2,8 @@ import type {
   CreateWorkItemFromChatRequest,
   CreateWorkItemRequest,
   ConvertWorkItemTrackerResponse,
+  ApplyWorkItemAiDraftRequest,
+  ApplyWorkItemAiDraftResponse,
   ExecuteWorkItemRequest,
   ExecuteWorkItemResponse,
   ImportFromAzureBoardsRequest,
@@ -11,6 +13,10 @@ import type {
   RequestWorkItemChangesRequest,
   RequestWorkItemChangesResponse,
   ResolveWorkItemCommentsRequest,
+  SubmitWorkItemPullRequestRequest,
+  SubmitWorkItemPullRequestResponse,
+  StartWorkItemAiReviewRequest,
+  StartWorkItemAiReviewResponse,
   WorkItemSyncProvider,
   WorkItemSyncStatusResponse,
   UpdateWorkItemRequest,
@@ -24,12 +30,15 @@ import type {
   WorkItemPlanRefineRequest,
   WorkItemPlanRefineResponse,
   WorkItemPlanResponse,
+  WorkItemPlanRestoreRequest,
+  WorkItemPlanRestoreResponse,
   WorkItemPlanUpdateResponse,
   WorkItemPlanVersion,
+  WorkItemPlanVersionComparison,
   WorkItemTreeFilter,
   WorkItemTreeResponse,
 } from '../contracts';
-import type { RequestAdapter } from '../types';
+import type { CocRequestOptions, RequestAdapter } from '../types';
 import { encodePathSegment } from '../url';
 
 function path(workspaceId: string, suffix = ''): string {
@@ -104,6 +113,28 @@ export class WorkItemsClient {
     });
   }
 
+  submitPullRequest(
+    workspaceId: string,
+    workItemId: string,
+    request: SubmitWorkItemPullRequestRequest = {},
+  ): Promise<SubmitWorkItemPullRequestResponse> {
+    return this.transport.request<SubmitWorkItemPullRequestResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/submit-pr`), {
+      method: 'POST',
+      body: { ...request },
+    });
+  }
+
+  startAiReview(
+    workspaceId: string,
+    workItemId: string,
+    request: StartWorkItemAiReviewRequest = {},
+  ): Promise<StartWorkItemAiReviewResponse> {
+    return this.transport.request<StartWorkItemAiReviewResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/ai-review`), {
+      method: 'POST',
+      body: { ...request },
+    });
+  }
+
   getPlan(workspaceId: string, workItemId: string): Promise<WorkItemPlanResponse> {
     return this.transport.request<WorkItemPlanResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/plan`));
   }
@@ -121,6 +152,24 @@ export class WorkItemsClient {
 
   getPlanVersion(workspaceId: string, workItemId: string, version: number): Promise<WorkItemPlanVersion> {
     return this.transport.request(path(workspaceId, `/${encodePathSegment(workItemId)}/plan/versions/${version}`));
+  }
+
+  comparePlanVersions(workspaceId: string, workItemId: string, baseVersion: number, targetVersion: number): Promise<WorkItemPlanVersionComparison> {
+    return this.transport.request(path(workspaceId, `/${encodePathSegment(workItemId)}/plan/versions/compare`), {
+      query: { base: baseVersion, target: targetVersion },
+    });
+  }
+
+  restorePlanVersion(
+    workspaceId: string,
+    workItemId: string,
+    version: number,
+    request: WorkItemPlanRestoreRequest = {},
+  ): Promise<WorkItemPlanRestoreResponse> {
+    return this.transport.request(path(workspaceId, `/${encodePathSegment(workItemId)}/plan/versions/${version}/restore`), {
+      method: 'POST',
+      body: { ...request },
+    });
   }
 
   refinePlan(workspaceId: string, workItemId: string, request: WorkItemPlanRefineRequest = {}): Promise<WorkItemPlanRefineResponse> {
@@ -222,6 +271,18 @@ export class WorkItemsClient {
     return this.transport.request<WorkItemAiGenerationResponse>(
       path(workspaceId, `/${encodePathSegment(workItemId)}/ai-draft`),
       { method: 'POST', body: { ...request } },
+    );
+  }
+
+  applyAiDraft(
+    workspaceId: string,
+    workItemId: string,
+    request: ApplyWorkItemAiDraftRequest,
+    options: Pick<CocRequestOptions, 'signal'> = {},
+  ): Promise<ApplyWorkItemAiDraftResponse> {
+    return this.transport.request<ApplyWorkItemAiDraftResponse>(
+      path(workspaceId, `/${encodePathSegment(workItemId)}/ai-draft/apply`),
+      { method: 'POST', body: { ...request }, ...options },
     );
   }
 }

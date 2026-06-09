@@ -9,6 +9,9 @@ import {
     buildExecutionPrompt,
     resolveWorkItemComments,
     isResolveSessionCategory,
+    isWorkItemReviewSessionCategory,
+    extractGoalSpecFromGrillingResponse,
+    saveGoalGrillingSpecFromResponse,
 } from '../../../src/server/work-items/work-item-executor';
 import type { WorkItem } from '../../../src/server/work-items/types';
 
@@ -85,6 +88,7 @@ describe('executeWorkItem', () => {
         expect(call.payload.mode).toBe('autopilot');
         expect(call.payload.prompt).toContain('Plan content');
         expect(call.payload.workItemId).toBe('wi-exec-1');
+        expect(call.payload.planVersion).toBe(1);
         expect(call.displayName).toBe('Run #1: Code Implement');
 
         // Verify status transitioned
@@ -93,6 +97,8 @@ describe('executeWorkItem', () => {
         expect(updated!.executionHistory).toHaveLength(1);
         expect(updated!.executionHistory![0].taskId).toBe('task-123');
         expect(updated!.executionHistory![0].status).toBe('running');
+        expect(updated!.executionHistory![0].planVersion).toBe(1);
+        expect(updated!.executionHistory![0].executionMode).toBe('one-shot');
     });
 
     it('throws for non-ready work items', async () => {
@@ -137,6 +143,12 @@ describe('executeWorkItem', () => {
         expect(call.payload.reasoningEffort).toBe('high');
         expect(call.config.reasoningEffort).toBe('high');
         expect(call.config.model).toBeUndefined();
+
+        const updated = await store.getWorkItem('wi-provider-effort', 'test-repo');
+        expect(updated!.executionHistory![0].aiSettings).toEqual({
+            provider: 'codex',
+            reasoningEffort: 'high',
+        });
     });
 
     it('omits provider/model/reasoning effort when no override is selected', async () => {
@@ -167,6 +179,69 @@ describe('executeWorkItem', () => {
         expect(call.payload.context).toBeDefined();
         expect(call.payload.context.skills).toEqual(['impl', 'code-review']);
         expect(call.payload.context.files).toBeUndefined();
+
+        const updated = await store.getWorkItem('wi-skills', 'test-repo');
+        expect(updated!.executionHistory![0].skillNames).toEqual(['impl', 'code-review']);
+    });
+
+    it('defaults Goals to Ralph execution and preserves Work Item linkage on the queued Ralph task', async () => {
+        const item = makeWorkItem({
+            id: 'goal-exec-1',
+            type: 'goal',
+            status: 'readyToExecute',
+            plan: { version: 2, currentVersion: 2, content: '## Goal\nShip it', updatedAt: '' },
+            currentContentVersion: 2,
+            tracker: { kind: 'local-only' },
+        });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-ralph-1');
+        const result = await executeWorkItem('goal-exec-1', store, enqueue, {
+            dataDir: tmpDir,
+            maxRalphIterations: 7,
+            provider: 'claude',
+            model: 'claude-sonnet-4.6',
+            skillNames: ['impl'],
+        });
+
+        expect(result.taskId).toBe('task-ralph-1');
+        expect(result.ralphSessionId).toMatch(/^ralph-/);
+        const call = enqueue.mock.calls[0][0];
+        expect(call.type).toBe('chat');
+        expect(call.repoId).toBe('test-repo');
+        expect(call.displayName).toBe('Run #1: Ralph Implement');
+        expect(call.payload).toMatchObject({
+            kind: 'chat',
+            mode: 'ralph',
+            workspaceId: 'test-repo',
+            workItemId: 'goal-exec-1',
+            planVersion: 2,
+            sessionCategory: 'generating-code',
+            provider: 'claude',
+        });
+        expect(call.payload.context.skills).toEqual(['impl']);
+        expect(call.payload.context.ralph).toMatchObject({
+            phase: 'executing',
+            sessionId: result.ralphSessionId,
+            currentIteration: 1,
+            maxIterations: 7,
+        });
+        expect(call.config.model).toBe('claude-sonnet-4.6');
+
+        const updated = await store.getWorkItem('goal-exec-1', 'test-repo');
+        expect(updated!.status).toBe('executing');
+        expect(updated!.executionHistory![0]).toMatchObject({
+            taskId: 'task-ralph-1',
+            planVersion: 2,
+            executionMode: 'ralph',
+            ralphSessionId: result.ralphSessionId,
+            title: 'Ralph Implement',
+            aiSettings: {
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+            },
+            skillNames: ['impl'],
+        });
     });
 
     it('includes both context.files and context.skills when both provided', async () => {
@@ -275,6 +350,176 @@ describe('handleWorkItemTaskComplete', () => {
         const updated = await store.getWorkItem('wi-aidone', 'test-repo');
         expect(updated!.status).toBe('aiDone');
         expect(updated!.completedAt).toBeUndefined();
+    });
+});
+
+describe('Goal grilling spec persistence', () => {
+    it('extracts the final goal spec block from plain or fenced responses', () => {
+        expect(extractGoalSpecFromGrillingResponse('Before\n\n## Goal\nShip it\n\n## Acceptance Criteria\n- Works'))
+            .toBe('## Goal\nShip it\n\n## Acceptance Criteria\n- Works');
+        expect(extractGoalSpecFromGrillingResponse('```markdown\n## Goal\nShip it\n```'))
+            .toBe('## Goal\nShip it');
+        expect(extractGoalSpecFromGrillingResponse('I need one more answer.')).toBeUndefined();
+    });
+
+    it('saves a completed local Goal grilling response as a new AI-authored content version', async () => {
+        const item = makeWorkItem({
+            id: 'goal-grill-save',
+            type: 'goal',
+            title: 'Durable goals',
+            status: 'drafting',
+            tracker: { kind: 'local-only' },
+            grillSessionId: 'queue_grill-task',
+        });
+        await store.addWorkItem(item);
+
+        const updated = await saveGoalGrillingSpecFromResponse({
+            workspaceId: 'test-repo',
+            workItemId: 'goal-grill-save',
+            processId: 'queue_grill-task',
+            responseText: [
+                'Here is the final spec:',
+                '',
+                '## Goal',
+                'Make Goals durable.',
+                '',
+                '## Acceptance Criteria',
+                '- Goal specs are versioned.',
+            ].join('\n'),
+            store,
+        });
+
+        expect(updated).toBeDefined();
+        expect(updated!.status).toBe('readyToExecute');
+        expect(updated!.currentContentVersion).toBe(1);
+        expect(updated!.plan).toMatchObject({
+            version: 1,
+            currentVersion: 1,
+            resolvedBy: 'ai',
+            source: 'ai',
+            reason: 'Goal spec synthesized from grilling session',
+        });
+        expect(updated!.plan!.content).toContain('## Goal\nMake Goals durable.');
+
+        const versions = await store.getPlanVersions('goal-grill-save');
+        expect(versions).toHaveLength(1);
+        expect(versions[0]).toMatchObject({
+            version: 1,
+            resolvedBy: 'ai',
+            source: 'ai',
+            authorType: 'ai',
+            reason: 'Goal spec synthesized from grilling session',
+            summary: 'Goal spec synthesized from queue_grill-task',
+        });
+
+        const changes = await store.getChanges('goal-grill-save');
+        expect(changes).toHaveLength(1);
+        expect(changes[0]).toMatchObject({ planVersion: 1, status: 'open', commits: [] });
+    });
+
+    it('creates a new version instead of overwriting an existing Goal content version', async () => {
+        const item = makeWorkItem({
+            id: 'goal-grill-revise',
+            type: 'goal',
+            status: 'drafting',
+            tracker: { kind: 'local-only' },
+            plan: {
+                version: 1,
+                currentVersion: 1,
+                content: '## Goal\nInitial spec',
+                updatedAt: '2026-01-01T00:00:00.000Z',
+                resolvedBy: 'user',
+                source: 'user',
+            },
+            currentContentVersion: 1,
+        });
+        await store.addWorkItem(item);
+
+        const updated = await saveGoalGrillingSpecFromResponse({
+            workspaceId: 'test-repo',
+            workItemId: 'goal-grill-revise',
+            responseText: '## Goal\nRevised spec\n\n## Acceptance Criteria\n- Better',
+            store,
+        });
+
+        expect(updated!.currentContentVersion).toBe(2);
+        expect(updated!.plan!.content).toContain('Revised spec');
+        const versions = await store.getPlanVersions('goal-grill-revise');
+        expect(versions.map(version => version.version)).toEqual([1, 2]);
+        expect(versions[0].content).toContain('Initial spec');
+        expect(versions[1].source).toBe('ai');
+    });
+
+    it('does not duplicate a saved Goal spec for repeated completion events from the same process', async () => {
+        await store.addWorkItem(makeWorkItem({
+            id: 'goal-grill-idempotent',
+            type: 'goal',
+            status: 'drafting',
+            tracker: { kind: 'local-only' },
+        }));
+
+        const options = {
+            workspaceId: 'test-repo',
+            workItemId: 'goal-grill-idempotent',
+            processId: 'queue_same-grill-process',
+            responseText: '## Goal\nPersist once\n\n## Acceptance Criteria\n- No duplicate versions',
+            store,
+        };
+
+        await saveGoalGrillingSpecFromResponse(options);
+        await saveGoalGrillingSpecFromResponse(options);
+
+        const versions = await store.getPlanVersions('goal-grill-idempotent');
+        expect(versions).toHaveLength(1);
+        expect(versions[0].summary).toBe('Goal spec synthesized from queue_same-grill-process');
+    });
+
+    it('does not persist clarification turns or non-local Goal targets', async () => {
+        await store.addWorkItem(makeWorkItem({
+            id: 'goal-clarifying',
+            type: 'goal',
+            status: 'drafting',
+            tracker: { kind: 'local-only' },
+        }));
+        await store.addWorkItem(makeWorkItem({
+            id: 'wi-not-goal',
+            type: 'work-item',
+            status: 'drafting',
+            tracker: { kind: 'local-only' },
+        }));
+        await store.addWorkItem(makeWorkItem({
+            id: 'goal-remote',
+            type: 'goal',
+            status: 'drafting',
+            tracker: {
+                kind: 'github-backed',
+                provider: 'github',
+                github: { issueNumber: 1 },
+            },
+        }));
+
+        await expect(saveGoalGrillingSpecFromResponse({
+            workspaceId: 'test-repo',
+            workItemId: 'goal-clarifying',
+            responseText: 'What deployment target should this support?',
+            store,
+        })).resolves.toBeUndefined();
+        await expect(saveGoalGrillingSpecFromResponse({
+            workspaceId: 'test-repo',
+            workItemId: 'wi-not-goal',
+            responseText: '## Goal\nNot a Goal item',
+            store,
+        })).resolves.toBeUndefined();
+        await expect(saveGoalGrillingSpecFromResponse({
+            workspaceId: 'test-repo',
+            workItemId: 'goal-remote',
+            responseText: '## Goal\nRemote Goal item',
+            store,
+        })).resolves.toBeUndefined();
+
+        expect(await store.getPlanVersions('goal-clarifying')).toEqual([]);
+        expect(await store.getPlanVersions('wi-not-goal')).toEqual([]);
+        expect(await store.getPlanVersions('goal-remote')).toEqual([]);
     });
 });
 
@@ -542,6 +787,14 @@ describe('isResolveSessionCategory', () => {
     });
 });
 
+describe('isWorkItemReviewSessionCategory', () => {
+    it('matches only Work Item AI review sessions', () => {
+        expect(isWorkItemReviewSessionCategory('work-item-ai-review')).toBe(true);
+        expect(isWorkItemReviewSessionCategory('generating-code')).toBe(false);
+        expect(isWorkItemReviewSessionCategory(undefined)).toBe(false);
+    });
+});
+
 describe('handleWorkItemTaskComplete — comment-resolve sessions', () => {
     it('skips status transition for plan comment resolve sessions', async () => {
         const item = makeWorkItem({ id: 'wi-plan-done', status: 'aiDone' });
@@ -604,5 +857,35 @@ describe('handleWorkItemTaskComplete — comment-resolve sessions', () => {
 
         const updated = await store.getWorkItem('wi-regular-done', 'test-repo');
         expect(updated!.status).toBe('aiDone');
+    });
+});
+
+describe('handleWorkItemTaskComplete — AI review sessions', () => {
+    it('records review failure without moving the Work Item out of Review', async () => {
+        const item = makeWorkItem({ id: 'wi-review-session', status: 'aiDone' });
+        await store.addWorkItem(item);
+        await store.addExecution('wi-review-session', {
+            taskId: 'task-ai-review',
+            startedAt: '2026-01-01T12:00:00.000Z',
+            status: 'running',
+            sessionCategory: 'work-item-ai-review',
+            title: 'AI Review',
+            kind: 'ai-review',
+        });
+
+        await handleWorkItemTaskComplete('wi-review-session', 'task-ai-review', {
+            status: 'failed',
+            error: 'Review model unavailable',
+            processId: 'proc-review',
+        }, store);
+
+        const updated = await store.getWorkItem('wi-review-session', 'test-repo');
+        expect(updated!.status).toBe('aiDone');
+        expect(updated!.processId).toBe('proc-review');
+        expect(updated!.executionHistory![0]).toMatchObject({
+            status: 'failed',
+            error: 'Review model unavailable',
+            processId: 'proc-review',
+        });
     });
 });

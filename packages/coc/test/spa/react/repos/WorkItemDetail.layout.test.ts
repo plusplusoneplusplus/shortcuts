@@ -57,7 +57,7 @@ describe('WorkItemDetail — layout', () => {
 
     describe('Execution Session position', () => {
         it('renders Execution Session section after AI Review and before Execution History', () => {
-            const aiReviewPos = src.indexOf('{/* AI Review section');
+            const aiReviewPos = src.indexOf('{/* Review section');
             const execSessionPos = src.indexOf('{/* Execution session entry');
             const execHistoryPos = src.indexOf('{/* Execution history */}');
             const descriptionPos = src.indexOf('{/* Description */}');
@@ -211,8 +211,8 @@ describe('WorkItemDetail — layout', () => {
             const runLabel = src.indexOf('Run #{i + 1}', execHistorySection);
             // "View Session" should appear after "Run #" in the execution history
             expect(viewSession).toBeGreaterThan(runLabel);
-            // The header row line starts with 'flex items-center gap-2 px-3 py-2'
-            const headerFlexLine = src.lastIndexOf('flex items-center gap-2 px-3 py-2', viewSession);
+            // The header row line starts with 'flex gap-2 px-3 py-2'
+            const headerFlexLine = src.lastIndexOf('flex gap-2 px-3 py-2', viewSession);
             expect(headerFlexLine).toBeGreaterThan(-1);
             const headerCloseDiv = src.indexOf('</div>', headerFlexLine);
             expect(viewSession).toBeGreaterThan(headerCloseDiv);
