@@ -655,7 +655,7 @@ test.describe('Queue Task Conversation – User Input & Follow-up', () => {
 
             // Setup follow-up mock AFTER initial task completes
             // executeFollowUp() calls aiService.sendMessage (not sendFollowUp)
-            mockAI.mockSendMessage.mockImplementationOnce(async (opts: any) => {
+            mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
                 if (opts && opts.onStreamingChunk) {
                     opts.onStreamingChunk('Follow-up reply');
                 }
