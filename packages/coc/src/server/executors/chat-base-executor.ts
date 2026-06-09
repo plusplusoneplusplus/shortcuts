@@ -73,6 +73,14 @@ Load and follow the \`ultra-ralph\` skill, \`grill\` section. The skill file is 
 
 Machine contract (parser-required): After gathering answers and before ending, emit exactly one plain-text goal spec block starting with \`## Goal\`.`;
 
+export interface RalphGrillSuffixOptions {
+    workItemGoal?: {
+        workspaceId?: string;
+        workItemId?: string;
+        title?: string;
+    };
+}
+
 /**
  * Build the Ralph grilling-phase directive that is prepended to the user
  * message (never the system message) on every grilling turn.
@@ -85,7 +93,12 @@ Machine contract (parser-required): After gathering answers and before ending, e
  * manually edit it. The directive lives here in CoC so the generic `grill-me`
  * skill stays host-agnostic.
  */
-export function buildRalphGrillSuffix(autoFolderContext?: AutoFolderContext): string {
+export function buildRalphGrillSuffix(autoFolderContext?: AutoFolderContext, options: RalphGrillSuffixOptions = {}): string {
+    if (options.workItemGoal) {
+        const title = options.workItemGoal.title?.trim();
+        const goalLabel = title ? ` "${title}"` : '';
+        return `${RALPH_GRILL_SUFFIX}\n\nWork Item Goal${goalLabel}: this grilling session is bound to a local Goal item in the Work Items system. Do not create or require a Notes-backed \`.goal.md\` file for this workflow. When the user is done, emit the final \`## Goal\` spec in chat so the Work Item workflow can save it as an immutable Goal content version.`;
+    }
     if (!autoFolderContext) return RALPH_GRILL_SUFFIX;
 
     const root = toForwardSlashes(autoFolderContext.tasksRoot);
@@ -419,6 +432,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         };
 
         const isGrilling = payload.context?.ralph?.phase === 'grilling';
+        const workItemGoalGrilling = payload.context?.workItemGoalGrilling;
         const forEachGeneration = (() => {
             const context = getForEachContext({ payload });
             return isForEachGenerationContext(context) ? context : null;
@@ -428,10 +442,10 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             return isMapReduceGenerationContext(context) ? context : null;
         })();
 
-        // During grilling the goal-file save location is injected into the user
-        // message (see effectivePrompt below) with an explicit `*.goal.md`
-        // directive. Suppress the generic auto-folder system block in that case
-        // so the model does not receive a contradictory `.plan.md` save target.
+        // During grilling, the user-message directive owns the output contract
+        // (Notes goal file for general Ralph, Work Item versioning for Goal items).
+        // Suppress the generic auto-folder system block so the model does not
+        // receive a contradictory `.plan.md` save target.
         const systemMessage = await systemMessageBuilder()
             .append(buildModeSystemMessage(mode)?.content)
             .append(buildForEachGenerationSystemMessage(forEachGeneration)?.content)
@@ -444,13 +458,10 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             .build();
 
         // When this is a Ralph grilling session, prepend the grilling directive
-        // (skill pointer, machine contract, and goal-file save location) to the
-        // user prompt so the model receives it on every grilling turn (AC-03).
-        // The goal-file location is injected here — via the user message, not the
-        // system message — and points at the repo's notes/Plans root so the goal
-        // file lands in the Notes tab rather than the repository working tree.
+        // (skill pointer, machine contract, and output destination) to the user
+        // prompt so the model receives it on every grilling turn.
         const effectivePrompt = isGrilling
-            ? `${buildRalphGrillSuffix(autoFolderContext)}\n\n${prompt}`
+            ? `${buildRalphGrillSuffix(autoFolderContext, { workItemGoal: workItemGoalGrilling })}\n\n${prompt}`
             : prompt;
 
         return {

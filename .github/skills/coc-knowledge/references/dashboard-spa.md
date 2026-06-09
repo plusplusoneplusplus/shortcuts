@@ -113,7 +113,12 @@ and `GET /api/config/runtime`; use `isWorkItemsWorkflowEnabled()` for UI gates s
 legacy Work Items and Chat behavior remains unchanged while the flag is off.
 When the flag is on, the local create dialog exposes a Work Item vs Goal type
 selector for title-first shell creation even when hierarchy mode is off; existing
-bug and hierarchy-type creation paths keep their prior behavior.
+bug and hierarchy-type creation paths keep their prior behavior. Saved local-only
+Goal details expose a Start/Continue grilling action that opens the existing Work
+Item chat lens with Ralph grilling context (`grill-me` plus
+`context.ralph.phase='grilling'`) and records the chat process on
+`grillSessionId`. This Goal workflow keeps the Work Item system as the source of
+truth and does not require a Notes-backed `.goal.md` mirror.
 
 ## Chat UI Architecture
 

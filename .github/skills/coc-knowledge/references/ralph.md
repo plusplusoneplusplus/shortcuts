@@ -175,7 +175,11 @@ with a `*.goal.md` filename. This keeps the goal file out of the repository
 working tree and lets the Notes/scratchpad UI open and edit it (`isGoalFile`
 detects `*.goal.md`). The generic bundled `grill-me` skill stays host-agnostic:
 it defers to whatever save location the host supplies and only falls back to a
-working-directory-relative `Plans/<area>/<feature>/` when none is given.
+working-directory-relative `Plans/<area>/<feature>/` when none is given. Work
+Item Goal grilling passes `context.workItemGoalGrilling`, which makes
+`buildRalphGrillSuffix(...)` omit the Notes goal-file directive and tell the
+model to emit the final `## Goal` spec in chat for immutable Work Item content
+versioning instead.
 
 ## Resume Routes
 

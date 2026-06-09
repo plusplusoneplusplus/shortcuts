@@ -40,6 +40,7 @@ import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { WorkItemChatPanel } from './WorkItemChatPanel';
 import { WorkItemChatPlacementFrame } from './WorkItemChatPlacementFrame';
 import { WorkItemAiDraftApplyDialog } from './WorkItemAiDraftApplyDialog';
+import { ensureQueueProcessId } from '../../utils/queue-process-id';
 
 const UNSAVED_CHANGES_MESSAGE = 'You have unsaved changes. Leave without saving?';
 const WORK_ITEM_CHAT_PANEL_WIDTH_STORAGE_PREFIX = 'coc.workItemChatPanel.width';
@@ -94,7 +95,7 @@ interface WorkItemFull {
     priority?: string; source?: string; sourceId?: string;
     tracker?: { kind: string };
     createdAt: string; updatedAt: string; completedAt?: string;
-    plan?: { version: number; content: string; updatedAt?: string; resolvedBy?: string };
+    plan?: { version: number; currentVersion?: number; content: string; updatedAt?: string; resolvedBy?: string };
     taskId?: string; processId?: string;
     currentContentVersion?: number;
     executionHistory?: Array<{ taskId: string; processId?: string; startedAt: string; completedAt?: string; status: string; error?: string; autoReExecuted?: boolean; title?: string; sessionCategory?: string }>;
@@ -193,6 +194,27 @@ function applyConflictChoices(draft: WorkItemDraft, conflict: WorkItemSyncConfli
     return next;
 }
 
+function buildGoalGrillingPrompt(item: WorkItemFull): string {
+    const parts = [
+        `Please grill me to turn this saved Goal into a precise implementation-ready goal spec.\n\nGoal title: ${item.title}`,
+    ];
+    if (item.description?.trim()) {
+        parts.push(`Saved description:\n${item.description.trim()}`);
+    }
+    if (item.successCriteria?.trim()) {
+        parts.push(`Current success criteria:\n${item.successCriteria.trim()}`);
+    }
+    if (item.plan?.content?.trim()) {
+        parts.push(`Current Goal content version v${item.plan.version}:\n${item.plan.content.trim()}`);
+    }
+    parts.push('Ask focused clarification questions until the goal is clear, then emit the final goal spec as a Markdown block starting with `## Goal`.');
+    return parts.join('\n\n');
+}
+
+function createRalphSessionId(): string {
+    return `ralph-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function conflictResolutionFor(conflict: WorkItemSyncConflictDetails): WorkItemSyncConflictResolution {
     return {
         provider: conflict.provider,
@@ -255,6 +277,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
 
     const [showAiComposer, setShowAiComposer] = useState(false);
     const [showAiDraftApplyDialog, setShowAiDraftApplyDialog] = useState(false);
+    const [startingGoalGrilling, setStartingGoalGrilling] = useState(false);
     const aiAuthoringEnabled = isWorkItemsAiAuthoringEnabled();
     const workItemChatTarget = useMemo<ReviewChatTarget>(() => ({
         type: 'work-item',
@@ -719,6 +742,63 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         toggleWorkItemChat();
     }, [restoreWorkItemChat, toggleWorkItemChat, workItemChatOpen]);
 
+    const handleGoalGrilling = useCallback(async () => {
+        if (!item || item.id !== workItemId) return;
+        if (item.grillSessionId) {
+            openWorkItemChat();
+            return;
+        }
+        setStartingGoalGrilling(true);
+        setError(null);
+        try {
+            const sessionId = createRalphSessionId();
+            const result = await getSpaCocClient().queue.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: {
+                    kind: 'chat',
+                    mode: 'ask',
+                    prompt: buildGoalGrillingPrompt(item),
+                    workspaceId,
+                    context: {
+                        skills: ['grill-me'],
+                        ralph: {
+                            phase: 'grilling',
+                            sessionId,
+                        },
+                        workItemGoalGrilling: {
+                            workspaceId,
+                            workItemId,
+                            title: item.title,
+                            contentVersion: item.currentContentVersion ?? item.plan?.currentVersion ?? item.plan?.version ?? null,
+                        },
+                        workItemChat: {
+                            workspaceId,
+                            workItemId,
+                            workItemNumber: item.workItemNumber,
+                            status: item.status,
+                            type: item.type ?? 'work-item',
+                        },
+                    },
+                },
+            });
+            const taskId = result.task?.id ?? (result as { id?: string }).id;
+            if (!taskId) throw new Error('Failed to create Goal grilling chat task');
+
+            await getSpaCocClient().workItems.createChatBinding(workspaceId, workItemId, taskId);
+            await getSpaCocClient().workItems.update(workspaceId, workItemId, {
+                grillSessionId: ensureQueueProcessId(taskId),
+                ...(item.status === 'created' ? { status: 'drafting' } : {}),
+            });
+            await fetchItem();
+            openWorkItemChat();
+        } catch (err: any) {
+            setError(err.message || 'Failed to start Goal grilling');
+        } finally {
+            setStartingGoalGrilling(false);
+        }
+    }, [fetchItem, item, openWorkItemChat, workItemId, workspaceId]);
+
     if (loading) {
         return <div className="flex items-center justify-center h-full text-sm text-[#848484]">Loading…</div>;
     }
@@ -752,6 +832,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         && !item.githubMirror
         && !item.azureBoardsMirror;
     const isLocalOnlyWorkflowWorkItem = effectiveType === 'work-item' && isLocalOnlyWorkflowItem;
+    const canUseGoalGrilling = workflowEnabled && effectiveType === 'goal' && isLocalOnlyWorkflowItem;
     const canDraftWithAi = workflowEnabled && aiAuthoringEnabled && isLocalOnlyWorkflowWorkItem;
     const canUseVersionWorkflowActions = workflowEnabled && isLocalOnlyWorkflowItem;
 
@@ -929,6 +1010,18 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                 type="button"
                             >
                                 {item.plan?.content ? 'Revise with AI' : 'Draft with AI'}
+                            </button>
+                        )}
+                        {canUseGoalGrilling && (
+                            <button
+                                className="inline-flex items-center justify-center min-h-[22px] rounded-[4px] border border-amber-300 bg-amber-50 px-[6px] text-[10px] font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-40 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200 dark:hover:bg-amber-900/50"
+                                onClick={handleGoalGrilling}
+                                disabled={isDirty || saving || startingGoalGrilling}
+                                data-testid="work-item-goal-grilling-btn"
+                                title={isDirty ? 'Save or discard local edits before grilling this Goal' : item.grillSessionId ? 'Resume the Goal grilling chat' : 'Start a Goal grilling chat'}
+                                type="button"
+                            >
+                                {startingGoalGrilling ? 'Starting…' : item.grillSessionId ? 'Continue grilling' : 'Start grilling'}
                             </button>
                         )}
                         {aiAuthoringEnabled && !canDraftWithAi && (
