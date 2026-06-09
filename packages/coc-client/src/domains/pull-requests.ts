@@ -25,6 +25,7 @@ import { encodePathSegment } from '../url';
 function serializePrListQuery(query?: PullRequestListQuery): CocRequestOptions['query'] {
   if (!query) return undefined;
   return {
+    workspaceId: query.workspaceId,
     status: query.status,
     scope: query.scope,
     top: query.top,

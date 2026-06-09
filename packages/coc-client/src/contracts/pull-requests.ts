@@ -28,6 +28,7 @@ export interface SanitizedProviderConfigResponse {
 // ── PR data routes ──────────────────────────────────────────────────
 
 export interface PullRequestListQuery {
+  workspaceId?: string;
   status?: string;
   scope?: 'mine' | 'all';
   top?: number;

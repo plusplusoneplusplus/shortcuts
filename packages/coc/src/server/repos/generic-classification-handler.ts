@@ -39,7 +39,7 @@ const VALID_EFFORT_TIERS = new Set(['very-low', 'low', 'medium', 'high']);
 // Types
 // ============================================================================
 
-type ClassificationType = 'pr' | 'commit' | 'branch-range';
+export type ClassificationType = 'pr' | 'commit' | 'branch-range';
 
 interface ClassifyDiffPostBody {
     /** Classification type. */
@@ -68,13 +68,50 @@ export interface GenericClassificationRouteOptions {
     prepareTaskForEnqueue?: (input: CreateTaskInput) => Promise<void>;
 }
 
+export interface EnqueueGenericClassificationOptions {
+    dataDir: string;
+    store: ProcessStore;
+    bridge: MultiRepoQueueRouter;
+    repoTreeService?: RepoTreeService;
+    prepareTaskForEnqueue?: (input: CreateTaskInput) => Promise<void>;
+    repoId: string;
+    workspaceId?: string;
+    type: ClassificationType;
+    identifier: string;
+    priority?: CreateTaskInput['priority'];
+    model?: string;
+    provider?: ChatProvider;
+    reasoningEffort?: ReasoningEffort;
+    effortTier?: 'very-low' | 'low' | 'medium' | 'high';
+    autoProviderRouting?: boolean;
+}
+
+export type EnqueueGenericClassificationResult =
+    | {
+        status: 'ready';
+        processId?: string;
+        result: unknown;
+        createdAt: string;
+    }
+    | {
+        status: 'running';
+        processId: string;
+    }
+    | {
+        status: 'started';
+        taskId: string;
+    }
+    | {
+        status: 'not-found';
+        message: string;
+    };
+
 // ============================================================================
 // Route registration
 // ============================================================================
 
 export function registerGenericClassificationRoutes(routes: Route[], opts: GenericClassificationRouteOptions): void {
     const { dataDir, store, bridge } = opts;
-    const svc = opts.repoTreeService ?? new RepoTreeService(dataDir, undefined, store);
 
     // -- POST: Trigger classification -----------------------------------------
 
@@ -102,83 +139,25 @@ export function registerGenericClassificationRoutes(routes: Route[], opts: Gener
                     return send400(res, `Invalid effortTier: '${String(body.effortTier)}'`);
                 }
 
-                const workspaceId = body.workspaceId || repoId;
                 const { type, identifier } = body;
-
-                // Check cache
-                const cached = readClassificationGeneric(dataDir, workspaceId, repoId, type, identifier);
-                if (cached) {
-                    return sendJson(res, {
-                        status: 'ready',
-                        processId: cached.processId,
-                        result: cached.result,
-                        createdAt: cached.createdAt,
-                    });
-                }
-
-                // Check in-flight — self-heal stale pending markers
-                const pending = readPendingGeneric(dataDir, workspaceId, repoId, type, identifier);
-                if (pending) {
-                    if (isTaskAlive(pending.processId, bridge)) {
-                        return sendJson(res, {
-                            status: 'running',
-                            processId: pending.processId,
-                        });
-                    }
-                    // Stale marker: task is gone or terminal — clear it and fall through to re-enqueue
-                    clearPendingGeneric(dataDir, workspaceId, repoId, type, identifier);
-                }
-
-                // Resolve repo
-                const repo = await svc.resolveRepo(repoId);
-                if (!repo) return send404(res, `Repo ${repoId} not found`);
-
-                const prompt = buildPromptForType(type, identifier, repoId, dataDir);
-                const rootPath = repo.localPath ?? process.cwd();
-                bridge.getOrCreateBridge(rootPath);
-                const resolvedRepoId = bridge.getRepoIdForPath(rootPath);
-                const queueManager = bridge.registry.getQueueForRepo(rootPath);
-
-                // Determine the task kind and skills based on type
-                const displayName = buildDisplayName(type, identifier);
-
-                const taskSpec: CreateTaskInput = {
-                    type: TaskDefs.prClassification.kind,
+                const result = await enqueueGenericClassification({
+                    ...opts,
+                    repoId,
+                    workspaceId: body.workspaceId || repoId,
+                    type,
+                    identifier,
                     priority: 'normal',
-                    repoId: resolvedRepoId,
-                    payload: {
-                        kind: TaskDefs.prClassification.kind,
-                        prompt,
-                        workspaceId,
-                        repoId,
-                        classificationType: type,
-                        classificationIdentifier: identifier,
-                        ...extractPayloadFields(type, identifier),
-                        workingDirectory: rootPath,
-                        skills: ['classify-diff'],
-                        ...(body.provider && VALID_CHAT_PROVIDERS.has(body.provider) ? { provider: body.provider } : {}),
-                        ...(body.autoProviderRouting === true ? { context: { autoProviderRouting: { requested: true } } } : {}),
-                    },
-                    config: {
-                        ...(body.model ? { model: body.model } : {}),
-                        ...(body.reasoningEffort && VALID_REASONING_EFFORTS.has(body.reasoningEffort) ? { reasoningEffort: body.reasoningEffort } : {}),
-                        ...(body.effortTier ? { effortTier: body.effortTier } : {}),
-                    },
-                    displayName,
-                };
-                if (opts.prepareTaskForEnqueue) {
-                    await opts.prepareTaskForEnqueue(taskSpec);
-                }
-                const taskId = queueManager.enqueue(taskSpec);
+                    model: body.model,
+                    provider: body.provider,
+                    reasoningEffort: body.reasoningEffort,
+                    effortTier: body.effortTier,
+                    autoProviderRouting: body.autoProviderRouting,
+                });
 
-                // Write pending marker
-                try {
-                    writePendingGeneric(dataDir, workspaceId, repoId, type, identifier, String(taskId));
-                } catch {
-                    /* best-effort */
+                if (result.status === 'not-found') {
+                    return send404(res, result.message);
                 }
-
-                sendJson(res, { status: 'started', taskId }, 202);
+                sendJson(res, result, result.status === 'started' ? 202 : 200);
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
             }
@@ -289,6 +268,90 @@ export function registerGenericClassificationRoutes(routes: Route[], opts: Gener
             }
         },
     });
+}
+
+export async function enqueueGenericClassification(
+    options: EnqueueGenericClassificationOptions,
+): Promise<EnqueueGenericClassificationResult> {
+    const {
+        dataDir,
+        store,
+        bridge,
+        repoId,
+        type,
+        identifier,
+    } = options;
+    const workspaceId = options.workspaceId || repoId;
+
+    const cached = readClassificationGeneric(dataDir, workspaceId, repoId, type, identifier);
+    if (cached) {
+        return {
+            status: 'ready',
+            processId: cached.processId,
+            result: cached.result,
+            createdAt: cached.createdAt,
+        };
+    }
+
+    const pending = readPendingGeneric(dataDir, workspaceId, repoId, type, identifier);
+    if (pending) {
+        if (isTaskAlive(pending.processId, bridge)) {
+            return {
+                status: 'running',
+                processId: pending.processId,
+            };
+        }
+        clearPendingGeneric(dataDir, workspaceId, repoId, type, identifier);
+    }
+
+    const svc = options.repoTreeService ?? new RepoTreeService(dataDir, undefined, store);
+    const repo = await svc.resolveRepo(repoId);
+    if (!repo) {
+        return { status: 'not-found', message: `Repo ${repoId} not found` };
+    }
+
+    const prompt = buildPromptForType(type, identifier, repoId, dataDir);
+    const rootPath = repo.localPath ?? process.cwd();
+    bridge.getOrCreateBridge(rootPath);
+    const resolvedRepoId = bridge.getRepoIdForPath(rootPath);
+    const queueManager = bridge.registry.getQueueForRepo(rootPath);
+
+    const taskSpec: CreateTaskInput = {
+        type: TaskDefs.prClassification.kind,
+        priority: options.priority ?? 'normal',
+        repoId: resolvedRepoId,
+        payload: {
+            kind: TaskDefs.prClassification.kind,
+            prompt,
+            workspaceId,
+            repoId,
+            classificationType: type,
+            classificationIdentifier: identifier,
+            ...extractPayloadFields(type, identifier),
+            workingDirectory: rootPath,
+            skills: ['classify-diff'],
+            ...(options.provider && VALID_CHAT_PROVIDERS.has(options.provider) ? { provider: options.provider } : {}),
+            ...(options.autoProviderRouting === true ? { context: { autoProviderRouting: { requested: true } } } : {}),
+        },
+        config: {
+            ...(options.model ? { model: options.model } : {}),
+            ...(options.reasoningEffort && VALID_REASONING_EFFORTS.has(options.reasoningEffort) ? { reasoningEffort: options.reasoningEffort } : {}),
+            ...(options.effortTier ? { effortTier: options.effortTier } : {}),
+        },
+        displayName: buildDisplayName(type, identifier),
+    };
+    if (options.prepareTaskForEnqueue) {
+        await options.prepareTaskForEnqueue(taskSpec);
+    }
+    const taskId = queueManager.enqueue(taskSpec);
+
+    try {
+        writePendingGeneric(dataDir, workspaceId, repoId, type, identifier, String(taskId));
+    } catch {
+        /* best-effort */
+    }
+
+    return { status: 'started', taskId: String(taskId) };
 }
 
 // ============================================================================

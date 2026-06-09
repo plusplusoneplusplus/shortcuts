@@ -11,6 +11,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { createRouter } from '../../src/server/shared/router';
 import { registerPrRoutes, clearPrListCache, clearPrDetailCache, clearPrDiffCache, clearPrThreadsCache, clearPrCommitsCache, clearPrReviewersCache, clearPrChecksCache, warmPullRequestWorkspaceCache } from '../../src/server/repos/pr-routes';
+import { addPullRequestCoworkerToRoster } from '../../src/server/repos/pr-coworker-roster-store';
 import type { Route } from '../../src/server/types';
 import type { IPullRequestsService } from '@plusplusoneplusplus/forge';
 import type { ProviderPullRequest, CommentThread, Reviewer } from '@plusplusoneplusplus/forge';
@@ -135,9 +136,9 @@ async function initGitRepo(repoPath: string): Promise<void> {
     await git(repoPath, ['config', 'user.name', 'Test User']);
 }
 
-function makeServer(dir: string): http.Server {
+function makeServer(dir: string, autoClassification?: Parameters<typeof registerPrRoutes>[5]): http.Server {
     const routes: Route[] = [];
-    registerPrRoutes(routes, dir);
+    registerPrRoutes(routes, dir, undefined, undefined, undefined, autoClassification);
     const handler = createRouter({ routes, spaHtml: '' });
     return http.createServer(handler);
 }
@@ -155,6 +156,36 @@ async function startServer(): Promise<void> {
 
 async function stopServer(): Promise<void> {
     return new Promise(resolve => server.close(() => resolve()));
+}
+
+async function restartServer(autoClassification?: Parameters<typeof registerPrRoutes>[5]): Promise<void> {
+    await stopServer();
+    server = makeServer(dataDir, autoClassification);
+    await startServer();
+}
+
+function makeAutoClassificationBridge(options?: { throwOnEnqueue?: boolean }) {
+    let nextId = 1;
+    const tasks = new Map<string, any>();
+    const queue = {
+        enqueue: vi.fn((task: any) => {
+            if (options?.throwOnEnqueue) {
+                throw new Error('classification queue down');
+            }
+            const id = `auto-task-${nextId++}`;
+            tasks.set(id, { ...task, id, status: 'queued' });
+            return id;
+        }),
+    };
+    const bridge = {
+        getOrCreateBridge: vi.fn(),
+        getRepoIdForPath: vi.fn(() => REPO_ID),
+        getTask: vi.fn((id: string) => tasks.get(id)),
+        registry: {
+            getQueueForRepo: vi.fn(() => queue),
+        },
+    } as any;
+    return { bridge, queue };
 }
 
 beforeEach(async () => {
@@ -406,6 +437,115 @@ describe('GET /api/repos/:id/pull-requests', () => {
         expect(body.pullRequests).toHaveLength(1);
         expect(body.pullRequests[0].number).toBe(42);
         expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not auto-enqueue Team PR classification from list loads when the auto flag is disabled', async () => {
+        const { bridge, queue } = makeAutoClassificationBridge();
+        addPullRequestCoworkerToRoster(dataDir, REPO_ID, REPO_ID, {
+            id: 'user1',
+            displayName: 'Alice',
+        });
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockResolvedValue([
+            { ...mockPr, headSha: 'head-auto' },
+        ]);
+        await restartServer({
+            store: {} as any,
+            bridge,
+            getEnabled: () => false,
+        });
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?workspaceId=${REPO_ID}`);
+
+        expect(res.status).toBe(200);
+        expect(queue.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('auto-enqueues missing Team PR classifications from list loads when enabled', async () => {
+        const { bridge, queue } = makeAutoClassificationBridge();
+        addPullRequestCoworkerToRoster(dataDir, REPO_ID, REPO_ID, {
+            id: 'user1',
+            displayName: 'Alice',
+        });
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockResolvedValue([
+            { ...mockPr, headSha: 'head-auto' },
+        ]);
+        await restartServer({
+            store: {} as any,
+            bridge,
+            getEnabled: () => true,
+        });
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?workspaceId=${REPO_ID}`);
+
+        expect(res.status).toBe(200);
+        expect(queue.enqueue).toHaveBeenCalledTimes(1);
+        expect(queue.enqueue).toHaveBeenCalledWith(expect.objectContaining({
+            priority: 'low',
+            payload: expect.objectContaining({
+                workspaceId: REPO_ID,
+                repoId: REPO_ID,
+                classificationIdentifier: '42:head-auto',
+                skills: ['classify-diff'],
+            }),
+        }));
+    });
+
+    it('keeps PR list loading non-blocking when auto-classification enqueue fails', async () => {
+        const { bridge, queue } = makeAutoClassificationBridge({ throwOnEnqueue: true });
+        addPullRequestCoworkerToRoster(dataDir, REPO_ID, REPO_ID, {
+            id: 'user1',
+            displayName: 'Alice',
+        });
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockResolvedValue([
+            { ...mockPr, headSha: 'head-auto' },
+        ]);
+        await restartServer({
+            store: {} as any,
+            bridge,
+            getEnabled: () => true,
+        });
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?workspaceId=${REPO_ID}`);
+        const body = await res.json() as { pullRequests: unknown[] };
+
+        expect(res.status).toBe(200);
+        expect(body.pullRequests).toHaveLength(1);
+        expect(queue.enqueue).toHaveBeenCalledTimes(1);
+    });
+
+    it('background warm can request Team auto-classification only when enabled', async () => {
+        const { bridge, queue } = makeAutoClassificationBridge();
+        addPullRequestCoworkerToRoster(dataDir, REPO_ID, REPO_ID, {
+            id: 'user1',
+            displayName: 'Alice',
+        });
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockResolvedValue([
+            { ...mockPr, headSha: 'head-auto' },
+        ]);
+
+        await warmPullRequestWorkspaceCache({
+            dataDir,
+            repoId: REPO_ID,
+            service: new RepoTreeService(dataDir),
+            store: {} as any,
+            bridge,
+            autoClassifyTeamEnabled: false,
+        });
+        expect(queue.enqueue).not.toHaveBeenCalled();
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(1);
+
+        clearPrListCache();
+        await warmPullRequestWorkspaceCache({
+            dataDir,
+            repoId: REPO_ID,
+            service: new RepoTreeService(dataDir),
+            store: {} as any,
+            bridge,
+            autoClassifyTeamEnabled: true,
+        });
+
+        expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'open', top: 100, scope: 'all' });
+        expect(queue.enqueue).toHaveBeenCalledTimes(1);
     });
 
     it('paginates from cache without upstream call', async () => {

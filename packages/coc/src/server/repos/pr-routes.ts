@@ -28,6 +28,7 @@ import * as url from 'url';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import type { Route } from '../types';
+import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import { sendJson, send404, send400, send500, readJsonBody } from '../router';
 import { RepoTreeService } from './tree-service';
 import {
@@ -51,8 +52,12 @@ import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
 import { computeSummary, parseFullDiff } from '@plusplusoneplusplus/forge';
-import type { IPullRequestsService, ISDKService, ProcessStore, ProviderPullRequest } from '@plusplusoneplusplus/forge';
+import type { CreateTaskInput, IPullRequestsService, ISDKService, ProcessStore, ProviderPullRequest } from '@plusplusoneplusplus/forge';
 import { readReviewHistoryCache, fetchAndCacheReviewHistory, readSuggestionsCache, rankAndCacheSuggestions, toPrMetadata } from './pr-suggestions';
+import {
+    autoClassifyTeamPullRequests,
+    type TeamAutoClassifiablePullRequest,
+} from './pr-team-auto-classification';
 
 // ============================================================================
 // Helpers
@@ -207,8 +212,12 @@ async function refreshPullRequestListCache(
 export interface WarmPullRequestWorkspaceCacheOptions {
     dataDir: string;
     repoId: string;
+    store?: ProcessStore;
+    bridge?: MultiRepoQueueRouter;
     service?: RepoTreeService;
     suggestionsEnabled?: boolean;
+    autoClassifyTeamEnabled?: boolean;
+    prepareTaskForEnqueue?: (input: CreateTaskInput) => Promise<void>;
 }
 
 export async function warmPullRequestWorkspaceCache(options: WarmPullRequestWorkspaceCacheOptions): Promise<void> {
@@ -216,6 +225,19 @@ export async function warmPullRequestWorkspaceCache(options: WarmPullRequestWork
     await refreshPullRequestListCache(options.dataDir, svc, options.repoId, 'open', 'mine');
     listRecentOpenedPullRequests(options.dataDir, options.repoId, options.repoId);
     listPullRequestCoworkerRoster(options.dataDir, options.repoId, options.repoId);
+    if (options.autoClassifyTeamEnabled === true && options.bridge && options.store) {
+        const allOpen = await refreshPullRequestListCache(options.dataDir, svc, options.repoId, 'open', 'all');
+        await triggerTeamAutoClassification({
+            dataDir: options.dataDir,
+            store: options.store,
+            bridge: options.bridge,
+            repoTreeService: svc,
+            prepareTaskForEnqueue: options.prepareTaskForEnqueue,
+            workspaceId: options.repoId,
+            repoId: options.repoId,
+            pullRequests: allOpen.data,
+        });
+    }
     if (options.suggestionsEnabled) {
         readSuggestionsCache(options.dataDir, options.repoId);
     }
@@ -584,6 +606,54 @@ async function getCachedCombinedDiff(
 }
 
 // ============================================================================
+// Auto-classification
+// ============================================================================
+
+export interface PullRequestAutoClassificationOptions {
+    store: ProcessStore;
+    bridge: MultiRepoQueueRouter;
+    prepareTaskForEnqueue?: (input: CreateTaskInput) => Promise<void>;
+    getEnabled?: () => boolean;
+}
+
+interface TriggerTeamAutoClassificationOptions {
+    dataDir: string;
+    store: ProcessStore;
+    bridge: MultiRepoQueueRouter;
+    repoTreeService?: RepoTreeService;
+    prepareTaskForEnqueue?: (input: CreateTaskInput) => Promise<void>;
+    workspaceId: string;
+    repoId: string;
+    pullRequests: readonly TeamAutoClassifiablePullRequest[];
+}
+
+async function triggerTeamAutoClassification(options: TriggerTeamAutoClassificationOptions): Promise<void> {
+    try {
+        const result = await autoClassifyTeamPullRequests(options);
+        if (result.errors.length > 0) {
+            const first = result.errors[0];
+            console.warn(
+                `[pr-auto-classify-team] ${result.errors.length} enqueue error(s) for workspace=${options.workspaceId} repo=${options.repoId}; first=${first.identifier ?? '(unknown)'}: ${first.message}`,
+            );
+        }
+    } catch (err) {
+        console.warn(
+            `[pr-auto-classify-team] failed for workspace=${options.workspaceId} repo=${options.repoId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+    }
+}
+
+function isTeamAutoClassificationEnabled(options?: PullRequestAutoClassificationOptions): boolean {
+    if (!options) return false;
+    try {
+        return options.getEnabled?.() === true;
+    } catch (err) {
+        console.warn(`[pr-auto-classify-team] failed to read config gate: ${err instanceof Error ? err.message : String(err)}`);
+        return false;
+    }
+}
+
+// ============================================================================
 // Registration
 // ============================================================================
 
@@ -595,7 +665,14 @@ async function getCachedCombinedDiff(
  * @param dataDir - CoC data directory (e.g. ~/.coc)
  * @param service - Shared RepoTreeService instance (singleton)
  */
-export function registerPrRoutes(routes: Route[], dataDir: string, service?: RepoTreeService, store?: ProcessStore, aiService?: ISDKService): void {
+export function registerPrRoutes(
+    routes: Route[],
+    dataDir: string,
+    service?: RepoTreeService,
+    store?: ProcessStore,
+    aiService?: ISDKService,
+    autoClassification?: PullRequestAutoClassificationOptions,
+): void {
     const svc = service ?? new RepoTreeService(dataDir, undefined, store);
 
     // -- List PRs -------------------------------------------------------------
@@ -612,6 +689,9 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 const top = Math.min(+(query.top ?? 25), 100);
                 const skip = +(query.skip ?? 0);
                 const force = query.force === 'true';
+                const workspaceId = typeof query.workspaceId === 'string' && query.workspaceId.trim()
+                    ? query.workspaceId.trim()
+                    : repoId;
                 const cacheKey = makePrCacheKey(repoId, status, scope);
 
                 let entry: PrCacheEntry;
@@ -640,6 +720,19 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 if (typeof query.search === 'string' && query.search) {
                     const searchFilter = query.search.toLowerCase();
                     page = page.filter((pr: any) => pr.title.toLowerCase().includes(searchFilter));
+                }
+
+                if (isTeamAutoClassificationEnabled(autoClassification)) {
+                    await triggerTeamAutoClassification({
+                        dataDir,
+                        store: autoClassification!.store,
+                        bridge: autoClassification!.bridge,
+                        repoTreeService: svc,
+                        prepareTaskForEnqueue: autoClassification!.prepareTaskForEnqueue,
+                        workspaceId,
+                        repoId,
+                        pullRequests: page,
+                    });
                 }
 
                 sendJson(res, { pullRequests: page, total: page.length, fetchedAt: entry.fetchedAt });

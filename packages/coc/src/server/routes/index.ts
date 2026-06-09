@@ -310,7 +310,18 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.loops?.enabled ?? false, getLiveFeatureFlags, activeWorkspaceTracker);
     const repoTreeService = new RepoTreeService(dataDir, undefined, store);
     registerRepoRoutes(routes, dataDir, repoTreeService);
-    registerPrRoutes(routes, dataDir, repoTreeService, undefined, resolvedAiService);
+    const isPullRequestTeamAutoClassificationEnabled = (): boolean => {
+        const config = opts.runtimeConfigService?.config ?? opts.resolvedConfig;
+        return config?.pullRequests?.enabled === true
+            && config.pullRequests?.autoClassifyTeam === true
+            && config.features?.focusedDiff === true;
+    };
+    registerPrRoutes(routes, dataDir, repoTreeService, store, resolvedAiService, {
+        store,
+        bridge,
+        prepareTaskForEnqueue: prepareEnqueueTask,
+        getEnabled: isPullRequestTeamAutoClassificationEnabled,
+    });
     // Focused-diff classification routes — always registered so the feature
     // can be toggled live via admin config. The SPA gates the UI based on
     // runtime config; having the routes present when disabled is harmless.
@@ -735,8 +746,12 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                     ? warmPullRequestWorkspaceCache({
                         dataDir,
                         repoId: workspaceId,
+                        store,
+                        bridge,
                         service: repoTreeService,
                         suggestionsEnabled: config.pullRequests?.suggestions === true,
+                        autoClassifyTeamEnabled: isPullRequestTeamAutoClassificationEnabled(),
+                        prepareTaskForEnqueue: prepareEnqueueTask,
                     })
                     : Promise.resolve(),
                 warmWorkItemWorkspaceCache({
