@@ -747,11 +747,13 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const validNextStatuses = VALID_TRANSITIONS[item.status] ?? [];
     const hierarchyEnabled = isWorkItemsHierarchyEnabled();
     const workflowEnabled = isWorkItemsWorkflowEnabled();
-    const isLocalOnlyWorkflowWorkItem = effectiveType === 'work-item'
+    const isLocalOnlyWorkflowItem = (effectiveType === 'work-item' || effectiveType === 'goal')
         && (!item.tracker || item.tracker.kind === 'local-only')
         && !item.githubMirror
         && !item.azureBoardsMirror;
+    const isLocalOnlyWorkflowWorkItem = effectiveType === 'work-item' && isLocalOnlyWorkflowItem;
     const canDraftWithAi = workflowEnabled && aiAuthoringEnabled && isLocalOnlyWorkflowWorkItem;
+    const canUseVersionWorkflowActions = workflowEnabled && isLocalOnlyWorkflowItem;
 
     const typePrefix = effectiveType === 'epic' ? 'E'
         : effectiveType === 'feature' ? 'F'
@@ -1096,6 +1098,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             onNavigateToTasksTab={onNavigateToTasksTab}
                             viewMode={planViewMode}
                             onViewModeChange={setPlanViewMode}
+                            enableVersionActions={canUseVersionWorkflowActions}
+                            hasUnsavedChanges={isDirty}
                         />
                     </div>
                 </article>
