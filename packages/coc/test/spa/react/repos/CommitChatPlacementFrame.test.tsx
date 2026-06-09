@@ -1,5 +1,11 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
+
+const dormantModeState = { value: 'ghost' as 'ghost' | 'pill' };
+
+vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    getCommitChatLensDormantMode: () => dormantModeState.value,
+}));
 
 vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChatPanel', () => ({
     CommitChatPanel: (props: any) => (
@@ -14,6 +20,40 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChat
 }));
 
 import { CommitChatPlacementFrame } from '../../../../src/server/spa/client/react/features/git/commits/CommitChatPlacementFrame';
+import { LENS_SIZE_STORAGE_KEY } from '../../../../src/server/spa/client/react/features/git/reviewChat/ReviewChatPlacementFrame';
+
+beforeEach(() => {
+    dormantModeState.value = 'ghost';
+    vi.useFakeTimers();
+    localStorage.removeItem(LENS_SIZE_STORAGE_KEY);
+});
+
+afterEach(() => {
+    vi.useRealTimers();
+    localStorage.removeItem(LENS_SIZE_STORAGE_KEY);
+});
+
+const KNOWN_RECT: DOMRect = {
+    left: 500, top: 200, right: 920, bottom: 600,
+    width: 420, height: 400, x: 500, y: 200, toJSON: () => ({}),
+};
+
+/**
+ * Simulate mouse far away from the lens.
+ * The dormant engine uses window-level mousemove with a 24ms throttle,
+ * so we advance the clock past the throttle before dispatching.
+ */
+function simulateMouseFarAway(el: HTMLElement) {
+    vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(KNOWN_RECT);
+    vi.advanceTimersByTime(30);
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 50 }));
+}
+
+function simulateMouseOnElement(el: HTMLElement) {
+    vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(KNOWN_RECT);
+    vi.advanceTimersByTime(30);
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 600, clientY: 300 }));
+}
 
 describe('CommitChatPlacementFrame', () => {
     it('renders a bottom-right lens frame with close and pin actions', () => {
@@ -39,8 +79,6 @@ describe('CommitChatPlacementFrame', () => {
         expect(lens.className).toContain('absolute');
         expect(lens.className).toContain('bottom-4');
         expect(lens.className).toContain('right-4');
-        expect(lens.className).toContain('max-w-[420px]');
-        expect(lens.className).toContain('max-h-[55vh]');
         expect(screen.getByTestId('commit-chat-lens-resize-grip')).toHaveClass('cursor-nwse-resize');
         expect(screen.getByTestId('commit-chat-lens-header')).toBeTruthy();
         expect(screen.getByTestId('commit-chat-panel').getAttribute('data-hide-empty-header')).toBe('true');
@@ -100,5 +138,269 @@ describe('CommitChatPlacementFrame', () => {
         fireEvent.click(screen.getByTestId('commit-chat-unpin-btn'));
 
         expect(onUnpin).toHaveBeenCalledOnce();
+    });
+
+    it('sets data-dormant-mode and data-focused attributes on lens', () => {
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        const lens = screen.getByTestId('commit-chat-lens');
+        expect(lens.getAttribute('data-dormant-mode')).toBe('ghost');
+        expect(lens.getAttribute('data-focused')).toBe('true');
+    });
+
+    it('does not set dormant data attributes on side-panel presentation', () => {
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="side-panel"
+                onClose={() => {}}
+            />,
+        );
+
+        const panel = screen.getByTestId('commit-chat-side-panel');
+        expect(panel.getAttribute('data-dormant-mode')).toBeNull();
+        expect(panel.getAttribute('data-focused')).toBeNull();
+    });
+
+    it('transitions to ghost dormant state after mouse moves away and delay elapses', () => {
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        const lens = screen.getByTestId('commit-chat-lens');
+        const card = screen.getByTestId('commit-chat-lens-card');
+
+        expect(lens.getAttribute('data-focused')).toBe('true');
+        expect(card.style.opacity).toBe('1');
+
+        act(() => { simulateMouseFarAway(card); });
+        act(() => { vi.advanceTimersByTime(700); });
+
+        expect(lens.getAttribute('data-focused')).toBe('false');
+        expect(card.style.opacity).toBe('0.18');
+        expect(card.style.pointerEvents).toBe('none');
+    });
+
+    it('cancels dormant transition when mouse moves back before delay', () => {
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        const lens = screen.getByTestId('commit-chat-lens');
+        const card = screen.getByTestId('commit-chat-lens-card');
+
+        act(() => { simulateMouseFarAway(card); });
+        act(() => { vi.advanceTimersByTime(300); });
+
+        act(() => { simulateMouseOnElement(card); });
+        act(() => { vi.advanceTimersByTime(500); });
+
+        expect(lens.getAttribute('data-focused')).toBe('true');
+    });
+
+    it('shows dormant pill when mode is pill and mouse leaves', () => {
+        dormantModeState.value = 'pill';
+
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        const lens = screen.getByTestId('commit-chat-lens');
+        const card = screen.getByTestId('commit-chat-lens-card');
+        expect(lens.getAttribute('data-dormant-mode')).toBe('pill');
+
+        act(() => { simulateMouseFarAway(card); });
+        act(() => { vi.advanceTimersByTime(700); });
+
+        const pill = screen.getByTestId('commit-chat-lens-dormant-pill');
+        expect(pill.style.opacity).toBe('1');
+        expect(pill.style.pointerEvents).toBe('auto');
+
+        expect(card.style.opacity).toBe('0');
+        expect(card.style.pointerEvents).toBe('none');
+    });
+
+    it('restores from pill dormant when mouse moves over pill', () => {
+        dormantModeState.value = 'pill';
+
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        const lens = screen.getByTestId('commit-chat-lens');
+        const card = screen.getByTestId('commit-chat-lens-card');
+        act(() => { simulateMouseFarAway(card); });
+        act(() => { vi.advanceTimersByTime(700); });
+
+        expect(lens.getAttribute('data-focused')).toBe('false');
+
+        // When dormant in pill mode, the hit-test target is the pill element.
+        // Mock the pill's rect and move the mouse onto it.
+        const pill = screen.getByTestId('commit-chat-lens-dormant-pill');
+        const pillRect: DOMRect = {
+            left: 800, top: 580, right: 920, bottom: 600,
+            width: 120, height: 20, x: 800, y: 580, toJSON: () => ({}),
+        };
+        vi.spyOn(pill, 'getBoundingClientRect').mockReturnValue(pillRect);
+        act(() => {
+            vi.advanceTimersByTime(30);
+            window.dispatchEvent(new MouseEvent('mousemove', { clientX: 850, clientY: 590 }));
+        });
+
+        expect(lens.getAttribute('data-focused')).toBe('true');
+        expect(card.style.opacity).toBe('1');
+    });
+
+    it('stays focused when no mousemove event has been fired', () => {
+        dormantModeState.value = 'pill';
+
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        const lens = screen.getByTestId('commit-chat-lens');
+
+        act(() => { vi.advanceTimersByTime(2000); });
+
+        expect(lens.getAttribute('data-focused')).toBe('true');
+    });
+
+    it('does not render dormant pill in ghost mode', () => {
+        dormantModeState.value = 'ghost';
+
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        expect(screen.queryByTestId('commit-chat-lens-dormant-pill')).toBeNull();
+    });
+
+    it('uses default size when localStorage is empty', () => {
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        const lens = screen.getByTestId('commit-chat-lens');
+        expect(lens.style.width).not.toMatch(/^\d+px$/);
+    });
+
+    it('restores persisted lens size from localStorage on mount', () => {
+        localStorage.setItem(LENS_SIZE_STORAGE_KEY, JSON.stringify({ width: 500, height: 450 }));
+
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        const lens = screen.getByTestId('commit-chat-lens');
+        expect(lens.style.width).toBe('500px');
+        expect(lens.style.height).toBe('450px');
+    });
+
+    it('persists lens size to localStorage after resize completes', () => {
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        const grip = screen.getByTestId('commit-chat-lens-resize-grip');
+        const card = screen.getByTestId('commit-chat-lens-card');
+
+        vi.spyOn(card, 'getBoundingClientRect').mockReturnValue({
+            left: 500, top: 200, right: 920, bottom: 600,
+            width: 420, height: 400, x: 500, y: 200, toJSON: () => ({}),
+        });
+
+        fireEvent.mouseDown(grip, { clientX: 500, clientY: 200 });
+        fireEvent(window, new MouseEvent('mousemove', { clientX: 450, clientY: 150 }));
+        fireEvent(window, new MouseEvent('mouseup'));
+
+        const stored = JSON.parse(localStorage.getItem(LENS_SIZE_STORAGE_KEY)!);
+        expect(stored.width).toBeGreaterThanOrEqual(320);
+        expect(stored.height).toBeGreaterThanOrEqual(320);
+    });
+
+    it('ignores malformed localStorage data gracefully', () => {
+        localStorage.setItem(LENS_SIZE_STORAGE_KEY, 'not-json');
+
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        const lens = screen.getByTestId('commit-chat-lens');
+        expect(lens.style.width).not.toMatch(/^\d+px$/);
+    });
+
+    it('clamps persisted size to valid range', () => {
+        localStorage.setItem(LENS_SIZE_STORAGE_KEY, JSON.stringify({ width: 100, height: 50 }));
+
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        const lens = screen.getByTestId('commit-chat-lens');
+        expect(lens.style.width).toBe('320px');
+        expect(lens.style.height).toBe('320px');
     });
 });

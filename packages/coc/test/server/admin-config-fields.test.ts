@@ -49,6 +49,7 @@ describe('ADMIN_EDITABLE_KEYS', () => {
             'features.gitCrossCloneCherryPick',
             'features.sessionContextAttachments',
             'features.commitChatLens',
+            'features.commitChatLensDormantMode',
             'features.autoAgentProviderRouting',
             'workItems.hierarchy.enabled',
             'workItems.sync.enabled',
@@ -186,6 +187,21 @@ describe('validate()', () => {
         });
         it('rejects other strings', () => {
             expect(fieldFor('scratchpad.layout').validate('diagonal')).toMatch(/horizontal.*vertical/);
+        });
+    });
+
+    describe('features.commitChatLensDormantMode validation', () => {
+        it('accepts ghost', () => {
+            expect(fieldFor('features.commitChatLensDormantMode').validate('ghost')).toBeUndefined();
+        });
+        it('accepts pill', () => {
+            expect(fieldFor('features.commitChatLensDormantMode').validate('pill')).toBeUndefined();
+        });
+        it('rejects unknown string values', () => {
+            expect(fieldFor('features.commitChatLensDormantMode').validate('frost')).toBeDefined();
+        });
+        it('rejects non-string values', () => {
+            expect(fieldFor('features.commitChatLensDormantMode').validate(true)).toBeDefined();
         });
     });
 
@@ -430,6 +446,19 @@ describe('apply()', () => {
         });
     });
 
+    describe('features.commitChatLensDormantMode', () => {
+        it('applies ghost to config', () => {
+            const cfg: CLIConfig = {};
+            fieldFor('features.commitChatLensDormantMode').apply(cfg, 'ghost');
+            expect(cfg.features?.commitChatLensDormantMode).toBe('ghost');
+        });
+        it('applies pill to config', () => {
+            const cfg: CLIConfig = {};
+            fieldFor('features.commitChatLensDormantMode').apply(cfg, 'pill');
+            expect(cfg.features?.commitChatLensDormantMode).toBe('pill');
+        });
+    });
+
     describe('defaultProvider', () => {
         it('sets copilot', () => {
             const cfg: CLIConfig = {};
@@ -496,6 +525,7 @@ describe('runtime classification', () => {
         'features.gitCrossCloneCherryPick',
         'features.sessionContextAttachments',
         'features.commitChatLens',
+        'features.commitChatLensDormantMode',
         'workItems.hierarchy.enabled', 'workItems.sync.enabled', 'workItems.aiAuthoring.enabled',
     ];
 

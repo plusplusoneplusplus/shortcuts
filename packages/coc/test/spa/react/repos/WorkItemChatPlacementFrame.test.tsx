@@ -1,6 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
+vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    getCommitChatLensDormantMode: () => 'ghost' as const,
+}));
+
 vi.mock('../../../../src/server/spa/client/react/features/work-items/WorkItemChatPanel', () => ({
     getWorkItemChatIdentifier: (workItemId: string, workItemNumber?: number, type?: string) => (
         workItemNumber != null ? `${type === 'bug' ? 'BUG' : 'WI'}-${workItemNumber}` : workItemId

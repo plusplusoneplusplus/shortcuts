@@ -206,6 +206,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                 sendJSON(res, 200, {
                     resolved: snapshot.config,
                     sources: snapshot.sources,
+                    defaults: runtimeConfigService.defaults,
                     configFilePath: runtimeConfigService.configPath,
                     revision: snapshot.revision,
                     fieldMetadata: getAdminFieldMetadata(),
@@ -248,6 +249,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                     sendJSON(res, 200, {
                         resolved: updateResult.config,
                         sources: updateResult.sources,
+                        defaults: runtimeConfigService.defaults,
                         configFilePath: runtimeConfigService.configPath,
                         revision: updateResult.revision,
                         effects: updateResult.effects,

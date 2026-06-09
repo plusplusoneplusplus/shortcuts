@@ -221,6 +221,8 @@ export interface CLIConfig {
         sessionContextAttachments?: boolean;
         /** Commit chat bottom-right lens placement on desktop commit-review surfaces. Disabled by default. */
         commitChatLens?: boolean;
+        /** Dormant mode for the lens when the cursor leaves: 'ghost' fades to near-transparent, 'pill' collapses to a compact pill. Defaults to 'ghost'. */
+        commitChatLensDormantMode?: 'ghost' | 'pill';
         /** Auto agent provider routing in Admin -> AI Provider. Disabled by default. */
         autoAgentProviderRouting?: boolean;
     };
@@ -481,6 +483,8 @@ export interface ResolvedCLIConfig {
         sessionContextAttachments: boolean;
         /** Commit chat bottom-right lens placement on desktop commit-review surfaces. Disabled by default. */
         commitChatLens: boolean;
+        /** Dormant mode for the lens when the cursor leaves: 'ghost' fades to near-transparent, 'pill' collapses to a compact pill. Defaults to 'ghost'. */
+        commitChatLensDormantMode: 'ghost' | 'pill';
         /** Auto agent provider routing in Admin -> AI Provider. Disabled by default. */
         autoAgentProviderRouting: boolean;
     };
@@ -693,6 +697,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         gitCrossCloneCherryPick: true,
         sessionContextAttachments: false,
         commitChatLens: false,
+        commitChatLensDormantMode: 'ghost',
         autoAgentProviderRouting: false,
     },
     memoryPromotion: {
@@ -767,6 +772,36 @@ export interface AdminConfigWithSource {
     sources: Record<ConfigSourceKey, ConfigFieldSource>;
     /** Canonical config file path */
     configFilePath: string;
+}
+
+// ============================================================================
+// Default Values
+// ============================================================================
+
+/**
+ * Extract the default value for a dot-notation config key from DEFAULT_CONFIG.
+ * Returns the primitive value at the leaf, or undefined if the path doesn't exist.
+ */
+function getDefaultValueAtPath(key: string): unknown {
+    const segments = key.split('.');
+    let current: unknown = DEFAULT_CONFIG;
+    for (const seg of segments) {
+        if (typeof current !== 'object' || current === null) return undefined;
+        current = (current as Record<string, unknown>)[seg];
+    }
+    return current;
+}
+
+/**
+ * Build a flat map of default values for all tracked config source keys.
+ * Keyed by the same dot-notation used in `sources`.
+ */
+export function getDefaultValues(): Record<ConfigSourceKey, unknown> {
+    const defaults = {} as Record<ConfigSourceKey, unknown>;
+    for (const key of CONFIG_SOURCE_KEYS) {
+        defaults[key] = getDefaultValueAtPath(key);
+    }
+    return defaults;
 }
 
 // ============================================================================

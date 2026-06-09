@@ -49,6 +49,8 @@ export interface DashboardOptions {
     sessionContextAttachmentsEnabled?: boolean;
     /** Whether commit chat opens as a bottom-right lens on desktop commit-review surfaces. */
     commitChatLensEnabled?: boolean;
+    /** Dormant mode for the lens when cursor leaves: 'ghost' (fade) or 'pill' (collapse). */
+    commitChatLensDormantMode?: 'ghost' | 'pill';
     /** Whether Auto agent provider routing is enabled in Admin -> AI Provider. */
     autoAgentProviderRoutingEnabled?: boolean;
     /** Whether the Work Items hierarchy board is enabled in server config. */

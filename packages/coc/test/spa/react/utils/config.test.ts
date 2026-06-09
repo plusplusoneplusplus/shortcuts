@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import {
     getConfiguredDefaultProvider,
     getDefaultProvider,
+    getCommitChatLensDormantMode,
     isAutoAgentProviderRoutingEnabled,
     isCommitChatLensEnabled,
     isServersEnabled,
@@ -46,6 +47,28 @@ describe('isCommitChatLensEnabled', () => {
     it('returns true when commitChatLensEnabled is explicitly true', () => {
         (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', commitChatLensEnabled: true };
         expect(isCommitChatLensEnabled()).toBe(true);
+    });
+});
+
+describe('getCommitChatLensDormantMode', () => {
+    it('returns ghost when commitChatLensDormantMode is omitted', () => {
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws' };
+        expect(getCommitChatLensDormantMode()).toBe('ghost');
+    });
+
+    it('returns ghost when commitChatLensDormantMode is explicitly ghost', () => {
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', commitChatLensDormantMode: 'ghost' };
+        expect(getCommitChatLensDormantMode()).toBe('ghost');
+    });
+
+    it('returns pill when commitChatLensDormantMode is explicitly pill', () => {
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', commitChatLensDormantMode: 'pill' };
+        expect(getCommitChatLensDormantMode()).toBe('pill');
+    });
+
+    it('returns ghost for unknown values', () => {
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', commitChatLensDormantMode: 'unknown' };
+        expect(getCommitChatLensDormantMode()).toBe('ghost');
     });
 });
 

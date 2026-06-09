@@ -25,6 +25,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isEffortLevelsEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => false,
     isCommitChatLensEnabled: configMocks.isCommitChatLensEnabled,
+    getCommitChatLensDormantMode: () => 'ghost' as const,
 }));
 
 const prefsMocks = vi.hoisted(() => ({

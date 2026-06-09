@@ -491,6 +491,30 @@ describe('Admin Handler', () => {
             expect(body.resolved.myWork.enabled).toBe(false);
             expect(body.sources['myWork.enabled']).toBe('default');
         });
+
+        it('should return defaults map with built-in default values', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`);
+            const body = JSON.parse(res.body);
+            expect(body.defaults).toBeDefined();
+            expect(body.defaults['notes.enabled']).toBe(true);
+            expect(body.defaults['workflows.enabled']).toBe(false);
+            expect(body.defaults['excalidraw.enabled']).toBe(false);
+            expect(body.defaults['terminal.enabled']).toBe(true);
+            expect(body.defaults['parallel']).toBe(5);
+        });
+
+        it('should allow comparing resolved values with defaults to detect modifications', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            fs.writeFileSync(configPath, 'notes:\n  enabled: false\n');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.notes.enabled).toBe(false);
+            expect(body.defaults['notes.enabled']).toBe(true);
+            expect(body.resolved.notes.enabled !== body.defaults['notes.enabled']).toBe(true);
+        });
     });
 
     // ========================================================================

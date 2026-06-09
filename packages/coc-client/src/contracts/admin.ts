@@ -104,6 +104,7 @@ export interface AdminResolvedConfig {
     gitCrossCloneCherryPick?: boolean;
     sessionContextAttachments?: boolean;
     commitChatLens?: boolean;
+    commitChatLensDormantMode?: 'ghost' | 'pill';
     autoAgentProviderRouting?: boolean;
   };
   workItems?: { hierarchy?: { enabled?: boolean }; sync?: { enabled?: boolean }; aiAuthoring?: { enabled?: boolean } };
@@ -127,6 +128,8 @@ export interface AdminConfigResponse {
   config?: Record<string, unknown>;
   resolved?: AdminResolvedConfig;
   sources?: Record<string, string>;
+  /** Default values for all tracked config keys (dot-notation, same keys as `sources`). */
+  defaults?: Record<string, unknown>;
   revision?: number;
   fieldMetadata?: Record<string, AdminConfigFieldMeta>;
   effects?: AdminConfigChangeEffect[];
@@ -172,6 +175,7 @@ export interface AdminConfigUpdate {
   'features.gitCrossCloneCherryPick'?: boolean;
   'features.sessionContextAttachments'?: boolean;
   'features.commitChatLens'?: boolean;
+  'features.commitChatLensDormantMode'?: 'ghost' | 'pill';
   'features.autoAgentProviderRouting'?: boolean;
   'effortLevels.enabled'?: boolean;
   [key: string]: unknown;
@@ -215,6 +219,7 @@ export interface RuntimeDashboardConfig {
     gitCrossCloneCherryPickEnabled: boolean;
     sessionContextAttachmentsEnabled: boolean;
     commitChatLensEnabled: boolean;
+    commitChatLensDormantMode: 'ghost' | 'pill';
     effortLevelsEnabled: boolean;
   };
   hostname?: string;

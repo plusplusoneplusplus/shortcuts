@@ -94,6 +94,7 @@ const FEATURES_SOURCE_KEYS = [
     'features.gitCrossCloneCherryPick',
     'features.sessionContextAttachments',
     'features.commitChatLens',
+    'features.commitChatLensDormantMode',
     'features.autoAgentProviderRouting',
 ] as const;
 const WORK_ITEMS_HIERARCHY_SOURCE_KEYS = ['workItems.hierarchy.enabled'] as const;
@@ -392,6 +393,7 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
                     gitCrossCloneCherryPick: override?.features?.gitCrossCloneCherryPick ?? base.features?.gitCrossCloneCherryPick ?? true,
                     sessionContextAttachments: override?.features?.sessionContextAttachments ?? base.features?.sessionContextAttachments ?? false,
                     commitChatLens: override?.features?.commitChatLens ?? base.features?.commitChatLens ?? false,
+                    commitChatLensDormantMode: override?.features?.commitChatLensDormantMode ?? base.features?.commitChatLensDormantMode ?? 'ghost',
                     autoAgentProviderRouting: override?.features?.autoAgentProviderRouting ?? base.features?.autoAgentProviderRouting ?? false,
                 },
             }),
