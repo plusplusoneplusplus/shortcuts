@@ -20,6 +20,28 @@ const LENS_MARGIN_PX = 16;
 const MIN_LENS_WIDTH_PX = 320;
 const MIN_LENS_HEIGHT_PX = 320;
 
+function MinimizeIcon() {
+    return (
+        <svg aria-hidden="true" className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none">
+            <path d="M3.5 8h9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+    );
+}
+
+function PinIcon() {
+    return (
+        <svg aria-hidden="true" className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none">
+            <path
+                d="M6 2.75h4l-.6 3.5 2.1 2.1v1.15h-7V8.35l2.1-2.1L6 2.75Z"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinejoin="round"
+            />
+            <path d="M8 9.5v3.75" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+        </svg>
+    );
+}
+
 function clampLensSize(width: number, height: number) {
     const viewportWidth = window.innerWidth || MIN_LENS_WIDTH_PX + LENS_MARGIN_PX * 2;
     const viewportHeight = window.innerHeight || MIN_LENS_HEIGHT_PX + LENS_MARGIN_PX * 2;
@@ -160,12 +182,12 @@ export function ReviewChatPlacementFrame({
                 <button
                     type="button"
                     aria-label={`Resize ${title}${identifier ? ` ${identifier}` : ''}`}
-                    className="absolute left-0 top-0 z-10 h-5 w-5 cursor-nwse-resize rounded-br-md border-b border-r border-[#d0d7de] bg-white/90 text-[#6e7781] shadow-sm hover:bg-[#f0f6ff] focus:outline-none focus:ring-2 focus:ring-[#0078d4] dark:border-[#3c3c3c] dark:bg-[#252526]/95 dark:text-[#cccccc] dark:hover:bg-[#2d333b]"
+                    className="absolute left-1 top-1 z-10 h-3.5 w-3.5 cursor-nwse-resize text-[#6e7781] hover:text-[#24292f] focus:outline-none focus:ring-2 focus:ring-[#0078d4] dark:text-[#cccccc] dark:hover:text-white"
                     data-testid={`${testIdPrefix}-lens-resize-grip`}
                     onMouseDown={handleResizeMouseDown}
                     title="Resize chat lens"
                 >
-                    <span aria-hidden="true" className="pointer-events-none absolute left-1 top-1 h-2.5 w-2.5 border-l-2 border-t-2 border-current" />
+                    <span aria-hidden="true" className="pointer-events-none absolute left-0.5 top-0.5 h-2 w-2 border-l border-t border-current" />
                 </button>
             )}
             <div
@@ -187,22 +209,24 @@ export function ReviewChatPlacementFrame({
                         <button
                             type="button"
                             onClick={onMinimize}
-                            className="rounded px-1.5 py-0.5 text-[11px] font-medium text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]"
+                            aria-label="Minimize chat lens"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]"
                             data-testid={`${testIdPrefix}-minimize-btn`}
                             title="Minimize chat lens"
                         >
-                            Minimize
+                            <MinimizeIcon />
                         </button>
                     )}
                     {isLens && onPin && (
                         <button
                             type="button"
                             onClick={onPin}
-                            className="rounded px-1.5 py-0.5 text-[11px] font-medium text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]"
+                            aria-label="Pin to side panel"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]"
                             data-testid={`${testIdPrefix}-pin-btn`}
                             title="Pin to side panel"
                         >
-                            Pin
+                            <PinIcon />
                         </button>
                     )}
                     {!isLens && onUnpin && (

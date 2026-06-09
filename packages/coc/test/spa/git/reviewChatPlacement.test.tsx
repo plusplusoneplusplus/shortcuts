@@ -146,16 +146,27 @@ describe('ReviewChatPlacementFrame', () => {
         );
 
         expect(screen.getByTestId('pr-chat-lens')).toBeInTheDocument();
-        expect(screen.getByTestId('pr-chat-lens-resize-grip')).toBeInTheDocument();
-        expect(screen.getByTestId('pr-chat-lens-resize-grip')).toHaveClass('cursor-nwse-resize');
+        const resizeGrip = screen.getByTestId('pr-chat-lens-resize-grip');
+        expect(resizeGrip).toBeInTheDocument();
+        expect(resizeGrip).toHaveClass('cursor-nwse-resize', 'h-3.5', 'w-3.5');
+        expect(resizeGrip.className).not.toContain('bg-');
+        expect(resizeGrip.className).not.toContain('shadow');
         expect(screen.getByTestId('pr-chat-lens-header')).toHaveTextContent('PR Chat');
         expect(screen.getByTestId('pr-chat-lens-header')).toHaveTextContent('#123');
         expect(screen.getByTestId('chat-body')).toBeInTheDocument();
 
-        fireEvent.click(screen.getByTestId('pr-chat-minimize-btn'));
+        const minimizeButton = screen.getByRole('button', { name: 'Minimize chat lens' });
+        expect(minimizeButton).toBe(screen.getByTestId('pr-chat-minimize-btn'));
+        expect(minimizeButton).not.toHaveTextContent('Minimize');
+        expect(minimizeButton.querySelector('svg')).toBeInTheDocument();
+        fireEvent.click(minimizeButton);
         expect(onMinimize).toHaveBeenCalledTimes(1);
 
-        fireEvent.click(screen.getByTestId('pr-chat-pin-btn'));
+        const pinButton = screen.getByRole('button', { name: 'Pin to side panel' });
+        expect(pinButton).toBe(screen.getByTestId('pr-chat-pin-btn'));
+        expect(pinButton).not.toHaveTextContent('Pin');
+        expect(pinButton.querySelector('svg')).toBeInTheDocument();
+        fireEvent.click(pinButton);
         expect(onPin).toHaveBeenCalledTimes(1);
 
         fireEvent.click(screen.getByTestId('pr-chat-frame-close-btn'));
