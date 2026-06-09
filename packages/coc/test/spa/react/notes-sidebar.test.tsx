@@ -1096,6 +1096,29 @@ describe('NotesSidebar', () => {
         expect(onRootsChanged).toHaveBeenCalledOnce();
     });
 
+    it('keeps collection removal selection separate from page multi-selection', async () => {
+        const onSelectRoot = vi.fn();
+        const onSelectPage = vi.fn();
+        const { findByTestId } = renderSidebar(null, onSelectPage, {
+            roots: ROOTS,
+            selectedRootId: 'default',
+            selectedRootLabel: 'Notes',
+            onSelectRoot,
+        });
+        const notebook = await findByTestId('notes-tree-item-Notebook1');
+        fireEvent.click(notebook);
+        const page = await findByTestId('notes-tree-item-TopPage');
+
+        fireEvent.click(await findByTestId('notes-root-selector'));
+        fireEvent.click(await findByTestId('notes-root-option-docs'), { ctrlKey: true });
+        fireEvent.click(page, { ctrlKey: true });
+
+        expect(onSelectRoot).not.toHaveBeenCalled();
+        expect(onSelectPage).not.toHaveBeenCalled();
+        expect((await findByTestId('notes-root-option-docs')).getAttribute('data-removal-selected')).toBe('true');
+        expect(page.getAttribute('aria-selected')).toBe('true');
+    });
+
     // ── Redesigned header / meta / search ─────────────────────────────────
 
     it('renders the redesigned panel header with Notes title and "New" button', async () => {
