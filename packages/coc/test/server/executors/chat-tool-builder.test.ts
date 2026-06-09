@@ -53,6 +53,7 @@ describe('buildChatToolBundle', () => {
             'suggest_follow_ups',
             'tavily_web_search',
         ]);
+        expect(result.tools.map(t => t.name)).not.toContain('update_work_item');
         expect(result.toolGuidance).toContain('tavily_web_search');
         expect(result.toolGuidance).toContain('search_conversations');
         expect(result.toolGuidance).toContain('3 suggestions');

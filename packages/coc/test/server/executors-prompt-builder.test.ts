@@ -628,6 +628,7 @@ describe('buildCreateWorkItemAddon', () => {
         expect(result.tools).toHaveLength(2);
         expect(result.tools[0].name).toBe('create_update_work_item');
         expect(result.tools[1].name).toBe('create_bug');
+        expect(result.tools.map(t => t.name)).not.toContain('update_work_item');
     });
 
     it('passes dataDir, repoId, and broadcastFn to factories', () => {

@@ -1012,6 +1012,7 @@ describe('create_update_work_item / create_bug tool wiring', () => {
         const toolNames = (call.tools ?? []).map((t: any) => t.name);
         expect(toolNames).toContain('create_update_work_item');
         expect(toolNames).not.toContain('create_work_item');
+        expect(toolNames).not.toContain('update_work_item');
         expect(toolNames).toContain('create_bug');
     });
 
@@ -1025,6 +1026,7 @@ describe('create_update_work_item / create_bug tool wiring', () => {
         const toolNames = (call.tools ?? []).map((t: any) => t.name);
         expect(toolNames).toContain('create_update_work_item');
         expect(toolNames).not.toContain('create_work_item');
+        expect(toolNames).not.toContain('update_work_item');
         expect(toolNames).toContain('create_bug');
     });
 
@@ -1046,6 +1048,7 @@ describe('create_update_work_item / create_bug tool wiring', () => {
             const toolNames = (call.tools ?? []).map((t: any) => t.name);
             expect(toolNames).toContain('create_update_work_item');
             expect(toolNames).not.toContain('create_work_item');
+            expect(toolNames).not.toContain('update_work_item');
             expect(toolNames).toContain('create_bug');
         }
     });
@@ -1094,6 +1097,7 @@ describe('create_update_work_item / create_bug tool wiring', () => {
             const toolNames = (call.tools ?? []).map((t: any) => t.name);
             expect(toolNames).not.toContain('create_update_work_item');
             expect(toolNames).not.toContain('create_work_item');
+            expect(toolNames).not.toContain('update_work_item');
             expect(toolNames).not.toContain('create_bug');
             expect(call.prompt).not.toContain('create-work-item');
             expect(call.prompt).not.toContain('create-bug');

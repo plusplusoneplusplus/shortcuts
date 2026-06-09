@@ -34,7 +34,6 @@ attachments can be dropped into chat composers.
 | `tavily-web-search-tool.ts` | `tavily_web_search` | Live web search via Tavily API. Key from `~/.coc/providers.json`. Disabled by default. |
 | `create-bug-tool.ts` | `create_bug` | Queues a bug work item. |
 | `create-update-work-item-tool.ts` | `create_update_work_item` | Creates a work item or saves a full revised plan as the next version for an existing item. |
-| `update-work-item-tool.ts` | `update_work_item` | Updates an existing work item. |
 
 ## Supporting Modules
 
