@@ -56,7 +56,7 @@ describe('PreferencesClient', () => {
     const adapter = createMockAdapter({});
     const client = new PreferencesClient(adapter);
     const folderPaths = ['tasks'];
-    const disabledLlmTools = ['create_bug'];
+    const disabledLlmTools = ['create_update_work_item'];
 
     await client.updateTaskSettings('repo-a', { folderPaths });
     await client.updateLlmToolsConfig('repo-a', { disabledLlmTools });
@@ -70,7 +70,7 @@ describe('PreferencesClient', () => {
       },
       {
         path: '/workspaces/repo-a/llm-tools-config',
-        options: { method: 'PUT', body: { disabledLlmTools: ['create_bug'] } },
+        options: { method: 'PUT', body: { disabledLlmTools: ['create_update_work_item'] } },
       },
     ]);
   });

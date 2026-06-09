@@ -147,6 +147,15 @@ describe('SKILL.md metadata', () => {
             expect(parsed.description.length).toBeGreaterThan(10);
         }
     });
+
+    it('create-bug guidance uses the unified work-item tool', () => {
+        const skillFile = path.join(bundledPath, 'create-bug', 'SKILL.md');
+        const content = fs.readFileSync(skillFile, 'utf-8');
+
+        expect(content).toContain('create_update_work_item');
+        expect(content).toContain('type:        "bug"');
+        expect(content).not.toContain('create_bug');
+    });
 });
 
 describe('installBundledSkills', () => {

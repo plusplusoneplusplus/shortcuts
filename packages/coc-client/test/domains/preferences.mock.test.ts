@@ -198,26 +198,26 @@ describe('PreferencesClient mock coverage', () => {
     mock = await startMockServer();
     mock.on('GET', '/api/workspaces/repo%2Fa/llm-tools-config', {
       body: {
-        tools: [{ name: 'create_bug', label: 'Create Bug', description: 'Files bugs.', enabledByDefault: true }],
-        disabledLlmTools: ['create_bug'],
+        tools: [{ name: 'create_update_work_item', label: 'Create/Update Work Item', description: 'Creates bugs and work items.', enabledByDefault: true }],
+        disabledLlmTools: ['create_update_work_item'],
       },
     });
     mock.on('PUT', '/api/workspaces/repo%2Fa/llm-tools-config', {
       body: {
-        tools: [{ name: 'create_bug', label: 'Create Bug', description: 'Files bugs.', enabledByDefault: true }],
+        tools: [{ name: 'create_update_work_item', label: 'Create/Update Work Item', description: 'Creates bugs and work items.', enabledByDefault: true }],
         disabledLlmTools: [],
       },
     });
     const client = createClient(mock);
 
     await expect(client.preferences.getLlmToolsConfig('repo/a')).resolves.toEqual({
-      tools: [{ name: 'create_bug', label: 'Create Bug', description: 'Files bugs.', enabledByDefault: true }],
-      disabledLlmTools: ['create_bug'],
+      tools: [{ name: 'create_update_work_item', label: 'Create/Update Work Item', description: 'Creates bugs and work items.', enabledByDefault: true }],
+      disabledLlmTools: ['create_update_work_item'],
     });
     await expect(client.preferences.updateLlmToolsConfig('repo/a', {
       disabledLlmTools: [],
     })).resolves.toEqual({
-      tools: [{ name: 'create_bug', label: 'Create Bug', description: 'Files bugs.', enabledByDefault: true }],
+      tools: [{ name: 'create_update_work_item', label: 'Create/Update Work Item', description: 'Creates bugs and work items.', enabledByDefault: true }],
       disabledLlmTools: [],
     });
 
