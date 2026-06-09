@@ -86,6 +86,7 @@ vi.mock('../../../../src/server/spa/client/comments/diff-comment-utils', () => (
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isWorkItemsHierarchyEnabled: () => true,
     isWorkItemsAiAuthoringEnabled: () => false,
+    isWorkItemsWorkflowEnabled: () => false,
     isCommitChatLensEnabled: () => true,
     isWorkItemsSyncEnabled: () => true,
     isSessionContextAttachmentsEnabled: () => false,

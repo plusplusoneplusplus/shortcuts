@@ -983,6 +983,8 @@ timeout: 300
                 '    enabled: true',
                 '  sync:',
                 '    enabled: true',
+                '  workflow:',
+                '    enabled: true',
                 'effortLevels:',
                 '  enabled: true',
             ].join('\n'));
@@ -1293,6 +1295,9 @@ timeout: 300
                     "sync": {
                       "enabled": false,
                     },
+                    "workflow": {
+                      "enabled": false,
+                    },
                   },
                   "workflows": {
                     "enabled": true,
@@ -1359,6 +1364,7 @@ timeout: 300
                   "workItems.aiAuthoring.enabled": "default",
                   "workItems.hierarchy.enabled": "default",
                   "workItems.sync.enabled": "default",
+                  "workItems.workflow.enabled": "default",
                   "workflows.enabled": "file",
                 },
               }
