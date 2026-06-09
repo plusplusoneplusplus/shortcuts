@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
 const dormantModeState = { value: 'ghost' as 'ghost' | 'pill' };
@@ -25,6 +25,32 @@ beforeEach(() => {
     dormantModeState.value = 'ghost';
     vi.useFakeTimers();
 });
+
+afterEach(() => {
+    vi.useRealTimers();
+});
+
+const KNOWN_RECT: DOMRect = {
+    left: 500, top: 200, right: 920, bottom: 600,
+    width: 420, height: 400, x: 500, y: 200, toJSON: () => ({}),
+};
+
+/**
+ * Simulate mouse far away from the lens.
+ * The dormant engine uses window-level mousemove with a 24ms throttle,
+ * so we advance the clock past the throttle before dispatching.
+ */
+function simulateMouseFarAway(el: HTMLElement) {
+    vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(KNOWN_RECT);
+    vi.advanceTimersByTime(30);
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 50 }));
+}
+
+function simulateMouseOnElement(el: HTMLElement) {
+    vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(KNOWN_RECT);
+    vi.advanceTimersByTime(30);
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 600, clientY: 300 }));
+}
 
 describe('CommitChatPlacementFrame', () => {
     it('renders a bottom-right lens frame with close and pin actions', () => {
@@ -141,7 +167,7 @@ describe('CommitChatPlacementFrame', () => {
         expect(panel.getAttribute('data-focused')).toBeNull();
     });
 
-    it('transitions to ghost dormant state after mouse leaves and delay', () => {
+    it('transitions to ghost dormant state after mouse moves away and delay elapses', () => {
         render(
             <CommitChatPlacementFrame
                 workspaceId="ws1"
@@ -157,7 +183,7 @@ describe('CommitChatPlacementFrame', () => {
         expect(lens.getAttribute('data-focused')).toBe('true');
         expect(card.style.opacity).toBe('1');
 
-        fireEvent.mouseLeave(lens);
+        act(() => { simulateMouseFarAway(card); });
         act(() => { vi.advanceTimersByTime(700); });
 
         expect(lens.getAttribute('data-focused')).toBe('false');
@@ -165,7 +191,7 @@ describe('CommitChatPlacementFrame', () => {
         expect(card.style.pointerEvents).toBe('none');
     });
 
-    it('cancels dormant transition when mouse re-enters before delay', () => {
+    it('cancels dormant transition when mouse moves back before delay', () => {
         render(
             <CommitChatPlacementFrame
                 workspaceId="ws1"
@@ -176,17 +202,18 @@ describe('CommitChatPlacementFrame', () => {
         );
 
         const lens = screen.getByTestId('commit-chat-lens');
+        const card = screen.getByTestId('commit-chat-lens-card');
 
-        fireEvent.mouseLeave(lens);
+        act(() => { simulateMouseFarAway(card); });
         act(() => { vi.advanceTimersByTime(300); });
 
-        fireEvent.mouseEnter(lens);
+        act(() => { simulateMouseOnElement(card); });
         act(() => { vi.advanceTimersByTime(500); });
 
         expect(lens.getAttribute('data-focused')).toBe('true');
     });
 
-    it('shows dormant pill when mode is pill and cursor leaves', () => {
+    it('shows dormant pill when mode is pill and mouse leaves', () => {
         dormantModeState.value = 'pill';
 
         render(
@@ -199,21 +226,21 @@ describe('CommitChatPlacementFrame', () => {
         );
 
         const lens = screen.getByTestId('commit-chat-lens');
+        const card = screen.getByTestId('commit-chat-lens-card');
         expect(lens.getAttribute('data-dormant-mode')).toBe('pill');
 
-        fireEvent.mouseLeave(lens);
+        act(() => { simulateMouseFarAway(card); });
         act(() => { vi.advanceTimersByTime(700); });
 
         const pill = screen.getByTestId('commit-chat-lens-dormant-pill');
         expect(pill.style.opacity).toBe('1');
         expect(pill.style.pointerEvents).toBe('auto');
 
-        const card = screen.getByTestId('commit-chat-lens-card');
         expect(card.style.opacity).toBe('0');
         expect(card.style.pointerEvents).toBe('none');
     });
 
-    it('restores from pill dormant when mouse enters pill', () => {
+    it('restores from pill dormant when mouse moves over pill', () => {
         dormantModeState.value = 'pill';
 
         render(
@@ -226,14 +253,26 @@ describe('CommitChatPlacementFrame', () => {
         );
 
         const lens = screen.getByTestId('commit-chat-lens');
-        fireEvent.mouseLeave(lens);
+        const card = screen.getByTestId('commit-chat-lens-card');
+        act(() => { simulateMouseFarAway(card); });
         act(() => { vi.advanceTimersByTime(700); });
 
+        expect(lens.getAttribute('data-focused')).toBe('false');
+
+        // When dormant in pill mode, the hit-test target is the pill element.
+        // Mock the pill's rect and move the mouse onto it.
         const pill = screen.getByTestId('commit-chat-lens-dormant-pill');
-        fireEvent.mouseEnter(pill);
+        const pillRect: DOMRect = {
+            left: 800, top: 580, right: 920, bottom: 600,
+            width: 120, height: 20, x: 800, y: 580, toJSON: () => ({}),
+        };
+        vi.spyOn(pill, 'getBoundingClientRect').mockReturnValue(pillRect);
+        act(() => {
+            vi.advanceTimersByTime(30);
+            window.dispatchEvent(new MouseEvent('mousemove', { clientX: 850, clientY: 590 }));
+        });
 
         expect(lens.getAttribute('data-focused')).toBe('true');
-        const card = screen.getByTestId('commit-chat-lens-card');
         expect(card.style.opacity).toBe('1');
     });
 

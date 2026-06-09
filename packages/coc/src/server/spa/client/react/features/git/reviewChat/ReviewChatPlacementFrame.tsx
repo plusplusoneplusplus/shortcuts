@@ -26,6 +26,8 @@ const DORMANT_DELAY_MS = 600;
 const DORMANT_TRANSITION_MS = 500;
 const DORMANT_GHOST_OPACITY = 0.18;
 const DORMANT_GHOST_SCALE = 0.94;
+const HIT_PAD_PX = 12;
+const HIT_PAD_PILL_PX = 8;
 
 function MinimizeIcon() {
     return (
@@ -61,19 +63,36 @@ function clampLensSize(width: number, height: number) {
     };
 }
 
+function distanceToRect(cx: number, cy: number, rect: DOMRect): number {
+    const dx = Math.max(rect.left - cx, 0, cx - rect.right);
+    const dy = Math.max(rect.top - cy, 0, cy - rect.bottom);
+    return Math.hypot(dx, dy);
+}
+
 /**
- * Hook that manages the lens dormant state (focused vs dormant).
- * When the cursor leaves the lens element, after a delay it transitions
- * to dormant state. Re-entering focuses it again immediately.
+ * Manages lens focus via document-level mousemove hit-testing.
+ *
+ * mouseenter/leave is unreliable when child elements toggle pointerEvents
+ * (ghost mode) or when the hit-target changes shape (pill collapse).
+ * Instead, we continuously check cursor distance to the active hit-rect
+ * (card when focused, pill when dormant in pill mode) on every mousemove.
  */
 function useLensDormantState(
-    frameRef: React.RefObject<HTMLDivElement | null>,
+    cardRef: React.RefObject<HTMLElement | null>,
+    pillRef: React.RefObject<HTMLElement | null>,
     isLens: boolean,
     isExplicitlyMinimized: boolean,
 ) {
     const [focused, setFocused] = useState(true);
+    const focusedRef = useRef(true);
     const dormantTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const dormantMode = isLens ? getCommitChatLensDormantMode() : 'ghost';
+
+    const setFocusedSync = useCallback((v: boolean) => {
+        if (focusedRef.current === v) return;
+        focusedRef.current = v;
+        setFocused(v);
+    }, []);
 
     const clearDormantTimer = useCallback(() => {
         if (dormantTimerRef.current) {
@@ -82,31 +101,55 @@ function useLensDormantState(
         }
     }, []);
 
-    const handleMouseEnter = useCallback(() => {
-        clearDormantTimer();
-        setFocused(true);
-    }, [clearDormantTimer]);
-
-    const handleMouseLeave = useCallback(() => {
-        if (!isLens || isExplicitlyMinimized) return;
-        clearDormantTimer();
-        dormantTimerRef.current = setTimeout(() => {
-            setFocused(false);
-        }, DORMANT_DELAY_MS);
-    }, [isLens, isExplicitlyMinimized, clearDormantTimer]);
-
     useEffect(() => {
-        if (!isLens) {
-            setFocused(true);
+        if (!isLens || isExplicitlyMinimized) {
             clearDormantTimer();
+            setFocusedSync(true);
+            return;
         }
-    }, [isLens, clearDormantTimer]);
 
-    useEffect(() => {
-        return clearDormantTimer;
-    }, [clearDormantTimer]);
+        const tick = (cx: number, cy: number) => {
+            const isPill = dormantMode === 'pill' && !focusedRef.current;
+            const hitEl = isPill ? pillRef.current : cardRef.current;
+            if (!hitEl) return;
 
-    return { focused, dormantMode, handleMouseEnter, handleMouseLeave };
+            const pad = isPill ? HIT_PAD_PILL_PX : HIT_PAD_PX;
+            const rect = hitEl.getBoundingClientRect();
+            const d = distanceToRect(cx, cy, rect);
+            const inside = d <= pad;
+
+            if (inside) {
+                clearDormantTimer();
+                setFocusedSync(true);
+            } else if (focusedRef.current && !dormantTimerRef.current) {
+                dormantTimerRef.current = setTimeout(() => {
+                    dormantTimerRef.current = null;
+                    setFocusedSync(false);
+                }, DORMANT_DELAY_MS);
+            }
+        };
+
+        let lastTick = 0;
+        const onMove = (e: MouseEvent) => {
+            const now = Date.now();
+            if (now - lastTick < 24) return;
+            lastTick = now;
+            tick(e.clientX, e.clientY);
+        };
+
+        window.addEventListener('mousemove', onMove);
+        const kickTimer = setTimeout(() => tick(-9999, -9999), 30);
+        const poll = setInterval(() => tick(-9999, -9999), 250);
+
+        return () => {
+            window.removeEventListener('mousemove', onMove);
+            clearTimeout(kickTimer);
+            clearInterval(poll);
+            clearDormantTimer();
+        };
+    }, [isLens, isExplicitlyMinimized, dormantMode, clearDormantTimer, setFocusedSync, cardRef, pillRef]);
+
+    return { focused, dormantMode };
 }
 
 export function ReviewChatPlacementFrame({
@@ -122,14 +165,15 @@ export function ReviewChatPlacementFrame({
     testIdPrefix = 'review-chat',
     children,
 }: ReviewChatPlacementFrameProps) {
-    const frameRef = useRef<HTMLDivElement | null>(null);
+    const cardRef = useRef<HTMLDivElement | null>(null);
+    const pillRef = useRef<HTMLDivElement | null>(null);
     const [lensSize, setLensSize] = useState<{ width: number; height: number } | null>(null);
     const isLens = presentation === 'lens';
     const placementTestId = isLens ? 'lens' : 'side-panel';
     const explicitlyMinimized = isLens && isMinimized && !!onRestore;
 
-    const { focused, dormantMode, handleMouseEnter, handleMouseLeave } =
-        useLensDormantState(frameRef, isLens, explicitlyMinimized);
+    const { focused, dormantMode } =
+        useLensDormantState(cardRef, pillRef, isLens, explicitlyMinimized);
 
     const dormant = isLens && !focused && !explicitlyMinimized;
     const isDormantPill = dormant && dormantMode === 'pill';
@@ -194,7 +238,6 @@ export function ReviewChatPlacementFrame({
             transform: 'scale(0.6) translateY(8px)',
             pointerEvents: 'none',
             transition: cardTransition,
-            position: 'absolute',
         };
 
     const handleRestoreKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -204,12 +247,12 @@ export function ReviewChatPlacementFrame({
     };
 
     const handleResizeMouseDown = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
-        if (!frameRef.current) return;
+        if (!cardRef.current) return;
 
         event.preventDefault();
         event.stopPropagation();
 
-        const frameRect = frameRef.current.getBoundingClientRect();
+        const frameRect = cardRef.current.getBoundingClientRect();
         const startX = event.clientX;
         const startY = event.clientY;
         const startWidth = frameRect.width;
@@ -282,25 +325,22 @@ export function ReviewChatPlacementFrame({
 
     return (
         <div
-            ref={frameRef}
             className={rootClassName}
             data-testid={`${testIdPrefix}-${placementTestId}`}
             data-dormant-mode={isLens ? dormantMode : undefined}
             data-focused={isLens ? String(focused) : undefined}
             style={lensOuterStyle}
-            onMouseEnter={isLens ? handleMouseEnter : undefined}
-            onMouseLeave={isLens ? handleMouseLeave : undefined}
         >
-            {/* Dormant pill — only rendered in lens mode, visible when mode=pill and dormant */}
+            {/* Dormant pill — positioned at the bottom-right of the outer container */}
             {isLens && dormantMode === 'pill' && (
                 <div
+                    ref={pillRef}
                     className="absolute bottom-0 right-0 z-10 flex max-w-[320px] cursor-pointer items-center gap-2.5 rounded-full border border-[#d0d7de] bg-[#f8f8f8] px-3.5 py-2 shadow-2xl hover:bg-white dark:border-[#3c3c3c] dark:bg-[#1e1e1e] dark:hover:bg-[#252526]"
                     style={{
                         ...pillStyle,
                         transformOrigin: 'bottom right',
                     }}
                     data-testid={`${testIdPrefix}-lens-dormant-pill`}
-                    onMouseEnter={handleMouseEnter}
                 >
                     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#1e1e1e] font-mono text-[10px] font-semibold text-white dark:bg-[#cccccc] dark:text-[#1e1e1e]">
                         C
@@ -321,6 +361,7 @@ export function ReviewChatPlacementFrame({
 
             {/* Main card */}
             <div
+                ref={cardRef}
                 className={isLens
                     ? 'flex h-full w-full flex-col overflow-hidden rounded-lg border border-[#d0d7de] bg-[#f8f8f8] shadow-2xl dark:border-[#3c3c3c] dark:bg-[#1e1e1e]'
                     : 'flex h-full w-full flex-col overflow-hidden'}
