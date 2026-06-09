@@ -183,6 +183,9 @@ interface PullRequestDiffStats {
     changedFiles: number;
 }
 
+// Diff stats are derived from provider diffs and cached in memory by
+// repoId|prId|headSha only. They are never persisted because diffs can contain
+// sensitive source content and can be refetched/recomputed.
 const prDiffStatsCache = new Map<string, PullRequestDiffStats>();
 
 function makePrCacheKey(repoId: string, status: string, scope: string): string {
@@ -296,14 +299,28 @@ function getPullRequestProviderId(pr: any): number | string | undefined {
     return pr?.number ?? pr?.id;
 }
 
-function makePrDiffStatsCacheKey(repoId: string, pr: any): string | undefined {
+function normalizePullRequestHeadSha(pr: any): string | undefined {
     const headSha = typeof pr?.headSha === 'string' ? pr.headSha.trim() : '';
+    return headSha || undefined;
+}
+
+function makePrDiffStatsCacheKey(repoId: string, pr: any): string | undefined {
+    const headSha = normalizePullRequestHeadSha(pr);
     if (!headSha) return undefined;
 
     const prId = getPullRequestProviderId(pr);
     if (prId == null) return undefined;
 
     return `${repoId}|${String(prId)}|${headSha}`;
+}
+
+function clearPrDiffStatsCacheEntries(repoId: string, prId: string): void {
+    const prefix = `${repoId}|${prId}|`;
+    for (const key of Array.from(prDiffStatsCache.keys())) {
+        if (key.startsWith(prefix)) {
+            prDiffStatsCache.delete(key);
+        }
+    }
 }
 
 function buildPullRequestDiffStats(diff: string): PullRequestDiffStats {
@@ -410,16 +427,19 @@ export function clearPrDetailCache(): void {
 }
 
 // ============================================================================
-// PR diff cache (in-memory, no TTL — invalidated by PR force-refresh only)
+// PR diff cache (in-memory, no TTL)
 // ============================================================================
 
-// Keyed by repoId|prId. No TTL: the combined diff for a PR is stable until
-// the reviewer explicitly refreshes (force=true on the detail endpoint).
-
+// Provider combined diffs are fetched once per repo/PR/headSha and shared by the
+// full diff and per-file diff endpoints. When the current PR head SHA cannot be
+// resolved, the cache safely falls back to repoId|prId and force-refresh
+// invalidation still removes that fallback. Diff contents are never persisted.
 const prDiffCache = new Map<string, string>();
 
-function makePrDiffCacheKey(repoId: string, prId: string): string {
-    return `${repoId}|${prId}`;
+function makePrDiffCacheKey(repoId: string, prId: string, headSha?: string): string {
+    const baseKey = `${repoId}|${prId}`;
+    const normalizedHeadSha = headSha?.trim();
+    return normalizedHeadSha ? `${baseKey}|${normalizedHeadSha}` : baseKey;
 }
 
 /** Clear all cached PR diff entries. Exported for testing. */
@@ -429,7 +449,14 @@ export function clearPrDiffCache(): void {
 
 /** Clear the cached diff for one specific PR (used by force-refresh). */
 function clearPrDiffCacheEntry(repoId: string, prId: string): void {
-    prDiffCache.delete(makePrDiffCacheKey(repoId, prId));
+    const fallbackKey = makePrDiffCacheKey(repoId, prId);
+    prDiffCache.delete(fallbackKey);
+    const headShaKeyPrefix = `${fallbackKey}|`;
+    for (const key of Array.from(prDiffCache.keys())) {
+        if (key.startsWith(headShaKeyPrefix)) {
+            prDiffCache.delete(key);
+        }
+    }
 }
 
 // ============================================================================
@@ -633,9 +660,10 @@ async function getFullContextFileDiff(
 async function getCachedCombinedDiff(
     repoId: string,
     prId: string,
+    headSha: string | undefined,
     getDiff: (repoId: string, prId: string) => Promise<string>,
 ): Promise<string> {
-    const key = makePrDiffCacheKey(repoId, prId);
+    const key = makePrDiffCacheKey(repoId, prId, headSha);
     const hit = prDiffCache.get(key);
     if (hit !== undefined) {
         console.debug(`[pr-diff-cache] hit key=${key}`);
@@ -646,6 +674,24 @@ async function getCachedCombinedDiff(
     prDiffCache.set(key, diff);
     console.debug(`[pr-diff-cache] set key=${key}`);
     return diff;
+}
+
+async function resolvePullRequestDetailForDiffCache(
+    repoId: string,
+    prId: string,
+    getPullRequest: (repoId: string, prId: string) => Promise<ProviderPullRequest>,
+): Promise<ProviderPullRequest | undefined> {
+    try {
+        const pr = await getPullRequest(repoId, prId);
+        prDetailCache.set(makePrDetailCacheKey(repoId, prId), {
+            data: pr,
+            expiresAt: Date.now() + PR_DETAIL_TTL_MS,
+        });
+        return pr;
+    } catch (err) {
+        console.warn(`[pr-diff-cache] failed to resolve PR head SHA for repo=${repoId} pr=${prId}: ${err instanceof Error ? err.message : String(err)}`);
+        return undefined;
+    }
 }
 
 // ============================================================================
@@ -1136,8 +1182,10 @@ export function registerPrRoutes(
                 // Serve from cache if valid and not forced
                 if (force) {
                     prDetailCache.delete(cacheKey);
-                    // Also evict the diff cache so the next diff request refetches.
+                    // Also evict diff-related caches so the next diff/stat request
+                    // refetches for the current PR head without touching other PRs.
                     clearPrDiffCacheEntry(repoId, prId);
+                    clearPrDiffStatsCacheEntries(repoId, prId);
                     // Evict all sub-endpoint caches for this PR.
                     clearPrSubCacheEntries(repoId, prId);
                     console.debug(`[pr-detail-cache] bypass key=${cacheKey}`);
@@ -1406,19 +1454,21 @@ export function registerPrRoutes(
                     return sendJson(res, { diff: '' });
                 }
 
+                const prData = await resolvePullRequestDetailForDiffCache(
+                    repoId,
+                    prId,
+                    prSvc.getPullRequest.bind(prSvc),
+                );
                 const combinedDiff = await getCachedCombinedDiff(
                     repoId,
                     prId,
+                    normalizePullRequestHeadSha(prData),
                     prSvc.getDiff.bind(prSvc),
                 );
                 const fileDiff = extractFileDiffFromCombined(combinedDiff, filePath);
 
                 if (fullContext) {
-                    let prData: ProviderPullRequest;
-                    try {
-                        prData = await getCachedPullRequestDetail(repoId, prId, prSvc.getPullRequest.bind(prSvc));
-                    } catch (err) {
-                        console.warn(`[pr-full-context] failed to load PR detail: ${err instanceof Error ? err.message : String(err)}`);
+                    if (!prData) {
                         return sendJson(res, {
                             diff: fileDiff ?? '',
                             fullContextUnavailable: true,
@@ -1486,9 +1536,15 @@ export function registerPrRoutes(
                     return;
                 }
 
+                const prData = await resolvePullRequestDetailForDiffCache(
+                    repoId,
+                    prId,
+                    prSvc.getPullRequest.bind(prSvc),
+                );
                 const diff = await getCachedCombinedDiff(
                     repoId,
                     prId,
+                    normalizePullRequestHeadSha(prData),
                     prSvc.getDiff.bind(prSvc),
                 );
                 res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
