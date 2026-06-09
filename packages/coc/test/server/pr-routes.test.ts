@@ -292,6 +292,51 @@ describe('GET /api/repos/:id/pull-requests', () => {
         expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
     });
 
+    it('keys cached diff stats by PR head SHA so a changed head refetches stats', async () => {
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>)
+            .mockResolvedValueOnce([{ ...mockPr, headSha: 'old-head' }])
+            .mockResolvedValueOnce([{ ...mockPr, headSha: 'new-head' }]);
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>)
+            .mockResolvedValueOnce([
+                'diff --git a/src/foo.ts b/src/foo.ts',
+                '--- a/src/foo.ts',
+                '+++ b/src/foo.ts',
+                '@@ -1 +1,2 @@',
+                ' keep',
+                '+old',
+            ].join('\n'))
+            .mockResolvedValueOnce([
+                'diff --git a/src/foo.ts b/src/foo.ts',
+                '--- a/src/foo.ts',
+                '+++ b/src/foo.ts',
+                '@@ -1,2 +1 @@',
+                ' keep',
+                '-removed',
+                'diff --git a/src/bar.ts b/src/bar.ts',
+                '--- a/src/bar.ts',
+                '+++ b/src/bar.ts',
+                '@@ -0,0 +1 @@',
+                '+new',
+            ].join('\n'));
+
+        const first = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        const firstBody = await first.json() as { pullRequests: Array<{ diffStats?: { additions: number; deletions: number; changedFiles: number } }> };
+        expect(firstBody.pullRequests[0].diffStats).toEqual({
+            additions: 1,
+            deletions: 0,
+            changedFiles: 1,
+        });
+
+        const second = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?force=true`);
+        const secondBody = await second.json() as { pullRequests: Array<{ diffStats?: { additions: number; deletions: number; changedFiles: number } }> };
+        expect(secondBody.pullRequests[0].diffStats).toEqual({
+            additions: 1,
+            deletions: 1,
+            changedFiles: 2,
+        });
+        expect(mockSvc.getDiff).toHaveBeenCalledTimes(2);
+    });
+
     it('omits diff stats when the provider does not support pull request diffs', async () => {
         const svcWithoutDiff = { ...mockSvc };
         delete (svcWithoutDiff as any).getDiff;
@@ -395,6 +440,21 @@ describe('GET /api/repos/:id/pull-requests', () => {
         const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?force=true`);
         expect(res.status).toBe(200);
         expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
+    });
+
+    it('re-fetches PR lists after the 60-minute cache TTL expires', async () => {
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(1);
+
+        const realNow = Date.now;
+        Date.now = () => realNow() + 61 * 60 * 1000;
+        try {
+            const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+            expect(res.status).toBe(200);
+            expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
+        } finally {
+            Date.now = realNow;
+        }
     });
 
     it('serves PR list data warmed by the background cache without an upstream call', async () => {
@@ -1188,6 +1248,26 @@ describe('PR diff cache (AC-01)', () => {
         await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}`);
         // Second call should reuse the cache set by the first
         expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the provider combined diff cache without a TTL until invalidated', async () => {
+        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockResolvedValue({ ...mockPr, headSha: 'stable-head' });
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(combinedDiff);
+
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
+
+        const realNow = Date.now;
+        Date.now = () => realNow() + 24 * 60 * 60 * 1000;
+        try {
+            const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}`);
+            expect(res.status).toBe(200);
+            const body = await res.json() as { diff: string };
+            expect(body.diff).toContain('diff --git a/src/foo.ts b/src/foo.ts');
+            expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
+        } finally {
+            Date.now = realNow;
+        }
     });
 
     it('keys the combined diff by resolved PR head SHA so changed heads refetch', async () => {
