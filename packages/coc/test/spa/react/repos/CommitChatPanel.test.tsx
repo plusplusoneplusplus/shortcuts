@@ -101,6 +101,14 @@ describe('CommitChatPanel', () => {
         expect(screen.getByTestId('commit-chat-panel')).toBeTruthy();
         expect(screen.getByText('Chat about this commit')).toBeTruthy();
         expect(screen.getByTestId('commit-chat-send-btn')).toBeTruthy();
+        expect(screen.getByTestId('compact-ai-settings-chip')).toBeTruthy();
+        expect(screen.queryByTestId('agent-selector-chip-btn')).toBeNull();
+        expect(screen.queryByTestId('mode-selector')).toBeNull();
+        expect(screen.queryByTestId('model-picker-chip')).toBeNull();
+        expect(screen.queryByTestId('effort-pill-selector')).toBeNull();
+        expect(screen.getByTestId('chat-toolbar-slash-btn')).toBeTruthy();
+        expect(screen.queryByTestId('chat-toolbar-mention-btn')).toBeNull();
+        expect(screen.getByTestId('commit-chat-attach-btn')).toBeTruthy();
     });
 
     // ========================================================================
@@ -258,7 +266,11 @@ describe('CommitChatPanel', () => {
             fireEvent.click(screen.getByTestId('commit-chat-send-btn'));
         });
 
-        expect(mockCreateChat).toHaveBeenCalledWith('check this', fakePayload);
+        expect(mockCreateChat).toHaveBeenCalledWith('check this', expect.objectContaining({
+            mode: 'ask',
+            attachments: fakePayload,
+            provider: 'copilot',
+        }));
     });
 
     it('does not pass attachments when toPayload returns empty', async () => {
@@ -273,7 +285,11 @@ describe('CommitChatPanel', () => {
             fireEvent.click(screen.getByTestId('commit-chat-send-btn'));
         });
 
-        expect(mockCreateChat).toHaveBeenCalledWith('hello', undefined);
+        expect(mockCreateChat).toHaveBeenCalledWith('hello', expect.objectContaining({
+            mode: 'ask',
+            attachments: undefined,
+            provider: 'copilot',
+        }));
     });
 
     it('sends the first hidden-header lens message through the existing binding exactly once', async () => {
@@ -295,6 +311,10 @@ describe('CommitChatPanel', () => {
         });
 
         expect(mockCreateChat).toHaveBeenCalledTimes(1);
-        expect(mockCreateChat).toHaveBeenCalledWith('summarize the risky changes', undefined);
+        expect(mockCreateChat).toHaveBeenCalledWith('summarize the risky changes', expect.objectContaining({
+            mode: 'ask',
+            attachments: undefined,
+            provider: 'copilot',
+        }));
     });
 });

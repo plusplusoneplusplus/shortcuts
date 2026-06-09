@@ -109,9 +109,12 @@ function CommitReviewContent({ workspaceId, commitHash }: { workspaceId: string;
         chatOpen,
         toggleChat,
         closeChat,
+        minimizeChat,
+        restoreChat,
         pinChat,
         unpinChat,
         isPinned: chatPinned,
+        isMinimized: chatMinimized,
         presentation: chatPresentation,
         lensEnabled: chatLensEnabled,
         isDesktop: chatIsDesktop,
@@ -411,6 +414,9 @@ function CommitReviewContent({ workspaceId, commitHash }: { workspaceId: string;
                     commitMessage={commit?.subject}
                     presentation="lens"
                     onClose={closeChat}
+                    isMinimized={chatMinimized}
+                    onMinimize={minimizeChat}
+                    onRestore={restoreChat}
                     onPin={pinChat}
                 />
             )}
@@ -573,9 +579,12 @@ function PrReviewContent({ workspaceId, repoId, prId, onTitleLoaded }: { workspa
         chatOpen,
         toggleChat,
         closeChat,
+        minimizeChat,
+        restoreChat,
         pinChat,
         unpinChat,
         isPinned: chatPinned,
+        isMinimized: chatMinimized,
         presentation: chatPresentation,
         lensEnabled: chatLensEnabled,
         isDesktop: chatIsDesktop,
@@ -870,6 +879,9 @@ function PrReviewContent({ workspaceId, repoId, prId, onTitleLoaded }: { workspa
                     identifier={`#${prId}`}
                     presentation="lens"
                     onClose={closeChat}
+                    isMinimized={chatMinimized}
+                    onMinimize={minimizeChat}
+                    onRestore={restoreChat}
                     onPin={pinChat}
                     testIdPrefix="pr-chat"
                 >

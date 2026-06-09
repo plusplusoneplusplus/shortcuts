@@ -15,7 +15,7 @@ export function WorkItemGitHubMirrorBadge({ mirror, compact = false, asLink = fa
     const state = mirror.state?.toLowerCase();
     const stateLabel = state === 'closed' ? 'closed' : state === 'open' ? 'open' : undefined;
     const text = compact
-        ? `GH#${mirror.issueNumber}`
+        ? String(mirror.issueNumber)
         : `GitHub #${mirror.issueNumber}${stateLabel ? ` (${stateLabel})` : ''}`;
     const title = `GitHub issue #${mirror.issueNumber}${stateLabel ? ` ${stateLabel}` : ''}`;
     const badgeClass = cn(

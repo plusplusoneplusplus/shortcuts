@@ -417,6 +417,38 @@ describe('WorkItemsClient mock coverage', () => {
     });
   });
 
+  it('sends Work Item chat binding requests to workspace-scoped endpoints', async () => {
+    const adapter = createMockAdapter({ bindings: {} });
+    const client = new WorkItemsClient(adapter);
+
+    await client.listChatBindings('repo/a');
+    await client.getChatBinding('repo/a', 'wi/1');
+    await client.createChatBinding('repo/a', 'wi/1', 'task/1');
+    await client.deleteChatBinding('repo/a', 'wi/1');
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/workspaces/repo%2Fa/work-item-chat-bindings',
+        options: undefined,
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-item-chat-bindings/wi%2F1',
+        options: undefined,
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-item-chat-bindings',
+        options: {
+          method: 'POST',
+          body: { workItemId: 'wi/1', taskId: 'task/1' },
+        },
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-item-chat-bindings/wi%2F1',
+        options: { method: 'DELETE' },
+      },
+    ]);
+  });
+
   it('sends sync status, import, and conversion requests to workspace-scoped endpoints', async () => {
     const adapter = createMockAdapter({ provider: 'github' });
     const client = new WorkItemsClient(adapter);

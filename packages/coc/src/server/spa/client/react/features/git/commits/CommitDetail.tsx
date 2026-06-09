@@ -54,9 +54,12 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
         chatOpen,
         toggleChat,
         closeChat,
+        minimizeChat,
+        restoreChat,
         pinChat,
         unpinChat,
         isPinned: chatPinned,
+        isMinimized: chatMinimized,
         presentation: chatPresentation,
         lensEnabled: chatLensEnabled,
     } = useCommitChatPresentation({ workspaceId, commitHash: hash });
@@ -538,6 +541,9 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
                         commitMessage={commit?.subject}
                         presentation="lens"
                         onClose={closeChat}
+                        isMinimized={chatMinimized}
+                        onMinimize={minimizeChat}
+                        onRestore={restoreChat}
                         onPin={pinChat}
                     />
                 )}

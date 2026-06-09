@@ -124,9 +124,12 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
         chatOpen: assistantOpen,
         toggleChat: toggleAssistant,
         closeChat: closeAssistant,
+        minimizeChat: minimizeAssistant,
+        restoreChat: restoreAssistant,
         pinChat: pinAssistant,
         unpinChat: unpinAssistant,
         isPinned: assistantPinned,
+        isMinimized: assistantMinimized,
         presentation: assistantPresentation,
         lensEnabled: assistantLensEnabled,
         isDesktop: assistantIsDesktop,
@@ -639,6 +642,9 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                     prTitle={pr.title}
                     presentation="lens"
                     onClose={closeAssistant}
+                    isMinimized={assistantMinimized}
+                    onMinimize={minimizeAssistant}
+                    onRestore={restoreAssistant}
                     onPin={pinAssistant}
                 />
             )}

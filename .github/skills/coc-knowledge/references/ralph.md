@@ -101,6 +101,24 @@ See `docs/spec-slices.md` for the full slice template, decision-tagging
 convention, and ready-for-Ralph checklist that the bundled `grill-me` skill
 produces.
 
+## Manual Verification Only Guard
+
+`RALPH_NEXT` means concrete autonomous implementation or validation work remains.
+When a below-cap iteration emits `RALPH_NEXT` but its `Remaining:` progress is
+explicitly manual-verification-only, final-check-only, blocked on unavailable
+credentials, or otherwise user-only, the portable Ralph decision helper classifies
+it as `manualVerificationOnly`. The CoC adapter records the iteration as
+complete with `terminalReason='MANUAL_VERIFICATION_ONLY'`, does not enqueue
+another implementation iteration, and enters the same final-check enqueue path as
+`RALPH_COMPLETE`. The dashboard labels this durable session state as
+"Manual verification needed"; it is not resumable via Continue loop.
+
+The bundled `ultra-ralph` execution instructions require agents to emit
+`RALPH_COMPLETE` directly when all autonomous code, test, build, documentation,
+and automatable validation work is done, even if manual demos, product review, or
+human-only verification still need user follow-up. The server-side guard is only
+a safety net for stale or non-compliant `RALPH_NEXT` responses.
+
 ## Direct Goal Launch
 
 `POST /api/ralph-launch` (`packages/coc/src/server/routes/ralph-launch-routes.ts`)
@@ -264,3 +282,11 @@ gap-loop creation failures use `reason='final-check-gap-loop-start-failed'`,
 and gap-loop enqueue failures use `reason='final-check-gap-enqueue-failed'`. A
 successful gap-fix enqueue does not broadcast completion because the next loop
 continues the session.
+
+The SPA `RalphWorkflowPane` timeline surfaces these `RalphFinalCheckRecord`
+entries as distinct `Final check #<checkIndex>` nodes placed after their
+`sourceIteration`, and labels the gap-fix loop divider `Gap fix loop <N>` when a
+record reports `gapLoopStarted`/`gapLoopIndex`. This is display/navigation only —
+it reads already-persisted `finalChecks` from the session read route and adds no
+new persistence. The `coc-client` `RalphFinalCheckStatus` contract includes the
+persisted `queued` state.

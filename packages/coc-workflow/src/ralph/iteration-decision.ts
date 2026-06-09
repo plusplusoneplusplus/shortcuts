@@ -1,7 +1,9 @@
 import { parseRalphSignal } from './signal-parser';
-import type { RalphExitSignal, RalphTerminalReason } from './types';
+import { classifyRalphProgressStagnation } from './progress-classifier';
+import type { ParsedProgressSection, RalphExitSignal, RalphTerminalReason } from './types';
+import type { RalphProgressStagnationClassification } from './progress-classifier';
 
-export type RalphIterationCompletionReason = 'signal' | 'cap';
+export type RalphIterationCompletionReason = 'signal' | 'manual-verification-only' | 'cap';
 
 export interface DecideRalphIterationActionsInput<TAdapterContext = Record<string, unknown>> {
     /** Raw assistant response from one completed Ralph execution iteration. */
@@ -22,6 +24,8 @@ export interface DecideRalphIterationActionsInput<TAdapterContext = Record<strin
      * (for example schedule metadata). This module does not inspect it.
      */
     adapterContext?: TAdapterContext;
+    /** Optional host-provided recent journal sections for conservative stagnation classification. */
+    recentProgressSections?: Pick<ParsedProgressSection, 'signal' | 'body'>[];
     /** Optional iteration-start timestamp to pass through to the record intent. */
     iterationStartMs?: number;
 }
@@ -34,6 +38,7 @@ export interface RalphIterationDecision<TAdapterContext = Record<string, unknown
     shouldContinue: boolean;
     terminalReason?: RalphTerminalReason;
     completionReason?: RalphIterationCompletionReason;
+    progressClassification: RalphProgressStagnationClassification;
     actions: RalphIterationAction<TAdapterContext>[];
 }
 
@@ -75,8 +80,8 @@ export interface RalphEnqueueFinalCheckAction<TAdapterContext = Record<string, u
     maxIterations: number;
     originalGoal: string;
     continuationOfSessionId: string;
-    terminalReason: 'RALPH_COMPLETE';
-    completionReason: 'signal';
+    terminalReason: Extract<RalphTerminalReason, 'RALPH_COMPLETE' | 'MANUAL_VERIFICATION_ONLY'>;
+    completionReason: Extract<RalphIterationCompletionReason, 'signal' | 'manual-verification-only'>;
 }
 
 export interface RalphCompleteSessionAction<TAdapterContext = Record<string, unknown>>
@@ -84,7 +89,7 @@ export interface RalphCompleteSessionAction<TAdapterContext = Record<string, unk
     type: 'completeSession';
     processId: string;
     totalIterations: number;
-    terminalReason: Exclude<RalphTerminalReason, 'RALPH_COMPLETE'>;
+    terminalReason: Exclude<RalphTerminalReason, 'RALPH_COMPLETE' | 'MANUAL_VERIFICATION_ONLY'>;
     completionReason: 'cap';
 }
 
@@ -110,8 +115,14 @@ export function decideRalphIterationActions<TAdapterContext = Record<string, unk
     const { signal, progress } = parseRalphSignal(input.responseText);
     const currentIteration = input.currentIteration ?? 1;
     const maxIterations = input.maxIterations ?? 20;
-    const shouldContinue = signal === 'RALPH_NEXT' && currentIteration < maxIterations;
-    const terminalReason = shouldContinue ? undefined : getTerminalReason(signal);
+    const progressClassification = classifyRalphProgressStagnation({
+        progress,
+        recentSections: input.recentProgressSections,
+    });
+    const manualVerificationOnly = signal === 'RALPH_NEXT'
+        && progressClassification === 'manualVerificationOnly';
+    const shouldContinue = signal === 'RALPH_NEXT' && currentIteration < maxIterations && !manualVerificationOnly;
+    const terminalReason = shouldContinue ? undefined : getTerminalReason(signal, manualVerificationOnly);
     const completionReason = terminalReason ? getCompletionReason(terminalReason) : undefined;
 
     const recordAction: RalphRecordIterationAction<TAdapterContext> = {
@@ -148,7 +159,7 @@ export function decideRalphIterationActions<TAdapterContext = Record<string, unk
             displayName: `Ralph iteration ${nextIteration}${input.sessionId ? ` (${input.sessionId})` : ''}`,
         });
 
-        return { signal, progress, currentIteration, maxIterations, shouldContinue, actions };
+        return { signal, progress, currentIteration, maxIterations, shouldContinue, progressClassification, actions };
     }
 
     const finalTerminalReason = terminalReason ?? getTerminalReason(signal);
@@ -165,7 +176,7 @@ export function decideRalphIterationActions<TAdapterContext = Record<string, unk
         completionReason: finalCompletionReason,
     });
 
-    if (signal === 'RALPH_COMPLETE') {
+    if (signal === 'RALPH_COMPLETE' || finalTerminalReason === 'MANUAL_VERIFICATION_ONLY') {
         actions.push({
             type: 'enqueueFinalCheck',
             workspaceId: input.workspaceId,
@@ -175,8 +186,8 @@ export function decideRalphIterationActions<TAdapterContext = Record<string, unk
             maxIterations,
             originalGoal: input.originalGoal ?? '',
             continuationOfSessionId: effectiveSessionId,
-            terminalReason: 'RALPH_COMPLETE',
-            completionReason: 'signal',
+            terminalReason: finalTerminalReason as Extract<RalphTerminalReason, 'RALPH_COMPLETE' | 'MANUAL_VERIFICATION_ONLY'>,
+            completionReason: finalCompletionReason as Extract<RalphIterationCompletionReason, 'signal' | 'manual-verification-only'>,
         });
     } else {
         actions.push({
@@ -186,7 +197,7 @@ export function decideRalphIterationActions<TAdapterContext = Record<string, unk
             adapterContext: input.adapterContext,
             processId: input.processId,
             totalIterations: currentIteration,
-            terminalReason: terminalReason as Exclude<RalphTerminalReason, 'RALPH_COMPLETE'>,
+            terminalReason: terminalReason as Exclude<RalphTerminalReason, 'RALPH_COMPLETE' | 'MANUAL_VERIFICATION_ONLY'>,
             completionReason: 'cap',
         });
     }
@@ -199,11 +210,15 @@ export function decideRalphIterationActions<TAdapterContext = Record<string, unk
         shouldContinue,
         terminalReason: finalTerminalReason,
         completionReason: finalCompletionReason,
+        progressClassification,
         actions,
     };
 }
 
-function getTerminalReason(signal: RalphExitSignal): RalphTerminalReason {
+function getTerminalReason(signal: RalphExitSignal, manualVerificationOnly = false): RalphTerminalReason {
+    if (manualVerificationOnly) {
+        return 'MANUAL_VERIFICATION_ONLY';
+    }
     if (signal === 'RALPH_COMPLETE') {
         return 'RALPH_COMPLETE';
     }
@@ -214,5 +229,11 @@ function getTerminalReason(signal: RalphExitSignal): RalphTerminalReason {
 }
 
 function getCompletionReason(terminalReason: RalphTerminalReason): RalphIterationCompletionReason {
-    return terminalReason === 'RALPH_COMPLETE' ? 'signal' : 'cap';
+    if (terminalReason === 'RALPH_COMPLETE') {
+        return 'signal';
+    }
+    if (terminalReason === 'MANUAL_VERIFICATION_ONLY') {
+        return 'manual-verification-only';
+    }
+    return 'cap';
 }

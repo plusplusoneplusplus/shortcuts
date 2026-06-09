@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getSpaCocClient } from '../../../api/cocClient';
 import type { AttachmentPayload } from '../../../types/attachments';
+import { getReviewChatTargetStorageId } from '../commits/commitChatPlacement';
 
 export interface UsePrChatBindingOptions {
     workspaceId: string;
@@ -13,24 +14,44 @@ export interface UsePrChatBindingOptions {
     prTitle?: string;
 }
 
+export interface ReviewChatComposerSendOptions {
+    mode?: string;
+    context?: Record<string, unknown>;
+    attachments?: AttachmentPayload[];
+    provider?: string;
+    model?: string;
+    reasoningEffort?: string;
+    config?: { effortTier?: string };
+    workingDirectory?: string;
+}
+
 export interface UsePrChatBindingReturn {
     taskId: string | null;
     loading: boolean;
     error: string | null;
-    createChat: (prompt: string, attachments?: AttachmentPayload[]) => Promise<string | null>;
+    createChat: (prompt: string, options?: ReviewChatComposerSendOptions) => Promise<string | null>;
 }
 
 const BINDING_STORAGE_PREFIX = 'coc.prChat.binding.';
 
-function getStoredBinding(prId: string): string | null {
+function getPrChatBindingStorageKey(opts: Pick<UsePrChatBindingOptions, 'workspaceId' | 'repoId' | 'prId'>): string {
+    return `${BINDING_STORAGE_PREFIX}${getReviewChatTargetStorageId({
+        type: 'pr',
+        workspaceId: opts.workspaceId,
+        repoId: opts.repoId,
+        prId: opts.prId,
+    })}`;
+}
+
+function getStoredBinding(opts: Pick<UsePrChatBindingOptions, 'workspaceId' | 'repoId' | 'prId'>): string | null {
     try {
-        return localStorage.getItem(`${BINDING_STORAGE_PREFIX}${prId}`) ?? null;
+        return localStorage.getItem(getPrChatBindingStorageKey(opts)) ?? null;
     } catch { return null; }
 }
 
-function storeBinding(prId: string, taskId: string): void {
+function storeBinding(opts: Pick<UsePrChatBindingOptions, 'workspaceId' | 'repoId' | 'prId'>, taskId: string): void {
     try {
-        localStorage.setItem(`${BINDING_STORAGE_PREFIX}${prId}`, taskId);
+        localStorage.setItem(getPrChatBindingStorageKey(opts), taskId);
     } catch { /* ignore */ }
 }
 
@@ -41,17 +62,17 @@ function storeBinding(prId: string, taskId: string): void {
  */
 export function usePrChatBinding(opts: UsePrChatBindingOptions): UsePrChatBindingReturn {
     const { workspaceId, prId, filePath, repoId, prTitle } = opts;
-    const [taskId, setTaskId] = useState<string | null>(() => getStoredBinding(prId));
+    const [taskId, setTaskId] = useState<string | null>(() => getStoredBinding({ workspaceId, repoId, prId }));
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Restore binding from localStorage on prId change
+    // Restore binding from localStorage when the review target identity changes.
     useEffect(() => {
-        const stored = getStoredBinding(prId);
+        const stored = getStoredBinding({ workspaceId, repoId, prId });
         setTaskId(stored);
-    }, [prId]);
+    }, [workspaceId, repoId, prId]);
 
-    const createChat = useCallback(async (prompt: string, attachments?: AttachmentPayload[]): Promise<string | null> => {
+    const createChat = useCallback(async (prompt: string, options: ReviewChatComposerSendOptions = {}): Promise<string | null> => {
         setLoading(true);
         setError(null);
         try {
@@ -60,19 +81,25 @@ export function usePrChatBinding(opts: UsePrChatBindingOptions): UsePrChatBindin
                 priority: 'normal',
                 payload: {
                     kind: 'chat',
-                    mode: 'ask',
+                    mode: options.mode ?? 'ask',
                     prompt,
+                    ...(options.workingDirectory ? { workingDirectory: options.workingDirectory } : {}),
                     workspaceId,
-                    ...(attachments && attachments.length > 0 ? { attachments } : {}),
+                    ...(options.attachments && options.attachments.length > 0 ? { attachments: options.attachments } : {}),
+                    ...(options.provider ? { provider: options.provider } : {}),
+                    ...(options.model ? { model: options.model } : {}),
+                    ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
                     context: {
+                        ...(options.context ?? {}),
                         pullRequestChat: { prId, repoId, prTitle },
                     },
                 },
+                ...(options.config ? { config: options.config } : {}),
             });
             const newTaskId = res.task?.id ?? (res as { id?: string }).id;
             if (!newTaskId) throw new Error('Failed to create PR chat task');
 
-            storeBinding(prId, newTaskId);
+            storeBinding({ workspaceId, repoId, prId }, newTaskId);
             setTaskId(newTaskId);
             return newTaskId;
         } catch (err: any) {

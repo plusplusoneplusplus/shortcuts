@@ -79,6 +79,53 @@ async function expectBottomRightLens(page: import('@playwright/test').Page): Pro
     expect(box!.y).toBeGreaterThan(viewport!.height / 3);
 }
 
+async function expectCompactInitialComposer(page: import('@playwright/test').Page): Promise<void> {
+    const lens = page.getByTestId('commit-chat-lens');
+    const toolbar = lens.getByTestId('chat-input-toolbar');
+    const label = lens.getByTestId('compact-ai-settings-label');
+
+    await expect(lens.getByTestId('compact-ai-settings-chip')).toBeVisible();
+    await expect(label).toContainText(/^[^·]+ · Ask · [^·]+$/);
+    expect((await label.textContent()) ?? '').not.toContain('GPT');
+
+    await expect(lens.getByTestId('agent-selector-chip-btn')).toHaveCount(0);
+    await expect(lens.getByTestId('mode-selector')).toHaveCount(0);
+    await expect(lens.getByTestId('model-picker-chip')).toHaveCount(0);
+    await expect(lens.getByTestId('effort-pill-selector')).toHaveCount(0);
+    await expect(lens.getByTestId('effort-tier-selector')).toHaveCount(0);
+    await expect(lens.getByTestId('chat-toolbar-mention-btn')).toHaveCount(0);
+
+    await expect(lens.getByTestId('commit-chat-attach-btn')).toBeVisible();
+    await expect(lens.getByTestId('chat-toolbar-slash-btn')).toBeVisible();
+    await expect(lens.getByTestId('commit-chat-send-btn')).toBeVisible();
+
+    const compactOrderIsCorrect = await toolbar.evaluate((node) => {
+        const chip = node.querySelector('[data-testid="compact-ai-settings-chip"]');
+        const attach = node.querySelector('[data-testid="commit-chat-attach-btn"]');
+        const slash = node.querySelector('[data-testid="chat-toolbar-slash-btn"]');
+        const send = node.querySelector('[data-testid="commit-chat-send-btn"]');
+        return Boolean(
+            chip
+            && attach
+            && slash
+            && send
+            && (chip.compareDocumentPosition(attach) & Node.DOCUMENT_POSITION_FOLLOWING)
+            && (attach.compareDocumentPosition(slash) & Node.DOCUMENT_POSITION_FOLLOWING)
+            && (slash.compareDocumentPosition(send) & Node.DOCUMENT_POSITION_FOLLOWING),
+        );
+    });
+    expect(compactOrderIsCorrect).toBe(true);
+
+    await lens.getByTestId('compact-ai-settings-chip').click();
+    const editor = lens.getByTestId('compact-ai-settings-editor');
+    await expect(editor).toBeVisible();
+    await expect(editor).toHaveAttribute('data-placement', /^(popover|sheet)$/);
+    await expect(editor.getByTestId('compact-ai-settings-provider-control')).toBeVisible();
+    await expect(editor.getByTestId('compact-ai-settings-mode-control')).toBeVisible();
+    await expect(editor.getByTestId('compact-ai-settings-model-control')).toBeVisible();
+    await expect(editor.getByTestId('compact-ai-settings-effort-control')).toBeVisible();
+}
+
 async function verifyPinCloseUnpinCycle(page: import('@playwright/test').Page, storageKey: string): Promise<void> {
     await page.getByTestId('commit-chat-frame-close-btn').click();
     await expect(page.getByTestId('commit-chat-lens')).toHaveCount(0);
@@ -134,6 +181,7 @@ test.describe('feature-flagged commit chat lens', () => {
 
         await page.getByTestId('toggle-chat-btn').click();
         await expectBottomRightLens(page);
+        await expectCompactInitialComposer(page);
         await verifyPinCloseUnpinCycle(page, storageKey);
         await page.getByTestId('commit-chat-frame-close-btn').click();
 
@@ -141,6 +189,7 @@ test.describe('feature-flagged commit chat lens', () => {
         await expect(page.getByTestId('file-diff-section')).toBeVisible();
         await page.getByTestId('toggle-chat-btn').click();
         await expectBottomRightLens(page);
+        await expectCompactInitialComposer(page);
         await page.getByTestId('commit-chat-frame-close-btn').click();
 
         await gotoFresh(page, `${serverUrl}/?workspace=${encodeURIComponent(WORKSPACE_ID)}&surface=work-item#repos/${encodeURIComponent(WORKSPACE_ID)}/work-items/${encodeURIComponent(WORK_ITEM_ID)}/commit/${encodeURIComponent(commit.hash)}/${CHANGED_FILE.split('/').map(encodeURIComponent).join('/')}`);
@@ -148,6 +197,7 @@ test.describe('feature-flagged commit chat lens', () => {
         await expect(page.getByTestId('file-diff-section')).toBeVisible();
         await page.getByTestId('toggle-chat-btn').click();
         await expectBottomRightLens(page);
+        await expectCompactInitialComposer(page);
 
         await page.getByTestId('commit-chat-pin-btn').click();
         await expect(page.getByTestId('commit-chat-side-panel')).toBeVisible();
@@ -167,6 +217,7 @@ test.describe('feature-flagged commit chat lens', () => {
 
         await page.getByTestId('toggle-chat-btn').click();
         await expectBottomRightLens(page);
+        await expectCompactInitialComposer(page);
 
         expect(runtimeErrors).toEqual([]);
     });

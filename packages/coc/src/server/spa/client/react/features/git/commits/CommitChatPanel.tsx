@@ -1,11 +1,9 @@
-import { useState, useRef } from 'react';
 import { useCommitChatBinding } from '../hooks/useCommitChatBinding';
 import { ChatDetail } from '../../chat/ChatDetail';
 import { ChatPreferencesProvider } from '../../../contexts/ChatPreferencesContext';
-import { RichTextInput } from '../../../shared/RichTextInput';
-import type { RichTextInputHandle } from '../../../shared/RichTextInput';
-import { useFileAttachments } from '../../chat/hooks/useFileAttachments';
-import { AttachmentPreviews } from '../../../ui/AttachmentPreviews';
+import { InitialChatComposer } from '../../chat/NewChatArea';
+import type { InitialChatComposerSubmission } from '../../chat/NewChatArea';
+import { getReviewChatTargetStorageId } from './commitChatPlacement';
 
 export interface CommitChatPanelProps {
     workspaceId: string;
@@ -17,19 +15,19 @@ export interface CommitChatPanelProps {
 
 export function CommitChatPanel({ workspaceId, commitHash, commitMessage, onClose, hideEmptyHeader = false }: CommitChatPanelProps) {
     const { taskId, loading, error, createChat } = useCommitChatBinding({ workspaceId, commitHash, commitMessage });
-    const [input, setInput] = useState('');
-    const richTextRef = useRef<RichTextInputHandle>(null);
-    const { attachments, addFromPaste, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
 
-    const handleSend = async () => {
-        const text = input.trim();
-        if (!text && attachments.length === 0) return;
-        const attachmentPayload = toPayload();
-        setInput('');
-        richTextRef.current?.setValue('');
-        clearAttachments();
-        await createChat(text, attachmentPayload.length > 0 ? attachmentPayload : undefined);
-    };
+    const draftKey = `review-chat:${getReviewChatTargetStorageId({ type: 'commit', workspaceId, commitHash })}`;
+
+    const handleComposerSubmit = async (submission: InitialChatComposerSubmission) => createChat(submission.prompt, {
+        mode: submission.mode,
+        context: submission.context,
+        attachments: submission.attachments,
+        provider: submission.provider,
+        model: submission.model,
+        reasoningEffort: submission.reasoningEffort,
+        config: submission.config,
+        workingDirectory: submission.workingDirectory,
+    });
 
     return (
         <div className="flex flex-col bg-[#f8f8f8] dark:bg-[#1e1e1e] overflow-hidden h-full w-full"
@@ -65,40 +63,20 @@ export function CommitChatPanel({ workspaceId, commitHash, commitMessage, onClos
 
             {/* Empty state — no chat yet */}
             {!taskId && !loading && !error && (
-                <>
-                    <div className="flex-1 flex items-center justify-center">
-                        <div className="text-center text-[#848484]">
-                            <div className="text-3xl mb-2">💬</div>
-                            <div className="text-sm font-medium mb-1">Chat about this commit</div>
-                            <div className="text-xs">Ask questions about the changes</div>
-                        </div>
-                    </div>
-                    <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2">
-                        {attachmentError && (
-                            <div className="text-xs text-[#f14c4c]" data-testid="commit-chat-attachment-error">{attachmentError}</div>
-                        )}
-                        <AttachmentPreviews attachments={attachments} onRemove={removeAttachment} />
-                        <div className="flex items-center gap-2">
-                            <RichTextInput
-                                ref={richTextRef}
-                                placeholder="Ask about this commit..."
-                                className="flex-1 min-h-[34px] max-h-28 overflow-y-auto rounded border bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm"
-                                onChange={setInput}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
-                                }}
-                                onPaste={addFromPaste}
-                                data-testid="commit-chat-input"
-                            />
-                            <button
-                                disabled={!input.trim() && attachments.length === 0}
-                                onClick={handleSend}
-                                className="h-[34px] px-3 rounded bg-[#0078d4] text-white text-sm font-medium hover:bg-[#106ebe] disabled:opacity-50"
-                                data-testid="commit-chat-send-btn"
-                            >Send</button>
-                        </div>
-                    </div>
-                </>
+                <div className="min-h-0 flex-1">
+                    <InitialChatComposer
+                        workspaceId={workspaceId}
+                        onSubmit={handleComposerSubmit}
+                        heroTitle="Chat about this commit"
+                        heroDescription="Ask questions about the changes"
+                        placeholder="Ask about this commit, or type / for commands..."
+                        testIdPrefix="commit-chat"
+                        draftKey={draftKey}
+                        sourceLabel="Commit chat composer"
+                        enableRalphDirectGoal={false}
+                        settingsLayout="compact"
+                    />
+                </div>
             )}
 
             {/* Active chat — delegate entirely to ChatDetail */}

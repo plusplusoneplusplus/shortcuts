@@ -102,6 +102,26 @@ describe('PullRequestChatPanel', () => {
         expect(screen.getByTestId('pr-chat-panel')).toBeTruthy();
         expect(screen.getByText('Chat about this PR')).toBeTruthy();
         expect(screen.getByTestId('pr-chat-send-btn')).toBeTruthy();
+        expect(screen.getByTestId('compact-ai-settings-chip')).toBeTruthy();
+        expect(screen.queryByTestId('agent-selector-chip-btn')).toBeNull();
+        expect(screen.queryByTestId('mode-selector')).toBeNull();
+        expect(screen.queryByTestId('model-picker-chip')).toBeNull();
+        expect(screen.queryByTestId('effort-pill-selector')).toBeNull();
+        expect(screen.getByTestId('chat-toolbar-slash-btn')).toBeTruthy();
+        expect(screen.queryByTestId('chat-toolbar-mention-btn')).toBeNull();
+        expect(screen.getByTestId('pr-chat-attach-btn')).toBeTruthy();
+    });
+
+    it('hides the empty-state panel header for framed review-chat lenses', async () => {
+        setupHook();
+        await act(async () => {
+            render(<PullRequestChatPanel {...defaultProps} hideEmptyHeader />);
+        });
+
+        expect(screen.queryByTestId('pr-chat-close-btn')).toBeNull();
+        expect(screen.queryByText('#142')).toBeNull();
+        expect(screen.getByTestId('compact-ai-settings-chip')).toBeTruthy();
+        expect(screen.getByTestId('pr-chat-send-btn')).toBeTruthy();
     });
 
     // ========================================================================
@@ -277,7 +297,11 @@ describe('PullRequestChatPanel', () => {
             fireEvent.click(screen.getByTestId('pr-chat-send-btn'));
         });
 
-        expect(mockCreateChat).toHaveBeenCalledWith('check this', fakePayload);
+        expect(mockCreateChat).toHaveBeenCalledWith('check this', expect.objectContaining({
+            mode: 'ask',
+            attachments: fakePayload,
+            provider: 'copilot',
+        }));
     });
 
     it('does not pass attachments when toPayload returns empty', async () => {
@@ -292,6 +316,10 @@ describe('PullRequestChatPanel', () => {
             fireEvent.click(screen.getByTestId('pr-chat-send-btn'));
         });
 
-        expect(mockCreateChat).toHaveBeenCalledWith('hello', undefined);
+        expect(mockCreateChat).toHaveBeenCalledWith('hello', expect.objectContaining({
+            mode: 'ask',
+            attachments: undefined,
+            provider: 'copilot',
+        }));
     });
 });

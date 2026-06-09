@@ -7,6 +7,10 @@
  * `ralph:<sessionId>:<iteration>`; that's the convention used when the
  * bridge enqueues an iteration. Clicking a node calls `onSelectIteration`
  * with that id so the host can switch the chat detail pane.
+ *
+ * Final-check nodes carry their own recorded `processId`, so the pane's
+ * `onSelectFinalCheck` is wired straight to the host `onSelectIteration`
+ * (process-id) callback without the iteration→process-id translation.
  */
 
 import type React from 'react';
@@ -103,6 +107,7 @@ export function RalphWorkflowPaneContainer(
             view={view}
             onClose={onClose}
             onSelectIteration={onSelectIteration ? handleSelectIteration : undefined}
+            onSelectFinalCheck={onSelectIteration}
             onContinue={handleContinue}
             onNewLoop={handleNewLoop}
             onResume={handleResume}

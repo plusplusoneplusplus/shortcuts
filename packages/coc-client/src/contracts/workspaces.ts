@@ -338,6 +338,7 @@ export type RalphSessionPhase = 'grilling' | 'executing' | 'complete';
 
 export type RalphTerminalReason =
   | 'RALPH_COMPLETE'
+  | 'MANUAL_VERIFICATION_ONLY'
   | 'CAP_REACHED'
   | 'CANCELLED'
   | 'NO_SIGNAL';
@@ -387,7 +388,7 @@ export interface RalphSessionRecord {
 // Final-check types (AC-03, AC-06)
 // ============================================================================
 
-export type RalphFinalCheckStatus = 'running' | 'completed' | 'failed';
+export type RalphFinalCheckStatus = 'queued' | 'running' | 'completed' | 'failed';
 
 /** Metadata record for one final-check run within a Ralph session. */
 export interface RalphFinalCheckRecord {

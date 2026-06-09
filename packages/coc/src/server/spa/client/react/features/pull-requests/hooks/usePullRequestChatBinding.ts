@@ -15,6 +15,17 @@ export interface UsePullRequestChatBindingOptions {
     repoId?: string;
 }
 
+export interface ReviewChatComposerSendOptions {
+    mode?: string;
+    context?: Record<string, unknown>;
+    attachments?: AttachmentPayload[];
+    provider?: string;
+    model?: string;
+    reasoningEffort?: string;
+    config?: { effortTier?: string };
+    workingDirectory?: string;
+}
+
 export interface UsePullRequestChatBindingReturn {
     /** The queue task ID bound to this PR, or null if no chat exists. */
     taskId: string | null;
@@ -23,7 +34,7 @@ export interface UsePullRequestChatBindingReturn {
     /** Error message if binding fetch failed. */
     error: string | null;
     /** Create a new chat for this PR. Returns the new taskId. */
-    createChat: (prompt: string, attachments?: AttachmentPayload[]) => Promise<string | null>;
+    createChat: (prompt: string, options?: ReviewChatComposerSendOptions) => Promise<string | null>;
 }
 
 export function usePullRequestChatBinding(opts: UsePullRequestChatBindingOptions): UsePullRequestChatBindingReturn {
@@ -51,7 +62,7 @@ export function usePullRequestChatBinding(opts: UsePullRequestChatBindingOptions
         return () => { cancelled = true; };
     }, [workspaceId, prId]);
 
-    const createChat = useCallback(async (prompt: string, attachments?: AttachmentPayload[]): Promise<string | null> => {
+    const createChat = useCallback(async (prompt: string, options: ReviewChatComposerSendOptions = {}): Promise<string | null> => {
         if (!prId) return null;
         try {
             const res = await getSpaCocClient().queue.enqueue({
@@ -59,14 +70,20 @@ export function usePullRequestChatBinding(opts: UsePullRequestChatBindingOptions
                 priority: 'normal',
                 payload: {
                     kind: 'chat',
-                    mode: 'ask',
+                    mode: options.mode ?? 'ask',
                     prompt,
+                    ...(options.workingDirectory ? { workingDirectory: options.workingDirectory } : {}),
                     workspaceId,
-                    ...(attachments && attachments.length > 0 ? { attachments } : {}),
+                    ...(options.attachments && options.attachments.length > 0 ? { attachments: options.attachments } : {}),
+                    ...(options.provider ? { provider: options.provider } : {}),
+                    ...(options.model ? { model: options.model } : {}),
+                    ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
                     context: {
+                        ...(options.context ?? {}),
                         pullRequestChat: { prId, prNumber, prTitle, repoId },
                     },
                 },
+                ...(options.config ? { config: options.config } : {}),
             });
             const newTaskId = res.task?.id ?? (res as { id?: string }).id;
             if (!newTaskId) throw new Error('Failed to create pull request chat task');

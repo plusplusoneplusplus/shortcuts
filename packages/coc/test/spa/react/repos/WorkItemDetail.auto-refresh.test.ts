@@ -78,11 +78,14 @@ describe('WorkItemDetail — auto-refresh via context', () => {
         it('calls onBack when item disappears from context', () => {
             // Should check that item was present before and is now gone
             expect(src).toContain('contextItemWasPresent.current && !contextItem');
-            // Should call onBack
-            const checkPos = src.indexOf('contextItemWasPresent.current && !contextItem');
-            const onBackPos = src.indexOf('onBack?.()', checkPos);
-            expect(onBackPos).toBeGreaterThan(checkPos);
-            expect(onBackPos - checkPos).toBeLessThan(80);
+            // Should close the associated chat lens before navigating back
+            const effectBody = src.slice(
+                src.indexOf('Navigate back when the item is deleted'),
+                src.indexOf('// ── Unified dirty tracking'),
+            );
+            expect(effectBody).toContain('closeWorkItemChat()');
+            expect(effectBody).toContain('onBack?.()');
+            expect(effectBody.indexOf('closeWorkItemChat()')).toBeLessThan(effectBody.indexOf('onBack?.()'));
         });
 
         it('does not navigate back if context item was never present', () => {

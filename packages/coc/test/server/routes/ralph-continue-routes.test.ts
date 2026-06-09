@@ -398,6 +398,15 @@ describe('POST /api/workspaces/:wsId/ralph-sessions/:sessionId/continue', () => 
         expect(res.json().error).toMatch(/RALPH_COMPLETE/);
     });
 
+    it('rejects when terminalReason is MANUAL_VERIFICATION_ONLY', async () => {
+        await seedSession(dataDir, 'ws-5', 'sess-manual', {
+            terminalReason: 'MANUAL_VERIFICATION_ONLY',
+        });
+        const res = await post(baseUrl, '/api/workspaces/ws-5/ralph-sessions/sess-manual/continue', {});
+        expect(res.status).toBe(409);
+        expect(res.json().error).toMatch(/manual verification/i);
+    });
+
     it('rejects when terminalReason is CANCELLED', async () => {
         await seedSession(dataDir, 'ws-6', 'sess-cancelled', {
             terminalReason: 'CANCELLED',

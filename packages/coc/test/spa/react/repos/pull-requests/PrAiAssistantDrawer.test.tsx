@@ -21,12 +21,14 @@ vi.mock('../../../../../src/server/spa/client/react/features/pull-requests/PullR
                 data-pr-number={props.prNumber}
                 data-pr-title={props.prTitle}
                 data-repo-id={props.repoId}
+                data-hide-empty-header={props.hideEmptyHeader ? 'true' : 'false'}
             />
         );
     },
 }));
 
 import { PrAiAssistantDrawer } from '../../../../../src/server/spa/client/react/features/pull-requests/PrAiAssistantDrawer';
+import { PullRequestChatPlacementFrame } from '../../../../../src/server/spa/client/react/features/pull-requests/PullRequestChatPlacementFrame';
 
 beforeEach(() => {
     mockPanelProps.mockReset();
@@ -149,5 +151,51 @@ describe('PrAiAssistantDrawer', () => {
 
         fireEvent.click(screen.getByTestId('pr-chat-unpin-btn'));
         expect(onUnpin).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('PullRequestChatPlacementFrame', () => {
+    it('renders a visible top-left resize grip for PR lenses', () => {
+        render(
+            <PullRequestChatPlacementFrame
+                workspaceId="repo-1"
+                repoId="repo-1"
+                prId="142"
+                prNumber={142}
+                prTitle="Add retry logic"
+                presentation="lens"
+                onClose={vi.fn()}
+            />,
+        );
+
+        expect(screen.getByTestId('pr-chat-lens-resize-grip')).toHaveClass('cursor-nwse-resize');
+        expect(screen.getByTestId('pr-chat-panel-stub').getAttribute('data-hide-empty-header')).toBe('true');
+    });
+
+    it('renders a compact restorable PR lens pill when minimized', () => {
+        const onRestore = vi.fn();
+
+        render(
+            <PullRequestChatPlacementFrame
+                workspaceId="repo-1"
+                repoId="repo-1"
+                prId="142"
+                prNumber={142}
+                prTitle="Add retry logic"
+                presentation="lens"
+                onClose={vi.fn()}
+                isMinimized
+                onRestore={onRestore}
+            />,
+        );
+
+        expect(screen.getByTestId('pr-chat-lens-minimized')).toHaveTextContent('PR Chat');
+        expect(screen.getByTestId('pr-chat-lens-minimized')).toHaveTextContent('#142');
+        expect(screen.getByTestId('pr-chat-lens-hidden-body')).toHaveClass('hidden');
+        expect(screen.getByTestId('pr-chat-panel-stub')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('pr-chat-restore-btn'));
+
+        expect(onRestore).toHaveBeenCalledOnce();
     });
 });

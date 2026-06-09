@@ -162,6 +162,41 @@ describe('RalphWorkflowPaneContainer', () => {
         expect(onSelectIteration).toHaveBeenCalledWith('proc-1');
     });
 
+    it('clicking a final-check node calls onSelectIteration with its recorded processId', async () => {
+        ralphSessionMock.mockResolvedValueOnce({
+            record: makeRecord({
+                finalChecks: [
+                    {
+                        checkIndex: 1,
+                        loopIndex: 1,
+                        sourceIteration: 2,
+                        processId: 'fc-proc-9',
+                        startedAt: new Date(Date.now() - 20_000).toISOString(),
+                        completedAt: new Date(Date.now() - 10_000).toISOString(),
+                        status: 'completed',
+                        hasGaps: false,
+                    },
+                ],
+            }),
+            sections: [
+                { iteration: 1, signal: 'RALPH_NEXT', timestamp: new Date().toISOString(), body: 'one' },
+                { iteration: 2, signal: 'RALPH_COMPLETE', timestamp: new Date().toISOString(), body: 'two' },
+            ],
+        });
+        const onSelectIteration = vi.fn();
+        render(
+            <RalphWorkflowPaneContainer
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                onSelectIteration={onSelectIteration}
+            />,
+        );
+        await waitFor(() => expect(screen.getByTestId('ralph-workflow-pane')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('ralph-final-check-node-1'));
+        expect(onSelectIteration).toHaveBeenCalledWith('fc-proc-9');
+    });
+
     it('falls back to ralph:<sessionId>:<iter> when the iteration record has no processId', async () => {
         ralphSessionMock.mockResolvedValueOnce({
             record: makeRecord({ iterations: [] }),

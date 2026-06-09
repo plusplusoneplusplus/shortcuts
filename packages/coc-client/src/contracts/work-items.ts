@@ -225,6 +225,15 @@ export interface WorkItemListResponse {
   hasMore: boolean;
 }
 
+export interface WorkItemChatBinding {
+  workItemId: string;
+  taskId: string;
+}
+
+export interface WorkItemChatBindingListResponse {
+  bindings: Record<string, { taskId: string; createdAt: string }>;
+}
+
 export interface WorkItemGroupedResponse {
   groups: Record<string, { items: WorkItem[]; total: number; hasMore: boolean }>;
 }

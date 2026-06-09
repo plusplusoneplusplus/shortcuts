@@ -135,6 +135,53 @@ describe('decideRalphIterationActions', () => {
         });
     });
 
+    it('treats manual-only RALPH_NEXT as complete and requests a final check', () => {
+        const decision = decideRalphIterationActions({
+            ...baseInput,
+            currentIteration: 2,
+            maxIterations: 5,
+            responseText: [
+                'Autonomous work is done.',
+                '',
+                'RALPH_PROGRESS:',
+                'Files: src/a.ts, test/a.test.ts',
+                'Decisions: implementation, tests, and build are complete.',
+                'Remaining: manual verification only - user should run the product demo.',
+                'RALPH_NEXT',
+            ].join('\n'),
+        });
+
+        expect(decision).toMatchObject({
+            signal: 'RALPH_NEXT',
+            shouldContinue: false,
+            terminalReason: 'MANUAL_VERIFICATION_ONLY',
+            completionReason: 'manual-verification-only',
+            progressClassification: 'manualVerificationOnly',
+        });
+        expect(decision.actions.map(item => item.type)).toEqual([
+            'recordIteration',
+            'surfaceTerminalReason',
+            'enqueueFinalCheck',
+        ]);
+        expect(action(decision.actions, 'recordIteration')).toMatchObject({
+            iteration: 2,
+            signal: 'RALPH_NEXT',
+            shouldContinue: false,
+            terminalReason: 'MANUAL_VERIFICATION_ONLY',
+        });
+        expect(action(decision.actions, 'surfaceTerminalReason')).toMatchObject({
+            iteration: 2,
+            signal: 'RALPH_NEXT',
+            terminalReason: 'MANUAL_VERIFICATION_ONLY',
+            completionReason: 'manual-verification-only',
+        });
+        expect(action(decision.actions, 'enqueueFinalCheck')).toMatchObject({
+            sourceIteration: 2,
+            terminalReason: 'MANUAL_VERIFICATION_ONLY',
+            completionReason: 'manual-verification-only',
+        });
+    });
+
     it('records, surfaces NO_SIGNAL, and completes the session for missing or invalid signals', () => {
         const decision = decideRalphIterationActions({
             ...baseInput,

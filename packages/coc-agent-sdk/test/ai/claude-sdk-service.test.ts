@@ -555,6 +555,90 @@ describe('ClaudeSDKService.sendMessage', () => {
         expect(result.response).toBe('Hello world');
     });
 
+    it('maps append systemMessage to Claude appendSystemPrompt without mutating the prompt', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'result', subtype: 'success', result: 'ok' },
+        ]));
+
+        const result = await svc.sendMessage({
+            prompt: 'user prompt',
+            systemMessage: { mode: 'append', content: 'CoC system prompt' },
+        });
+
+        expect(result.success).toBe(true);
+        const call = queryFn.mock.calls[0][0];
+        expect(call.prompt).toBe('user prompt');
+        expect(call.options?.appendSystemPrompt).toBe('CoC system prompt');
+        expect(call.options).not.toHaveProperty('customSystemPrompt');
+    });
+
+    it('maps replace systemMessage to Claude customSystemPrompt without also appending it', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'result', subtype: 'success', result: 'ok' },
+        ]));
+
+        const result = await svc.sendMessage({
+            prompt: 'generator prompt',
+            systemMessage: { mode: 'replace', content: 'Strict generator system prompt' },
+        });
+
+        expect(result.success).toBe(true);
+        const call = queryFn.mock.calls[0][0];
+        expect(call.prompt).toBe('generator prompt');
+        expect(call.options?.customSystemPrompt).toBe('Strict generator system prompt');
+        expect(call.options).not.toHaveProperty('appendSystemPrompt');
+    });
+
+    it('omits Claude system prompt options when systemMessage is absent', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'result', subtype: 'success', result: 'ok' },
+        ]));
+
+        const result = await svc.sendMessage({ prompt: 'plain prompt' });
+
+        expect(result.success).toBe(true);
+        const call = queryFn.mock.calls[0][0];
+        expect(call.options).not.toHaveProperty('appendSystemPrompt');
+        expect(call.options).not.toHaveProperty('customSystemPrompt');
+    });
+
+    it('omits Claude system prompt options for blank append and replace messages', async () => {
+        for (const mode of ['append', 'replace'] as const) {
+            queryFn.mockReturnValueOnce(makeMessages([
+                { type: 'result', subtype: 'success', result: 'ok' },
+            ]));
+
+            const result = await svc.sendMessage({
+                prompt: `blank ${mode}`,
+                systemMessage: { mode, content: '  \n\t  ' },
+            });
+
+            expect(result.success).toBe(true);
+            const call = queryFn.mock.calls[queryFn.mock.calls.length - 1][0];
+            expect(call.options).not.toHaveProperty('appendSystemPrompt');
+            expect(call.options).not.toHaveProperty('customSystemPrompt');
+        }
+    });
+
+    it('keeps append system prompts on resumed Claude sessions', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'result', subtype: 'success', result: 'ok', session_id: 'provider-session' },
+        ]));
+
+        const result = await svc.sendMessage({
+            prompt: 'follow-up prompt',
+            sessionId: 'provider-session',
+            systemMessage: { mode: 'append', content: 'history plus CoC system prompt' },
+        });
+
+        expect(result.success).toBe(true);
+        const call = queryFn.mock.calls[0][0];
+        expect(call.options?.resume).toBe('provider-session');
+        expect(call.options).not.toHaveProperty('sessionId');
+        expect(call.options?.appendSystemPrompt).toBe('history plus CoC system prompt');
+        expect(call.prompt).toBe('follow-up prompt');
+    });
+
     it('maps Claude result usage into the shared TokenUsage shape', async () => {
         queryFn.mockReturnValueOnce(makeMessages([
             {

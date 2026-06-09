@@ -400,7 +400,8 @@ describe('WorkItemsTab — Remote tracker entry point', () => {
     });
 
     it('uses Local and Remote top-level tracker tabs with no Azure tab', () => {
-        expect(src).toContain("useState<WorkItemTrackerViewKind>('local')");
+        expect(src).toContain('useState<WorkItemTrackerViewKind>(() => readStoredWorkItemTrackerView(workspaceId))');
+        expect(src).toContain('writeStoredWorkItemTrackerView(workspaceId, viewKind)');
         expect(src).toContain('WORK_ITEM_TRACKER_TABS');
         expect(src).toContain('remoteProviderFilter');
         expect(src).not.toContain("setActiveTracker('azure-boards-backed')");

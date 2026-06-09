@@ -5,6 +5,7 @@ import {
     appendProgress,
     buildFinalCheckPrompt,
     buildRalphIterationPrompt,
+    classifyRalphProgressStagnation,
     decideRalphIterationActions,
     decideRalphFinalCheckActions,
     formatFinalCheckProgressSection,
@@ -29,6 +30,7 @@ describe('Ralph public module boundary', () => {
         expect(typeof parseProgressSections).toBe('function');
         expect(typeof formatProgressSection).toBe('function');
         expect(typeof buildRalphIterationPrompt).toBe('function');
+        expect(typeof classifyRalphProgressStagnation).toBe('function');
         expect(typeof buildFinalCheckPrompt).toBe('function');
         expect(typeof parseFinalCheckResult).toBe('function');
         expect(typeof decideRalphIterationActions).toBe('function');
@@ -151,6 +153,7 @@ describe('buildFinalCheckPrompt', () => {
         expect(prompt).toContain('Workspace ID: ws-1');
         expect(prompt).toContain('Loop just completed: 1 (last iteration: 4)');
         expect(prompt).toContain('Read the Ralph progress journal from: /tmp/session/progress.md');
+        expect(prompt).toContain('manual-verification-only');
         expect(prompt).toContain(FINAL_CHECK_MARKER);
     });
 });

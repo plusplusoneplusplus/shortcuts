@@ -148,9 +148,12 @@ export function FileDiffPanel({
         chatOpen,
         toggleChat,
         closeChat,
+        minimizeChat,
+        restoreChat,
         pinChat,
         unpinChat,
         isPinned: chatPinned,
+        isMinimized: chatMinimized,
         presentation: chatPresentation,
         lensEnabled: chatLensEnabled,
     } = useCommitChatPresentation({
@@ -527,6 +530,9 @@ export function FileDiffPanel({
                             commitMessage={chat.commitMessage}
                             presentation="lens"
                             onClose={closeChat}
+                            isMinimized={chatMinimized}
+                            onMinimize={minimizeChat}
+                            onRestore={restoreChat}
                             onPin={pinChat}
                         />
                     ) : null;

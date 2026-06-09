@@ -364,6 +364,19 @@ describe('POST /api/workspaces/:wsId/ralph-sessions/:sessionId/new-loop', () => 
         expect(res.json().error).toMatch(/continue|RALPH_COMPLETE/i);
     });
 
+    it('returns 409 when session has manual verification pending', async () => {
+        await seedSession(dataDir, 'ws-3', 'sess-manual', {
+            terminalReason: 'MANUAL_VERIFICATION_ONLY',
+        });
+        const res = await post(
+            baseUrl,
+            '/api/workspaces/ws-3/ralph-sessions/sess-manual/new-loop',
+            { newGoal: 'valid' },
+        );
+        expect(res.status).toBe(409);
+        expect(res.json().error).toMatch(/manual verification/i);
+    });
+
     it('returns 409 when a task for this session is still queued', async () => {
         await seedSession(dataDir, 'ws-4', 'sess-busy');
         const inFlightTasks = [{

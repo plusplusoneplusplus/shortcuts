@@ -1,11 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { WorkItemsTab } from '../../../../src/server/spa/client/react/features/work-items/WorkItemsTab';
+import { getWorkItemTrackerViewStorageKey } from '../../../../src/server/spa/client/react/features/work-items/workItemTrackerViews';
 
 const mocks = vi.hoisted(() => ({
     dispatch: vi.fn(),
     tree: vi.fn(),
     syncStatus: vi.fn(),
+    appState: {
+        selectedWorkItemId: undefined as string | undefined,
+        selectedWorkItemSessionTaskId: undefined as string | undefined,
+        selectedWorkItemCommitHash: undefined as string | undefined,
+        selectedWorkItemCommitFilePath: undefined as string | undefined,
+    },
 }));
 
 vi.mock('../../../../src/server/spa/client/react/contexts/WorkItemContext', () => ({
@@ -21,12 +28,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/WorkItemContext', () =
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
-        state: {
-            selectedWorkItemId: undefined,
-            selectedWorkItemSessionTaskId: undefined,
-            selectedWorkItemCommitHash: undefined,
-            selectedWorkItemCommitFilePath: undefined,
-        },
+        state: mocks.appState,
         dispatch: vi.fn(),
     }),
 }));
@@ -74,7 +76,19 @@ vi.mock('../../../../src/server/spa/client/react/features/work-items/CreateWorkI
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/work-items/ImportFromGitHubDialog', () => ({
-    ImportFromGitHubDialog: () => null,
+    ImportFromGitHubDialog: ({ initialProvider, onImported }: any) => (
+        <button
+            type="button"
+            data-testid="mock-complete-import"
+            onClick={() => onImported({
+                id: 'wi-imported',
+                title: 'Imported remote work item',
+                tracker: { kind: initialProvider === 'azure-boards' ? 'azure-boards-backed' : 'github-backed' },
+            }, initialProvider)}
+        >
+            Complete import
+        </button>
+    ),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/work-items/WorkItemAiComposer', () => ({
@@ -106,45 +120,119 @@ function emptyTreeResponse() {
     };
 }
 
+function syncStatusResponse(provider: 'github' | 'azure-boards' = 'github') {
+    const repository = provider === 'github'
+        ? {
+            provider: 'github',
+            owner: 'octo',
+            repo: 'repo',
+            url: 'https://github.com/octo/repo',
+        }
+        : {
+            provider: 'azure-boards',
+            organizationUrl: 'https://dev.azure.com/example',
+            project: 'Payments',
+            url: 'https://dev.azure.com/example/Payments',
+        };
+
+    return {
+        enabled: true,
+        disabled: false,
+        maxItems: 200,
+        remoteProvider: provider,
+        provider: {
+            provider,
+            available: true,
+            repository,
+            auth: { mode: 'external', authenticated: true },
+        },
+        providers: [{
+            provider,
+            available: true,
+            repository,
+            auth: { mode: 'external', authenticated: true },
+        }],
+    };
+}
+
 describe('WorkItemsTab — remote provider tab icon', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.appState.selectedWorkItemId = undefined;
+        mocks.appState.selectedWorkItemSessionTaskId = undefined;
+        mocks.appState.selectedWorkItemCommitHash = undefined;
+        mocks.appState.selectedWorkItemCommitFilePath = undefined;
+        localStorage.clear();
+        location.hash = '';
         mocks.tree.mockResolvedValue(emptyTreeResponse());
+        mocks.syncStatus.mockResolvedValue(syncStatusResponse());
     });
 
     afterEach(() => {
+        localStorage.clear();
         vi.restoreAllMocks();
     });
 
+    it('defaults to Local when there is no saved tracker tab', () => {
+        render(<WorkItemsTab workspaceId="ws-test" />);
+
+        expect(screen.getByTestId('work-item-tracker-tab-local')).toHaveAttribute('aria-selected', 'true');
+        expect(screen.getByTestId('work-item-tracker-tab-remote')).toHaveAttribute('aria-selected', 'false');
+    });
+
+    it('restores a valid saved tracker tab for the current workspace', () => {
+        localStorage.setItem(getWorkItemTrackerViewStorageKey('ws-test'), 'remote');
+        localStorage.setItem(getWorkItemTrackerViewStorageKey('ws-other'), 'local');
+
+        render(<WorkItemsTab workspaceId="ws-test" />);
+
+        expect(screen.getByTestId('work-item-tracker-tab-local')).toHaveAttribute('aria-selected', 'false');
+        expect(screen.getByTestId('work-item-tracker-tab-remote')).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('preserves saved Remote tracker selection when a work item session deep link opens detail', () => {
+        localStorage.setItem(getWorkItemTrackerViewStorageKey('ws-test'), 'remote');
+        mocks.appState.selectedWorkItemId = 'wi-deep-link';
+        mocks.appState.selectedWorkItemSessionTaskId = 'task-deep-link';
+
+        render(<WorkItemsTab workspaceId="ws-test" />);
+
+        expect(screen.getByTestId('mock-work-item-execution-session')).toBeTruthy();
+        expect(screen.getByTestId('work-item-tracker-tab-local')).toHaveAttribute('aria-selected', 'false');
+        expect(screen.getByTestId('work-item-tracker-tab-remote')).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('falls back to Local for invalid saved tracker tab values', () => {
+        localStorage.setItem(getWorkItemTrackerViewStorageKey('ws-test'), 'synced');
+
+        render(<WorkItemsTab workspaceId="ws-test" />);
+
+        expect(screen.getByTestId('work-item-tracker-tab-local')).toHaveAttribute('aria-selected', 'true');
+        expect(screen.getByTestId('work-item-tracker-tab-remote')).toHaveAttribute('aria-selected', 'false');
+    });
+
+    it('persists clicked tracker tabs under a workspace-scoped storage key', () => {
+        render(<WorkItemsTab workspaceId="ws-test" />);
+
+        fireEvent.click(screen.getByTestId('work-item-tracker-tab-remote'));
+        expect(localStorage.getItem(getWorkItemTrackerViewStorageKey('ws-test'))).toBe('remote');
+        expect(localStorage.getItem(getWorkItemTrackerViewStorageKey('ws-other'))).toBeNull();
+
+        fireEvent.click(screen.getByTestId('work-item-tracker-tab-local'));
+        expect(localStorage.getItem(getWorkItemTrackerViewStorageKey('ws-test'))).toBe('local');
+    });
+
+    it('keeps tracker tab preferences isolated between workspaces', () => {
+        localStorage.setItem(getWorkItemTrackerViewStorageKey('ws-a'), 'remote');
+
+        render(<WorkItemsTab workspaceId="ws-b" />);
+
+        expect(screen.getByTestId('work-item-tracker-tab-local')).toHaveAttribute('aria-selected', 'true');
+        expect(screen.getByTestId('work-item-tracker-tab-remote')).toHaveAttribute('aria-selected', 'false');
+    });
+
     it('shows only the GitHub icon after detecting a GitHub remote provider', async () => {
-        mocks.syncStatus.mockResolvedValue({
-            enabled: true,
-            disabled: false,
-            maxItems: 200,
-            remoteProvider: 'github',
-            provider: {
-                provider: 'github',
-                available: true,
-                repository: {
-                    provider: 'github',
-                    owner: 'octo',
-                    repo: 'repo',
-                    url: 'https://github.com/octo/repo',
-                },
-                auth: { mode: 'external', authenticated: true },
-            },
-            providers: [{
-                provider: 'github',
-                available: true,
-                repository: {
-                    provider: 'github',
-                    owner: 'octo',
-                    repo: 'repo',
-                    url: 'https://github.com/octo/repo',
-                },
-                auth: { mode: 'external', authenticated: true },
-            }],
-        });
+        mocks.syncStatus.mockResolvedValue(syncStatusResponse('github'));
 
         render(<WorkItemsTab workspaceId="ws-test" />);
         fireEvent.click(screen.getByTestId('work-item-tracker-tab-remote'));
@@ -153,38 +241,13 @@ describe('WorkItemsTab — remote provider tab icon', () => {
             expect(screen.getByTestId('work-item-tracker-tab-remote-github-icon')).toBeTruthy();
         });
         expect(screen.queryByTestId('work-item-tracker-tab-remote-azure-boards-icon')).toBeNull();
-        expect(screen.queryByTestId('remote-sync-status-message')).toBeNull();
+        await waitFor(() => {
+            expect(screen.queryByTestId('remote-sync-status-message')).toBeNull();
+        });
     });
 
     it('shows only the Azure DevOps icon after detecting an Azure Boards remote provider', async () => {
-        mocks.syncStatus.mockResolvedValue({
-            enabled: true,
-            disabled: false,
-            maxItems: 200,
-            remoteProvider: 'azure-boards',
-            provider: {
-                provider: 'azure-boards',
-                available: true,
-                repository: {
-                    provider: 'azure-boards',
-                    organizationUrl: 'https://dev.azure.com/example',
-                    project: 'Payments',
-                    url: 'https://dev.azure.com/example/Payments',
-                },
-                auth: { mode: 'external', authenticated: true },
-            },
-            providers: [{
-                provider: 'azure-boards',
-                available: true,
-                repository: {
-                    provider: 'azure-boards',
-                    organizationUrl: 'https://dev.azure.com/example',
-                    project: 'Payments',
-                    url: 'https://dev.azure.com/example/Payments',
-                },
-                auth: { mode: 'external', authenticated: true },
-            }],
-        });
+        mocks.syncStatus.mockResolvedValue(syncStatusResponse('azure-boards'));
 
         render(<WorkItemsTab workspaceId="ws-test" />);
         fireEvent.click(screen.getByTestId('work-item-tracker-tab-remote'));
@@ -193,6 +256,20 @@ describe('WorkItemsTab — remote provider tab icon', () => {
             expect(screen.getByTestId('work-item-tracker-tab-remote-azure-boards-icon')).toBeTruthy();
         });
         expect(screen.queryByTestId('work-item-tracker-tab-remote-github-icon')).toBeNull();
-        expect(screen.queryByTestId('remote-sync-status-message')).toBeNull();
+        await waitFor(() => {
+            expect(screen.queryByTestId('remote-sync-status-message')).toBeNull();
+        });
+    });
+
+    it('persists Remote when a remote import completes', async () => {
+        mocks.syncStatus.mockResolvedValue(syncStatusResponse('github'));
+
+        render(<WorkItemsTab workspaceId="ws-test" />);
+        fireEvent.click(screen.getByTestId('work-item-tracker-tab-remote'));
+        localStorage.setItem(getWorkItemTrackerViewStorageKey('ws-test'), 'local');
+
+        fireEvent.click(await screen.findByTestId('mock-complete-import'));
+
+        expect(localStorage.getItem(getWorkItemTrackerViewStorageKey('ws-test'))).toBe('remote');
     });
 });

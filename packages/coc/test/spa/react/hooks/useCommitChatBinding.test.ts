@@ -5,10 +5,30 @@
  * createChat task creation + binding POST, diff inclusion in context blocks,
  * and error handling.
  */
+/* @vitest-environment jsdom */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { act, renderHook } from '@testing-library/react';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
+
+const { mockClient } = vi.hoisted(() => ({
+    mockClient: {
+        queue: {
+            enqueue: vi.fn(),
+        },
+        git: {
+            getCommitChatBinding: vi.fn(),
+            createCommitChatBinding: vi.fn(),
+        },
+    },
+}));
+
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => mockClient,
+}));
+
+import { useCommitChatBinding } from '../../../../src/server/spa/client/react/features/git/hooks/useCommitChatBinding';
 
 const HOOK_PATH = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'hooks', 'useCommitChatBinding.ts'
@@ -19,6 +39,13 @@ describe('useCommitChatBinding', () => {
 
     beforeAll(() => {
         source = fs.readFileSync(HOOK_PATH, 'utf-8');
+    });
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockClient.git.getCommitChatBinding.mockResolvedValue({ taskId: null });
+        mockClient.git.createCommitChatBinding.mockResolvedValue({});
+        mockClient.queue.enqueue.mockResolvedValue({ task: { id: 'task-commit' } });
     });
 
     it('exports UseCommitChatBindingOptions interface', () => {
@@ -88,11 +115,19 @@ describe('useCommitChatBinding', () => {
         it('POSTs to /queue with chat payload', () => {
             expect(source).toContain('queue.enqueue');
             expect(source).toContain("kind: 'chat'");
-            expect(source).toContain("mode: 'ask'");
+            expect(source).toContain("mode: options.mode ?? 'ask'");
         });
 
         it('includes commitChat in context', () => {
             expect(source).toContain('commitChat: { commitHash, commitMessage }');
+        });
+
+        it('forwards composer AI selection and attachments into the queue payload', () => {
+            expect(source).toContain('options.attachments');
+            expect(source).toContain('provider: options.provider');
+            expect(source).toContain('model: options.model');
+            expect(source).toContain('reasoningEffort: options.reasoningEffort');
+            expect(source).toContain('config: options.config');
         });
 
         it('does not fetch or inline diff (AI uses git tools instead)', () => {
@@ -111,6 +146,50 @@ describe('useCommitChatBinding', () => {
         it('sets taskId on success', () => {
             expect(source).toContain('setTaskId(newTaskId)');
             expect(source).toContain('return newTaskId');
+        });
+
+        it('preserves composer send options while binding commit context', async () => {
+            const attachments = [{ name: 'diff.png', mimeType: 'image/png', size: 3, dataUrl: 'data:image/png;base64,abc' }];
+            const { result } = renderHook(() => useCommitChatBinding({
+                workspaceId: 'ws-1',
+                commitHash: 'abc123',
+                commitMessage: 'fix: bug',
+            }));
+
+            await act(async () => {
+                await result.current.createChat('review prompt', {
+                    mode: 'autopilot',
+                    context: { skills: ['reviewer'] },
+                    attachments,
+                    provider: 'claude',
+                    model: 'claude-sonnet-4.6',
+                    reasoningEffort: 'high',
+                    config: { effortTier: 'high' },
+                    workingDirectory: '/workspace',
+                });
+            });
+
+            expect(mockClient.queue.enqueue).toHaveBeenCalledWith({
+                type: 'chat',
+                priority: 'normal',
+                payload: {
+                    kind: 'chat',
+                    mode: 'autopilot',
+                    prompt: 'review prompt',
+                    workingDirectory: '/workspace',
+                    workspaceId: 'ws-1',
+                    attachments,
+                    provider: 'claude',
+                    model: 'claude-sonnet-4.6',
+                    reasoningEffort: 'high',
+                    context: {
+                        skills: ['reviewer'],
+                        commitChat: { commitHash: 'abc123', commitMessage: 'fix: bug' },
+                    },
+                },
+                config: { effortTier: 'high' },
+            });
+            expect(mockClient.git.createCommitChatBinding).toHaveBeenCalledWith('ws-1', 'abc123', 'task-commit');
         });
     });
 

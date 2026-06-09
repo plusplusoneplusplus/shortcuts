@@ -75,6 +75,8 @@ describe('ConversationMetadataPopover', () => {
         expect(screen.getByText('autopilot')).toBeDefined();
         expect(screen.queryByText('Agent Provider')).toBeNull();
         expect(screen.getByText('codex')).toBeDefined();
+        expect(screen.getByText('Reasoning Effort')).toBeDefined();
+        expect(screen.getByText('Default')).toBeDefined();
         expect(screen.getByText('Session ID')).toBeDefined();
         expect(screen.getByText('sdk-sess-789')).toBeDefined();
         expect(screen.getByText('Backend')).toBeDefined();
@@ -208,12 +210,17 @@ describe('ConversationMetadataPopover', () => {
 describe('compact metadata helpers', () => {
     it('moves short categorical fields into a summary strip', () => {
         const rows = buildRows(BASE_PROCESS, 5);
-        expect(buildSummaryItems(rows)).toEqual(['chat', 'completed', 'autopilot', 'codex', 'gpt-4']);
+        expect(buildSummaryItems(rows)).toEqual(['chat', 'completed', 'autopilot', 'codex', 'gpt-4', 'effort Default']);
     });
 
     it('includes reasoning effort as a compact summary item', () => {
         const rows = buildRows({ ...BASE_PROCESS, config: { reasoningEffort: 'high' } });
-        expect(buildSummaryItems(rows)).toContain('effort high');
+        expect(buildSummaryItems(rows)).toContain('effort High');
+    });
+
+    it('keeps reasoning effort in compact metadata rows', () => {
+        const rows = buildRows({ ...BASE_PROCESS, config: { reasoningEffort: 'high' } });
+        expect(buildCompactRows(rows).find(row => row.label === 'Reasoning Effort')?.value).toBe('High');
     });
 
     it('merges time, workspace, and Ralph fields into compact rows', () => {
@@ -851,34 +858,63 @@ describe('buildRows – reasoning effort', () => {
         const rows = buildRows({ id: 'p-1', config: { reasoningEffort: 'high' } });
         const row = rows.find(r => r.label === 'Reasoning Effort');
         expect(row).toBeDefined();
-        expect(row!.value).toBe('high');
+        expect(row!.value).toBe('High');
     });
 
     it('shows Reasoning Effort row from metadata.reasoningEffort', () => {
         const rows = buildRows({ id: 'p-2', metadata: { reasoningEffort: 'low' } });
         const row = rows.find(r => r.label === 'Reasoning Effort');
         expect(row).toBeDefined();
-        expect(row!.value).toBe('low');
+        expect(row!.value).toBe('Low');
     });
 
     it('prefers config.reasoningEffort over metadata.reasoningEffort', () => {
         const rows = buildRows({ id: 'p-3', config: { reasoningEffort: 'medium' }, metadata: { reasoningEffort: 'high' } });
         const row = rows.find(r => r.label === 'Reasoning Effort');
-        expect(row!.value).toBe('medium');
+        expect(row!.value).toBe('Medium');
     });
 
-    it('omits Reasoning Effort row when neither config nor metadata has it', () => {
+    it('falls back to Default when neither config nor metadata has it', () => {
         const rows = buildRows({ id: 'p-4', metadata: { model: 'gpt-4' } });
-        expect(rows.find(r => r.label === 'Reasoning Effort')).toBeUndefined();
+        const row = rows.find(r => r.label === 'Reasoning Effort');
+        expect(row).toBeDefined();
+        expect(row!.value).toBe('Default');
     });
 
-    it('appears in the popover when set', async () => {
+    it('title-cases known effort values', () => {
+        expect(buildRows({ id: 'e-low', config: { reasoningEffort: 'low' } }).find(r => r.label === 'Reasoning Effort')!.value).toBe('Low');
+        expect(buildRows({ id: 'e-med', config: { reasoningEffort: 'medium' } }).find(r => r.label === 'Reasoning Effort')!.value).toBe('Medium');
+        expect(buildRows({ id: 'e-high', config: { reasoningEffort: 'high' } }).find(r => r.label === 'Reasoning Effort')!.value).toBe('High');
+        expect(buildRows({ id: 'e-xhigh', config: { reasoningEffort: 'xhigh' } }).find(r => r.label === 'Reasoning Effort')!.value).toBe('X High');
+    });
+
+    it('humanizes unknown non-empty effort values safely', () => {
+        const rows = buildRows({ id: 'e-unknown', config: { reasoningEffort: 'super_extreme' } });
+        expect(rows.find(r => r.label === 'Reasoning Effort')!.value).toBe('Super Extreme');
+    });
+
+    it('includes the effort pill as a summary chip with the Default fallback', () => {
+        const rows = buildRows({ id: 'p-default' });
+        expect(buildSummaryItems(rows)).toContain('effort Default');
+    });
+
+    it('appears in the popover summary when set', async () => {
         const proc = { ...BASE_PROCESS, config: { reasoningEffort: 'xhigh' } };
         render(<ConversationMetadataPopover process={proc} />);
         const trigger = screen.getByRole('button', { name: /conversation metadata/i });
         await act(async () => { fireEvent.click(trigger); });
-        expect(screen.queryByText('Reasoning Effort')).toBeNull();
-        expect(screen.getByText('effort xhigh')).toBeDefined();
+        expect(screen.getByText('Reasoning Effort')).toBeDefined();
+        expect(screen.getByText('X High')).toBeDefined();
+        expect(screen.getByText('effort X High')).toBeDefined();
+    });
+
+    it('shows the Default effort in the popover summary and grid when unset', async () => {
+        render(<ConversationMetadataPopover process={BASE_PROCESS} />);
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+        await act(async () => { fireEvent.click(trigger); });
+        expect(screen.getByText('Reasoning Effort')).toBeDefined();
+        expect(screen.getByText('Default')).toBeDefined();
+        expect(screen.getByText('effort Default')).toBeDefined();
     });
 
     it('is positioned after Agent Provider row', () => {

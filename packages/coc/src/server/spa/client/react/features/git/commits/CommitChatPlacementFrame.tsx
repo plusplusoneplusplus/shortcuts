@@ -8,6 +8,9 @@ export interface CommitChatPlacementFrameProps {
     commitMessage?: string;
     presentation: CommitChatPresentation;
     onClose: () => void;
+    isMinimized?: boolean;
+    onMinimize?: () => void;
+    onRestore?: () => void;
     onPin?: () => void;
     onUnpin?: () => void;
 }
@@ -18,6 +21,9 @@ export function CommitChatPlacementFrame({
     commitMessage,
     presentation,
     onClose,
+    isMinimized,
+    onMinimize,
+    onRestore,
     onPin,
     onUnpin,
 }: CommitChatPlacementFrameProps) {
@@ -27,6 +33,9 @@ export function CommitChatPlacementFrame({
             identifier={commitHash.slice(0, 7)}
             presentation={presentation}
             onClose={onClose}
+            isMinimized={isMinimized}
+            onMinimize={onMinimize}
+            onRestore={onRestore}
             onPin={onPin}
             onUnpin={onUnpin}
             testIdPrefix="commit-chat"

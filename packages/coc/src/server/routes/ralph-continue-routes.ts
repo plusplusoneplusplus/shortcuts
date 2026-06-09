@@ -92,6 +92,8 @@ export function registerRalphContinueRoutes(routes: Route[], ctx: RalphContinueR
                     detail = `Session phase is "${record.phase}"; can only continue completed sessions`;
                 } else if (record.terminalReason === 'RALPH_COMPLETE') {
                     detail = 'Session was marked RALPH_COMPLETE; start a new loop instead';
+                } else if (record.terminalReason === 'MANUAL_VERIFICATION_ONLY') {
+                    detail = 'Session has only manual verification remaining; start a new session if more autonomous work is needed';
                 } else if (record.terminalReason === 'CANCELLED') {
                     detail = 'Session was cancelled; start a new loop instead';
                 }

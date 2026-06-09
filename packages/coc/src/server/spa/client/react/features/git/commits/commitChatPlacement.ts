@@ -3,12 +3,14 @@ export type CommitChatPresentation = ReviewChatPresentation;
 
 export type ReviewChatTarget =
     | { type: 'commit'; workspaceId: string; commitHash: string }
-    | { type: 'pr'; workspaceId: string; repoId?: string; prId: string; headSha?: string };
+    | { type: 'pr'; workspaceId: string; repoId?: string; prId: string; headSha?: string }
+    | { type: 'work-item'; workspaceId: string; workItemId: string };
 
 const OPEN_STORAGE_KEY = 'coc.commitChat.open';
 const PLACEMENT_STORAGE_PREFIX = 'coc.commitChat.placement';
 const REVIEW_OPEN_STORAGE_PREFIX = 'coc.reviewChat.open';
 const REVIEW_PLACEMENT_STORAGE_PREFIX = 'coc.reviewChat.placement';
+const REVIEW_MINIMIZED_STORAGE_PREFIX = 'coc.reviewChat.minimized';
 const SIDE_PANEL_PLACEMENT = 'side-panel';
 
 function storage(): Storage | null {
@@ -45,6 +47,10 @@ export function getReviewChatTargetStorageId(target: ReviewChatTarget): string {
         return encodeStorageSegments(['commit', target.workspaceId, target.commitHash]);
     }
 
+    if (target.type === 'work-item') {
+        return encodeStorageSegments(['work-item', target.workspaceId, target.workItemId]);
+    }
+
     return encodeStorageSegments([
         'pr',
         target.workspaceId,
@@ -60,6 +66,10 @@ export function getReviewChatOpenStorageKey(target: ReviewChatTarget): string {
 
 export function getReviewChatPlacementStorageKey(target: ReviewChatTarget): string {
     return `${REVIEW_PLACEMENT_STORAGE_PREFIX}.${getReviewChatTargetStorageId(target)}`;
+}
+
+export function getReviewChatMinimizedStorageKey(target: ReviewChatTarget): string {
+    return `${REVIEW_MINIMIZED_STORAGE_PREFIX}.${getReviewChatTargetStorageId(target)}`;
 }
 
 function getLegacyCommitPlacementStorageKey(target: ReviewChatTarget): string | null {
@@ -82,6 +92,31 @@ export function writeReviewChatOpen(target: ReviewChatTarget, open: boolean): vo
     } catch {
         /* ignore unavailable client storage */
     }
+}
+
+export function readReviewChatMinimized(target: ReviewChatTarget): boolean {
+    try {
+        return storage()?.getItem(getReviewChatMinimizedStorageKey(target)) === 'true';
+    } catch {
+        return false;
+    }
+}
+
+export function writeReviewChatMinimized(target: ReviewChatTarget, minimized: boolean): void {
+    try {
+        const clientStorage = storage();
+        if (minimized) {
+            clientStorage?.setItem(getReviewChatMinimizedStorageKey(target), 'true');
+        } else {
+            clientStorage?.removeItem(getReviewChatMinimizedStorageKey(target));
+        }
+    } catch {
+        /* ignore unavailable client storage */
+    }
+}
+
+export function clearReviewChatMinimized(target: ReviewChatTarget): void {
+    writeReviewChatMinimized(target, false);
 }
 
 export function isCommitChatPinned(workspaceId: string, commitHash: string): boolean {
@@ -110,7 +145,9 @@ export function isReviewChatPinned(target: ReviewChatTarget): boolean {
 
 export function pinReviewChat(target: ReviewChatTarget): void {
     try {
-        storage()?.setItem(getReviewChatPlacementStorageKey(target), SIDE_PANEL_PLACEMENT);
+        const clientStorage = storage();
+        clientStorage?.setItem(getReviewChatPlacementStorageKey(target), SIDE_PANEL_PLACEMENT);
+        clientStorage?.removeItem(getReviewChatMinimizedStorageKey(target));
     } catch {
         /* ignore unavailable client storage */
     }
@@ -131,9 +168,10 @@ export function resolveReviewChatPresentation(opts: {
     lensEnabled: boolean;
     isDesktop: boolean;
     pinned: boolean;
+    forceLensOnNonDesktop?: boolean;
 }): ReviewChatPresentation {
     if (!opts.lensEnabled) return 'side-panel';
-    if (!opts.isDesktop) return 'side-panel';
+    if (!opts.isDesktop && !opts.forceLensOnNonDesktop) return 'side-panel';
     return opts.pinned ? 'side-panel' : 'lens';
 }
 
