@@ -300,14 +300,24 @@ export class FileWorkItemStore implements WorkItemStore {
             if (item.workItemNumber == null) {
                 item.workItemNumber = await this.nextWorkItemNumber(item.repoId);
             }
+            if (item.plan) {
+                const currentVersion = item.plan.currentVersion ?? item.plan.version;
+                item.plan = { ...item.plan, currentVersion };
+                item.currentContentVersion = item.currentContentVersion ?? currentVersion;
+            }
             await this.writeItem(item.repoId, item);
             // Save initial plan version if present
             if (item.plan) {
+                const source = item.plan.source ?? item.plan.resolvedBy ?? 'user';
                 const planVersion: WorkItemPlanVersion = {
                     version: item.plan.version,
                     content: item.plan.content,
                     createdAt: item.plan.updatedAt,
                     resolvedBy: item.plan.resolvedBy,
+                    source,
+                    authorType: source,
+                    reason: item.plan.reason,
+                    restoredFromVersion: item.plan.restoredFromVersion,
                 };
                 await this.writePlanVersionFile(item.repoId, item.id, planVersion);
             }
@@ -346,7 +356,13 @@ export class FileWorkItemStore implements WorkItemStore {
             if (!item) return;
 
             const now = new Date().toISOString();
-            updated = { ...item, ...updates, updatedAt: now };
+            const normalizedUpdates = { ...updates };
+            if (normalizedUpdates.plan) {
+                const currentVersion = normalizedUpdates.plan.currentVersion ?? normalizedUpdates.plan.version;
+                normalizedUpdates.plan = { ...normalizedUpdates.plan, currentVersion };
+                normalizedUpdates.currentContentVersion = normalizedUpdates.currentContentVersion ?? currentVersion;
+            }
+            updated = { ...item, ...normalizedUpdates, updatedAt: now };
 
             await this.writeItem(repos, updated);
 
@@ -641,6 +657,10 @@ export class FileWorkItemStore implements WorkItemStore {
             `version: ${plan.version}`,
             `createdAt: ${plan.createdAt}`,
             ...(plan.resolvedBy ? [`resolvedBy: ${plan.resolvedBy}`] : []),
+            `source: ${plan.source ?? plan.resolvedBy ?? 'user'}`,
+            `authorType: ${plan.authorType ?? plan.source ?? plan.resolvedBy ?? 'user'}`,
+            ...(plan.reason ? [`reason: ${plan.reason}`] : []),
+            ...(plan.restoredFromVersion !== undefined ? [`restoredFromVersion: ${plan.restoredFromVersion}`] : []),
             ...(plan.summary ? [`summary: ${plan.summary}`] : []),
             `---`,
             '',
@@ -658,9 +678,27 @@ export class FileWorkItemStore implements WorkItemStore {
         const meta = frontMatterMatch[1];
         const content = frontMatterMatch[2];
         const createdAt = meta.match(/createdAt:\s*(.+)/)?.[1]?.trim() ?? '';
-        const resolvedBy = meta.match(/resolvedBy:\s*(.+)/)?.[1]?.trim() as 'user' | 'ai' | undefined;
+        const rawResolvedBy = meta.match(/resolvedBy:\s*(.+)/)?.[1]?.trim();
+        const resolvedBy = rawResolvedBy === 'user' || rawResolvedBy === 'ai' ? rawResolvedBy : undefined;
+        const source = meta.match(/source:\s*(.+)/)?.[1]?.trim() ?? resolvedBy ?? 'user';
+        const authorType = meta.match(/authorType:\s*(.+)/)?.[1]?.trim() ?? source;
+        const reason = meta.match(/reason:\s*(.+)/)?.[1]?.trim();
+        const restoredFromVersionRaw = meta.match(/restoredFromVersion:\s*(.+)/)?.[1]?.trim();
+        const restoredFromVersion = restoredFromVersionRaw ? Number(restoredFromVersionRaw) : undefined;
         const summary = meta.match(/summary:\s*(.+)/)?.[1]?.trim();
-        return { version, content, createdAt, resolvedBy, summary };
+        return {
+            version,
+            content,
+            createdAt,
+            resolvedBy,
+            source,
+            authorType,
+            reason,
+            restoredFromVersion: typeof restoredFromVersion === 'number' && Number.isInteger(restoredFromVersion) && restoredFromVersion > 0
+                ? restoredFromVersion
+                : undefined,
+            summary,
+        };
     }
 
     private applyFilter(entries: WorkItemIndexEntry[], filter?: WorkItemFilter): WorkItemIndexEntry[] {

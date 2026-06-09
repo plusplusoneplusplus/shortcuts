@@ -288,10 +288,13 @@ async function createNewWorkItem(
         ...(hasPlan ? {
             plan: {
                 version: 1,
+                currentVersion: 1,
                 content: args.plan!.trim(),
                 updatedAt: now,
                 resolvedBy: 'ai' as const,
+                source: 'ai' as const,
             },
+            currentContentVersion: 1,
         } : {}),
     };
 
@@ -303,6 +306,9 @@ async function createNewWorkItem(
             content: args.plan!.trim(),
             createdAt: now,
             resolvedBy: 'ai',
+            source: 'ai',
+            authorType: 'ai',
+            reason: 'Initial plan from chat',
             summary: 'Initial plan from chat',
         });
     }
@@ -385,6 +391,9 @@ async function updateExistingWorkItemPlan(
         content,
         createdAt: now,
         resolvedBy: 'ai' as const,
+        source: 'ai' as const,
+        authorType: 'ai' as const,
+        reason: args.summary ?? `Plan updated from chat (v${nextVersion})`,
         summary: args.summary ?? `Plan updated from chat (v${nextVersion})`,
     };
 
@@ -392,11 +401,15 @@ async function updateExistingWorkItemPlan(
     const updated = await store.updateWorkItem(existing.id, {
         ...patchResult.patch,
         status: 'planning',
+        currentContentVersion: nextVersion,
         plan: {
             version: nextVersion,
+            currentVersion: nextVersion,
             content,
             updatedAt: now,
             resolvedBy: 'ai',
+            source: 'ai',
+            reason: planVersion.reason,
         },
     });
     if (!updated) {

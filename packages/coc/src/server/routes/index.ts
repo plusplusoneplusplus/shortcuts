@@ -696,6 +696,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const getWorkItemsAiAuthoringEnabled = opts.runtimeConfigService
         ? () => opts.runtimeConfigService!.config.workItems?.aiAuthoring?.enabled ?? false
         : () => opts.resolvedConfig?.workItems?.aiAuthoring?.enabled ?? false;
+    const getWorkItemsWorkflowEnabled = opts.runtimeConfigService
+        ? () => opts.runtimeConfigService!.config.workItems?.workflow?.enabled ?? false
+        : () => opts.resolvedConfig?.workItems?.workflow?.enabled ?? false;
     // AI-draft route must be registered before generic /:workItemId routes to prevent "ai-draft" from matching as an ID
     const workItemAiGenerators = createWorkItemAiGenerators({ aiService: resolvedAiService });
     registerWorkItemAiRoutes({
@@ -733,7 +736,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         getSyncEnabled: getWorkItemsSyncEnabled,
         dataDir,
     });
-    registerWorkItemPlanRoutes({ routes, workItemStore, getWsServer });
+    registerWorkItemPlanRoutes({ routes, workItemStore, getWsServer, getWorkflowEnabled: getWorkItemsWorkflowEnabled });
     registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer, dataDir });
     registerWorkItemChangesRoutes({ routes, workItemStore, getWsServer });
 

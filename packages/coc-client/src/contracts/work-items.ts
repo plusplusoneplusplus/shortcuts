@@ -137,14 +137,30 @@ export interface WorkItemSyncStatusResponse {
 
 export interface WorkItemPlan {
   version: number;
+  currentVersion?: number;
   content: string;
   updatedAt?: string;
   resolvedBy?: 'user' | 'ai' | string;
+  source?: 'user' | 'ai' | 'system' | string;
+  reason?: string;
+  restoredFromVersion?: number;
 }
 
 export interface WorkItemPlanVersion extends WorkItemPlan {
   createdAt?: string;
+  authorType?: 'user' | 'ai' | 'system' | string;
   summary?: string;
+}
+
+export interface WorkItemPlanVersionDiffChunk {
+  type: 'equal' | 'added' | 'removed';
+  lines: string[];
+}
+
+export interface WorkItemPlanVersionComparison {
+  base: WorkItemPlanVersion;
+  target: WorkItemPlanVersion;
+  diff: WorkItemPlanVersionDiffChunk[];
 }
 
 export interface WorkItemPlanResponse {
@@ -155,6 +171,15 @@ export interface WorkItemPlanResponse {
 export interface WorkItemPlanUpdateResponse {
   plan: WorkItemPlanVersion;
   version: number;
+}
+
+export interface WorkItemPlanRestoreRequest extends JsonObject {
+  summary?: string;
+  reason?: string;
+}
+
+export interface WorkItemPlanRestoreResponse extends WorkItemPlanUpdateResponse {
+  restoredFromVersion: number;
 }
 
 export interface WorkItemPlanRefineRequest extends JsonObject {
@@ -195,6 +220,7 @@ export interface WorkItem {
   autoReExecuteCycles?: number;
   plan?: WorkItemPlan;
   planVersion?: number;
+  currentContentVersion?: number;
   /** Success criteria defining "done" for a `goal` item (markdown). */
   successCriteria?: string;
   /** Linked spec-drafting (Ralph grilling) chat process ID for a `goal` item. */
@@ -438,6 +464,7 @@ export interface ResolveWorkItemCommentsRequest extends JsonObject {
 export interface WorkItemExecution {
   taskId: string;
   processId?: string;
+  planVersion?: number;
   startedAt: string;
   completedAt?: string;
   status: 'running' | 'completed' | 'failed' | 'cancelled' | string;

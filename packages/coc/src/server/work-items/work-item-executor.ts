@@ -103,6 +103,7 @@ export async function executeWorkItem(
     const prompt = buildExecutionPrompt(item);
     const mode = normalizeChatModeOrDefault(options?.mode, 'autopilot');
     const runNumber = (item.executionHistory?.length ?? 0) + 1;
+    const selectedPlanVersion = item.currentContentVersion ?? item.plan?.currentVersion ?? item.plan?.version;
 
     const contextFiles = options?.taskFilePath ? [options.taskFilePath] : [];
     const contextSkills = options?.skillNames ?? [];
@@ -124,6 +125,7 @@ export async function executeWorkItem(
             workspaceId: item.repoId,
             sessionCategory: 'generating-code' satisfies SessionCategory,
             workItemId: item.id,
+            ...(selectedPlanVersion !== undefined ? { planVersion: selectedPlanVersion } : {}),
             ...(options?.provider ? { provider: options.provider } : {}),
             ...(options?.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
             ...(context ? { context } : {}),
@@ -139,6 +141,7 @@ export async function executeWorkItem(
     // Record the execution
     const execution: WorkItemExecution = {
         taskId,
+        ...(selectedPlanVersion !== undefined ? { planVersion: selectedPlanVersion } : {}),
         startedAt: new Date().toISOString(),
         status: 'running',
         sessionCategory: 'generating-code',
@@ -150,7 +153,7 @@ export async function executeWorkItem(
     // Open or reuse a Change entry for this execution cycle
     const existingChanges = await store.getChanges(workItemId);
     const openChange = existingChanges.find(
-        c => c.planVersion === (item.plan?.version ?? 0) && c.status === 'open' && !c.taskId,
+        c => c.planVersion === (selectedPlanVersion ?? 0) && c.status === 'open' && !c.taskId,
     );
     if (openChange) {
         await store.updateChange(workItemId, openChange.id, {
@@ -161,7 +164,7 @@ export async function executeWorkItem(
     } else {
         const change: WorkItemChange = {
             id: crypto.randomUUID(),
-            planVersion: item.plan?.version ?? 0,
+            planVersion: selectedPlanVersion ?? 0,
             commits: [],
             startedAt: execution.startedAt,
             status: 'open',
@@ -357,15 +360,22 @@ export async function autoVersionPlanFromResolvedComments(
         content: revisedContent,
         createdAt: now,
         resolvedBy: 'ai',
+        source: 'ai',
+        authorType: 'ai',
+        reason: 'Plan updated from resolved comments',
         summary: 'Plan updated from resolved comments',
     };
     await store.savePlanVersion(workItemId, planVersion);
     return store.updateWorkItem(workItemId, {
+        currentContentVersion: newVersion,
         plan: {
             version: newVersion,
+            currentVersion: newVersion,
             content: revisedContent,
             updatedAt: now,
             resolvedBy: 'ai',
+            source: 'ai',
+            reason: planVersion.reason,
         },
     });
 }

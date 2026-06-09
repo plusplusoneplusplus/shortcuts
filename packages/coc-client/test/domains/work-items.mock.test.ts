@@ -348,6 +348,8 @@ describe('WorkItemsClient mock coverage', () => {
 
     await client.planVersions('repo/a', 'wi/1');
     await client.getPlanVersion('repo/a', 'wi/1', 3);
+    await client.comparePlanVersions('repo/a', 'wi/1', 1, 3);
+    await client.restorePlanVersion('repo/a', 'wi/1', 1, { reason: 'Restore v1' });
     await client.refinePlan('repo/a', 'wi/1', { instructions: 'Tighten scope', summary: 'Refine' });
     await client.resolveComments('repo/a', 'wi/1', { type: 'commit', commitSha: 'abc123', sourceRunIndex: 2, model: 'gpt-5.5' });
 
@@ -359,6 +361,19 @@ describe('WorkItemsClient mock coverage', () => {
       {
         path: '/workspaces/repo%2Fa/work-items/wi%2F1/plan/versions/3',
         options: undefined,
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/wi%2F1/plan/versions/compare',
+        options: {
+          query: { base: 1, target: 3 },
+        },
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/wi%2F1/plan/versions/1/restore',
+        options: {
+          method: 'POST',
+          body: { reason: 'Restore v1' },
+        },
       },
       {
         path: '/workspaces/repo%2Fa/work-items/wi%2F1/plan/refine',

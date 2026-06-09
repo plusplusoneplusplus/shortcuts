@@ -220,16 +220,27 @@ export interface WorkItemSyncParentReference {
 // Plan Types
 // ============================================================================
 
+/** Source/author category for an immutable work item content version. */
+export type WorkItemContentVersionSource = 'user' | 'ai' | 'system' | (string & {});
+
 /** Current plan attached to a work item. */
 export interface WorkItemPlan {
     /** Plan version number (1-based, monotonically increasing). */
     version: number;
+    /** Explicit pointer to the current immutable content version. Mirrors `version` for plan-backed content. */
+    currentVersion?: number;
     /** Markdown plan content. */
     content: string;
     /** ISO timestamp of last update. */
     updatedAt: string;
     /** Who last resolved/updated the plan. */
     resolvedBy?: 'user' | 'ai';
+    /** Source that produced the current version. */
+    source?: WorkItemContentVersionSource;
+    /** Reason this version became current. */
+    reason?: string;
+    /** Previous version restored into this current version, when applicable. */
+    restoredFromVersion?: number;
 }
 
 /** A historical version of a plan. */
@@ -242,8 +253,29 @@ export interface WorkItemPlanVersion {
     createdAt: string;
     /** Who created this version. */
     resolvedBy?: 'user' | 'ai';
+    /** Source that produced this immutable version. */
+    source?: WorkItemContentVersionSource;
+    /** Author type for UI/history filtering; defaults to `source`. */
+    authorType?: WorkItemContentVersionSource;
+    /** Reason this version was created. */
+    reason?: string;
+    /** Previous version restored into this version, when applicable. */
+    restoredFromVersion?: number;
     /** Summary of changes from previous version. */
     summary?: string;
+}
+
+/** Line-level diff chunk between two immutable plan/content versions. */
+export interface WorkItemPlanVersionDiffChunk {
+    type: 'equal' | 'added' | 'removed';
+    lines: string[];
+}
+
+/** Compare response for two immutable plan/content versions. */
+export interface WorkItemPlanVersionComparison {
+    base: WorkItemPlanVersion;
+    target: WorkItemPlanVersion;
+    diff: WorkItemPlanVersionDiffChunk[];
 }
 
 // ============================================================================
@@ -256,6 +288,8 @@ export interface WorkItemExecution {
     taskId: string;
     /** AI process ID (assigned when task starts executing). */
     processId?: string;
+    /** Immutable plan/content version selected for this execution. */
+    planVersion?: number;
     /** ISO timestamp when execution started. */
     startedAt: string;
     /** ISO timestamp when execution completed. */
@@ -373,6 +407,8 @@ export interface WorkItem {
     // Plan
     /** Current plan version (if any). */
     plan?: WorkItemPlan;
+    /** Explicit current immutable content version pointer for plan-backed Work Item/Goal content. */
+    currentContentVersion?: number;
 
     // Goal-specific
     /**
@@ -455,6 +491,8 @@ export interface WorkItemIndexEntry {
     source: WorkItemSource;
     priority?: WorkItemPriority;
     planVersion?: number;
+    /** Explicit current immutable content version pointer for list/detail parity. */
+    currentContentVersion?: number;
     createdAt: string;
     updatedAt: string;
     completedAt?: string;
@@ -612,6 +650,7 @@ export function toIndexEntry(item: WorkItem): WorkItemIndexEntry {
         source: item.source,
         priority: item.priority,
         planVersion: item.plan?.version,
+        currentContentVersion: item.currentContentVersion ?? item.plan?.currentVersion ?? item.plan?.version,
         createdAt: item.createdAt,
         updatedAt: item.updatedAt,
         completedAt: item.completedAt,

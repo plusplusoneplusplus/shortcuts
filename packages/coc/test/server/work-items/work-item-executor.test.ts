@@ -85,6 +85,7 @@ describe('executeWorkItem', () => {
         expect(call.payload.mode).toBe('autopilot');
         expect(call.payload.prompt).toContain('Plan content');
         expect(call.payload.workItemId).toBe('wi-exec-1');
+        expect(call.payload.planVersion).toBe(1);
         expect(call.displayName).toBe('Run #1: Code Implement');
 
         // Verify status transitioned
@@ -93,6 +94,7 @@ describe('executeWorkItem', () => {
         expect(updated!.executionHistory).toHaveLength(1);
         expect(updated!.executionHistory![0].taskId).toBe('task-123');
         expect(updated!.executionHistory![0].status).toBe('running');
+        expect(updated!.executionHistory![0].planVersion).toBe(1);
     });
 
     it('throws for non-ready work items', async () => {

@@ -359,17 +359,23 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
             if (body.extractPlan && process.result) {
                 item.plan = {
                     version: 1,
+                    currentVersion: 1,
                     content: process.result,
                     updatedAt: now,
                     resolvedBy: 'ai',
+                    source: 'ai',
                 };
+                item.currentContentVersion = 1;
             } else {
                 item.plan = {
                     version: 1,
+                    currentVersion: 1,
                     content: buildPlanFromContext(title, description),
                     updatedAt: now,
                     resolvedBy: 'user',
+                    source: 'user',
                 };
+                item.currentContentVersion = 1;
             }
 
             await workItemStore.addWorkItem(item);
@@ -380,6 +386,11 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                 content: item.plan.content,
                 createdAt: now,
                 resolvedBy: body.extractPlan && process.result ? 'ai' : 'user',
+                source: body.extractPlan && process.result ? 'ai' : 'user',
+                authorType: body.extractPlan && process.result ? 'ai' : 'user',
+                reason: body.extractPlan && process.result
+                    ? 'Extracted from chat session'
+                    : 'Auto-generated plan template',
                 summary: body.extractPlan && process.result
                     ? 'Extracted from chat session'
                     : 'Auto-generated plan template',

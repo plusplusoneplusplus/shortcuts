@@ -24,8 +24,11 @@ import type {
   WorkItemPlanRefineRequest,
   WorkItemPlanRefineResponse,
   WorkItemPlanResponse,
+  WorkItemPlanRestoreRequest,
+  WorkItemPlanRestoreResponse,
   WorkItemPlanUpdateResponse,
   WorkItemPlanVersion,
+  WorkItemPlanVersionComparison,
   WorkItemTreeFilter,
   WorkItemTreeResponse,
 } from '../contracts';
@@ -121,6 +124,24 @@ export class WorkItemsClient {
 
   getPlanVersion(workspaceId: string, workItemId: string, version: number): Promise<WorkItemPlanVersion> {
     return this.transport.request(path(workspaceId, `/${encodePathSegment(workItemId)}/plan/versions/${version}`));
+  }
+
+  comparePlanVersions(workspaceId: string, workItemId: string, baseVersion: number, targetVersion: number): Promise<WorkItemPlanVersionComparison> {
+    return this.transport.request(path(workspaceId, `/${encodePathSegment(workItemId)}/plan/versions/compare`), {
+      query: { base: baseVersion, target: targetVersion },
+    });
+  }
+
+  restorePlanVersion(
+    workspaceId: string,
+    workItemId: string,
+    version: number,
+    request: WorkItemPlanRestoreRequest = {},
+  ): Promise<WorkItemPlanRestoreResponse> {
+    return this.transport.request(path(workspaceId, `/${encodePathSegment(workItemId)}/plan/versions/${version}/restore`), {
+      method: 'POST',
+      body: { ...request },
+    });
   }
 
   refinePlan(workspaceId: string, workItemId: string, request: WorkItemPlanRefineRequest = {}): Promise<WorkItemPlanRefineResponse> {
