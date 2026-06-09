@@ -302,20 +302,21 @@ async function refreshNearExpiry(
             });
             const text = await response.text();
             if (!response.ok) {
-                if (isInvalidGrant(response.status, text)) {
+                if (isTerminalRefreshError(response.status, text)) {
                     deletePair(entry);
                     result.refresh.invalidated++;
                     log.warn(
                         LogCategory.MCP,
                         `[McpOauthRefresher] refresh token rejected for url=${entry.metadata.serverUrl} `
-                        + `status=${response.status}; cleared entry hash=${entry.hash.slice(0, 12)}..`,
+                        + `status=${response.status}; cleared entry hash=${entry.hash.slice(0, 12)}.. `
+                        + `body=${redactBody(text)}`,
                     );
                 } else {
                     result.refresh.transientFailures++;
                     log.warn(
                         LogCategory.MCP,
                         `[McpOauthRefresher] transient refresh failure for url=${entry.metadata.serverUrl} `
-                        + `status=${response.status}; left entry untouched`,
+                        + `status=${response.status}; left entry untouched body=${redactBody(text)}`,
                     );
                 }
                 continue;
@@ -356,22 +357,67 @@ async function refreshNearExpiry(
     }
 }
 
-// AAD requires the original scope (or a subset) on refresh, plus offline_access
-// to keep the next refresh token rolling forward.
-function composeRefreshScope(originalScope: string | undefined): string {
+// AAD requires the original scope (or a subset) plus offline_access on refresh.
+// Sanitizes first because AAD rejects `<resource>/.default` mixed with other
+// scopes for the same resource.
+export function composeRefreshScope(originalScope: string | undefined): string {
     const base = originalScope?.trim() ?? '';
     if (!base) return 'offline_access';
-    if (/\boffline_access\b/.test(base)) return base;
-    return `${base} offline_access`;
+    const sanitized = sanitizeRequestScope(base);
+    if (/\boffline_access\b/.test(sanitized)) return sanitized;
+    return sanitized ? `${sanitized} offline_access` : 'offline_access';
 }
 
-function isInvalidGrant(status: number, body: string): boolean {
+// Drop `<resource>/.default` from any resource group that also has a more
+// specific scope. Resource = substring up to and including the last `/`.
+export function sanitizeRequestScope(scope: string): string {
+    const tokens = scope.split(/\s+/).filter(t => t.length > 0);
+    if (tokens.length === 0) return '';
+
+    const resourceOf = (s: string): string | undefined => {
+        const slash = s.lastIndexOf('/');
+        if (slash <= 0) return undefined;
+        return s.slice(0, slash + 1);
+    };
+
+    const nonDefaultByResource = new Map<string, number>();
+    for (const t of tokens) {
+        const res = resourceOf(t);
+        if (!res || t === `${res}.default`) continue;
+        nonDefaultByResource.set(res, (nonDefaultByResource.get(res) ?? 0) + 1);
+    }
+
+    const kept: string[] = [];
+    const seen = new Set<string>();
+    for (const t of tokens) {
+        if (seen.has(t)) continue;
+        const res = resourceOf(t);
+        if (res && t === `${res}.default` && (nonDefaultByResource.get(res) ?? 0) > 0) continue;
+        kept.push(t);
+        seen.add(t);
+    }
+    return kept.join(' ');
+}
+
+// Only these errors mean the cached refresh token is unrecoverable. Other 4xx
+// (e.g. invalid_request, invalid_scope) are request-shape problems — deleting
+// the cache for those would force unnecessary re-auth.
+export function isTerminalRefreshError(status: number, body: string): boolean {
     if (status >= 500) return false;
     const parsed = safeParse(body);
     if (parsed && typeof parsed.error === 'string') {
-        return parsed.error === 'invalid_grant' || parsed.error === 'invalid_request';
+        return parsed.error === 'invalid_grant'
+            || parsed.error === 'interaction_required'
+            || parsed.error === 'consent_required';
     }
-    return /invalid_grant|interaction_required|consent_required/i.test(body);
+    return /\binvalid_grant\b|\binteraction_required\b|\bconsent_required\b/i.test(body);
+}
+
+// AAD error bodies hold error/error_description/correlation_id/trace_id — no
+// tokens. Strip control chars so a single-line ndjson record stays parseable.
+export function redactBody(body: string, maxLen = 400): string {
+    const oneLine = body.replace(/[\r\n\t\u0000-\u001F\u007F]+/g, ' ').trim();
+    return oneLine.length > maxLen ? `${oneLine.slice(0, maxLen)}…` : oneLine;
 }
 
 function safeParse(text: string): Record<string, unknown> | undefined {

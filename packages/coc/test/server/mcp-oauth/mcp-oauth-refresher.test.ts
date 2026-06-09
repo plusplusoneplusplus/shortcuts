@@ -17,6 +17,8 @@ import {
     runMcpOauthMaintenancePass,
     startMcpOauthMaintenanceTimer,
     aadTokenEndpoint,
+    sanitizeRequestScope,
+    isTerminalRefreshError,
 } from '../../../src/server/mcp-oauth/mcp-oauth-refresher';
 import { getMcpOauthCacheDir } from '../../../src/server/mcp-oauth/mcp-oauth-token-cache';
 
@@ -646,5 +648,112 @@ describe('startMcpOauthMaintenanceTimer', () => {
         });
         handle.stop();
         expect(() => handle.stop()).not.toThrow();
+    });
+});
+
+describe('sanitizeRequestScope', () => {
+    it('drops `<resource>/.default` when paired with another scope for the same resource', () => {
+        // The three real-world failure cases that motivated this code path.
+        expect(sanitizeRequestScope('499b84ac-1321-427f-aa17-267ca6975798/user_impersonation 499b84ac-1321-427f-aa17-267ca6975798/.default'))
+            .toBe('499b84ac-1321-427f-aa17-267ca6975798/user_impersonation');
+        expect(sanitizeRequestScope('https://mcp.dev.azure.com/Ado.Mcp.Tools https://mcp.dev.azure.com/.default'))
+            .toBe('https://mcp.dev.azure.com/Ado.Mcp.Tools');
+        expect(sanitizeRequestScope('api://29527edc-3bea-4dec-9b58-ff3ae1fa94d6/user_impersonation api://29527edc-3bea-4dec-9b58-ff3ae1fa94d6/.default'))
+            .toBe('api://29527edc-3bea-4dec-9b58-ff3ae1fa94d6/user_impersonation');
+    });
+
+    it('keeps `.default` when it is the only scope for its resource', () => {
+        // Admin-consent flows commonly request `.default` alone — must not be stripped.
+        expect(sanitizeRequestScope('api://contoso/.default')).toBe('api://contoso/.default');
+        expect(sanitizeRequestScope('api://a/user_impersonation api://a/.default api://b/.default'))
+            .toBe('api://a/user_impersonation api://b/.default');
+    });
+});
+
+describe('isTerminalRefreshError', () => {
+    it('treats invalid_grant / interaction_required / consent_required as terminal', () => {
+        expect(isTerminalRefreshError(400, JSON.stringify({ error: 'invalid_grant' }))).toBe(true);
+        expect(isTerminalRefreshError(400, JSON.stringify({ error: 'interaction_required' }))).toBe(true);
+        expect(isTerminalRefreshError(400, JSON.stringify({ error: 'consent_required' }))).toBe(true);
+    });
+
+    it('does NOT treat invalid_request / invalid_scope as terminal', () => {
+        // Regression guard: previously these errors deleted the cached refresh
+        // token, turning any request-shape bug into a forced re-auth.
+        expect(isTerminalRefreshError(400, JSON.stringify({ error: 'invalid_request' }))).toBe(false);
+        expect(isTerminalRefreshError(400, JSON.stringify({ error: 'invalid_scope' }))).toBe(false);
+    });
+});
+
+describe('runMcpOauthMaintenancePass — scope sanitization + non-destructive transient handling', () => {
+    let tmpHome: string;
+
+    beforeEach(() => {
+        tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-oauth-fix-'));
+    });
+
+    afterEach(() => {
+        try { fs.rmSync(tmpHome, { recursive: true, force: true }); } catch { /* ignore */ }
+    });
+
+    it('refreshes successfully when cached scope mixes `.default` with a more specific scope', async () => {
+        const fixedNow = 1_700_000_000_000;
+        const nowSec = Math.floor(fixedNow / 1000);
+        const { tokensPath } = seed(tmpHome, {
+            serverUrl: 'https://mcp.example.com/v1', hash: 'mixed',
+            expiresAt: nowSec + 60, refreshToken: 'rt-mixed', accessToken: 'old',
+            scope: 'api://contoso/user_impersonation api://contoso/.default',
+        });
+
+        const fetchSpy = vi.fn(async (_url: unknown, init: unknown) => {
+            const body = (init as { body: URLSearchParams }).body;
+            expect(body.get('scope')).toBe('api://contoso/user_impersonation offline_access');
+            return {
+                ok: true, status: 200,
+                text: async () => JSON.stringify({ access_token: 'new-at', expires_in: 3600 }),
+            } as unknown as Response;
+        });
+
+        const result = await runMcpOauthMaintenancePass({
+            homeDir: tmpHome, logger: nullLogger, now: () => fixedNow,
+            fetch: fetchSpy as unknown as typeof fetch,
+        });
+
+        expect(result.refresh.succeeded).toBe(1);
+        expect(readTokens(tokensPath).accessToken).toBe('new-at');
+    });
+
+    it('keeps the cache entry on invalid_request and logs the redacted AAD body', async () => {
+        const fixedNow = 1_700_000_000_000;
+        const nowSec = Math.floor(fixedNow / 1000);
+        const { tokensPath, metaPath } = seed(tmpHome, {
+            serverUrl: 'https://mcp.example.com/v1', hash: 'keep',
+            expiresAt: nowSec + 60, refreshToken: 'rt-keep', accessToken: 'unchanged',
+        });
+
+        const fetchSpy = vi.fn(async () => ({
+            ok: false, status: 400,
+            text: async () => JSON.stringify({
+                error: 'invalid_request',
+                error_description: 'AADSTS900144: scope is required',
+                correlation_id: 'abc-123',
+            }),
+        } as unknown as Response));
+
+        const warnSpy = vi.fn();
+        const result = await runMcpOauthMaintenancePass({
+            homeDir: tmpHome, logger: { ...nullLogger, warn: warnSpy }, now: () => fixedNow,
+            fetch: fetchSpy as unknown as typeof fetch,
+        });
+
+        expect(result.refresh.transientFailures).toBe(1);
+        expect(result.refresh.invalidated).toBe(0);
+        expect(fs.existsSync(tokensPath)).toBe(true);
+        expect(fs.existsSync(metaPath)).toBe(true);
+        expect(readTokens(tokensPath).accessToken).toBe('unchanged');
+
+        const logged = warnSpy.mock.calls.map(c => c.join(' ')).join('\n');
+        expect(logged).toContain('AADSTS900144');
+        expect(logged).toContain('correlation_id');
     });
 });
