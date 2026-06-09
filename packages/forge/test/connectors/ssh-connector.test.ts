@@ -323,13 +323,16 @@ describe('SshConnector', () => {
         child1.emit('exit', 1, null);
         expect(connector.getState('srv-1')?.status).toBe('failed');
 
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await vi.waitFor(() => {
+            expect(errorSpy).toHaveBeenCalledWith(
+                loggerModule.LogCategory.GENERAL,
+                expect.stringContaining('SSH reconnect failed for srv-1'),
+            );
+        }, { timeout: 500, interval: 20 });
 
-        expect(errorSpy).toHaveBeenCalledWith(
-            loggerModule.LogCategory.GENERAL,
-            expect.stringContaining('SSH reconnect failed for srv-1'),
-        );
-        expect(connector.getState('srv-1')?.status).toBe('failed');
+        await vi.waitFor(() => {
+            expect(connector.getState('srv-1')?.status).toBe('failed');
+        }, { timeout: 500, interval: 20 });
 
         connector.dispose();
     });
