@@ -187,7 +187,7 @@ export function AskUserInline({ batch, processId, onAnswered }: AskUserInlinePro
                                     <span className="sr-only">Response type for question {questionIndex + 1}</span>
                                     <select
                                         value={state.disposition}
-                                        onChange={e => updateQuestion(question.questionId, { disposition: e.target.value as QuestionDisposition })}
+                                        onChange={e => updateQuestion(question.questionId, { disposition: e.target.value as AskUserQuestionDisposition })}
                                         disabled={submitting}
                                         className="max-w-[11rem] rounded border border-[#d4d4d4] dark:border-[#3e3e3e] bg-white dark:bg-[#252526] px-2 py-1 text-xs text-[#4b5563] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
                                         data-testid="ask-user-question-disposition"
