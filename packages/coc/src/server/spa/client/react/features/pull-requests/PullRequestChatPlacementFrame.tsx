@@ -53,6 +53,7 @@ export function PullRequestChatPlacementFrame({
                 prTitle={prTitle}
                 repoId={repoId}
                 onClose={onClose}
+                hideEmptyHeader
             />
         </ReviewChatPlacementFrame>
     );

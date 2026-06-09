@@ -112,6 +112,18 @@ describe('PullRequestChatPanel', () => {
         expect(screen.getByTestId('pr-chat-attach-btn')).toBeTruthy();
     });
 
+    it('hides the empty-state panel header for framed review-chat lenses', async () => {
+        setupHook();
+        await act(async () => {
+            render(<PullRequestChatPanel {...defaultProps} hideEmptyHeader />);
+        });
+
+        expect(screen.queryByTestId('pr-chat-close-btn')).toBeNull();
+        expect(screen.queryByText('#142')).toBeNull();
+        expect(screen.getByTestId('compact-ai-settings-chip')).toBeTruthy();
+        expect(screen.getByTestId('pr-chat-send-btn')).toBeTruthy();
+    });
+
     // ========================================================================
     // Loading state
     // ========================================================================

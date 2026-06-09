@@ -21,6 +21,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/pull-requests/PullR
                 data-pr-number={props.prNumber}
                 data-pr-title={props.prTitle}
                 data-repo-id={props.repoId}
+                data-hide-empty-header={props.hideEmptyHeader ? 'true' : 'false'}
             />
         );
     },
@@ -168,6 +169,7 @@ describe('PullRequestChatPlacementFrame', () => {
         );
 
         expect(screen.getByTestId('pr-chat-lens-resize-grip')).toHaveClass('cursor-nwse-resize');
+        expect(screen.getByTestId('pr-chat-panel-stub').getAttribute('data-hide-empty-header')).toBe('true');
     });
 
     it('renders a compact restorable PR lens pill when minimized', () => {

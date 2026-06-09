@@ -23,6 +23,7 @@ export interface PullRequestChatPanelProps {
     /** Repo identifier the PR belongs to (typically equal to workspaceId). */
     repoId?: string;
     onClose: () => void;
+    hideEmptyHeader?: boolean;
 }
 
 export function PullRequestChatPanel({
@@ -32,6 +33,7 @@ export function PullRequestChatPanel({
     prTitle,
     repoId,
     onClose,
+    hideEmptyHeader = false,
 }: PullRequestChatPanelProps) {
     const { taskId, loading, error, createChat } = usePullRequestChatBinding({
         workspaceId,
@@ -67,7 +69,7 @@ export function PullRequestChatPanel({
             data-testid="pr-chat-panel"
         >
             {/* Header — only shown in empty/loading state. ChatDetail has its own header. */}
-            {!taskId && (
+            {!hideEmptyHeader && !taskId && (
                 <div className="flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                     <div className="flex items-center gap-2">
                         <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">💬 PR Chat</span>
