@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, waitFor, act, screen } from '@testing-library/react';
 import type { ComponentProps } from 'react';
-import type { NoteTreeNode } from '../../../src/server/spa/client/react/features/notes/notesApi';
+import type { NotesRootEntry, NoteTreeNode } from '../../../src/server/spa/client/react/features/notes/notesApi';
 
 // ── Mocks ──────────────────────────────────────────────────────────────
 
@@ -64,6 +64,13 @@ const SAMPLE_TREE: NoteTreeNode[] = [
         ],
     },
     { name: 'Notebook2', path: 'Notebook2', type: 'notebook', children: [] },
+];
+
+const ROOTS: NotesRootEntry[] = [
+    { rootId: 'default', label: 'Notes', isDefault: true },
+    { rootId: 'docs', label: 'Docs', isDefault: false },
+    { rootId: 'plans', label: 'Plans', isDefault: false },
+    { rootId: 'archive', label: 'Archive', isDefault: false },
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -896,6 +903,93 @@ describe('NotesSidebar', () => {
 
         // Verify no call with wrong prefix (queue- hyphen)
         expect(processIds.includes('queue-abc-123')).toBe(false);
+    });
+
+    // ── Root selector dropdown ───────────────────────────────────────────
+
+    it('plain root click switches the active root and closes the dropdown', async () => {
+        const onSelectRoot = vi.fn();
+        const { findByTestId, queryByTestId } = renderSidebar(null, vi.fn(), {
+            roots: ROOTS,
+            selectedRootId: 'default',
+            selectedRootLabel: 'Notes',
+            onSelectRoot,
+        });
+        await findByTestId('notes-tree');
+
+        fireEvent.click(await findByTestId('notes-root-selector'));
+        fireEvent.click(await findByTestId('notes-root-option-docs'));
+
+        expect(onSelectRoot).toHaveBeenCalledWith('docs');
+        await waitFor(() => expect(queryByTestId('notes-root-dropdown')).toBeNull());
+    });
+
+    it('ctrl/cmd-click toggles additional roots without switching roots or closing the dropdown', async () => {
+        const onSelectRoot = vi.fn();
+        const { findByTestId, queryByTestId } = renderSidebar(null, vi.fn(), {
+            roots: ROOTS,
+            selectedRootId: 'default',
+            selectedRootLabel: 'Notes',
+            onSelectRoot,
+        });
+        await findByTestId('notes-tree');
+
+        fireEvent.click(await findByTestId('notes-root-selector'));
+        fireEvent.click(await findByTestId('notes-root-option-docs'), { ctrlKey: true });
+        fireEvent.click(await findByTestId('notes-root-option-plans'), { metaKey: true });
+
+        expect(onSelectRoot).not.toHaveBeenCalled();
+        expect(queryByTestId('notes-root-dropdown')).toBeTruthy();
+        expect((await findByTestId('notes-root-option-docs')).getAttribute('data-removal-selected')).toBe('true');
+        expect((await findByTestId('notes-root-option-plans')).getAttribute('data-removal-selected')).toBe('true');
+        expect(queryByTestId('notes-root-selected-check-docs')).toBeTruthy();
+        expect(queryByTestId('notes-root-selected-check-plans')).toBeTruthy();
+
+        fireEvent.click(await findByTestId('notes-root-option-docs'), { ctrlKey: true });
+        expect((await findByTestId('notes-root-option-docs')).getAttribute('data-removal-selected')).toBeNull();
+        expect((await findByTestId('notes-root-option-plans')).getAttribute('data-removal-selected')).toBe('true');
+    });
+
+    it('shift-click selects a contiguous range of additional roots and keeps the dropdown open', async () => {
+        const onSelectRoot = vi.fn();
+        const { findByTestId, queryByTestId } = renderSidebar(null, vi.fn(), {
+            roots: ROOTS,
+            selectedRootId: 'default',
+            selectedRootLabel: 'Notes',
+            onSelectRoot,
+        });
+        await findByTestId('notes-tree');
+
+        fireEvent.click(await findByTestId('notes-root-selector'));
+        fireEvent.click(await findByTestId('notes-root-option-docs'), { ctrlKey: true });
+        fireEvent.click(await findByTestId('notes-root-option-archive'), { shiftKey: true });
+
+        expect(onSelectRoot).not.toHaveBeenCalled();
+        expect(queryByTestId('notes-root-dropdown')).toBeTruthy();
+        expect((await findByTestId('notes-root-option-docs')).getAttribute('data-removal-selected')).toBe('true');
+        expect((await findByTestId('notes-root-option-plans')).getAttribute('data-removal-selected')).toBe('true');
+        expect((await findByTestId('notes-root-option-archive')).getAttribute('data-removal-selected')).toBe('true');
+    });
+
+    it('keeps the default root protected when a shift range includes it', async () => {
+        const onSelectRoot = vi.fn();
+        const { findByTestId, queryByTestId } = renderSidebar(null, vi.fn(), {
+            roots: ROOTS,
+            selectedRootId: 'default',
+            selectedRootLabel: 'Notes',
+            onSelectRoot,
+        });
+        await findByTestId('notes-tree');
+
+        fireEvent.click(await findByTestId('notes-root-selector'));
+        fireEvent.click(await findByTestId('notes-root-option-plans'), { shiftKey: true });
+
+        expect(onSelectRoot).not.toHaveBeenCalled();
+        expect(queryByTestId('notes-root-dropdown')).toBeTruthy();
+        expect((await findByTestId('notes-root-option-default')).getAttribute('data-removal-selected')).toBeNull();
+        expect((await findByTestId('notes-root-option-docs')).getAttribute('data-removal-selected')).toBe('true');
+        expect((await findByTestId('notes-root-option-plans')).getAttribute('data-removal-selected')).toBe('true');
+        expect(queryByTestId('notes-root-protected-default')).toBeTruthy();
     });
 
     // ── Redesigned header / meta / search ─────────────────────────────────

@@ -170,6 +170,16 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     const [rootDropdownOpen, setRootDropdownOpen] = useState(false);
     const rootDropdownRef = useRef<HTMLDivElement>(null);
     const hasMultipleRoots = roots && roots.length > 1;
+    const [selectedRootIdsForRemoval, setSelectedRootIdsForRemoval] = useState<Set<string>>(new Set());
+    const [rootSelectionAnchor, setRootSelectionAnchor] = useState<string | null>(null);
+    const orderedRootIds = useMemo(() => roots?.map(r => r.rootId) ?? [], [roots]);
+    const removableRootIds = useMemo(() => new Set((roots ?? []).filter(r => !r.isDefault).map(r => r.rootId)), [roots]);
+
+    useEffect(() => {
+        if (rootDropdownOpen) return;
+        setSelectedRootIdsForRemoval(prev => prev.size === 0 ? prev : new Set());
+        setRootSelectionAnchor(null);
+    }, [rootDropdownOpen]);
 
     // Close root dropdown on outside click
     useEffect(() => {
@@ -578,6 +588,48 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         handleMultiSelect(path, { shift: shiftKey, ctrl: ctrlKey }, flatPageList);
     }, [handleMultiSelect, flatPageList]);
 
+    const handleRootOptionClick = useCallback((rootId: string, isDefault: boolean, e: React.MouseEvent<HTMLButtonElement>) => {
+        const hasModifier = e.shiftKey || e.ctrlKey || e.metaKey;
+        if (!hasModifier) {
+            onSelectRoot?.(rootId);
+            setRootSelectionAnchor(rootId);
+            setSelectedRootIdsForRemoval(new Set());
+            setRootDropdownOpen(false);
+            return;
+        }
+
+        e.preventDefault();
+        if (e.shiftKey) {
+            const anchor = rootSelectionAnchor && orderedRootIds.includes(rootSelectionAnchor)
+                ? rootSelectionAnchor
+                : selectedRootId;
+            const anchorIndex = anchor ? orderedRootIds.indexOf(anchor) : -1;
+            const targetIndex = orderedRootIds.indexOf(rootId);
+            if (anchorIndex === -1 || targetIndex === -1) return;
+
+            const start = Math.min(anchorIndex, targetIndex);
+            const end = Math.max(anchorIndex, targetIndex);
+            const range = orderedRootIds.slice(start, end + 1);
+            setSelectedRootIdsForRemoval(prev => {
+                const next = new Set(prev);
+                for (const id of range) {
+                    if (removableRootIds.has(id)) next.add(id);
+                }
+                return next;
+            });
+            return;
+        }
+
+        setRootSelectionAnchor(rootId);
+        if (isDefault) return;
+        setSelectedRootIdsForRemoval(prev => {
+            const next = new Set(prev);
+            if (next.has(rootId)) next.delete(rootId);
+            else next.add(rootId);
+            return next;
+        });
+    }, [onSelectRoot, orderedRootIds, removableRootIds, rootSelectionAnchor, selectedRootId]);
+
     /** Wraps onSelectPage to also clear multi-selection on plain click. */
     const handleSelectPage = useCallback((path: string) => {
         clearSelection();
@@ -635,26 +687,43 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                                 role="listbox"
                                 data-testid="notes-root-dropdown"
                             >
-                                {roots!.map(r => (
-                                    <button
-                                        key={r.rootId}
-                                        className={`w-full text-left px-3 py-1.5 text-xs truncate ${
-                                            r.rootId === selectedRootId
-                                                ? 'bg-[#ddf4ff] dark:bg-[#0a3b66]/40 text-[#0969da] dark:text-[#79c0ff] font-semibold'
-                                                : 'text-[#1f2328] dark:text-[#cccccc] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2d2e]'
-                                        }`}
-                                        role="option"
-                                        aria-selected={r.rootId === selectedRootId}
-                                        onClick={() => {
-                                            onSelectRoot?.(r.rootId);
-                                            setRootDropdownOpen(false);
-                                        }}
-                                        data-testid={`notes-root-option-${r.rootId}`}
-                                        title={r.isDefault ? 'Default managed root' : r.rootId}
-                                    >
-                                        {r.isDefault ? '📓 ' : '📁 '}{r.label}
-                                    </button>
-                                ))}
+                                {roots!.map(r => {
+                                    const selectedForRemoval = selectedRootIdsForRemoval.has(r.rootId);
+                                    const isActive = r.rootId === selectedRootId;
+                                    return (
+                                        <button
+                                            key={r.rootId}
+                                            className={`w-full flex items-center justify-between gap-2 px-3 py-1.5 text-xs truncate ${
+                                                selectedForRemoval
+                                                    ? 'bg-[#fff8c5] dark:bg-[#5a3b00]/30 text-[#1f2328] dark:text-[#ffdf5d] font-semibold'
+                                                    : isActive
+                                                        ? 'bg-[#ddf4ff] dark:bg-[#0a3b66]/40 text-[#0969da] dark:text-[#79c0ff] font-semibold'
+                                                        : 'text-[#1f2328] dark:text-[#cccccc] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2d2e]'
+                                            }`}
+                                            role="option"
+                                            aria-selected={isActive}
+                                            aria-label={`${r.label}${isActive ? ', current root' : ''}${r.isDefault ? ', default managed root, cannot be removed' : selectedForRemoval ? ', selected for removal' : ''}`}
+                                            onClick={(e) => handleRootOptionClick(r.rootId, r.isDefault, e)}
+                                            data-testid={`notes-root-option-${r.rootId}`}
+                                            data-removal-selected={selectedForRemoval ? 'true' : undefined}
+                                            title={r.isDefault ? 'Default managed root cannot be removed' : r.rootId}
+                                        >
+                                            <span className="min-w-0 flex items-center gap-1 truncate">
+                                                <span aria-hidden="true">{r.isDefault ? '📓' : '📁'}</span>
+                                                <span className="truncate">{r.label}</span>
+                                            </span>
+                                            <span className="flex-shrink-0 text-[11px] text-[#656d76] dark:text-[#9d9d9d]">
+                                                {selectedForRemoval ? (
+                                                    <span data-testid={`notes-root-selected-check-${r.rootId}`} aria-hidden="true">✓</span>
+                                                ) : r.isDefault ? (
+                                                    <span data-testid="notes-root-protected-default" title="Default managed root cannot be removed" aria-label="Protected root">🔒</span>
+                                                ) : isActive ? (
+                                                    <span>Current</span>
+                                                ) : null}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
