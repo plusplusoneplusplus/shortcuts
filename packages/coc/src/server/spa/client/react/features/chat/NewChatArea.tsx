@@ -132,6 +132,8 @@ const EFFORT_LEVEL_LABELS: Record<EffortLevel, string> = {
     high: 'High',
     xhigh: 'Extra High',
 };
+const COMPACT_SETTINGS_POPOVER_WIDTH = 360;
+const COMPACT_SETTINGS_POPOVER_MIN_CONTAINER_WIDTH = COMPACT_SETTINGS_POPOVER_WIDTH + 24;
 
 function getEffortLabel(effort: EffortLevel | null): string {
     return effort ? EFFORT_LEVEL_LABELS[effort] : 'Auto';
@@ -239,6 +241,10 @@ export function InitialChatComposer({
         settingsLayout === 'responsive'
             ? (composerWidth.width > 0 && composerWidth.isNarrow ? 'compact' : 'full')
             : settingsLayout;
+    const compactSettingsEditorPlacement =
+        composerWidth.width > 0 && composerWidth.width < COMPACT_SETTINGS_POPOVER_MIN_CONTAINER_WIDTH
+            ? 'sheet'
+            : 'popover';
 
     // Agent providers for the agent selector chip
     const { providers: rawAgentProviders, loading: providersLoading } = useAgentProviders();
@@ -957,9 +963,12 @@ export function InitialChatComposer({
                 role="dialog"
                 aria-label="AI settings"
                 data-testid="compact-ai-settings-editor"
+                data-placement={compactSettingsEditorPlacement}
                 className={cn(
-                    'fixed inset-x-2 bottom-2 z-[10000] rounded-lg border border-[#d0d7de] bg-white p-2 shadow-xl dark:border-[#3c3c3c] dark:bg-[#252526]',
-                    'sm:absolute sm:inset-x-auto sm:bottom-full sm:left-0 sm:mb-1 sm:w-[360px]',
+                    'z-[10000] max-h-[70vh] overflow-y-auto rounded-lg border border-[#d0d7de] bg-white p-2 shadow-xl dark:border-[#3c3c3c] dark:bg-[#252526]',
+                    compactSettingsEditorPlacement === 'sheet'
+                        ? 'fixed inset-x-2 bottom-2'
+                        : 'absolute bottom-full left-0 mb-1 w-[360px]',
                 )}
             >
                 <div className="mb-2 flex items-center justify-between gap-2">

@@ -1091,6 +1091,32 @@ describe('NewChatArea', () => {
             expect(screen.getByTestId('effort-pill-selector')).toBeTruthy();
         });
 
+        it('anchors the compact settings editor as a popover when the composer can fit it', () => {
+            vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(420);
+
+            renderCompactComposer();
+            fireEvent.click(screen.getByTestId('compact-ai-settings-chip'));
+
+            const editor = screen.getByTestId('compact-ai-settings-editor');
+            expect(editor.getAttribute('data-placement')).toBe('popover');
+            expect(editor.className).toContain('absolute');
+            expect(editor.className).not.toContain('fixed');
+        });
+
+        it('uses a bottom-sheet compact settings editor when the composer is too narrow for the popover', async () => {
+            vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(340);
+
+            renderCompactComposer();
+            fireEvent.click(screen.getByTestId('compact-ai-settings-chip'));
+
+            await waitFor(() => {
+                const editor = screen.getByTestId('compact-ai-settings-editor');
+                expect(editor.getAttribute('data-placement')).toBe('sheet');
+                expect(editor.className).toContain('fixed');
+                expect(editor.className).not.toContain('absolute');
+            });
+        });
+
         it('updates the chip label when provider, workflow mode, or effort changes', async () => {
             mockRalphEnabled.value = true;
             mockAgentProvidersResponse.providers = [
