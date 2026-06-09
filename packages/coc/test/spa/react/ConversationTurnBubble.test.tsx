@@ -924,6 +924,47 @@ describe('ConversationTurnBubble — ask_user history', () => {
         expect(answer.textContent).toContain('Question skipped');
     });
 
+    it('renders deferred ask_user answers with need-more-context notes', () => {
+        render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'assistant',
+                    content: '',
+                    toolCalls: [
+                        {
+                            id: 'ask-deferred',
+                            toolName: 'ask_user',
+                            args: {
+                                questions: [
+                                    { question: 'Which API should own this behavior?', type: 'text' },
+                                ],
+                            },
+                            status: 'completed',
+                            result: JSON.stringify([
+                                {
+                                    questionId: 'generated-question-id',
+                                    answer: null,
+                                    skipped: false,
+                                    deferred: true,
+                                    reason: 'needs-context',
+                                    note: 'I need the existing API boundary first.',
+                                },
+                            ]),
+                        },
+                    ],
+                    timeline: [],
+                })}
+            />
+        );
+
+        const answer = screen.getByTestId('ask-user-history-answer');
+        expect(screen.getByText('Which API should own this behavior?')).toBeTruthy();
+        expect(answer.getAttribute('data-skipped')).toBe('false');
+        expect(answer.getAttribute('data-deferred')).toBe('true');
+        expect(answer.textContent).toContain('Need more context');
+        expect(screen.getByTestId('ask-user-history-deferred-note').textContent).toContain('I need the existing API boundary first.');
+    });
+
     it('renders historical Codex ask_user MCP calls with nested arguments as history cards', () => {
         const { container } = render(
             <ConversationTurnBubble

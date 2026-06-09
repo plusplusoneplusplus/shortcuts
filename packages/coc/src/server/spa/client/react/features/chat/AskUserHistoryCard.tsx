@@ -18,6 +18,9 @@ interface AskUserHistoryAnswer {
     questionId?: string;
     answer?: unknown;
     skipped?: boolean;
+    deferred?: boolean;
+    reason?: string;
+    note?: string;
 }
 
 export interface AskUserHistoryToolCall {
@@ -99,6 +102,9 @@ function parseAnswers(result: unknown): AskUserHistoryAnswer[] {
             ...(typeof answer.questionId === 'string' && answer.questionId ? { questionId: answer.questionId } : {}),
             ...(answer.answer !== undefined ? { answer: answer.answer } : {}),
             ...(typeof answer.skipped === 'boolean' ? { skipped: answer.skipped } : {}),
+            ...(typeof answer.deferred === 'boolean' ? { deferred: answer.deferred } : {}),
+            ...(typeof answer.reason === 'string' && answer.reason ? { reason: answer.reason } : {}),
+            ...(typeof answer.note === 'string' && answer.note ? { note: answer.note } : {}),
         }));
     }
     if (isRecord(parsed) && Array.isArray(parsed.answers)) {
@@ -152,9 +158,12 @@ export function AskUserHistoryCard({ toolCall }: { toolCall: AskUserHistoryToolC
     if (questions.length === 0) return null;
 
     const answers = parseAnswers(toolCall.result);
-    const answeredCount = answers.filter(answer => !answer.skipped && answer.answer !== undefined).length;
+    const deferredCount = answers.filter(answer => answer.deferred === true || answer.reason === 'needs-context').length;
+    const answeredCount = answers.filter(answer => !answer.skipped && answer.answer !== undefined && !(answer.deferred === true || answer.reason === 'needs-context')).length;
     const skippedCount = answers.filter(answer => answer.skipped).length;
-    const statusLabel = skippedCount === questions.length
+    const statusLabel = deferredCount === questions.length
+        ? 'Need context'
+        : skippedCount === questions.length
         ? 'Skipped'
         : answeredCount > 0
             ? 'Answered'
@@ -187,6 +196,7 @@ export function AskUserHistoryCard({ toolCall }: { toolCall: AskUserHistoryToolC
                 {questions.map((question, index) => {
                     const answer = answerForQuestion(question, index, answers);
                     const skipped = answer?.skipped === true;
+                    const deferred = answer?.deferred === true || answer?.reason === 'needs-context';
                     return (
                         <div
                             key={question.questionId ?? `${toolCall.id ?? 'ask-user'}-${index}`}
@@ -223,13 +233,21 @@ export function AskUserHistoryCard({ toolCall }: { toolCall: AskUserHistoryToolC
                                 className="mt-3 flex items-start gap-2 rounded-md bg-[#f3f4f6] dark:bg-[#252526] px-2.5 py-2 text-sm"
                                 data-testid="ask-user-history-answer"
                                 data-skipped={skipped ? 'true' : 'false'}
+                                data-deferred={deferred ? 'true' : 'false'}
                             >
                                 <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-[#6b7280] dark:text-[#9aa0a6]">
-                                    {skipped ? 'Skipped' : 'Answer'}
+                                    {skipped ? 'Skipped' : deferred ? 'Need context' : 'Answer'}
                                 </span>
-                                <span className="min-w-0 whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
-                                    {skipped ? 'Question skipped' : formatAnswer(question, answer?.answer)}
-                                </span>
+                                <div className="min-w-0 whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
+                                    <span>
+                                        {skipped ? 'Question skipped' : deferred ? 'Need more context' : formatAnswer(question, answer?.answer)}
+                                    </span>
+                                    {deferred && answer?.note && (
+                                        <p className="mt-1 text-xs text-[#6b7280] dark:text-[#9aa0a6]" data-testid="ask-user-history-deferred-note">
+                                            Note: {answer.note}
+                                        </p>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     );

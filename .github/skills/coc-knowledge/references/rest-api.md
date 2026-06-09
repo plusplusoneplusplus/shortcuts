@@ -70,6 +70,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | GET | `/api/processes/:id` | Process detail |
 | DELETE | `/api/processes/:id` | Delete process |
 | POST | `/api/processes/:id/message` | Follow-up message. Body accepts `content`, optional `mode` (`ask` or `autopilot`; legacy `plan` is accepted as Ask), `deliveryMode`, `images`, `skillNames`, `model`, and `reasoningEffort` (`'low'\|'medium'\|'high'\|'xhigh'`) for a per-turn override. |
+| POST | `/api/processes/:id/ask-user-response` | Resolve the active ask-user batch. Body `{ batchId, answers }`; each answer has `questionId` plus either `answer`, `skipped: true`, or `deferred: true` with `reason: "needs-context"` and optional `note`. |
 | POST | `/api/processes/:id/cancel` | Cancel running process |
 | POST | `/api/processes/:id/promote-to-ralph` | Promote completed ask-mode chat to Ralph session (see [ralph.md](ralph.md)) |
 | PATCH | `/api/processes/:id/pin` | Pin/unpin process |

@@ -25,7 +25,7 @@ attachments can be dropped into chat composers.
 | File | Tool Name | Description |
 |------|-----------|-------------|
 | `add-diff-comment-tool.ts` | `add_diff_comment` | Anchored review comments on commit diff lines. Pre-binds workspace/commit context. Persists via `DiffCommentsManager`, broadcasts via WebSocket. |
-| `ask-user-tool.ts` | `ask_user` | Structured questions (select, multi-select, yes/no, confirm, text). Blocks until user responds. Persists pending payload on `AIProcess.pendingAskUser`, emits SSE event. |
+| `ask-user-tool.ts` | `ask_user` | Structured questions (select, multi-select, yes/no, confirm, text). Blocks until user responds. Persists pending payload on `AIProcess.pendingAskUser`, emits SSE event. Results distinguish normal answers, skips, cancellations, and `deferred: true` / `reason: "needs-context"` responses with optional user notes. |
 | `resolve-comment-tool.ts` | `resolve_comment` | Marks inline comments as resolved. Tracks resolved IDs in per-invocation Map. |
 | `save-classification-tool.ts` | `saveClassification` | Persists complete per-hunk diff classifications for PR/commit/branch-range review. Valid categories are `logic`, `mechanical`, `test`, `simple`, and `generated`; newly saved `test` hunks require `testFidelityComment`, `logic` hunks require `summaryComment`, and critical metadata is validated instead of dropped. |
 | `search-conversations-tool.ts` | `search_conversations` | FTS5 full-text search over past conversation history. Requires SQLite-backed `ProcessStore`. |
@@ -73,6 +73,6 @@ needed — providers opt in based on `options.tools`.
 
 - **Per-invocation:** Each AI call gets fresh tool instances — no shared state
 - **Pre-binding:** Tools like `add_diff_comment` pre-bind context (workspace, commit) at creation
-- **Blocking tools:** `ask_user` returns a Promise resolved externally by the SPA
+- **Blocking tools:** `ask_user` returns a Promise resolved externally by the SPA. A needs-context response is not a skip: the result tells the AI to explain the missing context and re-ask if the question is still needed.
 - **Progressive compaction:** `get_conversation` applies 5 compaction levels to fit token budgets
 - **WebSocket broadcasting:** Side-effect tools broadcast events for real-time SPA updates

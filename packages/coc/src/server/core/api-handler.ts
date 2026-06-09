@@ -23,6 +23,7 @@ import type { Attachment, CreateTaskInput } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { registerSkillRoutes } from '../skills/skill-handler';
 import { registerGlobalSkillRoutes } from '../skills/global-skill-handler';
+import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { getServerLogger } from '../logging/server-logger';
 import { registerApiWorkspaceRoutes } from '../routes/api-workspace-routes';
@@ -63,11 +64,11 @@ export interface QueueExecutorBridge {
     /** Unsubscribe from queue change events. */
     off?(event: 'queueChange', listener: (event: Record<string, unknown>) => void): void;
     /** Answer a pending ask-user question. Returns true if the question was found and answered. */
-    answerAskUserQuestion?(processId: string, questionId: string, answer: string | string[] | boolean): Promise<boolean>;
+    answerAskUserQuestion?(processId: string, questionId: string, answer: AskUserAnswerValue): Promise<boolean>;
     /** Skip a pending ask-user question. Returns true if the question was found and skipped. */
     skipAskUserQuestion?(processId: string, questionId: string): Promise<boolean>;
     /** Resolve a pending ask-user question batch. Returns true if every answer was accepted. */
-    answerAskUserQuestions?(processId: string, batchId: string, answers: Array<{ questionId: string; answer?: string | string[] | boolean; skipped?: boolean }>): Promise<boolean>;
+    answerAskUserQuestions?(processId: string, batchId: string, answers: AskUserAnswerInput[]): Promise<boolean>;
 }
 
 // ============================================================================

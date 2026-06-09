@@ -39,11 +39,17 @@ export interface AskUserQuestion {
     defaultValue?: string | string[];
 }
 
+export type AskUserAnswerValue = string | string[] | boolean;
+export type AskUserResponseReason = 'user-skipped' | 'cancelled' | 'needs-context';
+
 export interface AskUserResponse {
     questionId: string;
-    answer: string | string[] | boolean | null;
+    answer: AskUserAnswerValue | null;
     skipped: boolean;
-    reason?: 'user-skipped' | 'cancelled';
+    reason?: AskUserResponseReason;
+    deferred?: boolean;
+    note?: string;
+    guidance?: string;
 }
 
 export interface AskUserSSEPayload {
@@ -60,13 +66,36 @@ export interface AskUserSSEPayload {
 
 export interface AskUserAnswerInput {
     questionId: string;
-    answer?: string | string[] | boolean;
+    answer?: AskUserAnswerValue;
     skipped?: boolean;
+    deferred?: boolean;
+    reason?: 'needs-context';
+    note?: string;
 }
 
 export interface AskUserToolDeps {
     emitQuestions: (payloads: AskUserSSEPayload[]) => void | Promise<void>;
     computeTurnIndex: () => number;
+}
+
+const NEEDS_CONTEXT_GUIDANCE =
+    'The user marked this question as needing more context. Provide the missing context and ask a revised version of this question again if the answer is still needed. If the question is no longer needed after processing the other answers, explain why instead of ignoring it.';
+
+function isDeferredResponse(response: AskUserAnswerInput): boolean {
+    return response.deferred === true || response.reason === 'needs-context';
+}
+
+function deferredResponse(questionId: string, note?: string): AskUserResponse {
+    const trimmedNote = typeof note === 'string' ? note.trim() : '';
+    return {
+        questionId,
+        answer: null,
+        skipped: false,
+        deferred: true,
+        reason: 'needs-context',
+        ...(trimmedNote ? { note: trimmedNote } : {}),
+        guidance: NEEDS_CONTEXT_GUIDANCE,
+    };
 }
 
 // ============================================================================
@@ -92,6 +121,7 @@ export function createAskUserTool(deps: AskUserToolDeps) {
             'Ask the user one or more questions and wait for their responses. Use this when you need ' +
             'clarification, confirmation, or choices from the user before proceeding. ' +
             'Questions render together as one interactive UI widget. ' +
+            'If a response has deferred=true and reason="needs-context", the user needs more context; explain and re-ask the question if it is still needed instead of treating it as skipped. ' +
             'IMPORTANT: Only use this in interactive Ask or Ralph contexts, never in autopilot.',
         parameters: {
             type: 'object' as const,
@@ -169,7 +199,7 @@ export function createAskUserTool(deps: AskUserToolDeps) {
         },
     });
 
-    function answerQuestion(questionId: string, answer: string | string[] | boolean): boolean {
+    function answerQuestion(questionId: string, answer: AskUserAnswerValue): boolean {
         const entry = pending.get(questionId);
         if (!entry) return false;
         pending.delete(questionId);
@@ -187,17 +217,25 @@ export function createAskUserTool(deps: AskUserToolDeps) {
 
     function answerQuestions(responses: AskUserAnswerInput[]): boolean {
         if (responses.length === 0) return false;
+        if (responses.length !== pending.size) return false;
+        const seenQuestionIds = new Set<string>();
         for (const response of responses) {
+            if (seenQuestionIds.has(response.questionId)) return false;
+            seenQuestionIds.add(response.questionId);
             if (!pending.has(response.questionId)) return false;
-            if (response.skipped !== true && response.answer === undefined) return false;
+            if (response.skipped === true && isDeferredResponse(response)) return false;
+            if (response.note !== undefined && typeof response.note !== 'string') return false;
+            if (response.skipped !== true && !isDeferredResponse(response) && response.answer === undefined) return false;
         }
         for (const response of responses) {
             const entry = pending.get(response.questionId)!;
             pending.delete(response.questionId);
             if (response.skipped === true) {
                 entry.resolve({ questionId: response.questionId, answer: null, skipped: true, reason: 'user-skipped' });
+            } else if (isDeferredResponse(response)) {
+                entry.resolve(deferredResponse(response.questionId, response.note));
             } else {
-                entry.resolve({ questionId: response.questionId, answer: response.answer as string | string[] | boolean, skipped: false });
+                entry.resolve({ questionId: response.questionId, answer: response.answer as AskUserAnswerValue, skipped: false });
             }
         }
         return true;

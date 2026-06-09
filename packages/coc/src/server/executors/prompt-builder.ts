@@ -31,7 +31,7 @@ import { createSearchConversationsTool } from '../llm-tools/search-conversations
 import { createGetConversationTool } from '../llm-tools/get-conversation-tool';
 import { createSuggestFollowUpsTool } from '../llm-tools/suggest-follow-ups-tool';
 import { createAskUserTool } from '../llm-tools/ask-user-tool';
-import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
+import type { AskUserAnswerInput, AskUserAnswerValue, AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import { createCreateUpdateWorkItemTool, type BroadcastWorkItemFn } from '../llm-tools/create-update-work-item-tool';
 import { createBugTool } from '../llm-tools/create-bug-tool';
 import type { ChatMode, ChatPayload, PrClassificationPayload, RunScriptPayload } from '../tasks/task-types';
@@ -491,9 +491,9 @@ export function buildAskUserAddon(
 ): {
     tools: Tool<any>[];
     suffix: string;
-    answerQuestion: (questionId: string, answer: string | string[] | boolean) => boolean;
+    answerQuestion: (questionId: string, answer: AskUserAnswerValue) => boolean;
     skipQuestion: (questionId: string) => boolean;
-    answerQuestions: (responses: Array<{ questionId: string; answer?: string | string[] | boolean; skipped?: boolean }>) => boolean;
+    answerQuestions: (responses: AskUserAnswerInput[]) => boolean;
     cancelAll: () => void;
     hasPending: () => boolean;
 } {
@@ -513,7 +513,7 @@ export function buildAskUserAddon(
     const suffix =
         '\n\nYou have access to the `ask_user` tool. It takes `{ questions: [...] }`; put related clarification, ' +
         'confirmation, or choice questions in one call instead of calling the tool repeatedly. The user will see one interactive widget. ' +
-        'Every question has a Skip option, so the user is never stuck. ' +
+        'Every question has Skip and Need more context options, so the user is never stuck. If the tool result includes `deferred: true` with `reason: "needs-context"`, provide the missing context and ask a revised version of that question again when the answer is still needed; if it is no longer needed, explain why. Do not treat it as permission to ignore the question. ' +
         'Do NOT use ask_user for simple yes/no that can be inferred from context.';
 
     return { tools: [tool], suffix, answerQuestion, skipQuestion, answerQuestions, cancelAll, hasPending };

@@ -17,6 +17,7 @@
 import type { GenericProcessMetadata, ProcessStore, TimelineItem, ToolEvent, BackgroundTasksInfo } from '@plusplusoneplusplus/forge';
 import { getLogger, LogCategory, mergeConsecutiveContentItems } from '@plusplusoneplusplus/forge';
 import { OutputFileManager } from '../processes/output-file-manager';
+import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
 
 // ============================================================================
 // Types
@@ -33,9 +34,9 @@ export interface ProcessSessionState {
     pendingSuggestions: string[] | undefined;
     /** Pending ask-user tool instance for mid-turn user interaction. */
     pendingAskUser?: {
-        answerQuestion: (questionId: string, answer: string | string[] | boolean) => boolean;
+        answerQuestion: (questionId: string, answer: AskUserAnswerValue) => boolean;
         skipQuestion: (questionId: string) => boolean;
-        answerQuestions: (responses: Array<{ questionId: string; answer?: string | string[] | boolean; skipped?: boolean }>) => boolean;
+        answerQuestions: (responses: AskUserAnswerInput[]) => boolean;
         cancelAll: () => void;
         hasPending: () => boolean;
     };
