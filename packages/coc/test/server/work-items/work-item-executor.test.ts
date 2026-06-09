@@ -9,6 +9,7 @@ import {
     buildExecutionPrompt,
     resolveWorkItemComments,
     isResolveSessionCategory,
+    isWorkItemReviewSessionCategory,
     extractGoalSpecFromGrillingResponse,
     saveGoalGrillingSpecFromResponse,
 } from '../../../src/server/work-items/work-item-executor';
@@ -786,6 +787,14 @@ describe('isResolveSessionCategory', () => {
     });
 });
 
+describe('isWorkItemReviewSessionCategory', () => {
+    it('matches only Work Item AI review sessions', () => {
+        expect(isWorkItemReviewSessionCategory('work-item-ai-review')).toBe(true);
+        expect(isWorkItemReviewSessionCategory('generating-code')).toBe(false);
+        expect(isWorkItemReviewSessionCategory(undefined)).toBe(false);
+    });
+});
+
 describe('handleWorkItemTaskComplete — comment-resolve sessions', () => {
     it('skips status transition for plan comment resolve sessions', async () => {
         const item = makeWorkItem({ id: 'wi-plan-done', status: 'aiDone' });
@@ -848,5 +857,35 @@ describe('handleWorkItemTaskComplete — comment-resolve sessions', () => {
 
         const updated = await store.getWorkItem('wi-regular-done', 'test-repo');
         expect(updated!.status).toBe('aiDone');
+    });
+});
+
+describe('handleWorkItemTaskComplete — AI review sessions', () => {
+    it('records review failure without moving the Work Item out of Review', async () => {
+        const item = makeWorkItem({ id: 'wi-review-session', status: 'aiDone' });
+        await store.addWorkItem(item);
+        await store.addExecution('wi-review-session', {
+            taskId: 'task-ai-review',
+            startedAt: '2026-01-01T12:00:00.000Z',
+            status: 'running',
+            sessionCategory: 'work-item-ai-review',
+            title: 'AI Review',
+            kind: 'ai-review',
+        });
+
+        await handleWorkItemTaskComplete('wi-review-session', 'task-ai-review', {
+            status: 'failed',
+            error: 'Review model unavailable',
+            processId: 'proc-review',
+        }, store);
+
+        const updated = await store.getWorkItem('wi-review-session', 'test-repo');
+        expect(updated!.status).toBe('aiDone');
+        expect(updated!.processId).toBe('proc-review');
+        expect(updated!.executionHistory![0]).toMatchObject({
+            status: 'failed',
+            error: 'Review model unavailable',
+            processId: 'proc-review',
+        });
     });
 });

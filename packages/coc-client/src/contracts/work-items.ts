@@ -473,6 +473,19 @@ export interface SubmitWorkItemPullRequestResponse {
   prStatus: 'open' | string;
 }
 
+export interface StartWorkItemAiReviewRequest extends JsonObject {
+  model?: string;
+  provider?: ChatProvider;
+  reasoningEffort?: ReasoningEffort;
+  effortTier?: EffortTierKey;
+  autoProviderRouting?: boolean;
+}
+
+export interface StartWorkItemAiReviewResponse {
+  taskId: string;
+  workItem?: WorkItem;
+}
+
 export interface ResolveWorkItemCommentsRequest extends JsonObject {
   type: 'plan' | 'commit';
   model?: string;
@@ -504,6 +517,8 @@ export interface WorkItemExecution {
   kind?: string;
   prIteration?: number;
   prUrl?: string;
+  reviewedChangeId?: string;
+  reviewedTaskId?: string;
 }
 
 export interface ReviewComment {

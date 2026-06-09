@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     updateStatus: vi.fn(),
     requestChanges: vi.fn(),
     submitPullRequest: vi.fn(),
+    startAiReview: vi.fn(),
     createChatBinding: vi.fn(),
     delete: vi.fn(),
     queueEnqueue: vi.fn(),
@@ -32,6 +33,7 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
             updateStatus: mocks.updateStatus,
             requestChanges: mocks.requestChanges,
             submitPullRequest: mocks.submitPullRequest,
+            startAiReview: mocks.startAiReview,
             createChatBinding: mocks.createChatBinding,
             delete: mocks.delete,
         },
@@ -222,6 +224,61 @@ describe('WorkItemDetail workflow review command center', () => {
                 changeId: 'change-review-1',
             });
         });
+    });
+
+    it('starts an explicit AI review from Review state and records the action through the client', async () => {
+        mocks.startAiReview.mockResolvedValue({
+            taskId: 'task-ai-review',
+            workItem: {
+                ...BASE_REVIEW_ITEM,
+                executionHistory: [
+                    ...BASE_REVIEW_ITEM.executionHistory,
+                    {
+                        taskId: 'task-ai-review',
+                        startedAt: '2026-01-01T01:06:00.000Z',
+                        status: 'running',
+                        title: 'AI Review',
+                        sessionCategory: 'work-item-ai-review',
+                        kind: 'ai-review',
+                    },
+                ],
+            },
+        });
+
+        render(<WorkItemDetail workspaceId="ws-1" workItemId="wi-review-1" onViewTask={vi.fn()} />);
+
+        const reviewButton = await screen.findByTestId('work-item-ai-review-btn');
+        fireEvent.click(reviewButton);
+
+        await waitFor(() => {
+            expect(mocks.startAiReview).toHaveBeenCalledWith('ws-1', 'wi-review-1');
+        });
+    });
+
+    it('keeps PR eligibility based on the implementation run after an AI review run exists', async () => {
+        mocks.get.mockResolvedValue({
+            ...BASE_REVIEW_ITEM,
+            executionHistory: [
+                ...BASE_REVIEW_ITEM.executionHistory,
+                {
+                    taskId: 'task-ai-review',
+                    processId: 'proc-ai-review',
+                    startedAt: '2026-01-01T01:06:00.000Z',
+                    completedAt: '2026-01-01T01:08:00.000Z',
+                    status: 'completed',
+                    title: 'AI Review',
+                    sessionCategory: 'work-item-ai-review',
+                    kind: 'ai-review',
+                    reviewedChangeId: 'change-review-1',
+                    reviewedTaskId: 'task-review-1',
+                },
+            ],
+        });
+
+        render(<WorkItemDetail workspaceId="ws-1" workItemId="wi-review-1" />);
+
+        expect(await screen.findByTestId('work-item-submit-pr-btn')).toBeInTheDocument();
+        expect(screen.getByTestId('exec-ai-review-badge-1')).toHaveTextContent('AI review');
     });
 
     it('hides Submit PR after the latest Review change already has PR metadata', async () => {

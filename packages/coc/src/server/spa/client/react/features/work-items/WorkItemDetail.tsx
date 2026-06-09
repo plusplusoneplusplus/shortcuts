@@ -87,6 +87,10 @@ function isCommentResolveExecution(exec: { sessionCategory?: string }): boolean 
     return exec.sessionCategory === 'resolve-plan-comments' || exec.sessionCategory === 'resolve-commit-comments';
 }
 
+function isWorkflowAiReviewExecution(exec: { sessionCategory?: string; kind?: string }): boolean {
+    return exec.sessionCategory === 'work-item-ai-review' || exec.kind === 'ai-review';
+}
+
 const VALID_TRANSITIONS: Record<string, string[]> = {
     created:        ['drafting', 'planning', 'readyToExecute', 'done', 'failed'],
     drafting:       ['planning', 'readyToExecute', 'created', 'failed'],
@@ -146,6 +150,9 @@ interface WorkItemFull {
         };
         skillNames?: string[];
         prUrl?: string;
+        kind?: string;
+        reviewedChangeId?: string;
+        reviewedTaskId?: string;
     }>;
     tags?: string[];
     githubMirror?: WorkItemGitHubMirrorMetadata;
@@ -313,6 +320,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const [requestingChanges, setRequestingChanges] = useState(false);
     const [acceptingDone, setAcceptingDone] = useState(false);
     const [submittingPr, setSubmittingPr] = useState(false);
+    const [startingAiReview, setStartingAiReview] = useState(false);
     const [resolvingDiffComments, setResolvingDiffComments] = useState(false);
     const [resolvingCommitSha, setResolvingCommitSha] = useState<string | null>(null);
     const [resolvingChangeIdx, setResolvingChangeIdx] = useState<number | null>(null);
@@ -554,6 +562,26 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
             setError(err.message || 'Failed to submit PR');
         } finally {
             setSubmittingPr(false);
+        }
+    };
+
+    const handleStartAiReview = async () => {
+        if (!item || !workflowCommandCenter) return;
+        setStartingAiReview(true);
+        setError(null);
+        try {
+            const result = await getSpaCocClient().workItems.startAiReview(workspaceId, workItemId);
+            if (result.workItem) {
+                dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item: result.workItem as any });
+            }
+            if (result.taskId && onViewTask) {
+                onViewTask(result.taskId);
+            }
+            await fetchItem();
+        } catch (err: any) {
+            setError(err.message || 'Failed to start AI review');
+        } finally {
+            setStartingAiReview(false);
         }
     };
 
@@ -909,7 +937,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const defaultExecutionMode = workflowEnabled && effectiveType === 'goal' && isLocalOnlyWorkflowItem ? 'ralph' : 'one-shot';
     const latestReviewExecution = item.executionHistory
         ?.map((exec, index) => ({ exec, index }))
-        .filter(({ exec }) => exec.status === 'completed' && !isCommentResolveExecution(exec))
+        .filter(({ exec }) => exec.status === 'completed' && !isCommentResolveExecution(exec) && !isWorkflowAiReviewExecution(exec))
         .at(-1);
     const latestReviewChange = latestReviewExecution
         ? item.changes?.find(change => change.taskId === latestReviewExecution.exec.taskId)
@@ -919,6 +947,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         && !!latestReviewChange
         && latestReviewChange.commits.length > 0
         && !latestReviewChange.prUrl;
+    const hasRunningAiReview = item.executionHistory?.some(exec => isWorkflowAiReviewExecution(exec) && exec.status === 'running') ?? false;
+    const canStartAiReview = workflowCommandCenter && isAiDone;
 
     const typePrefix = effectiveType === 'epic' ? 'E'
         : effectiveType === 'feature' ? 'F'
@@ -1449,6 +1479,11 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                         Submit PR
                                     </Button>
                                 )}
+                                {canStartAiReview && (
+                                    <Button variant="secondary" size="sm" onClick={handleStartAiReview} disabled={startingAiReview || hasRunningAiReview} loading={startingAiReview} data-testid="work-item-ai-review-btn">
+                                        {hasRunningAiReview ? 'AI review running' : 'AI Review'}
+                                    </Button>
+                                )}
                                 <Button variant="ghost" size="sm" onClick={handleRequestChanges} disabled={requestingChanges} loading={requestingChanges} data-testid="work-item-request-changes-btn">
                                     🔄 Request Changes
                                 </Button>
@@ -1554,6 +1589,11 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                             {(exec.sessionCategory === 'resolve-plan-comments' || exec.sessionCategory === 'resolve-commit-comments') && (
                                                 <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 text-[9px]" data-testid={`exec-comment-resolve-badge-${i}`}>
                                                     💬 {exec.sessionCategory === 'resolve-plan-comments' ? 'Plan' : 'Code'} comment resolve
+                                                </span>
+                                            )}
+                                            {isWorkflowAiReviewExecution(exec) && (
+                                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-[9px]" data-testid={`exec-ai-review-badge-${i}`}>
+                                                    🔎 AI review
                                                 </span>
                                             )}
                                             <span className="text-[#848484]">{formatRelativeTime(exec.startedAt)}</span>

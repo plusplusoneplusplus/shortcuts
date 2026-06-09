@@ -640,6 +640,142 @@ describe('Work Item Execution Routes', () => {
         });
     });
 
+    describe('POST /ai-review', () => {
+        let enqueue: ReturnType<typeof vi.fn>;
+
+        beforeEach(async () => {
+            tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-ai-review-'));
+            store = new FileWorkItemStore({ dataDir: tmpDir });
+            enqueue = vi.fn().mockResolvedValue('task-ai-review');
+            server = makeServer(enqueue, { workflowEnabled: true });
+            await startServer();
+        });
+
+        afterEach(async () => {
+            await stopServer();
+            await fs.rm(tmpDir, { recursive: true, force: true });
+        });
+
+        async function addReviewItem(overrides: Partial<Parameters<typeof store.addWorkItem>[0]> = {}) {
+            const now = new Date().toISOString();
+            await store.addWorkItem({
+                id: 'wi-ai-review',
+                repoId: REPO_ID,
+                title: 'AI review item',
+                description: 'Review this result.',
+                status: 'aiDone',
+                type: 'work-item',
+                source: 'manual',
+                tracker: { kind: 'local-only' },
+                createdAt: now,
+                updatedAt: now,
+                plan: { version: 4, currentVersion: 4, content: '## Plan\nCheck the result', updatedAt: now },
+                currentContentVersion: 4,
+                executionHistory: [{
+                    taskId: 'task-impl',
+                    processId: 'proc-impl',
+                    status: 'completed',
+                    startedAt: now,
+                    completedAt: now,
+                    planVersion: 4,
+                    executionMode: 'one-shot',
+                    sessionCategory: 'generating-code',
+                    title: 'Code Implement',
+                }],
+                changes: [{
+                    id: 'change-ai-review',
+                    planVersion: 4,
+                    taskId: 'task-impl',
+                    startedAt: now,
+                    completedAt: now,
+                    status: 'closed',
+                    commits: [{ sha: 'abcabcabcabcabcabcabcabcabcabcabcabcabca', message: 'Implement AI review target' }],
+                }],
+                ...overrides,
+            });
+        }
+
+        it('enqueues an explicit AI review and records it in execution history without leaving Review', async () => {
+            await addReviewItem();
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/wi-ai-review/ai-review`, {
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+                reasoningEffort: 'high',
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body.taskId).toBe('task-ai-review');
+            expect(enqueue).toHaveBeenCalledOnce();
+            const call = enqueue.mock.calls[0][0];
+            expect(call.displayName).toBe('Run #2: AI Review');
+            expect(call.payload).toMatchObject({
+                kind: 'chat',
+                mode: 'ask',
+                workspaceId: REPO_ID,
+                workItemId: 'wi-ai-review',
+                sessionCategory: 'work-item-ai-review',
+                planVersion: 4,
+                provider: 'claude',
+                reasoningEffort: 'high',
+            });
+            expect(call.payload.prompt).toContain('abcabcabcabcabcabcabcabcabcabcabcabcabca');
+            expect(call.payload.context.skills).toEqual(['code-review']);
+            expect(call.payload.context.workItemReview).toMatchObject({
+                workItemId: 'wi-ai-review',
+                executionTaskId: 'task-impl',
+                changeId: 'change-ai-review',
+                commits: ['abcabcabcabcabcabcabcabcabcabcabcabcabca'],
+            });
+            expect(call.config.model).toBe('claude-sonnet-4.6');
+
+            const updated = await store.getWorkItem('wi-ai-review', REPO_ID);
+            expect(updated?.status).toBe('aiDone');
+            expect(updated?.executionHistory?.[1]).toMatchObject({
+                taskId: 'task-ai-review',
+                status: 'running',
+                sessionCategory: 'work-item-ai-review',
+                title: 'AI Review',
+                kind: 'ai-review',
+                planVersion: 4,
+                reviewedChangeId: 'change-ai-review',
+                reviewedTaskId: 'task-impl',
+                skillNames: ['code-review'],
+                aiSettings: {
+                    provider: 'claude',
+                    model: 'claude-sonnet-4.6',
+                    reasoningEffort: 'high',
+                },
+            });
+        });
+
+        it('rejects AI review when the workflow flag is disabled', async () => {
+            await stopServer();
+            server = makeServer(enqueue, { workflowEnabled: false });
+            await startServer();
+            await addReviewItem();
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/wi-ai-review/ai-review`, {});
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('workItems.workflow.enabled');
+            expect(enqueue).not.toHaveBeenCalled();
+        });
+
+        it('rejects AI review for remote-backed items', async () => {
+            await addReviewItem({
+                tracker: { kind: 'github-backed', provider: 'github', github: { issueNumber: 1 } },
+                githubMirror: { issueNumber: 1 },
+            });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/wi-ai-review/ai-review`, {});
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('local-only');
+            expect(enqueue).not.toHaveBeenCalled();
+        });
+    });
+
     describe('POST /execute — task file creation', () => {
         let capturedEnqueuePayload: any;
         let enqueue: any;

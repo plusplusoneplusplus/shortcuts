@@ -15,6 +15,8 @@ import type {
   ResolveWorkItemCommentsRequest,
   SubmitWorkItemPullRequestRequest,
   SubmitWorkItemPullRequestResponse,
+  StartWorkItemAiReviewRequest,
+  StartWorkItemAiReviewResponse,
   WorkItemSyncProvider,
   WorkItemSyncStatusResponse,
   UpdateWorkItemRequest,
@@ -117,6 +119,17 @@ export class WorkItemsClient {
     request: SubmitWorkItemPullRequestRequest = {},
   ): Promise<SubmitWorkItemPullRequestResponse> {
     return this.transport.request<SubmitWorkItemPullRequestResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/submit-pr`), {
+      method: 'POST',
+      body: { ...request },
+    });
+  }
+
+  startAiReview(
+    workspaceId: string,
+    workItemId: string,
+    request: StartWorkItemAiReviewRequest = {},
+  ): Promise<StartWorkItemAiReviewResponse> {
+    return this.transport.request<StartWorkItemAiReviewResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/ai-review`), {
       method: 'POST',
       body: { ...request },
     });

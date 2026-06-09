@@ -320,7 +320,7 @@ export interface WorkItemExecution {
     error?: string;
     /** Whether this execution was triggered automatically after comment resolution. */
     autoReExecuted?: boolean;
-    /** Session category (e.g. 'generating-code', 'resolve-plan-comments', 'resolve-commit-comments'). */
+    /** Session category (e.g. 'generating-code', 'resolve-plan-comments', 'resolve-commit-comments', 'work-item-ai-review'). */
     sessionCategory?: string;
     /** Descriptive title for this execution (e.g. 'Code Implement', 'Resolve comments for Run #2'). */
     title?: string;
@@ -330,6 +330,10 @@ export interface WorkItemExecution {
     prIteration?: number;
     /** URL of the created/updated pull request. */
     prUrl?: string;
+    /** Change reviewed by an optional AI review run. */
+    reviewedChangeId?: string;
+    /** Execution task reviewed by an optional AI review run. */
+    reviewedTaskId?: string;
 }
 
 // ============================================================================

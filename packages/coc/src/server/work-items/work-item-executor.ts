@@ -352,6 +352,11 @@ export function isResolveSessionCategory(category: string | undefined): boolean 
     return category === 'resolve-plan-comments' || category === 'resolve-commit-comments';
 }
 
+/** Check whether a session category represents an optional Work Item review task. */
+export function isWorkItemReviewSessionCategory(category: string | undefined): boolean {
+    return category === 'work-item-ai-review';
+}
+
 /**
  * Handle task completion for a work item.
  * Called when a queue task linked to a work item finishes.
@@ -380,8 +385,8 @@ export async function handleWorkItemTaskComplete(
     // Check if this is a comment-resolve session — skip status transition
     const item = await store.getWorkItem(workItemId);
     const matchedExec = item?.executionHistory?.find(e => e.taskId === taskId);
-    if (isResolveSessionCategory(matchedExec?.sessionCategory)) {
-        // Only update the processId reference, do not change work item status
+    if (isResolveSessionCategory(matchedExec?.sessionCategory) || isWorkItemReviewSessionCategory(matchedExec?.sessionCategory)) {
+        // Non-implementation sessions are timeline entries only; they must not move the item out of Review.
         await store.updateWorkItem(workItemId, { processId: result.processId });
         return;
     }

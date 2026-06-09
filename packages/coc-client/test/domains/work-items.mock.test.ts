@@ -200,6 +200,7 @@ describe('WorkItemsClient mock coverage', () => {
     await client.pin('repo/a', 'wi/1', true);
     await client.archive('repo/a', 'wi/1', false);
     await client.requestChanges('repo/a', 'wi/1', { comments: ['Fix this'], source: 'diff-comments' });
+    await client.startAiReview('repo/a', 'wi/1', { provider: 'claude' });
 
     expect(adapter.calls).toEqual([
       {
@@ -235,6 +236,13 @@ describe('WorkItemsClient mock coverage', () => {
         options: {
           method: 'POST',
           body: { comments: ['Fix this'], source: 'diff-comments' },
+        },
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/wi%2F1/ai-review',
+        options: {
+          method: 'POST',
+          body: { provider: 'claude' },
         },
       },
     ]);

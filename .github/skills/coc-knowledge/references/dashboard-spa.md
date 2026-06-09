@@ -122,7 +122,10 @@ truth and does not require a Notes-backed `.goal.md` mirror. The Work Item
 execute dialog is also workflow-aware for saved local-only Work Items and Goals:
 it exposes a per-run One-shot vs Ralph mode selector, defaults Work Items to
 One-shot, defaults Goals to Ralph, and sends the selected execution mode through
-the typed Work Items client.
+the typed Work Items client. In Review, local-only Work Items/Goals expose an
+explicit AI Review action that enqueues a `code-review` chat as a non-mutating
+timeline entry, plus a Submit PR action only when the implementation change has
+eligible commits and no recorded PR.
 
 ## Chat UI Architecture
 
