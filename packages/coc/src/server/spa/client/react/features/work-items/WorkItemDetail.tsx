@@ -61,6 +61,32 @@ const STATUS_LABELS: Record<string, { label: string; badgeStatus: string }> = {
     failed:           { label: 'Failed',            badgeStatus: 'failed' },
 };
 
+function statusConfigFor(status: string, workflowCommandCenter: boolean, type: string): { label: string; badgeStatus: string } {
+    const fallback = STATUS_LABELS[status] || STATUS_LABELS.created;
+    if (!workflowCommandCenter) return fallback;
+    if (status === 'created') return { ...fallback, label: 'Draft' };
+    if (status === 'drafting') return { ...fallback, label: type === 'goal' ? 'Grilling' : 'Drafting' };
+    if (status === 'planning') return { ...fallback, label: type === 'goal' ? 'Grilling' : 'Planning' };
+    if (status === 'readyToExecute') return { ...fallback, label: 'Ready' };
+    if (status === 'aiDone') return { ...fallback, label: 'Review' };
+    if (status === 'aiFailed') return { ...fallback, label: 'Failed' };
+    return fallback;
+}
+
+function formatExecutionModeLabel(mode: string | undefined): string | undefined {
+    if (mode === 'ralph') return 'Ralph';
+    if (mode === 'one-shot') return 'One-shot';
+    return mode;
+}
+
+function formatProviderLabel(provider: string): string {
+    return provider.charAt(0).toUpperCase() + provider.slice(1);
+}
+
+function isCommentResolveExecution(exec: { sessionCategory?: string }): boolean {
+    return exec.sessionCategory === 'resolve-plan-comments' || exec.sessionCategory === 'resolve-commit-comments';
+}
+
 const VALID_TRANSITIONS: Record<string, string[]> = {
     created:        ['drafting', 'planning', 'readyToExecute', 'done', 'failed'],
     drafting:       ['planning', 'readyToExecute', 'created', 'failed'],
@@ -98,7 +124,29 @@ interface WorkItemFull {
     plan?: { version: number; currentVersion?: number; content: string; updatedAt?: string; resolvedBy?: string };
     taskId?: string; processId?: string;
     currentContentVersion?: number;
-    executionHistory?: Array<{ taskId: string; processId?: string; startedAt: string; completedAt?: string; status: string; error?: string; autoReExecuted?: boolean; title?: string; sessionCategory?: string; executionMode?: string; ralphSessionId?: string }>;
+    executionHistory?: Array<{
+        taskId: string;
+        processId?: string;
+        planVersion?: number;
+        startedAt: string;
+        completedAt?: string;
+        status: string;
+        error?: string;
+        autoReExecuted?: boolean;
+        title?: string;
+        sessionCategory?: string;
+        executionMode?: string;
+        ralphSessionId?: string;
+        aiSettings?: {
+            provider?: string;
+            model?: string;
+            reasoningEffort?: string;
+            effortTier?: string;
+            autoProviderRouting?: boolean;
+        };
+        skillNames?: string[];
+        prUrl?: string;
+    }>;
     tags?: string[];
     githubMirror?: WorkItemGitHubMirrorMetadata;
     azureBoardsMirror?: WorkItemAzureBoardsMirrorMetadata;
@@ -820,23 +868,31 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
 
     const effectiveType = item.type ?? 'work-item';
     const isContainer = ['epic', 'feature', 'pbi'].includes(effectiveType);
-    const statusCfg = STATUS_LABELS[item.status] || STATUS_LABELS.created;
-    const canExecute = !isContainer && item.status === 'readyToExecute';
-    const canEditPlan = !isContainer && ['created', 'planning', 'readyToExecute'].includes(item.status);
-    const isAiDone = !isContainer && item.status === 'aiDone';
-    const validNextStatuses = VALID_TRANSITIONS[item.status] ?? [];
     const hierarchyEnabled = isWorkItemsHierarchyEnabled();
     const workflowEnabled = isWorkItemsWorkflowEnabled();
     const isLocalOnlyWorkflowItem = (effectiveType === 'work-item' || effectiveType === 'goal')
         && (!item.tracker || item.tracker.kind === 'local-only')
         && !item.githubMirror
         && !item.azureBoardsMirror;
+    const workflowCommandCenter = workflowEnabled && isLocalOnlyWorkflowItem;
+    const statusCfg = statusConfigFor(item.status, workflowCommandCenter, effectiveType);
+    const canExecute = !isContainer && item.status === 'readyToExecute';
+    const canEditPlan = !isContainer && ['created', 'planning', 'readyToExecute'].includes(item.status);
+    const isAiDone = !isContainer && item.status === 'aiDone';
+    const validNextStatuses = VALID_TRANSITIONS[item.status] ?? [];
     const isLocalOnlyWorkflowWorkItem = effectiveType === 'work-item' && isLocalOnlyWorkflowItem;
     const canUseGoalGrilling = workflowEnabled && effectiveType === 'goal' && isLocalOnlyWorkflowItem;
     const canDraftWithAi = workflowEnabled && aiAuthoringEnabled && isLocalOnlyWorkflowWorkItem;
     const canUseVersionWorkflowActions = workflowEnabled && isLocalOnlyWorkflowItem;
     const canSelectExecutionMode = workflowEnabled && isLocalOnlyWorkflowItem;
     const defaultExecutionMode = workflowEnabled && effectiveType === 'goal' && isLocalOnlyWorkflowItem ? 'ralph' : 'one-shot';
+    const latestReviewExecution = item.executionHistory
+        ?.map((exec, index) => ({ exec, index }))
+        .filter(({ exec }) => exec.status === 'completed' && !isCommentResolveExecution(exec))
+        .at(-1);
+    const latestReviewChange = latestReviewExecution
+        ? item.changes?.find(change => change.taskId === latestReviewExecution.exec.taskId)
+        : undefined;
 
     const typePrefix = effectiveType === 'epic' ? 'E'
         : effectiveType === 'feature' ? 'F'
@@ -950,7 +1006,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     >
                         <option value={item.status}>{statusCfg.label}</option>
                         {validNextStatuses.map(s => (
-                            <option key={s} value={s}>{STATUS_LABELS[s]?.label ?? s}</option>
+                            <option key={s} value={s}>{statusConfigFor(s, workflowCommandCenter, effectiveType).label}</option>
                         ))}
                     </select>
                     <WorkItemRemoteMirrorBadge
@@ -1292,10 +1348,12 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                 </article>
 
 
-                {/* AI Review section (aiDone only) */}
+                {/* Review section (aiDone only) */}
                 {isAiDone && (
                     <section className="bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800 rounded-lg p-3" data-testid="work-item-review-section">
-                        <h3 className="text-xs font-medium text-purple-700 dark:text-purple-400 uppercase mb-2">🔄 AI Done — Review Required</h3>
+                        <h3 className="text-xs font-medium text-purple-700 dark:text-purple-400 uppercase mb-2">
+                            🔄 {workflowCommandCenter ? 'Review Required' : 'AI Done — Review Required'}
+                        </h3>
                         {item.executionHistory && item.executionHistory.length > 0 && (
                             <div className="text-xs text-[#606060] dark:text-[#aaa] mb-2">
                                 Run #{item.executionHistory.length}
@@ -1303,6 +1361,36 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                     <a href={`#process/${item.processId}`} className="ml-2 text-[#0078d4] hover:underline">
                                         View session →
                                     </a>
+                                )}
+                            </div>
+                        )}
+                        {workflowCommandCenter && latestReviewExecution && (
+                            <div className="mb-3 rounded-md border border-purple-200 bg-white/70 p-2 text-[11px] text-[#3c3c3c] dark:border-purple-800 dark:bg-[#1e1e1e]/70 dark:text-[#cccccc]" data-testid="work-item-review-run-summary">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                    <span className="font-semibold">Latest run #{latestReviewExecution.index + 1}</span>
+                                    {latestReviewExecution.exec.title && <span>{latestReviewExecution.exec.title}</span>}
+                                    {latestReviewExecution.exec.planVersion !== undefined && (
+                                        <span className="rounded-full border border-purple-200 bg-purple-50 px-1.5 py-px text-[10px] text-purple-700 dark:border-purple-700 dark:bg-purple-900/30 dark:text-purple-200">
+                                            v{latestReviewExecution.exec.planVersion}
+                                        </span>
+                                    )}
+                                    {formatExecutionModeLabel(latestReviewExecution.exec.executionMode) && (
+                                        <span className="rounded-full border border-[#d0d7de] bg-[#f6f8fa] px-1.5 py-px text-[10px] text-[#656d76] dark:border-[#555] dark:bg-transparent dark:text-[#999]">
+                                            {formatExecutionModeLabel(latestReviewExecution.exec.executionMode)}
+                                        </span>
+                                    )}
+                                    <span className="text-[#656d76] dark:text-[#999]">
+                                        {latestReviewChange?.commits.length ?? 0} commit{(latestReviewChange?.commits.length ?? 0) === 1 ? '' : 's'}
+                                    </span>
+                                </div>
+                                {latestReviewChange && latestReviewChange.commits.length > 0 && (
+                                    <div className="mt-1 flex flex-wrap gap-1">
+                                        {latestReviewChange.commits.map(commit => (
+                                            <code key={commit.sha} className="rounded bg-purple-100 px-1 py-px text-[10px] text-purple-800 dark:bg-purple-900/40 dark:text-purple-200">
+                                                {commit.sha.slice(0, 7)}
+                                            </code>
+                                        ))}
+                                    </div>
                                 )}
                             </div>
                         )}
@@ -1348,7 +1436,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                 <span className="text-base select-none" aria-hidden="true">✅</span>
                                 <div className="flex-1 min-w-0">
                                     <div className="text-xs font-medium text-[#3c3c3c] dark:text-[#cccccc]">
-                                        AI Completed — Running Session
+                                        {workflowCommandCenter ? 'Ready for Review — Execution Session' : 'AI Completed — Running Session'}
                                     </div>
                                     <div className="text-[10px] text-[#848484] truncate" title={item.taskId}>
                                         Task: {item.taskId}
@@ -1395,6 +1483,17 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                 const matchingChange = item.changes?.find(c => c.taskId === exec.taskId);
                                 const commits = matchingChange?.commits ?? [];
                                 const execOpenCommentCount = commits.reduce((sum, c) => sum + (commentTotals.get(c.sha)?.open ?? 0), 0);
+                                const executionModeLabel = formatExecutionModeLabel(exec.executionMode);
+                                const metadataChips: Array<{ key: string; label: string; title?: string }> = [];
+                                if (exec.planVersion !== undefined) metadataChips.push({ key: 'version', label: `Version v${exec.planVersion}` });
+                                if (executionModeLabel) metadataChips.push({ key: 'mode', label: executionModeLabel });
+                                if (exec.ralphSessionId) metadataChips.push({ key: 'ralph', label: `Ralph ${exec.ralphSessionId}`, title: exec.ralphSessionId });
+                                if (exec.aiSettings?.autoProviderRouting) metadataChips.push({ key: 'auto-provider', label: 'Auto provider' });
+                                if (exec.aiSettings?.provider) metadataChips.push({ key: 'provider', label: `Provider ${formatProviderLabel(exec.aiSettings.provider)}` });
+                                if (exec.aiSettings?.model) metadataChips.push({ key: 'model', label: `Model ${exec.aiSettings.model}`, title: exec.aiSettings.model });
+                                if (exec.aiSettings?.reasoningEffort) metadataChips.push({ key: 'effort', label: `Effort ${exec.aiSettings.reasoningEffort}` });
+                                if (exec.aiSettings?.effortTier) metadataChips.push({ key: 'tier', label: `Tier ${exec.aiSettings.effortTier}` });
+                                if (exec.skillNames?.length) metadataChips.push({ key: 'skills', label: `Skills ${exec.skillNames.join(', ')}`, title: exec.skillNames.join(', ') });
                                 return (
                                     <div key={i} className="rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] text-xs" data-testid={`exec-entry-${i}`}>
                                         <div className="flex items-center gap-2 px-3 py-2">
@@ -1413,6 +1512,19 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                             <span className="text-[#848484]">{formatRelativeTime(exec.startedAt)}</span>
                                             {exec.completedAt && <span className="text-[#848484]">· {formatRelativeTime(exec.completedAt)}</span>}
                                         </div>
+                                        {metadataChips.length > 0 && (
+                                            <div className="px-3 pb-1.5 flex flex-wrap gap-1.5" data-testid={`exec-metadata-${i}`}>
+                                                {metadataChips.map(chip => (
+                                                    <span
+                                                        key={chip.key}
+                                                        title={chip.title}
+                                                        className="inline-flex max-w-full items-center rounded-full border border-[#d0d7de] bg-white px-1.5 py-px text-[10px] text-[#656d76] dark:border-[#555] dark:bg-transparent dark:text-[#999]"
+                                                    >
+                                                        <span className="truncate">{chip.label}</span>
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
                                         <div className="px-3 pb-1.5 flex items-center gap-2 flex-wrap">
                                             {onViewTask ? (
                                                 <button onClick={() => onViewTask(exec.taskId)} className="text-[#0078d4] hover:underline bg-transparent border-none cursor-pointer p-0 text-[10px]" data-testid={`exec-view-session-${i}`}>View Session →</button>
