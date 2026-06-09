@@ -69,5 +69,5 @@ all have their own `references/*.md`.
   to `'ask'` if missing.
 - **Direct package builds** use `scripts/prebuild.mjs` to build
   `@plusplusoneplusplus/coc-client`, `@plusplusoneplusplus/coc-workflow`, and `@plusplusoneplusplus/coc-memory`
-  before `tsc` and to generate
+  before `tsc`, clean `dist` before emitting, and generate
   `src/server/core/build-info.ts`; keep this script cross-platform.
