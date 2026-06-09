@@ -152,6 +152,20 @@ describe('Work Item Plan Routes', () => {
             expect(res.status).toBe(400);
         });
 
+        it('rejects blank content without creating a plan version', async () => {
+            const res = await request('PUT', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/plan`, {
+                content: '   \n\t  ',
+                summary: 'Blank content',
+            });
+
+            expect(res.status).toBe(400);
+            expect(await store.getPlanVersions(workItemId)).toEqual([]);
+
+            const detail = await request('GET', `/api/workspaces/${REPO_ID}/work-items/${workItemId}`);
+            expect(detail.status).toBe(200);
+            expect(detail.body.plan).toBeUndefined();
+        });
+
         it('returns 404 for non-existent work item', async () => {
             const res = await request('PUT', `/api/workspaces/${REPO_ID}/work-items/nonexistent/plan`, {
                 content: 'Plan',

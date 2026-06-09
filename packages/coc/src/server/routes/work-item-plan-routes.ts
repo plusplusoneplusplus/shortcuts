@@ -78,7 +78,7 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
                 return handleAPIError(res, badRequest('Invalid JSON body'));
             }
 
-            if (!body.content || typeof body.content !== 'string') {
+            if (typeof body.content !== 'string' || !body.content.trim()) {
                 return handleAPIError(res, badRequest('Missing required field: content'));
             }
 

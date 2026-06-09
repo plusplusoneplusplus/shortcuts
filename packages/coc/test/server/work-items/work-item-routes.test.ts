@@ -666,6 +666,25 @@ describe('Work Item Routes', () => {
             });
         });
 
+        it('rejects blank plan content in a mixed PATCH without partial updates', async () => {
+            const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${itemId}`, {
+                title: 'Should not change',
+                plan: {
+                    content: '   \n\t  ',
+                    resolvedBy: 'user',
+                },
+            });
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('plan.content');
+            expect(await store.getPlanVersions(itemId)).toEqual([]);
+
+            const detail = await request('GET', `/api/workspaces/${REPO_ID}/work-items/${itemId}`);
+            expect(detail.status).toBe(200);
+            expect(detail.body.title).toBe('Patchable item');
+            expect(detail.body.plan).toBeUndefined();
+        });
+
         it('does not create a plan version when a mixed PATCH fails validation', async () => {
             const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${itemId}`, {
                 plan: {

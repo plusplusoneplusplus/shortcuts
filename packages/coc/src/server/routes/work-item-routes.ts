@@ -1114,6 +1114,9 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 if (!isObject(body.plan) || typeof body.plan.content !== 'string') {
                     return handleAPIError(res, badRequest('plan.content must be a string'));
                 }
+                if (!body.plan.content.trim()) {
+                    return handleAPIError(res, badRequest('plan.content must contain non-whitespace content'));
+                }
                 const now = new Date().toISOString();
                 const newVersion = (current.plan?.version ?? 0) + 1;
                 const resolvedBy = body.plan.resolvedBy === 'ai' ? 'ai' : 'user';
