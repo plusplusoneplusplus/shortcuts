@@ -1201,6 +1201,14 @@ export function AdminPanel() {
 
     const sources: Record<string, string> = config?.sources ?? {};
     const resolved = config?.resolved ?? {};
+    const defaults: Record<string, unknown> = config?.defaults ?? {};
+
+    const isDefaultValue = useCallback((key: string): boolean | undefined => {
+        if (!config?.defaults) return undefined;
+        const current = resolveNestedValue(resolved, key);
+        const def = defaults[key];
+        return current === def;
+    }, [config?.defaults, resolved, defaults]);
 
     // Servers row is gated by the dashboard runtime config, same source the
     // legacy topbar dropdown consulted. It is independent of the editable
@@ -1478,7 +1486,7 @@ export function AdminPanel() {
                                                             value={configForm.model}
                                                             onChange={e => setConfigForm(f => ({ ...f, model: e.target.value }))}
                                                         />
-                                                        <SourceBadge source={sources['model']} />
+                                                        <SourceBadge source={sources['model']} isDefault={isDefaultValue('model')} />
                                                     </AdminRow>
                                                     <AdminRow
                                                         name="Parallelism"
@@ -1492,7 +1500,7 @@ export function AdminPanel() {
                                                             value={configForm.parallel}
                                                             onChange={e => setConfigForm(f => ({ ...f, parallel: e.target.value }))}
                                                         />
-                                                        <SourceBadge source={sources['parallel']} />
+                                                        <SourceBadge source={sources['parallel']} isDefault={isDefaultValue('parallel')} />
                                                     </AdminRow>
                                                     <AdminRow
                                                         name="Timeout"
@@ -1509,7 +1517,7 @@ export function AdminPanel() {
                                                                 onChange={e => setConfigForm(f => ({ ...f, timeout: e.target.value }))}
                                                             />
                                                         </AdminInputSuffix>
-                                                        <SourceBadge source={sources['timeout']} />
+                                                        <SourceBadge source={sources['timeout']} isDefault={isDefaultValue('timeout')} />
                                                     </AdminRow>
                                                     <AdminRow
                                                         name="Output"
@@ -1523,7 +1531,7 @@ export function AdminPanel() {
                                                         >
                                                             {VALID_OUTPUT_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
                                                         </select>
-                                                        <SourceBadge source={sources['output']} />
+                                                        <SourceBadge source={sources['output']} isDefault={isDefaultValue('output')} />
                                                     </AdminRow>
                                                 </SettingsCard>
                                             )}
@@ -1543,7 +1551,7 @@ export function AdminPanel() {
                                                         name="Follow-up suggestions"
                                                         hint="Generate clickable next-question chips after each response."
                                                     >
-                                                        <SourceBadge source={sources['chat.followUpSuggestions.enabled']} />
+                                                        <SourceBadge source={sources['chat.followUpSuggestions.enabled']} isDefault={isDefaultValue('chat.followUpSuggestions.enabled')} />
                                                         <AdminToggle
                                                             checked={chatFollowUpEnabled}
                                                             onChange={setChatFollowUpEnabled}
@@ -1563,13 +1571,13 @@ export function AdminPanel() {
                                                             onChange={e => setChatFollowUpCount(e.target.value)}
                                                             data-testid="input-chat-followup-count"
                                                         />
-                                                        <SourceBadge source={sources['chat.followUpSuggestions.count']} />
+                                                        <SourceBadge source={sources['chat.followUpSuggestions.count']} isDefault={isDefaultValue('chat.followUpSuggestions.count')} />
                                                     </AdminRow>
                                                     <AdminRow
                                                         name="Ask user (interactive questions)"
                                                         hint="Allow the AI to pause and ask the user a question mid-task instead of guessing."
                                                     >
-                                                        <SourceBadge source={sources['chat.askUser.enabled']} />
+                                                        <SourceBadge source={sources['chat.askUser.enabled']} isDefault={isDefaultValue('chat.askUser.enabled')} />
                                                         <AdminToggle
                                                             checked={chatAskUserEnabled}
                                                             onChange={setChatAskUserEnabled}
@@ -1580,7 +1588,7 @@ export function AdminPanel() {
                                                         name="Intent announcements"
                                                         hint="Show the report_intent badge above each tool call (“I'm about to read X…”)."
                                                     >
-                                                        <SourceBadge source={sources['showReportIntent']} />
+                                                        <SourceBadge source={sources['showReportIntent']} isDefault={isDefaultValue('showReportIntent')} />
                                                         <AdminToggle
                                                             checked={showReportIntent}
                                                             onChange={setShowReportIntent}
@@ -1591,7 +1599,7 @@ export function AdminPanel() {
                                                         name="Tool call verbosity"
                                                         hint="How much detail to show for each tool invocation in the transcript."
                                                     >
-                                                        <SourceBadge source={sources['toolCompactness']} />
+                                                        <SourceBadge source={sources['toolCompactness']} isDefault={isDefaultValue('toolCompactness')} />
                                                         <AdminSeg<0 | 1 | 2 | 3>
                                                             value={toolCompactness}
                                                             onChange={setToolCompactness}
@@ -1687,7 +1695,7 @@ export function AdminPanel() {
                                                         name="Task card density"
                                                         hint="Density of task cards in the activity tab."
                                                     >
-                                                        <SourceBadge source={sources['taskCardDensity']} />
+                                                        <SourceBadge source={sources['taskCardDensity']} isDefault={isDefaultValue('taskCardDensity')} />
                                                         <AdminSeg<'compact' | 'dense'>
                                                             value={taskCardDensity}
                                                             onChange={setTaskCardDensity}
@@ -1702,7 +1710,7 @@ export function AdminPanel() {
                                                         name="History grouping"
                                                         hint="Group related plan and autopilot tasks together in the history list."
                                                     >
-                                                        <SourceBadge source={sources['historyGrouping']} />
+                                                        <SourceBadge source={sources['historyGrouping']} isDefault={isDefaultValue('historyGrouping')} />
                                                         <AdminToggle
                                                             checked={historyGrouping}
                                                             onChange={setHistoryGrouping}
@@ -1727,24 +1735,24 @@ export function AdminPanel() {
                                                     <div className="ar-feature-group" data-testid="feature-group-dashboard">
                                                         <div className="ar-feature-group-head">Dashboard Modules</div>
                                                         <AdminRow name="Notes" hint="Markdown notebooks for creating and editing notes.">
-                                                            <SourceBadge source={sources['notes.enabled']} />
+                                                            <SourceBadge source={sources['notes.enabled']} isDefault={isDefaultValue('notes.enabled')} />
                                                             <AdminToggle checked={notesEnabled} onChange={setNotesEnabled} data-testid="toggle-notes-enabled" />
                                                         </AdminRow>
                                                         <AdminRow name="My Work" hint="Personal landing page with action items and weekly summaries.">
-                                                            <SourceBadge source={sources['myWork.enabled']} />
+                                                            <SourceBadge source={sources['myWork.enabled']} isDefault={isDefaultValue('myWork.enabled')} />
                                                             <AdminToggle checked={myWorkEnabled} onChange={setMyWorkEnabled} data-testid="toggle-mywork-enabled" />
                                                         </AdminRow>
                                                         <AdminRow name="My Life" hint="Personal page with goals, journal, and life admin.">
-                                                            <SourceBadge source={sources['myLife.enabled']} />
+                                                            <SourceBadge source={sources['myLife.enabled']} isDefault={isDefaultValue('myLife.enabled')} />
                                                             <AdminToggle checked={myLifeEnabled} onChange={setMyLifeEnabled} data-testid="toggle-mylife-enabled" />
                                                         </AdminRow>
                                                         <AdminRow name="Scratchpad panel" hint="Bottom-split note editor inside the chat detail view.">
-                                                            <SourceBadge source={sources['scratchpad.enabled']} />
+                                                            <SourceBadge source={sources['scratchpad.enabled']} isDefault={isDefaultValue('scratchpad.enabled')} />
                                                             <AdminToggle checked={scratchpadEnabled} onChange={setScratchpadEnabled} data-testid="toggle-scratchpad-enabled" />
                                                         </AdminRow>
                                                         {scratchpadEnabled && (
                                                             <AdminRow name="Layout" hint="Split direction for conversation and scratchpad.">
-                                                                <SourceBadge source={sources['scratchpad.layout']} />
+                                                                <SourceBadge source={sources['scratchpad.layout']} isDefault={isDefaultValue('scratchpad.layout')} />
                                                                 <select
                                                                     className="ar-select ar-med"
                                                                     value={scratchpadLayout}
@@ -1762,25 +1770,25 @@ export function AdminPanel() {
                                                     <div className="ar-feature-group" data-testid="feature-group-dev-tools">
                                                         <div className="ar-feature-group-head">Development Tools</div>
                                                         <AdminRow name={<>Terminal <span className="ar-badge ar-badge-warning">Restart</span></>} hint="Web terminal for shell access to the server machine. Toggling requires a server restart.">
-                                                            <SourceBadge source={sources['terminal.enabled']} />
+                                                            <SourceBadge source={sources['terminal.enabled']} isDefault={isDefaultValue('terminal.enabled')} />
                                                             <AdminToggle checked={terminalEnabled} onChange={setTerminalEnabled} data-testid="toggle-terminal-enabled" />
                                                         </AdminRow>
                                                         <AdminRow name="Workflows Tab" hint="YAML workflow runner tab in repo view.">
-                                                            <SourceBadge source={sources['workflows.enabled']} />
+                                                            <SourceBadge source={sources['workflows.enabled']} isDefault={isDefaultValue('workflows.enabled')} />
                                                             <AdminToggle checked={workflowsEnabled} onChange={setWorkflowsEnabled} data-testid="toggle-workflows-enabled" />
                                                         </AdminRow>
                                                         <AdminRow name="Pull Requests Tab" hint="Pull request list tab in repo view.">
-                                                            <SourceBadge source={sources['pullRequests.enabled']} />
+                                                            <SourceBadge source={sources['pullRequests.enabled']} isDefault={isDefaultValue('pullRequests.enabled')} />
                                                             <AdminToggle checked={pullRequestsEnabled} onChange={setPullRequestsEnabled} data-testid="toggle-pull-requests-enabled" />
                                                         </AdminRow>
                                                         {pullRequestsEnabled && (
                                                             <AdminRow name="PR Review Suggestions" hint="AI-ranked suggestions for which open PRs to review, based on your review history. Adds a 'For You' filter pill to the PR queue.">
-                                                                <SourceBadge source={sources['pullRequests.suggestions']} />
+                                                                <SourceBadge source={sources['pullRequests.suggestions']} isDefault={isDefaultValue('pullRequests.suggestions')} />
                                                                 <AdminToggle checked={pullRequestsSuggestionsEnabled} onChange={setPullRequestsSuggestionsEnabled} data-testid="toggle-pull-requests-suggestions-enabled" />
                                                             </AdminRow>
                                                         )}
                                                         <AdminRow name="Servers" hint="Multi-server connection manager (devtunnel).">
-                                                            <SourceBadge source={sources['servers.enabled']} />
+                                                            <SourceBadge source={sources['servers.enabled']} isDefault={isDefaultValue('servers.enabled')} />
                                                             <AdminToggle checked={serversEnabled} onChange={setServersEnabled} data-testid="toggle-servers-enabled" />
                                                         </AdminRow>
                                                     </div>
@@ -1792,21 +1800,21 @@ export function AdminPanel() {
                                                             name="Work Items Hierarchy Board"
                                                             hint="Extends the Work Items tab into an Epic → Feature → PBI → Work Item / Bug hierarchy board. Enabled by default."
                                                         >
-                                                            <SourceBadge source={sources['workItems.hierarchy.enabled']} />
+                                                            <SourceBadge source={sources['workItems.hierarchy.enabled']} isDefault={isDefaultValue('workItems.hierarchy.enabled')} />
                                                             <AdminToggle checked={workItemsHierarchyEnabled} onChange={setWorkItemsHierarchyEnabled} data-testid="toggle-work-items-hierarchy-enabled" />
                                                         </AdminRow>
                                                         <AdminRow
                                                             name={<>Remote Work Items <span className="ar-badge ar-badge-accent">Preview</span></>}
                                                             hint="Enables remote provider integration for hierarchy mode: provider status, imports, save-to-provider updates, and background polling. Requires the hierarchy board and never stores provider tokens."
                                                         >
-                                                            <SourceBadge source={sources['workItems.sync.enabled']} />
+                                                            <SourceBadge source={sources['workItems.sync.enabled']} isDefault={isDefaultValue('workItems.sync.enabled')} />
                                                             <AdminToggle checked={workItemsSyncEnabled} onChange={setWorkItemsSyncEnabled} data-testid="toggle-work-items-sync-enabled" />
                                                         </AdminRow>
                                                         <AdminRow
                                                             name={<>Work Items AI Authoring <span className="ar-badge ar-badge-accent">Experimental</span></>}
                                                             hint="Adds AI-assisted work item creation and improvement to the Work Items tab. Disabled by default."
                                                         >
-                                                            <SourceBadge source={sources['workItems.aiAuthoring.enabled']} />
+                                                            <SourceBadge source={sources['workItems.aiAuthoring.enabled']} isDefault={isDefaultValue('workItems.aiAuthoring.enabled')} />
                                                             <AdminToggle checked={workItemsAiAuthoringEnabled} onChange={setWorkItemsAiAuthoringEnabled} data-testid="toggle-work-items-ai-authoring-enabled" />
                                                         </AdminRow>
                                                     </div>
@@ -1818,28 +1826,28 @@ export function AdminPanel() {
                                                             name={<>Ralph Mode <span className="ar-badge ar-badge-accent">Experimental</span></>}
                                                             hint="Autonomous iterative coding loop — stateless agents with fresh context per iteration."
                                                         >
-                                                            <SourceBadge source={sources['ralph.enabled']} />
+                                                            <SourceBadge source={sources['ralph.enabled']} isDefault={isDefaultValue('ralph.enabled')} />
                                                             <AdminToggle checked={ralphEnabled} onChange={setRalphEnabled} data-testid="toggle-ralph-enabled" />
                                                         </AdminRow>
                                                         <AdminRow
                                                             name={<>For Each Mode <span className="ar-badge ar-badge-accent">Experimental</span></>}
                                                             hint="Generate a reviewed item plan from New Chat, then run each item as a separate child chat. Disabled by default."
                                                         >
-                                                            <SourceBadge source={sources['forEach.enabled']} />
+                                                            <SourceBadge source={sources['forEach.enabled']} isDefault={isDefaultValue('forEach.enabled')} />
                                                             <AdminToggle checked={forEachEnabled} onChange={setForEachEnabled} data-testid="toggle-for-each-enabled" />
                                                         </AdminRow>
                                                         <AdminRow
                                                             name={<>Map Reduce Mode <span className="ar-badge ar-badge-accent">Experimental</span></>}
                                                             hint="Generate a reviewed map plan from New Chat, run items in parallel, then reduce outputs into one result. Disabled by default."
                                                         >
-                                                            <SourceBadge source={sources['mapReduce.enabled']} />
+                                                            <SourceBadge source={sources['mapReduce.enabled']} isDefault={isDefaultValue('mapReduce.enabled')} />
                                                             <AdminToggle checked={mapReduceEnabled} onChange={setMapReduceEnabled} data-testid="toggle-map-reduce-enabled" />
                                                         </AdminRow>
                                                         <AdminRow
                                                             name={<>Effort Tiers <span className="ar-badge ar-badge-accent">Experimental</span></>}
                                                             hint="Replace the model picker + reasoning-effort pill in the chat composer with a single Low / Medium / High effort selector. Configure tier mappings per provider on the AI Provider page. Disabled by default."
                                                         >
-                                                            <SourceBadge source={sources['effortLevels.enabled']} />
+                                                            <SourceBadge source={sources['effortLevels.enabled']} isDefault={isDefaultValue('effortLevels.enabled')} />
                                                             <AdminToggle checked={effortLevelsEnabled} onChange={setEffortLevelsEnabled} data-testid="toggle-effort-levels-enabled" />
                                                         </AdminRow>
                                                     </div>
@@ -1851,35 +1859,35 @@ export function AdminPanel() {
                                                             name="Focused Diff"
                                                             hint="AI-powered hunk classification for PR diffs. Highlights logic changes and dims mechanical edits."
                                                         >
-                                                            <SourceBadge source={sources['features.focusedDiff']} />
+                                                            <SourceBadge source={sources['features.focusedDiff']} isDefault={isDefaultValue('features.focusedDiff')} />
                                                             <AdminToggle checked={focusedDiffEnabled} onChange={setFocusedDiffEnabled} data-testid="toggle-focused-diff-enabled" />
                                                         </AdminRow>
                                                         <AdminRow
                                                             name={<>Cross-clone cherry-pick <span className="ar-badge ar-badge-accent">Experimental</span></>}
                                                             hint="Adds a Git commit context-menu action that transfers one commit to another registered clone using patch export/apply. Enabled by default."
                                                         >
-                                                            <SourceBadge source={sources['features.gitCrossCloneCherryPick']} />
+                                                            <SourceBadge source={sources['features.gitCrossCloneCherryPick']} isDefault={isDefaultValue('features.gitCrossCloneCherryPick')} />
                                                             <AdminToggle checked={gitCrossCloneCherryPickEnabled} onChange={setGitCrossCloneCherryPickEnabled} data-testid="toggle-git-cross-clone-cherry-pick-enabled" />
                                                         </AdminRow>
                                                         <AdminRow
                                                             name={<>Session context attachments <span className="ar-badge ar-badge-accent">Experimental</span></>}
                                                             hint="Allow dragging existing same-workspace chat sessions into chat composers as pointer-only context. Disabled by default."
                                                         >
-                                                            <SourceBadge source={sources['features.sessionContextAttachments']} />
+                                                            <SourceBadge source={sources['features.sessionContextAttachments']} isDefault={isDefaultValue('features.sessionContextAttachments')} />
                                                             <AdminToggle checked={sessionContextAttachmentsEnabled} onChange={setSessionContextAttachmentsEnabled} data-testid="toggle-session-context-attachments-enabled" />
                                                         </AdminRow>
                                                         <AdminRow
                                                             name={<>Review chat lens <span className="ar-badge ar-badge-accent">Experimental</span></>}
                                                             hint="Open unpinned commit and pull-request review chat as a desktop bottom-right lens instead of the side panel or drawer. Disabled by default."
                                                         >
-                                                            <SourceBadge source={sources['features.commitChatLens']} />
+                                                            <SourceBadge source={sources['features.commitChatLens']} isDefault={isDefaultValue('features.commitChatLens')} />
                                                             <AdminToggle checked={commitChatLensEnabled} onChange={setCommitChatLensEnabled} data-testid="toggle-commit-chat-lens-enabled" />
                                                         </AdminRow>
                                                         <AdminRow
                                                             name="Excalidraw diagrams"
                                                             hint="AI can generate and read Excalidraw diagrams during conversations. Disabled by default."
                                                         >
-                                                            <SourceBadge source={sources['excalidraw.enabled']} />
+                                                            <SourceBadge source={sources['excalidraw.enabled']} isDefault={isDefaultValue('excalidraw.enabled')} />
                                                             <AdminToggle checked={excalidrawEnabled} onChange={setExcalidrawEnabled} data-testid="toggle-excalidraw-enabled" />
                                                         </AdminRow>
                                                     </div>
@@ -1891,14 +1899,14 @@ export function AdminPanel() {
                                                             name={<>Loops &amp; Wakeups <span className="ar-badge ar-badge-warning">Restart</span></>}
                                                             hint="Recurring follow-up loops and one-shot scheduleWakeup tool. Disabled by default — toggling requires a server restart to (de)wire infrastructure."
                                                         >
-                                                            <SourceBadge source={sources['loops.enabled']} />
+                                                            <SourceBadge source={sources['loops.enabled']} isDefault={isDefaultValue('loops.enabled')} />
                                                             <AdminToggle checked={loopsEnabled} onChange={setLoopsEnabled} data-testid="toggle-loops-enabled" />
                                                         </AdminRow>
                                                         <AdminRow
                                                             name={<>MCP OAuth <span className="ar-badge ar-badge-warning">Restart</span></>}
                                                             hint="Handle OAuth flows for MCP servers that require authentication. Disabled by default — toggling requires a server restart."
                                                         >
-                                                            <SourceBadge source={sources['mcpOauth.enabled']} />
+                                                            <SourceBadge source={sources['mcpOauth.enabled']} isDefault={isDefaultValue('mcpOauth.enabled')} />
                                                             <AdminToggle checked={mcpOauthEnabled} onChange={setMcpOauthEnabled} data-testid="toggle-mcp-oauth-enabled" />
                                                         </AdminRow>
                                                         {mcpOauthEnabled && (
@@ -1906,7 +1914,7 @@ export function AdminPanel() {
                                                                 name={<>MCP OAuth auto-refresh <span className="ar-badge ar-badge-warning">Restart</span></>}
                                                                 hint="Periodically dedup ~/.copilot/mcp-oauth-config/ and refresh AAD-backed tokens before they expire so HTTP MCP servers don't re-prompt for auth. Disabled by default — toggling requires a server restart."
                                                             >
-                                                                <SourceBadge source={sources['mcpOauth.autoRefresh.enabled']} />
+                                                                <SourceBadge source={sources['mcpOauth.autoRefresh.enabled']} isDefault={isDefaultValue('mcpOauth.autoRefresh.enabled')} />
                                                                 <AdminToggle checked={mcpOauthAutoRefreshEnabled} onChange={setMcpOauthAutoRefreshEnabled} data-testid="toggle-mcp-oauth-auto-refresh-enabled" />
                                                             </AdminRow>
                                                         )}
@@ -1914,7 +1922,7 @@ export function AdminPanel() {
                                                             name="Vim-style navigation"
                                                             hint="Enable hjkl pane navigation, j/k to step through chats and messages, gg/G to jump, i to focus the input, Esc to blur. Disabled by default."
                                                         >
-                                                            <SourceBadge source={sources['vimNavigation.enabled']} />
+                                                            <SourceBadge source={sources['vimNavigation.enabled']} isDefault={isDefaultValue('vimNavigation.enabled')} />
                                                             <AdminToggle checked={vimNavigationEnabled} onChange={setVimNavigationEnabled} data-testid="toggle-vim-navigation-enabled" />
                                                         </AdminRow>
                                                     </div>
@@ -1963,15 +1971,15 @@ export function AdminPanel() {
                                                 >
                                                     <AdminRow name="Approve Permissions" hint={<>Resolved value from your environment.</>}>
                                                         <span className="ar-mono ar-muted" style={{ fontSize: 12.5 }}>{String(resolved.approvePermissions ?? '—')}</span>
-                                                        <SourceBadge source={sources['approvePermissions']} />
+                                                        <SourceBadge source={sources['approvePermissions']} isDefault={isDefaultValue('approvePermissions')} />
                                                     </AdminRow>
                                                     <AdminRow name="MCP Config" hint="Path to the MCP servers config loaded at startup.">
                                                         <span className="ar-mono ar-muted" style={{ fontSize: 12.5 }}>{String(resolved.mcpConfig ?? '—')}</span>
-                                                        <SourceBadge source={sources['mcpConfig']} />
+                                                        <SourceBadge source={sources['mcpConfig']} isDefault={isDefaultValue('mcpConfig')} />
                                                     </AdminRow>
                                                     <AdminRow name="Persist" hint="Whether sessions are persisted to disk.">
                                                         <span className="ar-mono ar-muted" style={{ fontSize: 12.5 }}>{String(resolved.persist ?? '—')}</span>
-                                                        <SourceBadge source={sources['persist']} />
+                                                        <SourceBadge source={sources['persist']} isDefault={isDefaultValue('persist')} />
                                                     </AdminRow>
                                                     {SHOW_WELCOME_TUTORIAL && (
                                                         <AdminRow
@@ -2164,7 +2172,7 @@ export function AdminPanel() {
                                                     onKeyDown={e => { if (e.key === 'Enter') handleSaveServerName(); }}
                                                     className="ar-input ar-long ar-mono"
                                                 />
-                                                <SourceBadge source={sources['serve.serverName']} />
+                                                <SourceBadge source={sources['serve.serverName']} isDefault={isDefaultValue('serve.serverName')} />
                                                 <button id="admin-server-name-save" type="button" className="ar-btn ar-btn-primary ar-btn-sm" onClick={handleSaveServerName}>Save</button>
                                             </AdminRow>
                                         </div>
@@ -2281,14 +2289,30 @@ export function AdminPanel() {
     );
 }
 
-function SourceBadge({ source }: { source?: string }) {
+/** Resolve a dot-notation key against a nested object (e.g. "notes.enabled" -> resolved.notes.enabled). */
+function resolveNestedValue(obj: Record<string, unknown>, key: string): unknown {
+    const segments = key.split('.');
+    let current: unknown = obj;
+    for (const seg of segments) {
+        if (typeof current !== 'object' || current === null) return undefined;
+        current = (current as Record<string, unknown>)[seg];
+    }
+    return current;
+}
+
+function SourceBadge({ source, isDefault }: { source?: string; isDefault?: boolean }) {
     const s = source || 'default';
     const variant =
         s === 'cli' ? 'ar-src-cli' :
             s === 'env' ? 'ar-src-env' :
                 s === 'file' || s === 'config' ? 'ar-src-config' :
                     '';
-    return <span className={`ar-src ${variant}`.trim()} title={`Source: ${s}`}>{s}</span>;
+    const modifiedClass = isDefault === false ? ' ar-src-modified' : '';
+    const label = isDefault === false ? 'modified' : s;
+    const title = isDefault === false
+        ? `Value differs from the built-in default (source: ${s})`
+        : `Source: ${s}`;
+    return <span className={`ar-src ${variant}${modifiedClass}`.trim()} title={title}>{label}</span>;
 }
 
 /* ── Row primitives that produce the new visual without changing behaviour ── */

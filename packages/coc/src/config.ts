@@ -770,6 +770,36 @@ export interface AdminConfigWithSource {
 }
 
 // ============================================================================
+// Default Values
+// ============================================================================
+
+/**
+ * Extract the default value for a dot-notation config key from DEFAULT_CONFIG.
+ * Returns the primitive value at the leaf, or undefined if the path doesn't exist.
+ */
+function getDefaultValueAtPath(key: string): unknown {
+    const segments = key.split('.');
+    let current: unknown = DEFAULT_CONFIG;
+    for (const seg of segments) {
+        if (typeof current !== 'object' || current === null) return undefined;
+        current = (current as Record<string, unknown>)[seg];
+    }
+    return current;
+}
+
+/**
+ * Build a flat map of default values for all tracked config source keys.
+ * Keyed by the same dot-notation used in `sources`.
+ */
+export function getDefaultValues(): Record<ConfigSourceKey, unknown> {
+    const defaults = {} as Record<ConfigSourceKey, unknown>;
+    for (const key of CONFIG_SOURCE_KEYS) {
+        defaults[key] = getDefaultValueAtPath(key);
+    }
+    return defaults;
+}
+
+// ============================================================================
 // Config Resolution
 // ============================================================================
 

@@ -127,6 +127,8 @@ export interface AdminConfigResponse {
   config?: Record<string, unknown>;
   resolved?: AdminResolvedConfig;
   sources?: Record<string, string>;
+  /** Default values for all tracked config keys (dot-notation, same keys as `sources`). */
+  defaults?: Record<string, unknown>;
   revision?: number;
   fieldMetadata?: Record<string, AdminConfigFieldMeta>;
   effects?: AdminConfigChangeEffect[];

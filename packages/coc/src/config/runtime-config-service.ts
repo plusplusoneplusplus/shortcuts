@@ -23,6 +23,7 @@ import {
     getConfigFilePath,
     resolveConfig,
     getResolvedConfigWithSource,
+    getDefaultValues,
 } from '../config';
 import { validateConfigWithSchema } from './schema';
 import { ADMIN_CONFIG_FIELDS } from '../server/admin/admin-config-fields';
@@ -109,6 +110,11 @@ export class RuntimeConfigService {
     /** Config file path used by this service. */
     get configPath(): string {
         return this._configPath;
+    }
+
+    /** Default values for all tracked config keys (static, computed once). */
+    get defaults(): Record<string, unknown> {
+        return getDefaultValues();
     }
 
     /** Return a snapshot object (config + sources + revision). */

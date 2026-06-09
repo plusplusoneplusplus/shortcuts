@@ -25,6 +25,7 @@ import {
     resolveConfig,
     mergeConfig,
     getResolvedConfigWithSource,
+    getDefaultValues,
     writeConfigFile,
     resolveLoggingConfig,
 } from '../src/config';
@@ -1372,6 +1373,53 @@ timeout: 300
 
             expect(result.resolved.toolCompactness).toBe(3);
             expect(result.sources['toolCompactness']).toBe('default');
+        });
+    });
+
+    // ========================================================================
+    // getDefaultValues
+    // ========================================================================
+
+    describe('getDefaultValues', () => {
+        it('should return a value for every tracked config source key', () => {
+            const defaults = getDefaultValues();
+            for (const key of CONFIG_SOURCE_KEYS) {
+                expect(key in defaults).toBe(true);
+            }
+        });
+
+        it('should return correct default for top-level scalar keys', () => {
+            const defaults = getDefaultValues();
+            expect(defaults['parallel']).toBe(DEFAULT_CONFIG.parallel);
+            expect(defaults['output']).toBe(DEFAULT_CONFIG.output);
+            expect(defaults['persist']).toBe(DEFAULT_CONFIG.persist);
+            expect(defaults['showReportIntent']).toBe(DEFAULT_CONFIG.showReportIntent);
+            expect(defaults['toolCompactness']).toBe(DEFAULT_CONFIG.toolCompactness);
+            expect(defaults['defaultProvider']).toBe(DEFAULT_CONFIG.defaultProvider);
+        });
+
+        it('should return correct default for nested boolean feature flags', () => {
+            const defaults = getDefaultValues();
+            expect(defaults['notes.enabled']).toBe(DEFAULT_CONFIG.notes.enabled);
+            expect(defaults['terminal.enabled']).toBe(DEFAULT_CONFIG.terminal.enabled);
+            expect(defaults['workflows.enabled']).toBe(DEFAULT_CONFIG.workflows.enabled);
+            expect(defaults['excalidraw.enabled']).toBe(DEFAULT_CONFIG.excalidraw.enabled);
+            expect(defaults['loops.enabled']).toBe(DEFAULT_CONFIG.loops.enabled);
+            expect(defaults['features.focusedDiff']).toBe(DEFAULT_CONFIG.features.focusedDiff);
+            expect(defaults['features.gitCrossCloneCherryPick']).toBe(DEFAULT_CONFIG.features.gitCrossCloneCherryPick);
+        });
+
+        it('should return correct default for deeply nested keys', () => {
+            const defaults = getDefaultValues();
+            expect(defaults['chat.followUpSuggestions.enabled']).toBe(DEFAULT_CONFIG.chat.followUpSuggestions.enabled);
+            expect(defaults['chat.followUpSuggestions.count']).toBe(DEFAULT_CONFIG.chat.followUpSuggestions.count);
+            expect(defaults['workItems.hierarchy.enabled']).toBe(DEFAULT_CONFIG.workItems.hierarchy.enabled);
+        });
+
+        it('should return undefined for keys with undefined defaults', () => {
+            const defaults = getDefaultValues();
+            expect(defaults['model']).toBe(DEFAULT_CONFIG.model);
+            expect(defaults['timeout']).toBe(DEFAULT_CONFIG.timeout);
         });
     });
 
