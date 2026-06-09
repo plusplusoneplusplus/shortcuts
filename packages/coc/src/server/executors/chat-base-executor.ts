@@ -728,6 +728,40 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 tokenUsage: result.tokenUsage,
                 effectiveModel: result.effectiveModel ?? reasoningSelection.modelId,
             };
+        } catch (err) {
+            const session = this.sessions.get(processId);
+            const partialContent = session?.outputBuffer ?? '';
+            const partialTimeline = session?.timelineBuffer
+                ? mergeConsecutiveContentItems([...session.timelineBuffer])
+                : [];
+            const partialSuggestions = session?.pendingSuggestions;
+            const hasPartial = partialContent.length > 0 || partialTimeline.length > 0;
+
+            if (hasPartial) {
+                const errorMsg = err instanceof Error ? err.message : String(err);
+                try {
+                    await this.store.appendConversationTurn(
+                        processId,
+                        (turnIndex) => ({
+                            role: 'assistant' as const,
+                            content: partialContent || `Error: ${errorMsg}`,
+                            timestamp: new Date(),
+                            turnIndex,
+                            timeline: partialTimeline,
+                            interrupted: true,
+                            interruptionReason: errorMsg,
+                            ...(partialSuggestions ? { suggestions: partialSuggestions } : {}),
+                        }),
+                        { filterStreaming: true },
+                    );
+                } catch (appendErr) {
+                    getLogger().warn(
+                        LogCategory.AI,
+                        `[ChatModeExecutor] Failed to persist interrupted turn for ${processId}: ${appendErr instanceof Error ? appendErr.message : String(appendErr)}`,
+                    );
+                }
+            }
+            throw err;
         } finally {
             if (imageTempDir) { cleanupTempDir(imageTempDir); }
             if (pasteCleanup) { pasteCleanup(); }

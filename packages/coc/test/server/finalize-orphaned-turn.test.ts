@@ -54,6 +54,8 @@ describe('finalizeOrphanedProcess', () => {
         expect(assistantTurns).toHaveLength(1);
         expect(assistantTurns[0].content).toBe(streamingContent);
         expect(assistantTurns[0].streaming).toBeFalsy();
+        expect(assistantTurns[0].interrupted).toBe(true);
+        expect(assistantTurns[0].interruptionReason).toBe('forced fail');
     });
 
     it('falls back to status-only update when there is no orphaned streaming turn', async () => {
@@ -187,5 +189,7 @@ describe('sweepOrphanedRunningProcesses', () => {
         expect(assistantTurns).toHaveLength(1);
         expect(assistantTurns[0].content).toBe('A lot of work done before crash');
         expect(assistantTurns[0].streaming).toBeFalsy();
+        expect(assistantTurns[0].interrupted).toBe(true);
+        expect(assistantTurns[0].interruptionReason).toBe('Process orphaned by server restart');
     });
 });
