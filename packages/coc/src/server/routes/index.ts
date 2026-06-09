@@ -745,6 +745,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                 config?.pullRequests?.enabled === true
                     ? warmPullRequestWorkspaceCache({
                         dataDir,
+                        workspaceId,
                         repoId: workspaceId,
                         store,
                         bridge,

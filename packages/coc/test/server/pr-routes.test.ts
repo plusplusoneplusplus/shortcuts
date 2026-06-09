@@ -400,6 +400,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
     it('serves PR list data warmed by the background cache without an upstream call', async () => {
         await warmPullRequestWorkspaceCache({
             dataDir,
+            workspaceId: REPO_ID,
             repoId: REPO_ID,
             service: new RepoTreeService(dataDir),
             suggestionsEnabled: true,
@@ -418,6 +419,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
     it('preserves stale warmed PR list cache when a background refresh fails', async () => {
         await warmPullRequestWorkspaceCache({
             dataDir,
+            workspaceId: REPO_ID,
             repoId: REPO_ID,
             service: new RepoTreeService(dataDir),
         });
@@ -426,6 +428,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
 
         await expect(warmPullRequestWorkspaceCache({
             dataDir,
+            workspaceId: REPO_ID,
             repoId: REPO_ID,
             service: new RepoTreeService(dataDir),
         })).rejects.toThrow('provider down');
@@ -580,6 +583,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
 
         await warmPullRequestWorkspaceCache({
             dataDir,
+            workspaceId: REPO_ID,
             repoId: REPO_ID,
             service: new RepoTreeService(dataDir),
             store: {} as any,
@@ -592,6 +596,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
         clearPrListCache();
         await warmPullRequestWorkspaceCache({
             dataDir,
+            workspaceId: REPO_ID,
             repoId: REPO_ID,
             service: new RepoTreeService(dataDir),
             store: {} as any,
@@ -601,6 +606,41 @@ describe('GET /api/repos/:id/pull-requests', () => {
 
         expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'open', top: 100, scope: 'all' });
         expect(queue.enqueue).toHaveBeenCalledTimes(1);
+    });
+
+    it('background warm uses the explicit workspace id for Team roster matching and classification state', async () => {
+        const workspaceId = 'workspace-other-than-repo';
+        const { bridge, queue } = makeAutoClassificationBridge();
+        addPullRequestCoworkerToRoster(dataDir, workspaceId, REPO_ID, {
+            id: 'user1',
+            displayName: 'Alice',
+        });
+        addPullRequestCoworkerToRoster(dataDir, REPO_ID, REPO_ID, {
+            id: 'other-user',
+            displayName: 'Other User',
+        });
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockResolvedValue([
+            { ...mockPr, headSha: 'head-workspace-scoped' },
+        ]);
+
+        await warmPullRequestWorkspaceCache({
+            dataDir,
+            workspaceId,
+            repoId: REPO_ID,
+            service: new RepoTreeService(dataDir),
+            store: {} as any,
+            bridge,
+            autoClassifyTeamEnabled: true,
+        });
+
+        expect(queue.enqueue).toHaveBeenCalledTimes(1);
+        expect(queue.enqueue).toHaveBeenCalledWith(expect.objectContaining({
+            payload: expect.objectContaining({
+                workspaceId,
+                repoId: REPO_ID,
+                classificationIdentifier: '42:head-workspace-scoped',
+            }),
+        }));
     });
 
     it('paginates from cache without upstream call', async () => {

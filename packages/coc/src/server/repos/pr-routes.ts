@@ -253,6 +253,7 @@ async function refreshPullRequestListCache(
 
 export interface WarmPullRequestWorkspaceCacheOptions {
     dataDir: string;
+    workspaceId: string;
     repoId: string;
     store?: ProcessStore;
     bridge?: MultiRepoQueueRouter;
@@ -265,8 +266,8 @@ export interface WarmPullRequestWorkspaceCacheOptions {
 export async function warmPullRequestWorkspaceCache(options: WarmPullRequestWorkspaceCacheOptions): Promise<void> {
     const svc = options.service ?? new RepoTreeService(options.dataDir);
     await refreshPullRequestListCache(options.dataDir, svc, options.repoId, 'open', 'mine');
-    listRecentOpenedPullRequests(options.dataDir, options.repoId, options.repoId);
-    listPullRequestCoworkerRoster(options.dataDir, options.repoId, options.repoId);
+    listRecentOpenedPullRequests(options.dataDir, options.workspaceId, options.repoId);
+    listPullRequestCoworkerRoster(options.dataDir, options.workspaceId, options.repoId);
     if (options.autoClassifyTeamEnabled === true && options.bridge && options.store) {
         const allOpen = await refreshPullRequestListCache(options.dataDir, svc, options.repoId, 'open', 'all');
         await triggerTeamAutoClassification({
@@ -275,7 +276,7 @@ export async function warmPullRequestWorkspaceCache(options: WarmPullRequestWork
             bridge: options.bridge,
             repoTreeService: svc,
             prepareTaskForEnqueue: options.prepareTaskForEnqueue,
-            workspaceId: options.repoId,
+            workspaceId: options.workspaceId,
             repoId: options.repoId,
             pullRequests: allOpen.data,
         });

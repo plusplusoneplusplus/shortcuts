@@ -403,8 +403,8 @@ The PR list route is backed by a server-side cache that can be proactively warme
 for the currently active workspace. Background warming uses the same provider
 list and diff-stat enrichment path as the tab load, refreshes the default
 `open`/`mine` list without clearing stale data on failure, and reads the
-repo-scoped recently opened list, Team roster, and cached suggestions when PR
-suggestions are enabled.
+workspace/repo-scoped recently opened list, Team roster, and cached suggestions
+when PR suggestions are enabled.
 
 The PR detail overview renders a deterministic review-summary card from the PR description, parsed/provider diff stats, checks, reviewers, and comment threads. Findings are derived from failing checks and unresolved threads, and the former persona-lens grid is not rendered.
 
