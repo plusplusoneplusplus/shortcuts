@@ -96,6 +96,7 @@ export function PrChatPanel({ workspaceId, prId, filePath, repoId, prTitle, onCl
                         draftKey={draftKey}
                         sourceLabel="PR review chat composer"
                         enableRalphDirectGoal={false}
+                        settingsLayout="compact"
                     />
                 </div>
             )}

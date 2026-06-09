@@ -107,12 +107,15 @@ describe('PrChatPanel', () => {
             expect(screen.getByTestId('pr-chat-panel')).toBeDefined();
             expect(screen.getByText('Chat about this PR')).toBeDefined();
             expect(screen.getByText('Ask questions about the changes')).toBeDefined();
-            expect(screen.getByTestId('agent-selector-chip-btn')).toBeDefined();
-            expect(screen.getByTestId('mode-selector')).toBeDefined();
-            expect(screen.getByTestId('model-picker-chip')).toBeDefined();
-            expect(screen.getByTestId('effort-pill-selector')).toBeDefined();
+            expect(screen.getByTestId('compact-ai-settings-chip')).toBeDefined();
+            expect(screen.queryByTestId('agent-selector-chip-btn')).toBeNull();
+            expect(screen.queryByTestId('mode-selector')).toBeNull();
+            expect(screen.queryByTestId('model-picker-chip')).toBeNull();
+            expect(screen.queryByTestId('effort-pill-selector')).toBeNull();
             expect(screen.getByTestId('chat-toolbar-slash-btn')).toBeDefined();
+            expect(screen.queryByTestId('chat-toolbar-mention-btn')).toBeNull();
             expect(screen.getByTestId('pr-chat-attach-btn')).toBeDefined();
+            expect(screen.getByTestId('pr-chat-send-btn')).toBeDefined();
         });
 
         it('shows PR ID badge', () => {
@@ -130,7 +133,7 @@ describe('PrChatPanel', () => {
         it('does not show file name when filePath is undefined', () => {
             setBindingState();
             render(<PrChatPanel {...defaultProps} filePath={undefined} />);
-            expect(screen.queryByText(/· /)).toBeNull();
+            expect(screen.queryByText('· app.ts')).toBeNull();
         });
 
         it('has a disabled send button when input is empty', () => {
