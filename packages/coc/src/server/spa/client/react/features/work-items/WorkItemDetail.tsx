@@ -162,6 +162,10 @@ interface WorkItemFull {
         completedAt?: string;
         taskId?: string;
         status: 'open' | 'closed';
+        branchName?: string;
+        prNumber?: number;
+        prUrl?: string;
+        prStatus?: string;
     }>;
 }
 
@@ -308,6 +312,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const [reviewComment, setReviewComment] = useState('');
     const [requestingChanges, setRequestingChanges] = useState(false);
     const [acceptingDone, setAcceptingDone] = useState(false);
+    const [submittingPr, setSubmittingPr] = useState(false);
     const [resolvingDiffComments, setResolvingDiffComments] = useState(false);
     const [resolvingCommitSha, setResolvingCommitSha] = useState<string | null>(null);
     const [resolvingChangeIdx, setResolvingChangeIdx] = useState<number | null>(null);
@@ -533,6 +538,22 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
             setError(err.message || 'Failed to request changes');
         } finally {
             setRequestingChanges(false);
+        }
+    };
+
+    const handleSubmitPr = async () => {
+        if (!latestReviewChange) return;
+        setSubmittingPr(true);
+        setError(null);
+        try {
+            await getSpaCocClient().workItems.submitPullRequest(workspaceId, workItemId, {
+                changeId: latestReviewChange.id,
+            });
+            await fetchItem();
+        } catch (err: any) {
+            setError(err.message || 'Failed to submit PR');
+        } finally {
+            setSubmittingPr(false);
         }
     };
 
@@ -893,6 +914,11 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const latestReviewChange = latestReviewExecution
         ? item.changes?.find(change => change.taskId === latestReviewExecution.exec.taskId)
         : undefined;
+    const canSubmitPr = workflowCommandCenter
+        && isAiDone
+        && !!latestReviewChange
+        && latestReviewChange.commits.length > 0
+        && !latestReviewChange.prUrl;
 
     const typePrefix = effectiveType === 'epic' ? 'E'
         : effectiveType === 'feature' ? 'F'
@@ -1392,6 +1418,17 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                         ))}
                                     </div>
                                 )}
+                                {latestReviewChange?.prUrl && (
+                                    <a
+                                        href={latestReviewChange.prUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="mt-1 inline-flex text-[10px] text-[#0969da] hover:underline"
+                                        data-testid="work-item-review-pr-link"
+                                    >
+                                        PR {latestReviewChange.prNumber ? `#${latestReviewChange.prNumber}` : 'submitted'} →
+                                    </a>
+                                )}
                             </div>
                         )}
                         <div className="space-y-2">
@@ -1407,6 +1444,11 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                 <Button variant="primary" size="sm" onClick={handleAcceptDone} disabled={acceptingDone} loading={acceptingDone} data-testid="work-item-accept-done-btn">
                                     ✅ Accept &amp; Done
                                 </Button>
+                                {canSubmitPr && (
+                                    <Button variant="success" size="sm" onClick={handleSubmitPr} disabled={submittingPr} loading={submittingPr} data-testid="work-item-submit-pr-btn">
+                                        Submit PR
+                                    </Button>
+                                )}
                                 <Button variant="ghost" size="sm" onClick={handleRequestChanges} disabled={requestingChanges} loading={requestingChanges} data-testid="work-item-request-changes-btn">
                                     🔄 Request Changes
                                 </Button>
@@ -1494,6 +1536,11 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                 if (exec.aiSettings?.reasoningEffort) metadataChips.push({ key: 'effort', label: `Effort ${exec.aiSettings.reasoningEffort}` });
                                 if (exec.aiSettings?.effortTier) metadataChips.push({ key: 'tier', label: `Tier ${exec.aiSettings.effortTier}` });
                                 if (exec.skillNames?.length) metadataChips.push({ key: 'skills', label: `Skills ${exec.skillNames.join(', ')}`, title: exec.skillNames.join(', ') });
+                                if (matchingChange?.prUrl) metadataChips.push({
+                                    key: 'pr',
+                                    label: matchingChange.prNumber ? `PR #${matchingChange.prNumber}` : 'PR submitted',
+                                    title: matchingChange.prUrl,
+                                });
                                 return (
                                     <div key={i} className="rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] text-xs" data-testid={`exec-entry-${i}`}>
                                         <div className="flex items-center gap-2 px-3 py-2">
@@ -1548,6 +1595,17 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                                 >
                                                     {resolvingChangeIdx === i ? '⏳ Resolving…' : `Resolve all (${execOpenCommentCount})`}
                                                 </button>
+                                            )}
+                                            {matchingChange?.prUrl && (
+                                                <a
+                                                    href={matchingChange.prUrl}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="text-[#0078d4] hover:underline text-[10px]"
+                                                    data-testid={`exec-pr-link-${i}`}
+                                                >
+                                                    PR {matchingChange.prNumber ? `#${matchingChange.prNumber}` : 'submitted'} →
+                                                </a>
                                             )}
                                         </div>
                                         {exec.error && (

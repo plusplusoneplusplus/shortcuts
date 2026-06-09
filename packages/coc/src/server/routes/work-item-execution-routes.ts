@@ -10,12 +10,14 @@
 import * as http from 'http';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import type { Route } from '../types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { execGit } from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody } from '../core/api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
-import type { WorkItemStore, WorkItem } from '../work-items/types';
+import type { WorkItemStore, WorkItem, WorkItemChange } from '../work-items/types';
 import { getOwnWorkItemTrackerKind, HIERARCHY_CONTAINER_TYPES } from '../work-items/types';
 import { executeWorkItem, resolveWorkItemComments, type EnqueueFunction } from '../work-items/work-item-executor';
 import { upsertWorkItemTaskFile } from '../work-items/work-item-task-file';
@@ -30,6 +32,181 @@ import { clearWorkItemResponseCacheForWorkspace } from '../work-items/work-item-
 import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
 
 const VALID_EFFORT_TIERS = new Set(['very-low', 'low', 'medium', 'high']);
+const execFileAsync = promisify(execFile);
+
+export interface WorkItemCommandResult {
+    stdout: string;
+    stderr: string;
+}
+
+export interface WorkItemCommandOptions {
+    cwd: string;
+}
+
+export interface WorkItemCommandRunner {
+    (command: string, args: string[], options: WorkItemCommandOptions): Promise<WorkItemCommandResult>;
+}
+
+async function defaultCommandRunner(command: string, args: string[], options: WorkItemCommandOptions): Promise<WorkItemCommandResult> {
+    const { stdout, stderr } = await execFileAsync(command, args, {
+        cwd: options.cwd,
+        encoding: 'utf8',
+        maxBuffer: 1024 * 1024 * 10,
+    });
+    return { stdout: stdout ?? '', stderr: stderr ?? '' };
+}
+
+function isLocalOnlyWorkflowLeaf(item: WorkItem): boolean {
+    const effectiveType = item.type ?? 'work-item';
+    return (effectiveType === 'work-item' || effectiveType === 'goal')
+        && getOwnWorkItemTrackerKind(item) === 'local-only'
+        && !item.githubMirror
+        && !item.azureBoardsMirror;
+}
+
+function findSubmitPrChange(item: WorkItem, requestedChangeId: unknown): WorkItemChange | undefined {
+    const changes = item.changes ?? [];
+    if (typeof requestedChangeId === 'string' && requestedChangeId.trim()) {
+        return changes.find(change => change.id === requestedChangeId);
+    }
+    return [...changes].reverse().find(change =>
+        change.status === 'closed'
+        && change.commits.length > 0
+        && !change.prUrl
+    );
+}
+
+function sanitizeBranchSegment(value: string): string {
+    const normalized = value
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9._-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 48);
+    return normalized || 'work-item';
+}
+
+function isSafeBranchName(value: unknown): value is string {
+    if (typeof value !== 'string') return false;
+    const branch = value.trim();
+    return branch.length > 0
+        && branch.length <= 120
+        && !branch.startsWith('/')
+        && !branch.endsWith('/')
+        && !branch.includes('..')
+        && !branch.includes('\\')
+        && /^[A-Za-z0-9._/-]+$/.test(branch);
+}
+
+function parsePrUrl(stdout: string): { prUrl: string; prNumber?: number } | undefined {
+    const prUrl = stdout
+        .trim()
+        .split(/\s+/)
+        .find(token => /^https?:\/\/\S+\/pull\/\d+\/?$/.test(token));
+    if (!prUrl) return undefined;
+    const numberMatch = prUrl.match(/\/pull\/(\d+)\/?$/);
+    return {
+        prUrl,
+        ...(numberMatch ? { prNumber: Number(numberMatch[1]) } : {}),
+    };
+}
+
+async function resolveDefaultBaseBranch(repoRoot: string, runCommand: WorkItemCommandRunner): Promise<string> {
+    try {
+        const { stdout } = await runCommand('git', ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'], { cwd: repoRoot });
+        const trimmed = stdout.trim();
+        if (trimmed.startsWith('origin/')) {
+            return trimmed.slice('origin/'.length);
+        }
+    } catch {
+        // Fall back to the common default branch when origin/HEAD is unavailable.
+    }
+    return 'main';
+}
+
+function buildPrBody(item: WorkItem, change: WorkItemChange): string {
+    const lines = [
+        `Work Item: ${item.workItemNumber != null ? `#${item.workItemNumber}` : item.id}`,
+        '',
+        item.description?.trim() ? item.description.trim() : 'Submitted from the CoC Work Items workflow.',
+        '',
+        '## Execution',
+        `- Version: v${change.planVersion}`,
+        ...(change.taskId ? [`- Run: ${change.taskId}`] : []),
+        '',
+        '## Commits',
+        ...change.commits.map(commit => `- ${commit.sha.slice(0, 12)} ${commit.message}`),
+    ];
+    return lines.join('\n');
+}
+
+async function submitWorkItemPullRequest(options: {
+    item: WorkItem;
+    change: WorkItemChange;
+    repoRoot: string;
+    title?: string;
+    body?: string;
+    baseBranch?: string;
+    branchName?: string;
+    runCommand: WorkItemCommandRunner;
+}): Promise<{ branchName: string; prUrl: string; prNumber?: number }> {
+    const { item, change, repoRoot, runCommand } = options;
+    const clean = await runCommand('git', ['status', '--porcelain'], { cwd: repoRoot });
+    if (clean.stdout.trim()) {
+        throw new Error('Cannot submit PR because the workspace has uncommitted changes');
+    }
+
+    const currentBranch = (await runCommand('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoRoot })).stdout.trim();
+    if (!currentBranch || currentBranch === 'HEAD') {
+        throw new Error('Cannot submit PR from a detached HEAD workspace');
+    }
+
+    const baseBranch = typeof options.baseBranch === 'string' && options.baseBranch.trim()
+        ? options.baseBranch.trim()
+        : await resolveDefaultBaseBranch(repoRoot, runCommand);
+    if (!isSafeBranchName(baseBranch)) {
+        throw new Error('Invalid baseBranch');
+    }
+
+    const branchName = options.branchName?.trim()
+        ?? `coc/work-items/${sanitizeBranchSegment(item.title)}-${Date.now().toString(36)}`;
+    if (!isSafeBranchName(branchName)) {
+        throw new Error('Invalid branchName');
+    }
+
+    const title = typeof options.title === 'string' && options.title.trim()
+        ? options.title.trim()
+        : item.title;
+    const body = typeof options.body === 'string' && options.body.trim()
+        ? options.body.trim()
+        : buildPrBody(item, change);
+
+    let switched = false;
+    try {
+        await runCommand('git', ['fetch', 'origin', baseBranch], { cwd: repoRoot });
+        await runCommand('git', ['switch', '-c', branchName, `origin/${baseBranch}`], { cwd: repoRoot });
+        switched = true;
+        for (const commit of [...change.commits].reverse()) {
+            await runCommand('git', ['cherry-pick', commit.sha], { cwd: repoRoot });
+        }
+        await runCommand('git', ['push', '-u', 'origin', branchName], { cwd: repoRoot });
+        const created = await runCommand('gh', ['pr', 'create', '--title', title, '--body', body, '--base', baseBranch, '--head', branchName], { cwd: repoRoot });
+        const parsed = parsePrUrl(`${created.stdout}\n${created.stderr}`);
+        if (!parsed) {
+            throw new Error('gh pr create did not return a pull request URL');
+        }
+        return { branchName, ...parsed };
+    } catch (err) {
+        if (switched) {
+            await runCommand('git', ['cherry-pick', '--abort'], { cwd: repoRoot }).catch(() => {});
+        }
+        throw err;
+    } finally {
+        if (switched) {
+            await runCommand('git', ['switch', currentBranch], { cwd: repoRoot }).catch(() => {});
+        }
+    }
+}
 
 export interface WorkItemExecutionRouteContext {
     routes: Route[];
@@ -38,6 +215,7 @@ export interface WorkItemExecutionRouteContext {
     enqueue?: EnqueueFunction;
     getWsServer?: () => ProcessWebSocketServer;
     getWorkflowEnabled?: () => boolean;
+    runCommand?: WorkItemCommandRunner;
     /** CoC data directory (e.g. ~/.coc). When provided, a placeholder task file is
      *  created in the workspace tasks folder as soon as execution is enqueued so that
      *  the Tasks panel shows live activity immediately. */
@@ -46,6 +224,7 @@ export interface WorkItemExecutionRouteContext {
 
 export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteContext): void {
     const { routes, workItemStore, processStore, enqueue, getWsServer, dataDir, getWorkflowEnabled } = ctx;
+    const runCommand = ctx.runCommand ?? defaultCommandRunner;
 
     // POST /api/workspaces/:id/work-items/:wid/execute — Execute work item
     routes.push({
@@ -177,6 +356,104 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                 sendJSON(res, 200, result);
             } catch (err: any) {
                 return handleAPIError(res, badRequest(err.message));
+            }
+        },
+    });
+
+    // POST /api/workspaces/:id/work-items/:wid/submit-pr — Create a PR from eligible execution commits
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/submit-pr$/,
+        handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
+            const repoId = decodeURIComponent(match![1]);
+            const workItemId = decodeURIComponent(match![2]);
+
+            if (getWorkflowEnabled?.() !== true) {
+                return handleAPIError(res, badRequest('Work Item PR submission requires workItems.workflow.enabled'));
+            }
+
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return handleAPIError(res, badRequest('Invalid JSON body'));
+            }
+
+            const item = await workItemStore.getWorkItem(workItemId, repoId);
+            if (!item) {
+                return handleAPIError(res, notFound('Work item'));
+            }
+            if (!isLocalOnlyWorkflowLeaf(item)) {
+                return handleAPIError(res, badRequest('PR submission is only available for local-only Work Items and Goals'));
+            }
+            if (item.status !== 'aiDone') {
+                return handleAPIError(res, badRequest(`Cannot submit PR in status '${item.status}'. Work item must be in Review.`));
+            }
+
+            const change = findSubmitPrChange(item, body.changeId);
+            if (!change) {
+                return handleAPIError(res, badRequest('No eligible execution commits are available for PR submission'));
+            }
+            if (change.prUrl) {
+                return handleAPIError(res, badRequest('This change already has a submitted PR'));
+            }
+            if (change.commits.length === 0) {
+                return handleAPIError(res, badRequest('No commits are available for PR submission'));
+            }
+
+            let repoRoot: string | undefined;
+            try {
+                const workspaces = await processStore.getWorkspaces();
+                repoRoot = workspaces.find(w => w.id === repoId)?.rootPath;
+            } catch {
+                repoRoot = undefined;
+            }
+            if (!repoRoot) {
+                return handleAPIError(res, badRequest('Workspace root is not available for PR submission'));
+            }
+
+            try {
+                const submitted = await submitWorkItemPullRequest({
+                    item,
+                    change,
+                    repoRoot,
+                    title: body.title,
+                    body: body.body,
+                    baseBranch: body.baseBranch,
+                    branchName: body.branchName,
+                    runCommand,
+                });
+
+                const completedAt = new Date().toISOString();
+                await workItemStore.updateChange(workItemId, change.id, {
+                    branchName: submitted.branchName,
+                    prNumber: submitted.prNumber,
+                    prUrl: submitted.prUrl,
+                    prStatus: 'open',
+                });
+                if (change.taskId) {
+                    await workItemStore.updateExecution(workItemId, change.taskId, { prUrl: submitted.prUrl });
+                }
+                const updated = await workItemStore.updateWorkItem(workItemId, {
+                    status: 'done',
+                    completedAt,
+                });
+                if (!updated) {
+                    return handleAPIError(res, notFound('Work item'));
+                }
+
+                clearWorkItemResponseCacheForWorkspace(repoId);
+                getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
+                sendJSON(res, 200, {
+                    workItem: updated,
+                    changeId: change.id,
+                    branchName: submitted.branchName,
+                    prNumber: submitted.prNumber,
+                    prUrl: submitted.prUrl,
+                    prStatus: 'open',
+                });
+            } catch (err: any) {
+                return handleAPIError(res, badRequest(err.message || 'Failed to submit PR'));
             }
         },
     });

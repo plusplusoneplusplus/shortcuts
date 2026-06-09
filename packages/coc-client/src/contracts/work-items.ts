@@ -456,6 +456,23 @@ export interface RequestWorkItemChangesResponse {
   newVersion: number;
 }
 
+export interface SubmitWorkItemPullRequestRequest extends JsonObject {
+  changeId?: string;
+  title?: string;
+  body?: string;
+  baseBranch?: string;
+  branchName?: string;
+}
+
+export interface SubmitWorkItemPullRequestResponse {
+  workItem: WorkItem;
+  changeId: string;
+  branchName: string;
+  prNumber?: number;
+  prUrl: string;
+  prStatus: 'open' | string;
+}
+
 export interface ResolveWorkItemCommentsRequest extends JsonObject {
   type: 'plan' | 'commit';
   model?: string;

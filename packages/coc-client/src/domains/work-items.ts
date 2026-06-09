@@ -13,6 +13,8 @@ import type {
   RequestWorkItemChangesRequest,
   RequestWorkItemChangesResponse,
   ResolveWorkItemCommentsRequest,
+  SubmitWorkItemPullRequestRequest,
+  SubmitWorkItemPullRequestResponse,
   WorkItemSyncProvider,
   WorkItemSyncStatusResponse,
   UpdateWorkItemRequest,
@@ -104,6 +106,17 @@ export class WorkItemsClient {
 
   requestChanges(workspaceId: string, workItemId: string, request: RequestWorkItemChangesRequest): Promise<RequestWorkItemChangesResponse> {
     return this.transport.request<RequestWorkItemChangesResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/request-changes`), {
+      method: 'POST',
+      body: { ...request },
+    });
+  }
+
+  submitPullRequest(
+    workspaceId: string,
+    workItemId: string,
+    request: SubmitWorkItemPullRequestRequest = {},
+  ): Promise<SubmitWorkItemPullRequestResponse> {
+    return this.transport.request<SubmitWorkItemPullRequestResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/submit-pr`), {
       method: 'POST',
       body: { ...request },
     });

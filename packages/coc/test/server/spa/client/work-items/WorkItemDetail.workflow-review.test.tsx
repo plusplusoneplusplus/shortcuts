@@ -2,13 +2,14 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 const mocks = vi.hoisted(() => ({
     get: vi.fn(),
     update: vi.fn(),
     updateStatus: vi.fn(),
     requestChanges: vi.fn(),
+    submitPullRequest: vi.fn(),
     createChatBinding: vi.fn(),
     delete: vi.fn(),
     queueEnqueue: vi.fn(),
@@ -30,6 +31,7 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
             update: mocks.update,
             updateStatus: mocks.updateStatus,
             requestChanges: mocks.requestChanges,
+            submitPullRequest: mocks.submitPullRequest,
             createChatBinding: mocks.createChatBinding,
             delete: mocks.delete,
         },
@@ -198,6 +200,45 @@ describe('WorkItemDetail workflow review command center', () => {
         expect(metadata.textContent).toContain('Model claude-sonnet-4.6');
         expect(metadata.textContent).toContain('Effort high');
         expect(metadata.textContent).toContain('Skills impl, code-review');
+    });
+
+    it('shows an explicit Submit PR action for Review items with eligible commits', async () => {
+        mocks.submitPullRequest.mockResolvedValue({
+            workItem: { ...BASE_REVIEW_ITEM, status: 'done' },
+            changeId: 'change-review-1',
+            branchName: 'coc/work-items/ship-review-timeline',
+            prNumber: 123,
+            prUrl: 'https://github.com/example/repo/pull/123',
+            prStatus: 'open',
+        });
+
+        render(<WorkItemDetail workspaceId="ws-1" workItemId="wi-review-1" />);
+
+        const submitButton = await screen.findByTestId('work-item-submit-pr-btn');
+        fireEvent.click(submitButton);
+
+        await waitFor(() => {
+            expect(mocks.submitPullRequest).toHaveBeenCalledWith('ws-1', 'wi-review-1', {
+                changeId: 'change-review-1',
+            });
+        });
+    });
+
+    it('hides Submit PR after the latest Review change already has PR metadata', async () => {
+        mocks.get.mockResolvedValue({
+            ...BASE_REVIEW_ITEM,
+            changes: [{
+                ...BASE_REVIEW_ITEM.changes[0],
+                prNumber: 123,
+                prUrl: 'https://github.com/example/repo/pull/123',
+                prStatus: 'open',
+            }],
+        });
+
+        render(<WorkItemDetail workspaceId="ws-1" workItemId="wi-review-1" />);
+
+        expect(await screen.findByTestId('work-item-review-pr-link')).toHaveTextContent('PR #123');
+        expect(screen.queryByTestId('work-item-submit-pr-btn')).toBeNull();
     });
 
     it('preserves the legacy AI Done label when the workflow flag is disabled', async () => {
