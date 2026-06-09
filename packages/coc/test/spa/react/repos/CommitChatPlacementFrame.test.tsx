@@ -276,6 +276,25 @@ describe('CommitChatPlacementFrame', () => {
         expect(card.style.opacity).toBe('1');
     });
 
+    it('stays focused when no mousemove event has been fired', () => {
+        dormantModeState.value = 'pill';
+
+        render(
+            <CommitChatPlacementFrame
+                workspaceId="ws1"
+                commitHash="abc123def456"
+                presentation="lens"
+                onClose={() => {}}
+            />,
+        );
+
+        const lens = screen.getByTestId('commit-chat-lens');
+
+        act(() => { vi.advanceTimersByTime(2000); });
+
+        expect(lens.getAttribute('data-focused')).toBe('true');
+    });
+
     it('does not render dormant pill in ghost mode', () => {
         dormantModeState.value = 'ghost';
 

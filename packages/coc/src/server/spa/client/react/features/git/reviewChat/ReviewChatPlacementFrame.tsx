@@ -138,13 +138,9 @@ function useLensDormantState(
         };
 
         window.addEventListener('mousemove', onMove);
-        const kickTimer = setTimeout(() => tick(-9999, -9999), 30);
-        const poll = setInterval(() => tick(-9999, -9999), 250);
 
         return () => {
             window.removeEventListener('mousemove', onMove);
-            clearTimeout(kickTimer);
-            clearInterval(poll);
             clearDormantTimer();
         };
     }, [isLens, isExplicitlyMinimized, dormantMode, clearDormantTimer, setFocusedSync, cardRef, pillRef]);
