@@ -1066,6 +1066,66 @@ export function InitialChatComposer({
         );
     }
 
+    function renderSlashButton() {
+        return (
+            <button
+                type="button"
+                className="ctool shrink-0 inline-flex items-center gap-0.5 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
+                onClick={focusInputAndInsertSlash}
+                aria-label="Insert slash command"
+                title="Insert slash command (/)"
+                data-testid="chat-toolbar-slash-btn"
+            >
+                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M6 13l4-10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                </svg>
+                <span aria-hidden="true" className="font-mono text-[9px] text-[#848484]">/</span>
+            </button>
+        );
+    }
+
+    function renderMentionButton() {
+        return (
+            <button
+                type="button"
+                className="ctool shrink-0 inline-flex items-center gap-0.5 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
+                onClick={focusInputAndInsertSlash}
+                aria-label="Mention a skill"
+                title="Mention a skill (@) — opens the skill picker"
+                data-testid="chat-toolbar-mention-btn"
+            >
+                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M8 2L3 5v6l5 3 5-3V5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+                </svg>
+                <span aria-hidden="true" className="font-mono text-[9px] text-[#848484]">@</span>
+            </button>
+        );
+    }
+
+    function renderAttachButton() {
+        return (
+            <button
+                type="button"
+                disabled={sending}
+                onClick={() => fileInputRef.current?.click()}
+                className="ctool shrink-0 inline-flex items-center justify-center h-[22px] w-[22px] rounded-sm text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                data-testid={`${testIdPrefix}-attach-btn`}
+                aria-label="Attach file"
+                title="Attach files"
+            >
+                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path
+                        d="M10.5 4.5 5 10a2 2 0 0 0 2.83 2.83L13 7.66a3.5 3.5 0 0 0-4.95-4.95L3 7.76"
+                        stroke="currentColor"
+                        strokeWidth="1.2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                    />
+                </svg>
+            </button>
+        );
+    }
+
     return (
         <div
             ref={composerRootRef}
@@ -1311,53 +1371,18 @@ export function InitialChatComposer({
                         {/* Tools zone — slash/mention/attach live on the right of
                              the spacer (matches the OpenDesign composer ordering:
                              provider · mode · model · tools · send). */}
-                        <button
-                            type="button"
-                            className="ctool shrink-0 inline-flex items-center gap-0.5 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
-                            onClick={focusInputAndInsertSlash}
-                            aria-label="Insert slash command"
-                            title="Insert slash command (/)"
-                            data-testid="chat-toolbar-slash-btn"
-                        >
-                            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                                <path d="M6 13l4-10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                            </svg>
-                            <span aria-hidden="true" className="font-mono text-[9px] text-[#848484]">/</span>
-                        </button>
-                        {effectiveSettingsLayout !== 'compact' && (
-                            <button
-                                type="button"
-                                className="ctool shrink-0 inline-flex items-center gap-0.5 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
-                                onClick={focusInputAndInsertSlash}
-                                aria-label="Mention a skill"
-                                title="Mention a skill (@) — opens the skill picker"
-                                data-testid="chat-toolbar-mention-btn"
-                            >
-                                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                                    <path d="M8 2L3 5v6l5 3 5-3V5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
-                                </svg>
-                                <span aria-hidden="true" className="font-mono text-[9px] text-[#848484]">@</span>
-                            </button>
+                        {effectiveSettingsLayout === 'compact' ? (
+                            <>
+                                {renderAttachButton()}
+                                {renderSlashButton()}
+                            </>
+                        ) : (
+                            <>
+                                {renderSlashButton()}
+                                {renderMentionButton()}
+                                {renderAttachButton()}
+                            </>
                         )}
-                        <button
-                            type="button"
-                            disabled={sending}
-                            onClick={() => fileInputRef.current?.click()}
-                            className="ctool shrink-0 inline-flex items-center justify-center h-[22px] w-[22px] rounded-sm text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                            data-testid={`${testIdPrefix}-attach-btn`}
-                            aria-label="Attach file"
-                            title="Attach files"
-                        >
-                            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                                <path
-                                    d="M10.5 4.5 5 10a2 2 0 0 0 2.83 2.83L13 7.66a3.5 3.5 0 0 0-4.95-4.95L3 7.76"
-                                    stroke="currentColor"
-                                    strokeWidth="1.2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                />
-                            </svg>
-                        </button>
                         <span aria-hidden="true" data-testid="chat-toolbar-divider-send" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                         {sending ? (
                             <button

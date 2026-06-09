@@ -1068,6 +1068,15 @@ describe('NewChatArea', () => {
             expect(screen.getByTestId('chat-toolbar-slash-btn')).toBeTruthy();
             expect(screen.getByTestId('lens-chat-attach-btn')).toBeTruthy();
             expect(screen.getByTestId('lens-chat-send-btn')).toBeTruthy();
+
+            const toolbar = screen.getByTestId('chat-input-toolbar');
+            const chip = within(toolbar).getByTestId('compact-ai-settings-chip');
+            const attach = within(toolbar).getByTestId('lens-chat-attach-btn');
+            const slash = within(toolbar).getByTestId('chat-toolbar-slash-btn');
+            const send = within(toolbar).getByTestId('lens-chat-send-btn');
+            expect(chip.compareDocumentPosition(attach) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+            expect(attach.compareDocumentPosition(slash) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+            expect(slash.compareDocumentPosition(send) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         });
 
         it('opens an editor with provider, mode/workflow, model, and effort controls', () => {
