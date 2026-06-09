@@ -46,6 +46,13 @@ export interface PullRequestDiffStats {
 
 export interface PullRequestListItem {
   [key: string]: unknown;
+  number?: string | number;
+  status?: string;
+  headSha?: string;
+  author?: {
+    id?: string | number;
+    displayName?: string;
+  };
   diffStats?: PullRequestDiffStats;
 }
 
@@ -252,6 +259,35 @@ export interface ClassificationStatusResponse {
   processId?: string;
   result?: DiffClassificationResult;
   createdAt?: string;
+}
+
+export type ClassificationTargetType = 'pr' | 'commit' | 'branch-range';
+
+export interface ClassificationBatchStatusQuery {
+  type: ClassificationTargetType;
+  identifiers: string[];
+  workspaceId?: string;
+}
+
+export interface ClassificationBatchStatusResponse {
+  statuses: Record<string, 'none' | 'ready' | 'running'>;
+}
+
+export interface TeamPrAutoClassificationRequest {
+  workspaceId?: string;
+  pullRequests: PullRequestListItem[];
+}
+
+export interface TeamPrAutoClassificationResponse {
+  eligible: number;
+  considered: number;
+  skippedMissingHeadSha: number;
+  skippedMissingNumber: number;
+  ready: number;
+  running: number;
+  started: number;
+  notFound: number;
+  errors: Array<{ identifier?: string; message: string }>;
 }
 
 // ── PR review suggestions ──────────────────────────────────────────

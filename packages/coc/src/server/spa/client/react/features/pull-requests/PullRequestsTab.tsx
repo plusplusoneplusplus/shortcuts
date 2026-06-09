@@ -20,9 +20,15 @@ import { useApp } from '../../contexts/AppContext';
 import { cn } from '../../ui';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
-import { isPullRequestsSuggestionsEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
+import {
+    isFocusedDiffEnabled,
+    isPullRequestsAutoClassifyTeamEnabled,
+    isPullRequestsSuggestionsEnabled,
+    isSessionContextAttachmentsEnabled,
+} from '../../utils/config';
+import { SHOW_FOCUSED_DIFF } from '../../featureFlags';
 import { PullRequestDetail } from './PullRequestDetail';
-import { PullRequestRow } from './PullRequestRow';
+import { PullRequestRow, type PrClassificationBadgeStatus } from './PullRequestRow';
 import { PrQueueFilters } from './PrQueueFilters';
 import { PrQueueGroupSection } from './PrQueueGroupSection';
 import { createPullRequestContextDragPayload } from '../chat/sessionContextDrag';
@@ -40,6 +46,7 @@ import type { QueueFilter, QueueFilterCounts } from './pr-derived-data';
 import {
     buildCoworkerRosterCandidates,
     getCoworkerRosterIdentityKey,
+    pullRequestMatchesCoworkerRoster,
     type PullRequest,
     type PrStatus,
 } from './pr-utils';
@@ -62,8 +69,28 @@ interface PrListCacheEntry {
 
 const prListCache = new Map<string, PrListCacheEntry>();
 
+type TeamClassificationLookupStatus = 'none' | 'ready' | 'running';
+
+interface TeamClassificationCounts {
+    ready: number;
+    running: number;
+    missing: number;
+}
+
 function getPrSelectionId(pr: PullRequest): string {
     return String(pr.number ?? pr.id);
+}
+
+function getPrClassificationIdentifier(pr: PullRequest): string | undefined {
+    const prNumber = pr.number;
+    const headSha = typeof pr.headSha === 'string' ? pr.headSha.trim() : '';
+    if (!headSha || prNumber == null) return undefined;
+    if (!Number.isSafeInteger(prNumber) || prNumber <= 0) return undefined;
+    return `${prNumber}:${headSha}`;
+}
+
+function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+    return `${count} ${count === 1 ? singular : plural}`;
 }
 
 function formatFetchedAt(ts: number, now: number = Date.now()): string {
@@ -174,12 +201,17 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
 
     // ── PR suggestions state ─────────────────────────────────────
     const suggestionsEnabled = isPullRequestsSuggestionsEnabled();
+    const teamAutoClassificationEnabled = SHOW_FOCUSED_DIFF && isFocusedDiffEnabled() && isPullRequestsAutoClassifyTeamEnabled();
     const [suggestions, setSuggestions] = useState<PrSuggestion[]>([]);
     const [suggestionsLoading, setSuggestionsLoading] = useState(false);
     const [suggestionsStatus, setSuggestionsStatus] = useState<string | null>(null);
     const [suggestionsInfo, setSuggestionsInfo] = useState<string | null>(null);
     const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
     const [suggestionsRankedAt, setSuggestionsRankedAt] = useState<string | null>(null);
+    const [teamClassificationStatuses, setTeamClassificationStatuses] = useState<Record<string, TeamClassificationLookupStatus>>({});
+    const [teamClassificationLoading, setTeamClassificationLoading] = useState(false);
+    const [teamClassificationQueueing, setTeamClassificationQueueing] = useState(false);
+    const [teamClassificationError, setTeamClassificationError] = useState<string | null>(null);
 
     const suggestedPrNumbers = useMemo(
         () => new Set(suggestions.map(s => s.prNumber)),
@@ -425,6 +457,173 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         () => coworkerCandidates.filter(candidate => !coworkerRosterKeys.has(getCoworkerRosterIdentityKey(candidate))),
         [coworkerCandidates, coworkerRosterKeys],
     );
+
+    const teamAutoClassificationPrs = useMemo(
+        () => coworkerRoster.length === 0
+            ? []
+            : prs.filter(pr => pr.status === 'open' && pullRequestMatchesCoworkerRoster(pr, coworkerRoster)),
+        [prs, coworkerRoster],
+    );
+
+    const teamAutoClassificationIdentifiers = useMemo(() => {
+        const seen = new Set<string>();
+        const identifiers: string[] = [];
+        for (const pr of teamAutoClassificationPrs) {
+            const identifier = getPrClassificationIdentifier(pr);
+            if (!identifier || seen.has(identifier)) continue;
+            seen.add(identifier);
+            identifiers.push(identifier);
+        }
+        return identifiers;
+    }, [teamAutoClassificationPrs]);
+
+    const teamAutoClassificationIdentifiersKey = useMemo(
+        () => teamAutoClassificationIdentifiers.join(','),
+        [teamAutoClassificationIdentifiers],
+    );
+
+    const teamAutoClassificationSkippedMissingHeadSha = useMemo(
+        () => teamAutoClassificationPrs.filter(pr => pr.number != null && !getPrClassificationIdentifier(pr)).length,
+        [teamAutoClassificationPrs],
+    );
+
+    const teamClassificationCounts = useMemo<TeamClassificationCounts>(() => {
+        const counts: TeamClassificationCounts = { ready: 0, running: 0, missing: 0 };
+        for (const identifier of teamAutoClassificationIdentifiers) {
+            const status = teamClassificationStatuses[identifier] ?? 'none';
+            if (status === 'ready') counts.ready++;
+            else if (status === 'running') counts.running++;
+            else counts.missing++;
+        }
+        return counts;
+    }, [teamAutoClassificationIdentifiers, teamClassificationStatuses]);
+
+    const teamClassificationBadgeByPrId = useMemo(() => {
+        const badges = new Map<string, PrClassificationBadgeStatus>();
+        if (!teamAutoClassificationEnabled) return badges;
+        for (const pr of teamAutoClassificationPrs) {
+            const identifier = getPrClassificationIdentifier(pr);
+            if (!identifier) continue;
+            const status = teamClassificationStatuses[identifier] ?? 'none';
+            badges.set(getPrSelectionId(pr), status === 'none' ? 'missing' : status);
+        }
+        return badges;
+    }, [teamAutoClassificationEnabled, teamAutoClassificationPrs, teamClassificationStatuses]);
+
+    const teamClassificationMode = !teamAutoClassificationEnabled
+        ? 'disabled'
+        : teamClassificationQueueing
+            ? 'queueing'
+            : teamClassificationCounts.running > 0
+                ? 'running'
+                : teamClassificationCounts.ready > 0 && teamClassificationCounts.missing === 0
+                    ? 'ready'
+                    : 'idle';
+
+    const teamClassificationSummary = useMemo(() => {
+        if (!teamAutoClassificationEnabled) {
+            return 'Auto-classification is off in settings.';
+        }
+        if (teamClassificationQueueing) {
+            return 'Queueing Team classifications...';
+        }
+        if (teamClassificationLoading && teamAutoClassificationIdentifiers.length > 0) {
+            return 'Checking classification status...';
+        }
+        if (teamAutoClassificationPrs.length === 0) {
+            return coworkerRoster.length === 0
+                ? 'Add Team roster entries to enable auto-classification.'
+                : 'No loaded Team PRs to classify.';
+        }
+        if (teamClassificationCounts.running > 0) {
+            return `${pluralize(teamClassificationCounts.running, 'Team PR')} currently classifying.`;
+        }
+        if (teamClassificationCounts.missing > 0) {
+            return `${pluralize(teamClassificationCounts.missing, 'Team PR')} missing classification.`;
+        }
+        if (teamClassificationCounts.ready > 0) {
+            return `${pluralize(teamClassificationCounts.ready, 'cached classification')} available.`;
+        }
+        if (teamAutoClassificationSkippedMissingHeadSha > 0) {
+            return `${pluralize(teamAutoClassificationSkippedMissingHeadSha, 'Team PR')} waiting for a head SHA.`;
+        }
+        return 'Auto-classification idle.';
+    }, [
+        coworkerRoster.length,
+        teamAutoClassificationEnabled,
+        teamAutoClassificationIdentifiers.length,
+        teamAutoClassificationPrs.length,
+        teamAutoClassificationSkippedMissingHeadSha,
+        teamClassificationCounts.missing,
+        teamClassificationCounts.ready,
+        teamClassificationCounts.running,
+        teamClassificationLoading,
+        teamClassificationQueueing,
+    ]);
+
+    const loadTeamClassificationStatuses = useCallback(async () => {
+        if (!teamAutoClassificationEnabled) {
+            setTeamClassificationStatuses({});
+            setTeamClassificationLoading(false);
+            setTeamClassificationError(null);
+            return;
+        }
+        if (teamAutoClassificationIdentifiers.length === 0) {
+            setTeamClassificationStatuses({});
+            setTeamClassificationLoading(false);
+            setTeamClassificationError(null);
+            return;
+        }
+
+        setTeamClassificationLoading(true);
+        setTeamClassificationError(null);
+        try {
+            const data = await getSpaCocClient().pullRequests.getClassificationBatchStatus(repoId, {
+                type: 'pr',
+                identifiers: teamAutoClassificationIdentifiers,
+                workspaceId,
+            });
+            setTeamClassificationStatuses(data.statuses ?? {});
+        } catch (err) {
+            console.warn('Failed to load Team PR classification status', err);
+            setTeamClassificationError(getSpaCocClientErrorMessage(err, 'Failed to load Team classification status.'));
+        } finally {
+            setTeamClassificationLoading(false);
+        }
+    }, [repoId, teamAutoClassificationEnabled, teamAutoClassificationIdentifiers, teamAutoClassificationIdentifiersKey, workspaceId]);
+
+    useEffect(() => {
+        void loadTeamClassificationStatuses();
+    }, [loadTeamClassificationStatuses]);
+
+    const handleClassifyTeamNow = useCallback(async () => {
+        if (!teamAutoClassificationEnabled || teamClassificationQueueing || teamAutoClassificationPrs.length === 0) return;
+
+        setTeamClassificationQueueing(true);
+        setTeamClassificationError(null);
+        try {
+            const result = await getSpaCocClient().pullRequests.autoClassifyTeam(repoId, {
+                workspaceId,
+                pullRequests: teamAutoClassificationPrs,
+            });
+            if (result.errors.length > 0) {
+                setTeamClassificationError(result.errors[0]?.message ?? 'Some Team classifications could not be queued.');
+            }
+            await loadTeamClassificationStatuses();
+        } catch (err) {
+            console.warn('Failed to queue Team PR classifications', err);
+            setTeamClassificationError(getSpaCocClientErrorMessage(err, 'Failed to queue Team classifications.'));
+        } finally {
+            setTeamClassificationQueueing(false);
+        }
+    }, [
+        loadTeamClassificationStatuses,
+        repoId,
+        teamAutoClassificationEnabled,
+        teamAutoClassificationPrs,
+        teamClassificationQueueing,
+        workspaceId,
+    ]);
 
     useEffect(() => {
         if (!coworkerPickerKey) return;
@@ -949,6 +1148,58 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                             </div>
                         )}
 
+                        <div
+                            className={cn(
+                                'flex items-center justify-between gap-2 rounded-md border bg-white/80 px-2 py-1 dark:bg-blue-950/40',
+                                teamClassificationMode === 'disabled'
+                                    ? 'border-gray-200 text-gray-600 dark:border-gray-700 dark:text-gray-300'
+                                    : teamClassificationMode === 'queueing' || teamClassificationMode === 'running'
+                                        ? 'border-blue-300 text-blue-900 dark:border-blue-700 dark:text-blue-100'
+                                        : teamClassificationMode === 'ready'
+                                            ? 'border-emerald-200 text-emerald-800 dark:border-emerald-800 dark:text-emerald-100'
+                                            : 'border-blue-200 text-blue-800 dark:border-blue-800 dark:text-blue-100',
+                            )}
+                            data-testid="team-auto-classification-status"
+                            data-status-mode={teamClassificationMode}
+                            role="status"
+                            aria-live="polite"
+                        >
+                            <div className="min-w-0">
+                                <div className="font-semibold">Team AI classification</div>
+                                <div className="truncate text-[10px]" data-testid="team-auto-classification-summary">
+                                    {teamClassificationSummary}
+                                </div>
+                                {teamAutoClassificationEnabled && teamAutoClassificationIdentifiers.length > 0 && (
+                                    <div className="mt-0.5 flex flex-wrap gap-1 text-[10px]">
+                                        <span data-testid="team-auto-classification-ready-count">{teamClassificationCounts.ready} cached</span>
+                                        <span data-testid="team-auto-classification-running-count">{teamClassificationCounts.running} running</span>
+                                        <span data-testid="team-auto-classification-missing-count">{teamClassificationCounts.missing} missing</span>
+                                    </div>
+                                )}
+                                {teamClassificationError && (
+                                    <div className="mt-0.5 text-[10px] text-red-600 dark:text-red-300" data-testid="team-auto-classification-error">
+                                        {teamClassificationError}
+                                    </div>
+                                )}
+                            </div>
+                            {teamAutoClassificationEnabled && (
+                                <button
+                                    type="button"
+                                    onClick={() => { void handleClassifyTeamNow(); }}
+                                    disabled={
+                                        teamClassificationQueueing ||
+                                        teamAutoClassificationIdentifiers.length === 0 ||
+                                        teamClassificationCounts.missing === 0
+                                    }
+                                    aria-label="Classify Team pull requests now"
+                                    className="inline-flex h-[24px] shrink-0 items-center rounded-md border border-blue-300 bg-white px-2 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-100 dark:hover:bg-blue-900/50"
+                                    data-testid="team-auto-classification-button"
+                                >
+                                    {teamClassificationQueueing ? 'Queueing...' : 'Classify now'}
+                                </button>
+                            )}
+                        </div>
+
                         <div className="flex items-center gap-1.5">
                             <select
                                 value={coworkerPickerKey}
@@ -1095,12 +1346,13 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                                                     handlePrSelect(id, checked, shiftKey, sectionPrs)
                                                 }
                                                 batchMode={batchMode && !queueCollapsed}
-                                                compact={queueCollapsed}
-                                                isSuggested={suggestionsEnabled && suggestedPrNumbers.has(pr.number ?? 0)}
-                                                sessionContextPayload={sessionContextPayload}
-                                            />
-                                        );
-                                    })}
+                                                 compact={queueCollapsed}
+                                                 isSuggested={suggestionsEnabled && suggestedPrNumbers.has(pr.number ?? 0)}
+                                                 sessionContextPayload={sessionContextPayload}
+                                                 classificationStatus={teamClassificationBadgeByPrId.get(getPrSelectionId(pr))}
+                                             />
+                                         );
+                                     })}
                                 </PrQueueGroupSection>
                             ))
                     )}

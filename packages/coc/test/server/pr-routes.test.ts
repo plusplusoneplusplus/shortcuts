@@ -513,6 +513,61 @@ describe('GET /api/repos/:id/pull-requests', () => {
         expect(queue.enqueue).toHaveBeenCalledTimes(1);
     });
 
+    it('rejects manual Team auto-classification trigger when the flag is disabled', async () => {
+        const { bridge, queue } = makeAutoClassificationBridge();
+        await restartServer({
+            store: {} as any,
+            bridge,
+            getEnabled: () => false,
+        });
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/team-auto-classification`, {
+            method: 'POST',
+            body: JSON.stringify({
+                workspaceId: REPO_ID,
+                pullRequests: [{ ...mockPr, headSha: 'head-manual' }],
+            }),
+        });
+
+        expect(res.status).toBe(403);
+        expect(queue.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('manual Team auto-classification trigger reuses the bounded low-priority enqueue helper', async () => {
+        const { bridge, queue } = makeAutoClassificationBridge();
+        addPullRequestCoworkerToRoster(dataDir, REPO_ID, REPO_ID, {
+            id: 'user1',
+            displayName: 'Alice',
+        });
+        await restartServer({
+            store: {} as any,
+            bridge,
+            getEnabled: () => true,
+        });
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/team-auto-classification`, {
+            method: 'POST',
+            body: JSON.stringify({
+                workspaceId: REPO_ID,
+                pullRequests: [{ ...mockPr, headSha: 'head-manual' }],
+            }),
+        });
+        const body = await res.json() as { eligible: number; started: number; ready: number; running: number };
+
+        expect(res.status).toBe(200);
+        expect(body).toMatchObject({ eligible: 1, started: 1, ready: 0, running: 0 });
+        expect(queue.enqueue).toHaveBeenCalledTimes(1);
+        expect(queue.enqueue).toHaveBeenCalledWith(expect.objectContaining({
+            priority: 'low',
+            payload: expect.objectContaining({
+                workspaceId: REPO_ID,
+                repoId: REPO_ID,
+                classificationIdentifier: '42:head-manual',
+                skills: ['classify-diff'],
+            }),
+        }));
+    });
+
     it('background warm can request Team auto-classification only when enabled', async () => {
         const { bridge, queue } = makeAutoClassificationBridge();
         addPullRequestCoworkerToRoster(dataDir, REPO_ID, REPO_ID, {

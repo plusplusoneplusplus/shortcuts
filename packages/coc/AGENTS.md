@@ -71,6 +71,8 @@ all have their own `references/*.md`.
   `pullRequests.enabled`, `pullRequests.autoClassifyTeam`, and
   `features.focusedDiff`; use the generic classify-diff enqueue helper with the
   per-trigger cap and low priority instead of adding client-side POST loops.
+  The Team toolbar status UI should read batch status and route manual
+  "Classify now" actions through the same bounded server helper.
 - **Direct package builds** use `scripts/prebuild.mjs` to build
   `@plusplusoneplusplus/coc-client`, `@plusplusoneplusplus/coc-workflow`, and `@plusplusoneplusplus/coc-memory`
   before `tsc`, clean `dist` before emitting, and generate

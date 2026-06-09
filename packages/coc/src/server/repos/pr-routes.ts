@@ -18,6 +18,7 @@
  * GET  /api/repos/:repoId/pull-requests/coworker-roster  — list Team roster coworkers
  * POST /api/repos/:repoId/pull-requests/coworker-roster  — add/update a Team roster coworker
  * DELETE /api/repos/:repoId/pull-requests/coworker-roster/:coworkerKey — remove a Team roster coworker
+ * POST /api/repos/:repoId/pull-requests/team-auto-classification — enqueue bounded Team PR classifications
  * GET  /api/repos/:repoId/pull-requests/:prId/review-progress — get reviewer progress (AC-04)
  * PUT  /api/repos/:repoId/pull-requests/:prId/review-progress — save reviewer progress (AC-04)
  *
@@ -112,6 +113,47 @@ function parseWorkspaceId(req: Parameters<Route['handler']>[0], body: unknown, r
     }
     const parsed = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`);
     return parsed.searchParams.get('workspaceId')?.trim() || repoId;
+}
+
+function parseTeamAutoClassificationPullRequests(raw: unknown): TeamAutoClassifiablePullRequest[] | string {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return 'Body must be an object';
+    }
+    const pullRequests = (raw as Record<string, unknown>).pullRequests;
+    if (!Array.isArray(pullRequests)) {
+        return 'pullRequests must be an array';
+    }
+    if (pullRequests.length > 200) {
+        return 'pullRequests must contain at most 200 entries';
+    }
+
+    const parsed: TeamAutoClassifiablePullRequest[] = [];
+    for (const [index, value] of pullRequests.entries()) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            return `pullRequests[${index}] must be an object`;
+        }
+        const item = value as Record<string, unknown>;
+        const author = item.author && typeof item.author === 'object' && !Array.isArray(item.author)
+            ? item.author as Record<string, unknown>
+            : undefined;
+        const number = typeof item.number === 'number' || typeof item.number === 'string'
+            ? item.number
+            : undefined;
+        const status = typeof item.status === 'string' ? item.status : undefined;
+        const headSha = typeof item.headSha === 'string' ? item.headSha : undefined;
+        const authorId = typeof author?.id === 'number' || typeof author?.id === 'string'
+            ? author.id
+            : undefined;
+        const displayName = typeof author?.displayName === 'string' ? author.displayName : undefined;
+
+        parsed.push({
+            ...(number !== undefined ? { number } : {}),
+            ...(status !== undefined ? { status } : {}),
+            ...(headSha !== undefined ? { headSha } : {}),
+            ...(author ? { author: { ...(authorId !== undefined ? { id: authorId } : {}), ...(displayName !== undefined ? { displayName } : {}) } } : {}),
+        });
+    }
+    return parsed;
 }
 
 function parsePositiveIntegerPathSegment(raw: string): number | null {
@@ -1026,6 +1068,51 @@ export function registerPrRoutes(
                 const workspaceId = parseWorkspaceId(req, undefined, repoId);
                 const entries = removePullRequestCoworkerFromRoster(dataDir, workspaceId, repoId, coworkerKey);
                 return sendJson(res, { entries });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    // -- Trigger bounded Team auto-classification ------------------------------
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/team-auto-classification$/,
+        handler: async (req, res, match) => {
+            try {
+                if (!isTeamAutoClassificationEnabled(autoClassification)) {
+                    return sendJson(res, { error: 'Pull Requests Team auto-classification is disabled' }, 403);
+                }
+
+                const repoId = decodeURIComponent(match![1]);
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+
+                let raw: unknown;
+                try {
+                    raw = await readJsonBody<unknown>(req);
+                } catch {
+                    return send400(res, 'Invalid JSON body');
+                }
+
+                const validation = parseTeamAutoClassificationPullRequests(raw);
+                if (typeof validation === 'string') {
+                    return send400(res, validation);
+                }
+
+                const workspaceId = parseWorkspaceId(req, raw, repoId);
+                const result = await autoClassifyTeamPullRequests({
+                    dataDir,
+                    store: autoClassification!.store,
+                    bridge: autoClassification!.bridge,
+                    repoTreeService: svc,
+                    prepareTaskForEnqueue: autoClassification!.prepareTaskForEnqueue,
+                    workspaceId,
+                    repoId,
+                    pullRequests: validation,
+                });
+                return sendJson(res, result);
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
             }
