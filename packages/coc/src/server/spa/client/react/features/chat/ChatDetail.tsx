@@ -24,6 +24,7 @@ import { scanTurnsForCreatedFiles } from '../../utils/conversationScan';
 import { toQueueProcessId, isQueueProcessId, toTaskId } from '../../utils/queue-process-id';
 import type { ClientConversationTurn } from '../../types/dashboard';
 import { getDraft, setDraft, pruneExpired } from './hooks/useDraftStore';
+import { clearAskUserDraftsForProcess } from './hooks/useAskUserDraftStore';
 import { buildMetadataProcess } from '../../utils/chatUtils';
 import type { QueuedMessage } from '../../utils/chatUtils';
 import { useChatSSE } from './hooks/useChatSSE';
@@ -819,6 +820,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
 
     // Prune stale drafts once on mount
     useEffect(() => { pruneExpired(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(() => {
+        if (processId && effectiveStatus === 'cancelled') {
+            clearAskUserDraftsForProcess(processId);
+        }
+    }, [effectiveStatus, processId]);
 
     // Hydrate pendingAskUserBatch from processDetails.pendingAskUser so that
     // the ask-user widget appears on cold load (or page refresh) without

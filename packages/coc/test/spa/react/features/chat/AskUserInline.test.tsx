@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { AskUserInline } from '../../../../../src/server/spa/client/react/features/chat/AskUserInline';
 import type { AskUserBatch, AskUserQuestion } from '../../../../../src/server/spa/client/react/features/chat/hooks/useChatSSE';
+import { getAskUserDraft } from '../../../../../src/server/spa/client/react/features/chat/hooks/useAskUserDraftStore';
 
 const mocks = vi.hoisted(() => ({
     processes: {
@@ -23,6 +24,7 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', async (impor
 
 beforeEach(() => {
     vi.restoreAllMocks();
+    localStorage.clear();
     mocks.processes.askUserResponse.mockReset().mockResolvedValue({ ok: true });
 });
 
@@ -44,7 +46,7 @@ function makeQuestion(overrides: Partial<AskUserQuestion> = {}): AskUserQuestion
 }
 
 function makeBatch(questions: AskUserQuestion[] = [makeQuestion()]): AskUserBatch {
-    return { batchId: 'batch-1', questions };
+    return { batchId: questions[0]?.batchId ?? 'batch-1', questions };
 }
 
 describe('AskUserInline', () => {
@@ -211,6 +213,153 @@ describe('AskUserInline', () => {
             );
         });
         expect(onAnswered).toHaveBeenCalled();
+    });
+
+    it('restores draft answers and defer notes for the same process and batch after remount', async () => {
+        const batch = makeBatch([
+            makeQuestion({ questionId: 'q-1', question: 'Why?', type: 'text', options: undefined, batchSize: 2 }),
+            makeQuestion({ questionId: 'q-2', question: 'Target?', type: 'text', options: undefined, index: 1, batchSize: 2 }),
+        ]);
+        const { unmount } = render(
+            <AskUserInline
+                batch={batch}
+                processId="proc-1"
+                onAnswered={vi.fn()}
+            />,
+        );
+
+        fireEvent.change(screen.getAllByTestId('ask-user-text-input')[0], { target: { value: 'draft answer' } });
+        fireEvent.change(screen.getAllByTestId('ask-user-question-disposition')[1], { target: { value: 'needs-context' } });
+        fireEvent.change(screen.getByTestId('ask-user-deferred-note-input'), { target: { value: 'Need available targets' } });
+        await waitFor(() => {
+            const draft = getAskUserDraft('proc-1', 'batch-1');
+            expect(draft?.answers['q-1'].value).toBe('draft answer');
+            expect(draft?.answers['q-2'].disposition).toBe('needs-context');
+        });
+
+        unmount();
+        render(
+            <AskUserInline
+                batch={batch}
+                processId="proc-1"
+                onAnswered={vi.fn()}
+            />,
+        );
+
+        expect(screen.getByTestId('ask-user-text-input')).toHaveValue('draft answer');
+        expect(screen.getAllByTestId('ask-user-question-disposition')[1]).toHaveValue('needs-context');
+        expect(screen.getByTestId('ask-user-deferred-note-input')).toHaveValue('Need available targets');
+    });
+
+    it('does not leak drafts between processes with the same batch id', async () => {
+        const batch = makeBatch([makeQuestion({ type: 'text', options: undefined })]);
+        const firstRender = render(
+            <AskUserInline
+                batch={batch}
+                processId="proc-1"
+                onAnswered={vi.fn()}
+            />,
+        );
+        fireEvent.change(screen.getByTestId('ask-user-text-input'), { target: { value: 'process one answer' } });
+        await waitFor(() => {
+            expect(getAskUserDraft('proc-1', 'batch-1')?.answers['q-1'].value).toBe('process one answer');
+        });
+
+        firstRender.unmount();
+        const secondRender = render(
+            <AskUserInline
+                batch={batch}
+                processId="proc-2"
+                onAnswered={vi.fn()}
+            />,
+        );
+        expect(screen.getByTestId('ask-user-text-input')).toHaveValue('');
+
+        secondRender.unmount();
+        render(
+            <AskUserInline
+                batch={batch}
+                processId="proc-1"
+                onAnswered={vi.fn()}
+            />,
+        );
+        expect(screen.getByTestId('ask-user-text-input')).toHaveValue('process one answer');
+    });
+
+    it('clears an older draft when the same process receives a replacement batch id', async () => {
+        const firstBatch = makeBatch([makeQuestion({ type: 'text', options: undefined })]);
+        const secondBatch = makeBatch([
+            makeQuestion({ batchId: 'batch-2', questionId: 'q-2', question: 'New question?', type: 'text', options: undefined }),
+        ]);
+        const { unmount } = render(
+            <AskUserInline
+                batch={firstBatch}
+                processId="proc-1"
+                onAnswered={vi.fn()}
+            />,
+        );
+        fireEvent.change(screen.getByTestId('ask-user-text-input'), { target: { value: 'stale answer' } });
+        await waitFor(() => {
+            expect(getAskUserDraft('proc-1', 'batch-1')?.answers['q-1'].value).toBe('stale answer');
+        });
+
+        unmount();
+        render(
+            <AskUserInline
+                batch={secondBatch}
+                processId="proc-1"
+                onAnswered={vi.fn()}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(getAskUserDraft('proc-1', 'batch-1')).toBeNull();
+        });
+        expect(screen.getByTestId('ask-user-text-input')).toHaveValue('');
+    });
+
+    it('clears the draft after successful submission', async () => {
+        const batch = makeBatch([makeQuestion({ type: 'text', options: undefined })]);
+        render(
+            <AskUserInline
+                batch={batch}
+                processId="proc-1"
+                onAnswered={vi.fn()}
+            />,
+        );
+        fireEvent.change(screen.getByTestId('ask-user-text-input'), { target: { value: 'answer to submit' } });
+        await waitFor(() => {
+            expect(getAskUserDraft('proc-1', 'batch-1')?.answers['q-1'].value).toBe('answer to submit');
+        });
+
+        fireEvent.click(screen.getByTestId('ask-user-submit-all-btn'));
+
+        await waitFor(() => {
+            expect(mocks.processes.askUserResponse).toHaveBeenCalled();
+            expect(getAskUserDraft('proc-1', 'batch-1')).toBeNull();
+        });
+    });
+
+    it('clears the draft after successful skip-all', async () => {
+        const batch = makeBatch([makeQuestion({ type: 'text', options: undefined })]);
+        render(
+            <AskUserInline
+                batch={batch}
+                processId="proc-1"
+                onAnswered={vi.fn()}
+            />,
+        );
+        fireEvent.change(screen.getByTestId('ask-user-text-input'), { target: { value: 'answer before skip' } });
+        await waitFor(() => {
+            expect(getAskUserDraft('proc-1', 'batch-1')?.answers['q-1'].value).toBe('answer before skip');
+        });
+
+        fireEvent.click(screen.getByTestId('ask-user-skip-all-btn'));
+
+        await waitFor(() => {
+            expect(mocks.processes.askUserResponse).toHaveBeenCalled();
+            expect(getAskUserDraft('proc-1', 'batch-1')).toBeNull();
+        });
     });
 
     it('keeps submit-all disabled until required answers are complete', () => {

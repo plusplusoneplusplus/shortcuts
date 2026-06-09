@@ -187,7 +187,11 @@ Live unanswered `ask_user` batches remain owned by
 `AskUserInline`. Each live question card has a compact response-type dropdown
 with Answer, Skip / not applicable, and Need more context choices; the deferred
 choice marks that question complete for batch submission and reveals an optional
-short note field. Completed `ask_user` tool calls render as read-only historical
+short note field. Unsubmitted live-batch drafts are saved in browser
+localStorage scoped by process id and batch id, restored after navigation or
+refresh for the same batch, and cleared on accepted submission, skip-all,
+process cancellation, or replacement by a newer batch id. Completed `ask_user`
+tool calls render as read-only historical
 question cards via `AskUserHistoryCard` inside `ConversationTurnBubble`; the
 history card displays persisted `args.questions[]` plus the completed
 answer/skip/deferred result, including "Need more context" notes, with a

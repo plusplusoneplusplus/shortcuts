@@ -4,11 +4,20 @@
  * Renders one batched interactive ask_user form from the AI.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AskUserResponseRequest } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient } from '../../api/cocClient';
 import type { AskUserBatch, AskUserQuestion } from './hooks/useChatSSE';
 import { AskUserMarkdown } from './AskUserMarkdown';
+import {
+    clearAskUserDraft,
+    clearOtherAskUserDraftsForProcess,
+    getAskUserDraft,
+    pruneExpiredAskUserDrafts,
+    setAskUserDraft,
+    type AskUserQuestionDisposition,
+    type AskUserDraftValue,
+} from './hooks/useAskUserDraftStore';
 
 export interface AskUserInlineProps {
     batch: AskUserBatch;
@@ -16,13 +25,12 @@ export interface AskUserInlineProps {
     onAnswered: () => void;
 }
 
-type AnswerValue = string | string[] | boolean | null;
-type QuestionDisposition = 'answer' | 'skip' | 'needs-context';
+type AnswerValue = AskUserDraftValue;
 
 interface QuestionState {
     value: AnswerValue;
     customText: string;
-    disposition: QuestionDisposition;
+    disposition: AskUserQuestionDisposition;
     note: string;
 }
 
@@ -33,6 +41,36 @@ function initialValue(question: AskUserQuestion): AnswerValue {
     if (question.type === 'multi-select') return (question.defaultValue as string[] | undefined) ?? [];
     if (question.type === 'text') return (question.defaultValue as string | undefined) ?? '';
     return (question.defaultValue as string | undefined) ?? null;
+}
+
+function defaultQuestionState(question: AskUserQuestion): QuestionState {
+    return {
+        value: initialValue(question),
+        customText: '',
+        disposition: 'answer',
+        note: '',
+    };
+}
+
+function normalizeDraftValue(question: AskUserQuestion, value: AnswerValue, fallback: AnswerValue): AnswerValue {
+    if (question.type === 'multi-select') return Array.isArray(value) ? value : fallback;
+    if (question.type === 'yes-no' || question.type === 'confirm') return typeof value === 'boolean' || value === null ? value : fallback;
+    return typeof value === 'string' || value === null ? value : fallback;
+}
+
+function initialAnswers(batch: AskUserBatch, processId: string): Record<string, QuestionState> {
+    const draft = getAskUserDraft(processId, batch.batchId);
+    return Object.fromEntries(batch.questions.map(question => {
+        const fallback = defaultQuestionState(question);
+        const saved = draft?.answers[question.questionId];
+        if (!saved) return [question.questionId, fallback];
+        return [question.questionId, {
+            value: normalizeDraftValue(question, saved.value, fallback.value),
+            customText: saved.customText,
+            disposition: saved.disposition,
+            note: saved.note,
+        }];
+    }));
 }
 
 function isAnswerComplete(question: AskUserQuestion, state: QuestionState): boolean {
@@ -73,19 +111,24 @@ function responseFor(question: AskUserQuestion, state: QuestionState): AskUserRe
 }
 
 export function AskUserInline({ batch, processId, onAnswered }: AskUserInlineProps) {
-    const [answers, setAnswers] = useState<Record<string, QuestionState>>(() => Object.fromEntries(
-        batch.questions.map(question => [question.questionId, {
-            value: initialValue(question),
-            customText: '',
-            disposition: 'answer',
-            note: '',
-        }]),
-    ));
+    const responseAcceptedRef = useRef(false);
+    const [answers, setAnswers] = useState<Record<string, QuestionState>>(() => initialAnswers(batch, processId));
     const [submitting, setSubmitting] = useState(false);
 
     const updateQuestion = useCallback((questionId: string, patch: Partial<QuestionState>) => {
         setAnswers(prev => ({ ...prev, [questionId]: { ...prev[questionId], ...patch } }));
     }, []);
+
+    useEffect(() => {
+        pruneExpiredAskUserDrafts();
+        clearOtherAskUserDraftsForProcess(processId, batch.batchId);
+    }, [batch.batchId, processId]);
+
+    useEffect(() => {
+        if (!responseAcceptedRef.current) {
+            setAskUserDraft(processId, batch.batchId, answers);
+        }
+    }, [answers, batch.batchId, processId]);
 
     const canSubmitAll = batch.questions.every(question => isAnswerComplete(question, answers[question.questionId]));
 
@@ -102,6 +145,8 @@ export function AskUserInline({ batch, processId, onAnswered }: AskUserInlinePro
                     return responseFor(question, state);
                 }),
             });
+            responseAcceptedRef.current = true;
+            clearAskUserDraft(processId, batch.batchId);
             onAnswered();
         } catch {
             // The running AI session owns timeout/cleanup if the response cannot be delivered.
