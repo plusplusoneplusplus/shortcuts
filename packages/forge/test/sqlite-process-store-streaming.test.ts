@@ -80,6 +80,25 @@ describe('SqliteProcessStore — appendConversationTurn', () => {
         expect(updated!.conversationTurns![0].content).toBe('hello');
     });
 
+    it('round-trips interrupted assistant turn metadata', async () => {
+        await store.addProcess(makeProcess('at-interrupted'));
+
+        await store.appendConversationTurn('at-interrupted', (idx) => ({
+            role: 'assistant',
+            content: 'Partial answer',
+            timestamp: new Date(),
+            turnIndex: idx,
+            timeline: [],
+            interrupted: true,
+            interruptionReason: 'Timed out waiting for model',
+        }));
+
+        const updated = await store.getProcess('at-interrupted');
+        expect(updated!.conversationTurns).toHaveLength(1);
+        expect(updated!.conversationTurns![0].interrupted).toBe(true);
+        expect(updated!.conversationTurns![0].interruptionReason).toBe('Timed out waiting for model');
+    });
+
     it('assigns incrementing turnIndex across multiple sequential appends', async () => {
         await store.addProcess(makeProcess('at-2'));
 

@@ -535,6 +535,26 @@ describe('buildConversationHistoryContext', () => {
         const result = buildConversationHistoryContext(turns);
         expect(result).not.toContain('(truncated)');
     });
+
+    it('skips interrupted assistant turns so partial output is not replayed', () => {
+        const turns = [
+            { role: 'user' as const, content: 'Original question', timestamp: new Date(), turnIndex: 0, timeline: [] },
+            {
+                role: 'assistant' as const,
+                content: 'Partial output that timed out',
+                timestamp: new Date(),
+                turnIndex: 1,
+                timeline: [],
+                interrupted: true,
+                interruptionReason: 'Timed out',
+            },
+            { role: 'user' as const, content: 'Continue', timestamp: new Date(), turnIndex: 2, timeline: [] },
+        ];
+        const result = buildConversationHistoryContext(turns);
+        expect(result).toContain('[User]: Original question');
+        expect(result).toContain('[User]: Continue');
+        expect(result).not.toContain('Partial output that timed out');
+    });
 });
 
 // ============================================================================

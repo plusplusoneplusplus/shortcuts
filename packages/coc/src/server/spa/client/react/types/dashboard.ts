@@ -94,6 +94,10 @@ export interface ClientConversationTurn {
     timestamp?: string;
     turnIndex?: number;
     streaming?: boolean;
+    /** True when an assistant turn was preserved after the generation failed mid-stream. */
+    interrupted?: boolean;
+    /** Human-readable failure reason for an interrupted assistant turn. */
+    interruptionReason?: string;
     /** True when the last AI call for this turn failed — enables the Retry button. */
     isError?: boolean;
     toolCalls?: ClientToolCall[];

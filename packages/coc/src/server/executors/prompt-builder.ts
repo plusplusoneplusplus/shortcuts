@@ -394,8 +394,11 @@ export function prependSelectedSkillsDirective(
 export function buildConversationHistoryContext(turns?: ConversationTurn[]): string | undefined {
     if (!turns || turns.length === 0) return undefined;
 
+    const replayableTurns = turns.filter(turn => !turn.interrupted);
+    if (replayableTurns.length === 0) return undefined;
+
     const lines: string[] = ['<conversation_history>'];
-    for (const turn of turns) {
+    for (const turn of replayableTurns) {
         const role = turn.role === 'user' ? 'User' : 'Assistant';
         // Trim long assistant responses to avoid blowing up the context window
         const content =

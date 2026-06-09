@@ -127,6 +127,24 @@ describe('buildContextPrompt', () => {
 
         expect(prompt).toContain('User: Only message');
     });
+
+    it('should skip interrupted assistant turns in cold resume context', () => {
+        const turns: ConversationTurn[] = [
+            makeTurn('user', 'Before timeout', 0),
+            {
+                ...makeTurn('assistant', 'Partial timeout output', 1),
+                interrupted: true,
+                interruptionReason: 'Timed out',
+            },
+            makeTurn('user', 'Continue after timeout', 2),
+        ];
+
+        const prompt = buildContextPrompt(turns);
+
+        expect(prompt).toContain('User: Before timeout');
+        expect(prompt).toContain('User: Continue after timeout');
+        expect(prompt).not.toContain('Partial timeout output');
+    });
 });
 
 // ============================================================================

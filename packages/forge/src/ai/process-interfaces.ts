@@ -145,6 +145,10 @@ export interface ConversationTurn {
     turnIndex: number;
     /** True while the assistant response is still being streamed (ephemeral UI hint) */
     streaming?: boolean;
+    /** True when an assistant turn was preserved after the generation failed mid-stream. */
+    interrupted?: boolean;
+    /** Human-readable failure reason for an interrupted assistant turn. */
+    interruptionReason?: string;
     /** Tool calls executed during this turn (typically assistant turns only) */
     toolCalls?: ToolCall[];
     /** Chronological execution events (content chunks + tool lifecycle) */
@@ -185,6 +189,10 @@ export interface SerializedConversationTurn {
     timestamp: string;  // ISO string
     turnIndex: number;
     streaming?: boolean;
+    /** True when an assistant turn was preserved after the generation failed mid-stream. */
+    interrupted?: boolean;
+    /** Human-readable failure reason for an interrupted assistant turn. */
+    interruptionReason?: string;
     toolCalls?: SerializedToolCall[];
     /** Chronological execution events (timestamps as ISO strings) */
     timeline: SerializedTimelineItem[];

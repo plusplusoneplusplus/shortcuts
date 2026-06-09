@@ -453,6 +453,65 @@ describe('FollowUpExecutor', () => {
         expect(updated?.status).toBe('failed');
     });
 
+    it('preserves partial streamed output as an interrupted turn when sendMessage times out', async () => {
+        sdkMocks.mockSendMessage.mockImplementation(async (opts: any) => {
+            opts.onStreamingChunk('Partial answer before timeout');
+            throw new Error('Timed out waiting for model');
+        });
+        const proc = makeProcess({ id: 'proc-partial-timeout' });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-partial-timeout', 'msg');
+
+        const updated = store.processes.get('proc-partial-timeout');
+        const lastTurn = updated?.conversationTurns?.[updated.conversationTurns.length - 1];
+        expect(updated?.status).toBe('failed');
+        expect(updated?.error).toBe('Timed out waiting for model');
+        expect(lastTurn?.role).toBe('assistant');
+        expect(lastTurn?.content).toBe('Partial answer before timeout');
+        expect(lastTurn?.content).not.toContain('Error:');
+        expect(lastTurn?.interrupted).toBe(true);
+        expect(lastTurn?.interruptionReason).toBe('Timed out waiting for model');
+        expect(lastTurn?.streaming).toBeFalsy();
+    });
+
+    it('preserves tool timeline emitted before a timed-out follow-up without replaying tools', async () => {
+        sdkMocks.mockSendMessage.mockImplementation(async (opts: any) => {
+            opts.onStreamingChunk('Investigating...');
+            opts.onToolEvent({
+                type: 'tool-start',
+                toolCallId: 'tool-1',
+                toolName: 'bash',
+                parameters: { command: 'echo done' },
+            });
+            opts.onToolEvent({
+                type: 'tool-complete',
+                toolCallId: 'tool-1',
+                toolName: 'bash',
+                result: 'done',
+            });
+            throw new Error('Timed out waiting for model');
+        });
+        const proc = makeProcess({ id: 'proc-tool-timeout' });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-tool-timeout', 'msg');
+
+        const updated = store.processes.get('proc-tool-timeout');
+        const lastTurn = updated?.conversationTurns?.[updated.conversationTurns.length - 1];
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
+        expect(lastTurn?.interrupted).toBe(true);
+        expect(lastTurn?.timeline.map(item => item.type)).toEqual([
+            'content',
+            'tool-start',
+            'tool-complete',
+        ]);
+        expect(lastTurn?.timeline[1].toolCall?.name).toBe('bash');
+        expect(lastTurn?.timeline[2].toolCall?.result).toBe('done');
+    });
+
     // -------------------------------------------------------------------------
     // Streaming
     // -------------------------------------------------------------------------
