@@ -1318,9 +1318,11 @@ describe('NewChatArea: chat-only UI', () => {
     });
 
     it('defaults mode to ask and sends mode in the task payload', () => {
-        expect(source).toContain("'ask'");
-        // mode is derived from selectedMode (with ralph aliasing) and sent as payload
-        expect(source).toContain('mode: mode');
+        expect(source).toContain("const [selectedMode, setSelectedMode] = useState<ChatMode>('ask')");
+        // InitialChatComposer derives the submitted mode from selectedMode (with workflow aliasing),
+        // then NewChatArea enqueues that submitted mode in the task payload.
+        expect(source).toMatch(/onSubmit\(\{[\s\S]*mode,/);
+        expect(source).toContain('mode: submission.mode as any');
     });
 
     it('still renders Start a new conversation hero text', () => {
@@ -1328,8 +1330,9 @@ describe('NewChatArea: chat-only UI', () => {
     });
 
     it('still renders the send input', () => {
-        expect(source).toContain('data-testid="new-chat-input"');
-        expect(source).toContain('data-testid="new-chat-send-btn"');
+        expect(source).toContain("testIdPrefix = 'new-chat'");
+        expect(source).toContain('data-testid={`${testIdPrefix}-input`}');
+        expect(source).toContain('data-testid={`${testIdPrefix}-send-btn`}');
     });
 });
 

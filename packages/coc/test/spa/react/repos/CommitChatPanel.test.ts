@@ -53,12 +53,13 @@ describe('CommitChatPanel', () => {
             expect(source).toContain('{!taskId && !loading && !error && (');
         });
 
-        it('renders RichTextInput with commit-chat-input testid', () => {
-            expect(source).toContain('data-testid="commit-chat-input"');
+        it('renders the shared InitialChatComposer with commit-chat test ids', () => {
+            expect(source).toContain('<InitialChatComposer');
+            expect(source).toContain('testIdPrefix="commit-chat"');
         });
 
-        it('renders Send button with commit-chat-send-btn testid', () => {
-            expect(source).toContain('data-testid="commit-chat-send-btn"');
+        it('uses compact composer settings for review-lens sizing', () => {
+            expect(source).toContain('settingsLayout="compact"');
         });
     });
 
@@ -87,20 +88,21 @@ describe('CommitChatPanel', () => {
     });
 
     describe('sends new chat on Enter', () => {
-        it('handles Enter key without Shift', () => {
-            expect(source).toContain("e.key === 'Enter' && !e.shiftKey");
-            expect(source).toContain('e.preventDefault()');
-            expect(source).toContain('handleSend()');
+        it('delegates input and keyboard handling to InitialChatComposer', () => {
+            expect(source).toContain('<InitialChatComposer');
+            expect(source).toContain('onSubmit={handleComposerSubmit}');
         });
 
-        it('handleSend trims input and calls createChat', () => {
-            expect(source).toContain('const text = input.trim()');
-            expect(source).toContain('await createChat(text');
+        it('submits composer prompt through the commit chat binding', () => {
+            expect(source).toContain('createChat(submission.prompt, {');
+            expect(source).toContain('mode: submission.mode');
         });
 
-        it('clears input after send', () => {
-            expect(source).toContain("setInput('')");
-            expect(source).toContain("richTextRef.current?.setValue('')");
+        it('passes AI, context, attachment, and working-directory selections through', () => {
+            expect(source).toContain('context: submission.context');
+            expect(source).toContain('attachments: submission.attachments');
+            expect(source).toContain('provider: submission.provider');
+            expect(source).toContain('workingDirectory: submission.workingDirectory');
         });
     });
 
@@ -152,30 +154,10 @@ describe('CommitChatPanel', () => {
     });
 
     describe('image paste support', () => {
-        it('imports useFileAttachments hook', () => {
-            expect(source).toContain("useFileAttachments");
-        });
-
-        it('imports AttachmentPreviews component', () => {
-            expect(source).toContain("AttachmentPreviews");
-        });
-
-        it('wires onPaste to addFromPaste', () => {
-            expect(source).toContain('onPaste={addFromPaste}');
-        });
-
-        it('renders AttachmentPreviews with attachments and onRemove', () => {
-            expect(source).toContain('<AttachmentPreviews');
-            expect(source).toContain('attachments={attachments}');
-            expect(source).toContain('onRemove={removeAttachment}');
-        });
-
-        it('clears attachments after send', () => {
-            expect(source).toContain('clearAttachments()');
-        });
-
-        it('enables send button when attachments are present', () => {
-            expect(source).toContain('attachments.length === 0');
+        it('inherits image paste support from InitialChatComposer', () => {
+            expect(source).toContain("import { InitialChatComposer } from '../../chat/NewChatArea'");
+            expect(source).toContain('testIdPrefix="commit-chat"');
+            expect(source).toContain('attachments: submission.attachments');
         });
     });
 });
