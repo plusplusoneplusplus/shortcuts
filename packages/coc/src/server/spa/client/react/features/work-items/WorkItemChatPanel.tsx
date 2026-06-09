@@ -127,6 +127,7 @@ export function WorkItemChatPanel({
                         draftKey={draftKey}
                         sourceLabel="Work Item chat composer"
                         enableRalphDirectGoal={false}
+                        settingsLayout="compact"
                     />
                 </div>
             )}

@@ -93,6 +93,8 @@ export interface InitialChatComposerSubmission {
     config?: { effortTier?: EffortTierKey };
 }
 
+export type InitialChatComposerSettingsLayout = 'full' | 'compact';
+
 export interface InitialChatComposerProps {
     workspaceId?: string;
     workspaceRoot?: string;
@@ -106,6 +108,32 @@ export interface InitialChatComposerProps {
     draftKey?: string;
     sourceLabel?: string;
     enableRalphDirectGoal?: boolean;
+    settingsLayout?: InitialChatComposerSettingsLayout;
+}
+
+const PROVIDER_LABELS: Record<ChatProvider, string> = {
+    auto: 'Auto',
+    copilot: 'Copilot',
+    codex: 'Codex',
+    claude: 'Claude',
+};
+
+const EFFORT_TIER_LABELS: Record<EffortTierKey, string> = {
+    'very-low': 'Very Low',
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+};
+
+const EFFORT_LEVEL_LABELS: Record<EffortLevel, string> = {
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+    xhigh: 'Extra High',
+};
+
+function getEffortLabel(effort: EffortLevel | null): string {
+    return effort ? EFFORT_LEVEL_LABELS[effort] : 'Auto';
 }
 
 export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
@@ -174,6 +202,7 @@ export function InitialChatComposer({
     draftKey,
     sourceLabel = 'New Chat composer',
     enableRalphDirectGoal = true,
+    settingsLayout = 'full',
 }: InitialChatComposerProps) {
     const [input, setInput] = useState('');
     const [cursorPos, setCursorPos] = useState(0);
@@ -187,8 +216,10 @@ export function InitialChatComposer({
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
     const [selectedEffortTier, setSelectedEffortTier] = useState<EffortTierKey>('medium');
     const [ralphDirectGoalDraft, setRalphDirectGoalDraft] = useState<string | null>(null);
+    const [settingsEditorOpen, setSettingsEditorOpen] = useState(false);
     const richTextRef = useRef<RichTextInputHandle>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const settingsEditorRef = useRef<HTMLDivElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
     const sessionContextDragDepthRef = useRef(0);
     /** Tracks the (provider, modelId) for which the user last explicitly picked an effort.
@@ -259,6 +290,41 @@ export function InitialChatComposer({
         () => [...modePillOptions, ...workflowModeOptions].map(opt => opt.value),
         [modePillOptions, workflowModeOptions],
     );
+    const activeModeLabel = useMemo(
+        () => [...modePillOptions, ...workflowModeOptions].find(opt => opt.value === selectedMode)?.label ?? selectedMode,
+        [modePillOptions, selectedMode, workflowModeOptions],
+    );
+    const compactSettingsLabel = [
+        PROVIDER_LABELS[selectedProvider],
+        activeModeLabel,
+        useEffortTierMode ? EFFORT_TIER_LABELS[selectedEffortTier] : getEffortLabel(effortOverride),
+    ].join(' · ');
+
+    useEffect(() => {
+        if (!settingsEditorOpen) return;
+        const closeEditor = () => {
+            setSettingsEditorOpen(false);
+            if (modelCommand.modelMenuVisible) {
+                modelCommand.dismissModelMenu();
+            }
+        };
+        const handleMouseDown = (event: MouseEvent) => {
+            if (settingsEditorRef.current && !settingsEditorRef.current.contains(event.target as Node)) {
+                closeEditor();
+            }
+        };
+        const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                closeEditor();
+            }
+        };
+        document.addEventListener('mousedown', handleMouseDown);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', handleMouseDown);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [modelCommand.dismissModelMenu, modelCommand.modelMenuVisible, settingsEditorOpen]);
 
     // Restore draft from localStorage on mount / workspace switch.
     // effortOverride is intentionally NOT restored from the draft — it is
@@ -776,6 +842,205 @@ export function InitialChatComposer({
         slashCommands.handleInputChange(next, next.length);
     }
 
+    function renderModelPicker(expanded = false) {
+        return (
+            <div className={cn('relative shrink-0', expanded && 'w-full')} data-testid="model-picker-chip-container">
+                <button
+                    type="button"
+                    className={cn(
+                        'ctool inline-flex items-center gap-1 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 min-w-0 transition-colors',
+                        expanded ? 'w-full max-w-none justify-between' : 'max-w-[40vw] sm:max-w-[180px]',
+                    )}
+                    onClick={() => {
+                        if (modelCommand.modelMenuVisible) {
+                            modelCommand.dismissModelMenu();
+                        } else {
+                            modelCommand.showModelMenu();
+                        }
+                    }}
+                    title={validModelOverride
+                        ? `Override active: ${validModelOverride} (click to change or clear)`
+                        : defaultModelLabel
+                            ? `Default: ${defaultModelLabel} (click to override)`
+                            : 'Pick a model'}
+                    data-testid="model-picker-chip"
+                    aria-haspopup="listbox"
+                    aria-expanded={modelCommand.modelMenuVisible}
+                >
+                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
+                        <polygon
+                            points="8,1 14,4.5 14,11.5 8,15 2,11.5 2,4.5"
+                            stroke="currentColor"
+                            strokeWidth="1.2"
+                            strokeLinejoin="round"
+                        />
+                    </svg>
+                    <span className="truncate font-mono text-[10.5px] font-medium text-[#848484] dark:text-[#999]">
+                        {validModelOverride || defaultModelLabel || 'model'}
+                    </span>
+                    <svg
+                        width="7" height="7"
+                        viewBox="0 0 8 6"
+                        fill="none"
+                        aria-hidden="true"
+                        className="shrink-0 opacity-60"
+                    >
+                        <path d="M1 1l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                </button>
+                <ModelCommandMenu
+                    models={modelCommand.filteredModels}
+                    filter={modelCommand.modelFilter}
+                    onSelect={(modelId) => {
+                        modelCommand.handleModelSelect(modelId);
+                        richTextRef.current?.focus();
+                    }}
+                    onDismiss={modelCommand.dismissModelMenu}
+                    visible={modelCommand.modelMenuVisible}
+                    highlightIndex={modelCommand.modelHighlightIndex}
+                    currentModelId={validModelOverride ?? defaultModelId}
+                    onClearOverride={modelCommand.modelOverride
+                        ? () => modelCommand.setModelOverride(null)
+                        : undefined}
+                />
+            </div>
+        );
+    }
+
+    function renderEffortControl(className?: string) {
+        if (useEffortTierMode) {
+            return (
+                <EffortTierSelector
+                    tiers={effortTierMap}
+                    selectedTier={selectedEffortTier}
+                    onChange={handleEffortTierChange}
+                    disabled={sending}
+                    data-testid="effort-tier-selector"
+                    className={className}
+                    autoProviderMode={autoProviderSelected}
+                />
+            );
+        }
+
+        return (
+            <EffortPillSelector
+                value={effortOverride}
+                onChange={handleEffortChange}
+                options={effortOptions}
+                disabled={effortPickerDisabled}
+                disabledTitle="This model does not support reasoning effort selection"
+                className={className}
+            />
+        );
+    }
+
+    function renderCompactSettingsEditor() {
+        if (!settingsEditorOpen) return null;
+        return (
+            <div
+                role="dialog"
+                aria-label="AI settings"
+                data-testid="compact-ai-settings-editor"
+                className={cn(
+                    'fixed inset-x-2 bottom-2 z-[10000] rounded-lg border border-[#d0d7de] bg-white p-2 shadow-xl dark:border-[#3c3c3c] dark:bg-[#252526]',
+                    'sm:absolute sm:inset-x-auto sm:bottom-full sm:left-0 sm:mb-1 sm:w-[360px]',
+                )}
+            >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                    <div>
+                        <div className="text-[11px] font-semibold text-[#1e1e1e] dark:text-[#cccccc]">AI settings</div>
+                        <div className="text-[10px] text-[#6e7781] dark:text-[#9e9e9e]">Provider, mode, model, and effort</div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setSettingsEditorOpen(false);
+                            if (modelCommand.modelMenuVisible) {
+                                modelCommand.dismissModelMenu();
+                            }
+                        }}
+                        className="rounded px-1.5 py-0.5 text-xs text-[#848484] hover:bg-black/[0.06] hover:text-[#1e1e1e] dark:hover:bg-white/[0.08] dark:hover:text-white"
+                        data-testid="compact-ai-settings-close-btn"
+                        aria-label="Close AI settings"
+                    >
+                        ✕
+                    </button>
+                </div>
+                <div className="space-y-2">
+                    <div className="space-y-1" data-testid="compact-ai-settings-provider-control">
+                        <div className="text-[10px] font-medium uppercase tracking-wide text-[#6e7781] dark:text-[#9e9e9e]">Provider</div>
+                        <AgentSelectorChip
+                            providers={agentProviders}
+                            loading={providersLoading}
+                            selected={selectedProvider}
+                            onChange={handleProviderChange}
+                            disabled={sending}
+                            mobileTapTarget
+                        />
+                    </div>
+                    <div className="space-y-1" data-testid="compact-ai-settings-mode-control">
+                        <div className="text-[10px] font-medium uppercase tracking-wide text-[#6e7781] dark:text-[#9e9e9e]">Mode / workflow</div>
+                        <ModePillSelector
+                            options={modePillOptions}
+                            workflowOptions={workflowModeOptions}
+                            value={selectedMode}
+                            onChange={setSelectedMode}
+                        />
+                    </div>
+                    {!autoProviderSelected && (
+                        <div className="space-y-1" data-testid="compact-ai-settings-model-control">
+                            <div className="text-[10px] font-medium uppercase tracking-wide text-[#6e7781] dark:text-[#9e9e9e]">Model</div>
+                            {renderModelPicker(true)}
+                        </div>
+                    )}
+                    <div className="space-y-1" data-testid="compact-ai-settings-effort-control">
+                        <div className="text-[10px] font-medium uppercase tracking-wide text-[#6e7781] dark:text-[#9e9e9e]">Effort</div>
+                        {renderEffortControl()}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    function renderCompactSettingsChip() {
+        return (
+            <div ref={settingsEditorRef} className="relative min-w-0 shrink-0" data-testid="compact-ai-settings-container">
+                <button
+                    type="button"
+                    disabled={sending}
+                    onClick={() => setSettingsEditorOpen(open => !open)}
+                    className={cn(
+                        'ctool inline-flex h-[24px] max-w-[52vw] items-center gap-1 rounded-md border border-[#d0d7de] bg-white px-2 text-[11px] text-[#1e1e1e] shadow-sm transition-colors dark:border-[#3c3c3c] dark:bg-[#1f1f1f] dark:text-[#cccccc]',
+                        'hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50',
+                        'disabled:cursor-not-allowed disabled:opacity-50',
+                    )}
+                    title={`${compactSettingsLabel} (click to edit AI settings)`}
+                    aria-label={`AI settings: ${compactSettingsLabel}`}
+                    aria-haspopup="dialog"
+                    aria-expanded={settingsEditorOpen}
+                    data-testid="compact-ai-settings-chip"
+                >
+                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0 text-[#0078d4] dark:text-[#3794ff]">
+                        <path d="M3 4h10M5 8h6M7 12h2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                    </svg>
+                    <span data-testid="compact-ai-settings-label" className="truncate font-mono text-[10.5px] font-medium text-[#5a5a5a] dark:text-[#cccccc]">
+                        {compactSettingsLabel}
+                    </span>
+                    <svg
+                        width="7" height="7"
+                        viewBox="0 0 8 6"
+                        fill="none"
+                        aria-hidden="true"
+                        className="shrink-0 opacity-60"
+                    >
+                        <path d="M1 1l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                </button>
+                {renderCompactSettingsEditor()}
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-col h-full bg-white dark:bg-[#1e1e1e]" data-testid={`${testIdPrefix}-area`}>
             {enableRalphDirectGoal && ralphDirectGoalDraft !== null && (
@@ -969,118 +1234,47 @@ export function InitialChatComposer({
                         className="flex flex-wrap items-center gap-x-px gap-y-0.5 pl-2 pr-1.5 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
                         data-testid="chat-input-toolbar"
                     >
-                        {/* Provider selector — leftmost: reads as "who's running this".
-                             Followed by a divider that separates the provider zone
-                             from the mode + model + tools zones (matches the
-                             OpenDesign provider-first composer reference). */}
-                        <AgentSelectorChip
-                            providers={agentProviders}
-                            loading={providersLoading}
-                            selected={selectedProvider}
-                            onChange={handleProviderChange}
-                            disabled={sending}
-                        />
-                        <span aria-hidden="true" data-testid="chat-toolbar-divider-provider" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
-                        <div data-testid="mode-selector" className="shrink-0 mr-0.5">
-                            <ModePillSelector
-                                options={modePillOptions}
-                                workflowOptions={workflowModeOptions}
-                                value={selectedMode}
-                                onChange={setSelectedMode}
-                            />
-                        </div>
-                        <span aria-hidden="true" data-testid="chat-toolbar-divider-mode" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
-                        {/* Model picker + effort pill (legacy) vs Effort Tier selector.
-                             When effortLevels.enabled is true and the active provider has
-                             at least one tier configured, the tier selector replaces both
-                             legacy controls. Falls back to legacy when flag is off or when
-                             the provider has zero tiers configured. */}
-                        {useEffortTierMode ? (
-                            <EffortTierSelector
-                                tiers={effortTierMap}
-                                selectedTier={selectedEffortTier}
-                                onChange={handleEffortTierChange}
-                                disabled={sending}
-                                data-testid="effort-tier-selector"
-                                className="ml-0.5"
-                                autoProviderMode={autoProviderSelected}
-                            />
+                        {settingsLayout === 'compact' ? (
+                            renderCompactSettingsChip()
                         ) : (
                             <>
-                                <div className="relative shrink-0" data-testid="model-picker-chip-container">
-                                <button
-                                    type="button"
-                                    className="ctool inline-flex items-center gap-1 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 min-w-0 max-w-[40vw] sm:max-w-[180px] transition-colors"
-                                    onClick={() => {
-                                        if (modelCommand.modelMenuVisible) {
-                                            modelCommand.dismissModelMenu();
-                                        } else {
-                                            modelCommand.showModelMenu();
-                                        }
-                                    }}
-                                    title={validModelOverride
-                                        ? `Override active: ${validModelOverride} (click to change or clear)`
-                                        : defaultModelLabel
-                                            ? `Default: ${defaultModelLabel} (click to override)`
-                                            : 'Pick a model'}
-                                    data-testid="model-picker-chip"
-                                    aria-haspopup="listbox"
-                                    aria-expanded={modelCommand.modelMenuVisible}
-                                >
-                                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
-                                        <polygon
-                                            points="8,1 14,4.5 14,11.5 8,15 2,11.5 2,4.5"
-                                            stroke="currentColor"
-                                            strokeWidth="1.2"
-                                            strokeLinejoin="round"
-                                        />
-                                    </svg>
-                                    <span className="truncate font-mono text-[10.5px] font-medium text-[#848484] dark:text-[#999]">
-                                        {validModelOverride || defaultModelLabel || 'model'}
-                                    </span>
-                                    {/* Mirrors AgentSelectorChip: chevron only, no
-                                         inline ✕ clear. The override is cleared via
-                                         the "Use default" entry that ModelCommandMenu
-                                         renders at the top when an override is set. */}
-                                    <svg
-                                        width="7" height="7"
-                                        viewBox="0 0 8 6"
-                                        fill="none"
-                                        aria-hidden="true"
-                                        className="shrink-0 opacity-60"
-                                    >
-                                        <path d="M1 1l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                    </svg>
-                                </button>
-                                <ModelCommandMenu
-                                    models={modelCommand.filteredModels}
-                                    filter={modelCommand.modelFilter}
-                                    onSelect={(modelId) => {
-                                        modelCommand.handleModelSelect(modelId);
-                                        richTextRef.current?.focus();
-                                    }}
-                                    onDismiss={modelCommand.dismissModelMenu}
-                                    visible={modelCommand.modelMenuVisible}
-                                    highlightIndex={modelCommand.modelHighlightIndex}
-                                    currentModelId={validModelOverride ?? defaultModelId}
-                                    onClearOverride={modelCommand.modelOverride
-                                        ? () => modelCommand.setModelOverride(null)
-                                        : undefined}
+                                {/* Provider selector — leftmost: reads as "who's running this".
+                                     Followed by a divider that separates the provider zone
+                                     from the mode + model + tools zones (matches the
+                                     OpenDesign provider-first composer reference). */}
+                                <AgentSelectorChip
+                                    providers={agentProviders}
+                                    loading={providersLoading}
+                                    selected={selectedProvider}
+                                    onChange={handleProviderChange}
+                                    disabled={sending}
                                 />
+                                <span aria-hidden="true" data-testid="chat-toolbar-divider-provider" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
+                                <div data-testid="mode-selector" className="shrink-0 mr-0.5">
+                                    <ModePillSelector
+                                        options={modePillOptions}
+                                        workflowOptions={workflowModeOptions}
+                                        value={selectedMode}
+                                        onChange={setSelectedMode}
+                                    />
                                 </div>
-                                {/* Effort pill — picks `task.config.reasoningEffort` for
-                                     models that support extended thinking. `null`
-                                     (no button selected) leaves the override unset
-                                     and lets the executor fall back to the model's
-                                     persisted/SDK default. */}
-                                <EffortPillSelector
-                                    value={effortOverride}
-                                    onChange={handleEffortChange}
-                                    options={effortOptions}
-                                    disabled={effortPickerDisabled}
-                                    disabledTitle="This model does not support reasoning effort selection"
-                                    className="ml-0.5"
-                                />
+                                <span aria-hidden="true" data-testid="chat-toolbar-divider-mode" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
+                                {/* Model picker + effort pill (legacy) vs Effort Tier selector.
+                                     When effortLevels.enabled is true and the active provider has
+                                     at least one tier configured, the tier selector replaces both
+                                     legacy controls. Falls back to legacy when flag is off or when
+                                     the provider has zero tiers configured. */}
+                                {useEffortTierMode ? renderEffortControl('ml-0.5') : (
+                                    <>
+                                        {renderModelPicker()}
+                                        {/* Effort pill — picks `task.config.reasoningEffort` for
+                                             models that support extended thinking. `null`
+                                             (no button selected) leaves the override unset
+                                             and lets the executor fall back to the model's
+                                             persisted/SDK default. */}
+                                        {renderEffortControl('ml-0.5')}
+                                    </>
+                                )}
                             </>
                         )}
                         <div className="flex-1 min-w-0" />
@@ -1100,19 +1294,21 @@ export function InitialChatComposer({
                             </svg>
                             <span aria-hidden="true" className="font-mono text-[9px] text-[#848484]">/</span>
                         </button>
-                        <button
-                            type="button"
-                            className="ctool shrink-0 inline-flex items-center gap-0.5 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
-                            onClick={focusInputAndInsertSlash}
-                            aria-label="Mention a skill"
-                            title="Mention a skill (@) — opens the skill picker"
-                            data-testid="chat-toolbar-mention-btn"
-                        >
-                            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                                <path d="M8 2L3 5v6l5 3 5-3V5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
-                            </svg>
-                            <span aria-hidden="true" className="font-mono text-[9px] text-[#848484]">@</span>
-                        </button>
+                        {settingsLayout !== 'compact' && (
+                            <button
+                                type="button"
+                                className="ctool shrink-0 inline-flex items-center gap-0.5 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
+                                onClick={focusInputAndInsertSlash}
+                                aria-label="Mention a skill"
+                                title="Mention a skill (@) — opens the skill picker"
+                                data-testid="chat-toolbar-mention-btn"
+                            >
+                                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                    <path d="M8 2L3 5v6l5 3 5-3V5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+                                </svg>
+                                <span aria-hidden="true" className="font-mono text-[9px] text-[#848484]">@</span>
+                            </button>
+                        )}
                         <button
                             type="button"
                             disabled={sending}

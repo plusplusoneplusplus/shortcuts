@@ -102,11 +102,13 @@ describe('PullRequestChatPanel', () => {
         expect(screen.getByTestId('pr-chat-panel')).toBeTruthy();
         expect(screen.getByText('Chat about this PR')).toBeTruthy();
         expect(screen.getByTestId('pr-chat-send-btn')).toBeTruthy();
-        expect(screen.getByTestId('agent-selector-chip-btn')).toBeTruthy();
-        expect(screen.getByTestId('mode-selector')).toBeTruthy();
-        expect(screen.getByTestId('model-picker-chip')).toBeTruthy();
-        expect(screen.getByTestId('effort-pill-selector')).toBeTruthy();
+        expect(screen.getByTestId('compact-ai-settings-chip')).toBeTruthy();
+        expect(screen.queryByTestId('agent-selector-chip-btn')).toBeNull();
+        expect(screen.queryByTestId('mode-selector')).toBeNull();
+        expect(screen.queryByTestId('model-picker-chip')).toBeNull();
+        expect(screen.queryByTestId('effort-pill-selector')).toBeNull();
         expect(screen.getByTestId('chat-toolbar-slash-btn')).toBeTruthy();
+        expect(screen.queryByTestId('chat-toolbar-mention-btn')).toBeNull();
         expect(screen.getByTestId('pr-chat-attach-btn')).toBeTruthy();
     });
 

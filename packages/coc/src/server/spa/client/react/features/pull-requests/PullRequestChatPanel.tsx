@@ -113,6 +113,7 @@ export function PullRequestChatPanel({
                         draftKey={draftKey}
                         sourceLabel="PR chat composer"
                         enableRalphDirectGoal={false}
+                        settingsLayout="compact"
                     />
                 </div>
             )}

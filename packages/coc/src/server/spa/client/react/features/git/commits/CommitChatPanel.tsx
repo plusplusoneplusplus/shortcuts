@@ -74,6 +74,7 @@ export function CommitChatPanel({ workspaceId, commitHash, commitMessage, onClos
                         draftKey={draftKey}
                         sourceLabel="Commit chat composer"
                         enableRalphDirectGoal={false}
+                        settingsLayout="compact"
                     />
                 </div>
             )}

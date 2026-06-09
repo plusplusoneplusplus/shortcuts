@@ -8,7 +8,7 @@ import React from 'react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockForEachEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig } = vi.hoisted(() => ({
+const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockForEachEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockAgentProvidersResponse } = vi.hoisted(() => ({
     mockQueueDispatch: vi.fn(),
     mockAppState: {
         workspaces: [{ id: 'ws-1', rootPath: '/home/user/repo' }],
@@ -55,6 +55,13 @@ const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCo
     mockForEachEnabled: { value: false },
     mockSessionContextAttachmentsEnabled: { value: false },
     mockGetLlmToolsConfig: vi.fn(),
+    mockAgentProvidersResponse: {
+        providers: [
+            { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+            { id: 'codex', label: 'Codex', enabled: false, available: false },
+            { id: 'claude', label: 'Claude', enabled: false, available: false, reason: 'Claude Code not installed' },
+        ],
+    },
 }));
 
 const OriginalFileReader = globalThis.FileReader;
@@ -110,11 +117,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
             getLlmToolsConfig: mockGetLlmToolsConfig,
         },
         skills: { listAllWorkspace: vi.fn().mockResolvedValue({ merged: [] }) },
-        agentProviders: { list: vi.fn().mockResolvedValue({ providers: [
-            { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
-            { id: 'codex', label: 'Codex', enabled: false, available: false },
-            { id: 'claude', label: 'Claude', enabled: false, available: false, reason: 'Claude Code not installed' },
-        ] }), getReasoningEfforts: vi.fn().mockResolvedValue({ reasoningEfforts: {} }),
+        agentProviders: { list: vi.fn().mockResolvedValue(mockAgentProvidersResponse), getReasoningEfforts: vi.fn().mockResolvedValue({ reasoningEfforts: {} }),
             getEffortTiers: vi.fn().mockResolvedValue({ effortTiers: {} }) },
     }),
     getSpaCocClientErrorMessage: (err: any, fallback: string) =>
@@ -215,7 +218,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
     };
 });
 
-import { NewChatArea } from '../../../../src/server/spa/client/react/features/chat/NewChatArea';
+import { InitialChatComposer, NewChatArea } from '../../../../src/server/spa/client/react/features/chat/NewChatArea';
 import {
     RALPH_SESSION_CONTEXT_DRAG_KIND,
     RALPH_SESSION_CONTEXT_DRAG_MIME,
@@ -295,6 +298,11 @@ beforeEach(() => {
     mockRalphEnabled.value = false;
     mockForEachEnabled.value = false;
     mockSessionContextAttachmentsEnabled.value = false;
+    mockAgentProvidersResponse.providers = [
+        { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+        { id: 'codex', label: 'Codex', enabled: false, available: false },
+        { id: 'claude', label: 'Claude', enabled: false, available: false, reason: 'Claude Code not installed' },
+    ];
     mockGetLlmToolsConfig.mockResolvedValue({
         tools: [{ name: 'get_conversation', label: 'Get Conversation', description: '', enabledByDefault: true }],
         disabledLlmTools: [],
@@ -347,6 +355,17 @@ describe('NewChatArea', () => {
         render(<NewChatArea workspaceId="ws-1" />);
         const btn = screen.getByTestId('new-chat-send-btn');
         expect(btn.textContent).toContain('Send');
+    });
+
+    it('keeps the Activity initial composer on the full AI toolbar by default', () => {
+        render(<NewChatArea workspaceId="ws-1" />);
+
+        expect(screen.queryByTestId('compact-ai-settings-chip')).toBeNull();
+        expect(screen.getByTestId('agent-selector-chip-btn')).toBeTruthy();
+        expect(screen.getByTestId('mode-selector')).toBeTruthy();
+        expect(screen.getByTestId('model-picker-chip')).toBeTruthy();
+        expect(screen.getByTestId('effort-pill-selector')).toBeTruthy();
+        expect(screen.getByTestId('chat-toolbar-mention-btn')).toBeTruthy();
     });
 
     it('send button is enabled after typing', () => {
@@ -994,6 +1013,85 @@ describe('NewChatArea', () => {
             fireEvent.keyDown(input, { key: 'Tab', shiftKey: true });
             expect(screen.getByTestId('workflow-mode-trigger').getAttribute('data-selected-mode')).toBe('ralph');
             expect(screen.getByTestId('chat-input-bar').className).toContain('border-purple-500');
+        });
+    });
+
+    describe('compact AI settings layout', () => {
+        function renderCompactComposer(onSubmit = vi.fn().mockResolvedValue(null)) {
+            return render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={onSubmit}
+                    testIdPrefix="lens-chat"
+                    enableRalphDirectGoal={false}
+                    settingsLayout="compact"
+                />,
+            );
+        }
+
+        it('renders one settings chip and only slash, attach, and send as compact toolbar actions', () => {
+            mockDefaultModelResult.effectiveModel = 'gpt-5.4';
+            mockDefaultModelResult.effectiveModelName = 'GPT-5.4';
+
+            renderCompactComposer();
+
+            expect(screen.getByTestId('compact-ai-settings-chip')).toBeTruthy();
+            expect(screen.getByTestId('compact-ai-settings-label').textContent).toBe('Copilot · Ask · Auto');
+            expect(screen.getByTestId('compact-ai-settings-label').textContent).not.toContain('GPT-5.4');
+            expect(screen.queryByTestId('agent-selector-chip-btn')).toBeNull();
+            expect(screen.queryByTestId('mode-selector')).toBeNull();
+            expect(screen.queryByTestId('model-picker-chip')).toBeNull();
+            expect(screen.queryByTestId('effort-pill-selector')).toBeNull();
+            expect(screen.queryByTestId('chat-toolbar-mention-btn')).toBeNull();
+            expect(screen.getByTestId('chat-toolbar-slash-btn')).toBeTruthy();
+            expect(screen.getByTestId('lens-chat-attach-btn')).toBeTruthy();
+            expect(screen.getByTestId('lens-chat-send-btn')).toBeTruthy();
+        });
+
+        it('opens an editor with provider, mode/workflow, model, and effort controls', () => {
+            mockRalphEnabled.value = true;
+            mockDefaultModelResult.effectiveModel = 'gpt-5.4';
+            mockDefaultModelResult.effectiveModelName = 'GPT-5.4';
+
+            renderCompactComposer();
+
+            fireEvent.click(screen.getByTestId('compact-ai-settings-chip'));
+
+            expect(screen.getByTestId('compact-ai-settings-editor')).toBeTruthy();
+            expect(screen.getByTestId('compact-ai-settings-provider-control')).toBeTruthy();
+            expect(screen.getByTestId('compact-ai-settings-mode-control')).toBeTruthy();
+            expect(screen.getByTestId('compact-ai-settings-model-control')).toBeTruthy();
+            expect(screen.getByTestId('compact-ai-settings-effort-control')).toBeTruthy();
+            expect(screen.getByTestId('agent-selector-chip-btn')).toBeTruthy();
+            expect(screen.getByTestId('mode-pill-ask')).toBeTruthy();
+            expect(screen.getByTestId('workflow-mode-trigger')).toBeTruthy();
+            expect(screen.getByTestId('model-picker-chip').textContent).toContain('GPT-5.4');
+            expect(screen.getByTestId('effort-pill-selector')).toBeTruthy();
+        });
+
+        it('updates the chip label when provider, workflow mode, or effort changes', async () => {
+            mockRalphEnabled.value = true;
+            mockAgentProvidersResponse.providers = [
+                { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+                { id: 'codex', label: 'Codex', enabled: true, available: true },
+                { id: 'claude', label: 'Claude', enabled: false, available: false, reason: 'Claude Code not installed' },
+            ];
+
+            renderCompactComposer();
+            fireEvent.click(screen.getByTestId('compact-ai-settings-chip'));
+
+            await waitFor(() => {
+                expect((screen.getByTestId('agent-selector-chip-btn') as HTMLButtonElement).disabled).toBe(false);
+            });
+
+            fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+            fireEvent.click(screen.getByTestId('agent-option-codex'));
+            fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
+            fireEvent.click(screen.getByTestId('workflow-mode-option-ralph'));
+            fireEvent.click(screen.getByTestId('effort-pill-trigger-btn'));
+            fireEvent.click(screen.getByTestId('effort-pill-option-high'));
+
+            expect(screen.getByTestId('compact-ai-settings-label').textContent).toBe('Codex · Ralph · High');
         });
     });
 
