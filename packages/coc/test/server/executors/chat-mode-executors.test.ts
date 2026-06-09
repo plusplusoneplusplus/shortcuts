@@ -951,10 +951,10 @@ describe('ChatBaseExecutor selected skills', () => {
 });
 
 // ============================================================================
-// All three executors include create_update_work_item + create_bug tools
+// Live chat executors include the unified create_update_work_item tool
 // ============================================================================
 
-describe('create_update_work_item / create_bug tool wiring', () => {
+describe('create_update_work_item tool wiring', () => {
     let store: ReturnType<typeof createMockProcessStore>;
     let dataDir: string;
 
@@ -1002,7 +1002,7 @@ describe('create_update_work_item / create_bug tool wiring', () => {
         };
     }
 
-    it('ChatExecutor includes create_update_work_item and create_bug tools', async () => {
+    it('ChatExecutor includes create_update_work_item and not create_bug', async () => {
         const executor = new ChatExecutor(store, makeOptions(store), dataDir);
         const task = makeTaskWithWorkspace('ask', 'task-wi-ask');
 
@@ -1013,10 +1013,10 @@ describe('create_update_work_item / create_bug tool wiring', () => {
         expect(toolNames).toContain('create_update_work_item');
         expect(toolNames).not.toContain('create_work_item');
         expect(toolNames).not.toContain('update_work_item');
-        expect(toolNames).toContain('create_bug');
+        expect(toolNames).not.toContain('create_bug');
     });
 
-    it('AutopilotExecutor includes create_update_work_item and create_bug tools', async () => {
+    it('AutopilotExecutor includes create_update_work_item and not create_bug', async () => {
         const executor = new AutopilotExecutor(store, makeOptions(store), dataDir);
         const task = makeTaskWithWorkspace('autopilot', 'task-wi-auto');
 
@@ -1027,10 +1027,10 @@ describe('create_update_work_item / create_bug tool wiring', () => {
         expect(toolNames).toContain('create_update_work_item');
         expect(toolNames).not.toContain('create_work_item');
         expect(toolNames).not.toContain('update_work_item');
-        expect(toolNames).toContain('create_bug');
+        expect(toolNames).not.toContain('create_bug');
     });
 
-    it('all live initial executors include create_update_work_item and create_bug tools', async () => {
+    it('all live initial executors include create_update_work_item and not create_bug', async () => {
         for (const { mode, Ctor, id } of [
             { mode: 'ask' as const, Ctor: ChatExecutor, id: 'sfx-ask' },
             { mode: 'autopilot' as const, Ctor: AutopilotExecutor, id: 'sfx-auto' },
@@ -1049,7 +1049,7 @@ describe('create_update_work_item / create_bug tool wiring', () => {
             expect(toolNames).toContain('create_update_work_item');
             expect(toolNames).not.toContain('create_work_item');
             expect(toolNames).not.toContain('update_work_item');
-            expect(toolNames).toContain('create_bug');
+            expect(toolNames).not.toContain('create_bug');
         }
     });
 
@@ -1077,7 +1077,7 @@ describe('create_update_work_item / create_bug tool wiring', () => {
         }
     });
 
-    it('classic mode disables create_update_work_item and create_bug tools by default', async () => {
+    it('classic mode disables create_update_work_item by default', async () => {
         writeLayoutMode('classic');
 
         for (const { mode, Ctor, id } of [

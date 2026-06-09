@@ -12,13 +12,15 @@ AI tool factories injected into chat executor sessions. Each factory follows a p
 
 Exports: `DEFAULT_DISABLED_LLM_TOOLS`, `isLlmToolEnabled()`, `filterDisabledLlmTools()`.
 
-**Mode-aware defaults:** `getEffectiveDefaultDisabledTools(uiLayoutMode)` disables `tavily_web_search` at registry level, and also disables `create_update_work_item` and `create_bug` in classic mode.
+**Mode-aware defaults:** `getEffectiveDefaultDisabledTools(uiLayoutMode)` disables `tavily_web_search` at registry level, and also disables `create_update_work_item` in classic mode.
 
 **Per-repo overrides:** `PerRepoPreferences.disabledLlmTools` explicitly overrides defaults (empty array = enable all). API: `GET/PUT /api/workspaces/:id/llm-tools-config`.
 The GET/PUT response also includes `conversationRetrievalAvailable`, which is
 true only when the active `ProcessStore` supports `searchConversations`; the SPA
 uses it with the `get_conversation` toggle to decide whether session-context
-attachments can be dropped into chat composers.
+attachments can be dropped into chat composers. Removed tool names such as
+`create_bug` are filtered from config responses and from preferences when those
+preferences are rewritten.
 
 ## Tool Factories
 
@@ -32,8 +34,7 @@ attachments can be dropped into chat composers.
 | `get-conversation-tool.ts` | `get_conversation` | Full transcript by processId, compacted to token budget. 5-level progressive compaction. Supports `fromTurn`/`toTurn` paging. |
 | `suggest-follow-ups-tool.ts` | `suggest_follow_ups` | Emits follow-up action suggestions after AI response. |
 | `tavily-web-search-tool.ts` | `tavily_web_search` | Live web search via Tavily API. Key from `~/.coc/providers.json`. Disabled by default. |
-| `create-bug-tool.ts` | `create_bug` | Queues a bug work item. |
-| `create-update-work-item-tool.ts` | `create_update_work_item` | Creates typed work items (`work-item`, `bug`, `goal`, `epic`, `feature`, `pbi`), patches common fields on existing items, or saves a full revised plan as the next version for an existing item. |
+| `create-update-work-item-tool.ts` | `create_update_work_item` | Creates typed work items and bugs (`work-item`, `bug`, `goal`, `epic`, `feature`, `pbi`), patches common fields on existing items, or saves a full revised plan as the next version for an existing item. |
 
 ## Supporting Modules
 

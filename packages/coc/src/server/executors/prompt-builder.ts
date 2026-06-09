@@ -33,7 +33,6 @@ import { createSuggestFollowUpsTool } from '../llm-tools/suggest-follow-ups-tool
 import { createAskUserTool } from '../llm-tools/ask-user-tool';
 import type { AskUserAnswerInput, AskUserAnswerValue, AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import { createCreateUpdateWorkItemTool, type BroadcastWorkItemFn } from '../llm-tools/create-update-work-item-tool';
-import { createBugTool } from '../llm-tools/create-bug-tool';
 import type { ChatMode, ChatPayload, PrClassificationPayload, RunScriptPayload } from '../tasks/task-types';
 import {
     hasCommitChatContext,
@@ -524,7 +523,7 @@ export function buildAskUserAddon(
 // ============================================================================
 
 /**
- * Builds the tools array and prompt suffix for the `create_update_work_item` and `create_bug` tools.
+ * Builds the tools array and prompt suffix for the `create_update_work_item` tool.
  * The tools are only injected when a valid dataDir and repoId are available.
  *
  * @param dataDir     - Base data directory (e.g. `~/.coc`).
@@ -541,9 +540,8 @@ export function buildCreateWorkItemAddon(
     }
 
     const { tool: workItemTool } = createCreateUpdateWorkItemTool(dataDir, repoId, broadcastFn);
-    const { tool: bugTool } = createBugTool(dataDir, repoId, broadcastFn);
 
-    return { tools: [workItemTool, bugTool], suffix: '' };
+    return { tools: [workItemTool], suffix: '' };
 }
 
 /**

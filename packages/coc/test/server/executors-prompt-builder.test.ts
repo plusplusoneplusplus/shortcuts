@@ -60,11 +60,6 @@ vi.mock('../../src/server/llm-tools/create-update-work-item-tool', () => ({
     createCreateUpdateWorkItemTool: (...args: any[]) => mockCreateUpdateWorkItemTool(...args),
 }));
 
-const mockCreateBugTool = vi.fn(() => ({ tool: { name: 'create_bug' } }));
-vi.mock('../../src/server/llm-tools/create-bug-tool', () => ({
-    createBugTool: (...args: any[]) => mockCreateBugTool(...args),
-}));
-
 import {
     buildForEachGenerationSystemMessage,
     buildModeSystemMessage,
@@ -606,9 +601,7 @@ describe('buildSearchConversationsAddon', () => {
 describe('buildCreateWorkItemAddon', () => {
     beforeEach(() => {
         mockCreateUpdateWorkItemTool.mockReset();
-        mockCreateBugTool.mockReset();
         mockCreateUpdateWorkItemTool.mockReturnValue({ tool: { name: 'create_update_work_item' } });
-        mockCreateBugTool.mockReturnValue({ tool: { name: 'create_bug' } });
     });
 
     it('returns empty tools when dataDir is undefined', () => {
@@ -623,19 +616,18 @@ describe('buildCreateWorkItemAddon', () => {
         expect(result.suffix).toBe('');
     });
 
-    it('returns both create_update_work_item and create_bug tools', () => {
+    it('returns only the unified create_update_work_item tool', () => {
         const result = buildCreateWorkItemAddon('/data', 'repo-1');
-        expect(result.tools).toHaveLength(2);
+        expect(result.tools).toHaveLength(1);
         expect(result.tools[0].name).toBe('create_update_work_item');
-        expect(result.tools[1].name).toBe('create_bug');
         expect(result.tools.map(t => t.name)).not.toContain('update_work_item');
+        expect(result.tools.map(t => t.name)).not.toContain('create_bug');
     });
 
     it('passes dataDir, repoId, and broadcastFn to factories', () => {
         const broadcast = vi.fn();
         buildCreateWorkItemAddon('/data', 'repo-1', broadcast);
         expect(mockCreateUpdateWorkItemTool).toHaveBeenCalledWith('/data', 'repo-1', broadcast);
-        expect(mockCreateBugTool).toHaveBeenCalledWith('/data', 'repo-1', broadcast);
     });
 
 });

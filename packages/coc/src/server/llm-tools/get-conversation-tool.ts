@@ -83,7 +83,6 @@ const IMPORTANT_TOOL_NAMES = new Set([
     'add_diff_comment',
     'resolve_comment',
     'create_update_work_item',
-    'create_bug',
 ]);
 
 function isImportantToolCall(call: ToolCall): boolean {

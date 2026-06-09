@@ -22,9 +22,9 @@ import { LlmToolsPanel } from '../../../../src/server/spa/client/react/features/
 
 const TOOLS = [
     {
-        name: 'create_bug',
-        label: 'Create Bug',
-        description: 'Files bug reports from chat.',
+        name: 'create_update_work_item',
+        label: 'Create/Update Work Item',
+        description: 'Creates typed work items and updates existing items.',
         enabledByDefault: true,
     },
     {
@@ -54,36 +54,36 @@ describe('LlmToolsPanel', () => {
         await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
 
         expect(mocks.preferences.getLlmToolsConfig).toHaveBeenCalledWith('repo/a');
-        expect(screen.getByText('Create Bug')).toBeTruthy();
+        expect(screen.getByText('Create/Update Work Item')).toBeTruthy();
         expect(screen.getByText('Tavily Web Search')).toBeTruthy();
-        expect((screen.getByTestId('llm-tool-toggle-create_bug') as HTMLInputElement).checked).toBe(true);
+        expect((screen.getByTestId('llm-tool-toggle-create_update_work_item') as HTMLInputElement).checked).toBe(true);
         expect((screen.getByTestId('llm-tool-toggle-tavily_web_search') as HTMLInputElement).checked).toBe(false);
     });
 
     it('sends disabled tool overrides when a tool is turned off', async () => {
         render(<LlmToolsPanel workspaceId="repo-a" />);
-        await waitFor(() => expect(screen.getByTestId('llm-tool-toggle-create_bug')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('llm-tool-toggle-create_update_work_item')).toBeTruthy());
 
         await act(async () => {
-            fireEvent.click(screen.getByTestId('llm-tool-toggle-create_bug'));
+            fireEvent.click(screen.getByTestId('llm-tool-toggle-create_update_work_item'));
         });
 
         expect(mocks.preferences.updateLlmToolsConfig).toHaveBeenCalledWith('repo-a', {
-            disabledLlmTools: ['tavily_web_search', 'create_bug'],
+            disabledLlmTools: ['tavily_web_search', 'create_update_work_item'],
         });
     });
 
     it('preserves explicit empty disabled-tool override arrays when enabling all tools', async () => {
         mocks.preferences.getLlmToolsConfig.mockResolvedValue({
             tools: TOOLS,
-            disabledLlmTools: ['create_bug'],
+            disabledLlmTools: ['create_update_work_item'],
         });
 
         render(<LlmToolsPanel workspaceId="repo-a" />);
-        await waitFor(() => expect(screen.getByTestId('llm-tool-toggle-create_bug')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('llm-tool-toggle-create_update_work_item')).toBeTruthy());
 
         await act(async () => {
-            fireEvent.click(screen.getByTestId('llm-tool-toggle-create_bug'));
+            fireEvent.click(screen.getByTestId('llm-tool-toggle-create_update_work_item'));
         });
 
         expect(mocks.preferences.updateLlmToolsConfig).toHaveBeenCalledWith('repo-a', {
@@ -94,15 +94,15 @@ describe('LlmToolsPanel', () => {
     it('reverts local state and shows a toast when saving fails', async () => {
         mocks.preferences.updateLlmToolsConfig.mockRejectedValue(new Error('Save failed'));
         render(<LlmToolsPanel workspaceId="repo-a" />);
-        await waitFor(() => expect(screen.getByTestId('llm-tool-toggle-create_bug')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('llm-tool-toggle-create_update_work_item')).toBeTruthy());
 
         await act(async () => {
-            fireEvent.click(screen.getByTestId('llm-tool-toggle-create_bug'));
+            fireEvent.click(screen.getByTestId('llm-tool-toggle-create_update_work_item'));
         });
 
         await waitFor(() => {
             expect(mocks.addToast).toHaveBeenCalledWith('Save failed', 'error');
-            expect((screen.getByTestId('llm-tool-toggle-create_bug') as HTMLInputElement).checked).toBe(true);
+            expect((screen.getByTestId('llm-tool-toggle-create_update_work_item') as HTMLInputElement).checked).toBe(true);
         });
     });
 });

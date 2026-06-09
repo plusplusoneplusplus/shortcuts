@@ -16,7 +16,7 @@ import { sendJSON, sendError } from './core/api-handler';
 import { parseBodyOrReject } from './shared/handler-utils';
 import { getRepoDataPath } from './paths';
 import type { Route } from './types';
-import { getEffectiveDefaultDisabledTools } from './llm-tools/llm-tool-registry';
+import { filterRemovedLlmToolNames, getEffectiveDefaultDisabledTools } from './llm-tools/llm-tool-registry';
 import { MAX_ADDITIONAL_NOTES_ROOTS } from './notes/notes-root-resolver';
 import type { SyncEngine } from './sync/sync-engine';
 
@@ -275,7 +275,9 @@ export const PerRepoPreferencesSchema = z.object({
     notesGit: NotesGitSchema.optional(),
     activityFilters: ActivityFiltersSchema.optional(),
     disabledLlmTools: z.array(z.unknown())
-        .transform(arr => arr.filter((t): t is string => typeof t === 'string' && t.length > 0))
+        .transform(arr => filterRemovedLlmToolNames(
+            arr.filter((t): t is string => typeof t === 'string' && t.length > 0),
+        ))
         .optional(),
     defaultModel: z.string().max(100).optional(),
     defaultModels: DefaultModelsByModeSchema.optional(),
@@ -628,13 +630,14 @@ export function readEffectiveDisabledLlmTools(dataDir: string, workspaceId: stri
  * Creates the parent directory if it doesn't exist.
  */
 export function writeRepoPreferences(dataDir: string, workspaceId: string, data: PerRepoPreferences): void {
+    const preferences = validatePerRepoPreferences(data);
     const filePath = getRepoDataPath(dataDir, workspaceId, PREFERENCES_FILE_NAME);
     const dir = path.dirname(filePath);
     fs.mkdirSync(dir, { recursive: true });
     const tmpPath = filePath + '.tmp';
-    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+    fs.writeFileSync(tmpPath, JSON.stringify(preferences, null, 2), 'utf-8');
     fs.renameSync(tmpPath, filePath);
-    emitRepoPreferencesChanged({ workspaceId, preferences: data });
+    emitRepoPreferencesChanged({ workspaceId, preferences });
 }
 
 // ============================================================================

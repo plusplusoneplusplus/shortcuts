@@ -15,7 +15,7 @@ import { createRouter } from '../../src/server/shared/router';
 import { registerApiRoutes } from '../../src/server/core/api-handler';
 import type { Route } from '../../src/server/types';
 import { createMockProcessStore } from './helpers/mock-process-store';
-import { LLM_TOOL_REGISTRY, getEffectiveLlmToolRegistry, getEffectiveDefaultDisabledTools } from '../../src/server/llm-tools/llm-tool-registry';
+import { getEffectiveLlmToolRegistry, getEffectiveDefaultDisabledTools } from '../../src/server/llm-tools/llm-tool-registry';
 
 // ============================================================================
 // Mock loadDefaultMcpConfig (required by registerApiRoutes)
@@ -133,6 +133,8 @@ describe('LLM Tools Config API endpoints', () => {
             const names = data.tools.map((t: any) => t.name);
             expect(names).toContain('tavily_web_search');
             expect(names).toContain('suggest_follow_ups');
+            expect(names).toContain('create_update_work_item');
+            expect(names).not.toContain('create_bug');
             expect(names).not.toContain('scheduleWakeup');
         });
 
@@ -142,8 +144,9 @@ describe('LLM Tools Config API endpoints', () => {
             const data = res.json();
             expect(data.disabledLlmTools).toEqual(getEffectiveDefaultDisabledTools(undefined));
             expect(data.disabledLlmTools).toEqual(
-                expect.arrayContaining(['create_update_work_item', 'create_bug', 'tavily_web_search']),
+                expect.arrayContaining(['create_update_work_item', 'tavily_web_search']),
             );
+            expect(data.disabledLlmTools).not.toContain('create_bug');
         });
 
         it('returns classic-mode defaults when global layout mode is classic', async () => {
@@ -169,8 +172,9 @@ describe('LLM Tools Config API endpoints', () => {
             const data = res.json();
             expect(data.disabledLlmTools).toEqual(getEffectiveDefaultDisabledTools('dev-workflow'));
             expect(data.disabledLlmTools).not.toEqual(
-                expect.arrayContaining(['create_update_work_item', 'create_bug']),
+                expect.arrayContaining(['create_update_work_item']),
             );
+            expect(data.disabledLlmTools).not.toContain('create_bug');
         });
 
         it('returns custom disabled list from preferences', async () => {
@@ -182,6 +186,15 @@ describe('LLM Tools Config API endpoints', () => {
             expect(res.status).toBe(200);
             const data = res.json();
             expect(data.disabledLlmTools).toEqual(['memory', 'ask_user']);
+        });
+
+        it('filters stale create_bug from saved disabled-tool preferences', async () => {
+            const prefsPath = path.join(tmpDir, 'repos', WORKSPACE_ID, 'preferences.json');
+            fs.writeFileSync(prefsPath, JSON.stringify({ disabledLlmTools: ['create_bug', 'ask_user'] }));
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
+            expect(res.status).toBe(200);
+            expect(res.json().disabledLlmTools).toEqual(['ask_user']);
         });
 
         it('returns empty disabled list when explicitly set to empty', async () => {
@@ -308,7 +321,7 @@ describe('LLM Tools Config API endpoints', () => {
             expect(prefs.disabledLlmTools).toEqual(['memory']);
         });
 
-        it('round-trips through GET after PUT', async () => {
+        it('filters stale create_bug when saving disabled-tool preferences', async () => {
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`, {
                 method: 'PUT',
                 body: JSON.stringify({ disabledLlmTools: ['suggest_follow_ups', 'create_bug'] }),
@@ -316,7 +329,11 @@ describe('LLM Tools Config API endpoints', () => {
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
             expect(res.status).toBe(200);
-            expect(res.json().disabledLlmTools).toEqual(['suggest_follow_ups', 'create_bug']);
+            expect(res.json().disabledLlmTools).toEqual(['suggest_follow_ups']);
+
+            const prefsPath = path.join(tmpDir, 'repos', WORKSPACE_ID, 'preferences.json');
+            const prefs = JSON.parse(fs.readFileSync(prefsPath, 'utf-8'));
+            expect(prefs.disabledLlmTools).toEqual(['suggest_follow_ups']);
         });
     });
 });

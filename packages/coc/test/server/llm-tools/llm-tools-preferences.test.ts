@@ -33,6 +33,13 @@ describe('validatePerRepoPreferences — disabledLlmTools', () => {
         expect(result.disabledLlmTools).toEqual(['tavily_web_search', 'memory']);
     });
 
+    it('filters stale removed tool names from disabledLlmTools', () => {
+        const result = validatePerRepoPreferences({
+            disabledLlmTools: ['tavily_web_search', 'create_bug', 'memory'],
+        });
+        expect(result.disabledLlmTools).toEqual(['tavily_web_search', 'memory']);
+    });
+
     it('allows empty array (all tools enabled)', () => {
         const result = validatePerRepoPreferences({
             disabledLlmTools: [],
@@ -86,6 +93,15 @@ describe('readRepoPreferences / writeRepoPreferences — disabledLlmTools', () =
         });
         const prefs = readRepoPreferences(tmpDir, wsId);
         expect(prefs.disabledLlmTools).toEqual(['tavily_web_search', 'memory']);
+    });
+
+    it('filters stale removed tool names when writing preferences', () => {
+        const wsId = 'test-ws-stale-write';
+        writeRepoPreferences(tmpDir, wsId, {
+            disabledLlmTools: ['create_bug', 'memory'],
+        });
+        const prefs = readRepoPreferences(tmpDir, wsId);
+        expect(prefs.disabledLlmTools).toEqual(['memory']);
     });
 
     it('round-trips empty array', () => {
@@ -155,6 +171,16 @@ describe('readEffectiveDisabledLlmTools', () => {
         writeRepoPreferences(tmpDir, wsId, { disabledLlmTools: [] });
 
         expect(readEffectiveDisabledLlmTools(tmpDir, wsId)).toEqual([]);
+    });
+
+    it('filters stale create_bug from explicit repo preferences', () => {
+        fs.mkdirSync(path.join(tmpDir, 'repos', wsId), { recursive: true });
+        fs.writeFileSync(
+            path.join(tmpDir, 'repos', wsId, 'preferences.json'),
+            JSON.stringify({ disabledLlmTools: ['create_bug', 'ask_user'] }),
+        );
+
+        expect(readEffectiveDisabledLlmTools(tmpDir, wsId)).toEqual(['ask_user']);
     });
 });
 
