@@ -419,6 +419,102 @@ describe('FollowUpExecutor', () => {
         expect(call.prompt).not.toContain('<skill name=');
     });
 
+    it('preserves interrupted audit turns while omitting them from cold follow-up prompt history', async () => {
+        const actualPromptBuilder = await vi.importActual<typeof import('../../../src/server/executors/prompt-builder')>(
+            '../../../src/server/executors/prompt-builder',
+        );
+        mockBuildConversationHistoryContext.mockImplementation((turns: any) =>
+            actualPromptBuilder.buildConversationHistoryContext(turns),
+        );
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'Fresh answer after timeout',
+            sessionId: 'sess-after-timeout',
+        });
+
+        const interruptedTurn = {
+            role: 'assistant' as const,
+            content: 'Partial output that must stay visible but must not be replayed',
+            timestamp: new Date('2026-01-01T00:00:01Z'),
+            turnIndex: 1,
+            interrupted: true,
+            interruptionReason: 'Timed out waiting for model',
+            timeline: [
+                {
+                    type: 'content' as const,
+                    timestamp: new Date('2026-01-01T00:00:01Z'),
+                    content: 'Partial output that must stay visible but must not be replayed',
+                },
+                {
+                    type: 'tool-start' as const,
+                    timestamp: new Date('2026-01-01T00:00:02Z'),
+                    toolCall: {
+                        id: 'tool-1',
+                        name: 'bash',
+                        status: 'running' as const,
+                        startTime: new Date('2026-01-01T00:00:02Z'),
+                        args: { command: 'echo already-ran' },
+                    },
+                },
+                {
+                    type: 'tool-complete' as const,
+                    timestamp: new Date('2026-01-01T00:00:03Z'),
+                    toolCall: {
+                        id: 'tool-1',
+                        name: 'bash',
+                        status: 'completed' as const,
+                        startTime: new Date('2026-01-01T00:00:02Z'),
+                        endTime: new Date('2026-01-01T00:00:03Z'),
+                        args: { command: 'echo already-ran' },
+                        result: 'already-ran',
+                    },
+                },
+            ],
+        };
+        const conversationTurns = [
+            { role: 'user' as const, content: 'Original question', timestamp: new Date('2026-01-01T00:00:00Z'), turnIndex: 0, timeline: [] },
+            interruptedTurn,
+            { role: 'user' as const, content: 'Continue after timeout', timestamp: new Date('2026-01-01T00:00:04Z'), turnIndex: 2, timeline: [] },
+        ];
+        const proc = makeProcess({
+            id: 'proc-continue-after-timeout',
+            status: 'running',
+            sdkSessionId: undefined,
+            metadata: { type: 'chat', mode: 'ask', provider: 'copilot' },
+            conversationTurns,
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-continue-after-timeout', 'Continue after timeout');
+
+        const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callArg.prompt).toBe('Continue after timeout');
+        expect(callArg.sessionId).toBeUndefined();
+        expect(callArg.systemMessage.content).toContain('[User]: Original question');
+        expect(callArg.systemMessage.content).toContain('[User]: Continue after timeout');
+        expect(callArg.systemMessage.content).not.toContain('Partial output that must stay visible');
+        expect(callArg.systemMessage.content).not.toContain('already-ran');
+
+        const updated = store.processes.get('proc-continue-after-timeout');
+        expect(updated?.conversationTurns).toHaveLength(4);
+        expect(updated?.conversationTurns?.[1]).toMatchObject({
+            role: 'assistant',
+            content: 'Partial output that must stay visible but must not be replayed',
+            interrupted: true,
+            interruptionReason: 'Timed out waiting for model',
+        });
+        expect(updated?.conversationTurns?.[1].timeline?.map(item => item.type)).toEqual([
+            'content',
+            'tool-start',
+            'tool-complete',
+        ]);
+        expect(updated?.conversationTurns?.[3]).toMatchObject({
+            role: 'assistant',
+            content: 'Fresh answer after timeout',
+        });
+    });
+
     // -------------------------------------------------------------------------
     // Failure path
     // -------------------------------------------------------------------------
