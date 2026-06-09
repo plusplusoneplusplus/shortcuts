@@ -1141,6 +1141,51 @@ describe('NewChatArea', () => {
 
             expect(screen.getByTestId('compact-ai-settings-label').textContent).toBe('Codex · Ralph · High');
         });
+
+        it('submits AI settings selected from the compact editor', async () => {
+            mockRalphEnabled.value = true;
+            mockModelCommand.modelOverride = 'claude-sonnet-4.6';
+            mockAgentProvidersResponse.providers = [
+                { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+                { id: 'codex', label: 'Codex', enabled: true, available: true },
+                { id: 'claude', label: 'Claude', enabled: false, available: false, reason: 'Claude Code not installed' },
+            ];
+            const onSubmit = vi.fn().mockResolvedValue(null);
+
+            renderCompactComposer(onSubmit);
+            fireEvent.click(screen.getByTestId('compact-ai-settings-chip'));
+
+            await waitFor(() => {
+                expect((screen.getByTestId('agent-selector-chip-btn') as HTMLButtonElement).disabled).toBe(false);
+            });
+
+            fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+            fireEvent.click(screen.getByTestId('agent-option-codex'));
+            fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
+            fireEvent.click(screen.getByTestId('workflow-mode-option-ralph'));
+            fireEvent.click(screen.getByTestId('effort-pill-trigger-btn'));
+            fireEvent.click(screen.getByTestId('effort-pill-option-high'));
+
+            fireEvent.change(screen.getByTestId('lens-chat-input'), { target: { value: 'Review this compact lens' } });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('lens-chat-send-btn'));
+            });
+
+            expect(onSubmit).toHaveBeenCalledTimes(1);
+            const submission = onSubmit.mock.calls[0][0];
+            expect(submission).toEqual(expect.objectContaining({
+                mode: 'ask',
+                workspaceId: 'ws-1',
+                provider: 'codex',
+                model: 'claude-sonnet-4.6',
+                reasoningEffort: 'high',
+            }));
+            expect(submission.prompt).toContain('Review this compact lens');
+            expect(submission.context).toEqual(expect.objectContaining({
+                skills: ['grill-me'],
+                ralph: expect.objectContaining({ phase: 'grilling' }),
+            }));
+        });
     });
 
     describe('inline ghost-text autocomplete', () => {
