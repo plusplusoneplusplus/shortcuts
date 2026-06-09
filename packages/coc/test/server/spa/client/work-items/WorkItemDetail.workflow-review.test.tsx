@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
     workflowEnabled: true,
     aiAuthoringEnabled: false,
     hierarchyEnabled: false,
+    isMobile: false,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
@@ -45,6 +46,15 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
 
 vi.mock('../../../../../src/server/spa/client/react/features/git/hooks/useCommitCommentTotals', () => ({
     useCommitCommentTotals: () => new Map(),
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
+    useBreakpoint: () => ({
+        isMobile: mocks.isMobile,
+        isTablet: false,
+        isDesktop: !mocks.isMobile,
+        breakpoint: mocks.isMobile ? 'mobile' : 'desktop',
+    }),
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/features/git/hooks/useReviewChatPresentation', () => ({
@@ -176,6 +186,7 @@ describe('WorkItemDetail workflow review command center', () => {
         mocks.workflowEnabled = true;
         mocks.aiAuthoringEnabled = false;
         mocks.hierarchyEnabled = false;
+        mocks.isMobile = false;
         mocks.get.mockResolvedValue(BASE_REVIEW_ITEM);
     });
 
@@ -279,6 +290,26 @@ describe('WorkItemDetail workflow review command center', () => {
 
         expect(await screen.findByTestId('work-item-submit-pr-btn')).toBeInTheDocument();
         expect(screen.getByTestId('exec-ai-review-badge-1')).toHaveTextContent('AI review');
+    });
+
+    it('uses a compact touch-friendly command center layout on mobile', async () => {
+        mocks.isMobile = true;
+
+        render(<WorkItemDetail workspaceId="ws-1" workItemId="wi-review-1" onViewTask={vi.fn()} onViewCommit={vi.fn()} />);
+
+        await screen.findByTestId('work-item-status-select');
+        const primaryActions = screen.getByTestId('work-item-primary-actions');
+        expect(primaryActions.className).toContain('w-full');
+        expect(primaryActions.className).toContain('flex-wrap');
+        expect(screen.getByTestId('work-item-ask-ai-btn').className).toContain('min-h-10');
+
+        const reviewActions = screen.getByTestId('work-item-review-actions');
+        expect(reviewActions.className).toContain('flex-wrap');
+        expect(screen.getByTestId('work-item-submit-pr-btn').className).toContain('flex-1');
+
+        expect(screen.getByTestId('exec-header-0').className).toContain('flex-wrap');
+        expect(screen.getByTestId('exec-metadata-chip-0-model').className).toContain('min-w-0');
+        expect(screen.getByTestId('exec-commit-message-abcdef1').className).toContain('whitespace-normal');
     });
 
     it('hides Submit PR after the latest Review change already has PR metadata', async () => {
