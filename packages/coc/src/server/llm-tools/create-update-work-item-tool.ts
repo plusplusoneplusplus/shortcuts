@@ -9,7 +9,8 @@
 import * as crypto from 'crypto';
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import { FileWorkItemStore } from '../work-items/work-item-store';
-import type { WorkItem, WorkItemPriority, WorkItemStatus } from '../work-items/types';
+import type { WorkItem, WorkItemPriority, WorkItemStatus, WorkItemType } from '../work-items/types';
+import { WORK_ITEM_TYPES } from '../work-items/types';
 import { WORK_ITEM_PLAN_TEMPLATE } from '../work-items/plan-template';
 
 // ============================================================================
@@ -23,6 +24,8 @@ export interface CreateUpdateWorkItemArgs {
     target?: string;
     /** Existing sequential work item number. Omit for create mode. */
     workItemNumber?: number | string;
+    /** Work item type for create mode. Defaults to 'work-item'. In update mode this is validation-only. */
+    type?: WorkItemType;
     title?: string;
     description?: string;
     priority?: 'high' | 'normal' | 'low';
@@ -76,6 +79,58 @@ function getExistingTarget(args: CreateUpdateWorkItemArgs): string | number | un
         || args.workItemNumber;
 }
 
+function isWorkItemType(value: unknown): value is WorkItemType {
+    return typeof value === 'string' && (WORK_ITEM_TYPES as readonly string[]).includes(value);
+}
+
+function resolveCreateType(args: CreateUpdateWorkItemArgs): { type: WorkItemType } | { error: string } {
+    if (args.type === undefined) {
+        return { type: 'work-item' };
+    }
+    if (!isWorkItemType(args.type)) {
+        return { error: `Unsupported work item type: ${String(args.type)}` };
+    }
+    return { type: args.type };
+}
+
+function hasOwn(args: CreateUpdateWorkItemArgs, key: keyof CreateUpdateWorkItemArgs): boolean {
+    return Object.prototype.hasOwnProperty.call(args, key);
+}
+
+function buildCommonFieldPatch(
+    args: CreateUpdateWorkItemArgs,
+): { patch: Partial<Omit<WorkItem, 'id' | 'repoId' | 'createdAt'>>; hasPatch: boolean } | { error: string } {
+    const patch: Partial<Omit<WorkItem, 'id' | 'repoId' | 'createdAt'>> = {};
+
+    if (hasOwn(args, 'title') && args.title !== undefined) {
+        const title = args.title.trim();
+        if (!title) {
+            return { error: 'Field update rejected: title must not be blank' };
+        }
+        patch.title = title;
+    }
+
+    if (hasOwn(args, 'description') && args.description !== undefined) {
+        patch.description = args.description;
+    }
+
+    if (hasOwn(args, 'priority') && args.priority !== undefined) {
+        if (!['high', 'normal', 'low'].includes(args.priority)) {
+            return { error: `Unsupported work item priority: ${String(args.priority)}` };
+        }
+        patch.priority = args.priority;
+    }
+
+    if (hasOwn(args, 'tags') && args.tags !== undefined) {
+        if (!Array.isArray(args.tags) || args.tags.some(tag => typeof tag !== 'string')) {
+            return { error: 'Field update rejected: tags must be an array of strings' };
+        }
+        patch.tags = args.tags;
+    }
+
+    return { patch, hasPatch: Object.keys(patch).length > 0 };
+}
+
 async function resolveExistingWorkItem(
     store: FileWorkItemStore,
     repoId: string,
@@ -120,12 +175,15 @@ export function createCreateUpdateWorkItemTool(
 
     const tool = defineTool<CreateUpdateWorkItemArgs>('create_update_work_item', {
         description:
-            'Create a new work item or update the plan for an existing work item in this repository. ' +
-            'Create mode: omit `workItemId`, `target`, and `workItemNumber`; include `title`, optional ' +
-            '`description`, `priority`, `tags`, and a full `plan` when available. ' +
-            'Update-plan mode: provide `workItemId`, `target` (UUID or WI-N), or `workItemNumber`, and ' +
-            'provide the complete revised Markdown plan in `plan`. Update mode saves a new plan version, ' +
-            'resets status to `planning`, opens a change record, and broadcasts a dashboard update. ' +
+            'Create a new typed work item, patch common fields on an existing item, or update an existing plan in this repository. ' +
+            'Create mode: omit `workItemId`, `target`, and `workItemNumber`; include a non-blank `title`, optional `type` ' +
+            '(`work-item`, `bug`, `goal`, `epic`, `feature`, or `pbi`, default `work-item`), optional `description`, ' +
+            '`priority`, `tags`, and a full `plan` when available. Use `type: "bug"` to file bugs. ' +
+            'Field-update mode: provide `workItemId`, `target` (UUID or WI-N), or `workItemNumber`, and one or more of ' +
+            '`title`, `description`, `priority`, or `tags`; this preserves status and does not create a plan version. ' +
+            'Update-plan mode: provide an existing target and the complete revised Markdown plan in `plan`; this saves a new ' +
+            'plan version, resets status to `planning`, opens a change record, and broadcasts a dashboard update. ' +
+            '`type` cannot be changed in update mode; when supplied it must match the existing item type. ' +
             'Do not append raw text or submit a partial diff for `plan`; always send the full revised plan. ' +
             'IMPORTANT: Before calling this tool, you MUST first present a draft summary to the user ' +
             'and only call this tool once the user confirms. ' +
@@ -146,28 +204,33 @@ export function createCreateUpdateWorkItemTool(
                     oneOf: [{ type: 'number' }, { type: 'string' }],
                     description: 'Existing sequential work item number, e.g. 12 or "WI-12". Omit for create mode.',
                 },
+                type: {
+                    type: 'string',
+                    enum: [...WORK_ITEM_TYPES],
+                    description: 'Work item type for create mode (default: work-item). In update mode this must match the existing item type.',
+                },
                 title: {
                     type: 'string',
-                    description: 'Short, descriptive title for a new work item.',
+                    description: 'Short, descriptive title for a new work item, or a replacement title for an existing item.',
                 },
                 description: {
                     type: 'string',
-                    description: 'Markdown description with context and details for a new work item.',
+                    description: 'Markdown description with context and details for a new or existing item.',
                 },
                 priority: {
                     type: 'string',
                     enum: ['high', 'normal', 'low'],
-                    description: 'Priority of a new work item (default: normal).',
+                    description: 'Priority of a new or existing item (create default: normal).',
                 },
                 tags: {
                     type: 'array',
                     items: { type: 'string' },
-                    description: 'Optional tags for categorization (e.g. ["backend", "planning"]).',
+                    description: 'Tags for categorization (e.g. ["backend", "planning"]). Supplying tags in update mode replaces the tag list.',
                 },
                 plan: {
                     type: 'string',
                     description:
-                        'Full Markdown plan following the standard template sections. Required in update-plan mode. ' +
+                        'Full Markdown plan following the standard template sections. Optional in create mode and update mode. ' +
                         'Use ## Objective, ## Background, ## Steps (with - [ ] checkboxes), ' +
                         '## Acceptance Criteria, ## Notes.',
                 },
@@ -201,6 +264,10 @@ async function createNewWorkItem(
     if (!title) {
         return { created: false, error: 'Missing required field for create mode: title' };
     }
+    const createType = resolveCreateType(args);
+    if ('error' in createType) {
+        return { created: false, error: createType.error };
+    }
 
     const now = new Date().toISOString();
     const hasPlan = !!(args.plan && args.plan.trim());
@@ -212,6 +279,7 @@ async function createNewWorkItem(
         title,
         description: args.description ?? '',
         status,
+        type: createType.type,
         createdAt: now,
         updatedAt: now,
         source: 'chat',
@@ -256,12 +324,57 @@ async function updateExistingWorkItemPlan(
         return { updated: false, error: `Work item not found: ${String(target)}` };
     }
 
+    if (args.type !== undefined) {
+        if (!isWorkItemType(args.type)) {
+            return { updated: false, id: existing.id, error: `Unsupported work item type: ${String(args.type)}` };
+        }
+        const existingType = existing.type ?? 'work-item';
+        if (args.type !== existingType) {
+            return {
+                updated: false,
+                id: existing.id,
+                error: `Cannot change work item type from ${existingType} to ${args.type}`,
+            };
+        }
+    }
+
+    const patchResult = buildCommonFieldPatch(args);
+    if ('error' in patchResult) {
+        return { updated: false, id: existing.id, error: patchResult.error };
+    }
+
+    const hasPlanField = hasOwn(args, 'plan');
     const content = args.plan?.trim();
-    if (!content) {
+    if (hasPlanField && !content) {
         return {
             updated: false,
             id: existing.id,
-            error: 'Missing required field for update-plan mode: plan must contain the complete revised Markdown plan',
+            error: 'Invalid plan for update mode: plan must contain the complete revised Markdown plan',
+        };
+    }
+
+    if (!content && !patchResult.hasPatch) {
+        return {
+            updated: false,
+            id: existing.id,
+            error: 'No update requested: provide at least one of title, description, priority, tags, or a complete revised plan',
+        };
+    }
+
+    if (!content) {
+        const updated = await store.updateWorkItem(existing.id, patchResult.patch);
+        if (!updated) {
+            return { updated: false, error: `Failed to update work item: ${existing.id}` };
+        }
+
+        broadcastFn?.({ type: 'work-item-updated', workspaceId: repoId, item: updated });
+
+        return {
+            updated: true,
+            id: updated.id,
+            title: updated.title,
+            status: updated.status,
+            planVersion: updated.plan?.version,
         };
     }
 
@@ -277,6 +390,7 @@ async function updateExistingWorkItemPlan(
 
     await store.savePlanVersion(existing.id, planVersion);
     const updated = await store.updateWorkItem(existing.id, {
+        ...patchResult.patch,
         status: 'planning',
         plan: {
             version: nextVersion,

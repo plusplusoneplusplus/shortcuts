@@ -100,6 +100,7 @@ describe('createCreateUpdateWorkItemTool', () => {
         expect(params.properties.priority.enum).toEqual(['high', 'normal', 'low']);
         expect(params.properties.tags.type).toBe('array');
         expect(params.properties.plan.type).toBe('string');
+        expect(params.properties.type.enum).toEqual(['work-item', 'bug', 'goal', 'epic', 'feature', 'pbi']);
         expect(params.properties.workItemId.type).toBe('string');
         expect(params.properties.target.type).toBe('string');
         expect(params.properties.workItemNumber).toBeDefined();
@@ -117,6 +118,7 @@ describe('createCreateUpdateWorkItemTool', () => {
         expect(callArg.title).toBe('Fix login bug');
         expect(callArg.repoId).toBe(repoId);
         expect(callArg.status).toBe('created');
+        expect(callArg.type).toBe('work-item');
         expect(callArg.source).toBe('chat');
         expect(callArg.priority).toBe('normal');
         expect(callArg.description).toBe('');
@@ -180,6 +182,71 @@ describe('createCreateUpdateWorkItemTool', () => {
         expect(callArg.status).toBe('created');
         expect(callArg.plan).toBeUndefined();
         expect(mockSavePlanVersion).not.toHaveBeenCalled();
+    });
+
+    it('create mode accepts every supported work item type', async () => {
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+        const types = ['work-item', 'bug', 'goal', 'epic', 'feature', 'pbi'] as const;
+
+        for (const type of types) {
+            await tool.handler({ title: `Create ${type}`, type });
+        }
+
+        expect(mockAddWorkItem).toHaveBeenCalledTimes(types.length);
+        expect(mockAddWorkItem.mock.calls.map(call => call[0].type)).toEqual(types);
+    });
+
+    it('create mode rejects unsupported work item types', async () => {
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+
+        const result = await tool.handler({ title: 'Unsupported type', type: 'incident' } as any);
+
+        expect(result).toMatchObject({ created: false });
+        expect((result as any).error).toContain('Unsupported work item type');
+        expect(mockAddWorkItem).not.toHaveBeenCalled();
+    });
+
+    it('create mode creates a bug without a plan as a created chat work item', async () => {
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+
+        await tool.handler({
+            title: 'Crash on empty input',
+            type: 'bug',
+            description: 'The input handler crashes when the field is empty.',
+            tags: ['regression'],
+        });
+
+        const callArg = mockAddWorkItem.mock.calls[0][0];
+        expect(callArg.type).toBe('bug');
+        expect(callArg.status).toBe('created');
+        expect(callArg.source).toBe('chat');
+        expect(callArg.priority).toBe('normal');
+        expect(callArg.description).toBe('The input handler crashes when the field is empty.');
+        expect(callArg.tags).toEqual(['regression']);
+        expect(callArg.plan).toBeUndefined();
+        expect(mockSavePlanVersion).not.toHaveBeenCalled();
+    });
+
+    it('create mode creates a bug with a plan as planning and saves plan version 1', async () => {
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+
+        await tool.handler({
+            title: 'Crash with plan',
+            type: 'bug',
+            plan: '## Objective\n\nFix the crash.',
+        });
+
+        const callArg = mockAddWorkItem.mock.calls[0][0];
+        expect(callArg.type).toBe('bug');
+        expect(callArg.status).toBe('planning');
+        expect(callArg.plan.version).toBe(1);
+        expect(callArg.plan.content).toBe('## Objective\n\nFix the crash.');
+        expect(mockSavePlanVersion).toHaveBeenCalledOnce();
+        expect(mockSavePlanVersion.mock.calls[0][1]).toMatchObject({
+            version: 1,
+            content: '## Objective\n\nFix the crash.',
+            summary: 'Initial plan from chat',
+        });
     });
 
     it('create mode broadcasts work-item-added when broadcastFn is provided', async () => {
@@ -258,13 +325,13 @@ describe('createCreateUpdateWorkItemTool', () => {
         expect(mockUpdateWorkItem).not.toHaveBeenCalled();
     });
 
-    it('update-plan mode rejects a missing plan', async () => {
+    it('update mode rejects a no-op when no patch fields or plan are supplied', async () => {
         const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
 
         const result = await tool.handler({ workItemId: EXISTING_ITEM.id });
 
         expect(result).toMatchObject({ updated: false, id: EXISTING_ITEM.id });
-        expect((result as any).error).toContain('complete revised Markdown plan');
+        expect((result as any).error).toContain('No update requested');
         expect(mockSavePlanVersion).not.toHaveBeenCalled();
         expect(mockUpdateWorkItem).not.toHaveBeenCalled();
         expect(mockAddChange).not.toHaveBeenCalled();
@@ -279,6 +346,103 @@ describe('createCreateUpdateWorkItemTool', () => {
         expect(mockSavePlanVersion).not.toHaveBeenCalled();
         expect(mockUpdateWorkItem).not.toHaveBeenCalled();
         expect(mockAddChange).not.toHaveBeenCalled();
+    });
+
+    it('field-only update patches common fields while preserving status and plan history', async () => {
+        mockUpdateWorkItem.mockImplementation(async (_id, patch) => ({ ...EXISTING_ITEM, ...patch }));
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+
+        const result = await tool.handler({
+            workItemId: EXISTING_ITEM.id,
+            title: 'Renamed work item',
+            description: '',
+            priority: 'high',
+            tags: ['triaged', 'chat'],
+        });
+
+        expect(mockUpdateWorkItem).toHaveBeenCalledOnce();
+        expect(mockUpdateWorkItem).toHaveBeenCalledWith(EXISTING_ITEM.id, {
+            title: 'Renamed work item',
+            description: '',
+            priority: 'high',
+            tags: ['triaged', 'chat'],
+        });
+        expect(mockSavePlanVersion).not.toHaveBeenCalled();
+        expect(mockAddChange).not.toHaveBeenCalled();
+        expect(result).toMatchObject({
+            updated: true,
+            id: EXISTING_ITEM.id,
+            title: 'Renamed work item',
+            status: 'readyToExecute',
+            planVersion: 1,
+        });
+    });
+
+    it('field-only update patches an existing bug', async () => {
+        const existingBug = { ...EXISTING_ITEM, type: 'bug' as const, title: 'Existing bug' };
+        mockGetWorkItem.mockResolvedValue(existingBug);
+        mockUpdateWorkItem.mockImplementation(async (_id, patch) => ({ ...existingBug, ...patch }));
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+
+        await tool.handler({
+            workItemId: EXISTING_ITEM.id,
+            type: 'bug',
+            description: 'Updated bug details',
+            priority: 'low',
+        });
+
+        expect(mockUpdateWorkItem).toHaveBeenCalledWith(EXISTING_ITEM.id, {
+            description: 'Updated bug details',
+            priority: 'low',
+        });
+        expect(mockSavePlanVersion).not.toHaveBeenCalled();
+        expect(mockAddChange).not.toHaveBeenCalled();
+    });
+
+    it('field-only update broadcasts work-item-updated without creating a change record', async () => {
+        mockUpdateWorkItem.mockImplementation(async (_id, patch) => ({ ...EXISTING_ITEM, ...patch }));
+        const broadcast = vi.fn();
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId, broadcast);
+
+        await tool.handler({ workItemId: EXISTING_ITEM.id, priority: 'high' });
+
+        expect(mockAddChange).not.toHaveBeenCalled();
+        expect(broadcast).toHaveBeenCalledOnce();
+        expect(broadcast.mock.calls[0][0]).toMatchObject({
+            type: 'work-item-updated',
+            workspaceId: repoId,
+        });
+    });
+
+    it('update mode rejects type mismatch without changing the item', async () => {
+        mockGetWorkItem.mockResolvedValue({ ...EXISTING_ITEM, type: 'bug' });
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+
+        const result = await tool.handler({
+            workItemId: EXISTING_ITEM.id,
+            type: 'work-item',
+            priority: 'high',
+        });
+
+        expect(result).toMatchObject({ updated: false, id: EXISTING_ITEM.id });
+        expect((result as any).error).toContain('Cannot change work item type');
+        expect(mockUpdateWorkItem).not.toHaveBeenCalled();
+        expect(mockSavePlanVersion).not.toHaveBeenCalled();
+        expect(mockAddChange).not.toHaveBeenCalled();
+    });
+
+    it('update mode rejects unsupported validation type values', async () => {
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+
+        const result = await tool.handler({
+            workItemId: EXISTING_ITEM.id,
+            type: 'incident',
+            priority: 'high',
+        } as any);
+
+        expect(result).toMatchObject({ updated: false, id: EXISTING_ITEM.id });
+        expect((result as any).error).toContain('Unsupported work item type');
+        expect(mockUpdateWorkItem).not.toHaveBeenCalled();
     });
 
     it('update-plan mode broadcasts work-item-updated when broadcastFn is provided', async () => {

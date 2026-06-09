@@ -33,7 +33,7 @@ attachments can be dropped into chat composers.
 | `suggest-follow-ups-tool.ts` | `suggest_follow_ups` | Emits follow-up action suggestions after AI response. |
 | `tavily-web-search-tool.ts` | `tavily_web_search` | Live web search via Tavily API. Key from `~/.coc/providers.json`. Disabled by default. |
 | `create-bug-tool.ts` | `create_bug` | Queues a bug work item. |
-| `create-update-work-item-tool.ts` | `create_update_work_item` | Creates a work item or saves a full revised plan as the next version for an existing item. |
+| `create-update-work-item-tool.ts` | `create_update_work_item` | Creates typed work items (`work-item`, `bug`, `goal`, `epic`, `feature`, `pbi`), patches common fields on existing items, or saves a full revised plan as the next version for an existing item. |
 
 ## Supporting Modules
 
