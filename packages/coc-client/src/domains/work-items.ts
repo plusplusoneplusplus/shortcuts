@@ -34,7 +34,7 @@ import type {
   WorkItemTreeFilter,
   WorkItemTreeResponse,
 } from '../contracts';
-import type { RequestAdapter } from '../types';
+import type { CocRequestOptions, RequestAdapter } from '../types';
 import { encodePathSegment } from '../url';
 
 function path(workspaceId: string, suffix = ''): string {
@@ -248,10 +248,15 @@ export class WorkItemsClient {
     );
   }
 
-  applyAiDraft(workspaceId: string, workItemId: string, request: ApplyWorkItemAiDraftRequest): Promise<ApplyWorkItemAiDraftResponse> {
+  applyAiDraft(
+    workspaceId: string,
+    workItemId: string,
+    request: ApplyWorkItemAiDraftRequest,
+    options: Pick<CocRequestOptions, 'signal'> = {},
+  ): Promise<ApplyWorkItemAiDraftResponse> {
     return this.transport.request<ApplyWorkItemAiDraftResponse>(
       path(workspaceId, `/${encodePathSegment(workItemId)}/ai-draft/apply`),
-      { method: 'POST', body: { ...request } },
+      { method: 'POST', body: { ...request }, ...options },
     );
   }
 }

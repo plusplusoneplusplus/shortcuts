@@ -6,13 +6,19 @@ describe('WorkItemsClient', () => {
   it('encodes workspace and work item IDs in path segments', async () => {
     const adapter = createMockAdapter({});
     const client = new WorkItemsClient(adapter);
+    const controller = new AbortController();
 
     await client.list('repo/a', { status: ['created', 'planning'], tags: ['x', 'y'] });
     await client.create('repo/a', { title: 'Task', description: 'Do it', priority: 'normal' });
     await client.updatePlan('repo/a', 'wi/1', 'plan');
     await client.comparePlanVersions('repo/a', 'wi/1', 1, 2);
     await client.restorePlanVersion('repo/a', 'wi/1', 1, { summary: 'Restore v1' });
-    await client.applyAiDraft('repo/a', 'wi/1', { prompt: 'Draft it', baseUpdatedAt: '2026-01-01T00:00:00.000Z', baseContentVersion: null });
+    await client.applyAiDraft(
+      'repo/a',
+      'wi/1',
+      { prompt: 'Draft it', baseUpdatedAt: '2026-01-01T00:00:00.000Z', baseContentVersion: null },
+      { signal: controller.signal },
+    );
     await client.execute('repo/a', 'wi/1', { model: 'm' });
     await client.resolveComments('repo/a', 'wi/1', { type: 'commit', commitSha: 'abc123' });
     await client.listChatBindings('repo/a');
@@ -38,6 +44,7 @@ describe('WorkItemsClient', () => {
       options: {
         method: 'POST',
         body: { prompt: 'Draft it', baseUpdatedAt: '2026-01-01T00:00:00.000Z', baseContentVersion: null },
+        signal: controller.signal,
       },
     });
     expect(adapter.calls[6]).toMatchObject({

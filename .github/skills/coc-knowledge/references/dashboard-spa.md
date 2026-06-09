@@ -111,6 +111,9 @@ turning local Work Items and Goals into the command-center planning/execution
 surface. The SPA receives it as `workItemsWorkflowEnabled` from bootstrap config
 and `GET /api/config/runtime`; use `isWorkItemsWorkflowEnabled()` for UI gates so
 legacy Work Items and Chat behavior remains unchanged while the flag is off.
+When the flag is on, the local create dialog exposes a Work Item vs Goal type
+selector for title-first shell creation even when hierarchy mode is off; existing
+bug and hierarchy-type creation paths keep their prior behavior.
 
 ## Chat UI Architecture
 
@@ -390,6 +393,16 @@ The Work Items list, grouped list, hierarchy tree, and remote sync-status routes
 
 `WorkItemDetail` is an always-editable inline form: title, description, priority, tags, status, parent, success criteria, and plan content remain editable without an Edit-mode toggle. Description and plan use per-field Source/Preview markdown controls. The view tracks a unified dirty draft; Ctrl+S/Cmd+S and the Save button send one `workItems.update` PATCH containing every dirty metadata field plus `plan.content` when changed. There is no instant status save and no standalone plan save from the detail screen. If a remote-backed save returns `WORK_ITEM_SYNC_CONFLICT`, the detail view renders an inline warning panel near the save/error area with per-field "Your draft" versus provider value cards and retries the same PATCH path with `syncConflictResolution` after the user applies choices. Dirty work-item detail pages show an unsaved-changes indicator, install a `beforeunload` warning, guard the local back breadcrumb, block dirty hash route changes when the user cancels, and intercept hash links before navigation.
 Detail fetch and draft state are scoped to the current `workspaceId` + `workItemId`; stale responses from prior selections are ignored, and drafts initialize or save only when the loaded detail item matches the active selection.
+
+With both `workItems.workflow.enabled` and `workItems.aiAuthoring.enabled` on,
+saved local-only `work-item` details show **Draft with AI** for items without
+plan content and **Revise with AI** for items with an existing plan. The action is
+hidden for remote-backed items and non-`work-item` types, disabled while the
+inline draft is dirty, opens `WorkItemAiDraftApplyDialog`, and auto-starts the
+typed `workItems.applyAiDraft(...)` call with the loaded `updatedAt` plus current
+content-version guard. The dialog surfaces generating, clarification, retry,
+failure, and cancel states; successful apply refreshes the detail and updates the
+Work Items context with the returned immutable AI-authored version.
 
 `WorkItemDetail` has a compact **Ask AI** action in the header. It opens `WorkItemChatPanel`, which restores the workspace-scoped remembered chat binding for the selected Work Item or starts a normal `chat` task through the same `InitialChatComposer` capabilities used by commit/PR chat. The composer frame is titled for the selected Work Item and displays the stable Work Item identifier plus saved title. If the inline form is dirty, the chat still uses the saved `item` state and shows an unsaved-edits warning until the Work Item is saved. The initial Work Item chat prompt uses pointer-only `<attached_pointer_context>` metadata plus safe Work Item labels/status/type/number; raw descriptions, plan content, provider payloads, file contents, diffs, credentials, and local paths are not inlined. With `features.commitChatLens` enabled, unpinned Work Item chat renders as a bottom-right lens inside the detail pane on desktop, tablet, and mobile; close/minimize/restore/pin/unpin state is localStorage-scoped by workspace and Work Item. With the flag disabled, the detail pane uses the non-lens embedded fallback and closes that fallback when selection changes.
 

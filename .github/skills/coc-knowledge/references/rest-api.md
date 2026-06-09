@@ -336,7 +336,11 @@ The sync route layer retains provider status for GitHub and Azure Boards availab
 
 ### AI Authoring (gated by `workItems.aiAuthoring` flag, default `false`)
 
-Draft generation is ephemeral — no data is persisted until the caller explicitly applies it via the standard create/update/plan endpoints.
+The `ai-draft` generation endpoints are ephemeral — no data is persisted until
+the caller explicitly applies the generated content. The workflow
+`ai-draft/apply` endpoint is the direct apply path for saved local-only
+`work-item` shells and stores an immutable AI-authored plan/content version after
+checking the caller's base snapshot.
 
 Response shape: `{ kind: 'clarification', questions: string[], clarificationCount: number }` or `{ kind: 'draft', workItem: {...}, goal?: string, childTasks?: [...] }`.
 

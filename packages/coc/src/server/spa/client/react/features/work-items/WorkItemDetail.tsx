@@ -19,7 +19,7 @@ import { useWorkItems } from '../../contexts/WorkItemContext';
 import { useCommitCommentTotals } from '../git/hooks/useCommitCommentTotals';
 import type { DiffComment } from '../../../comments/diff-comment-types';
 import { computeStorageKey, patchDiffComment } from '../../utils/diffCommentApi';
-import { isWorkItemsHierarchyEnabled } from '../../utils/config';
+import { isWorkItemsAiAuthoringEnabled, isWorkItemsHierarchyEnabled, isWorkItemsWorkflowEnabled } from '../../utils/config';
 import { WorkItemParentPicker } from './WorkItemParentPicker';
 import {
     WORK_ITEM_SYNC_CONFLICT_CODE,
@@ -33,13 +33,13 @@ import {
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
 import { TYPE_LABELS } from './WorkItemHierarchyNode';
 import { WorkItemAiComposer } from './WorkItemAiComposer';
-import { isWorkItemsAiAuthoringEnabled } from '../../utils/config';
 import { WorkItemRemoteMirrorBadge } from './WorkItemGitHubMirrorBadge';
 import { useReviewChatPresentation } from '../git/hooks/useReviewChatPresentation';
 import type { ReviewChatTarget } from '../git/commits/commitChatPlacement';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { WorkItemChatPanel } from './WorkItemChatPanel';
 import { WorkItemChatPlacementFrame } from './WorkItemChatPlacementFrame';
+import { WorkItemAiDraftApplyDialog } from './WorkItemAiDraftApplyDialog';
 
 const UNSAVED_CHANGES_MESSAGE = 'You have unsaved changes. Leave without saving?';
 const WORK_ITEM_CHAT_PANEL_WIDTH_STORAGE_PREFIX = 'coc.workItemChatPanel.width';
@@ -92,9 +92,11 @@ interface WorkItemFull {
     successCriteria?: string;
     grillSessionId?: string;
     priority?: string; source?: string; sourceId?: string;
+    tracker?: { kind: string };
     createdAt: string; updatedAt: string; completedAt?: string;
     plan?: { version: number; content: string; updatedAt?: string; resolvedBy?: string };
     taskId?: string; processId?: string;
+    currentContentVersion?: number;
     executionHistory?: Array<{ taskId: string; processId?: string; startedAt: string; completedAt?: string; status: string; error?: string; autoReExecuted?: boolean; title?: string; sessionCategory?: string }>;
     tags?: string[];
     githubMirror?: WorkItemGitHubMirrorMetadata;
@@ -252,6 +254,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const [planViewMode, setPlanViewMode] = useState<PlanViewMode>('preview');
 
     const [showAiComposer, setShowAiComposer] = useState(false);
+    const [showAiDraftApplyDialog, setShowAiDraftApplyDialog] = useState(false);
     const aiAuthoringEnabled = isWorkItemsAiAuthoringEnabled();
     const workItemChatTarget = useMemo<ReviewChatTarget>(() => ({
         type: 'work-item',
@@ -743,6 +746,12 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const isAiDone = !isContainer && item.status === 'aiDone';
     const validNextStatuses = VALID_TRANSITIONS[item.status] ?? [];
     const hierarchyEnabled = isWorkItemsHierarchyEnabled();
+    const workflowEnabled = isWorkItemsWorkflowEnabled();
+    const isLocalOnlyWorkflowWorkItem = effectiveType === 'work-item'
+        && (!item.tracker || item.tracker.kind === 'local-only')
+        && !item.githubMirror
+        && !item.azureBoardsMirror;
+    const canDraftWithAi = workflowEnabled && aiAuthoringEnabled && isLocalOnlyWorkflowWorkItem;
 
     const typePrefix = effectiveType === 'epic' ? 'E'
         : effectiveType === 'feature' ? 'F'
@@ -908,7 +917,19 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                         >
                             Ask AI
                         </button>
-                        {aiAuthoringEnabled && (
+                        {canDraftWithAi && (
+                            <button
+                                className="inline-flex items-center justify-center min-h-[22px] rounded-[4px] border border-purple-300 bg-purple-50 px-[6px] text-[10px] font-semibold text-purple-700 hover:bg-purple-100 disabled:opacity-40 dark:border-purple-700 dark:bg-purple-900/30 dark:text-purple-200 dark:hover:bg-purple-900/50"
+                                onClick={() => setShowAiDraftApplyDialog(true)}
+                                disabled={isDirty || saving}
+                                data-testid="work-item-draft-with-ai-btn"
+                                title={isDirty ? 'Save or discard local edits before drafting with AI' : item.plan?.content ? 'Create a new AI-authored plan version' : 'Draft description and v1 plan with AI'}
+                                type="button"
+                            >
+                                {item.plan?.content ? 'Revise with AI' : 'Draft with AI'}
+                            </button>
+                        )}
+                        {aiAuthoringEnabled && !canDraftWithAi && (
                             <button
                                 className="text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#ccc] text-[12px] bg-transparent border-0 cursor-pointer p-0 leading-none"
                                 onClick={() => setShowAiComposer(true)}
@@ -1516,6 +1537,24 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                 }}
                 onImproved={fetchItem}
             />
+            {showAiDraftApplyDialog && (
+                <WorkItemAiDraftApplyDialog
+                    open={showAiDraftApplyDialog}
+                    workspaceId={workspaceId}
+                    item={{
+                        id: item.id,
+                        title: item.title,
+                        updatedAt: item.updatedAt,
+                        currentContentVersion: item.currentContentVersion,
+                        plan: item.plan,
+                    }}
+                    onClose={() => setShowAiDraftApplyDialog(false)}
+                    onApplied={(updated) => {
+                        dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item: updated as any });
+                        void fetchItem();
+                    }}
+                />
+            )}
             {showParentPicker && (
                 <WorkItemParentPicker
                     workspaceId={workspaceId}
