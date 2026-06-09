@@ -110,6 +110,7 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
         workItemsHierarchyEnabled,
         workItemsSyncEnabled,
         workItemsAiAuthoringEnabled,
+        workItemsWorkflowEnabled,
         reviewFilePath,
         projectDir,
         bindAddress,
@@ -171,7 +172,8 @@ ${getBundleCss()}
             bindAddress: '${escapeHtml(bindAddress)}'` : ''},
             workItemsHierarchyEnabled: ${!!workItemsHierarchyEnabled},
             workItemsSyncEnabled: ${!!workItemsSyncEnabled},
-            workItemsAiAuthoringEnabled: ${!!workItemsAiAuthoringEnabled}
+            workItemsAiAuthoringEnabled: ${!!workItemsAiAuthoringEnabled},
+            workItemsWorkflowEnabled: ${!!workItemsWorkflowEnabled}
         };
     </script>${reviewFilePath ? `
     <script>

@@ -59,6 +59,8 @@ export interface DashboardOptions {
     workItemsSyncEnabled?: boolean;
     /** Whether AI-assisted Work Items authoring is enabled in server config. */
     workItemsAiAuthoringEnabled?: boolean;
+    /** Whether the durable Work Items/Goals workflow is enabled in server config. */
+    workItemsWorkflowEnabled?: boolean;
     /** Whether the MCP OAuth auto-detection subsystem is enabled in server config. */
     mcpOauthEnabled?: boolean;
     /** When set, injects __REVIEW_CONFIG__ for the review editor page. */

@@ -106,6 +106,12 @@ remote identifiers remain the primary row metadata. Compact GitHub mirror badges
 render the issue number only; full detail-page badges keep the provider label and
 link title.
 
+`workItems.workflow.enabled` is the disabled-by-default durable workflow gate for
+turning local Work Items and Goals into the command-center planning/execution
+surface. The SPA receives it as `workItemsWorkflowEnabled` from bootstrap config
+and `GET /api/config/runtime`; use `isWorkItemsWorkflowEnabled()` for UI gates so
+legacy Work Items and Chat behavior remains unchanged while the flag is off.
+
 ## Chat UI Architecture
 
 `ConversationTurnBubble` renders:

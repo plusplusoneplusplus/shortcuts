@@ -377,6 +377,12 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         cfg.workItems.aiAuthoring.enabled = v;
     }),
 
+    bool('workItems.workflow.enabled', (cfg, v) => {
+        if (!cfg.workItems) { cfg.workItems = {}; }
+        if (!cfg.workItems.workflow) { cfg.workItems.workflow = {}; }
+        cfg.workItems.workflow.enabled = v;
+    }),
+
     bool('effortLevels.enabled', (cfg, v) => {
         if (!cfg.effortLevels) { cfg.effortLevels = {}; }
         cfg.effortLevels.enabled = v;

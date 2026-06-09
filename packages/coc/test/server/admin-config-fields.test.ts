@@ -54,6 +54,7 @@ describe('ADMIN_EDITABLE_KEYS', () => {
             'workItems.hierarchy.enabled',
             'workItems.sync.enabled',
             'workItems.aiAuthoring.enabled',
+            'workItems.workflow.enabled',
             'effortLevels.enabled',
         ];
         for (const k of expected) {
@@ -276,6 +277,7 @@ describe('validate()', () => {
         'workItems.hierarchy.enabled',
         'workItems.sync.enabled',
         'workItems.aiAuthoring.enabled',
+        'workItems.workflow.enabled',
         'effortLevels.enabled',
     ];
 
@@ -421,6 +423,7 @@ describe('apply()', () => {
         ['workItems.hierarchy.enabled', (c) => c.workItems?.hierarchy?.enabled],
         ['workItems.sync.enabled', (c) => c.workItems?.sync?.enabled],
         ['workItems.aiAuthoring.enabled', (c) => c.workItems?.aiAuthoring?.enabled],
+        ['workItems.workflow.enabled', (c) => c.workItems?.workflow?.enabled],
         ['effortLevels.enabled', (c) => c.effortLevels?.enabled],
     ];
 

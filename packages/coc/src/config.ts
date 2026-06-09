@@ -273,6 +273,10 @@ export interface CLIConfig {
         aiAuthoring?: {
             enabled?: boolean;
         };
+        /** Durable Work Items/Goals workflow command-center experience. Disabled by default. */
+        workflow?: {
+            enabled?: boolean;
+        };
     };
     /** Effort Tiers configuration — single Low/Medium/High selector replacing model picker + effort pill. Disabled by default. */
     effortLevels?: {
@@ -536,6 +540,10 @@ export interface ResolvedCLIConfig {
         aiAuthoring: {
             enabled: boolean;
         };
+        /** Durable Work Items/Goals workflow command-center feature. */
+        workflow: {
+            enabled: boolean;
+        };
     };
     /** Effort Tiers configuration — single Low/Medium/High selector replacing model picker + effort pill. */
     effortLevels: {
@@ -737,6 +745,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
             enabled: false,
         },
         aiAuthoring: {
+            enabled: false,
+        },
+        workflow: {
             enabled: false,
         },
     },

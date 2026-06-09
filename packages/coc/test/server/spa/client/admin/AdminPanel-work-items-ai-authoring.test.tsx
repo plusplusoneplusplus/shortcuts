@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * Integration tests for the Work Items AI Authoring toggle in AdminPanel Features card (AC-05).
+ * Integration tests for Work Items feature toggles in AdminPanel Features card (AC-05).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
@@ -94,7 +94,7 @@ function mockConfigResponse(overrides: Record<string, any> = {}) {
                 myWork: { enabled: false },
                 myLife: { enabled: false },
                 scratchpad: { enabled: false },
-                workItems: { hierarchy: { enabled: false }, aiAuthoring: { enabled: false } },
+                workItems: { hierarchy: { enabled: false }, aiAuthoring: { enabled: false }, workflow: { enabled: false } },
                 ...overrides,
             },
             sources: {},
@@ -241,5 +241,97 @@ describe('AdminPanel — Work Items AI Authoring toggle (AC-05)', () => {
 
         // Should revert to false (server returned false)
         expect(toggle.checked).toBe(false);
+    });
+});
+
+describe('AdminPanel — Work Items Workflow toggle (AC-01)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/admin/config')) return Promise.resolve(mockConfigResponse());
+            if (url.includes('/admin/data/stats')) return Promise.resolve(mockStatsResponse());
+            if (url.includes('/preferences')) return Promise.resolve(mockPreferencesResponse());
+            return Promise.resolve({ ok: true, json: async () => ({}) });
+        });
+    });
+
+    afterEach(() => {
+        cleanup();
+    });
+
+    it('renders the durable workflow toggle in the Features sub-tab', async () => {
+        render(<AdminPanel />);
+        await gotoFeaturesSubTab();
+        await waitFor(() => {
+            expect(screen.getByTestId('toggle-work-items-workflow-enabled')).toBeTruthy();
+        });
+    });
+
+    it('toggle defaults to unchecked (feature flag default is false)', async () => {
+        render(<AdminPanel />);
+        await gotoFeaturesSubTab();
+        await waitFor(() => {
+            const toggle = screen.getByTestId('toggle-work-items-workflow-enabled') as HTMLInputElement;
+            expect(toggle.checked).toBe(false);
+        });
+    });
+
+    it('reflects workItems.workflow.enabled=true from config', async () => {
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/admin/config')) {
+                return Promise.resolve(mockConfigResponse({
+                    workItems: { hierarchy: { enabled: false }, aiAuthoring: { enabled: false }, workflow: { enabled: true } },
+                }));
+            }
+            if (url.includes('/admin/data/stats')) return Promise.resolve(mockStatsResponse());
+            if (url.includes('/preferences')) return Promise.resolve(mockPreferencesResponse());
+            return Promise.resolve({ ok: true, json: async () => ({}) });
+        });
+
+        render(<AdminPanel />);
+        await gotoFeaturesSubTab();
+        await waitFor(() => {
+            const toggle = screen.getByTestId('toggle-work-items-workflow-enabled') as HTMLInputElement;
+            expect(toggle.checked).toBe(true);
+        });
+    });
+
+    it('sends workItems.workflow.enabled in PUT payload when toggled and saved', async () => {
+        mockFetch.mockImplementation((url: string, opts?: any) => {
+            if (opts?.method === 'PUT' && url.includes('/admin/config')) {
+                return Promise.resolve({ ok: true, json: async () => ({}) });
+            }
+            if (url.includes('/admin/config')) return Promise.resolve(mockConfigResponse());
+            if (url.includes('/admin/data/stats')) return Promise.resolve(mockStatsResponse());
+            if (url.includes('/preferences')) return Promise.resolve(mockPreferencesResponse());
+            return Promise.resolve({ ok: true, json: async () => ({}) });
+        });
+
+        render(<AdminPanel />);
+        await gotoFeaturesSubTab();
+
+        await waitFor(() => {
+            expect(screen.getByTestId('toggle-work-items-workflow-enabled')).toBeTruthy();
+        });
+
+        const toggle = screen.getByTestId('toggle-work-items-workflow-enabled') as HTMLInputElement;
+        fireEvent.click(toggle);
+        expect(toggle.checked).toBe(true);
+
+        const saveButtons = screen.getAllByText('Save');
+        const featuresSave = saveButtons.find(btn =>
+            btn.closest('[data-testid="settings-features"]') !== null
+        );
+        expect(featuresSave).toBeTruthy();
+        fireEvent.click(featuresSave!);
+
+        await waitFor(() => {
+            const putCalls = mockFetch.mock.calls.filter(
+                ([url, opts]: [string, any]) => opts?.method === 'PUT' && url.includes('/admin/config')
+            );
+            expect(putCalls.length).toBeGreaterThan(0);
+            const body = JSON.parse(putCalls[0][1].body);
+            expect(body['workItems.workflow.enabled']).toBe(true);
+        });
     });
 });

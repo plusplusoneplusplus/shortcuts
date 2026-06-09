@@ -8,7 +8,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 |--------|------|-------------|
 | GET | `/api/health` | Health check |
 | GET | `/api/config` | Server configuration |
-| GET | `/api/config/runtime` | Runtime dashboard feature flags and config revision, including provider feature flags, `defaultProvider`, `autoAgentProviderRoutingEnabled`, and Pull Requests flags such as `pullRequestsAutoClassifyTeamEnabled` |
+| GET | `/api/config/runtime` | Runtime dashboard feature flags and config revision, including provider feature flags, `defaultProvider`, `autoAgentProviderRoutingEnabled`, Pull Requests flags such as `pullRequestsAutoClassifyTeamEnabled`, and Work Items flags such as `workItemsWorkflowEnabled` |
 | GET | `/api/preferences` | Global UI preferences |
 | PUT | `/api/preferences` | Update global preferences |
 | GET | `/api/logs` | Server log ring buffer |

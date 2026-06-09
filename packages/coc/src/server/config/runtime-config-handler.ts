@@ -57,6 +57,7 @@ export function buildRuntimeDashboardConfig(
             workItemsHierarchyEnabled: config.workItems?.hierarchy?.enabled ?? false,
             workItemsSyncEnabled: config.workItems?.sync?.enabled ?? false,
             workItemsAiAuthoringEnabled: config.workItems?.aiAuthoring?.enabled ?? false,
+            workItemsWorkflowEnabled: config.workItems?.workflow?.enabled ?? false,
             gitCommitLookupEnabled: config.features?.gitCommitLookup ?? false,
             gitCrossCloneCherryPickEnabled: config.features?.gitCrossCloneCherryPick ?? false,
             sessionContextAttachmentsEnabled: config.features?.sessionContextAttachments ?? false,

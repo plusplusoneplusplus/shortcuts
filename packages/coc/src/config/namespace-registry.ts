@@ -104,6 +104,7 @@ const FEATURES_SOURCE_KEYS = [
 const WORK_ITEMS_HIERARCHY_SOURCE_KEYS = ['workItems.hierarchy.enabled'] as const;
 const WORK_ITEMS_SYNC_SOURCE_KEYS = ['workItems.sync.enabled'] as const;
 const WORK_ITEMS_AI_AUTHORING_SOURCE_KEYS = ['workItems.aiAuthoring.enabled'] as const;
+const WORK_ITEMS_WORKFLOW_SOURCE_KEYS = ['workItems.workflow.enabled'] as const;
 const EFFORT_LEVELS_SOURCE_KEYS = ['effortLevels.enabled'] as const;
 
 const DEFAULT_AUTO_PROVIDER_ROUTING: ResolvedAutoProviderRoutingConfig = {
@@ -173,6 +174,7 @@ export const CONFIG_NAMESPACE_SOURCE_KEYS = [
     ...WORK_ITEMS_HIERARCHY_SOURCE_KEYS,
     ...WORK_ITEMS_SYNC_SOURCE_KEYS,
     ...WORK_ITEMS_AI_AUTHORING_SOURCE_KEYS,
+    ...WORK_ITEMS_WORKFLOW_SOURCE_KEYS,
     ...EFFORT_LEVELS_SOURCE_KEYS,
 ] as const;
 
@@ -475,6 +477,7 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
                 source('workItems.hierarchy.', ['workItems', 'hierarchy'], WORK_ITEMS_HIERARCHY_SOURCE_KEYS),
                 source('workItems.sync.', ['workItems', 'sync'], WORK_ITEMS_SYNC_SOURCE_KEYS),
                 source('workItems.aiAuthoring.', ['workItems', 'aiAuthoring'], WORK_ITEMS_AI_AUTHORING_SOURCE_KEYS),
+                source('workItems.workflow.', ['workItems', 'workflow'], WORK_ITEMS_WORKFLOW_SOURCE_KEYS),
             ],
             merge: (base, override) => ({
                 workItems: {
@@ -486,6 +489,9 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
                     },
                     aiAuthoring: {
                         enabled: override?.workItems?.aiAuthoring?.enabled ?? base.workItems?.aiAuthoring?.enabled ?? false,
+                    },
+                    workflow: {
+                        enabled: override?.workItems?.workflow?.enabled ?? base.workItems?.workflow?.enabled ?? false,
                     },
                 },
             }),
