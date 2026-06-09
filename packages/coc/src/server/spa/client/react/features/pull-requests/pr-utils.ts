@@ -3,6 +3,12 @@
  */
 
 import { AttentionGroup } from './pr-attention-groups';
+import {
+    authorMatchesPrTeamRosterEntry,
+    filterPullRequestsByPrTeamRoster,
+    getPrTeamIdentityKey,
+    pullRequestMatchesPrTeamRoster,
+} from '../../../../../shared/pr-team-matching';
 
 export type PrStatus = 'open' | 'closed' | 'merged' | 'draft';
 
@@ -145,21 +151,13 @@ function stringifyIdentityId(id: string | number | undefined): string {
     return String(id).trim();
 }
 
-function normalizeIdentityId(id: string | number | undefined): string {
-    return stringifyIdentityId(id).toLowerCase();
-}
-
-function normalizeDisplayName(displayName: string | undefined): string {
-    return (displayName ?? '').trim().toLowerCase();
-}
-
 function normalizeOptionalIdentityField(value: string | undefined): string | undefined {
     const trimmed = value?.trim();
     return trimmed ? trimmed : undefined;
 }
 
 export function getCoworkerRosterIdentityKey(identity: Pick<PrIdentity, 'id' | 'displayName'>): string {
-    return normalizeIdentityId(identity.id) || normalizeDisplayName(identity.displayName);
+    return getPrTeamIdentityKey(identity);
 }
 
 export function buildCoworkerRosterCandidates(
@@ -209,29 +207,21 @@ export function authorMatchesCoworkerRosterEntry(
     author: PrIdentity | undefined,
     entry: Pick<PrCoworkerRosterEntry, 'id' | 'displayName'>,
 ): boolean {
-    const authorId = normalizeIdentityId(author?.id);
-    const entryId = normalizeIdentityId(entry.id);
-    if (authorId && entryId) {
-        return authorId === entryId;
-    }
-
-    const authorDisplayName = normalizeDisplayName(author?.displayName);
-    const entryDisplayName = normalizeDisplayName(entry.displayName);
-    return Boolean(authorDisplayName && entryDisplayName && authorDisplayName === entryDisplayName);
+    return authorMatchesPrTeamRosterEntry(author, entry);
 }
 
 export function pullRequestMatchesCoworkerRoster(
     pr: Pick<PullRequest, 'author'>,
     roster: readonly Pick<PrCoworkerRosterEntry, 'id' | 'displayName'>[],
 ): boolean {
-    return roster.some(entry => authorMatchesCoworkerRosterEntry(pr.author, entry));
+    return pullRequestMatchesPrTeamRoster(pr, roster);
 }
 
 export function filterPullRequestsByCoworkerRoster<T extends Pick<PullRequest, 'author'>>(
     pullRequests: readonly T[],
     roster: readonly Pick<PrCoworkerRosterEntry, 'id' | 'displayName'>[],
 ): T[] {
-    return pullRequests.filter(pr => pullRequestMatchesCoworkerRoster(pr, roster));
+    return filterPullRequestsByPrTeamRoster(pullRequests, roster);
 }
 
 export interface StatusBadge {
