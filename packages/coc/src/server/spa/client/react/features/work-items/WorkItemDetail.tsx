@@ -22,7 +22,6 @@ import { computeStorageKey, patchDiffComment } from '../../utils/diffCommentApi'
 import { isWorkItemsHierarchyEnabled } from '../../utils/config';
 import { WorkItemParentPicker } from './WorkItemParentPicker';
 import {
-    ALLOWED_CHILD_TYPES,
     WORK_ITEM_SYNC_CONFLICT_CODE,
     type UpdateWorkItemRequest,
     type WorkItemAzureBoardsMirrorMetadata,
@@ -84,10 +83,6 @@ interface WorkItemDetailProps {
     onViewCommit?: (sha: string) => void;
     /** Called when the user wants to view a completed task in the Tasks tab. */
     onNavigateToTasksTab?: (taskId: string) => void;
-    /** When true, renders the mobile 'Add Child' button for container items. */
-    isMobile?: boolean;
-    /** Open the create dialog for a given child type with this item as parent. */
-    onCreateChild?: (type: WorkItemTypeLabel, parentId: string) => void;
 }
 
 interface WorkItemFull {
@@ -98,7 +93,6 @@ interface WorkItemFull {
     grillSessionId?: string;
     priority?: string; source?: string; sourceId?: string;
     createdAt: string; updatedAt: string; completedAt?: string;
-    pinnedAt?: string; archivedAt?: string;
     plan?: { version: number; content: string; updatedAt?: string; resolvedBy?: string };
     taskId?: string; processId?: string;
     executionHistory?: Array<{ taskId: string; processId?: string; startedAt: string; completedAt?: string; status: string; error?: string; autoReExecuted?: boolean; title?: string; sessionCategory?: string }>;
@@ -234,7 +228,7 @@ function ConflictValueCard({ label, value, selected, onSelect }: { label: string
     );
 }
 
-export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, onViewTask, onViewCommit, onNavigateToTasksTab, isMobile = false, onCreateChild }: WorkItemDetailProps) {
+export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, onViewTask, onViewCommit, onNavigateToTasksTab }: WorkItemDetailProps) {
     const [item, setItem] = useState<WorkItemFull | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -252,8 +246,6 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const [syncConflict, setSyncConflict] = useState<WorkItemSyncConflictDetails | null>(null);
     const [syncConflictChoices, setSyncConflictChoices] = useState<ConflictChoices>({});
     const [showParentPicker, setShowParentPicker] = useState(false);
-    // ── Mobile add-child type picker state ──
-    const [showChildTypePicker, setShowChildTypePicker] = useState(false);
     /** Plan content draft, lifted from WorkItemPlanSection into the unified batch. */
     const [planDraft, setPlanDraft] = useState<string | null>(null);
     const [descViewMode, setDescViewMode] = useState<DescriptionViewMode>('source');
@@ -916,42 +908,6 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                         >
                             Ask AI
                         </button>
-                        {isMobile && isContainer && (
-                            <button
-                                className="text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#ccc] text-[11px] bg-transparent border-0 cursor-pointer p-0 whitespace-nowrap"
-                                onClick={() => {
-                                    const childTypes = ALLOWED_CHILD_TYPES[effectiveType as WorkItemTypeLabel] ?? [];
-                                    if (childTypes.length === 0) return;
-                                    if (childTypes.length === 1) {
-                                        onCreateChild?.(childTypes[0] as WorkItemTypeLabel, item.id);
-                                    } else {
-                                        setShowChildTypePicker(true);
-                                    }
-                                }}
-                                data-testid="wi-add-child-btn"
-                                type="button"
-                            >
-                                + Add Child
-                            </button>
-                        )}
-                        {!isMobile && (
-                            <button
-                                className="text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#ccc] text-[11px] bg-transparent border-0 cursor-pointer p-0 whitespace-nowrap"
-                                onClick={() => {
-                                    const childTypes = ALLOWED_CHILD_TYPES[effectiveType as WorkItemTypeLabel] ?? [];
-                                    if (childTypes.length === 0) return;
-                                    if (childTypes.length === 1) {
-                                        onCreateChild?.(childTypes[0] as WorkItemTypeLabel, item.id);
-                                    } else {
-                                        setShowChildTypePicker(true);
-                                    }
-                                }}
-                                data-testid="wi-new-child-btn"
-                                type="button"
-                            >
-                                + child
-                            </button>
-                        )}
                         {aiAuthoringEnabled && (
                             <button
                                 className="text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#ccc] text-[12px] bg-transparent border-0 cursor-pointer p-0 leading-none"
@@ -963,32 +919,6 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                 ✨
                             </button>
                         )}
-                        <button className="text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#ccc] text-[12px] bg-transparent border-0 cursor-pointer p-0 leading-none" data-testid="work-item-pin-btn"
-                            title={item.pinnedAt ? 'Unpin' : 'Pin'}
-                            type="button"
-                            onClick={async () => {
-                                try {
-                                    await getSpaCocClient().workItems.pin(workspaceId, workItemId, !item.pinnedAt);
-                                    await fetchItem();
-                                } catch (err: any) {
-                                    setError(err.message || 'Failed to update pin');
-                                }
-                            }}>
-                            📌
-                        </button>
-                        <button className="text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#ccc] text-[12px] bg-transparent border-0 cursor-pointer p-0 leading-none" data-testid="work-item-archive-btn"
-                            title={item.archivedAt ? 'Unarchive' : 'Archive'}
-                            type="button"
-                            onClick={async () => {
-                                try {
-                                    await getSpaCocClient().workItems.archive(workspaceId, workItemId, !item.archivedAt);
-                                    await fetchItem();
-                                } catch (err: any) {
-                                    setError(err.message || 'Failed to update archive');
-                                }
-                            }}>
-                            🗄️
-                        </button>
                         <button className="text-[#cf222e] hover:text-[#a40e26] dark:text-red-400 dark:hover:text-red-300 text-[12px] bg-transparent border-0 cursor-pointer p-0 leading-none" data-testid="work-item-delete-btn"
                             type="button"
                             onClick={async () => {
@@ -1596,43 +1526,6 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     onParentChanged={(newParentId) => updateDraft('parentId', newParentId)}
                     onClose={() => setShowParentPicker(false)}
                 />
-            )}
-            {/* ── Mobile child type picker ── */}
-            {showChildTypePicker && (
-                <div
-                    className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
-                    onClick={() => setShowChildTypePicker(false)}
-                    data-testid="wi-child-type-picker-overlay"
-                >
-                    <div
-                        className="w-full max-w-sm bg-white dark:bg-[#1e1e1e] rounded-t-xl p-4 pb-8 shadow-2xl"
-                        onClick={e => e.stopPropagation()}
-                        data-testid="wi-child-type-picker-modal"
-                    >
-                        <p className="text-xs font-medium text-[#848484] dark:text-[#999] mb-3 uppercase tracking-wide">
-                            Add child to "{item.title}"
-                        </p>
-                        <div className="flex flex-col gap-2">
-                            {(ALLOWED_CHILD_TYPES[effectiveType as WorkItemTypeLabel] ?? []).map(childType => (
-                                <button
-                                    key={childType}
-                                    className="w-full text-left px-3 py-2.5 rounded-lg border border-[#e0e0e0] dark:border-[#444] text-sm text-[#3c3c3c] dark:text-[#cccccc] hover:bg-[#f5f5f5] dark:hover:bg-[#2a2d2e] active:bg-[#e8e8e8] dark:active:bg-[#333]"
-                                    onClick={() => { onCreateChild?.(childType as WorkItemTypeLabel, item.id); setShowChildTypePicker(false); }}
-                                    data-testid={`wi-child-type-option-${childType}`}
-                                >
-                                    {TYPE_LABELS[childType as WorkItemTypeLabel] ?? childType}
-                                </button>
-                            ))}
-                        </div>
-                        <button
-                            className="mt-3 w-full text-center text-xs text-[#848484] py-2"
-                            onClick={() => setShowChildTypePicker(false)}
-                            data-testid="wi-child-type-picker-cancel"
-                        >
-                            Cancel
-                        </button>
-                    </div>
-                </div>
             )}
         </div>
     );

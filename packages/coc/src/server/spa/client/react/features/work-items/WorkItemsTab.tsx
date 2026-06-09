@@ -414,8 +414,6 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                 onViewTask={handleViewTask}
                 onViewCommit={handleViewCommit}
                 onNavigateToTasksTab={onNavigateToTasksTab}
-                isMobile={isMobile}
-                onCreateChild={openCreateDialog}
             />
         )
     ) : (
