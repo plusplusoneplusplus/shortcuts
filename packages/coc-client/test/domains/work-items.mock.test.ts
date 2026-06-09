@@ -392,6 +392,41 @@ describe('WorkItemsClient mock coverage', () => {
     ]);
   });
 
+  it('sends explicit AI draft apply requests with optimistic base metadata', async () => {
+    const adapter = createMockAdapter({ kind: 'applied', version: 2 });
+    const client = new WorkItemsClient(adapter);
+
+    await client.applyAiDraft('repo/a', 'wi/1', {
+      prompt: 'Draft implementation details',
+      targets: ['fields', 'goal'],
+      clarificationAnswers: ['Use the existing dashboard'],
+      clarificationCount: 1,
+      baseUpdatedAt: '2026-01-01T00:00:00.000Z',
+      baseContentVersion: 1,
+      summary: 'AI draft v2',
+      reason: 'User clicked Draft with AI',
+    });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/workspaces/repo%2Fa/work-items/wi%2F1/ai-draft/apply',
+        options: {
+          method: 'POST',
+          body: {
+            prompt: 'Draft implementation details',
+            targets: ['fields', 'goal'],
+            clarificationAnswers: ['Use the existing dashboard'],
+            clarificationCount: 1,
+            baseUpdatedAt: '2026-01-01T00:00:00.000Z',
+            baseContentVersion: 1,
+            summary: 'AI draft v2',
+            reason: 'User clicked Draft with AI',
+          },
+        },
+      },
+    ]);
+  });
+
   it('propagates CocApiError for locked plan conflicts', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(
       { error: { message: 'Plan is locked', code: 'PLAN_LOCKED' } },

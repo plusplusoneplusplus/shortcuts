@@ -705,7 +705,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         routes,
         workItemStore,
         getAiAuthoringEnabled: getWorkItemsAiAuthoringEnabled,
+        getWorkflowEnabled: getWorkItemsWorkflowEnabled,
         getHierarchyEnabled: getWorkItemsHierarchyEnabled,
+        getWsServer,
         generateNewItemDraft: workItemAiGenerators.generateNewItemDraft,
         generateImproveItemDraft: workItemAiGenerators.generateImproveItemDraft,
     });

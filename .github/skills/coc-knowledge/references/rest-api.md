@@ -344,6 +344,7 @@ Response shape: `{ kind: 'clarification', questions: string[], clarificationCoun
 |--------|------|-------------|
 | POST | `/api/workspaces/:id/work-items/ai-draft` | Generate a draft for a **new** work item from a prompt. Body: `{ prompt, type?, parentId?, clarificationAnswers?, clarificationCount? }`. Returns clarification (up to 3 rounds) or a draft. |
 | POST | `/api/workspaces/:id/work-items/:itemId/ai-draft` | Generate an **improvement** draft for an existing work item. Body: `{ prompt, targets?: ['fields','goal','childTasks'], clarificationAnswers?, clarificationCount? }`. Returns clarification or a draft. |
+| POST | `/api/workspaces/:id/work-items/:itemId/ai-draft/apply` | Explicitly generate and apply an AI draft to a saved local-only `work-item`, creating the next immutable plan/content version. Requires both `workItems.aiAuthoring.enabled` and `workItems.workflow.enabled`; body requires `{ prompt, baseUpdatedAt, baseContentVersion?, targets?, clarificationAnswers?, clarificationCount?, summary?, reason? }`. The server checks the base snapshot before and after AI generation and returns `409 WORK_ITEM_AI_DRAFT_STALE` instead of overwriting newer edits. |
 
 ## Seen State
 

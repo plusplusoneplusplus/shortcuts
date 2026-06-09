@@ -2,6 +2,8 @@ import type {
   CreateWorkItemFromChatRequest,
   CreateWorkItemRequest,
   ConvertWorkItemTrackerResponse,
+  ApplyWorkItemAiDraftRequest,
+  ApplyWorkItemAiDraftResponse,
   ExecuteWorkItemRequest,
   ExecuteWorkItemResponse,
   ImportFromAzureBoardsRequest,
@@ -242,6 +244,13 @@ export class WorkItemsClient {
   aiImprove(workspaceId: string, workItemId: string, request: ImproveWorkItemAiDraftRequest): Promise<WorkItemAiGenerationResponse> {
     return this.transport.request<WorkItemAiGenerationResponse>(
       path(workspaceId, `/${encodePathSegment(workItemId)}/ai-draft`),
+      { method: 'POST', body: { ...request } },
+    );
+  }
+
+  applyAiDraft(workspaceId: string, workItemId: string, request: ApplyWorkItemAiDraftRequest): Promise<ApplyWorkItemAiDraftResponse> {
+    return this.transport.request<ApplyWorkItemAiDraftResponse>(
+      path(workspaceId, `/${encodePathSegment(workItemId)}/ai-draft/apply`),
       { method: 'POST', body: { ...request } },
     );
   }

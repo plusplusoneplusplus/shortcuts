@@ -12,6 +12,7 @@ describe('WorkItemsClient', () => {
     await client.updatePlan('repo/a', 'wi/1', 'plan');
     await client.comparePlanVersions('repo/a', 'wi/1', 1, 2);
     await client.restorePlanVersion('repo/a', 'wi/1', 1, { summary: 'Restore v1' });
+    await client.applyAiDraft('repo/a', 'wi/1', { prompt: 'Draft it', baseUpdatedAt: '2026-01-01T00:00:00.000Z', baseContentVersion: null });
     await client.execute('repo/a', 'wi/1', { model: 'm' });
     await client.resolveComments('repo/a', 'wi/1', { type: 'commit', commitSha: 'abc123' });
     await client.listChatBindings('repo/a');
@@ -33,26 +34,33 @@ describe('WorkItemsClient', () => {
       options: { method: 'POST', body: { summary: 'Restore v1' } },
     });
     expect(adapter.calls[5]).toMatchObject({
+      path: '/workspaces/repo%2Fa/work-items/wi%2F1/ai-draft/apply',
+      options: {
+        method: 'POST',
+        body: { prompt: 'Draft it', baseUpdatedAt: '2026-01-01T00:00:00.000Z', baseContentVersion: null },
+      },
+    });
+    expect(adapter.calls[6]).toMatchObject({
       path: '/workspaces/repo%2Fa/work-items/wi%2F1/execute',
       options: { method: 'POST', body: { model: 'm' } },
     });
-    expect(adapter.calls[6]).toMatchObject({
+    expect(adapter.calls[7]).toMatchObject({
       path: '/workspaces/repo%2Fa/work-items/wi%2F1/resolve-comments',
       options: { method: 'POST', body: { type: 'commit', commitSha: 'abc123' } },
     });
-    expect(adapter.calls[7]).toEqual({
-      path: '/workspaces/repo%2Fa/work-item-chat-bindings',
-      options: undefined,
-    });
     expect(adapter.calls[8]).toEqual({
-      path: '/workspaces/repo%2Fa/work-item-chat-bindings/wi%2F1',
+      path: '/workspaces/repo%2Fa/work-item-chat-bindings',
       options: undefined,
     });
     expect(adapter.calls[9]).toEqual({
+      path: '/workspaces/repo%2Fa/work-item-chat-bindings/wi%2F1',
+      options: undefined,
+    });
+    expect(adapter.calls[10]).toEqual({
       path: '/workspaces/repo%2Fa/work-item-chat-bindings',
       options: { method: 'POST', body: { workItemId: 'wi/1', taskId: 'task/1' } },
     });
-    expect(adapter.calls[10]).toEqual({
+    expect(adapter.calls[11]).toEqual({
       path: '/workspaces/repo%2Fa/work-item-chat-bindings/wi%2F1',
       options: { method: 'DELETE' },
     });

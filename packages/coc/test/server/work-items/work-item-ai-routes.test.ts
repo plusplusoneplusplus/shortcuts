@@ -23,6 +23,7 @@ let store: FileWorkItemStore;
 let server: http.Server;
 let baseUrl: string;
 let aiAuthoringEnabled = false;
+let workflowEnabled = false;
 
 function makeServer(
     generateNewItemDraft?: GenerateNewItemDraftFn,
@@ -33,6 +34,7 @@ function makeServer(
         routes,
         workItemStore: store,
         getAiAuthoringEnabled: () => aiAuthoringEnabled,
+        getWorkflowEnabled: () => workflowEnabled,
         getHierarchyEnabled: () => false,
         generateNewItemDraft,
         generateImproveItemDraft,
@@ -114,6 +116,7 @@ const CLARIFICATION_RESPONSE: AiDraftResponse = {
 describe('Work Item AI Routes', () => {
     beforeEach(async () => {
         aiAuthoringEnabled = false;
+        workflowEnabled = false;
         tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-ai-routes-'));
         store = new FileWorkItemStore({ dataDir: tmpDir });
         server = makeServer(
@@ -398,6 +401,222 @@ describe('Work Item AI Routes', () => {
                 });
                 expect(res.status).toBe(500);
                 expect(res.body.error).toBeDefined();
+            });
+        });
+
+        // -----------------------------------------------------------------------
+        // POST /:workItemId/ai-draft/apply — explicit workflow draft application
+        // -----------------------------------------------------------------------
+
+        describe('POST /api/workspaces/:id/work-items/:workItemId/ai-draft/apply', () => {
+            let workItemId: string;
+            let createdAtBase: string;
+
+            beforeEach(async () => {
+                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                    title: 'Title-only shell',
+                    source: 'manual',
+                });
+                expect(res.status).toBe(201);
+                workItemId = res.body.id;
+                createdAtBase = res.body.updatedAt;
+            });
+
+            it('returns 403 when workflow flag is disabled', async () => {
+                workflowEnabled = false;
+
+                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/ai-draft/apply`, {
+                    prompt: 'Draft this item',
+                    baseUpdatedAt: createdAtBase,
+                    baseContentVersion: null,
+                });
+
+                expect(res.status).toBe(403);
+                expect(res.body.error).toMatch(/workflow feature flag/i);
+            });
+
+            it('applies an AI draft to a title-only local work-item as immutable v1', async () => {
+                workflowEnabled = true;
+
+                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/ai-draft/apply`, {
+                    prompt: 'Draft this item',
+                    baseUpdatedAt: createdAtBase,
+                    baseContentVersion: null,
+                });
+
+                expect(res.status).toBe(200);
+                expect(res.body.kind).toBe('applied');
+                expect(res.body.version).toBe(1);
+                expect(res.body.plan).toMatchObject({
+                    version: 1,
+                    content: DRAFT_RESPONSE.goal,
+                    resolvedBy: 'ai',
+                    source: 'ai',
+                    authorType: 'ai',
+                });
+                expect(res.body.item).toMatchObject({
+                    id: workItemId,
+                    title: 'Title-only shell',
+                    description: 'Generated description',
+                    status: 'planning',
+                    plan: {
+                        version: 1,
+                        currentVersion: 1,
+                        content: DRAFT_RESPONSE.goal,
+                        resolvedBy: 'ai',
+                        source: 'ai',
+                    },
+                    currentContentVersion: 1,
+                });
+
+                const versions = await store.getPlanVersions(workItemId);
+                expect(versions).toHaveLength(1);
+                expect(versions[0]).toMatchObject({ version: 1, content: DRAFT_RESPONSE.goal, source: 'ai' });
+            });
+
+            it('creates a new AI version for a later requested revision instead of overwriting v1', async () => {
+                workflowEnabled = true;
+                const planned = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                    title: 'Already planned shell',
+                    source: 'manual',
+                    plan: { content: '## Original Plan', resolvedBy: 'user' },
+                });
+                expect(planned.status).toBe(201);
+                const plannedId = planned.body.id;
+                const current = await request('GET', `/api/workspaces/${REPO_ID}/work-items/${plannedId}`);
+
+                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${plannedId}/ai-draft/apply`, {
+                    prompt: 'Revise the plan',
+                    baseUpdatedAt: current.body.updatedAt,
+                    baseContentVersion: 1,
+                    summary: 'AI revision summary',
+                    reason: 'User requested AI revision',
+                });
+
+                expect(res.status).toBe(200);
+                expect(res.body.version).toBe(2);
+                expect(res.body.previousVersion).toBe(1);
+                expect(res.body.plan).toMatchObject({
+                    version: 2,
+                    summary: 'AI revision summary',
+                    reason: 'User requested AI revision',
+                    source: 'ai',
+                });
+
+                const versions = await store.getPlanVersions(plannedId);
+                expect(versions.map(version => version.version)).toEqual([1, 2]);
+                expect(versions[0].content).toBe('## Original Plan');
+                expect(versions[1].content).toBe(DRAFT_RESPONSE.goal);
+            });
+
+            it('returns clarification without persisting a version', async () => {
+                workflowEnabled = true;
+                await stopServer();
+                server = makeServer(async () => DRAFT_RESPONSE, async () => CLARIFICATION_RESPONSE);
+                await startServer();
+
+                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/ai-draft/apply`, {
+                    prompt: 'Draft this item',
+                    baseUpdatedAt: createdAtBase,
+                    baseContentVersion: null,
+                });
+
+                expect(res.status).toBe(200);
+                expect(res.body.kind).toBe('clarification');
+                await expect(store.getPlanVersions(workItemId)).resolves.toEqual([]);
+            });
+
+            it('rejects stale base snapshots before invoking the generator', async () => {
+                workflowEnabled = true;
+                const improve = vi.fn<GenerateImproveItemDraftFn>(async () => DRAFT_RESPONSE);
+                await stopServer();
+                server = makeServer(async () => DRAFT_RESPONSE, improve);
+                await startServer();
+
+                const updated = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${workItemId}`, {
+                    description: 'User edited before AI apply',
+                });
+                expect(updated.status).toBe(200);
+
+                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/ai-draft/apply`, {
+                    prompt: 'Draft this item',
+                    baseUpdatedAt: createdAtBase,
+                    baseContentVersion: null,
+                });
+
+                expect(res.status).toBe(409);
+                expect(res.body.code).toBe('WORK_ITEM_AI_DRAFT_STALE');
+                expect(improve).not.toHaveBeenCalled();
+            });
+
+            it('rejects missing optimistic base metadata', async () => {
+                workflowEnabled = true;
+
+                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/ai-draft/apply`, {
+                    prompt: 'Draft this item',
+                });
+
+                expect(res.status).toBe(400);
+                expect(res.body.error).toMatch(/baseUpdatedAt/i);
+            });
+
+            it('rejects unsupported targets that cannot be applied as a plan version', async () => {
+                workflowEnabled = true;
+
+                const fieldsOnly = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/ai-draft/apply`, {
+                    prompt: 'Draft fields only',
+                    targets: ['fields'],
+                    baseUpdatedAt: createdAtBase,
+                    baseContentVersion: null,
+                });
+                expect(fieldsOnly.status).toBe(400);
+                expect(fieldsOnly.body.error).toMatch(/goal target/i);
+
+                const childTasks = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/ai-draft/apply`, {
+                    prompt: 'Draft tasks',
+                    targets: ['fields', 'goal', 'childTasks'],
+                    baseUpdatedAt: createdAtBase,
+                    baseContentVersion: null,
+                });
+                expect(childTasks.status).toBe(400);
+                expect(childTasks.body.error).toMatch(/fields and goal targets only/i);
+            });
+
+            it('rejects non-work-item and remote-backed items for the workflow apply action', async () => {
+                workflowEnabled = true;
+
+                const goal = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                    title: 'Goal shell',
+                    type: 'goal',
+                });
+                expect(goal.status).toBe(201);
+                const goalApply = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${goal.body.id}/ai-draft/apply`, {
+                    prompt: 'Draft this goal',
+                    baseUpdatedAt: goal.body.updatedAt,
+                    baseContentVersion: null,
+                });
+                expect(goalApply.status).toBe(400);
+
+                const now = '2026-01-01T00:00:00.000Z';
+                await store.addWorkItem({
+                    id: 'remote-work-item',
+                    repoId: REPO_ID,
+                    title: 'Remote item',
+                    description: '',
+                    status: 'created',
+                    type: 'work-item',
+                    createdAt: now,
+                    updatedAt: now,
+                    source: 'manual',
+                    githubMirror: { issueNumber: 123 },
+                });
+                const remoteApply = await request('POST', `/api/workspaces/${REPO_ID}/work-items/remote-work-item/ai-draft/apply`, {
+                    prompt: 'Draft this remote item',
+                    baseUpdatedAt: now,
+                    baseContentVersion: null,
+                });
+                expect(remoteApply.status).toBe(400);
+                expect(remoteApply.body.error).toMatch(/local-only work-item/i);
             });
         });
 
