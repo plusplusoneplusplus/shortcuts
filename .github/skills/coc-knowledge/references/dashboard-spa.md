@@ -182,12 +182,16 @@ output such as `[branch abc1234] subject`, or compact verification output such
 as `abc1234 subject` from the same commit-creating command, as commits;
 assistant prose and read-only git command output are ignored.
 
-Completed `ask_user` tool calls render as read-only historical question cards via
-`AskUserHistoryCard` inside `ConversationTurnBubble`. Live unanswered questions
-remain owned by `ChatDetail`/`ConversationArea` through `processDetails.pendingAskUser`
-and `AskUserInline`; the history card only displays persisted `args.questions[]`
-plus the completed answer/skip/deferred result, including "Need more context"
-notes, with a compatibility unwrap for older Codex MCP captures stored as
+Live unanswered `ask_user` batches remain owned by
+`ChatDetail`/`ConversationArea` through `processDetails.pendingAskUser` and
+`AskUserInline`. Each live question card has a compact response-type dropdown
+with Answer, Skip / not applicable, and Need more context choices; the deferred
+choice marks that question complete for batch submission and reveals an optional
+short note field. Completed `ask_user` tool calls render as read-only historical
+question cards via `AskUserHistoryCard` inside `ConversationTurnBubble`; the
+history card displays persisted `args.questions[]` plus the completed
+answer/skip/deferred result, including "Need more context" notes, with a
+compatibility unwrap for older Codex MCP captures stored as
 `args.arguments.questions[]`, and is kept visible outside whisper collapse.
 Generic `ToolCallView` still handles `ask_user` as a fallback and summarizes
 `args.questions[0].question` when present.

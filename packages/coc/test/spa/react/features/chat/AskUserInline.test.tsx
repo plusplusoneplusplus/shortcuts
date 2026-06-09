@@ -137,7 +137,7 @@ describe('AskUserInline', () => {
         );
 
         fireEvent.click(screen.getByDisplayValue('red'));
-        fireEvent.click(screen.getAllByTestId('ask-user-skip-question-btn')[1]);
+        fireEvent.change(screen.getAllByTestId('ask-user-question-disposition')[1], { target: { value: 'skip' } });
         fireEvent.click(screen.getByTestId('ask-user-submit-all-btn'));
 
         await waitFor(() => {
@@ -152,6 +152,65 @@ describe('AskUserInline', () => {
                 },
             );
         });
+    });
+
+    it('marks a need-more-context question complete and shows an optional note field', () => {
+        render(
+            <AskUserInline
+                batch={makeBatch([makeQuestion({ type: 'text', options: undefined })])}
+                processId="proc-1"
+                onAnswered={vi.fn()}
+            />,
+        );
+        const submitBtn = screen.getByTestId('ask-user-submit-all-btn') as HTMLButtonElement;
+        expect(submitBtn.disabled).toBe(true);
+
+        fireEvent.change(screen.getByTestId('ask-user-question-disposition'), { target: { value: 'needs-context' } });
+
+        expect(submitBtn.disabled).toBe(false);
+        expect(screen.getByTestId('ask-user-deferred-note-input')).toBeInTheDocument();
+        expect(screen.getByText(/explain the missing context/i)).toBeInTheDocument();
+    });
+
+    it('submits deferred metadata with currently answerable questions', async () => {
+        const onAnswered = vi.fn();
+        render(
+            <AskUserInline
+                batch={makeBatch([
+                    makeQuestion({ batchSize: 3 }),
+                    makeQuestion({ questionId: 'q-2', question: 'Continue?', type: 'yes-no', options: undefined, index: 1, batchSize: 3 }),
+                    makeQuestion({ questionId: 'q-3', question: 'Which deployment target?', type: 'text', options: undefined, index: 2, batchSize: 3 }),
+                ])}
+                processId="proc-1"
+                onAnswered={onAnswered}
+            />,
+        );
+
+        fireEvent.click(screen.getByDisplayValue('blue'));
+        fireEvent.click(screen.getByTestId('ask-user-yes-radio'));
+        fireEvent.change(screen.getAllByTestId('ask-user-question-disposition')[2], { target: { value: 'needs-context' } });
+        fireEvent.change(screen.getByTestId('ask-user-deferred-note-input'), { target: { value: '  What targets are available?  ' } });
+        fireEvent.click(screen.getByTestId('ask-user-submit-all-btn'));
+
+        await waitFor(() => {
+            expect(mocks.processes.askUserResponse).toHaveBeenCalledWith(
+                'proc-1',
+                {
+                    batchId: 'batch-1',
+                    answers: [
+                        { questionId: 'q-1', answer: 'blue' },
+                        { questionId: 'q-2', answer: true },
+                        {
+                            questionId: 'q-3',
+                            deferred: true,
+                            reason: 'needs-context',
+                            note: 'What targets are available?',
+                        },
+                    ],
+                },
+            );
+        });
+        expect(onAnswered).toHaveBeenCalled();
     });
 
     it('keeps submit-all disabled until required answers are complete', () => {

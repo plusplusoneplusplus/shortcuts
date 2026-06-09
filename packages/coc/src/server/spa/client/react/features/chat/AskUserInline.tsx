@@ -5,6 +5,7 @@
  */
 
 import { useCallback, useState } from 'react';
+import type { AskUserResponseRequest } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient } from '../../api/cocClient';
 import type { AskUserBatch, AskUserQuestion } from './hooks/useChatSSE';
 import { AskUserMarkdown } from './AskUserMarkdown';
@@ -16,11 +17,13 @@ export interface AskUserInlineProps {
 }
 
 type AnswerValue = string | string[] | boolean | null;
+type QuestionDisposition = 'answer' | 'skip' | 'needs-context';
 
 interface QuestionState {
     value: AnswerValue;
     customText: string;
-    skipped: boolean;
+    disposition: QuestionDisposition;
+    note: string;
 }
 
 const CUSTOM_OPTION_VALUE = '__ask_user_custom__';
@@ -33,7 +36,7 @@ function initialValue(question: AskUserQuestion): AnswerValue {
 }
 
 function isAnswerComplete(question: AskUserQuestion, state: QuestionState): boolean {
-    if (state.skipped) return true;
+    if (state.disposition !== 'answer') return true;
     if (question.type === 'text') return typeof state.value === 'string' && state.value.trim().length > 0;
     if (question.type === 'select') {
         if (state.value === CUSTOM_OPTION_VALUE) return state.customText.trim().length > 0;
@@ -53,12 +56,29 @@ function answerFor(question: AskUserQuestion, state: QuestionState): string | st
     return state.value as string | string[] | boolean;
 }
 
+function responseFor(question: AskUserQuestion, state: QuestionState): AskUserResponseRequest['answers'][number] {
+    if (state.disposition === 'skip') {
+        return { questionId: question.questionId, skipped: true };
+    }
+    if (state.disposition === 'needs-context') {
+        const note = state.note.trim();
+        return {
+            questionId: question.questionId,
+            deferred: true,
+            reason: 'needs-context',
+            ...(note ? { note } : {}),
+        };
+    }
+    return { questionId: question.questionId, answer: answerFor(question, state) };
+}
+
 export function AskUserInline({ batch, processId, onAnswered }: AskUserInlineProps) {
     const [answers, setAnswers] = useState<Record<string, QuestionState>>(() => Object.fromEntries(
         batch.questions.map(question => [question.questionId, {
             value: initialValue(question),
             customText: '',
-            skipped: false,
+            disposition: 'answer',
+            note: '',
         }]),
     ));
     const [submitting, setSubmitting] = useState(false);
@@ -76,10 +96,10 @@ export function AskUserInline({ batch, processId, onAnswered }: AskUserInlinePro
                 batchId: batch.batchId,
                 answers: batch.questions.map(question => {
                     const state = answers[question.questionId];
-                    if (skipAll || state.skipped) {
+                    if (skipAll) {
                         return { questionId: question.questionId, skipped: true };
                     }
-                    return { questionId: question.questionId, answer: answerFor(question, state) };
+                    return responseFor(question, state);
                 }),
             });
             onAnswered();
@@ -106,7 +126,7 @@ export function AskUserInline({ batch, processId, onAnswered }: AskUserInlinePro
                 {batch.questions.map((question, questionIndex) => {
                     const state = answers[question.questionId];
                     const isCustomSelected = question.type === 'select' && state.value === CUSTOM_OPTION_VALUE;
-                    const inputDisabled = submitting || state.skipped;
+                    const inputDisabled = submitting || state.disposition !== 'answer';
                     return (
                         <div key={question.questionId} className="rounded-md border border-[#d4d4d4]/70 dark:border-[#3e3e3e] bg-white/70 dark:bg-[#1e1e1e]/60 p-3" data-testid="ask-user-question">
                             <div className="flex items-start justify-between gap-3 mb-3">
@@ -118,19 +138,40 @@ export function AskUserInline({ batch, processId, onAnswered }: AskUserInlinePro
                                         data-testid="ask-user-question-markdown"
                                     />
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={() => updateQuestion(question.questionId, { skipped: !state.skipped })}
-                                    disabled={submitting}
-                                    className="shrink-0 px-2 py-1 text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors"
-                                    data-testid="ask-user-skip-question-btn"
-                                >
-                                    {state.skipped ? 'Unskip' : 'Skip'}
-                                </button>
+                                <label className="shrink-0">
+                                    <span className="sr-only">Response type for question {questionIndex + 1}</span>
+                                    <select
+                                        value={state.disposition}
+                                        onChange={e => updateQuestion(question.questionId, { disposition: e.target.value as QuestionDisposition })}
+                                        disabled={submitting}
+                                        className="max-w-[11rem] rounded border border-[#d4d4d4] dark:border-[#3e3e3e] bg-white dark:bg-[#252526] px-2 py-1 text-xs text-[#4b5563] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
+                                        data-testid="ask-user-question-disposition"
+                                    >
+                                        <option value="answer">Answer</option>
+                                        <option value="skip">Skip / not applicable</option>
+                                        <option value="needs-context">Need more context</option>
+                                    </select>
+                                </label>
                             </div>
 
-                            {state.skipped ? (
+                            {state.disposition === 'skip' ? (
                                 <p className="text-xs text-[#848484]">This question will be skipped.</p>
+                            ) : state.disposition === 'needs-context' ? (
+                                <div className="space-y-2">
+                                    <p className="text-xs text-[#848484]">
+                                        The AI should explain the missing context and re-ask this question if it is still needed.
+                                    </p>
+                                    <input
+                                        type="text"
+                                        value={state.note}
+                                        onChange={e => updateQuestion(question.questionId, { note: e.target.value })}
+                                        disabled={submitting}
+                                        maxLength={300}
+                                        placeholder="Optional note about what context you need..."
+                                        className="w-full px-3 py-1.5 text-sm rounded border border-[#d4d4d4] dark:border-[#3e3e3e] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
+                                        data-testid="ask-user-deferred-note-input"
+                                    />
+                                </div>
                             ) : (
                                 <>
                                     {question.type === 'select' && question.options && (
