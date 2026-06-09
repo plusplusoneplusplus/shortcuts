@@ -40,6 +40,7 @@ describe('RuntimeConfigService', () => {
             const svc = new RuntimeConfigService({ configPath });
             expect(svc.config.parallel).toBe(DEFAULT_CONFIG.parallel);
             expect(svc.config.pullRequests.enabled).toBe(true);
+            expect(svc.config.pullRequests.autoClassifyTeam).toBe(false);
             expect(svc.config.servers.enabled).toBe(true);
             expect(svc.config.ralph.enabled).toBe(false);
             expect(svc.config.forEach.enabled).toBe(false);
@@ -55,11 +56,17 @@ describe('RuntimeConfigService', () => {
         });
 
         it('should load config from file at construction', () => {
-            writeConfig({ parallel: 10, ralph: { enabled: true }, forEach: { enabled: true } });
+            writeConfig({
+                parallel: 10,
+                ralph: { enabled: true },
+                forEach: { enabled: true },
+                pullRequests: { autoClassifyTeam: true },
+            });
             const svc = new RuntimeConfigService({ configPath });
             expect(svc.config.parallel).toBe(10);
             expect(svc.config.ralph.enabled).toBe(true);
             expect(svc.config.forEach.enabled).toBe(true);
+            expect(svc.config.pullRequests.autoClassifyTeam).toBe(true);
             expect(svc.revision).toBe(0);
         });
 
@@ -150,6 +157,26 @@ describe('RuntimeConfigService', () => {
             expect(result.revision).toBe(1);
             expect(svc.config.ralph.enabled).toBe(true);
             expect(svc.revision).toBe(1);
+        });
+
+        it('should update pullRequests.autoClassifyTeam through admin config', async () => {
+            const svc = new RuntimeConfigService({ configPath });
+            expect(svc.config.pullRequests.autoClassifyTeam).toBe(false);
+
+            const result = await svc.updateConfig({ 'pullRequests.autoClassifyTeam': true });
+
+            expect(result.config.pullRequests.autoClassifyTeam).toBe(true);
+            expect(result.sources['pullRequests.autoClassifyTeam']).toBe('file');
+            expect(result.effects).toEqual([
+                {
+                    field: 'pullRequests.autoClassifyTeam',
+                    runtime: 'live',
+                    requiresRestart: false,
+                },
+            ]);
+
+            const raw = yaml.load(fs.readFileSync(configPath, 'utf-8')) as CLIConfig;
+            expect(raw.pullRequests?.autoClassifyTeam).toBe(true);
         });
 
         it('should persist changes to disk', async () => {

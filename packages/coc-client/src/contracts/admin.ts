@@ -80,7 +80,7 @@ export interface AdminResolvedConfig {
     layout?: 'horizontal' | 'vertical';
   };
   workflows?: { enabled?: boolean };
-  pullRequests?: { enabled?: boolean; suggestions?: boolean };
+  pullRequests?: { enabled?: boolean; suggestions?: boolean; autoClassifyTeam?: boolean };
   servers?: { enabled?: boolean };
   forEach?: { enabled?: boolean };
   mapReduce?: { enabled?: boolean };
@@ -159,6 +159,7 @@ export interface AdminConfigUpdate {
   'workflows.enabled'?: boolean;
   'pullRequests.enabled'?: boolean;
   'pullRequests.suggestions'?: boolean;
+  'pullRequests.autoClassifyTeam'?: boolean;
   'servers.enabled'?: boolean;
   'forEach.enabled'?: boolean;
   'mapReduce.enabled'?: boolean;
@@ -198,6 +199,7 @@ export interface RuntimeDashboardConfig {
     workflowsEnabled: boolean;
     pullRequestsEnabled: boolean;
     pullRequestsSuggestionsEnabled: boolean;
+    pullRequestsAutoClassifyTeamEnabled: boolean;
     serversEnabled: boolean;
     ralphEnabled: boolean;
     forEachEnabled: boolean;

@@ -143,6 +143,8 @@ export interface CLIConfig {
         enabled?: boolean;
         /** AI-suggested reviews: surfaces a ranked "For You" section in the PR queue. Disabled by default. */
         suggestions?: boolean;
+        /** Automatically classify open Team PR diffs. Disabled by default. */
+        autoClassifyTeam?: boolean;
     };
     /** Servers configuration (multi-server connection manager). */
     servers?: {
@@ -399,6 +401,7 @@ export interface ResolvedCLIConfig {
     pullRequests: {
         enabled: boolean;
         suggestions: boolean;
+        autoClassifyTeam: boolean;
     };
     /** Servers configuration (multi-server connection manager). */
     servers: {
@@ -615,6 +618,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     pullRequests: {
         enabled: true,
         suggestions: false,
+        autoClassifyTeam: false,
     },
     servers: {
         enabled: true,

@@ -62,6 +62,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.terminal).toEqual({ enabled: true });
             expect(DEFAULT_CONFIG.scratchpad).toEqual({ enabled: true, layout: 'vertical' });
             expect(DEFAULT_CONFIG.workflows).toEqual({ enabled: false });
+            expect(DEFAULT_CONFIG.pullRequests.autoClassifyTeam).toBe(false);
             expect(DEFAULT_CONFIG.forEach).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.mapReduce).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.features.gitCrossCloneCherryPick).toBe(true);
@@ -909,6 +910,7 @@ timeout: 300
                 'pullRequests:',
                 '  enabled: true',
                 '  suggestions: true',
+                '  autoClassifyTeam: true',
                 'servers:',
                 '  enabled: true',
                 'ralph:',
@@ -1049,6 +1051,7 @@ timeout: 300
                 'pullRequests:',
                 '  enabled: true',
                 '  suggestions: true',
+                '  autoClassifyTeam: true',
                 'servers:',
                 '  enabled: true',
                 'ralph:',
@@ -1231,6 +1234,7 @@ timeout: 300
                   "parallel": 12,
                   "persist": false,
                   "pullRequests": {
+                    "autoClassifyTeam": true,
                     "enabled": true,
                     "suggestions": true,
                   },
@@ -1333,6 +1337,7 @@ timeout: 300
                   "output": "file",
                   "parallel": "file",
                   "persist": "file",
+                  "pullRequests.autoClassifyTeam": "file",
                   "pullRequests.enabled": "file",
                   "pullRequests.suggestions": "file",
                   "ralph.enabled": "file",
@@ -1410,6 +1415,7 @@ timeout: 300
             expect(defaults['loops.enabled']).toBe(DEFAULT_CONFIG.loops.enabled);
             expect(defaults['features.focusedDiff']).toBe(DEFAULT_CONFIG.features.focusedDiff);
             expect(defaults['features.gitCrossCloneCherryPick']).toBe(DEFAULT_CONFIG.features.gitCrossCloneCherryPick);
+            expect(defaults['pullRequests.autoClassifyTeam']).toBe(DEFAULT_CONFIG.pullRequests.autoClassifyTeam);
         });
 
         it('should return correct default for deeply nested keys', () => {

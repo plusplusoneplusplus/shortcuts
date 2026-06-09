@@ -166,6 +166,11 @@ terminal:
 workflows:
   enabled: true
 
+pullRequests:
+  enabled: true
+  suggestions: false
+  autoClassifyTeam: false
+
 forEach:
   enabled: false
 

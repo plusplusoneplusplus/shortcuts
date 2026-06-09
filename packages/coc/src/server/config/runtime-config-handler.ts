@@ -39,6 +39,7 @@ export function buildRuntimeDashboardConfig(
             workflowsEnabled: config.workflows?.enabled ?? false,
             pullRequestsEnabled: config.pullRequests?.enabled ?? false,
             pullRequestsSuggestionsEnabled: config.pullRequests?.suggestions ?? false,
+            pullRequestsAutoClassifyTeamEnabled: config.pullRequests?.autoClassifyTeam ?? false,
             serversEnabled: config.servers?.enabled ?? false,
             ralphEnabled: config.ralph?.enabled ?? false,
             forEachEnabled: config.forEach?.enabled ?? false,

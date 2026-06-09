@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * Integration tests for the PR Review Suggestions toggle in AdminPanel Features card.
+ * Integration tests for Pull Requests toggles in AdminPanel Features card.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
@@ -122,7 +122,7 @@ async function gotoFeaturesSubTab(): Promise<void> {
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
-describe('AdminPanel — PR Review Suggestions toggle', () => {
+describe('AdminPanel — Pull Requests feature toggles', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockFetch.mockImplementation((url: string) => {
@@ -151,6 +151,7 @@ describe('AdminPanel — PR Review Suggestions toggle', () => {
             expect(screen.getByTestId('toggle-pull-requests-enabled')).toBeTruthy();
         });
         expect(screen.queryByTestId('toggle-pull-requests-suggestions-enabled')).toBeNull();
+        expect(screen.queryByTestId('toggle-pull-requests-auto-classify-team-enabled')).toBeNull();
     });
 
     it('renders the suggestions toggle when pull requests tab is enabled', async () => {
@@ -165,6 +166,7 @@ describe('AdminPanel — PR Review Suggestions toggle', () => {
         await gotoFeaturesSubTab();
         await waitFor(() => {
             expect(screen.getByTestId('toggle-pull-requests-suggestions-enabled')).toBeTruthy();
+            expect(screen.getByTestId('toggle-pull-requests-auto-classify-team-enabled')).toBeTruthy();
         });
     });
 
@@ -181,6 +183,38 @@ describe('AdminPanel — PR Review Suggestions toggle', () => {
         await waitFor(() => {
             const checkbox = screen.getByTestId('toggle-pull-requests-suggestions-enabled') as HTMLInputElement;
             expect(checkbox.checked).toBe(true);
+        });
+    });
+
+    it('shows auto-classify Team toggle checked when pullRequests.autoClassifyTeam=true', async () => {
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/admin/config')) return Promise.resolve(mockConfigResponse({ pullRequests: { enabled: true, autoClassifyTeam: true } }));
+            if (url.includes('/admin/data/stats')) return Promise.resolve(mockStatsResponse());
+            if (url.includes('/preferences')) return Promise.resolve(mockPreferencesResponse());
+            return Promise.resolve({ ok: true, json: async () => ({}) });
+        });
+
+        render(<AdminPanel />);
+        await gotoFeaturesSubTab();
+        await waitFor(() => {
+            const checkbox = screen.getByTestId('toggle-pull-requests-auto-classify-team-enabled') as HTMLInputElement;
+            expect(checkbox.checked).toBe(true);
+        });
+    });
+
+    it('shows auto-classify Team toggle unchecked when pullRequests.autoClassifyTeam=false', async () => {
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/admin/config')) return Promise.resolve(mockConfigResponse({ pullRequests: { enabled: true, autoClassifyTeam: false } }));
+            if (url.includes('/admin/data/stats')) return Promise.resolve(mockStatsResponse());
+            if (url.includes('/preferences')) return Promise.resolve(mockPreferencesResponse());
+            return Promise.resolve({ ok: true, json: async () => ({}) });
+        });
+
+        render(<AdminPanel />);
+        await gotoFeaturesSubTab();
+        await waitFor(() => {
+            const checkbox = screen.getByTestId('toggle-pull-requests-auto-classify-team-enabled') as HTMLInputElement;
+            expect(checkbox.checked).toBe(false);
         });
     });
 
@@ -238,6 +272,42 @@ describe('AdminPanel — PR Review Suggestions toggle', () => {
         });
     });
 
+    it('includes pullRequests.autoClassifyTeam in save payload', async () => {
+        mockFetch.mockImplementation((url: string, opts?: any) => {
+            if (opts?.method === 'PUT' && url.includes('/admin/config')) {
+                return Promise.resolve({ ok: true, json: async () => ({}) });
+            }
+            if (url.includes('/admin/config')) return Promise.resolve(mockConfigResponse({ pullRequests: { enabled: true, autoClassifyTeam: false } }));
+            if (url.includes('/admin/data/stats')) return Promise.resolve(mockStatsResponse());
+            if (url.includes('/preferences')) return Promise.resolve(mockPreferencesResponse());
+            return Promise.resolve({ ok: true, json: async () => ({}) });
+        });
+
+        render(<AdminPanel />);
+        await gotoFeaturesSubTab();
+
+        await waitFor(() => {
+            const checkbox = screen.getByTestId('toggle-pull-requests-auto-classify-team-enabled') as HTMLInputElement;
+            expect(checkbox.checked).toBe(false);
+        });
+
+        fireEvent.click(screen.getByTestId('toggle-pull-requests-auto-classify-team-enabled'));
+
+        const saveButtons = screen.getAllByText('Save');
+        const featuresSave = saveButtons.find(btn => btn.closest('[data-testid="settings-features"]'));
+        expect(featuresSave).toBeTruthy();
+        fireEvent.click(featuresSave!);
+
+        await waitFor(() => {
+            const putCalls = mockFetch.mock.calls.filter(
+                ([url, opts]: [string, any]) => opts?.method === 'PUT' && url.includes('/admin/config')
+            );
+            expect(putCalls.length).toBeGreaterThan(0);
+            const body = JSON.parse(putCalls[0][1].body);
+            expect(body['pullRequests.autoClassifyTeam']).toBe(true);
+        });
+    });
+
     it('hides suggestions toggle when pull requests tab is turned off via the UI', async () => {
         mockFetch.mockImplementation((url: string) => {
             if (url.includes('/admin/config')) return Promise.resolve(mockConfigResponse({ pullRequests: { enabled: true, suggestions: false } }));
@@ -252,6 +322,7 @@ describe('AdminPanel — PR Review Suggestions toggle', () => {
         // Suggestions toggle initially visible
         await waitFor(() => {
             expect(screen.getByTestId('toggle-pull-requests-suggestions-enabled')).toBeTruthy();
+            expect(screen.getByTestId('toggle-pull-requests-auto-classify-team-enabled')).toBeTruthy();
         });
 
         // Disable the Pull Requests tab toggle
@@ -260,6 +331,7 @@ describe('AdminPanel — PR Review Suggestions toggle', () => {
         // Suggestions toggle should now be gone
         await waitFor(() => {
             expect(screen.queryByTestId('toggle-pull-requests-suggestions-enabled')).toBeNull();
+            expect(screen.queryByTestId('toggle-pull-requests-auto-classify-team-enabled')).toBeNull();
         });
     });
 });

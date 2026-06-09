@@ -20,6 +20,7 @@ interface DashboardConfig {
     workflowsEnabled?: boolean;
     pullRequestsEnabled?: boolean;
     pullRequestsSuggestionsEnabled?: boolean;
+    pullRequestsAutoClassifyTeamEnabled?: boolean;
     serversEnabled?: boolean;
     ralphEnabled?: boolean;
     forEachEnabled?: boolean;
@@ -111,6 +112,7 @@ async function _fetchAndApplyRuntimeConfig(apiBase: string): Promise<void> {
             workflowsEnabled: data.features.workflowsEnabled,
             pullRequestsEnabled: data.features.pullRequestsEnabled,
             pullRequestsSuggestionsEnabled: data.features.pullRequestsSuggestionsEnabled,
+            pullRequestsAutoClassifyTeamEnabled: data.features.pullRequestsAutoClassifyTeamEnabled,
             serversEnabled: data.features.serversEnabled,
             ralphEnabled: data.features.ralphEnabled,
             forEachEnabled: data.features.forEachEnabled,
@@ -230,6 +232,10 @@ export function isPullRequestsEnabled(): boolean {
 
 export function isPullRequestsSuggestionsEnabled(): boolean {
     return getConfig().pullRequestsSuggestionsEnabled === true;
+}
+
+export function isPullRequestsAutoClassifyTeamEnabled(): boolean {
+    return getConfig().pullRequestsAutoClassifyTeamEnabled === true;
 }
 
 export function isServersEnabled(): boolean {
