@@ -179,7 +179,11 @@ working-directory-relative `Plans/<area>/<feature>/` when none is given. Work
 Item Goal grilling passes `context.workItemGoalGrilling`, which makes
 `buildRalphGrillSuffix(...)` omit the Notes goal-file directive and tell the
 model to emit the final `## Goal` spec in chat for immutable Work Item content
-versioning instead.
+versioning instead. When that bound grilling chat completes and the durable Work
+Items workflow flag is still enabled, the queue completion hook extracts the
+final `## Goal` block from the assistant turn and saves it on the local-only
+Goal as the next AI-authored immutable content version, moving draft/planning
+Goals to `readyToExecute`.
 
 ## Resume Routes
 

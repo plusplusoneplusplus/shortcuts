@@ -8,7 +8,7 @@
 
 import * as crypto from 'crypto';
 import type { WorkItemStore, WorkItem, WorkItemExecution, WorkItemChange, WorkItemPlanVersion } from './types';
-import { isValidTransition } from './types';
+import { getOwnWorkItemTrackerKind, isValidTransition } from './types';
 import type { ChatMode, ChatProvider, ReasoningEffort } from '../tasks/task-types';
 import { normalizeChatModeOrDefault } from '../tasks/task-types';
 
@@ -378,4 +378,100 @@ export async function autoVersionPlanFromResolvedComments(
             reason: planVersion.reason,
         },
     });
+}
+
+export interface SaveGoalGrillingSpecOptions {
+    workspaceId: string;
+    workItemId: string;
+    responseText: string | undefined;
+    processId?: string;
+    store: WorkItemStore;
+}
+
+const GOAL_GRILLING_READY_STATUSES = new Set(['created', 'drafting', 'planning', 'readyToExecute', 'aiFailed']);
+
+/** Extract the final Ralph grilling goal spec block from an assistant response. */
+export function extractGoalSpecFromGrillingResponse(responseText: string | undefined): string | undefined {
+    const raw = responseText?.trim();
+    if (!raw) return undefined;
+
+    const fenced = raw.match(/^```(?:markdown|md)?\s*\n([\s\S]*?)\n```$/i);
+    const body = (fenced?.[1] ?? raw).trim();
+    const matches = [...body.matchAll(/^## Goal\b.*$/gm)];
+    const lastGoalHeading = matches.at(-1);
+    if (!lastGoalHeading || lastGoalHeading.index === undefined) return undefined;
+
+    const spec = body.slice(lastGoalHeading.index).trim();
+    return spec.length > '## Goal'.length ? spec : undefined;
+}
+
+function isLocalOnlyGoal(item: WorkItem, workspaceId: string): boolean {
+    return item.repoId === workspaceId
+        && item.type === 'goal'
+        && getOwnWorkItemTrackerKind(item) === 'local-only'
+        && !item.githubMirror
+        && !item.azureBoardsMirror;
+}
+
+/**
+ * Save the final Work-Item-bound Goal grilling spec as a new immutable
+ * AI-authored content version. Returns undefined when the response is still a
+ * clarification turn or the target is not a local-only Goal.
+ */
+export async function saveGoalGrillingSpecFromResponse(options: SaveGoalGrillingSpecOptions): Promise<WorkItem | undefined> {
+    const content = extractGoalSpecFromGrillingResponse(options.responseText);
+    if (!content) return undefined;
+
+    const item = await options.store.getWorkItem(options.workItemId, options.workspaceId);
+    if (!item || !isLocalOnlyGoal(item, options.workspaceId)) return undefined;
+
+    const versions = await options.store.getPlanVersions(options.workItemId);
+    const reason = 'Goal spec synthesized from grilling session';
+    const summary = options.processId
+        ? `Goal spec synthesized from ${options.processId}`
+        : reason;
+    const existingFromProcess = options.processId
+        ? versions.find(version => version.source === 'ai' && version.summary === summary && version.content.trim() === content.trim())
+        : undefined;
+    if (existingFromProcess) return item;
+
+    const newVersion = Math.max(item.plan?.version ?? 0, ...versions.map(version => version.version), 0) + 1;
+    const now = new Date().toISOString();
+    const planVersion: WorkItemPlanVersion = {
+        version: newVersion,
+        content,
+        createdAt: now,
+        resolvedBy: 'ai',
+        source: 'ai',
+        authorType: 'ai',
+        reason,
+        summary,
+    };
+
+    await options.store.savePlanVersion(options.workItemId, planVersion);
+    const nextStatus = GOAL_GRILLING_READY_STATUSES.has(item.status) ? 'readyToExecute' : item.status;
+    const updated = await options.store.updateWorkItem(options.workItemId, {
+        currentContentVersion: newVersion,
+        status: nextStatus,
+        plan: {
+            version: newVersion,
+            currentVersion: newVersion,
+            content,
+            updatedAt: now,
+            resolvedBy: 'ai',
+            source: 'ai',
+            reason,
+        },
+    });
+    if (!updated) return undefined;
+
+    await options.store.addChange(options.workItemId, {
+        id: crypto.randomUUID(),
+        planVersion: newVersion,
+        commits: [],
+        startedAt: now,
+        status: 'open',
+    });
+
+    return updated;
 }
