@@ -166,6 +166,9 @@ export function ConversationArea({
     }, [isSelecting, onCancelSelection]);
 
     const selectedCount = selectedTurns?.size ?? 0;
+    const focusFollowUpInput = () => {
+        inputRef?.current?.focus();
+    };
 
     return (
         <div
@@ -225,6 +228,7 @@ export function ConversationArea({
                                                 onPinTurn={onPinTurn}
                                                 onArchiveTurn={onArchiveTurn}
                                                 onDeleteTurn={onDeleteTurn}
+                                                onContinueInterrupted={focusFollowUpInput}
                                                 noteEdits={noteEdits}
                                                 processId={processId}
                                                 processType={processType}
@@ -359,6 +363,7 @@ export function ConversationArea({
                                                     onDeleteTurn={onDeleteTurn}
                                                     onPinTurn={onPinTurn}
                                                     onArchiveTurn={onArchiveTurn}
+                                                    onContinueInterrupted={focusFollowUpInput}
                                                     noteEdits={noteEdits}
                                                     processId={processId}
                                                     processType={processType}

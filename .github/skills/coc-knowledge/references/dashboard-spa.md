@@ -122,6 +122,10 @@ link title.
   persistent display state is stored.
 - **Error turns:** Red error-strip aside with retry button; the avatar
   keeps its dedicated red palette and ignores `provider`.
+- **Interrupted assistant turns:** Amber "Partial response preserved" banner
+  renders above the still-visible partial transcript and tool timeline. The
+  Continue / retry button focuses the normal follow-up composer; it does not
+  replay preserved partial content into a prompt.
 - **Script output:** Dark terminal window with PASS/FAIL highlighting; the
   avatar keeps its dedicated dark-terminal palette and ignores `provider`.
 

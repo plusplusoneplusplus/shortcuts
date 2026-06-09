@@ -230,6 +230,8 @@ interface ConversationTurnBubbleProps {
     taskId?: string;
     /** Called when the user clicks the Retry button on an error assistant bubble. */
     onRetry?: () => void;
+    /** Called when the user wants to continue or retry after an interrupted assistant turn. */
+    onContinueInterrupted?: () => void;
     /** Process type (e.g. 'run-script') — used to label non-AI responses differently. */
     processType?: string;
     /** Workspace ID — stamped as data-ws-id so file-path click handlers can route to the right workspace. */
@@ -1149,7 +1151,59 @@ function AssistantStatsBadge({ tokenUsage, costTimeMs }: { tokenUsage?: ClientTo
     );
 }
 
-export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsId, turnIndex, onAttachContext, onDeleteTurn, onPinTurn, onArchiveTurn, noteEdits, processId, provider }: ConversationTurnBubbleProps) {
+function InterruptedTurnBanner({ reason, onContinue }: { reason?: string; onContinue?: () => void }) {
+    return (
+        <aside
+            className={cn(
+                'interrupted-turn-banner flex items-start gap-2.5 rounded-md border px-3 py-2.5',
+                'border-amber-300 bg-amber-50 text-amber-950',
+                'dark:border-amber-700/80 dark:bg-amber-950/35 dark:text-amber-100',
+            )}
+            data-testid="interrupted-turn-banner"
+            role="status"
+        >
+            <span className="shrink-0 text-[14px] leading-[1.4] select-none" aria-hidden="true">⏱</span>
+            <div className="min-w-0 flex-1">
+                <div
+                    className="text-[12.5px] font-semibold text-amber-800 dark:text-amber-200 mb-0.5"
+                    data-testid="interrupted-turn-title"
+                >
+                    Partial response preserved
+                </div>
+                <div className="text-[12.5px] leading-snug text-[#2c2f33] dark:text-[#cccccc]">
+                    This turn timed out before completion. The transcript and tool history below are preserved for display and audit; send a new follow-up to continue or retry.
+                </div>
+                {reason && (
+                    <div
+                        className="mt-1 text-[11px] font-mono break-words text-amber-900/80 dark:text-amber-100/80"
+                        data-testid="interrupted-turn-reason"
+                    >
+                        {reason}
+                    </div>
+                )}
+                {onContinue && (
+                    <button
+                        type="button"
+                        className={cn(
+                            'mt-2 inline-flex items-center gap-1.5 rounded border px-2.5 py-1 text-[12px] font-medium leading-none',
+                            'border-amber-300 bg-white text-amber-800 hover:bg-amber-100',
+                            'dark:border-amber-700 dark:bg-[#1e1e1e] dark:text-amber-200 dark:hover:bg-amber-950/70',
+                            'transition-colors',
+                        )}
+                        onClick={onContinue}
+                        data-testid="interrupted-turn-continue-btn"
+                        title="Focus the reply box to continue or retry"
+                    >
+                        <span aria-hidden="true">↪</span>
+                        <span>Continue / retry</span>
+                    </button>
+                )}
+            </div>
+        </aside>
+    );
+}
+
+export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onDeleteTurn, onPinTurn, onArchiveTurn, noteEdits, processId, provider }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const isScript = !isUser && processType === TaskDefs.runScript.kind;
     const { showReportIntent, toolCompactness, groupSingleLineMessages } = useDisplaySettings();
@@ -1407,6 +1461,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
             'chat-message', isUser ? 'user' : 'assistant',
             turn.streaming && 'streaming',
             turn.isError && 'error',
+            turn.interrupted && 'interrupted',
             turn.archived && 'opacity-50',
             turn.deletedAt && 'opacity-30 line-through',
             'py-1.5'
@@ -1623,6 +1678,12 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                                 )}
                             </div>
                         </aside>
+                    )}
+                    {!isUser && turn.interrupted && !turn.streaming && (
+                        <InterruptedTurnBanner
+                            reason={turn.interruptionReason}
+                            onContinue={onContinueInterrupted}
+                        />
                     )}
                     {isUser && turn.skillNames && turn.skillNames.length > 0 && (
                         <div className="flex flex-wrap gap-1 skill-badges">
