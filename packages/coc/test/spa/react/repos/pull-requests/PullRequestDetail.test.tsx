@@ -330,7 +330,7 @@ describe('hero metadata', () => {
         await act(async () => { await renderDetail(); });
         await waitFor(() => expect(screen.getByTestId('pr-review-summary')).toBeInTheDocument());
 
-        expect(screen.getByTestId('pr-review-summary-copy').textContent).toBe('Fix flaky network calls with bounded retries.');
+        expect(screen.getByTestId('pr-review-summary-copy').textContent?.trim()).toBe('Fix flaky network calls with bounded retries.');
         const metrics = screen.getByTestId('pr-review-metrics').textContent ?? '';
         expect(metrics).toContain('+2 / -1');
         expect(metrics).toContain('0/1 passing');

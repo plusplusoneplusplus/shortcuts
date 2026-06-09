@@ -96,10 +96,30 @@ describe('PrReviewSummaryPanel', () => {
 
         render(<PrReviewSummaryPanel summary={summary} />);
         expect(screen.getByTestId('pr-review-summary')).toBeInTheDocument();
-        expect(screen.getByTestId('pr-review-summary-copy').textContent).toBe(samplePr.description);
+        expect(screen.getByTestId('pr-review-summary-copy').textContent?.trim()).toBe(samplePr.description);
         expect(screen.getByTestId('pr-review-metrics').children.length).toBe(5);
         expect(screen.getByTestId('pr-review-findings').textContent).toContain('lint: eslint failed');
         expect(screen.getByTestId('pr-review-findings').textContent).toContain('src/stream.ts:42');
+    });
+
+    it('renders markdown summary as HTML', () => {
+        const mdDescription = '## Summary\n- **Bold** item\n- [Link](https://example.com)\n\n`inline code` and regular text.';
+        const summary = buildPrReviewSummary({
+            pr: { ...samplePr, description: mdDescription },
+            diffStats: { additions: 10, deletions: 2, changedFiles: 1 },
+            checks: [],
+            reviewers: [],
+            threads: [],
+        });
+
+        render(<PrReviewSummaryPanel summary={summary} />);
+        const el = screen.getByTestId('pr-review-summary-copy');
+        expect(el.innerHTML).toContain('<h2');
+        expect(el.innerHTML).toContain('<strong>Bold</strong>');
+        expect(el.innerHTML).toContain('<a href="https://example.com"');
+        expect(el.innerHTML).toContain('target="_blank"');
+        expect(el.innerHTML).toContain('<code>inline code</code>');
+        expect(el.querySelector('ul')).not.toBeNull();
     });
 });
 
