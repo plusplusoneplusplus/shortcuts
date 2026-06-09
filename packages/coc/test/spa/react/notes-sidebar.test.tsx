@@ -26,9 +26,11 @@ const mockGetTree = vi.fn<[], Promise<{ tree: NoteTreeNode[]; notesRoot: string 
 const mockCreateNode = vi.fn();
 const mockRenameNode = vi.fn();
 const mockDeleteNode = vi.fn();
+const mockRemoveRoot = vi.fn();
 const mockCreateWithAI = vi.fn();
 const mockGetGitStatus = vi.fn().mockResolvedValue({ initialized: false });
 const mockClipboardWriteText = vi.fn();
+const mockAddToast = vi.fn();
 
 vi.mock('../../../src/server/spa/client/react/features/notes/notesApi', () => ({
     notesApi: {
@@ -36,9 +38,18 @@ vi.mock('../../../src/server/spa/client/react/features/notes/notesApi', () => ({
         createNode: (...args: any[]) => mockCreateNode(...args),
         renameNode: (...args: any[]) => mockRenameNode(...args),
         deleteNode: (...args: any[]) => mockDeleteNode(...args),
+        removeRoot: (...args: any[]) => mockRemoveRoot(...args),
         createWithAI: (...args: any[]) => mockCreateWithAI(...args),
         getGitStatus: (...args: any[]) => mockGetGitStatus(...args),
     },
+}));
+
+vi.mock('../../../src/server/spa/client/react/contexts/ToastContext', () => ({
+    useGlobalToast: () => ({
+        addToast: mockAddToast,
+        removeToast: vi.fn(),
+        toasts: [],
+    }),
 }));
 
 // Import component after mocks
@@ -99,6 +110,7 @@ describe('NotesSidebar', () => {
         mockCreateNode.mockResolvedValue({ path: 'new', type: 'page' });
         mockRenameNode.mockResolvedValue({ oldPath: 'x', newPath: 'y' });
         mockDeleteNode.mockResolvedValue(undefined);
+        mockRemoveRoot.mockResolvedValue({ removed: 'docs' });
         mockGetGitStatus.mockResolvedValue({ initialized: false });
     });
 
@@ -990,6 +1002,98 @@ describe('NotesSidebar', () => {
         expect((await findByTestId('notes-root-option-docs')).getAttribute('data-removal-selected')).toBe('true');
         expect((await findByTestId('notes-root-option-plans')).getAttribute('data-removal-selected')).toBe('true');
         expect(queryByTestId('notes-root-protected-default')).toBeTruthy();
+    });
+
+    it('bulk-removes selected additional roots, refreshes roots, and never deletes note files', async () => {
+        const onRootsChanged = vi.fn().mockResolvedValue(undefined);
+        const { findByTestId, queryByTestId } = renderSidebar(null, vi.fn(), {
+            roots: ROOTS,
+            selectedRootId: 'default',
+            selectedRootLabel: 'Notes',
+            onSelectRoot: vi.fn(),
+            onRootsChanged,
+        });
+        await findByTestId('notes-tree');
+
+        fireEvent.click(await findByTestId('notes-root-selector'));
+        fireEvent.click(await findByTestId('notes-root-option-docs'), { ctrlKey: true });
+        fireEvent.click(await findByTestId('notes-root-option-plans'), { ctrlKey: true });
+
+        const removeSelected = await findByTestId('notes-root-remove-selected');
+        expect(removeSelected.textContent).toContain('Remove selected (2)');
+
+        await act(async () => {
+            fireEvent.click(removeSelected);
+        });
+
+        await waitFor(() => {
+            expect(mockRemoveRoot).toHaveBeenCalledWith('ws1', 'docs');
+            expect(mockRemoveRoot).toHaveBeenCalledWith('ws1', 'plans');
+        });
+        expect(mockRemoveRoot).toHaveBeenCalledTimes(2);
+        expect(mockRemoveRoot).not.toHaveBeenCalledWith('ws1', 'default');
+        expect(mockDeleteNode).not.toHaveBeenCalled();
+        expect(onRootsChanged).toHaveBeenCalledOnce();
+        expect(mockAddToast).toHaveBeenCalledWith('Removed 2 note collections', 'success');
+        await waitFor(() => expect(queryByTestId('notes-root-remove-selected')).toBeNull());
+    });
+
+    it('falls back to the default root when the active additional root is removed', async () => {
+        const onSelectRoot = vi.fn();
+        const onRootsChanged = vi.fn().mockResolvedValue(undefined);
+        const { findByTestId } = renderSidebar(null, vi.fn(), {
+            roots: ROOTS,
+            selectedRootId: 'docs',
+            selectedRootLabel: 'Docs',
+            onSelectRoot,
+            onRootsChanged,
+        });
+        await findByTestId('notes-tree');
+
+        fireEvent.click(await findByTestId('notes-root-selector'));
+        fireEvent.click(await findByTestId('notes-root-option-docs'), { ctrlKey: true });
+
+        await act(async () => {
+            fireEvent.click(await findByTestId('notes-root-remove-selected'));
+        });
+
+        await waitFor(() => {
+            expect(mockRemoveRoot).toHaveBeenCalledWith('ws1', 'docs');
+            expect(onSelectRoot).toHaveBeenCalledWith('default');
+        });
+        expect(onRootsChanged).toHaveBeenCalledOnce();
+    });
+
+    it('surfaces remove errors through the global toast and still refreshes successful removals', async () => {
+        const onRootsChanged = vi.fn().mockResolvedValue(undefined);
+        mockRemoveRoot.mockImplementation(async (_workspaceId: string, rootId: string) => {
+            if (rootId === 'docs') {
+                throw new Error('Cannot remove docs');
+            }
+            return { removed: rootId };
+        });
+        const { findByTestId } = renderSidebar(null, vi.fn(), {
+            roots: ROOTS,
+            selectedRootId: 'default',
+            selectedRootLabel: 'Notes',
+            onSelectRoot: vi.fn(),
+            onRootsChanged,
+        });
+        await findByTestId('notes-tree');
+
+        fireEvent.click(await findByTestId('notes-root-selector'));
+        fireEvent.click(await findByTestId('notes-root-option-docs'), { ctrlKey: true });
+        fireEvent.click(await findByTestId('notes-root-option-plans'), { ctrlKey: true });
+
+        await act(async () => {
+            fireEvent.click(await findByTestId('notes-root-remove-selected'));
+        });
+
+        await waitFor(() => {
+            expect(mockAddToast).toHaveBeenCalledWith('Cannot remove docs', 'error');
+            expect(mockAddToast).toHaveBeenCalledWith('Removed 1 note collection', 'success');
+        });
+        expect(onRootsChanged).toHaveBeenCalledOnce();
     });
 
     // ── Redesigned header / meta / search ─────────────────────────────────

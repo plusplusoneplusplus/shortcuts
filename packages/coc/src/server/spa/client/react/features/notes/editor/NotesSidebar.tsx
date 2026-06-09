@@ -12,6 +12,7 @@ import { useNoteSeenState } from '../hooks/useNoteSeenState';
 import { useNotesSelection } from '../hooks/useNotesSelection';
 import { getSpaCocClient } from '../../../api/cocClient';
 import { notesApi } from '../notesApi';
+import { useGlobalToast } from '../../../contexts/ToastContext';
 
 /** Synthetic root node used when right-clicking empty space in the sidebar. */
 const ROOT_NODE: NoteTreeNode = { name: '', path: '', type: 'notebook' };
@@ -151,9 +152,12 @@ export interface NotesSidebarProps {
     roots?: import('../notesApi').NotesRootEntry[];
     /** Callback when the user selects a different root. */
     onSelectRoot?: (rootId: string) => void;
+    /** Callback after root configuration changes so the parent can refresh useNotesRoots state. */
+    onRootsChanged?: () => void | Promise<void>;
 }
 
-export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack, onNotesRootReady, onRestoreEditorFocus, markSeenRef, isDefaultRoot = true, selectedRootId, selectedRootLabel, roots, onSelectRoot }: NotesSidebarProps) {
+export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack, onNotesRootReady, onRestoreEditorFocus, markSeenRef, isDefaultRoot = true, selectedRootId, selectedRootLabel, roots, onSelectRoot, onRootsChanged }: NotesSidebarProps) {
+    const { addToast } = useGlobalToast();
     const rootParam = selectedRootId && selectedRootId !== 'default' ? selectedRootId : undefined;
     const { tree, notesRoot, systemFolders, loading, error, refresh, createNode, renameNode, deleteNode, reorderNodes } = useNotesTree(workspaceId, rootParam);
     const { isNoteUpdated, markAsSeen, syncSeenState } = useNoteSeenState(workspaceId);
@@ -172,8 +176,10 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     const hasMultipleRoots = roots && roots.length > 1;
     const [selectedRootIdsForRemoval, setSelectedRootIdsForRemoval] = useState<Set<string>>(new Set());
     const [rootSelectionAnchor, setRootSelectionAnchor] = useState<string | null>(null);
+    const [removingSelectedRoots, setRemovingSelectedRoots] = useState(false);
     const orderedRootIds = useMemo(() => roots?.map(r => r.rootId) ?? [], [roots]);
     const removableRootIds = useMemo(() => new Set((roots ?? []).filter(r => !r.isDefault).map(r => r.rootId)), [roots]);
+    const removableSelectionCount = selectedRootIdsForRemoval.size;
 
     useEffect(() => {
         if (rootDropdownOpen) return;
@@ -630,6 +636,47 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         });
     }, [onSelectRoot, orderedRootIds, removableRootIds, rootSelectionAnchor, selectedRootId]);
 
+    const handleRemoveSelectedRoots = useCallback(async () => {
+        if (removingSelectedRoots) return;
+        const selectedIds = [...selectedRootIdsForRemoval].filter(id => removableRootIds.has(id));
+        if (selectedIds.length === 0) return;
+
+        setRemovingSelectedRoots(true);
+        let removedCount = 0;
+        const removedIds: string[] = [];
+        const failures: string[] = [];
+
+        for (const rootId of selectedIds) {
+            try {
+                await notesApi.removeRoot(workspaceId, rootId);
+                removedCount += 1;
+                removedIds.push(rootId);
+            } catch (error) {
+                failures.push(error instanceof Error && error.message
+                    ? error.message
+                    : `Failed to remove root '${rootId}'`);
+            }
+        }
+
+        try {
+            if (removedCount > 0) {
+                if (selectedRootId && removedIds.includes(selectedRootId)) {
+                    onSelectRoot?.('default');
+                }
+                await onRootsChanged?.();
+                addToast(`Removed ${removedCount} note collection${removedCount === 1 ? '' : 's'}`, 'success');
+            }
+
+            for (const failure of failures) {
+                addToast(failure, 'error');
+            }
+        } finally {
+            setSelectedRootIdsForRemoval(new Set());
+            setRootSelectionAnchor(null);
+            setRemovingSelectedRoots(false);
+        }
+    }, [addToast, onRootsChanged, onSelectRoot, removableRootIds, removingSelectedRoots, selectedRootId, selectedRootIdsForRemoval, workspaceId]);
+
     /** Wraps onSelectPage to also clear multi-selection on plain click. */
     const handleSelectPage = useCallback((path: string) => {
         clearSelection();
@@ -724,6 +771,19 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                                         </button>
                                     );
                                 })}
+                                {removableSelectionCount > 0 && (
+                                    <div className="mt-1 pt-1 border-t border-[#d0d7de] dark:border-[#3c3c3c]">
+                                        <button
+                                            type="button"
+                                            className="w-full px-3 py-1.5 text-left text-xs font-semibold text-[#cf222e] dark:text-[#ff7b72] hover:bg-[#ffebe9] dark:hover:bg-[#3c1f1f] disabled:opacity-60 disabled:cursor-not-allowed"
+                                            onClick={() => void handleRemoveSelectedRoots()}
+                                            disabled={removingSelectedRoots}
+                                            data-testid="notes-root-remove-selected"
+                                        >
+                                            {removingSelectedRoots ? 'Removing…' : `Remove selected (${removableSelectionCount})`}
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
