@@ -97,6 +97,7 @@ describe('executeWorkItem', () => {
         expect(updated!.executionHistory![0].taskId).toBe('task-123');
         expect(updated!.executionHistory![0].status).toBe('running');
         expect(updated!.executionHistory![0].planVersion).toBe(1);
+        expect(updated!.executionHistory![0].executionMode).toBe('one-shot');
     });
 
     it('throws for non-ready work items', async () => {
@@ -141,6 +142,12 @@ describe('executeWorkItem', () => {
         expect(call.payload.reasoningEffort).toBe('high');
         expect(call.config.reasoningEffort).toBe('high');
         expect(call.config.model).toBeUndefined();
+
+        const updated = await store.getWorkItem('wi-provider-effort', 'test-repo');
+        expect(updated!.executionHistory![0].aiSettings).toEqual({
+            provider: 'codex',
+            reasoningEffort: 'high',
+        });
     });
 
     it('omits provider/model/reasoning effort when no override is selected', async () => {
@@ -171,6 +178,69 @@ describe('executeWorkItem', () => {
         expect(call.payload.context).toBeDefined();
         expect(call.payload.context.skills).toEqual(['impl', 'code-review']);
         expect(call.payload.context.files).toBeUndefined();
+
+        const updated = await store.getWorkItem('wi-skills', 'test-repo');
+        expect(updated!.executionHistory![0].skillNames).toEqual(['impl', 'code-review']);
+    });
+
+    it('defaults Goals to Ralph execution and preserves Work Item linkage on the queued Ralph task', async () => {
+        const item = makeWorkItem({
+            id: 'goal-exec-1',
+            type: 'goal',
+            status: 'readyToExecute',
+            plan: { version: 2, currentVersion: 2, content: '## Goal\nShip it', updatedAt: '' },
+            currentContentVersion: 2,
+            tracker: { kind: 'local-only' },
+        });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-ralph-1');
+        const result = await executeWorkItem('goal-exec-1', store, enqueue, {
+            dataDir: tmpDir,
+            maxRalphIterations: 7,
+            provider: 'claude',
+            model: 'claude-sonnet-4.6',
+            skillNames: ['impl'],
+        });
+
+        expect(result.taskId).toBe('task-ralph-1');
+        expect(result.ralphSessionId).toMatch(/^ralph-/);
+        const call = enqueue.mock.calls[0][0];
+        expect(call.type).toBe('chat');
+        expect(call.repoId).toBe('test-repo');
+        expect(call.displayName).toBe('Run #1: Ralph Implement');
+        expect(call.payload).toMatchObject({
+            kind: 'chat',
+            mode: 'ralph',
+            workspaceId: 'test-repo',
+            workItemId: 'goal-exec-1',
+            planVersion: 2,
+            sessionCategory: 'generating-code',
+            provider: 'claude',
+        });
+        expect(call.payload.context.skills).toEqual(['impl']);
+        expect(call.payload.context.ralph).toMatchObject({
+            phase: 'executing',
+            sessionId: result.ralphSessionId,
+            currentIteration: 1,
+            maxIterations: 7,
+        });
+        expect(call.config.model).toBe('claude-sonnet-4.6');
+
+        const updated = await store.getWorkItem('goal-exec-1', 'test-repo');
+        expect(updated!.status).toBe('executing');
+        expect(updated!.executionHistory![0]).toMatchObject({
+            taskId: 'task-ralph-1',
+            planVersion: 2,
+            executionMode: 'ralph',
+            ralphSessionId: result.ralphSessionId,
+            title: 'Ralph Implement',
+            aiSettings: {
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+            },
+            skillNames: ['impl'],
+        });
     });
 
     it('includes both context.files and context.skills when both provided', async () => {

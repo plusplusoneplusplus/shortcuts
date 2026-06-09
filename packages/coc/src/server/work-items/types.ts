@@ -282,6 +282,18 @@ export interface WorkItemPlanVersionComparison {
 // Execution Tracking
 // ============================================================================
 
+/** User-selected implementation strategy for a Work Item run. */
+export type WorkItemExecutionMode = 'one-shot' | 'ralph';
+
+/** AI controls captured at enqueue time for an execution run. */
+export interface WorkItemExecutionAiSettings {
+    provider?: string;
+    model?: string;
+    reasoningEffort?: string;
+    effortTier?: string;
+    autoProviderRouting?: boolean;
+}
+
 /** Record of a single execution attempt for a work item. */
 export interface WorkItemExecution {
     /** Queue task ID. */
@@ -290,6 +302,14 @@ export interface WorkItemExecution {
     processId?: string;
     /** Immutable plan/content version selected for this execution. */
     planVersion?: number;
+    /** Execution mode selected for this run. */
+    executionMode?: WorkItemExecutionMode;
+    /** Ralph session ID when this run uses Ralph execution. */
+    ralphSessionId?: string;
+    /** AI provider/model controls captured when the run was enqueued. */
+    aiSettings?: WorkItemExecutionAiSettings;
+    /** Skill names selected for this run. */
+    skillNames?: string[];
     /** ISO timestamp when execution started. */
     startedAt: string;
     /** ISO timestamp when execution completed. */

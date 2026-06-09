@@ -19,7 +19,7 @@ describe('WorkItemsClient', () => {
       { prompt: 'Draft it', baseUpdatedAt: '2026-01-01T00:00:00.000Z', baseContentVersion: null },
       { signal: controller.signal },
     );
-    await client.execute('repo/a', 'wi/1', { model: 'm' });
+    await client.execute('repo/a', 'wi/1', { model: 'm', executionMode: 'ralph' });
     await client.resolveComments('repo/a', 'wi/1', { type: 'commit', commitSha: 'abc123' });
     await client.listChatBindings('repo/a');
     await client.getChatBinding('repo/a', 'wi/1');
@@ -49,7 +49,7 @@ describe('WorkItemsClient', () => {
     });
     expect(adapter.calls[6]).toMatchObject({
       path: '/workspaces/repo%2Fa/work-items/wi%2F1/execute',
-      options: { method: 'POST', body: { model: 'm' } },
+      options: { method: 'POST', body: { model: 'm', executionMode: 'ralph' } },
     });
     expect(adapter.calls[7]).toMatchObject({
       path: '/workspaces/repo%2Fa/work-items/wi%2F1/resolve-comments',

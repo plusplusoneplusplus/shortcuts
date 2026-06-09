@@ -145,6 +145,17 @@ provider plus optional `config.model`/`config.reasoningEffort`; the route
 validates those overrides and applies them only to the first queued execution
 task.
 
+Work Item execution can also start a Ralph loop through
+`POST /api/workspaces/:workspaceId/work-items/:itemId/execute` with
+`executionMode='ralph'`. That path is gated by `workItems.workflow.enabled` and
+limited to local-only `work-item` and `goal` items. Local-only Goals default to
+Ralph when the mode is omitted; Work Items default to one-shot execution. The
+executor initializes the repo-scoped Ralph journal, enqueues the first iteration
+with the standard Ralph task shape, preserves the top-level `payload.workItemId`
+for Work Item completion hooks, and records `ralphSessionId`, selected content
+version, execution mode, skills, and AI settings in the Work Item execution
+history.
+
 ## Promote Ask-Mode Chat to Ralph
 
 A completed ask-mode chat can be promoted to a Ralph session in place via

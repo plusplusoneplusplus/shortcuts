@@ -760,7 +760,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         dataDir,
     });
     registerWorkItemPlanRoutes({ routes, workItemStore, getWsServer, getWorkflowEnabled: getWorkItemsWorkflowEnabled });
-    registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer, dataDir });
+    registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer, dataDir, getWorkflowEnabled: getWorkItemsWorkflowEnabled });
     registerWorkItemChangesRoutes({ routes, workItemStore, getWsServer });
 
     const activeWorkspaceBackgroundRefresher = new ActiveWorkspaceBackgroundRefresher({

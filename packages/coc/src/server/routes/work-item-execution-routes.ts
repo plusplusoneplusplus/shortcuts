@@ -16,7 +16,7 @@ import { execGit } from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody } from '../core/api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
 import type { WorkItemStore, WorkItem } from '../work-items/types';
-import { HIERARCHY_CONTAINER_TYPES } from '../work-items/types';
+import { getOwnWorkItemTrackerKind, HIERARCHY_CONTAINER_TYPES } from '../work-items/types';
 import { executeWorkItem, resolveWorkItemComments, type EnqueueFunction } from '../work-items/work-item-executor';
 import { upsertWorkItemTaskFile } from '../work-items/work-item-task-file';
 import { buildPlanFromContext } from '../work-items/plan-template';
@@ -27,6 +27,7 @@ import { buildBatchResolvePrompt } from '../tasks/comments/task-comments-ai';
 import { buildMultiFileBatchResolvePrompt } from '../tasks/comments/diff-comments-ai';
 import { VALID_CHAT_PROVIDERS, VALID_REASONING_EFFORTS, type ChatProvider, type ReasoningEffort } from '../tasks/task-types';
 import { clearWorkItemResponseCacheForWorkspace } from '../work-items/work-item-response-cache';
+import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
 
 const VALID_EFFORT_TIERS = new Set(['very-low', 'low', 'medium', 'high']);
 
@@ -36,6 +37,7 @@ export interface WorkItemExecutionRouteContext {
     processStore: ProcessStore;
     enqueue?: EnqueueFunction;
     getWsServer?: () => ProcessWebSocketServer;
+    getWorkflowEnabled?: () => boolean;
     /** CoC data directory (e.g. ~/.coc). When provided, a placeholder task file is
      *  created in the workspace tasks folder as soon as execution is enqueued so that
      *  the Tasks panel shows live activity immediately. */
@@ -43,7 +45,7 @@ export interface WorkItemExecutionRouteContext {
 }
 
 export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteContext): void {
-    const { routes, workItemStore, processStore, enqueue, getWsServer, dataDir } = ctx;
+    const { routes, workItemStore, processStore, enqueue, getWsServer, dataDir, getWorkflowEnabled } = ctx;
 
     // POST /api/workspaces/:id/work-items/:wid/execute — Execute work item
     routes.push({
@@ -130,6 +132,28 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                 if (body.effortTier !== undefined && !effortTier) {
                     return handleAPIError(res, badRequest(`Invalid effortTier: '${body.effortTier}'`));
                 }
+                const requestedExecutionMode = body.executionMode;
+                if (requestedExecutionMode !== undefined && requestedExecutionMode !== 'one-shot' && requestedExecutionMode !== 'ralph') {
+                    return handleAPIError(res, badRequest(`Invalid executionMode: '${requestedExecutionMode}'`));
+                }
+                const executionMode = requestedExecutionMode === undefined
+                    ? (item.type === 'goal' && getWorkflowEnabled?.() === true ? 'ralph' : 'one-shot')
+                    : requestedExecutionMode;
+                if (executionMode === 'ralph') {
+                    if (getWorkflowEnabled?.() !== true) {
+                        return handleAPIError(res, badRequest('Ralph Work Item execution requires workItems.workflow.enabled'));
+                    }
+                    const isLocalOnlyWorkflowItem = (effectiveType === 'work-item' || effectiveType === 'goal')
+                        && getOwnWorkItemTrackerKind(item) === 'local-only'
+                        && !item.githubMirror
+                        && !item.azureBoardsMirror;
+                    if (!isLocalOnlyWorkflowItem) {
+                        return handleAPIError(res, badRequest('Ralph Work Item execution is only available for local-only Work Items and Goals'));
+                    }
+                }
+                const maxRalphIterations = executionMode === 'ralph' && dataDir
+                    ? readRepoPreferences(dataDir, repoId).maxRalphIterations ?? RALPH_DEFAULT_MAX_ITERATIONS
+                    : undefined;
 
                 const result = await executeWorkItem(workItemId, workItemStore, enqueue, {
                     model: body.model,
@@ -137,7 +161,10 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                     reasoningEffort,
                     effortTier,
                     autoProviderRouting: body.autoProviderRouting === true,
+                    executionMode,
                     mode: body.mode,
+                    dataDir,
+                    maxRalphIterations,
                     headBefore,
                     taskFilePath,
                     skillNames: skillNames?.length ? skillNames : undefined,

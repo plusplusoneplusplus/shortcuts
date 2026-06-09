@@ -118,7 +118,11 @@ Goal details expose a Start/Continue grilling action that opens the existing Wor
 Item chat lens with Ralph grilling context (`grill-me` plus
 `context.ralph.phase='grilling'`) and records the chat process on
 `grillSessionId`. This Goal workflow keeps the Work Item system as the source of
-truth and does not require a Notes-backed `.goal.md` mirror.
+truth and does not require a Notes-backed `.goal.md` mirror. The Work Item
+execute dialog is also workflow-aware for saved local-only Work Items and Goals:
+it exposes a per-run One-shot vs Ralph mode selector, defaults Work Items to
+One-shot, defaults Goals to Ralph, and sends the selected execution mode through
+the typed Work Items client.
 
 ## Chat UI Architecture
 

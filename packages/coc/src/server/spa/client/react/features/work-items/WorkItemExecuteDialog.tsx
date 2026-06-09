@@ -12,11 +12,15 @@ import { RunSkillPanel } from '../../shared/RunSkillPanel';
 import type { SkillItem } from '../../shared/RunSkillPanel';
 import { ModalJobAiControls, useModalJobAiSelection } from '../../shared/ModalJobAiControls';
 
+type WorkItemExecutionMode = 'one-shot' | 'ralph';
+
 export interface WorkItemExecuteDialogProps {
     open: boolean;
     workspaceId: string;
     workItemId: string;
     workItemTitle: string;
+    defaultExecutionMode?: WorkItemExecutionMode;
+    allowExecutionModeSelection?: boolean;
     onClose: () => void;
     onExecuted: () => void;
 }
@@ -26,6 +30,8 @@ export function WorkItemExecuteDialog({
     workspaceId,
     workItemId,
     workItemTitle,
+    defaultExecutionMode = 'one-shot',
+    allowExecutionModeSelection = false,
     onClose,
     onExecuted,
 }: WorkItemExecuteDialogProps) {
@@ -35,6 +41,7 @@ export function WorkItemExecuteDialog({
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+    const [executionMode, setExecutionMode] = useState<WorkItemExecutionMode>(defaultExecutionMode);
     const [additionalInfo, setAdditionalInfo] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -66,12 +73,17 @@ export function WorkItemExecuteDialog({
         );
     }, []);
 
+    useEffect(() => {
+        if (open) setExecutionMode(defaultExecutionMode);
+    }, [defaultExecutionMode, open]);
+
     const handleSubmit = useCallback(async (skillNames: string[]) => {
         if (skillNames.length === 0) return;
         setSubmitting(true);
         setError(null);
         try {
             await getSpaCocClient().workItems.execute(workspaceId, workItemId, {
+                ...(allowExecutionModeSelection ? { executionMode } : {}),
                 skillNames,
                 ...(aiSelection.resolved.provider ? { provider: aiSelection.resolved.provider } : {}),
                 ...(aiSelection.resolved.model ? { model: aiSelection.resolved.model } : {}),
@@ -93,7 +105,7 @@ export function WorkItemExecuteDialog({
         } finally {
             setSubmitting(false);
         }
-    }, [workspaceId, workItemId, aiSelection.resolved, trackUsage, onExecuted, onClose]);
+    }, [workspaceId, workItemId, allowExecutionModeSelection, executionMode, aiSelection.resolved, trackUsage, onExecuted, onClose]);
 
     if (!open) return null;
 
@@ -117,6 +129,43 @@ export function WorkItemExecuteDialog({
             }
         >
             <div className="flex flex-col gap-4">
+                {allowExecutionModeSelection && (
+                    <fieldset className="rounded-md border border-[#d0d7de] dark:border-[#555] p-3" data-testid="wi-execution-mode-fieldset">
+                        <legend className="px-1 text-xs font-semibold text-[#57606a] dark:text-[#999]">Execution mode</legend>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                            <label className="flex cursor-pointer items-start gap-2 rounded border border-[#d0d7de] dark:border-[#555] p-2 text-xs">
+                                <input
+                                    type="radio"
+                                    name="wi-execution-mode"
+                                    value="one-shot"
+                                    checked={executionMode === 'one-shot'}
+                                    onChange={() => setExecutionMode('one-shot')}
+                                    disabled={submitting}
+                                    data-testid="wi-execution-mode-one-shot"
+                                />
+                                <span>
+                                    <span className="block font-semibold">One-shot</span>
+                                    <span className="block text-[11px] text-[#656d76] dark:text-[#999]">Run a single implementation task.</span>
+                                </span>
+                            </label>
+                            <label className="flex cursor-pointer items-start gap-2 rounded border border-[#d0d7de] dark:border-[#555] p-2 text-xs">
+                                <input
+                                    type="radio"
+                                    name="wi-execution-mode"
+                                    value="ralph"
+                                    checked={executionMode === 'ralph'}
+                                    onChange={() => setExecutionMode('ralph')}
+                                    disabled={submitting}
+                                    data-testid="wi-execution-mode-ralph"
+                                />
+                                <span>
+                                    <span className="block font-semibold">Ralph loop</span>
+                                    <span className="block text-[11px] text-[#656d76] dark:text-[#999]">Iterate with progress checks until complete.</span>
+                                </span>
+                            </label>
+                        </div>
+                    </fieldset>
+                )}
                 <RunSkillPanel
                     skills={skills}
                     recentItems={recentItems}

@@ -98,7 +98,7 @@ interface WorkItemFull {
     plan?: { version: number; currentVersion?: number; content: string; updatedAt?: string; resolvedBy?: string };
     taskId?: string; processId?: string;
     currentContentVersion?: number;
-    executionHistory?: Array<{ taskId: string; processId?: string; startedAt: string; completedAt?: string; status: string; error?: string; autoReExecuted?: boolean; title?: string; sessionCategory?: string }>;
+    executionHistory?: Array<{ taskId: string; processId?: string; startedAt: string; completedAt?: string; status: string; error?: string; autoReExecuted?: boolean; title?: string; sessionCategory?: string; executionMode?: string; ralphSessionId?: string }>;
     tags?: string[];
     githubMirror?: WorkItemGitHubMirrorMetadata;
     azureBoardsMirror?: WorkItemAzureBoardsMirrorMetadata;
@@ -835,6 +835,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const canUseGoalGrilling = workflowEnabled && effectiveType === 'goal' && isLocalOnlyWorkflowItem;
     const canDraftWithAi = workflowEnabled && aiAuthoringEnabled && isLocalOnlyWorkflowWorkItem;
     const canUseVersionWorkflowActions = workflowEnabled && isLocalOnlyWorkflowItem;
+    const canSelectExecutionMode = workflowEnabled && isLocalOnlyWorkflowItem;
+    const defaultExecutionMode = workflowEnabled && effectiveType === 'goal' && isLocalOnlyWorkflowItem ? 'ralph' : 'one-shot';
 
     const typePrefix = effectiveType === 'epic' ? 'E'
         : effectiveType === 'feature' ? 'F'
@@ -1616,6 +1618,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     workspaceId={workspaceId}
                     workItemId={workItemId}
                     workItemTitle={item.title}
+                    defaultExecutionMode={defaultExecutionMode}
+                    allowExecutionModeSelection={canSelectExecutionMode}
                     onClose={() => setShowExecuteDialog(false)}
                     onExecuted={handleExecuteDialogDone}
                 />

@@ -436,12 +436,14 @@ export interface ExecuteWorkItemRequest extends JsonObject {
   provider?: ChatProvider;
   reasoningEffort?: ReasoningEffort;
   effortTier?: EffortTierKey;
+  executionMode?: 'one-shot' | 'ralph';
   mode?: string;
   skillNames?: string[];
 }
 
 export interface ExecuteWorkItemResponse {
   taskId: string;
+  ralphSessionId?: string;
 }
 
 export interface RequestWorkItemChangesRequest extends JsonObject {
@@ -465,6 +467,16 @@ export interface WorkItemExecution {
   taskId: string;
   processId?: string;
   planVersion?: number;
+  executionMode?: 'one-shot' | 'ralph' | string;
+  ralphSessionId?: string;
+  aiSettings?: {
+    provider?: string;
+    model?: string;
+    reasoningEffort?: string;
+    effortTier?: string;
+    autoProviderRouting?: boolean;
+  };
+  skillNames?: string[];
   startedAt: string;
   completedAt?: string;
   status: 'running' | 'completed' | 'failed' | 'cancelled' | string;

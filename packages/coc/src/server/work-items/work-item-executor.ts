@@ -7,10 +7,13 @@
  */
 
 import * as crypto from 'crypto';
-import type { WorkItemStore, WorkItem, WorkItemExecution, WorkItemChange, WorkItemPlanVersion } from './types';
+import type { WorkItemStore, WorkItem, WorkItemExecution, WorkItemChange, WorkItemPlanVersion, WorkItemExecutionMode, WorkItemExecutionAiSettings } from './types';
 import { getOwnWorkItemTrackerKind, isValidTransition } from './types';
 import type { ChatMode, ChatProvider, ReasoningEffort } from '../tasks/task-types';
 import { normalizeChatModeOrDefault } from '../tasks/task-types';
+import { buildRalphIterationTask, type RalphEffortTier } from '../ralph/enqueue-iteration';
+import { RalphSessionStore } from '../ralph/ralph-session-store';
+import { RALPH_DEFAULT_MAX_ITERATIONS } from '../preferences-handler';
 
 import type { SessionCategory } from '@plusplusoneplusplus/forge';
 
@@ -27,6 +30,12 @@ export interface ExecuteWorkItemOptions {
     autoProviderRouting?: boolean;
     /** Chat mode for execution (default: 'autopilot'). */
     mode?: Exclude<ChatMode, 'ralph'> | string;
+    /** Work Item execution strategy for this run. */
+    executionMode?: WorkItemExecutionMode | string;
+    /** Repo-scoped CoC data root; required to initialize Ralph journals. */
+    dataDir?: string;
+    /** Optional maximum iteration count for Ralph execution. */
+    maxRalphIterations?: number;
     /** Git HEAD SHA captured immediately before execution enqueued. */
     headBefore?: string;
     /** Whether this execution was triggered automatically after comment resolution. */
@@ -45,6 +54,9 @@ export interface ExecuteWorkItemOptions {
 export interface EnqueueFunction {
     (input: {
         type: string;
+        repoId?: string;
+        folderPath?: string;
+        continuationOfSessionId?: string;
         priority: string;
         payload: Record<string, unknown>;
         config: Record<string, unknown>;
@@ -78,6 +90,27 @@ export function buildExecutionPrompt(item: WorkItem): string {
     return parts.join('\n');
 }
 
+function mintRalphSessionId(): string {
+    return `ralph-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeExecutionMode(item: WorkItem, value: unknown): WorkItemExecutionMode {
+    if (value === 'ralph') return 'ralph';
+    if (value === 'one-shot') return 'one-shot';
+    return item.type === 'goal' ? 'ralph' : 'one-shot';
+}
+
+function buildAiSettings(options: ExecuteWorkItemOptions | undefined): WorkItemExecutionAiSettings | undefined {
+    const settings: WorkItemExecutionAiSettings = {
+        ...(options?.provider ? { provider: options.provider } : {}),
+        ...(options?.model ? { model: options.model } : {}),
+        ...(options?.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
+        ...(options?.effortTier ? { effortTier: options.effortTier } : {}),
+        ...(options?.autoProviderRouting ? { autoProviderRouting: true } : {}),
+    };
+    return Object.keys(settings).length > 0 ? settings : undefined;
+}
+
 /**
  * Execute a work item by enqueuing it as a task.
  *
@@ -88,7 +121,7 @@ export async function executeWorkItem(
     store: WorkItemStore,
     enqueue: EnqueueFunction,
     options?: ExecuteWorkItemOptions,
-): Promise<{ taskId: string }> {
+): Promise<{ taskId: string; ralphSessionId?: string }> {
     const item = await store.getWorkItem(workItemId);
     if (!item) {
         throw new Error(`Work item not found: ${workItemId}`);
@@ -101,6 +134,7 @@ export async function executeWorkItem(
     }
 
     const prompt = buildExecutionPrompt(item);
+    const executionMode = normalizeExecutionMode(item, options?.executionMode);
     const mode = normalizeChatModeOrDefault(options?.mode, 'autopilot');
     const runNumber = (item.executionHistory?.length ?? 0) + 1;
     const selectedPlanVersion = item.currentContentVersion ?? item.plan?.currentVersion ?? item.plan?.version;
@@ -115,37 +149,91 @@ export async function executeWorkItem(
         }
         : undefined;
 
-    const taskId = await enqueue({
-        type: 'run-workflow',
-        priority: item.priority ?? 'normal',
-        payload: {
-            kind: 'chat',
-            mode,
-            prompt,
+    const ralphSessionId = executionMode === 'ralph' ? mintRalphSessionId() : undefined;
+    const executionTitle = executionMode === 'ralph' ? 'Ralph Implement' : 'Code Implement';
+    const displayName = `Run #${runNumber}: ${executionTitle}`;
+    const priority = item.priority ?? 'normal';
+    let taskId: string;
+    if (executionMode === 'ralph') {
+        const maxIterations = options?.maxRalphIterations ?? RALPH_DEFAULT_MAX_ITERATIONS;
+        if (options?.dataDir) {
+            await new RalphSessionStore({ dataDir: options.dataDir }).initSession(item.repoId, ralphSessionId!, {
+                originalGoal: prompt,
+                maxIterations,
+            });
+        }
+        const ralphContext = {
+            ...(context ?? {}),
+            workItemExecution: {
+                workspaceId: item.repoId,
+                workItemId: item.id,
+                executionMode,
+                ...(selectedPlanVersion !== undefined ? { planVersion: selectedPlanVersion } : {}),
+            },
+        };
+        const ralphTask = buildRalphIterationTask({
             workspaceId: item.repoId,
-            sessionCategory: 'generating-code' satisfies SessionCategory,
-            workItemId: item.id,
-            ...(selectedPlanVersion !== undefined ? { planVersion: selectedPlanVersion } : {}),
-            ...(options?.provider ? { provider: options.provider } : {}),
-            ...(options?.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
-            ...(context ? { context } : {}),
-        },
-        config: {
-            ...(options?.model ? { model: options.model } : {}),
-            ...(options?.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
-            ...(options?.effortTier ? { effortTier: options.effortTier } : {}),
-        },
-        displayName: `Run #${runNumber}: Code Implement`,
-    });
+            sessionId: ralphSessionId!,
+            originalGoal: prompt,
+            iteration: 1,
+            maxIterations,
+            dataDir: options?.dataDir,
+            extraContext: ralphContext,
+            displayName,
+            priority,
+            provider: options?.provider,
+            model: options?.model,
+            reasoningEffort: options?.reasoningEffort,
+            effortTier: options?.effortTier as RalphEffortTier | undefined,
+            autoProviderRouting: options?.autoProviderRouting,
+        });
+        taskId = await enqueue({
+            ...ralphTask,
+            payload: {
+                ...ralphTask.payload,
+                sessionCategory: 'generating-code' satisfies SessionCategory,
+                workItemId: item.id,
+                ...(selectedPlanVersion !== undefined ? { planVersion: selectedPlanVersion } : {}),
+            },
+        });
+    } else {
+        taskId = await enqueue({
+            type: 'run-workflow',
+            priority,
+            payload: {
+                kind: 'chat',
+                mode,
+                prompt,
+                workspaceId: item.repoId,
+                sessionCategory: 'generating-code' satisfies SessionCategory,
+                workItemId: item.id,
+                ...(selectedPlanVersion !== undefined ? { planVersion: selectedPlanVersion } : {}),
+                ...(options?.provider ? { provider: options.provider } : {}),
+                ...(options?.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
+                ...(context ? { context } : {}),
+            },
+            config: {
+                ...(options?.model ? { model: options.model } : {}),
+                ...(options?.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
+                ...(options?.effortTier ? { effortTier: options.effortTier } : {}),
+            },
+            displayName,
+        });
+    }
 
     // Record the execution
+    const aiSettings = buildAiSettings(options);
     const execution: WorkItemExecution = {
         taskId,
         ...(selectedPlanVersion !== undefined ? { planVersion: selectedPlanVersion } : {}),
+        executionMode,
+        ...(ralphSessionId ? { ralphSessionId } : {}),
+        ...(aiSettings ? { aiSettings } : {}),
+        ...(contextSkills.length ? { skillNames: contextSkills } : {}),
         startedAt: new Date().toISOString(),
         status: 'running',
         sessionCategory: 'generating-code',
-        title: 'Code Implement',
+        title: executionTitle,
         ...(options?.autoReExecuted ? { autoReExecuted: true } : {}),
     };
     await store.addExecution(workItemId, execution);
@@ -177,7 +265,7 @@ export async function executeWorkItem(
     // Transition to executing
     await store.updateWorkItem(workItemId, { status: 'executing' });
 
-    return { taskId };
+    return { taskId, ...(ralphSessionId ? { ralphSessionId } : {}) };
 }
 
 // ============================================================================

@@ -18,7 +18,7 @@ const mockProcessStore = {
     getProcess: vi.fn(),
 } as any;
 
-function makeServer(enqueue?: any, opts: { dataDir?: string } = {}): http.Server {
+function makeServer(enqueue?: any, opts: { dataDir?: string; workflowEnabled?: boolean } = {}): http.Server {
     const routes: Route[] = [];
     registerWorkItemRoutes({ routes, workItemStore: store });
     registerWorkItemExecutionRoutes({
@@ -27,6 +27,7 @@ function makeServer(enqueue?: any, opts: { dataDir?: string } = {}): http.Server
         processStore: mockProcessStore,
         enqueue,
         dataDir: opts.dataDir,
+        getWorkflowEnabled: () => opts.workflowEnabled === true,
     });
     const handler = createRouter({ routes, spaHtml: '' });
     return http.createServer(handler);
@@ -254,6 +255,85 @@ describe('Work Item Execution Routes', () => {
             expect(res.status).toBe(200);
             const call = enqueueMock.mock.calls[0][0];
             expect(call.payload.context.skills).toEqual(['impl', 'test']);
+        });
+
+        it('defaults local-only Goals to Ralph execution when the workflow flag is enabled', async () => {
+            await stopServer();
+            server = makeServer(enqueueMock, { dataDir: tmpDir, workflowEnabled: true });
+            await startServer();
+
+            await store.addWorkItem({
+                id: 'goal-route-1',
+                repoId: REPO_ID,
+                title: 'Ralph Goal',
+                description: '',
+                status: 'readyToExecute',
+                type: 'goal',
+                source: 'manual',
+                tracker: { kind: 'local-only' },
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                plan: { version: 1, currentVersion: 1, content: '## Goal\nShip it', updatedAt: new Date().toISOString() },
+                currentContentVersion: 1,
+            });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/goal-route-1/execute`, {
+                skillNames: ['impl'],
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body.ralphSessionId).toMatch(/^ralph-/);
+            const call = enqueueMock.mock.calls[0][0];
+            expect(call.type).toBe('chat');
+            expect(call.payload.mode).toBe('ralph');
+            expect(call.payload.workItemId).toBe('goal-route-1');
+            expect(call.payload.context.ralph.sessionId).toBe(res.body.ralphSessionId);
+
+            const updated = await store.getWorkItem('goal-route-1', REPO_ID);
+            expect(updated!.executionHistory![0].executionMode).toBe('ralph');
+            expect(updated!.executionHistory![0].ralphSessionId).toBe(res.body.ralphSessionId);
+        });
+
+        it('rejects Ralph execution when the workflow flag is disabled', async () => {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Flag gated' });
+            const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
+            const id = list.body.items[0].id;
+            await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${id}`, { status: 'readyToExecute' });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/execute`, {
+                executionMode: 'ralph',
+            });
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('workItems.workflow.enabled');
+            expect(enqueueMock).not.toHaveBeenCalled();
+        });
+
+        it('rejects Ralph execution for remote-backed items', async () => {
+            await stopServer();
+            server = makeServer(enqueueMock, { dataDir: tmpDir, workflowEnabled: true });
+            await startServer();
+            await store.addWorkItem({
+                id: 'wi-remote-ralph',
+                repoId: REPO_ID,
+                title: 'Remote item',
+                description: '',
+                status: 'readyToExecute',
+                type: 'work-item',
+                source: 'manual',
+                tracker: { kind: 'github-backed', provider: 'github', github: { issueNumber: 1 } },
+                githubMirror: { issueNumber: 1 },
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+            });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/wi-remote-ralph/execute`, {
+                executionMode: 'ralph',
+            });
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('local-only');
+            expect(enqueueMock).not.toHaveBeenCalled();
         });
     });
 
