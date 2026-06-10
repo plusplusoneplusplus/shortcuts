@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 
 const mockProviders = vi.hoisted(() => ({
     providers: [
@@ -114,5 +114,48 @@ describe('RalphGrillSetupPanel', () => {
                 model: 'claude-sonnet-4.6',
             });
         });
+    });
+
+    it('wraps the depth selector and all agent rows in a single bounded scroll region', () => {
+        renderPanel();
+
+        const scroll = screen.getByTestId('ralph-grill-setup-scroll');
+        // Bounded max height + vertical scroll so the panel cannot push the
+        // composer/main chat controls off-screen.
+        expect(scroll.className).toContain('overflow-y-auto');
+        expect(scroll.className).toContain('max-h-[55vh]');
+
+        // Depth selector and the model-selection rows scroll together as one
+        // combined panel (both live inside the single scroll wrapper).
+        expect(within(scroll).getByTestId('ralph-grill-setup-depth-standard')).toBeTruthy();
+        const agents = within(scroll).getByTestId('ralph-grill-setup-agents');
+        expect(within(scroll).getByTestId('ralph-grill-setup-agent-product')).toBeTruthy();
+
+        // Avoid separate independent scroll regions: only the wrapper scrolls.
+        expect(agents.className).not.toContain('overflow-y-auto');
+        expect(screen.getByTestId('ralph-grill-setup-panel').className).not.toContain('overflow-y-auto');
+    });
+
+    it('keeps the deepest role list inside the bounded scroll region', () => {
+        renderPanel();
+
+        fireEvent.click(screen.getByTestId('ralph-grill-setup-depth-deep'));
+
+        const scroll = screen.getByTestId('ralph-grill-setup-scroll');
+        expect(scroll.className).toContain('overflow-y-auto');
+        expect(within(scroll).getByTestId('ralph-grill-setup-agent-provenance')).toBeTruthy();
+        expect(within(scroll).getByTestId('ralph-grill-setup-agent-deduplication')).toBeTruthy();
+    });
+
+    it('exposes agent focus text via tooltip instead of an always-visible description', () => {
+        renderPanel();
+
+        const row = screen.getByTestId('ralph-grill-setup-agent-product');
+        const focus = row.getAttribute('title') ?? '';
+        // Focus text stays available (tooltip) for accessibility/parity...
+        expect(focus.length).toBeGreaterThan(0);
+        // ...but is collapsed by default rather than rendered as a separate
+        // visible description block, keeping each row compact.
+        expect(row.textContent ?? '').not.toContain(focus);
     });
 });

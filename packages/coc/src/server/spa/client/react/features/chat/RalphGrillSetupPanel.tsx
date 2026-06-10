@@ -149,17 +149,18 @@ function RalphGrillAgentModelRow({
         : true;
 
     return (
-        <div className="grid gap-1 rounded-md border border-[#e6e6e6] bg-white/70 p-2 dark:border-[#3c3c3c] dark:bg-[#1f1f1f]/70" data-testid={`${testIdPrefix}-agent-${role}`}>
+        <div
+            className="grid gap-1 rounded-md border border-[#e6e6e6] bg-white/70 px-2 py-1.5 dark:border-[#3c3c3c] dark:bg-[#1f1f1f]/70"
+            data-testid={`${testIdPrefix}-agent-${role}`}
+            title={focus}
+        >
             <div className="flex flex-wrap items-center justify-between gap-1">
-                <div className="min-w-0">
-                    <div className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">{label}</div>
-                    <div className="text-[11px] text-[#6b6b6b] dark:text-[#999999]">{focus}</div>
-                </div>
+                <div className="min-w-0 truncate text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">{label}</div>
                 <span className="rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-500/10 dark:text-purple-300">
                     {label.replace(/ Agent$/, '')}
                 </span>
             </div>
-            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
                 <label className="grid gap-0.5 text-[11px] text-[#6b6b6b] dark:text-[#999999]">
                     Provider
                     <select
@@ -239,16 +240,20 @@ export function RalphGrillSetupPanel({
 
     return (
         <div
-            className="rounded-lg border border-purple-200 bg-purple-50/70 p-2 text-left dark:border-purple-500/30 dark:bg-purple-500/10"
+            className="rounded-lg border border-purple-200 bg-purple-50/70 text-left dark:border-purple-500/30 dark:bg-purple-500/10"
             data-testid={`${testIdPrefix}-panel`}
         >
-            <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
+            <div
+                className="max-h-[55vh] overflow-y-auto overscroll-contain p-2"
+                data-testid={`${testIdPrefix}-scroll`}
+            >
+            <div className="flex flex-wrap items-start justify-between gap-1.5">
+                <div className="min-w-0">
                     <div className="text-xs font-semibold text-purple-800 dark:text-purple-200">
                         Question planning setup
                     </div>
-                    <div className="text-[11px] text-purple-700/80 dark:text-purple-200/75">
-                        Pick grilling depth and assign provider/model selections per role before the consolidated question round.
+                    <div className="text-[10px] leading-snug text-purple-700/80 dark:text-purple-200/75">
+                        Set grilling depth and per-role provider/model.
                     </div>
                 </div>
                 <div className="inline-flex overflow-hidden rounded-md border border-purple-200 bg-white dark:border-purple-500/30 dark:bg-[#1f1f1f]">
@@ -277,7 +282,7 @@ export function RalphGrillSetupPanel({
                     })}
                 </div>
             </div>
-            <div className="mt-2 grid gap-1.5" data-testid={`${testIdPrefix}-agents`}>
+            <div className="mt-1.5 grid gap-1" data-testid={`${testIdPrefix}-agents`}>
                 {agents.map(agent => (
                     <RalphGrillAgentModelRow
                         key={agent.role}
@@ -298,6 +303,7 @@ export function RalphGrillSetupPanel({
                         }}
                     />
                 ))}
+            </div>
             </div>
         </div>
     );
