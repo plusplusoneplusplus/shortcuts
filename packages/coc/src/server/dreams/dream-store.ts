@@ -20,6 +20,7 @@ import type {
     DreamSupersedeOptions,
     FailDreamRunInput,
 } from './types';
+import type { ChatProvider, ReasoningEffort } from '../tasks/task-types';
 import {
     DREAM_CARD_CATEGORIES,
     DREAM_CARD_STATUSES,
@@ -296,6 +297,38 @@ function normalizeRunTrigger(value: unknown): CreateDreamRunInput['trigger'] {
     throw new Error('Dream run trigger must be manual or idle');
 }
 
+function normalizeRunProvider(value: unknown): ChatProvider | undefined {
+    if (value === undefined) return undefined;
+    if (value === 'copilot' || value === 'codex' || value === 'claude') return value;
+    throw new Error('Dream run provider must be copilot, codex, or claude');
+}
+
+function normalizeRunReasoningEffort(value: unknown): ReasoningEffort | undefined {
+    if (value === undefined) return undefined;
+    if (value === 'low' || value === 'medium' || value === 'high' || value === 'xhigh') return value;
+    throw new Error('Dream run reasoningEffort must be low, medium, high, or xhigh');
+}
+
+function normalizeOptionalRunText(value: unknown, fieldName: string): string | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== 'string') {
+        throw new Error(`Dream run ${fieldName} must be a string`);
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+        throw new Error(`Dream run ${fieldName} must be non-empty`);
+    }
+    return trimmed;
+}
+
+function normalizeRunTimeoutMs(value: unknown): number | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+        throw new Error('Dream run timeoutMs must be a positive number');
+    }
+    return Math.trunc(value);
+}
+
 function normalizeCandidateCardIds(value: unknown): string[] {
     if (value === undefined) return [];
     if (!Array.isArray(value)) {
@@ -405,6 +438,10 @@ export class FileDreamStore {
             throw new Error('workspaceId is required');
         }
         const trigger = normalizeRunTrigger(input.trigger);
+        const provider = normalizeRunProvider(input.provider);
+        const model = normalizeOptionalRunText(input.model, 'model');
+        const reasoningEffort = normalizeRunReasoningEffort(input.reasoningEffort);
+        const timeoutMs = normalizeRunTimeoutMs(input.timeoutMs);
 
         return this.enqueueWrite(async () => {
             const runs = await this.readRuns(workspaceId);
@@ -419,6 +456,10 @@ export class FileDreamStore {
                 workspaceId,
                 trigger,
                 status: 'running',
+                ...(provider ? { provider } : {}),
+                ...(model ? { model } : {}),
+                ...(reasoningEffort ? { reasoningEffort } : {}),
+                ...(timeoutMs !== undefined ? { timeoutMs } : {}),
                 sourceRanges: [],
                 candidateCardIds: [],
                 startedAt: now,

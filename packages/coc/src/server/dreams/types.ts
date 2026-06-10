@@ -1,3 +1,5 @@
+import type { ChatProvider, ReasoningEffort } from '../tasks/task-types';
+
 export const DREAM_CARD_CATEGORIES = [
     'skill-or-prompt-improvement',
     'user-workflow-suggestion',
@@ -84,6 +86,10 @@ export interface DreamRunRecord {
     workspaceId: string;
     trigger: DreamRunTrigger;
     status: DreamRunStatus;
+    provider?: ChatProvider;
+    model?: string;
+    reasoningEffort?: ReasoningEffort;
+    timeoutMs?: number;
     sourceRanges: DreamSourceRange[];
     candidateCardIds: string[];
     startedAt: string;
@@ -130,6 +136,10 @@ export interface DreamDismissOptions {
 export interface CreateDreamRunInput {
     workspaceId: string;
     trigger: DreamRunTrigger;
+    provider?: ChatProvider;
+    model?: string;
+    reasoningEffort?: ReasoningEffort;
+    timeoutMs?: number;
 }
 
 export interface CompleteDreamRunInput {

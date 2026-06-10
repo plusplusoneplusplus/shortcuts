@@ -9,6 +9,7 @@ import type {
 import type { ChatProvider, ReasoningEffort } from '../tasks/task-types';
 import {
     analyzeDreamConversations,
+    DEFAULT_DREAM_ANALYSIS_TIMEOUT_MS,
     type DreamAnalysisPolicy,
     type DreamAnalysisResult,
     type DreamRelatedRecord,
@@ -230,7 +231,7 @@ export class DreamRunExecutor {
         this.defaultProvider = options.provider;
         this.defaultModel = options.model;
         this.defaultReasoningEffort = options.reasoningEffort;
-        this.defaultTimeoutMs = options.timeoutMs;
+        this.defaultTimeoutMs = options.timeoutMs ?? DEFAULT_DREAM_ANALYSIS_TIMEOUT_MS;
         this.defaultConversationLimit = options.conversationLimit;
         this.defaultConfidenceThreshold = options.confidenceThreshold;
         this.defaultMaxCandidates = options.maxCandidates;
@@ -316,7 +317,18 @@ export class DreamRunExecutor {
             await this.assertEnabled(workspaceId);
         }
 
-        const run = await this.store.createRun({ workspaceId, trigger });
+        const provider = options.provider ?? this.defaultProvider;
+        const model = options.model ?? this.defaultModel;
+        const reasoningEffort = options.reasoningEffort ?? this.defaultReasoningEffort;
+        const timeoutMs = options.timeoutMs ?? this.defaultTimeoutMs;
+        const run = await this.store.createRun({
+            workspaceId,
+            trigger,
+            ...(provider ? { provider } : {}),
+            ...(model ? { model } : {}),
+            ...(reasoningEffort ? { reasoningEffort } : {}),
+            ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+        });
         let selection: DreamConversationSelection | undefined;
         let analysis: DreamAnalysisResult | undefined;
         const cards: DreamCard[] = [];
@@ -343,10 +355,10 @@ export class DreamRunExecutor {
                 selection,
                 existingCards,
                 relatedRecords,
-                provider: options.provider ?? this.defaultProvider,
-                model: options.model ?? this.defaultModel,
-                reasoningEffort: options.reasoningEffort ?? this.defaultReasoningEffort,
-                timeoutMs: options.timeoutMs ?? this.defaultTimeoutMs,
+                provider,
+                model,
+                reasoningEffort,
+                timeoutMs,
                 signal: options.signal,
                 confidenceThreshold: options.confidenceThreshold ?? this.defaultConfidenceThreshold,
                 maxCandidates: options.maxCandidates ?? this.defaultMaxCandidates,

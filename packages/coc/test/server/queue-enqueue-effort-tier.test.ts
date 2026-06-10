@@ -220,6 +220,67 @@ describe('prepareTaskForEnqueue', () => {
         expect(input.config.model).toBe('haiku');
     });
 
+    it('resolves omitted dream-run providers to the concrete default at enqueue time', async () => {
+        const input = makeInput({
+            type: 'dream-run',
+            payload: {
+                kind: 'dream-run',
+                workspaceId: 'ws-dream',
+                trigger: 'manual',
+                model: 'claude-sonnet-4.6',
+                timeoutMs: 3_600_000,
+            },
+            config: { timeoutMs: 3_600_000 },
+        });
+
+        await prepareTaskForEnqueue(input, makeContext({
+            getDefaultProvider: () => 'claude',
+        }));
+
+        expect((input.payload as any).provider).toBe('claude');
+        expect((input.payload as any).model).toBe('claude-sonnet-4.6');
+        expect(input.config.model).toBe('claude-sonnet-4.6');
+        expect(input.config.timeoutMs).toBe(3_600_000);
+    });
+
+    it('resolves Auto-routed dream-run providers and records routing metadata', async () => {
+        const resolveDefaultProvider = vi.fn(async () => ({
+            provider: 'codex' as const,
+            selectedByAuto: true,
+            fallbackUsed: false,
+            warnings: ['Quota cache was refreshed.'],
+            decisions: [{
+                provider: 'codex',
+                selected: true,
+                reason: 'Provider passed checks.',
+            } as any],
+        }));
+        const input = makeInput({
+            type: 'dream-run',
+            payload: {
+                kind: 'dream-run',
+                workspaceId: 'ws-dream',
+                trigger: 'idle',
+                context: { autoProviderRouting: { requested: true } },
+            },
+            config: { timeoutMs: 3_600_000 },
+        });
+
+        await prepareTaskForEnqueue(input, makeContext({
+            resolveDefaultProvider,
+            isAutoProviderRoutingActive: () => true,
+        }));
+
+        expect(resolveDefaultProvider).toHaveBeenCalledWith({ forceAuto: true });
+        expect((input.payload as any).provider).toBe('codex');
+        expect((input.payload as any).context.autoProviderRouting).toMatchObject({
+            requested: true,
+            selectedByAuto: true,
+            provider: 'codex',
+            fallbackUsed: false,
+        });
+    });
+
     it('does not mark follow-up tasks for Auto routing', async () => {
         const input = makeInput({
             payload: {

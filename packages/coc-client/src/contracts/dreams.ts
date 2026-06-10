@@ -78,6 +78,10 @@ export interface DreamRunRecord {
   workspaceId: string;
   trigger: DreamRunTrigger;
   status: DreamRunStatus;
+  provider?: ChatProvider;
+  model?: string;
+  reasoningEffort?: ReasoningEffort;
+  timeoutMs?: number;
   sourceRanges: DreamSourceRange[];
   candidateCardIds: string[];
   startedAt: string;

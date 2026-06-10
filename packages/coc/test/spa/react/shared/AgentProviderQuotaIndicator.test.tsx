@@ -5,12 +5,18 @@ import { agentProviderQuotaIndicator as AgentProviderQuotaIndicator } from '../.
 
 const mocks = vi.hoisted(() => ({
     getAgentProvidersQuota: vi.fn(),
+    queueList: vi.fn(),
+    queueHistory: vi.fn(),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         admin: {
             getAgentProvidersQuota: mocks.getAgentProvidersQuota,
+        },
+        queue: {
+            list: mocks.queueList,
+            history: mocks.queueHistory,
         },
     }),
     getSpaCocClientErrorMessage: (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback,
@@ -44,6 +50,10 @@ describe('AgentProviderQuotaIndicator', () => {
         vi.useFakeTimers({ shouldAdvanceTime: true });
         vi.setSystemTime(new Date('2026-06-06T10:02:00.000Z'));
         mocks.getAgentProvidersQuota.mockReset();
+        mocks.queueList.mockReset();
+        mocks.queueHistory.mockReset();
+        mocks.queueList.mockResolvedValue({ queued: [], running: [], stats: {} });
+        mocks.queueHistory.mockResolvedValue({ history: [] });
     });
 
     afterEach(() => {
@@ -149,6 +159,63 @@ describe('AgentProviderQuotaIndicator', () => {
 
         expect(screen.getByTestId('agent-provider-quota-last-updated').textContent).toBe('Last updated 2m ago');
         expect(screen.getByTestId('agent-provider-quota-admin-link').getAttribute('href')).toBe('#admin/agents');
+    });
+
+    it('shows active and recent Dreams provider activity in the dropdown', async () => {
+        mocks.getAgentProvidersQuota.mockResolvedValue(quotaResponse({
+            providers: [
+                { id: 'claude', quotaTypes: [quotaType({ type: 'messages', remainingPercentage: 0.9 })] },
+            ],
+        }));
+        mocks.queueList.mockResolvedValue({
+            queued: [],
+            running: [{
+                id: 'dream-task-running',
+                type: 'dream-run',
+                status: 'running',
+                displayName: 'Dream Run: Manual',
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+                timeoutMs: 3_600_000,
+                payload: {
+                    kind: 'dream-run',
+                    provider: 'claude',
+                    trigger: 'manual',
+                    timeoutMs: 3_600_000,
+                },
+                startedAt: Date.parse('2026-06-06T10:01:00.000Z'),
+            }],
+            stats: {},
+        });
+        mocks.queueHistory.mockResolvedValue({
+            history: [{
+                id: 'dream-task-complete',
+                type: 'dream-run',
+                status: 'completed',
+                displayName: 'Dream Run: Idle',
+                provider: 'codex',
+                model: 'gpt-5.4-mini',
+                timeoutMs: 3_600_000,
+                payload: {
+                    kind: 'dream-run',
+                    provider: 'codex',
+                    trigger: 'idle',
+                    timeoutMs: 3_600_000,
+                },
+                completedAt: Date.parse('2026-06-06T09:45:00.000Z'),
+            }],
+        });
+
+        render(<AgentProviderQuotaIndicator />);
+        fireEvent.click(await screen.findByTestId('agent-provider-quota-indicator'));
+
+        const activity = await screen.findByTestId('agent-provider-dream-activity');
+        expect(within(activity).getByTestId('quota-dream-activity-dream-task-running').textContent).toContain('Claude');
+        expect(within(activity).getByTestId('quota-dream-activity-dream-task-running').textContent).toContain('claude-sonnet-4.6');
+        expect(within(activity).getByTestId('quota-dream-activity-dream-task-running').textContent).toContain('1h timeout');
+        expect(within(activity).getByTestId('quota-dream-activity-dream-task-complete').textContent).toContain('Codex');
+        expect(mocks.queueList).toHaveBeenCalledWith({ type: 'dream-run' });
+        expect(mocks.queueHistory).toHaveBeenCalledWith({ type: 'dream-run', limit: 5 });
     });
 
     it('marks an elapsed reset as due and handles a missing reset date', async () => {

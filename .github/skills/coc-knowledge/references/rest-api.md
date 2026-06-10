@@ -87,7 +87,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/queue` | List queue tasks |
+| GET | `/api/queue` | List queue tasks. `dream-run` queue summaries include provider, model, reasoning effort, and timeout metadata when resolved so Activity/top-bar provider surfaces can attribute active Dreams work |
 | GET | `/api/queue/models` | List model IDs for the resolved concrete default provider; when `features.autoAgentProviderRouting` is enabled, this uses the same Auto provider routing resolver as enqueue and includes `autoProviderRouting` metadata with the selected provider, fallback state, warnings, and decision reasons. |
 | GET | `/api/queue/:id` | Get a single queue task, falling back to reconstructed process history for completed/historical chat tasks when available |
 | POST | `/api/queue` | Enqueue a task. Chat payloads use `mode='ask'`, `mode='autopilot'`, or internal Ralph routing; legacy `mode='plan'` is accepted and normalized to Ask. For Each item-plan generation is represented as a normal Ask-mode chat with `payload.context.forEach.kind='generation'`; the UI-only `for-each` mode value is still rejected by the generic queue validator. Body `config.effortTier` accepts `very-low`, `low`, `medium`, or `high`; the server resolves Auto defaults to a concrete provider before expanding the tier to `config.model` and `config.reasoningEffort` from that provider's stored/default tier map, while explicit `config.model` and `config.reasoningEffort` take precedence and `effortTier` is not stored. |
@@ -152,7 +152,7 @@ All Dreams routes are workspace-scoped and gated by `dreams.enabled` (default `f
 |--------|------|-------------|
 | GET | `/api/workspaces/:id/dreams/cards` | List visible dream cards by default. Query `includeHidden=true` includes candidate/approved/dismissed/converted/superseded history; `status=visible,approved` filters by card status |
 | GET | `/api/workspaces/:id/dreams/cards/:cardId` | Read a dream card detail, including source ranges, confidence, fingerprint, and dedup rationale |
-| POST | `/api/workspaces/:id/dreams/run` | Enqueue a visible queue-backed `dream-run` task for a manual read-only Ask-mode dream pass in the workspace. Body accepts optional `provider`, `config.model`, `config.reasoningEffort`, `confidenceThreshold`, `maxCandidates`, `conversationLimit`, and `timeoutMs`; response is `202 { task }` |
+| POST | `/api/workspaces/:id/dreams/run` | Enqueue a visible queue-backed `dream-run` task for a manual read-only Ask-mode dream pass in the workspace. Body accepts optional `provider`, `config.model`, `config.reasoningEffort`, `confidenceThreshold`, `maxCandidates`, `conversationLimit`, and `timeoutMs`; response is `202 { task }`. Dream run records persist the resolved provider/model/reasoning/timeout metadata alongside source coverage |
 | POST | `/api/workspaces/:id/dreams/cards/:cardId/approve` | Mark a visible card approved; this records intent only and does not perform a next action |
 | POST | `/api/workspaces/:id/dreams/cards/:cardId/dismiss` | Dismiss a visible card, optionally recording `dedupRationale` |
 | POST | `/api/workspaces/:id/dreams/cards/:cardId/convert` | Mark a visible or approved card converted with `{ artifactType, artifactId, artifactUrl? }` after an explicit external next action completes |

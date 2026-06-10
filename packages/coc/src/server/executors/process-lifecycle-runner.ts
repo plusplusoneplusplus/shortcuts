@@ -387,6 +387,12 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             );
         }
         const processModel = providerModel.model;
+        if (isDreamRunPayload(task.payload)) {
+            task.payload.provider = taskProvider;
+            if (processModel !== undefined) task.payload.model = processModel;
+            if (typeof task.config.reasoningEffort === 'string') task.payload.reasoningEffort = task.config.reasoningEffort;
+            if (typeof task.config.timeoutMs === 'number') task.payload.timeoutMs = task.config.timeoutMs;
+        }
         const seededTokenLimit = processModel !== undefined
             ? modelMetadataStore.getContextWindow(processModel)
             : undefined;
@@ -436,7 +442,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     : undefined,
                 autoProviderRouting: isChatPayload(task.payload)
                     ? task.payload.context?.autoProviderRouting
-                    : undefined,
+                    : isDreamRunPayload(task.payload) && payload?.context && typeof payload.context === 'object'
+                        ? (payload.context as Record<string, unknown>).autoProviderRouting
+                        : undefined,
             },
         };
 

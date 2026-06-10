@@ -181,7 +181,20 @@ describe('FileDreamStore', () => {
     it('records completed dream run coverage for incremental future passes', async () => {
         await withTempDir(async (dataDir) => {
             const store = new FileDreamStore({ dataDir });
-            const run = await store.createRun({ workspaceId: WORKSPACE_ID, trigger: 'manual' });
+            const run = await store.createRun({
+                workspaceId: WORKSPACE_ID,
+                trigger: 'manual',
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+                reasoningEffort: 'high',
+                timeoutMs: 3_600_000,
+            });
+            expect(run).toMatchObject({
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+                reasoningEffort: 'high',
+                timeoutMs: 3_600_000,
+            });
             const created = await store.createCandidate(candidate({
                 runId: run.id,
                 sourceRanges: [{ processId: 'process-card', startTurnIndex: 4, endTurnIndex: 7 }],
@@ -195,6 +208,12 @@ describe('FileDreamStore', () => {
                 candidateCardIds: [created.id, created.id],
             });
             expect(completed.status).toBe('completed');
+            expect(completed).toMatchObject({
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+                reasoningEffort: 'high',
+                timeoutMs: 3_600_000,
+            });
             expect(completed.candidateCardIds).toEqual([created.id]);
             expect(completed.sourceRanges).toEqual([
                 { processId: 'process-run', startTurnIndex: 0, endTurnIndex: 3 },

@@ -26,6 +26,7 @@ import {
     getTightestFiniteQuotaType,
     getUnlimitedQuotaTypes,
 } from '../shared/quotaUtils';
+import { formatProviderActivityTimeout, type AgentProviderWorkActivity } from '../shared/providerActivity';
 
 const ProviderModelsSection = lazy(() => import('../features/models/ProviderModelsSection').then(m => ({ default: m.ProviderModelsSection })));
 const ProviderEffortTiersSection = lazy(() => import('../features/models/ProviderEffortTiersSection').then(m => ({ default: m.ProviderEffortTiersSection })));
@@ -70,6 +71,9 @@ export interface AIProviderPageProps {
     quotaLoading: boolean;
     quotaError: string | null;
     onRefreshQuota: (options?: { force?: boolean }) => void;
+    providerActivity?: AgentProviderWorkActivity[];
+    providerActivityError?: string | null;
+    onRefreshProviderActivity?: () => void;
 
     sources: Record<string, string | undefined>;
 }
@@ -386,6 +390,74 @@ function AdminPercentInput({ value, onChange, testId }: {
     );
 }
 
+function ProviderActivitySection({
+    activity,
+    error,
+    onRefresh,
+}: {
+    activity: AgentProviderWorkActivity[];
+    error?: string | null;
+    onRefresh?: () => void;
+}) {
+    return (
+        <section className="aip-auto-card" aria-labelledby="provider-dream-activity-title" data-testid="provider-dream-activity">
+            <div className="aip-auto-head">
+                <div>
+                    <div className="aip-provider-line">
+                        <span className="aip-provider-main" id="provider-dream-activity-title">Dreams provider activity</span>
+                        <span className="aip-provider-source">queue + history</span>
+                    </div>
+                    <div className="aip-provider-meta">
+                        Active and recent Dream jobs are attributed to the provider, model, and timeout selected for each run.
+                    </div>
+                </div>
+                {onRefresh && (
+                    <button
+                        type="button"
+                        className="ar-btn ar-btn-secondary ar-btn-sm"
+                        onClick={onRefresh}
+                        data-testid="provider-dream-activity-refresh"
+                    >
+                        Refresh
+                    </button>
+                )}
+            </div>
+            {error ? (
+                <div className="aip-error-banner" data-testid="provider-dream-activity-error">⚠ {error}</div>
+            ) : activity.length === 0 ? (
+                <div className="aip-auto-disabled" data-testid="provider-dream-activity-empty">
+                    No active or recent Dreams work.
+                </div>
+            ) : (
+                <div className="aip-auto-rules">
+                    {activity.map(item => {
+                        const providerLabel = PROVIDER_LABELS[item.provider] ?? item.provider;
+                        const trigger = item.trigger === 'idle' ? 'Idle' : item.trigger === 'manual' ? 'Manual' : 'Dreams';
+                        const status = item.status ? item.status.replace(/-/g, ' ') : 'unknown';
+                        return (
+                            <div className="aip-auto-rule" key={item.id} data-testid={`provider-dream-activity-${item.id}`}>
+                                <div className="aip-auto-rule-main">
+                                    <ProviderAvatar provider={item.provider} />
+                                    <div>
+                                        <div className="aip-provider-line">
+                                            <span className="aip-provider-main">{item.label}</span>
+                                            <span className="ar-badge ar-badge-accent">{providerLabel}</span>
+                                        </div>
+                                        <div className="aip-provider-meta">
+                                            {trigger} · {status} · {item.model ?? 'provider default'} · {formatProviderActivityTimeout(item.timeoutMs)}
+                                        </div>
+                                        {item.error && <div className="aip-install-error">✕ {item.error}</div>}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </section>
+    );
+}
+
 type AIProviderSubTab = 'routing' | 'models';
 const AI_PROVIDER_SUBTABS: { id: AIProviderSubTab; label: string; icon: string }[] = [
     { id: 'routing', label: 'Provider routing', icon: '◇' },
@@ -401,6 +473,7 @@ export function AIProviderPage(props: AIProviderPageProps) {
         providerAvailability, sdkInstallStatuses, sdkInstallErrors, onInstallSdk,
         dirty, saving, onSave, onCancel,
         quotaData, quotaLoading, quotaError, onRefreshQuota,
+        providerActivity = [], providerActivityError, onRefreshProviderActivity,
     } = props;
 
     const normalizedAutoRouting = normalizeAutoProviderRoutingConfig(autoRoutingConfig);
@@ -825,6 +898,11 @@ export function AIProviderPage(props: AIProviderPageProps) {
                         </tbody>
                     </table>
                 </div>
+                <ProviderActivitySection
+                    activity={providerActivity}
+                    error={providerActivityError}
+                    onRefresh={onRefreshProviderActivity}
+                />
                 {/* Unavailability warnings */}
                 {defaultProvider === 'codex' && providerAvailability['codex'] && !providerAvailability['codex'].available && (
                     <div className="aip-unavailable-banner" data-testid="codex-sdk-unavailable-banner">

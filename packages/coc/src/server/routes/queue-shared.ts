@@ -110,6 +110,22 @@ export function serializeTask(task: QueuedTask): Record<string, unknown> {
     const payload = task.payload as any;
     const { images, imagesFilePath, ...restPayload } = payload || {};
     const imagesCount = Array.isArray(images) ? images.length : (payload?.imagesCount ?? 0);
+    const provider = typeof payload?.provider === 'string' ? payload.provider : undefined;
+    const model = typeof task.config?.model === 'string'
+        ? task.config.model
+        : typeof payload?.model === 'string'
+            ? payload.model
+            : undefined;
+    const reasoningEffort = typeof task.config?.reasoningEffort === 'string'
+        ? task.config.reasoningEffort
+        : typeof payload?.reasoningEffort === 'string'
+            ? payload.reasoningEffort
+            : undefined;
+    const timeoutMs = typeof task.config?.timeoutMs === 'number'
+        ? task.config.timeoutMs
+        : typeof payload?.timeoutMs === 'number'
+            ? payload.timeoutMs
+            : undefined;
     const serializedPayload = {
         ...restPayload,
         imagesCount,
@@ -131,6 +147,10 @@ export function serializeTask(task: QueuedTask): Record<string, unknown> {
         customTitle: (task as any).customTitle,
         lastMessagePreview: (task as any).lastMessagePreview,
         title: (task as any).title,
+        provider,
+        model,
+        reasoningEffort,
+        timeoutMs,
         processId: task.processId,
         result: task.result,
         error: task.error,
@@ -166,6 +186,22 @@ export function serializeTaskSummary(task: QueuedTask): Record<string, unknown> 
     const imagesCount = Array.isArray(payload?.images)
         ? payload.images.length
         : (payload?.imagesCount ?? 0);
+    const provider = typeof payload?.provider === 'string' ? payload.provider : undefined;
+    const model = typeof task.config?.model === 'string'
+        ? task.config.model
+        : typeof payload?.model === 'string'
+            ? payload.model
+            : undefined;
+    const reasoningEffort = typeof task.config?.reasoningEffort === 'string'
+        ? task.config.reasoningEffort
+        : typeof payload?.reasoningEffort === 'string'
+            ? payload.reasoningEffort
+            : undefined;
+    const timeoutMs = typeof task.config?.timeoutMs === 'number'
+        ? task.config.timeoutMs
+        : typeof payload?.timeoutMs === 'number'
+            ? payload.timeoutMs
+            : undefined;
 
     // Only the payload sub-fields the SPA list views actually read
     const slimPayload: Record<string, unknown> = {
@@ -225,6 +261,10 @@ export function serializeTaskSummary(task: QueuedTask): Record<string, unknown> 
         customTitle: (task as any).customTitle,
         lastMessagePreview: (task as any).lastMessagePreview,
         title: (task as any).title,
+        provider,
+        model,
+        reasoningEffort,
+        timeoutMs,
         processId: task.processId,
         error: truncateString(task.error, 500),
         retryCount: task.retryCount,

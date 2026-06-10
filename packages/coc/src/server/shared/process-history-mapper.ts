@@ -60,6 +60,9 @@ export function processToHistorySummary(proc: AIProcess): HistorySummary {
                 ? {
                     kind: 'dream-run',
                     trigger: (proc.metadata.dream as Record<string, unknown>).trigger,
+                    provider: proc.metadata?.provider,
+                    model: proc.metadata?.model,
+                    reasoningEffort: proc.metadata?.reasoningEffort,
                     timeoutMs: (proc.metadata.dream as Record<string, unknown>).timeoutMs,
                 }
                 : {}),
@@ -102,6 +105,8 @@ export function processToTaskDetail(proc: AIProcess): Partial<QueuedTask> {
             ...(proc.metadata?.dream && typeof proc.metadata.dream === 'object'
                 ? {
                     trigger: (proc.metadata.dream as Record<string, unknown>).trigger,
+                    model: proc.metadata?.model,
+                    reasoningEffort: proc.metadata?.reasoningEffort,
                     timeoutMs: (proc.metadata.dream as Record<string, unknown>).timeoutMs,
                 }
                 : {}),
@@ -113,6 +118,12 @@ export function processToTaskDetail(proc: AIProcess): Partial<QueuedTask> {
         startedAt: proc.startTime ? new Date(proc.startTime).getTime() : undefined,
         completedAt: proc.endTime ? new Date(proc.endTime).getTime() : undefined,
         error: proc.error,
+        provider: proc.metadata?.provider,
+        model: proc.metadata?.model,
+        reasoningEffort: proc.metadata?.reasoningEffort,
+        timeoutMs: proc.metadata?.dream && typeof proc.metadata.dream === 'object'
+            ? (proc.metadata.dream as Record<string, unknown>).timeoutMs as number | undefined
+            : undefined,
         config: {
             model: proc.metadata?.model as string | undefined,
             reasoningEffort: proc.metadata?.reasoningEffort as string | undefined,
@@ -146,6 +157,8 @@ export function processToQueuedTask(proc: AIProcess): Partial<QueuedTask> {
             ...(proc.metadata?.dream && typeof proc.metadata.dream === 'object'
                 ? {
                     trigger: (proc.metadata.dream as Record<string, unknown>).trigger,
+                    model: proc.metadata?.model,
+                    reasoningEffort: proc.metadata?.reasoningEffort,
                     timeoutMs: (proc.metadata.dream as Record<string, unknown>).timeoutMs,
                 }
                 : {}),
@@ -154,6 +167,19 @@ export function processToQueuedTask(proc: AIProcess): Partial<QueuedTask> {
         processId: proc.id,
         repoId: proc.metadata?.workspaceId,
         createdAt: Date.now(),
+        provider: proc.metadata?.provider,
+        model: proc.metadata?.model,
+        reasoningEffort: proc.metadata?.reasoningEffort,
+        timeoutMs: proc.metadata?.dream && typeof proc.metadata.dream === 'object'
+            ? (proc.metadata.dream as Record<string, unknown>).timeoutMs as number | undefined
+            : undefined,
+        config: proc.metadata?.dream && typeof proc.metadata.dream === 'object'
+            ? {
+                model: proc.metadata?.model as string | undefined,
+                reasoningEffort: proc.metadata?.reasoningEffort as string | undefined,
+                timeoutMs: (proc.metadata.dream as Record<string, unknown>).timeoutMs as number | undefined,
+            } as any
+            : undefined,
         customTitle: proc.customTitle,
         lastMessagePreview: proc.lastMessagePreview,
         title: proc.title,

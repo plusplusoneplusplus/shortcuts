@@ -286,6 +286,45 @@ describe('processToTaskDetail', () => {
         expect((task.config as any).model).toBe('gpt-4');
     });
 
+    it('should preserve dream-run provider, model, and timeout attribution', () => {
+        const proc: AIProcess = {
+            ...baseProcess,
+            type: 'dream-run',
+            metadata: {
+                type: 'dream-run',
+                workspaceId: 'ws-dream',
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+                reasoningEffort: 'high',
+                dream: {
+                    workspaceId: 'ws-dream',
+                    trigger: 'manual',
+                    timeoutMs: 3_600_000,
+                },
+            },
+        } as AIProcess;
+
+        const task = processToTaskDetail(proc);
+
+        expect(task.type).toBe('dream-run');
+        expect((task as any).provider).toBe('claude');
+        expect((task as any).model).toBe('claude-sonnet-4.6');
+        expect((task as any).timeoutMs).toBe(3_600_000);
+        expect((task.payload as any)).toMatchObject({
+            kind: 'dream-run',
+            provider: 'claude',
+            model: 'claude-sonnet-4.6',
+            reasoningEffort: 'high',
+            trigger: 'manual',
+            timeoutMs: 3_600_000,
+        });
+        expect((task.config as any)).toMatchObject({
+            model: 'claude-sonnet-4.6',
+            reasoningEffort: 'high',
+            timeoutMs: 3_600_000,
+        });
+    });
+
     it('should use title as displayName', () => {
         const task = processToTaskDetail(baseProcess);
         expect(task.displayName).toBe('Summarize Doc');

@@ -172,12 +172,21 @@ describe('DreamRunExecutor', () => {
         await withTempDir(async (dataDir) => {
             const { runner, store } = createRunner({ dataDir });
 
-            const result = await runner.runManual(WORKSPACE_ID, { model: 'claude-sonnet-4.6' });
+            const result = await runner.runManual(WORKSPACE_ID, {
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+                reasoningEffort: 'high',
+                timeoutMs: 3_600_000,
+            });
 
             expect(result.run).toMatchObject({
                 workspaceId: WORKSPACE_ID,
                 trigger: 'manual',
                 status: 'completed',
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+                reasoningEffort: 'high',
+                timeoutMs: 3_600_000,
                 sourceRanges: [{ processId: 'process-1', startTurnIndex: 0, endTurnIndex: 1 }],
             });
             expect(result.cards).toHaveLength(1);
@@ -227,6 +236,7 @@ describe('DreamRunExecutor', () => {
             expect(runs[0]).toMatchObject({
                 status: 'failed',
                 error: 'model unavailable',
+                timeoutMs: 3_600_000,
                 sourceRanges: [{ processId: 'process-1', startTurnIndex: 0, endTurnIndex: 1 }],
             });
         });

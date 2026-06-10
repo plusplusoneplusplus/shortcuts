@@ -20,6 +20,7 @@ import { Spinner, ToastContainer, useToast } from '../ui';
 import { getLinkHandlersMeta } from '../utils/link-handler';
 import { patchGlobalPreferences } from '../utils/preferencesApi';
 import { FeatureTip } from '../welcome/FeatureTip';
+import { loadDreamProviderActivity, type AgentProviderWorkActivity } from '../shared/providerActivity';
 import './admin-redesign.css';
 import { DbBrowserSection } from './DbBrowserSection';
 import { PromptsPanel } from './PromptsPanel';
@@ -396,6 +397,8 @@ export function AdminPanel() {
     const [quotaData, setQuotaData] = useState<import('@plusplusoneplusplus/coc-client').AgentProvidersQuotaResponse | null>(null);
     const [quotaLoading, setQuotaLoading] = useState(false);
     const [quotaError, setQuotaError] = useState<string | null>(null);
+    const [dreamProviderActivity, setDreamProviderActivity] = useState<AgentProviderWorkActivity[]>([]);
+    const [dreamProviderActivityError, setDreamProviderActivityError] = useState<string | null>(null);
 
     // Snapshots for per-card dirty tracking (set when config/prefs loads)
     const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
@@ -732,12 +735,22 @@ export function AdminPanel() {
         }
     }, []);
 
+    const refreshDreamProviderActivity = useCallback(async () => {
+        setDreamProviderActivityError(null);
+        try {
+            setDreamProviderActivity(await loadDreamProviderActivity());
+        } catch (err: unknown) {
+            setDreamProviderActivityError(getSpaCocClientErrorMessage(err, 'Failed to fetch Dreams provider activity'));
+        }
+    }, []);
+
     useEffect(() => {
         if (activeTab !== 'agents' || isContainerMode()) {
             return;
         }
         void handleRefreshQuota();
-    }, [activeTab, handleRefreshQuota]);
+        void refreshDreamProviderActivity();
+    }, [activeTab, handleRefreshQuota, refreshDreamProviderActivity]);
 
     // ── Chat Experience card ──
     const handleSaveChat = useCallback(async () => {
@@ -1961,6 +1974,9 @@ export function AdminPanel() {
                                     quotaLoading={quotaLoading}
                                     quotaError={quotaError}
                                     onRefreshQuota={handleRefreshQuota}
+                                    providerActivity={dreamProviderActivity}
+                                    providerActivityError={dreamProviderActivityError}
+                                    onRefreshProviderActivity={refreshDreamProviderActivity}
                                     sources={sources}
                                 />
                             )}

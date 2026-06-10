@@ -329,6 +329,34 @@ describe('CLITaskExecutor executor dispatch', () => {
             expect(mockDreamTaskExecute).toHaveBeenCalledOnce();
             expect(mockDreamTaskExecute).toHaveBeenCalledWith(task);
         });
+
+        it('backfills the resolved default provider into dream-run payloads before dispatch', async () => {
+            mockDreamTaskExecute.mockResolvedValue({
+                response: 'Dream run completed',
+                run: { id: 'dream-run-1', status: 'completed' },
+            });
+
+            const executor = new CLITaskExecutor(store, { provider: 'claude' });
+            const task = makeDreamTask('dream-default-provider-1');
+            delete (task.payload as any).provider;
+            task.config = {
+                model: 'claude-sonnet-4.6',
+                reasoningEffort: 'high',
+                timeoutMs: 3_600_000,
+            } as any;
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(true);
+            expect(mockDreamTaskExecute).toHaveBeenCalledOnce();
+            const dispatchedTask = mockDreamTaskExecute.mock.calls[0][0] as QueuedTask;
+            expect(dispatchedTask.payload).toMatchObject({
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+                reasoningEffort: 'high',
+                timeoutMs: 3_600_000,
+            });
+        });
     });
 
     // ========================================================================
