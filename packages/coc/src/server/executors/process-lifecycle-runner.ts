@@ -51,6 +51,7 @@ import { finalizeOrphanedProcess } from '../processes/finalize-orphaned-turn';
 import {
     isChatFollowUp,
     isChatPayload,
+    isDreamRunPayload,
     isPrClassificationPayload,
     isRunWorkflowPayload,
     isRunScriptPayload,
@@ -200,6 +201,9 @@ async function resolveExecutionProvider(
     opts: LifecycleRunnerOptions,
     fallbackProvider: ChatProvider,
 ): Promise<ChatProvider> {
+    if (isDreamRunPayload(task.payload)) {
+        return isConcreteProvider(task.payload.provider) ? task.payload.provider : fallbackProvider;
+    }
     if (!isChatPayload(task.payload)) return fallbackProvider;
 
     const payload = task.payload as ChatPayload;
@@ -401,6 +405,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 queueTaskId: task.id,
                 priority: task.priority,
                 model: processModel,
+                reasoningEffort: task.config.reasoningEffort,
                 mode: normalizedPayloadMode,
                 workspaceId: payload?.workspaceId || task.repoId,
                 // Use per-task provider from payload when available; fall back to
@@ -422,6 +427,13 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 forEach: serializeForEachMetadata(task.payload),
                 mapReduce: serializeMapReduceMetadata(task.payload),
                 ralph: serializeRalphMetadata(task.payload),
+                dream: isDreamRunPayload(task.payload)
+                    ? {
+                        workspaceId: task.payload.workspaceId,
+                        trigger: task.payload.trigger,
+                        timeoutMs: task.config.timeoutMs,
+                    }
+                    : undefined,
                 autoProviderRouting: isChatPayload(task.payload)
                     ? task.payload.context?.autoProviderRouting
                     : undefined,

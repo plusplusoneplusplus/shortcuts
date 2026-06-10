@@ -33,13 +33,14 @@ import { createSuggestFollowUpsTool } from '../llm-tools/suggest-follow-ups-tool
 import { createAskUserTool } from '../llm-tools/ask-user-tool';
 import type { AskUserAnswerInput, AskUserAnswerValue, AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import { createCreateUpdateWorkItemTool, type BroadcastWorkItemFn } from '../llm-tools/create-update-work-item-tool';
-import type { ChatMode, ChatPayload, PrClassificationPayload, RunScriptPayload } from '../tasks/task-types';
+import type { ChatMode, ChatPayload, DreamRunPayload, PrClassificationPayload, RunScriptPayload } from '../tasks/task-types';
 import {
     hasCommitChatContext,
     hasPullRequestChatContext,
     hasResolveCommentsContext,
     hasTaskGenerationContext,
     isChatPayload,
+    isDreamRunPayload,
     isPrClassificationPayload,
     isRunScriptPayload,
     isRunWorkflowPayload,
@@ -232,6 +233,12 @@ export function extractPrompt(task: QueuedTask): string {
 
     if (isPrClassificationPayload(task.payload)) {
         return (task.payload as unknown as PrClassificationPayload).prompt;
+    }
+
+    if (isDreamRunPayload(task.payload)) {
+        const payload = task.payload as unknown as DreamRunPayload;
+        const trigger = payload.trigger === 'idle' ? 'idle-triggered' : 'manual';
+        return `Run ${trigger} Dreams analysis for workspace ${payload.workspaceId}`;
     }
 
     if (isChatPayload(task.payload)) {

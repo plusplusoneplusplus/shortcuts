@@ -152,7 +152,7 @@ All Dreams routes are workspace-scoped and gated by `dreams.enabled` (default `f
 |--------|------|-------------|
 | GET | `/api/workspaces/:id/dreams/cards` | List visible dream cards by default. Query `includeHidden=true` includes candidate/approved/dismissed/converted/superseded history; `status=visible,approved` filters by card status |
 | GET | `/api/workspaces/:id/dreams/cards/:cardId` | Read a dream card detail, including source ranges, confidence, fingerprint, and dedup rationale |
-| POST | `/api/workspaces/:id/dreams/run` | Manually run a read-only Ask-mode dream pass for the workspace. Body accepts optional `provider`, `config.model`, `config.reasoningEffort`, `confidenceThreshold`, `maxCandidates`, `conversationLimit`, and `timeoutMs` |
+| POST | `/api/workspaces/:id/dreams/run` | Enqueue a visible queue-backed `dream-run` task for a manual read-only Ask-mode dream pass in the workspace. Body accepts optional `provider`, `config.model`, `config.reasoningEffort`, `confidenceThreshold`, `maxCandidates`, `conversationLimit`, and `timeoutMs`; response is `202 { task }` |
 | POST | `/api/workspaces/:id/dreams/cards/:cardId/approve` | Mark a visible card approved; this records intent only and does not perform a next action |
 | POST | `/api/workspaces/:id/dreams/cards/:cardId/dismiss` | Dismiss a visible card, optionally recording `dedupRationale` |
 | POST | `/api/workspaces/:id/dreams/cards/:cardId/convert` | Mark a visible or approved card converted with `{ artifactType, artifactId, artifactUrl? }` after an explicit external next action completes |

@@ -35,8 +35,8 @@ describe('DreamsClient', () => {
         expect(transport.request).toHaveBeenCalledWith('/workspaces/ws-1/dreams/cards/dream-1');
     });
 
-    it('runs a manual dream pass', async () => {
-        (transport.request as any).mockResolvedValue({ run: { id: 'run-1' }, cards: [] });
+    it('enqueues a manual dream pass', async () => {
+        (transport.request as any).mockResolvedValue({ task: { id: 'task-1', type: 'dream-run' } });
 
         await client.runNow('ws-1', {
             provider: 'claude',

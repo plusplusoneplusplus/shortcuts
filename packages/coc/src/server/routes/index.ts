@@ -19,6 +19,7 @@ import type { WikiManager } from '../wiki';
 import { registerApiRoutes } from '../core/api-handler';
 import { registerQueueRoutes } from '../queue/queue-handler';
 import { prepareTaskForEnqueue } from './queue-enqueue';
+import { serializeTask } from './queue-shared';
 import { registerTaskRoutes, registerTaskWriteRoutes } from '../tasks/tasks-handler';
 import { registerTaskGenerationRoutes } from '../tasks/task-generation-handler';
 import { registerPromptRoutes } from '../prompts/prompt-handler';
@@ -83,7 +84,7 @@ import { TERMINAL_WORK_ITEM_STATUSES, WORK_ITEM_STATUSES, type WorkItemChangeCom
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
 import type { ResolvedCLIConfig } from '../../config';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
-import type { ChatProvider } from '../tasks/task-types';
+import { TaskDefs, type ChatProvider } from '../tasks/task-types';
 import type { TerminalSessionManager } from '../terminal/index';
 import { registerRemoteServerRoutes } from '../servers/remote-server-routes';
 import { RemoteServerStore } from '../servers/remote-server-store';
@@ -106,8 +107,9 @@ import { createMapReducePlanGenerator } from '../map-reduce/map-reduce-plan-gene
 import { MapReduceRunExecutor } from '../map-reduce/map-reduce-run-executor';
 import { registerDreamRoutes } from '../dreams/dream-routes';
 import { FileDreamStore } from '../dreams/dream-store';
-import { DreamRunExecutor } from '../dreams/dream-runner';
+import { DreamRunExecutor, type DreamRunRequestOptions } from '../dreams/dream-runner';
 import { DreamIdleScheduler } from '../dreams/dream-idle-scheduler';
+import { DEFAULT_DREAM_ANALYSIS_TIMEOUT_MS } from '../dreams/dream-analyzer';
 import { registerLoopRoutes } from '../loops/loop-handler';
 import type { LoopStore } from '../loops/loop-store';
 import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
@@ -719,27 +721,79 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                 }));
         },
     });
+    bridge.setDreamRunExecutor(dreamRunExecutor);
+    const getDefaultDreamRunOptions = (): DreamRunRequestOptions => {
+        const dreams = (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.dreams;
+        return {
+            minIdleMs: dreams?.minIdleMs,
+            confidenceThreshold: dreams?.confidenceThreshold,
+            maxCandidates: dreams?.maxCandidates,
+            conversationLimit: dreams?.conversationLimit,
+            timeoutMs: dreams?.timeoutMs ?? DEFAULT_DREAM_ANALYSIS_TIMEOUT_MS,
+        };
+    };
+    const buildDreamRunTask = (
+        workspaceId: string,
+        trigger: 'manual' | 'idle',
+        options: DreamRunRequestOptions,
+    ): CreateTaskInput => {
+        const mergedOptions: DreamRunRequestOptions = {
+            ...getDefaultDreamRunOptions(),
+            ...options,
+        };
+        const payload: Record<string, unknown> = {
+            kind: TaskDefs.dreamRun.kind,
+            workspaceId,
+            trigger,
+            ...(mergedOptions.provider ? { provider: mergedOptions.provider } : {}),
+            ...(mergedOptions.model ? { model: mergedOptions.model } : {}),
+            ...(mergedOptions.reasoningEffort ? { reasoningEffort: mergedOptions.reasoningEffort } : {}),
+            ...(mergedOptions.confidenceThreshold !== undefined ? { confidenceThreshold: mergedOptions.confidenceThreshold } : {}),
+            ...(mergedOptions.maxCandidates !== undefined ? { maxCandidates: mergedOptions.maxCandidates } : {}),
+            ...(mergedOptions.conversationLimit !== undefined ? { conversationLimit: mergedOptions.conversationLimit } : {}),
+            ...(mergedOptions.minIdleMs !== undefined ? { minIdleMs: mergedOptions.minIdleMs } : {}),
+            ...(mergedOptions.timeoutMs !== undefined ? { timeoutMs: mergedOptions.timeoutMs } : {}),
+        };
+        return {
+            type: TaskDefs.dreamRun.kind,
+            priority: trigger === 'idle' ? 'low' : 'normal',
+            repoId: workspaceId,
+            payload,
+            config: {
+                ...(mergedOptions.model ? { model: mergedOptions.model } : {}),
+                ...(mergedOptions.reasoningEffort ? { reasoningEffort: mergedOptions.reasoningEffort } : {}),
+                ...(mergedOptions.timeoutMs !== undefined ? { timeoutMs: mergedOptions.timeoutMs } : {}),
+            },
+            displayName: `Dream Run: ${trigger === 'idle' ? 'Idle' : 'Manual'}`,
+        };
+    };
+    const enqueueDreamRun = async (
+        workspaceId: string,
+        trigger: 'manual' | 'idle',
+        options: DreamRunRequestOptions,
+    ): Promise<Record<string, unknown>> => {
+        if (readRepoPreferences(dataDir, workspaceId).dreams?.enabled !== true) {
+            throw new Error(`Dreaming is not enabled for workspace '${workspaceId}'`);
+        }
+        const input = buildDreamRunTask(workspaceId, trigger, options);
+        await prepareEnqueueTask(input);
+        const taskId = await bridge.enqueue(input);
+        const task = bridge.findManagerForTask(taskId)?.getTask(taskId);
+        return task ? serializeTask(task) : { id: taskId };
+    };
     const dreamIdleScheduler = new DreamIdleScheduler({
         getWorkspaceIds: async () => (await store.getWorkspaces()).map(workspace => workspace.id),
         getDreamsEnabled,
         getWorkspaceDreamsEnabled: (workspaceId) => readRepoPreferences(dataDir, workspaceId).dreams?.enabled === true,
-        runIdle: (workspaceId, options) => dreamRunExecutor.runIdle(workspaceId, options),
-        getRunOptions: () => {
-            const dreams = (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.dreams;
-            return {
-                minIdleMs: dreams?.minIdleMs,
-                confidenceThreshold: dreams?.confidenceThreshold,
-                maxCandidates: dreams?.maxCandidates,
-                conversationLimit: dreams?.conversationLimit,
-                timeoutMs: dreams?.timeoutMs,
-            };
-        },
+        checkIdleReadiness: (workspaceId, options) => dreamRunExecutor.checkIdleReadiness(workspaceId, options),
+        enqueueIdleRun: (workspaceId, options) => enqueueDreamRun(workspaceId, 'idle', options),
+        getRunOptions: getDefaultDreamRunOptions,
         intervalMs: (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.dreams?.idleCheckIntervalMs,
     });
     registerDreamRoutes({
         routes,
         store: dreamStore,
-        runner: dreamRunExecutor,
+        enqueueRun: (workspaceId, options) => enqueueDreamRun(workspaceId, 'manual', options),
         getDreamsEnabled,
     });
 

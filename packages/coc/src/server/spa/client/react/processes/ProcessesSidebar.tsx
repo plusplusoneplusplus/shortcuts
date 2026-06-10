@@ -535,9 +535,8 @@ function QueueTaskCard({ task, now, selected, onClick, compact = false, activeWo
             ? formatDuration(task.duration)
             : '';
 
-    const preview = task.prompt
-        ? (task.prompt.length > 60 ? task.prompt.slice(0, 60) + '…' : task.prompt)
-        : task.id;
+    const previewSource = task.displayName || task.prompt || task.payload?.prompt || task.id;
+    const preview = previewSource.length > 60 ? previewSource.slice(0, 60) + '…' : previewSource;
 
     const repo = repoName(task.repoId) || repoName(task.workingDirectory) || repoName(task.payload?.workingDirectory);
     const sessionContextPayload = sessionContextDragEnabled

@@ -242,6 +242,10 @@ export class DreamRunExecutor {
         return this.executeRun(normalizeWorkspaceId(workspaceId), 'manual', options);
     }
 
+    async runQueued(workspaceId: string, trigger: DreamRunTrigger, options: DreamRunRequestOptions = {}): Promise<DreamRunExecutionResult> {
+        return this.executeRun(normalizeWorkspaceId(workspaceId), trigger, options);
+    }
+
     async runIdle(workspaceId: string, options: DreamRunRequestOptions = {}): Promise<DreamIdleRunResult> {
         const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
         if (!this.listWorkspaceTasks) {

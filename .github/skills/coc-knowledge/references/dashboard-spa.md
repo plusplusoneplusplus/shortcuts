@@ -20,7 +20,7 @@ spa/client/react/
 ├── layout/             # Layout (Router, TopBar, BottomNav, ThemeProvider)
 ├── features/
 │   ├── chat/           # Chat UI: ChatDetail, ChatListPane, ConversationArea
-│   ├── dreams/         # Workspace Dreams review panel with feature/opt-in states, run-now, filters, source links, and card lifecycle actions
+│   ├── dreams/         # Workspace Dreams review panel with feature/opt-in states, queue-backed run-now task summary, filters, source links, and card lifecycle actions
 │   ├── memory/         # Memory V2 route, facts/review/episodes tabs, repo memory settings section
 │   ├── notes/          # Notes UI: NoteEditor, Mermaid zoom/pan, sidebar, multi-root dropdown with modifier/range root selection and bulk root removal (useNotesRoots)
 │   ├── pull-requests/  # PR dashboard: attention groups, provider-derived PR helpers, shared provider-id/displayName Team author matching, Team auto-classification triggers, real diff-stat queue badges/risk, deterministic review summary, BatchCommandPanel

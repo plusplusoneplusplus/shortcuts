@@ -4,7 +4,7 @@ import { parseBody, sendJSON } from '../core/api-handler';
 import { APIError, badRequest, conflict, handleAPIError, notFound } from '../errors';
 import { VALID_CHAT_PROVIDERS, VALID_REASONING_EFFORTS, type ChatProvider, type ReasoningEffort } from '../tasks/task-types';
 import type { FileDreamStore } from './dream-store';
-import type { DreamRunExecutor, DreamRunExecutionResult, DreamRunRequestOptions } from './dream-runner';
+import type { DreamRunRequestOptions } from './dream-runner';
 import {
     DREAM_CARD_STATUSES,
     DREAM_CONVERSION_ARTIFACT_TYPES,
@@ -16,7 +16,7 @@ import {
 export interface DreamRouteContext {
     routes: Route[];
     store: FileDreamStore;
-    runner: Pick<DreamRunExecutor, 'runManual'>;
+    enqueueRun: (workspaceId: string, options: DreamRunRequestOptions) => Promise<Record<string, unknown>>;
     getDreamsEnabled: () => boolean | Promise<boolean>;
 }
 
@@ -236,28 +236,8 @@ function toRouteError(error: unknown): APIError {
     return badRequest(message);
 }
 
-function summarizeRunResult(result: DreamRunExecutionResult): Record<string, unknown> {
-    return {
-        run: result.run,
-        cards: result.cards,
-        selection: {
-            workspaceId: result.selection.workspaceId,
-            conversationCount: result.selection.conversations.length,
-            scannedProcessCount: result.selection.scannedProcessCount,
-            skipped: result.selection.skipped,
-        },
-        analysis: {
-            sourceRanges: result.analysis.sourceRanges,
-            rawCandidateCount: result.analysis.rawCandidateCount,
-            deterministicCandidateCount: result.analysis.deterministicCandidateCount,
-            acceptedCandidateCount: result.analysis.candidates.length,
-            rejectedCandidateCount: result.analysis.rejected.length,
-        },
-    };
-}
-
 export function registerDreamRoutes(ctx: DreamRouteContext): void {
-    const { routes, store, runner } = ctx;
+    const { routes, store, enqueueRun } = ctx;
 
     routes.push({
         method: 'GET',
@@ -284,8 +264,8 @@ export function registerDreamRoutes(ctx: DreamRouteContext): void {
             if (body === null) return;
             try {
                 const workspaceId = decodeCapture(match!, 1);
-                const result = await runner.runManual(workspaceId, parseRunOptions(body));
-                sendJSON(res, 201, summarizeRunResult(result));
+                const task = await enqueueRun(workspaceId, parseRunOptions(body));
+                sendJSON(res, 202, { task });
             } catch (err) {
                 handleAPIError(res, toRouteError(err));
             }

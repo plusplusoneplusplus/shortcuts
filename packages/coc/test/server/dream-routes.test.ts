@@ -5,7 +5,6 @@ import * as path from 'path';
 import type { Route } from '../../src/server/types';
 import { FileDreamStore } from '../../src/server/dreams/dream-store';
 import { registerDreamRoutes } from '../../src/server/dreams/dream-routes';
-import type { DreamRunExecutionResult } from '../../src/server/dreams/dream-runner';
 import type { DreamCard } from '../../src/server/dreams/types';
 
 const WORKSPACE_ID = 'ws-dream-routes';
@@ -101,48 +100,12 @@ async function createVisibleCard(store: FileDreamStore, workspaceId = WORKSPACE_
     });
 }
 
-function runResult(card: DreamCard): DreamRunExecutionResult {
-    return {
-        run: {
-            id: 'dream-run-test',
-            workspaceId: WORKSPACE_ID,
-            trigger: 'manual',
-            status: 'completed',
-            sourceRanges: card.sourceRanges,
-            candidateCardIds: [card.id],
-            startedAt: '2026-06-10T00:00:00.000Z',
-            completedAt: '2026-06-10T00:01:00.000Z',
-        },
-        cards: [card],
-        selection: {
-            workspaceId: WORKSPACE_ID,
-            conversations: [],
-            scannedProcessCount: 2,
-            skipped: {
-                wrongWorkspace: 0,
-                nonCompleted: 0,
-                archived: 0,
-                missingProcess: 0,
-                noVisibleTurns: 1,
-                fullyCovered: 0,
-            },
-        },
-        analysis: {
-            candidates: [],
-            rejected: [{ stage: 'prefilter', candidateIndex: 0, reason: 'low confidence' }],
-            rawCandidateCount: 2,
-            deterministicCandidateCount: 1,
-            sourceRanges: card.sourceRanges,
-        },
-    };
-}
-
 describe('Dream routes', () => {
     let tmpDir: string;
     let store: FileDreamStore;
     let routes: Route[];
     let dreamsEnabled: boolean;
-    let runManual: ReturnType<typeof vi.fn>;
+    let enqueueRun: ReturnType<typeof vi.fn>;
 
     beforeEach(async () => {
         candidateSequence = 0;
@@ -150,11 +113,11 @@ describe('Dream routes', () => {
         store = new FileDreamStore({ dataDir: tmpDir });
         routes = [];
         dreamsEnabled = true;
-        runManual = vi.fn();
+        enqueueRun = vi.fn();
         registerDreamRoutes({
             routes,
             store,
-            runner: { runManual },
+            enqueueRun,
             getDreamsEnabled: () => dreamsEnabled,
         });
     });
@@ -169,7 +132,7 @@ describe('Dream routes', () => {
         const res = await dispatch(routes, 'GET', `/api/workspaces/${WORKSPACE_ID}/dreams/cards`);
 
         expect(res.statusCode).toBe(404);
-        expect(runManual).not.toHaveBeenCalled();
+        expect(enqueueRun).not.toHaveBeenCalled();
     });
 
     it('lists only visible cards by default and preserves workspace isolation', async () => {
@@ -213,8 +176,13 @@ describe('Dream routes', () => {
     });
 
     it('runs a manual dream pass with validated run options', async () => {
-        const card = await createVisibleCard(store);
-        runManual.mockResolvedValueOnce(runResult(card));
+        enqueueRun.mockResolvedValueOnce({
+            id: 'dream-task-1',
+            type: 'dream-run',
+            status: 'queued',
+            displayName: 'Dream Run: Manual',
+            payload: { kind: 'dream-run', workspaceId: WORKSPACE_ID, trigger: 'manual' },
+        });
 
         const res = await dispatch(routes, 'POST', `/api/workspaces/${WORKSPACE_ID}/dreams/run`, {
             provider: 'claude',
@@ -225,8 +193,8 @@ describe('Dream routes', () => {
             timeoutMs: 30_000,
         });
 
-        expect(res.statusCode).toBe(201);
-        expect(runManual).toHaveBeenCalledWith(WORKSPACE_ID, {
+        expect(res.statusCode).toBe(202);
+        expect(enqueueRun).toHaveBeenCalledWith(WORKSPACE_ID, {
             provider: 'claude',
             model: 'claude-sonnet-4.6',
             reasoningEffort: 'high',
@@ -235,9 +203,12 @@ describe('Dream routes', () => {
             conversationLimit: 5,
             timeoutMs: 30_000,
         });
-        expect(res.body.cards).toHaveLength(1);
-        expect(res.body.selection).toMatchObject({ scannedProcessCount: 2, conversationCount: 0 });
-        expect(res.body.analysis).toMatchObject({ acceptedCandidateCount: 0, rejectedCandidateCount: 1 });
+        expect(res.body.task).toMatchObject({
+            id: 'dream-task-1',
+            type: 'dream-run',
+            status: 'queued',
+            displayName: 'Dream Run: Manual',
+        });
     });
 
     it('approves, dismisses, converts, and supersedes cards through explicit lifecycle routes', async () => {

@@ -14,6 +14,7 @@ import { DREAM_CONVERSION_ARTIFACT_TYPES } from '@plusplusoneplusplus/coc-client
 import { Button, Card, Spinner, cn } from '../../ui';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { isDreamsEnabled } from '../../utils/config';
+import { toQueueProcessId } from '../../utils/queue-process-id';
 
 type DreamFilterId = 'visible' | 'approved' | 'dismissed' | 'converted' | 'superseded' | 'all';
 type DreamNextActionKind = 'skill-hardening-task' | 'note' | 'memory' | 'work-item-create' | 'work-item-update';
@@ -114,6 +115,13 @@ function formatSourceRanges(card: DreamCard): string {
     return card.sourceRanges
         .map(range => `- ${range.processId} turns ${range.startTurnIndex}-${range.endTurnIndex}`)
         .join('\n');
+}
+
+function queueTaskActivityHash(task: DreamRunResponse['task']): string {
+    const processId = typeof task.processId === 'string' && task.processId
+        ? task.processId
+        : toQueueProcessId(task.id);
+    return '#process/' + encodeURIComponent(processId);
 }
 
 function renderDreamMarkdown(card: DreamCard): string {
@@ -869,7 +877,6 @@ export function DreamsPanel({ workspaceId }: DreamsPanelProps) {
                 'Failed to run dreams',
             );
             setLastRun(result);
-            await loadCards();
         } catch (error) {
             setCardsError(error instanceof Error ? error.message : String(error));
         } finally {
@@ -903,7 +910,7 @@ export function DreamsPanel({ workspaceId }: DreamsPanelProps) {
         ).catch(() => undefined);
     }
 
-    const ranWithoutCards = lastRun !== null && lastRun.cards.length === 0;
+    const ranWithoutCards = false;
 
     if (!globalEnabled) {
         return (
@@ -978,10 +985,18 @@ export function DreamsPanel({ workspaceId }: DreamsPanelProps) {
             {lastRun && (
                 <div className="border-b border-[#d0d7de] bg-[#fff8e1] px-4 py-3 dark:border-[#3c3c3c] dark:bg-amber-950/20" data-testid="dreams-run-summary">
                     <div className="grid gap-2 md:grid-cols-4">
-                        <SummaryMetric label="Run" value={lastRun.run.status} />
-                        <SummaryMetric label="Sources" value={lastRun.selection.conversationCount} />
-                        <SummaryMetric label="Accepted" value={lastRun.analysis.acceptedCandidateCount} />
-                        <SummaryMetric label="Rejected" value={lastRun.analysis.rejectedCandidateCount} />
+                        <SummaryMetric label="Task" value={lastRun.task.displayName ?? lastRun.task.id} />
+                        <SummaryMetric label="Status" value={String(lastRun.task.status ?? 'queued')} />
+                        <SummaryMetric label="Trigger" value={String(lastRun.task.payload?.trigger ?? 'manual')} />
+                        <div className="rounded-md border border-[#e0e0e0] bg-white px-3 py-2 text-sm dark:border-[#3c3c3c] dark:bg-[#252526]">
+                            <div className="text-[11px] uppercase tracking-wide text-[#848484]">Activity</div>
+                            <a
+                                className="font-semibold text-[#0969da] hover:underline dark:text-[#3794ff]"
+                                href={queueTaskActivityHash(lastRun.task)}
+                            >
+                                Open task
+                            </a>
+                        </div>
                     </div>
                 </div>
             )}

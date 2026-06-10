@@ -176,10 +176,12 @@ export function serializeTaskSummary(task: QueuedTask): Record<string, unknown> 
         planFilePath: payload?.planFilePath,
         filePath: payload?.filePath,
         workflowPath: payload?.workflowPath,
+        trigger: payload?.trigger,
         workingDirectory: payload?.workingDirectory,
         workspaceId: payload?.workspaceId,
         scheduleId: payload?.scheduleId,
         workItemId: payload?.workItemId,
+        timeoutMs: payload?.timeoutMs,
         imagesCount,
         hasImages: imagesCount > 0 || !!payload?.imagesFilePath,
         // Required by ChatListPane to color-code running/queued tasks by provider
@@ -268,6 +270,10 @@ export function generateDisplayName(type: string, payload: any): string {
             const basename = path.basename(payload.workflowPath);
             return `${typeLabel}: ${basename}`;
         }
+        if (payload.kind === TaskDefs.dreamRun.kind) {
+            const trigger = payload.trigger === 'idle' ? 'Idle' : 'Manual';
+            return `${typeLabel}: ${trigger}`;
+        }
     }
 
     const now = new Date();
@@ -331,6 +337,23 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
     }
     if (taskSpec.type === TaskDefs.runScript.kind && !payload.kind) payload.kind = TaskDefs.runScript.kind;
     if (taskSpec.type === TaskDefs.runWorkflow.kind && !payload.kind) payload.kind = TaskDefs.runWorkflow.kind;
+    if (taskSpec.type === TaskDefs.dreamRun.kind && !payload.kind) payload.kind = TaskDefs.dreamRun.kind;
+
+    if (taskSpec.type === TaskDefs.dreamRun.kind) {
+        if (typeof payload.workspaceId !== 'string' || !payload.workspaceId.trim()) {
+            return { valid: false, error: 'Dream run payload.workspaceId is required' };
+        }
+        payload.workspaceId = payload.workspaceId.trim();
+        if (payload.trigger !== 'manual' && payload.trigger !== 'idle') {
+            return { valid: false, error: 'Dream run payload.trigger must be manual or idle' };
+        }
+        if (payload.provider !== undefined && !VALID_CHAT_PROVIDERS.has(payload.provider)) {
+            return {
+                valid: false,
+                error: `Invalid provider: '${payload.provider}'. Valid providers: ${[...VALID_CHAT_PROVIDERS].join(', ')}`,
+            };
+        }
+    }
 
     if (typeof taskSpec.prompt === 'string' && taskSpec.prompt.trim() && !payload.prompt) {
         payload.prompt = taskSpec.prompt.trim();
@@ -380,7 +403,9 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         };
     }
 
-    const taskProvider = taskSpec.type === 'chat' && typeof payload.provider === 'string' && VALID_CHAT_PROVIDERS.has(payload.provider)
+    const taskProvider = (taskSpec.type === 'chat' || taskSpec.type === TaskDefs.dreamRun.kind)
+        && typeof payload.provider === 'string'
+        && VALID_CHAT_PROVIDERS.has(payload.provider)
         ? payload.provider
         : 'copilot';
     const rawModel = taskSpec.config?.model ?? (typeof payload.model === 'string' ? payload.model : undefined);
@@ -398,7 +423,10 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         payload,
         config: {
             model: resolvedModel.model,
-            timeoutMs: taskSpec.config?.timeoutMs,
+            timeoutMs: taskSpec.config?.timeoutMs
+                ?? (taskSpec.type === TaskDefs.dreamRun.kind && typeof payload.timeoutMs === 'number'
+                    ? payload.timeoutMs
+                    : undefined),
             retryOnFailure: taskSpec.config?.retryOnFailure ?? false,
             retryAttempts: taskSpec.config?.retryAttempts,
             retryDelayMs: taskSpec.config?.retryDelayMs,

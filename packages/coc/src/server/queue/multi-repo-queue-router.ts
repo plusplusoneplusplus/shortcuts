@@ -33,6 +33,7 @@ import {
 } from './queue-executor-bridge';
 import { normalizeChatMode } from '../tasks/task-types';
 import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
+import type { DreamRunExecutor } from '../dreams/dream-runner';
 
 // ============================================================================
 // Types
@@ -91,6 +92,13 @@ export class MultiRepoQueueRouter extends EventEmitter {
         this.defaultOptions = { ...this.defaultOptions, resolveDefaultProvider };
         for (const { bridge } of this.bridges.values()) {
             bridge.setResolveDefaultProvider?.(resolveDefaultProvider);
+        }
+    }
+
+    setDreamRunExecutor(dreamRunExecutor: DreamRunExecutor): void {
+        this.defaultOptions = { ...this.defaultOptions, dreamRunExecutor };
+        for (const { bridge } of this.bridges.values()) {
+            bridge.setDreamRunExecutor?.(dreamRunExecutor);
         }
     }
 

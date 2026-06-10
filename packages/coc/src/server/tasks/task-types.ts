@@ -3,7 +3,7 @@
  *
  * Unified task type model with mode-based AI dispatch for chat tasks.
  *
- *   CocTaskKind = 'chat' | 'run-workflow' | 'run-script' | 'pr-classification'
+ *   CocTaskKind = 'chat' | 'run-workflow' | 'run-script' | 'pr-classification' | 'dream-run'
  *   ChatMode = 'ask' | 'autopilot' | 'ralph'
  *
  * All former AI task types (follow-prompt, ai-clarification, code-review,
@@ -79,6 +79,12 @@ export const TaskDefs = {
         exclusive: false,
         visible: false,
     },
+    dreamRun: {
+        kind: 'dream-run',
+        label: 'Dream Run',
+        exclusive: false,
+        visible: true,
+    },
 } as const satisfies Record<string, TaskTypeDef>;
 
 /** Union of all task type kind strings, derived from TaskDefs. */
@@ -103,7 +109,7 @@ export const VALID_ENQUEUE_TYPES: ReadonlySet<string> = new Set(
 // Task Type Union
 // ============================================================================
 
-export type TaskType = 'chat' | 'run-workflow' | 'run-script';
+export type TaskType = 'chat' | 'run-workflow' | 'run-script' | 'dream-run';
 
 // ============================================================================
 // Chat Mode
@@ -479,11 +485,31 @@ export interface PrClassificationPayload {
     reasoningEffort?: ReasoningEffort;
 }
 
+export type DreamRunTrigger = 'manual' | 'idle';
+
+export interface DreamRunPayload {
+    readonly kind: 'dream-run';
+    workspaceId: string;
+    trigger: DreamRunTrigger;
+    confidenceThreshold?: number;
+    maxCandidates?: number;
+    conversationLimit?: number;
+    minIdleMs?: number;
+    timeoutMs?: number;
+    /** AI provider to use (optional; falls back to server default). */
+    provider?: ChatProvider;
+    /** Model override for this dream run. */
+    model?: string;
+    /** Reasoning effort override for models that support it. */
+    reasoningEffort?: ReasoningEffort;
+    workingDirectory?: string;
+}
+
 // ============================================================================
 // Payload Union
 // ============================================================================
 
-export type TaskPayload = ChatPayload | RunWorkflowPayload | RunScriptPayload | PrClassificationPayload;
+export type TaskPayload = ChatPayload | RunWorkflowPayload | RunScriptPayload | PrClassificationPayload | DreamRunPayload;
 
 // ============================================================================
 // Type Guards
@@ -507,6 +533,10 @@ export function isRunScriptPayload(payload: Record<string, unknown>): payload is
 
 export function isPrClassificationPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & PrClassificationPayload {
     return payload.kind === 'pr-classification';
+}
+
+export function isDreamRunPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & DreamRunPayload {
+    return payload.kind === 'dream-run';
 }
 
 /** Check whether a chat payload carries task-generation context. */

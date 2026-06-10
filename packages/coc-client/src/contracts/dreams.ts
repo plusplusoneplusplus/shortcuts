@@ -1,4 +1,5 @@
 import type { ChatProvider, ReasoningEffort } from './common';
+import type { QueueTaskSummary } from './queue';
 
 export const DREAM_CARD_CATEGORIES = [
   'skill-or-prompt-improvement',
@@ -133,10 +134,7 @@ export interface DreamAnalysisSummary {
 }
 
 export interface DreamRunResponse {
-  run: DreamRunRecord;
-  cards: DreamCard[];
-  selection: DreamConversationSelectionSummary;
-  analysis: DreamAnalysisSummary;
+  task: QueueTaskSummary;
 }
 
 export interface DismissDreamCardRequest {

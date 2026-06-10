@@ -86,36 +86,12 @@ beforeEach(() => {
     mocks.patchRepo.mockResolvedValue({ dreams: { enabled: true } });
     mocks.listCards.mockResolvedValue([sampleCard]);
     mocks.runNow.mockResolvedValue({
-        run: {
-            id: 'dream-run-2',
-            workspaceId: 'ws-1',
-            trigger: 'manual',
-            status: 'completed',
-            sourceRanges: [],
-            candidateCardIds: [],
-            startedAt: '2026-06-10T08:02:00.000Z',
-            completedAt: '2026-06-10T08:02:01.000Z',
-        },
-        cards: [],
-        selection: {
-            workspaceId: 'ws-1',
-            conversationCount: 0,
-            scannedProcessCount: 0,
-            skipped: {
-                wrongWorkspace: 0,
-                nonCompleted: 0,
-                archived: 0,
-                missingProcess: 0,
-                noVisibleTurns: 0,
-                fullyCovered: 0,
-            },
-        },
-        analysis: {
-            sourceRanges: [],
-            rawCandidateCount: 0,
-            deterministicCandidateCount: 0,
-            acceptedCandidateCount: 0,
-            rejectedCandidateCount: 0,
+        task: {
+            id: 'dream-task-2',
+            type: 'dream-run',
+            status: 'queued',
+            displayName: 'Dream Run: Manual',
+            payload: { kind: 'dream-run', workspaceId: 'ws-1', trigger: 'manual' },
         },
     });
     mocks.approve.mockResolvedValue({ ...sampleCard, status: 'approved', approvedAt: '2026-06-10T08:03:00.000Z' });
@@ -221,7 +197,7 @@ describe('DreamsPanel', () => {
         await waitFor(() => expect(mocks.approve).toHaveBeenCalledWith('ws-1', 'dream-1'));
     });
 
-    it('runs a manual dream pass and shows the run summary', async () => {
+    it('enqueues a manual dream pass and shows the queued task summary', async () => {
         render(<DreamsPanel workspaceId="ws-1" />);
 
         await screen.findByTestId('dream-card-dream-1');
@@ -229,7 +205,8 @@ describe('DreamsPanel', () => {
 
         await waitFor(() => expect(mocks.runNow).toHaveBeenCalledWith('ws-1'));
         expect(await screen.findByTestId('dreams-run-summary')).toBeTruthy();
-        expect(screen.getByText('Accepted')).toBeTruthy();
+        expect(screen.getByText('Dream Run: Manual')).toBeTruthy();
+        expect(screen.getByText('Open task').getAttribute('href')).toBe('#process/queue_dream-task-2');
     });
 
     it('records conversion links without creating external artifacts', async () => {

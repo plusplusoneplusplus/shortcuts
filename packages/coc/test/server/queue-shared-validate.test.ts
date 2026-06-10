@@ -9,7 +9,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { validateAndParseTask } from '../../src/server/routes/queue-shared';
-import { isRunScriptPayload, isRunWorkflowPayload, isChatPayload } from '../../src/server/tasks/task-types';
+import { isRunScriptPayload, isRunWorkflowPayload, isChatPayload, isDreamRunPayload } from '../../src/server/tasks/task-types';
 
 // ============================================================================
 // run-script
@@ -164,6 +164,53 @@ describe('validateAndParseTask – chat kind injection (existing behavior)', () 
         });
         expect(result.valid).toBe(false);
         expect(result.error).toContain('Invalid chat mode: for-each');
+    });
+});
+
+// ============================================================================
+// dream-run
+// ============================================================================
+
+describe('validateAndParseTask – dream-run kind injection', () => {
+    it('accepts a workspace-scoped manual dream run and mirrors timeout into task config', () => {
+        const result = validateAndParseTask({
+            type: 'dream-run',
+            payload: {
+                workspaceId: 'ws-dream',
+                trigger: 'manual',
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+                reasoningEffort: 'high',
+                timeoutMs: 3_600_000,
+            },
+        });
+
+        expect(result.valid).toBe(true);
+        expect(isDreamRunPayload(result.input!.payload as Record<string, unknown>)).toBe(true);
+        expect((result.input!.payload as any).kind).toBe('dream-run');
+        expect((result.input!.payload as any).workspaceId).toBe('ws-dream');
+        expect((result.input!.payload as any).trigger).toBe('manual');
+        expect(result.input!.config.model).toBe('claude-sonnet-4.6');
+        expect(result.input!.config.reasoningEffort).toBe('high');
+        expect(result.input!.config.timeoutMs).toBe(3_600_000);
+    });
+
+    it('rejects dream-run tasks without a workspace or valid trigger', () => {
+        expect(validateAndParseTask({
+            type: 'dream-run',
+            payload: { trigger: 'manual' },
+        })).toMatchObject({
+            valid: false,
+            error: 'Dream run payload.workspaceId is required',
+        });
+
+        expect(validateAndParseTask({
+            type: 'dream-run',
+            payload: { workspaceId: 'ws-dream', trigger: 'nightly' },
+        })).toMatchObject({
+            valid: false,
+            error: 'Dream run payload.trigger must be manual or idle',
+        });
     });
 });
 

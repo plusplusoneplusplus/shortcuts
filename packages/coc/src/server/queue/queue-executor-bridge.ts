@@ -14,6 +14,7 @@ import { orchestrateFinalCheck } from '../ralph/orchestrate-final-check';
 import { loadConfigFile, DEFAULT_CONFIG } from '../../config';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
+import type { DreamRunExecutor } from '../dreams/dream-runner';
 
 export const DEFAULT_FOLLOW_UP_SUGGESTIONS = { enabled: true, count: 3 } as const;
 
@@ -40,6 +41,7 @@ export interface CLITaskExecutorOptions {
     getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined;
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     onRalphSessionComplete?: (event: RalphSessionCompleteEvent) => void;
+    dreamRunExecutor?: DreamRunExecutor;
 }
 export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
     maxConcurrency?: number; sharedConcurrency?: number; exclusiveConcurrency?: number;
@@ -59,6 +61,8 @@ export interface QueueExecutorBridge {
     answerAskUserQuestions?(processId: string, batchId: string, answers: AskUserAnswerInput[]): Promise<boolean>;
     /** Update the execution-time Auto provider resolver for existing bridges. */
     setResolveDefaultProvider?(resolveDefaultProvider: ResolveDefaultProviderForExecution): void;
+    /** Late-bind the Dreams runner after route composition creates it. */
+    setDreamRunExecutor?(dreamRunExecutor: DreamRunExecutor): void;
 }
 
 export interface RalphSessionCompleteEvent {
@@ -101,6 +105,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private readonly getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined;
     private readonly onRalphSessionComplete?: (event: RalphSessionCompleteEvent) => void;
     private resolveDefaultProvider?: ResolveDefaultProviderForExecution;
+    private dreamRunExecutor?: DreamRunExecutor;
 
     constructor(store: ProcessStore, options: CLITaskExecutorOptions = {}) {
         super(store, options.dataDir);
@@ -110,6 +115,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         this.getWsServer = options.getWsServer;
         this.onRalphSessionComplete = options.onRalphSessionComplete;
         this.resolveDefaultProvider = options.resolveDefaultProvider;
+        this.dreamRunExecutor = options.dreamRunExecutor;
         this.titleGenerationService = new TitleGenerationService({
             store,
             aiService: this.aiService,
@@ -133,6 +139,8 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             getWsServer: options.getWsServer,
             getLoopInfra: options.getLoopInfra,
             getMcpOauthManager: options.getMcpOauthManager,
+            getDreamRunExecutor: () => this.dreamRunExecutor,
+            cancelledTasks: this.cancelledTasks,
         });
         this.getLoopInfra = options.getLoopInfra;
     }
@@ -144,6 +152,9 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     setQueueExecutor(qe: QueueExecutor): void { this.queueExecutor = qe; }
     setResolveDefaultProvider(resolveDefaultProvider: ResolveDefaultProviderForExecution): void {
         this.resolveDefaultProvider = resolveDefaultProvider;
+    }
+    setDreamRunExecutor(dreamRunExecutor: DreamRunExecutor): void {
+        this.dreamRunExecutor = dreamRunExecutor;
     }
     private generateTitleIfNeeded(processId: string, turns: ConversationTurn[]): void { this.titleGenerationService.generateIfNeeded(processId, turns); }
 
