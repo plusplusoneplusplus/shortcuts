@@ -27,6 +27,8 @@ let mockUseModelsProviders: Array<string | undefined> = [];
 let mockUseDefaultModelArgs: Array<[string | undefined, string, string | undefined]> = [];
 let mockForEachEnabled = false;
 let mockMapReduceEnabled = false;
+let mockRalphEnabled = false;
+let mockRalphMultiAgentGrillEnabled = false;
 let mockSessionContextAttachmentsEnabled = false;
 let mockAttachments: any[] = [];
 let mockAttachmentPayload: any[] = [];
@@ -59,7 +61,8 @@ let mockEffortTiers: Record<string, { model: string; reasoningEffort?: string | 
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => 'http://localhost:4000/api',
-    isRalphEnabled: () => false,
+    isRalphEnabled: () => mockRalphEnabled,
+    isRalphMultiAgentGrillEnabled: () => mockRalphMultiAgentGrillEnabled,
     isForEachEnabled: () => mockForEachEnabled,
     isMapReduceEnabled: () => mockMapReduceEnabled,
     isLoopsEnabled: () => false,
@@ -356,6 +359,8 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         mockUseDefaultModelArgs = [];
         mockForEachEnabled = false;
         mockSessionContextAttachmentsEnabled = false;
+        mockRalphEnabled = false;
+        mockRalphMultiAgentGrillEnabled = false;
         mockAttachments = [];
         mockAttachmentPayload = [];
         mockEffortLevelsEnabled = false;
@@ -788,6 +793,45 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
             id: 'queue_for-each-generation-task',
             repoId: 'ws-1',
         });
+    });
+
+    it('sends selected Ralph grill depth and per-agent model setup for New Chat Ralph grilling', async () => {
+        mockRalphEnabled = true;
+        mockRalphMultiAgentGrillEnabled = true;
+        mockAgentProviders = [
+            { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+            { id: 'codex', label: 'Codex', enabled: true, available: true },
+            { id: 'claude', label: 'Claude', enabled: true, available: true },
+        ];
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'ralph-grill-task' } });
+
+        render(<NewChatArea workspaceId="ws-1" />);
+        fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
+        fireEvent.click(screen.getByTestId('workflow-mode-option-ralph'));
+        await waitFor(() => expect(screen.getByTestId('new-chat-ralph-grill-panel')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('new-chat-ralph-grill-depth-deep'));
+        fireEvent.change(screen.getByTestId('new-chat-ralph-grill-agent-ux-provider'), {
+            target: { value: 'claude' },
+        });
+        fireEvent.change(screen.getByTestId('new-chat-ralph-grill-agent-ux-model'), {
+            target: { value: 'claude-sonnet' },
+        });
+        typeInInput('Grill this goal');
+        await clickSend();
+
+        await waitFor(() => expect(mockEnqueueTask).toHaveBeenCalledOnce());
+        const body = mockEnqueueTask.mock.calls[0][0];
+        expect(body.payload.mode).toBe('ask');
+        expect(body.payload.context.ralph.phase).toBe('grilling');
+        expect(body.payload.context.ralph.grill).toEqual(expect.objectContaining({
+            enabled: true,
+            depth: 'deep',
+        }));
+        expect(body.payload.context.ralph.grill.agents).toEqual(expect.arrayContaining([
+            { role: 'ux', provider: 'claude', model: 'claude-sonnet' },
+            expect.objectContaining({ role: 'provenance' }),
+        ]));
     });
 });
 

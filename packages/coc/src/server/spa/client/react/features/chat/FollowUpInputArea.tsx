@@ -42,6 +42,9 @@ import {
     useConversationRetrievalCapability,
     validateSessionContextDrop,
 } from './sessionContextDrop';
+import type { RalphGrillSetup } from '../../../../../ralph/grill-planning';
+import { RalphGrillSetupPanel } from './RalphGrillSetupPanel';
+import type { ConcreteChatProvider } from '../../utils/providerSelection';
 
 export interface FollowUpInputAreaProps {
     richTextRef: React.RefObject<RichTextInputHandle>;
@@ -165,6 +168,16 @@ export interface FollowUpInputAreaProps {
     selectedEffortTier?: EffortTierKey;
     /** Called when the user picks a tier. Used when `useEffortTierMode` is true. */
     onEffortTierChange?: (tier: EffortTierKey) => void;
+    /** Enables the gated Ralph multi-agent grill setup UI for promotion. */
+    ralphMultiAgentGrillEnabled?: boolean;
+    /** Current multi-agent grill setup state for promotion. */
+    ralphGrillSetup?: RalphGrillSetup;
+    /** Called when the user edits the promotion grill setup. */
+    onRalphGrillSetupChange?: (setup: RalphGrillSetup) => void;
+    /** Provider inherited by agent rows before the user customizes a row. */
+    ralphGrillDefaultProvider?: ConcreteChatProvider;
+    /** Model inherited by agent rows before the user customizes a row. */
+    ralphGrillDefaultModel?: string;
 }
 
 export function FollowUpInputArea({
@@ -219,6 +232,11 @@ export function FollowUpInputArea({
     effortTierMap,
     selectedEffortTier,
     onEffortTierChange,
+    ralphMultiAgentGrillEnabled = false,
+    ralphGrillSetup,
+    onRalphGrillSetupChange,
+    ralphGrillDefaultProvider,
+    ralphGrillDefaultModel,
 }: FollowUpInputAreaProps) {
     const inputWrapperRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -774,6 +792,16 @@ export function FollowUpInputArea({
                         >
                             Promotes this chat to a Ralph session. Optional: type a one-line hint to focus the goal.
                         </div>
+                    )}
+                    {selectedMode === 'ralph' && ralphMultiAgentGrillEnabled && ralphGrillSetup && onRalphGrillSetupChange && (
+                        <RalphGrillSetupPanel
+                            value={ralphGrillSetup}
+                            onChange={onRalphGrillSetupChange}
+                            defaultProvider={ralphGrillDefaultProvider}
+                            defaultModel={ralphGrillDefaultModel}
+                            disabled={sending || inputDisabled}
+                            testIdPrefix="follow-up-ralph-grill"
+                        />
                     )}
                     <div
                         ref={inputWrapperRef}

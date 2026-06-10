@@ -53,7 +53,7 @@ import { MobileScratchpadTabBar } from './scratchpad/MobileScratchpadTabBar';
 import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
 import { resolveLoadedTaskMode } from './chatMode';
 import { normalizeChatMode } from '../../repos/modeConfig';
-import { isRalphEnabled, isLoopsEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
+import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isLoopsEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
 import type { ChatMode } from '../../repos/modeConfig';
 import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
@@ -70,6 +70,7 @@ import { useLoops } from './hooks/useLoops';
 import { LoopManagementPanel } from './LoopManagementPanel';
 import { RenameDialog } from '../../ui/RenameDialog';
 import { useConversationRetrievalCapability } from './sessionContextDrop';
+import type { RalphGrillSetup } from '../../../../../ralph/grill-planning';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -155,6 +156,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
     const [selectedFollowUpEffortTier, setSelectedFollowUpEffortTier] = useState<EffortTierKey>('medium');
+    const [ralphGrillSetup, setRalphGrillSetup] = useState<RalphGrillSetup>({ enabled: true, depth: 'standard', agents: [] });
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [sessionTokenLimit, setSessionTokenLimit] = useState<number | undefined>(undefined);
     const [sessionCurrentTokens, setSessionCurrentTokens] = useState<number | undefined>(undefined);
@@ -710,6 +712,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const effectiveFollowUpEffort = (followUpTierPayload !== null
         ? followUpTierPayload.reasoningEffort as EffortLevel | null
         : effortOverride);
+    const ralphMultiAgentGrillEnabled = isRalphMultiAgentGrillEnabled();
 
     const { sendFollowUp, closeFollowUpStream, onSendComplete } = useSendMessage({
         processId,
@@ -742,6 +745,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         modelOverride: effectiveFollowUpModelOverride,
         effortOverride: effectiveFollowUpEffort,
         workspaceId,
+        ralphGrillSetup: selectedMode === 'ralph' && ralphMultiAgentGrillEnabled ? ralphGrillSetup : undefined,
         sessionContextAttachmentsEnabled,
         conversationRetrievalAvailable: canRetrieveConversations,
         // After a successful Ralph promotion the follow-up area's `allowedModes`
@@ -1690,6 +1694,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             effortTierMap={followUpEffortTierMap}
                             selectedEffortTier={selectedFollowUpEffortTier}
                             onEffortTierChange={handleFollowUpEffortTierChange}
+                            ralphMultiAgentGrillEnabled={ralphMultiAgentGrillEnabled}
+                            ralphGrillSetup={ralphGrillSetup}
+                            onRalphGrillSetupChange={setRalphGrillSetup}
+                            ralphGrillDefaultProvider={sessionProvider}
+                            ralphGrillDefaultModel={chatEffectiveModelId}
                         />
                     )}
                 </div>
@@ -1810,6 +1819,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     effortTierMap={followUpEffortTierMap}
                     selectedEffortTier={selectedFollowUpEffortTier}
                     onEffortTierChange={handleFollowUpEffortTierChange}
+                    ralphMultiAgentGrillEnabled={ralphMultiAgentGrillEnabled}
+                    ralphGrillSetup={ralphGrillSetup}
+                    onRalphGrillSetupChange={setRalphGrillSetup}
+                    ralphGrillDefaultProvider={sessionProvider}
+                    ralphGrillDefaultModel={chatEffectiveModelId}
                 />
             )}
             {isMobileScratchpad && (

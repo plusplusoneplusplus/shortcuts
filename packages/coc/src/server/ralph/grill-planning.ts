@@ -164,6 +164,27 @@ export function resolveRalphGrillSetup(input?: RalphGrillSetup | null): Resolved
     };
 }
 
+export function normalizeRalphGrillSetupForContext(input: unknown): RalphGrillSetup | undefined {
+    if (!input || typeof input !== 'object') {
+        return undefined;
+    }
+
+    const resolved = resolveRalphGrillSetup(input as RalphGrillSetup);
+    if (!resolved.enabled) {
+        return undefined;
+    }
+
+    return {
+        enabled: true,
+        depth: resolved.depth,
+        agents: resolved.agents.map(agent => ({
+            role: agent.role,
+            ...(agent.provider ? { provider: agent.provider } : {}),
+            ...(agent.model ? { model: agent.model } : {}),
+        })),
+    };
+}
+
 export function buildRalphMultiAgentGrillDirective(input?: RalphGrillSetup | null): string {
     const setup = resolveRalphGrillSetup(input);
     if (!setup.enabled) return '';

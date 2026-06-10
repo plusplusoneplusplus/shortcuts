@@ -66,6 +66,13 @@ linked generation/map/reduce chats by `payload.context.mapReduce`, persisted
 `mapReduce` metadata, or `generationProcessId` so child chats do not duplicate
 as standalone rows.
 
+`features/chat/RalphGrillSetupPanel.tsx` renders the disabled-by-default
+multi-agent Ralph grilling setup card when `features.ralphMultiAgentGrill` is
+enabled. New Chat Ralph grilling (`NewChatArea`) and promoted ask-mode chats
+(`FollowUpInputArea` via `ChatDetail`) both use the same card so users choose
+Light/Standard/Deep depth and provider/model selections per grill role before
+the consolidated question-planning turn is submitted.
+
 ## Key Contexts
 
 | Context | Purpose |

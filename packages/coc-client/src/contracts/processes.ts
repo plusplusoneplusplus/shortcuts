@@ -124,6 +124,30 @@ export interface ProcessMessageRequest {
 
 export interface ProcessMessageResponse extends JsonObject {}
 
+export type RalphGrillDepth = 'light' | 'standard' | 'deep';
+export type RalphGrillAgentRole =
+  | 'product'
+  | 'ux'
+  | 'architecture-system'
+  | 'interaction'
+  | 'failure-edge-cases'
+  | 'quality-test'
+  | 'deduplication'
+  | 'provenance';
+export type RalphGrillAgentProvider = 'copilot' | 'codex' | 'claude';
+
+export interface RalphGrillAgentModelSelection {
+  role: RalphGrillAgentRole;
+  provider?: RalphGrillAgentProvider;
+  model?: string;
+}
+
+export interface RalphGrillSetup {
+  enabled?: boolean;
+  depth?: RalphGrillDepth;
+  agents?: RalphGrillAgentModelSelection[];
+}
+
 export interface PendingProcessMessage {
   id: string;
   content: string;

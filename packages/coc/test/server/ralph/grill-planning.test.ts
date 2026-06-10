@@ -3,6 +3,7 @@ import {
     buildRalphMultiAgentGrillDirective,
     formatRalphGrillProvenance,
     getRalphGrillAgentDefinitions,
+    normalizeRalphGrillSetupForContext,
     resolveRalphGrillSetup,
 } from '../../../src/server/ralph/grill-planning';
 
@@ -92,5 +93,27 @@ describe('Ralph grill planning', () => {
 
     it('omits the directive when the setup is not enabled', () => {
         expect(buildRalphMultiAgentGrillDirective({ enabled: false, depth: 'deep' })).toBe('');
+    });
+
+    it('normalizes client-provided setup before storing it in task context', () => {
+        const setup = normalizeRalphGrillSetupForContext({
+            enabled: true,
+            depth: 'deep',
+            agents: [
+                { role: 'product', provider: 'copilot', model: 'gpt-5.5' },
+                { role: 'ux', provider: 'bad-provider', model: '  claude-sonnet-4.6  ' },
+                { role: 'not-a-role', provider: 'codex', model: 'ignored' },
+            ],
+        });
+
+        expect(setup).toEqual({
+            enabled: true,
+            depth: 'deep',
+            agents: expect.arrayContaining([
+                { role: 'product', provider: 'copilot', model: 'gpt-5.5' },
+                { role: 'ux', model: 'claude-sonnet-4.6' },
+            ]),
+        });
+        expect(setup?.agents?.some(agent => agent.role === 'not-a-role')).toBe(false);
     });
 });
