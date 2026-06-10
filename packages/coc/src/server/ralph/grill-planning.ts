@@ -889,10 +889,16 @@ function inferConflictQuestion(
 }
 
 type ConsolidationRelation = 'exact-duplicate' | 'semantic-duplicate' | 'conflict';
+type DuplicateConsolidationRelation = Exclude<ConsolidationRelation, 'conflict'>;
 
 interface RalphGrillConsolidationGroup {
     question: RalphGrillConsolidatedQuestion;
     exactKeys: Set<string>;
+    tokens: Set<string>;
+}
+
+interface RalphGrillAskedQuestionIndex {
+    exactKey: string;
     tokens: Set<string>;
 }
 
@@ -914,14 +920,46 @@ function classifyQuestionRelation(
     questionExactKey: string,
     questionTokens: Set<string>,
 ): ConsolidationRelation | undefined {
-    const exact = group.exactKeys.has(questionExactKey);
-    const semantic = tokenSimilarity(group.tokens, questionTokens) >= SEMANTIC_DUPLICATE_THRESHOLD;
-    const comparable = exact || semantic;
+    const duplicateRelation = classifyDuplicateQuestionRelation(group.exactKeys, group.tokens, questionExactKey, questionTokens);
+    const comparable = !!duplicateRelation;
     if (isConflictingQuestion(group.question, question, group.tokens, questionTokens, comparable)) {
         return 'conflict';
     }
-    if (exact) return 'exact-duplicate';
-    if (semantic) return 'semantic-duplicate';
+    if (duplicateRelation) return duplicateRelation;
+    return undefined;
+}
+
+function classifyDuplicateQuestionRelation(
+    exactKeys: Set<string>,
+    tokens: Set<string>,
+    questionExactKey: string,
+    questionTokens: Set<string>,
+): DuplicateConsolidationRelation | undefined {
+    if (exactKeys.has(questionExactKey)) return 'exact-duplicate';
+    if (tokenSimilarity(tokens, questionTokens) >= SEMANTIC_DUPLICATE_THRESHOLD) {
+        return 'semantic-duplicate';
+    }
+    return undefined;
+}
+
+function buildAlreadyAskedQuestionIndex(questions: string[]): RalphGrillAskedQuestionIndex[] {
+    return questions
+        .map(question => ({
+            exactKey: normalizeQuestionForExactMatch(question),
+            tokens: questionTokenSet(question),
+        }))
+        .filter(index => index.exactKey.length > 0 || index.tokens.size > 0);
+}
+
+function findAlreadyAskedDuplicateRelation(
+    alreadyAsked: RalphGrillAskedQuestionIndex[],
+    questionExactKey: string,
+    questionTokens: Set<string>,
+): DuplicateConsolidationRelation | undefined {
+    for (const asked of alreadyAsked) {
+        const relation = classifyDuplicateQuestionRelation(new Set([asked.exactKey]), asked.tokens, questionExactKey, questionTokens);
+        if (relation) return relation;
+    }
     return undefined;
 }
 
@@ -987,8 +1025,10 @@ function recordRoleContribution(
 export function consolidateRalphGrillCandidateQuestions(
     candidateQuestions: RalphGrillCandidateQuestion[],
     agentResults: RalphGrillAgentRunResult[] = [],
+    alreadyAskedQuestions: string[] = [],
 ): RalphGrillQuestionConsolidationResult {
     const groups: RalphGrillConsolidationGroup[] = [];
+    const alreadyAsked = buildAlreadyAskedQuestionIndex(alreadyAskedQuestions);
     const contributions = new Map<RalphGrillAgentRole, { total: number; productive: number }>();
     let exactDuplicatesMerged = 0;
     let semanticDuplicatesMerged = 0;
@@ -997,6 +1037,14 @@ export function consolidateRalphGrillCandidateQuestions(
     for (const question of candidateQuestions) {
         const questionExactKey = normalizeQuestionForExactMatch(question.question);
         const questionTokens = questionTokenSet(question.question);
+        const alreadyAskedRelation = findAlreadyAskedDuplicateRelation(alreadyAsked, questionExactKey, questionTokens);
+        if (alreadyAskedRelation) {
+            if (alreadyAskedRelation === 'exact-duplicate') exactDuplicatesMerged += 1;
+            if (alreadyAskedRelation === 'semantic-duplicate') semanticDuplicatesMerged += 1;
+            recordRoleContribution(contributions, question, false);
+            continue;
+        }
+
         let matched = false;
         for (const group of groups) {
             const relation = classifyQuestionRelation(group, question, questionExactKey, questionTokens);
@@ -1341,7 +1389,11 @@ export async function planRalphGrillCandidateQuestions(
         setup.agents.map(agent => runSingleRalphGrillAgent(options, ctx, agent)),
     );
     const candidateQuestions = agentResults.flatMap(result => result.questions);
-    const consolidation = consolidateRalphGrillCandidateQuestions(candidateQuestions, agentResults);
+    const consolidation = consolidateRalphGrillCandidateQuestions(
+        candidateQuestions,
+        agentResults,
+        ctx.previousState?.askedQuestions,
+    );
     const allResumedAgentsEmpty = previousRoundsRun > 0
         && agentResults.length > 0
         && agentResults.every(result => result.status === 'empty');

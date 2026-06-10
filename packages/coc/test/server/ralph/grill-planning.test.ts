@@ -872,6 +872,123 @@ describe('Ralph grill planning', () => {
         expect(plan.warnings).toContain('UX Agent contributed only duplicate candidate questions after consolidation.');
     });
 
+    it('drops cross-round duplicate follow-up questions while preserving within-round dedupe', async () => {
+        const service = {
+            isAvailable: vi.fn().mockResolvedValue({ available: true }),
+            sendMessage: vi.fn(async (options: { sessionId?: string }) => {
+                if (options.sessionId === 'product-session') {
+                    return {
+                        success: true,
+                        response: JSON.stringify({
+                            questions: [
+                                { question: 'Which users should this optimize for?', type: 'text' },
+                                { question: 'Which system boundary should constrain follow-ups?', type: 'text' },
+                            ],
+                        }),
+                        sessionId: 'product-session',
+                    };
+                }
+                if (options.sessionId === 'ux-session') {
+                    return {
+                        success: true,
+                        response: JSON.stringify({
+                            questions: [{ question: 'What user group should this optimize for?', type: 'text' }],
+                        }),
+                        sessionId: 'ux-session',
+                    };
+                }
+                return {
+                    success: true,
+                    response: JSON.stringify({
+                        questions: [{ question: 'What system boundary constrains follow-ups?', type: 'text' }],
+                    }),
+                    sessionId: 'architecture-session',
+                };
+            }),
+        };
+        const setup = resolveRalphGrillSetup({
+            enabled: true,
+            depth: 'light',
+            agents: [
+                { role: 'product', provider: 'copilot', model: 'gpt-5.5' },
+                { role: 'ux', provider: 'copilot', model: 'gpt-5.5' },
+                { role: 'architecture-system', provider: 'copilot', model: 'gpt-5.5' },
+            ],
+        });
+        const previousState = {
+            roundsRun: 1,
+            maxRounds: RALPH_GRILL_MAX_ROUNDS,
+            terminal: false,
+            agents: {
+                product: {
+                    role: 'product' as const,
+                    roleLabel: setup.agents[0].label,
+                    provenanceLabel: setup.agents[0].provenanceLabel,
+                    status: 'completed' as const,
+                    candidateCount: 1,
+                    sessionId: 'product-session',
+                },
+                ux: {
+                    role: 'ux' as const,
+                    roleLabel: setup.agents[1].label,
+                    provenanceLabel: setup.agents[1].provenanceLabel,
+                    status: 'completed' as const,
+                    candidateCount: 1,
+                    sessionId: 'ux-session',
+                },
+                'architecture-system': {
+                    role: 'architecture-system' as const,
+                    roleLabel: setup.agents[2].label,
+                    provenanceLabel: setup.agents[2].provenanceLabel,
+                    status: 'completed' as const,
+                    candidateCount: 1,
+                    sessionId: 'architecture-session',
+                },
+            },
+            askedQuestions: ['Which users should this optimize for?'],
+            warnings: [],
+        };
+
+        const plan = await planRalphGrillCandidateQuestions(
+            { aiService: service as any },
+            {
+                setup: { enabled: true, depth: 'light' },
+                prompt: 'Answer: optimize for repository admins first.',
+                previousState,
+                defaultProvider: 'copilot',
+            },
+        );
+
+        expect(service.sendMessage).toHaveBeenCalledTimes(3);
+        expect(plan.candidateQuestions.map(question => question.question)).toEqual([
+            'Which users should this optimize for?',
+            'Which system boundary should constrain follow-ups?',
+            'What user group should this optimize for?',
+            'What system boundary constrains follow-ups?',
+        ]);
+        expect(plan.selectedQuestions.map(question => question.question)).toEqual([
+            'Which system boundary should constrain follow-ups?',
+        ]);
+        expect(plan.consolidation).toMatchObject({
+            rawCandidateCount: 4,
+            selectedQuestionCount: 1,
+            exactDuplicatesMerged: 1,
+            semanticDuplicatesMerged: 2,
+            conflictsConverted: 0,
+            duplicateOnlyAgents: ['UX Agent', 'Architecture/System Agent'],
+        });
+        expect(plan.warnings).toEqual(expect.arrayContaining([
+            'UX Agent contributed only duplicate candidate questions after consolidation.',
+            'Architecture/System Agent contributed only duplicate candidate questions after consolidation.',
+        ]));
+
+        const nextState = buildRalphGrillProcessStateFromPlan(plan, previousState);
+        expect(nextState.askedQuestions).toEqual([
+            'Which users should this optimize for?',
+            'Which system boundary should constrain follow-ups?',
+        ]);
+    });
+
     it('attaches planning and provenance metadata to ask_user payloads', () => {
         const productQuestion = candidateQuestion('Which users should this optimize for?', 'product');
         const uxQuestion = candidateQuestion('How should the grouped form look?', 'ux');

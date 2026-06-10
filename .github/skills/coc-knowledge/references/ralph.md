@@ -234,7 +234,9 @@ the `ask_user` tool from that main turn so synthesis proceeds without another
 question batch. The planner
 consolidates candidate questions before the main turn: exact duplicates and
 conservative semantic duplicates merge with combined provenance, recognized
-conflicts become one select-style decision question, duplicate-only agent
+conflicts become one select-style decision question, and follow-up-round
+candidates that exact- or semantic-match the cumulative already-asked question
+set are dropped so the user never sees a repeated question. Duplicate-only agent
 contributions are reported as compact warnings, and the selected question set
 plus consolidation summary are appended to the main user prompt. While those
 isolated agents run, the executor emits transient `ralph-grill-planning` SSE
