@@ -741,6 +741,31 @@ describe('Admin Handler', () => {
             expect(diskConfig.features.focusedDiff).toBe(true);
         });
 
+        it('should persist features.ralphMultiAgentGrill to disk', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const yaml = require('js-yaml');
+            fs.writeFileSync(configPath, yaml.dump({
+                features: { focusedDiff: true },
+            }), 'utf-8');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'features.ralphMultiAgentGrill': true }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.features.ralphMultiAgentGrill).toBe(true);
+            expect(body.resolved.features.focusedDiff).toBe(true);
+            expect(body.sources['features.ralphMultiAgentGrill']).toBe('file');
+
+            const diskConfig = yaml.load(fs.readFileSync(configPath, 'utf-8'));
+            expect(diskConfig.features.ralphMultiAgentGrill).toBe(true);
+            expect(diskConfig.features.focusedDiff).toBe(true);
+        });
+
         it('should persist features.commitChatLens to disk', async () => {
             const configPath = path.join(dataDir, 'config.yaml');
             const yaml = require('js-yaml');

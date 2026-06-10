@@ -674,7 +674,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     },
     bool({ key: 'features.autoAgentProviderRouting', default: false, runtime: 'restartRequired', runtimeFlag: 'autoAgentProviderRoutingEnabled' }),
-    bool({ key: 'features.ralphMultiAgentGrill', default: false, runtime: 'restartRequired', runtimeFlag: 'ralphMultiAgentGrillEnabled' }),
+    bool({
+        key: 'features.ralphMultiAgentGrill', default: false, runtime: 'live', runtimeFlag: 'ralphMultiAgentGrillEnabled',
+        ui: {
+            group: 'aiModes', order: 15, label: 'Ralph Multi-Agent Grilling', badge: 'experimental',
+            hint: 'Adds the question planning setup card, separate grill-agent calls, dedupe, provenance, and grouped consolidated questions to Ralph grilling. Disabled by default.',
+            testId: 'toggle-ralph-multi-agent-grill-enabled',
+        },
+    }),
 
     bool({
         key: 'workItems.hierarchy.enabled', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'workItemsHierarchyEnabled',

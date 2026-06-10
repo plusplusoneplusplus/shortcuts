@@ -177,6 +177,7 @@ export interface AdminConfigUpdate {
   'workItems.workflow.enabled'?: boolean;
   'features.gitCrossCloneCherryPick'?: boolean;
   'features.sessionContextAttachments'?: boolean;
+  'features.ralphMultiAgentGrill'?: boolean;
   'features.commitChatLens'?: boolean;
   'features.commitChatLensDormantMode'?: 'ghost' | 'pill';
   'features.autoAgentProviderRouting'?: boolean;

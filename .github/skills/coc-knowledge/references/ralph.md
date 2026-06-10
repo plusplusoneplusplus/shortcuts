@@ -188,14 +188,14 @@ detects `*.goal.md`). The generic bundled `grill-me` skill stays host-agnostic:
 it defers to whatever save location the host supplies and only falls back to a
 working-directory-relative `Plans/<area>/<feature>/` when none is given.
 
-The disabled-by-default `features.ralphMultiAgentGrill` gate enables
-multi-agent grilling only when the task context also carries
-`context.ralph.grill.enabled=true`. The SPA exposes a "Question planning setup"
-card on New Chat Ralph grilling and promoted ask-mode Ralph sessions while the
-flag is enabled; the card lets users choose Light, Standard (default), or Deep
-depth and assign provider/model selections per grill agent role before the
-consolidated question round starts. Promotion requests accept an optional
-`grill` payload, sanitize it on the server, and mirror it into
+The disabled-by-default `features.ralphMultiAgentGrill` gate is editable from
+Admin -> Configure -> Features and enables multi-agent grilling only when the
+task context also carries `context.ralph.grill.enabled=true`. The SPA exposes a
+"Question planning setup" card on New Chat Ralph grilling and promoted ask-mode
+Ralph sessions while the flag is enabled; the card lets users choose Light,
+Standard (default), or Deep depth and assign provider/model selections per grill
+agent role before the consolidated question round starts. Promotion requests
+accept an optional `grill` payload, sanitize it on the server, and mirror it into
 `metadata.ralph.grill` plus the queued synthesis task context. The planning
 helpers live in `packages/coc/src/server/ralph/grill-planning.ts`; they define
 the depth role sets, per-agent provider/model selection shape, provenance labels
