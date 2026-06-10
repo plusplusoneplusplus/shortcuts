@@ -44,11 +44,20 @@ all have their own `references/*.md`.
   Claude Code discovers them as slash commands. A sidecar marker
   `.coc-<name>.json` tracks CoC-managed commands to distinguish them from
   user-authored ones.
-- **Adding an editable config field** is usually a single registry entry. Put
-  field-local validation in `src/server/admin/admin-config-fields.ts`; reserve
-  `admin-handler.ts` changes for cross-field validation shared with config-file
-  loading (see [admin-config.md](../../.github/skills/coc-knowledge/references/admin-config.md)).
-- **Adding a namespaced config field** must update
+- **Adding an admin-exposed config setting** is ONE definition entry in
+  `src/config/admin-setting-definitions.ts` (value spec, default, runtime,
+  optional `runtimeFlag` + Features-card `ui` metadata) plus the
+  `CLIConfig`/`ResolvedCLIConfig`/`DEFAULT_CONFIG` declarations in
+  `src/config.ts`. Admin validation, file schema, namespace merge/source
+  tracking, runtime feature flags, the embedded SPA bootstrap, the Features
+  card UI, and the generic contract tests
+  (`test/config/admin-setting-definitions.test.ts`) all derive from the
+  registry — do not hand-edit `admin-config-fields.ts`, `schema.ts` leaves,
+  or `namespace-registry.ts` for admin settings. Reserve `admin-handler.ts`
+  changes for cross-field validation shared with config-file loading (see
+  [admin-config.md](../../.github/skills/coc-knowledge/references/admin-config.md)).
+- **Non-admin namespaced config fields** (queue, models, logging, monitoring,
+  skills, memoryPromotion, …) keep hand-written descriptors in
   `src/config/namespace-registry.ts`; do not expand branch lists in `config.ts`.
 - **MCP REST surface** must never expose secrets (`env`, headers, full `args`).
 - **Ralph iteration prompts** must not hard-code implementation skill names

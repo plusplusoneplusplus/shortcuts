@@ -46,24 +46,23 @@ describe('isTerminalEnabled', () => {
 // ── generateDashboardHtml — terminalEnabled injection ───────────────────────
 
 describe('generateDashboardHtml terminalEnabled', () => {
-    it('injects terminalEnabled: true when option is true', () => {
-        const html = generateDashboardHtml({ terminalEnabled: true });
-        expect(html).toContain('terminalEnabled: true');
+    it('injects terminalEnabled: true into the features map when the flag is true', () => {
+        const html = generateDashboardHtml({ features: { terminalEnabled: true } });
+        expect(html).toContain('"terminalEnabled":true');
     });
 
-    it('injects terminalEnabled: false when option is false', () => {
-        const html = generateDashboardHtml({ terminalEnabled: false });
-        expect(html).toContain('terminalEnabled: false');
+    it('injects terminalEnabled: false into the features map when the flag is false', () => {
+        const html = generateDashboardHtml({ features: { terminalEnabled: false } });
+        expect(html).toContain('"terminalEnabled":false');
     });
 
-    it('injects terminalEnabled: true when option is omitted', () => {
+    it('embeds an empty features map when no features are provided', () => {
         const html = generateDashboardHtml({});
-        expect(html).toContain('terminalEnabled: true');
+        expect(html).toContain('features: {}');
     });
 
     it('terminalEnabled is a boolean literal, not a quoted string', () => {
-        const html = generateDashboardHtml({ terminalEnabled: true });
-        // Should be `terminalEnabled: true` not `terminalEnabled: 'true'`
-        expect(html).not.toMatch(/terminalEnabled:\s*['"]true['"]/);
+        const html = generateDashboardHtml({ features: { terminalEnabled: true } });
+        expect(html).not.toMatch(/"terminalEnabled":\s*['"]true['"]/);
     });
 });

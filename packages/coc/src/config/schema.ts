@@ -1,14 +1,18 @@
 /**
  * Zod schema for CLI configuration file.
  *
- * Provides declarative validation with clear error messages
- * instead of manual typeof checks.
+ * Admin-editable leaves are GENERATED from the unified setting registry in
+ * admin-setting-definitions.ts — adding a setting there extends this schema
+ * automatically. The hand-written base below only declares fields that are
+ * not admin-editable (queue, models, logging, monitoring, skills, …).
  */
 
 import { z } from 'zod';
+import type { CLIConfig } from '../config';
+import { ADMIN_SETTING_DEFINITIONS, type AdminSettingValueSpec } from './admin-setting-definitions';
 
 // ============================================================================
-// Logging sub-schemas
+// Hand-written sub-schemas (non-admin-editable structures)
 // ============================================================================
 
 const concreteAgentProviderEnum = z.enum(['copilot', 'codex', 'claude']);
@@ -44,171 +48,171 @@ const autoProviderRoutingSchema = z.object({
 }).passthrough();
 
 /**
- * Zod schema for CLI configuration file
+ * File schemas for registry settings with `kind: 'custom'` validation.
+ * Every custom setting must have an entry here (enforced at module load).
  */
-export const CLIConfigSchema = z.object({
-    model: z.string().optional(),
-    parallel: z.number().int().positive().optional(),
-    output: z.enum(['table', 'json', 'csv', 'markdown']).optional(),
-    approvePermissions: z.boolean().optional(),
-    mcpConfig: z.string().optional(),
-    timeout: z.number().positive().optional(),
-    persist: z.boolean().optional(),
-    /** Show report_intent tool calls in conversation views (default: false) */
-    showReportIntent: z.boolean().optional(),
-    /** How compact to render tool calls in conversation views: 0=full, 1=compact, 2=minimal, 3=whisper (default: 0) */
-    toolCompactness: z.number().int().min(0).max(3).optional(),
-    /** Density of task cards in the activity tab: 'compact' (default) or 'dense' (single-line) */
-    taskCardDensity: z.enum(['compact', 'dense']).optional(),
-    /** Absorb single-line messages between same-category tool groups (default: true) */
-    groupSingleLineMessages: z.boolean().optional(),
-    chat: z.object({
-        followUpSuggestions: z.object({
-            enabled: z.boolean().optional(),
-            count: z.number().int().min(1).max(5).optional(),
-        }).passthrough().optional(),
-        askUser: z.object({
-            enabled: z.boolean().optional(),
-        }).passthrough().optional(),
-    }).passthrough().optional(),
-    serve: z.object({
-        port: z.number().int().positive().max(65535).optional(),
-        host: z.string().optional(),
-        dataDir: z.string().optional(),
-        theme: z.enum(['auto', 'light', 'dark']).optional(),
-        serverName: z.string().optional(),
-    }).passthrough().optional(),
-    queue: z.object({
-        historyLimit: z.number().int().positive().optional(),
-        restartPolicy: z.enum(['fail', 'requeue', 'requeue-if-retriable']).optional(),
-        restartPickupDelayMs: z.number().int().min(0).optional(),
-    }).passthrough().optional(),
-    models: z.object({
-        enabled: z.array(z.string()).optional(),
-    }).passthrough().optional(),
-    logging: loggingConfigSchema.optional(),
-    terminal: z.object({
-        enabled: z.boolean().optional(),
-    }).passthrough().optional(),
-    notes: z.object({
-        enabled: z.boolean().optional(),
-    }).passthrough().optional(),
-    myWork: z.object({
-        enabled: z.boolean().optional(),
-    }).passthrough().optional(),
-    myLife: z.object({
-        enabled: z.boolean().optional(),
-    }).passthrough().optional(),
-    scratchpad: z.object({
-        enabled: z.boolean().optional(),
-        layout: z.enum(['horizontal', 'vertical']).optional(),
-    }).passthrough().optional(),
-    workflows: z.object({
-        enabled: z.boolean().optional(),
-    }).passthrough().optional(),
-    pullRequests: z.object({
-        enabled: z.boolean().optional(),
-        suggestions: z.boolean().optional(),
-        autoClassifyTeam: z.boolean().optional(),
-    }).passthrough().optional(),
-    servers: z.object({
-        enabled: z.boolean().optional(),
-    }).passthrough().optional(),
-    vimNavigation: z.object({
-        enabled: z.boolean().optional(),
-    }).passthrough().optional(),
-    excalidraw: z.object({
-        enabled: z.boolean().optional(),
-    }).passthrough().optional(),
-    agentProviderRouting: z.object({
-        auto: autoProviderRoutingSchema.optional(),
-    }).passthrough().optional(),
-    codex: z.object({
-        enabled: z.boolean().optional(),
-    }).passthrough().optional(),
-    claude: z.object({
-        enabled: z.boolean().optional(),
-    }).passthrough().optional(),
-    defaultProvider: concreteAgentProviderEnum.optional(),
-    ralph: z.object({
-        enabled: z.boolean().optional(),
-        finalCheck: z.object({
-            maxGapFixLoops: z.number().int().min(1).optional(),
-        }).passthrough().optional(),
-    }).passthrough().optional(),
-    forEach: z.object({
-        enabled: z.boolean().optional(),
-    }).passthrough().optional(),
-    mapReduce: z.object({
-        enabled: z.boolean().optional(),
-    }).passthrough().optional(),
-    loops: z.object({
-        enabled: z.boolean().optional(),
-    }).passthrough().optional(),
-    mcpOauth: z.object({
-        enabled: z.boolean().optional(),
-        autoRefresh: z.object({
-            enabled: z.boolean().optional(),
-        }).passthrough().optional(),
-    }).passthrough().optional(),
-    features: z.object({
-        autoMemoryPromotion: z.boolean().optional(),
-        focusedDiff: z.boolean().optional(),
-        gitCommitLookup: z.boolean().optional(),
-        gitCrossCloneCherryPick: z.boolean().optional(),
-        sessionContextAttachments: z.boolean().optional(),
-        commitChatLens: z.boolean().optional(),
-        commitChatLensDormantMode: z.enum(['ghost', 'pill']).optional(),
-        autoAgentProviderRouting: z.boolean().optional(),
-    }).passthrough().optional(),
-    memoryPromotion: z.object({
-        batchSize: z.number().int().positive().optional(),
-        timeoutMs: z.number().int().positive().optional(),
-        model: z.string().optional(),
-        aiNormalization: z.object({
-            enabled: z.boolean().optional(),
-            timeoutMs: z.number().int().positive().optional(),
-            model: z.string().optional(),
-        }).passthrough().optional(),
-    }).passthrough().optional(),
-    store: z.object({
-        backend: z.enum(['file', 'sqlite']).optional(),
-    }).passthrough().optional(),
-    monitoring: z.object({
-        heapCheck: z.object({
-            enabled: z.boolean().optional(),
-            intervalMs: z.number().int().positive().optional(),
-            warnThreshold: z.number().min(0).max(100).optional(),
-            criticalThreshold: z.number().min(0).max(100).optional(),
-        }).passthrough().optional(),
-    }).passthrough().optional(),
-    skills: z.object({
-        autoUpdate: z.boolean().optional(),
-        defaultSkills: z.array(z.string()).optional(),
-    }).passthrough().optional(),
-    workItems: z.object({
-        hierarchy: z.object({
-            enabled: z.boolean().optional(),
-        }).passthrough().optional(),
-        sync: z.object({
-            enabled: z.boolean().optional(),
-        }).passthrough().optional(),
-        aiAuthoring: z.object({
-            enabled: z.boolean().optional(),
-        }).passthrough().optional(),
-        workflow: z.object({
-            enabled: z.boolean().optional(),
-        }).passthrough().optional(),
-    }).passthrough().optional(),
-    effortLevels: z.object({
-        enabled: z.boolean().optional(),
-    }).passthrough().optional(),
-}).passthrough();
+const CUSTOM_FILE_SCHEMAS: Record<string, z.ZodTypeAny> = {
+    'agentProviderRouting.auto': autoProviderRoutingSchema,
+};
+
+// ============================================================================
+// Schema generation from the admin setting registry
+// ============================================================================
+
+type SchemaTree = { [key: string]: z.ZodTypeAny | SchemaTree };
+
+function isZodType(value: z.ZodTypeAny | SchemaTree): value is z.ZodTypeAny {
+    return value instanceof z.ZodType;
+}
 
 /**
- * Inferred type from schema (should match CLIConfig)
+ * Map a registry value spec to its (loose) file-schema leaf. Admin-only
+ * constraints that would reject historically valid files (e.g. string length
+ * limits) are intentionally not applied here.
  */
-export type CLIConfigFromSchema = z.infer<typeof CLIConfigSchema>;
+function zodLeafForSpec(key: string, spec: AdminSettingValueSpec): z.ZodTypeAny {
+    switch (spec.kind) {
+        case 'boolean':
+            return z.boolean();
+        case 'string':
+            return z.string();
+        case 'enum':
+            return z.enum(spec.values as [string, ...string[]]);
+        case 'number': {
+            let leaf = z.number();
+            if (spec.integer) leaf = leaf.int();
+            if (spec.gt === 0) leaf = leaf.positive();
+            else if (spec.gt !== undefined) leaf = leaf.gt(spec.gt);
+            if (spec.min !== undefined) leaf = leaf.min(spec.min);
+            if (spec.max !== undefined) leaf = leaf.max(spec.max);
+            return leaf;
+        }
+        case 'custom': {
+            const custom = CUSTOM_FILE_SCHEMAS[key];
+            if (!custom) {
+                throw new Error(`No file schema registered for custom admin setting '${key}' — add it to CUSTOM_FILE_SCHEMAS in config/schema.ts`);
+            }
+            return custom;
+        }
+    }
+}
+
+/** Insert a leaf schema into a nested tree at a dot-notation key. */
+function insertLeaf(tree: SchemaTree, key: string, leaf: z.ZodTypeAny): void {
+    const segments = key.split('.');
+    let current = tree;
+    for (const segment of segments.slice(0, -1)) {
+        const next = current[segment];
+        if (next === undefined) {
+            const created: SchemaTree = {};
+            current[segment] = created;
+            current = created;
+        } else if (isZodType(next)) {
+            throw new Error(`Schema tree conflict at '${key}': '${segment}' is already a leaf`);
+        } else {
+            current = next;
+        }
+    }
+    current[segments[segments.length - 1]] = leaf;
+}
+
+function buildAdminSettingsSchemaTree(): SchemaTree {
+    const tree: SchemaTree = {};
+    for (const def of ADMIN_SETTING_DEFINITIONS) {
+        insertLeaf(tree, def.key, zodLeafForSpec(def.key, def.value));
+    }
+    return tree;
+}
+
+/** Deep-merge two schema trees; overlay leaves win over base leaves. */
+function mergeSchemaTrees(base: SchemaTree, overlay: SchemaTree): SchemaTree {
+    const merged: SchemaTree = { ...base };
+    for (const [key, value] of Object.entries(overlay)) {
+        const existing = merged[key];
+        if (existing !== undefined && !isZodType(existing) && !isZodType(value)) {
+            merged[key] = mergeSchemaTrees(existing, value);
+        } else {
+            merged[key] = value;
+        }
+    }
+    return merged;
+}
+
+/** Convert a schema tree to a zod object: every field optional, objects passthrough. */
+function treeToZodObject(tree: SchemaTree): z.ZodTypeAny {
+    const shape: Record<string, z.ZodTypeAny> = {};
+    for (const [key, value] of Object.entries(tree)) {
+        shape[key] = (isZodType(value) ? value : treeToZodObject(value)).optional();
+    }
+    return z.object(shape).passthrough();
+}
+
+/**
+ * Hand-written base tree: config-file fields that are NOT admin-editable.
+ * Leaves here must not overlap with registry keys (the generated tree wins).
+ */
+const BASE_SCHEMA_TREE: SchemaTree = {
+    approvePermissions: z.boolean(),
+    mcpConfig: z.string(),
+    persist: z.boolean(),
+    serve: {
+        port: z.number().int().positive().max(65535),
+        host: z.string(),
+        dataDir: z.string(),
+        theme: z.enum(['auto', 'light', 'dark']),
+    },
+    queue: {
+        historyLimit: z.number().int().positive(),
+        restartPolicy: z.enum(['fail', 'requeue', 'requeue-if-retriable']),
+        restartPickupDelayMs: z.number().int().min(0),
+    },
+    models: {
+        enabled: z.array(z.string()),
+    },
+    logging: loggingConfigSchema,
+    features: {
+        autoMemoryPromotion: z.boolean(),
+        gitCommitLookup: z.boolean(),
+    },
+    memoryPromotion: {
+        batchSize: z.number().int().positive(),
+        timeoutMs: z.number().int().positive(),
+        model: z.string(),
+        aiNormalization: {
+            enabled: z.boolean(),
+            timeoutMs: z.number().int().positive(),
+            model: z.string(),
+        },
+    },
+    store: {
+        backend: z.enum(['file', 'sqlite']),
+    },
+    monitoring: {
+        heapCheck: {
+            enabled: z.boolean(),
+            intervalMs: z.number().int().positive(),
+            warnThreshold: z.number().min(0).max(100),
+            criticalThreshold: z.number().min(0).max(100),
+        },
+    },
+    skills: {
+        autoUpdate: z.boolean(),
+        defaultSkills: z.array(z.string()),
+    },
+};
+
+/**
+ * Zod schema for CLI configuration file.
+ * Base (non-admin) shape + generated admin-editable leaves.
+ */
+export const CLIConfigSchema = treeToZodObject(
+    mergeSchemaTrees(BASE_SCHEMA_TREE, buildAdminSettingsSchemaTree())
+) as unknown as z.ZodType<CLIConfig>;
+
+/**
+ * Parsed config type (should match CLIConfig)
+ */
+export type CLIConfigFromSchema = CLIConfig;
 
 /**
  * Validate a config object using the Zod schema.

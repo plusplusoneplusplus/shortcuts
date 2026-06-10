@@ -11,6 +11,20 @@ import type { RuntimeConfigService } from '../../config/runtime-config-service';
 import { sendJson } from '../shared/router';
 import type { RuntimeDashboardConfig } from '@plusplusoneplusplus/coc-client';
 import { shortenHostname } from '../core/hostname-utils';
+import { buildRuntimeFeatureFlags } from '../../config/admin-setting-definitions';
+import type { ResolvedCLIConfig } from '../../config';
+
+/**
+ * Build the dashboard feature-flag map for a (possibly partial) config.
+ * Registry-driven: every admin setting with a `runtimeFlag` is included
+ * automatically. Flags not backed by an admin setting are added by hand here.
+ */
+export function buildRuntimeFeatures(config: Partial<ResolvedCLIConfig>): RuntimeDashboardConfig['features'] {
+    return {
+        ...buildRuntimeFeatureFlags(config),
+        gitCommitLookupEnabled: config.features?.gitCommitLookup ?? false,
+    } as RuntimeDashboardConfig['features'];
+}
 
 export interface RuntimeConfigRouteOptions {
     runtimeConfigService: RuntimeConfigService;
@@ -29,42 +43,7 @@ export function buildRuntimeDashboardConfig(
     const config = runtimeConfigService.config;
     return {
         revision: runtimeConfigService.revision,
-        features: {
-            terminalEnabled: config.terminal?.enabled ?? true,
-            notesEnabled: config.notes?.enabled ?? true,
-            myWorkEnabled: config.myWork?.enabled ?? false,
-            myLifeEnabled: config.myLife?.enabled ?? false,
-            scratchpadEnabled: config.scratchpad?.enabled ?? false,
-            scratchpadLayout: config.scratchpad?.layout ?? 'horizontal',
-            workflowsEnabled: config.workflows?.enabled ?? false,
-            pullRequestsEnabled: config.pullRequests?.enabled ?? false,
-            pullRequestsSuggestionsEnabled: config.pullRequests?.suggestions ?? false,
-            pullRequestsAutoClassifyTeamEnabled: config.pullRequests?.autoClassifyTeam ?? false,
-            serversEnabled: config.servers?.enabled ?? false,
-            ralphEnabled: config.ralph?.enabled ?? false,
-            forEachEnabled: config.forEach?.enabled ?? false,
-            mapReduceEnabled: config.mapReduce?.enabled ?? false,
-            vimNavigationEnabled: config.vimNavigation?.enabled ?? false,
-            loopsEnabled: config.loops?.enabled ?? false,
-            excalidrawEnabled: config.excalidraw?.enabled ?? false,
-            mcpOauthEnabled: config.mcpOauth?.enabled ?? false,
-            focusedDiffEnabled: config.features?.focusedDiff ?? false,
-            containerDefaultAgentEnabled: config.containerDefaultAgent?.enabled ?? false,
-            codexEnabled: config.codex?.enabled ?? false,
-            claudeEnabled: config.claude?.enabled ?? false,
-            defaultProvider: config.defaultProvider ?? 'copilot',
-            autoAgentProviderRoutingEnabled: config.features?.autoAgentProviderRouting ?? false,
-            workItemsHierarchyEnabled: config.workItems?.hierarchy?.enabled ?? false,
-            workItemsSyncEnabled: config.workItems?.sync?.enabled ?? false,
-            workItemsAiAuthoringEnabled: config.workItems?.aiAuthoring?.enabled ?? false,
-            workItemsWorkflowEnabled: config.workItems?.workflow?.enabled ?? false,
-            gitCommitLookupEnabled: config.features?.gitCommitLookup ?? false,
-            gitCrossCloneCherryPickEnabled: config.features?.gitCrossCloneCherryPick ?? false,
-            sessionContextAttachmentsEnabled: config.features?.sessionContextAttachments ?? false,
-            commitChatLensEnabled: config.features?.commitChatLens ?? false,
-            commitChatLensDormantMode: config.features?.commitChatLensDormantMode ?? 'ghost',
-            effortLevelsEnabled: config.effortLevels?.enabled ?? false,
-        },
+        features: buildRuntimeFeatures(config),
         hostname: config.serve?.serverName || shortenHostname(hostname),
         bindAddress,
     };

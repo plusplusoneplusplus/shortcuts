@@ -17,7 +17,6 @@ import * as path from 'path';
 const REACT_SRC = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react');
 const WORK_ITEMS_DIR = path.join(REACT_SRC, 'features', 'work-items');
 const SERVER_SRC = path.join(__dirname, '..', '..', '..', '..', 'src', 'server');
-const CONFIG_SRC = path.join(__dirname, '..', '..', '..', '..', 'src', 'config');
 const TEST_SERVER_SRC = path.join(__dirname, '..', '..', '..', 'server');
 
 const COMPOSER_PATH = path.join(WORK_ITEMS_DIR, 'WorkItemAiComposer.tsx');
@@ -28,7 +27,6 @@ const ADMIN_PANEL_PATH = path.join(REACT_SRC, 'admin', 'AdminPanel.tsx');
 const SPA_CONFIG_PATH = path.join(REACT_SRC, 'utils', 'config.ts');
 const AI_ROUTES_PATH = path.join(SERVER_SRC, 'routes', 'work-item-ai-routes.ts');
 const WORK_ITEM_ROUTES_PATH = path.join(SERVER_SRC, 'routes', 'work-item-routes.ts');
-const CONFIG_SCHEMA_PATH = path.join(CONFIG_SRC, 'schema.ts');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -378,15 +376,16 @@ describe('AC-05 — Workspace-scoped, reviewable, feature-flagged', () => {
     });
 
     describe('DoD 3: Feature flag default is false', () => {
-        it('config schema declares workItems.aiAuthoring.enabled with default false', () => {
-            const schemaSrc = read(CONFIG_SCHEMA_PATH);
-            expect(schemaSrc).toContain('aiAuthoring');
-            // The field must not have a default of true
-            const aiAuthoringBlock = schemaSrc.slice(
-                schemaSrc.indexOf('aiAuthoring'),
-                schemaSrc.indexOf('aiAuthoring') + 300,
-            );
-            expect(aiAuthoringBlock).not.toContain('default: true');
+        it('admin setting registry declares workItems.aiAuthoring.enabled with default false', async () => {
+            const { getAdminSettingDefinition } = await import('../../../../src/config/admin-setting-definitions');
+            const def = getAdminSettingDefinition('workItems.aiAuthoring.enabled');
+            expect(def).toBeDefined();
+            expect(def!.value.kind).toBe('boolean');
+            expect(def!.default).toBe(false);
+
+            const { CLIConfigSchema } = await import('../../../../src/config/schema');
+            expect(() => CLIConfigSchema.parse({ workItems: { aiAuthoring: { enabled: false } } })).not.toThrow();
+            expect(() => CLIConfigSchema.parse({ workItems: { aiAuthoring: { enabled: 'yes' } } })).toThrow();
         });
 
         it('SPA config isWorkItemsAiAuthoringEnabled defaults to false', () => {
