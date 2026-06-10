@@ -125,6 +125,7 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/diffSource', 
     extractFileStatsFromDiff: vi.fn().mockReturnValue([]),
 }));
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
     getHostname: () => 'localhost',
     getActiveProvider: () => 'copilot',
     getDefaultProvider: () => 'copilot',
@@ -132,6 +133,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isAutoAgentProviderRoutingEnabled: () => false,
     isEffortLevelsEnabled: () => false,
     isCommitChatLensEnabled: () => false,
+    getCommitChatLensDormantMode: () => 'ghost' as const,
 }));
 
 import { PopOutGitReviewShell } from '../../../../src/server/spa/client/react/layout/PopOutGitReviewShell';

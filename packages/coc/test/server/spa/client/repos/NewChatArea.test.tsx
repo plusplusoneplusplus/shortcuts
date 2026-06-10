@@ -795,9 +795,13 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         });
     });
 
-    it('sends selected Ralph grill depth and per-agent model setup for New Chat Ralph grilling', async () => {
+    it('sends selected Ralph grill depth and per-agent tier setup for New Chat Ralph grilling', async () => {
         mockRalphEnabled = true;
         mockRalphMultiAgentGrillEnabled = true;
+        mockEffortLevelsEnabled = true;
+        mockEffortTiers = {
+            medium: { model: 'claude-sonnet', reasoningEffort: 'high' },
+        };
         mockAgentProviders = [
             { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
             { id: 'codex', label: 'Codex', enabled: true, available: true },
@@ -814,9 +818,7 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         fireEvent.change(screen.getByTestId('new-chat-ralph-grill-agent-ux-provider'), {
             target: { value: 'claude' },
         });
-        fireEvent.change(screen.getByTestId('new-chat-ralph-grill-agent-ux-model'), {
-            target: { value: 'claude-sonnet' },
-        });
+        expect(screen.getByTestId('new-chat-ralph-grill-agent-ux-tier').getAttribute('data-tier-value')).toBe('medium');
         typeInInput('Grill this goal');
         await clickSend();
 
@@ -829,7 +831,7 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
             depth: 'deep',
         }));
         expect(body.payload.context.ralph.grill.agents).toEqual(expect.arrayContaining([
-            { role: 'ux', provider: 'claude', model: 'claude-sonnet' },
+            { role: 'ux', provider: 'claude', model: 'claude-sonnet', reasoningEffort: 'high', effortTier: 'medium' },
             expect.objectContaining({ role: 'provenance' }),
         ]));
     });

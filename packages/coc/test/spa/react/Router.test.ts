@@ -140,8 +140,8 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('pull-requests')).toBe(true);
     });
 
-    it('has exactly 15 entries', () => {
-        expect(VALID_REPO_SUB_TABS.size).toBe(15);
+    it('has exactly 16 entries', () => {
+        expect(VALID_REPO_SUB_TABS.size).toBe(16);
     });
 });
 
@@ -1376,9 +1376,10 @@ describe('Alt+<letter> repo sub-tab keyboard shortcuts', () => {
 
     const repoState: MockState = { activeTab: 'repos', selectedRepoId: 'my-repo' };
 
-    it('REPO_TAB_SHORTCUTS maps 10 letters to sub-tabs (wiki hidden)', () => {
-        expect(Object.keys(REPO_TAB_SHORTCUTS)).toHaveLength(10);
+    it('REPO_TAB_SHORTCUTS maps 11 letters to sub-tabs (wiki hidden)', () => {
+        expect(Object.keys(REPO_TAB_SHORTCUTS)).toHaveLength(11);
         expect(REPO_TAB_SHORTCUTS['i']).toBe('work-items');
+        expect(REPO_TAB_SHORTCUTS['d']).toBe('dreams');
     });
 
     it.each([

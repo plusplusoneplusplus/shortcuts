@@ -502,6 +502,7 @@ describe('VISIBLE_TASK_TYPE_LABELS', () => {
             'chat': 'Chat',
             'run-workflow': 'Run Workflow',
             'run-script': 'Run Script',
+            'dream-run': 'Dream Run',
         });
     });
 });
