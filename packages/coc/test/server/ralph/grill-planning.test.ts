@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
+import type {
+    RalphGrillAgentRole,
+    RalphGrillCandidateQuestion,
+    RalphGrillQuestionOption,
+} from '../../../src/server/ralph/grill-planning';
 import {
     buildRalphMultiAgentGrillDirective,
+    consolidateRalphGrillCandidateQuestions,
     formatRalphGrillQuestionPlanForPrompt,
     formatRalphGrillProvenance,
     getRalphGrillAgentDefinitions,
@@ -9,6 +15,32 @@ import {
     planRalphGrillCandidateQuestions,
     resolveRalphGrillSetup,
 } from '../../../src/server/ralph/grill-planning';
+
+function candidateQuestion(
+    question: string,
+    role: RalphGrillAgentRole,
+    overrides: Partial<Omit<RalphGrillCandidateQuestion, 'question' | 'sources'>> = {},
+): RalphGrillCandidateQuestion {
+    const definition = getRalphGrillAgentDefinitions('deep').find(agent => agent.role === role)!;
+    return {
+        question,
+        type: overrides.type ?? 'text',
+        ...(overrides.options ? { options: overrides.options } : {}),
+        ...(overrides.defaultValue !== undefined ? { defaultValue: overrides.defaultValue } : {}),
+        ...(overrides.rationale ? { rationale: overrides.rationale } : {}),
+        sources: [{
+            role,
+            roleLabel: definition.label,
+            provider: 'copilot',
+            model: `${role}-model`,
+            provenanceLabel: `${definition.label} · copilot/${role}-model`,
+        }],
+    };
+}
+
+function options(values: string[]): RalphGrillQuestionOption[] {
+    return values.map(value => ({ value, label: value }));
+}
 
 describe('Ralph grill planning', () => {
     it('defaults to standard depth while remaining disabled', () => {
@@ -157,6 +189,93 @@ describe('Ralph grill planning', () => {
         ]);
     });
 
+    it('merges exact duplicate candidate questions while preserving combined provenance', () => {
+        const consolidation = consolidateRalphGrillCandidateQuestions([
+            candidateQuestion('Which users should this optimize for?', 'product'),
+            candidateQuestion('Which users should this optimize for?', 'ux'),
+        ]);
+
+        expect(consolidation.selectedQuestions).toHaveLength(1);
+        expect(consolidation.selectedQuestions[0].question).toBe('Which users should this optimize for?');
+        expect(consolidation.selectedQuestions[0].sources.map(source => source.role)).toEqual(['product', 'ux']);
+        expect(consolidation.selectedQuestions[0].consolidation).toMatchObject({
+            kind: 'merged-duplicate',
+            mergedCandidateCount: 2,
+        });
+        expect(consolidation.summary).toMatchObject({
+            rawCandidateCount: 2,
+            selectedQuestionCount: 1,
+            exactDuplicatesMerged: 1,
+            semanticDuplicatesMerged: 0,
+            conflictsConverted: 0,
+        });
+    });
+
+    it('merges semantic duplicate candidate questions with different phrasing', () => {
+        const consolidation = consolidateRalphGrillCandidateQuestions([
+            candidateQuestion('Which users should this optimize for?', 'product'),
+            candidateQuestion('What user group should this optimize for?', 'quality-test'),
+        ]);
+
+        expect(consolidation.selectedQuestions).toHaveLength(1);
+        expect(consolidation.selectedQuestions[0].question).toBe('Which users should this optimize for?');
+        expect(consolidation.selectedQuestions[0].sources.map(source => source.role)).toEqual(['product', 'quality-test']);
+        expect(consolidation.summary).toMatchObject({
+            exactDuplicatesMerged: 0,
+            semanticDuplicatesMerged: 1,
+            conflictsConverted: 0,
+        });
+    });
+
+    it('converts conflicting questions into one decision question with clear options', () => {
+        const consolidation = consolidateRalphGrillCandidateQuestions([
+            candidateQuestion('Should this capability be enabled by default?', 'product', { type: 'confirm' }),
+            candidateQuestion('Should this capability stay disabled by default?', 'failure-edge-cases', { type: 'confirm' }),
+        ]);
+
+        expect(consolidation.selectedQuestions).toHaveLength(1);
+        expect(consolidation.selectedQuestions[0]).toMatchObject({
+            question: 'Should this capability be enabled or disabled by default?',
+            type: 'select',
+            options: [
+                { value: 'enabled-by-default', label: 'Enable by default' },
+                { value: 'disabled-by-default', label: 'Disable by default' },
+            ],
+            consolidation: {
+                kind: 'converted-conflict',
+                mergedCandidateCount: 2,
+            },
+        });
+        expect(consolidation.selectedQuestions[0].sources.map(source => source.role)).toEqual(['product', 'failure-edge-cases']);
+        expect(consolidation.summary.conflictsConverted).toBe(1);
+    });
+
+    it('converts conflicting option sets into one consolidated decision question', () => {
+        const consolidation = consolidateRalphGrillCandidateQuestions([
+            candidateQuestion('Which launch scope should we use?', 'product', {
+                type: 'select',
+                options: options(['pilot', 'all-users']),
+            }),
+            candidateQuestion('What launch scope should we use?', 'ux', {
+                type: 'select',
+                options: options(['internal-only', 'beta']),
+            }),
+        ]);
+
+        expect(consolidation.selectedQuestions).toHaveLength(1);
+        expect(consolidation.selectedQuestions[0]).toMatchObject({
+            question: 'Which launch scope should we use?',
+            type: 'select',
+            options: [
+                { value: 'pilot', label: 'pilot' },
+                { value: 'all-users', label: 'all-users' },
+                { value: 'internal-only', label: 'internal-only' },
+                { value: 'beta', label: 'beta' },
+            ],
+        });
+        expect(consolidation.summary.conflictsConverted).toBe(1);
+    });
+
     it('runs actual separate grill agents and keeps planning when one agent fails', async () => {
         const copilotService = {
             isAvailable: vi.fn().mockResolvedValue({ available: true }),
@@ -216,13 +335,61 @@ describe('Ralph grill planning', () => {
             ['architecture-system', 'completed'],
         ]);
         expect(plan.candidateQuestions).toHaveLength(2);
+        expect(plan.selectedQuestions).toHaveLength(2);
+        expect(plan.consolidation).toMatchObject({
+            rawCandidateCount: 2,
+            selectedQuestionCount: 2,
+        });
         expect(plan.candidateQuestions[0].sources[0].provenanceLabel).toBe('Product Agent · copilot/gpt-5.5');
         expect(plan.warnings).toContain('UX Agent failed: rate limit');
 
         const promptBlock = formatRalphGrillQuestionPlanForPrompt(plan);
         expect(promptBlock).toContain('Actual grill-agent planning result');
+        expect(promptBlock).toContain('Consolidation outcomes');
+        expect(promptBlock).toContain('Selected questions after consolidation');
         expect(promptBlock).toContain('UX Agent · claude/claude-sonnet-4.6: failed');
         expect(promptBlock).toContain('UX Agent failed: rate limit');
         expect(promptBlock).toContain('[Product Agent · copilot/gpt-5.5]');
+    });
+
+    it('warns when an agent contributes only duplicate questions after consolidation', async () => {
+        const service = {
+            isAvailable: vi.fn().mockResolvedValue({ available: true }),
+            sendMessage: vi.fn(async (options: any) => ({
+                success: true,
+                response: JSON.stringify({
+                    questions: [{
+                        question: options.prompt.includes('UX Agent')
+                            ? 'What user group should this optimize for?'
+                            : options.prompt.includes('Architecture/System Agent')
+                                ? 'Which system boundary is most constrained?'
+                            : 'Which users should this optimize for?',
+                        type: 'text',
+                    }],
+                }),
+            })),
+        };
+
+        const plan = await planRalphGrillCandidateQuestions(
+            { aiService: service as any },
+            {
+                setup: {
+                    enabled: true,
+                    depth: 'light',
+                    agents: [
+                        { role: 'product', provider: 'copilot', model: 'gpt-5.5' },
+                        { role: 'ux', provider: 'copilot', model: 'gpt-5.5' },
+                    ],
+                },
+                prompt: 'Design the new Ralph grilling experience',
+                defaultProvider: 'copilot',
+            },
+        );
+
+        expect(plan.candidateQuestions).toHaveLength(3);
+        expect(plan.selectedQuestions).toHaveLength(2);
+        expect(plan.consolidation.semanticDuplicatesMerged).toBe(1);
+        expect(plan.consolidation.duplicateOnlyAgents).toEqual(['UX Agent']);
+        expect(plan.warnings).toContain('UX Agent contributed only duplicate candidate questions after consolidation.');
     });
 });
