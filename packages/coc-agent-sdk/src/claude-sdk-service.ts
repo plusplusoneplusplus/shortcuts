@@ -219,8 +219,13 @@ interface ClaudeQueryOptions {
         effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
         /** Extra absolute directories Claude may access beyond `cwd`. */
         additionalDirectories?: string[];
-        customSystemPrompt?: string;
-        appendSystemPrompt?: string;
+        /**
+         * Unified system-prompt option (claude-agent-sdk >= 0.1). A plain
+         * string fully replaces the system prompt; the preset object keeps
+         * Claude Code's default prompt with CoC instructions appended.
+         * Omitting the field runs with an empty system prompt.
+         */
+        systemPrompt?: string | string[] | { type: 'preset'; preset: 'claude_code'; append?: string };
         permissionMode?: ClaudePermissionMode;
         allowDangerouslySkipPermissions?: boolean;
         /** Tool names auto-allowed without a permission prompt (CoC bridge tools). */
@@ -1399,12 +1404,12 @@ function inferClaudeMcpServerNamesFromOptions(options: SendMessageOptions): stri
 
 function resolveClaudeSystemPromptOptions(
     systemMessage: SystemMessageConfig | undefined,
-): Pick<NonNullable<ClaudeQueryOptions['options']>, 'appendSystemPrompt' | 'customSystemPrompt'> {
+): Pick<NonNullable<ClaudeQueryOptions['options']>, 'systemPrompt'> {
     const content = systemMessage?.content;
     if (!content || content.trim().length === 0) return {};
     return systemMessage.mode === 'replace'
-        ? { customSystemPrompt: content }
-        : { appendSystemPrompt: content };
+        ? { systemPrompt: content }
+        : { systemPrompt: { type: 'preset', preset: 'claude_code', append: content } };
 }
 
 function collectClaudeRequestSensitiveValues(options: SendMessageOptions): string[] {
