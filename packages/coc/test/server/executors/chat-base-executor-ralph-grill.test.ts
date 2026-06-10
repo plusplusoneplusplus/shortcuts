@@ -3,6 +3,7 @@ import type { AutoFolderContext, ProcessStore, QueuedTask } from '@plusplusonepl
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import { ChatExecutor } from '../../../src/server/executors/chat-executor';
 import { buildRalphGrillSuffix } from '../../../src/server/executors/chat-base-executor';
+import { RALPH_GRILL_MAX_ROUNDS } from '../../../src/server/ralph/grill-planning';
 
 class InspectableChatExecutor extends ChatExecutor {
     getRalphGrillState(processId: string) {
@@ -253,6 +254,7 @@ describe('buildRalphGrillSuffix', () => {
 
         await executor.execute(task, 'Design the new Ralph grilling experience');
         aiService.sendMessage.mockClear();
+        vi.mocked(store.emitProcessEvent).mockClear();
 
         await executor.execute(task, 'Answer: optimize for repository admins first.');
 
@@ -271,6 +273,20 @@ describe('buildRalphGrillSuffix', () => {
         ]));
         expect(resumedCalls[0].prompt).not.toContain('Original user request or current Ralph grilling context');
         expect(executor.getRalphGrillState(toQueueProcessId(task.id))?.roundsRun).toBe(2);
+        const planningEvents = vi.mocked(store.emitProcessEvent).mock.calls
+            .filter(([, event]) => (event as any).type === 'ralph-grill-planning');
+        expect((planningEvents[0][1] as any).ralphGrillPlanning).toMatchObject({
+            status: 'running',
+            round: 2,
+            maxRounds: RALPH_GRILL_MAX_ROUNDS,
+            message: expect.stringContaining(`Round 2 of up to ${RALPH_GRILL_MAX_ROUNDS}`),
+        });
+        expect((planningEvents[1][1] as any).ralphGrillPlanning).toMatchObject({
+            status: 'completed',
+            round: 2,
+            maxRounds: RALPH_GRILL_MAX_ROUNDS,
+            message: expect.stringContaining(`Round 2 of up to ${RALPH_GRILL_MAX_ROUNDS}`),
+        });
     });
 
     it('removes ask_user from the main grilling turn when resumed agents are done', async () => {

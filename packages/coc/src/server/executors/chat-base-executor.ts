@@ -685,7 +685,10 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             if (ralphGrillPlanning?.setup.enabled === true) {
                 this.emitRalphGrillPlanningProgress(
                     processId,
-                    buildRalphGrillPlanningStartedProgress(ralphGrillPlanning.setup),
+                    buildRalphGrillPlanningStartedProgress(
+                        ralphGrillPlanning.setup,
+                        this.getOrCreateSession(processId).ralphGrill,
+                    ),
                 );
                 const questionPlan = await planRalphGrillCandidateQuestions(
                     {

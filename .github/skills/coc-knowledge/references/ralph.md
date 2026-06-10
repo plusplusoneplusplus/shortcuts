@@ -226,7 +226,9 @@ grilling turn. If an SDK resume returns a different session ID, the planner
 treats native history as unavailable, retries that role as a fresh agent seeded
 with the accumulated original request, user answer turns, and already asked
 questions, and adds a compact reduced-fidelity warning to the planning/progress
-metadata. Empty responses from resumed agents are treated as "no more
+metadata. Planning/progress metadata includes the current round number and
+three-round cap so the live and consolidated question-planning cards can show
+"Round N of up to 3". Empty responses from resumed agents are treated as "no more
 follow-ups" signals; when all resumed agents are empty, when the user sends a
 compact stop signal such as "enough", or when the named three-round cap is
 already reached, the planner returns a terminal result and the executor removes
@@ -238,7 +240,8 @@ conflicts become one select-style decision question, and follow-up-round
 candidates that exact- or semantic-match the cumulative already-asked question
 set are dropped so the user never sees a repeated question. Duplicate-only agent
 contributions are reported as compact warnings, and the selected question set
-plus consolidation summary are appended to the main user prompt. While those
+plus consolidation summary are appended to the main user prompt. The appended
+coverage-summary requirement includes a rounds-run line. While those
 isolated agents run, the executor emits transient `ralph-grill-planning` SSE
 progress so the SPA can show an immediate "Question planning" status card; raw
 candidate-question state is not persisted for that interim UI. When the model

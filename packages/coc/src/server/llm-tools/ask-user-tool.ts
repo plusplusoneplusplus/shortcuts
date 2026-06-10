@@ -53,6 +53,8 @@ export interface AskUserRalphGrillSource {
 
 export interface AskUserRalphGrillPlanningSummary {
     depth: string;
+    round: number;
+    maxRounds: number;
     agentOutcomes: Array<{
         role: string;
         roleLabel: string;

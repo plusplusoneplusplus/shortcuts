@@ -511,7 +511,7 @@ function RalphGrillPlanningProgressCard({ progress }: { progress: RalphGrillPlan
                 <div>
                     <div className="font-semibold">Question planning</div>
                     <div className="mt-0.5 text-purple-800/80 dark:text-purple-100/75">
-                        {formatDepth(progress.depth)} depth · {statusCopy}
+                        Round {progress.round} of up to {progress.maxRounds} · {formatDepth(progress.depth)} depth · {statusCopy}
                     </div>
                 </div>
                 <div className={cn(

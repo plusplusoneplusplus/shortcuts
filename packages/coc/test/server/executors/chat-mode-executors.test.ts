@@ -26,6 +26,7 @@ import type { ChatModeExecutorOptions } from '../../../src/server/executors/chat
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
+import { RALPH_GRILL_MAX_ROUNDS } from '../../../src/server/ralph/grill-planning';
 
 // ============================================================================
 // Mocks
@@ -826,6 +827,8 @@ describe('ChatExecutor ralph grilling phase', () => {
         expect((planningEvents[0][1] as any).ralphGrillPlanning).toMatchObject({
             status: 'running',
             depth: 'light',
+            round: 1,
+            maxRounds: RALPH_GRILL_MAX_ROUNDS,
             agentCount: 3,
             agents: [
                 expect.objectContaining({ role: 'product', status: 'running', provenanceLabel: 'Product Agent · copilot/gpt-5.5' }),
@@ -836,6 +839,8 @@ describe('ChatExecutor ralph grilling phase', () => {
         expect((planningEvents[1][1] as any).ralphGrillPlanning).toMatchObject({
             status: 'completed',
             depth: 'light',
+            round: 1,
+            maxRounds: RALPH_GRILL_MAX_ROUNDS,
             agents: [
                 expect.objectContaining({ role: 'product', status: 'completed', candidateCount: 1 }),
                 expect.objectContaining({ role: 'ux', status: 'completed', candidateCount: 1 }),
@@ -861,7 +866,8 @@ describe('ChatExecutor ralph grilling phase', () => {
         expect(mainCall.prompt).toContain('Final goal coverage summary requirement');
         expect(mainCall.prompt).toContain('`## Agent Coverage Summary`');
         expect(mainCall.prompt).toContain('[decision] Depth: light');
-        expect(mainCall.prompt).toContain('[decision] Models used per agent:');
+        expect(mainCall.prompt).toContain(`[decision] Rounds run: 1 of up to ${RALPH_GRILL_MAX_ROUNDS}`);
+        expect(mainCall.prompt).toContain('[decision] Provider/tier or provider/model used per agent:');
         expect(mainCall.prompt).toContain('[decision] Dedupe/conflict outcomes: raw 3 -> selected 3');
         expect(mainCall.prompt).toContain('[decision] Warnings / reduced coverage: none');
         expect((mainCall.tools ?? []).map((tool: any) => tool.name)).toContain('ask_user');

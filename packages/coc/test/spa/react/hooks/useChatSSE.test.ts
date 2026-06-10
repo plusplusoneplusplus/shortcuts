@@ -7,6 +7,7 @@ import { renderHook, act } from '@testing-library/react';
 import { useChatSSE } from '../../../../src/server/spa/client/react/features/chat/hooks/useChatSSE';
 import type { UseChatSSEOptions } from '../../../../src/server/spa/client/react/features/chat/hooks/useChatSSE';
 import type { ClientConversationTurn } from '../../../../src/server/spa/client/react/types/dashboard';
+import { RALPH_GRILL_MAX_ROUNDS } from '../../../../src/server/ralph/grill-planning';
 
 // ── Minimal EventSource mock ──────────────────────────────────────────
 
@@ -313,6 +314,8 @@ describe('useChatSSE', () => {
         const progress = {
             status: 'running',
             depth: 'deep',
+            round: 2,
+            maxRounds: RALPH_GRILL_MAX_ROUNDS,
             agentCount: 2,
             agents: [
                 {

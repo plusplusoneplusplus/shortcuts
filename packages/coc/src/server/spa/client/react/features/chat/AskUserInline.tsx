@@ -165,7 +165,7 @@ function PlanningCard({ planning }: { planning: RalphGrillPlanningSummary }) {
                 <div>
                     <div className="font-semibold">Question planning</div>
                     <div className="mt-0.5 text-purple-800/80 dark:text-purple-100/75">
-                        {formatDepth(planning.depth)} depth · {planning.consolidation.rawCandidateCount} candidates → {planning.consolidation.selectedQuestionCount} questions
+                        Round {planning.round} of up to {planning.maxRounds} · {formatDepth(planning.depth)} depth · {planning.consolidation.rawCandidateCount} candidates → {planning.consolidation.selectedQuestionCount} questions
                     </div>
                 </div>
                 <div className="rounded-full bg-white/80 px-2 py-0.5 font-medium text-purple-700 dark:bg-purple-500/15 dark:text-purple-200">

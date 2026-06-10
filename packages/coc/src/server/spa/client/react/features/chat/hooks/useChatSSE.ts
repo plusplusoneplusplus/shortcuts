@@ -17,6 +17,8 @@ export interface BackgroundTasksState {
 export interface RalphGrillPlanningProgress {
     status: 'running' | 'completed';
     depth: string;
+    round: number;
+    maxRounds: number;
     agentCount: number;
     agents: Array<{
         role: string;
@@ -54,6 +56,8 @@ export interface AskUserQuestion {
         };
         planning?: {
             depth: string;
+            round: number;
+            maxRounds: number;
             agentOutcomes: Array<{
                 role: string;
                 roleLabel: string;
@@ -401,6 +405,10 @@ export function useChatSSE({
                     setRalphGrillPlanningProgress?.({
                         status: data.status,
                         depth: typeof data.depth === 'string' ? data.depth : 'standard',
+                        round: typeof data.round === 'number' ? data.round : 1,
+                        maxRounds: typeof data.maxRounds === 'number'
+                            ? data.maxRounds
+                            : (typeof data.round === 'number' ? data.round : 1),
                         agentCount: typeof data.agentCount === 'number' ? data.agentCount : data.agents.length,
                         agents: data.agents.map((agent: any) => ({
                             role: typeof agent.role === 'string' ? agent.role : 'unknown',

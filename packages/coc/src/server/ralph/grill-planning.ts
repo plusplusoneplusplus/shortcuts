@@ -170,6 +170,8 @@ export interface RalphGrillPlanningProgressAgent {
 export interface RalphGrillPlanningProgress {
     status: RalphGrillPlanningProgressStatus;
     depth: RalphGrillDepth;
+    round: number;
+    maxRounds: number;
     agentCount: number;
     agents: RalphGrillPlanningProgressAgent[];
     message: string;
@@ -495,11 +497,18 @@ export function resolveRalphGrillSetup(input?: RalphGrillSetup | null): Resolved
     };
 }
 
-export function buildRalphGrillPlanningStartedProgress(input?: RalphGrillSetup | null): RalphGrillPlanningProgress {
+export function buildRalphGrillPlanningStartedProgress(
+    input?: RalphGrillSetup | null,
+    previousState?: RalphGrillProcessState,
+): RalphGrillPlanningProgress {
     const setup = resolveRalphGrillSetup(input);
+    const previousRoundsRun = Math.min(previousState?.roundsRun ?? 0, RALPH_GRILL_MAX_ROUNDS);
+    const round = Math.min(previousRoundsRun + 1, RALPH_GRILL_MAX_ROUNDS);
     return {
         status: 'running',
         depth: setup.depth,
+        round,
+        maxRounds: RALPH_GRILL_MAX_ROUNDS,
         agentCount: setup.agents.length,
         agents: setup.agents.map(agent => ({
             role: agent.role,
@@ -508,7 +517,7 @@ export function buildRalphGrillPlanningStartedProgress(input?: RalphGrillSetup |
             status: 'running',
             candidateCount: 0,
         })),
-        message: `Running ${setup.agents.length} Ralph grill agent${setup.agents.length === 1 ? '' : 's'} to plan consolidated questions.`,
+        message: `Round ${round} of up to ${RALPH_GRILL_MAX_ROUNDS}: running ${setup.agents.length} Ralph grill agent${setup.agents.length === 1 ? '' : 's'} to plan consolidated questions.`,
         warnings: [],
     };
 }
@@ -518,6 +527,8 @@ export function buildRalphGrillPlanningCompletedProgress(plan: RalphGrillQuestio
     return {
         status: 'completed',
         depth: plan.depth,
+        round: plan.round,
+        maxRounds: plan.maxRounds,
         agentCount: plan.agentResults.length,
         agents: plan.agentResults.map(result => ({
             role: result.agent.role,
@@ -526,7 +537,7 @@ export function buildRalphGrillPlanningCompletedProgress(plan: RalphGrillQuestio
             status: result.status,
             candidateCount: result.questions.length,
         })),
-        message: `Prepared ${plan.consolidation.selectedQuestionCount} consolidated question${plan.consolidation.selectedQuestionCount === 1 ? '' : 's'} from ${plan.consolidation.rawCandidateCount} candidate${plan.consolidation.rawCandidateCount === 1 ? '' : 's'}.`,
+        message: `Round ${plan.round} of up to ${plan.maxRounds}: prepared ${plan.consolidation.selectedQuestionCount} consolidated question${plan.consolidation.selectedQuestionCount === 1 ? '' : 's'} from ${plan.consolidation.rawCandidateCount} candidate${plan.consolidation.rawCandidateCount === 1 ? '' : 's'}.`,
         warnings,
     };
 }
@@ -1488,6 +1499,7 @@ ${nextStepInstruction}
 Final goal coverage summary requirement:
 When the user's answers are complete and you emit or save the final \`## Goal\` spec, include a \`## Agent Coverage Summary\` section using this exact planning data. Do not invent additional agent runs.
 - [decision] Depth: ${plan.depth}
+- [decision] Rounds run: ${plan.roundsRun} of up to ${plan.maxRounds}
 - [decision] Provider/tier or provider/model used per agent:
 ${coverageAgentLines}
 - [decision] Dedupe/conflict outcomes: ${dedupeSummary}
@@ -1499,6 +1511,8 @@ Also keep the final spec autonomy-ready: include functional acceptance criteria 
 function buildAskUserPlanningSummary(plan: RalphGrillQuestionPlanningResult): AskUserRalphGrillPlanningSummary {
     return {
         depth: plan.depth,
+        round: plan.round,
+        maxRounds: plan.maxRounds,
         agentOutcomes: plan.agentResults.map(result => ({
             role: result.agent.role,
             roleLabel: result.agent.label,
