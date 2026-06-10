@@ -96,6 +96,7 @@ The `src/server/` tree is grouped by feature domain. Cross-cutting plumbing stay
 | `providers/` | Provider abstraction for AI/PRs |
 | `repos/` | Repository management endpoints |
 | `work-items/` | Work-items REST + executors |
+| `dreams/` | Workspace-scoped dream card types, deterministic candidate prefiltering, lifecycle storage, and durable dedup history |
 | `wiki/` | Wiki integration (manager, data, routes, context-builder, conversation-sessions) |
 | `terminal/` | WebSocket-based PTY (session-manager, routes, ws-server) |
 | `memory/` | Memory config, bounded-memory REST, repo-memory, promote, background-review |
@@ -236,6 +237,7 @@ Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT.
 - `tasks/` — task and plan files
 - `outputs/` — AI conversation output markdown
 - `memory/MEMORY.md` — per-repo bounded memory
+- `dreams/cards.json` — reviewable dream cards and hidden candidate/terminal history for workspace-local dedup
 - `ralph-sessions/<sessionId>/` — Ralph `session.json` metadata and `progress.md` journal
 - `for-each-runs/<runId>/` — For Each `run.json` metadata and `items.json` reviewed item plan/state
 - `map-reduce-runs/<runId>/` — Map Reduce `run.json` metadata, `items.json` reviewed map item plan/state, and `reduce-step.json` tracked reduce-step state
