@@ -144,6 +144,20 @@ All Map Reduce routes are workspace-scoped and gated by `mapReduce.enabled` (def
 | POST | `/api/workspaces/:id/map-reduce-runs/:runId/reduce/retry` | Retry a failed reduce step as a new child chat |
 | POST | `/api/workspaces/:id/map-reduce-runs/:runId/cancel` | Cancel remaining work, mark pending/running map items skipped, cancel a pending/running/failed reduce step, and cancel active child tasks when available |
 
+## Dreams
+
+All Dreams routes are workspace-scoped and gated by `dreams.enabled` (default `false`). Dream generation also requires the target workspace's `preferences.dreams.enabled` opt-in. Cards are review records only: approval records user intent, conversion records an explicit resulting artifact link, and no route mutates skills, prompts, notes, memory, work items, or code directly.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/workspaces/:id/dreams/cards` | List visible dream cards by default. Query `includeHidden=true` includes candidate/approved/dismissed/converted/superseded history; `status=visible,approved` filters by card status |
+| GET | `/api/workspaces/:id/dreams/cards/:cardId` | Read a dream card detail, including source ranges, confidence, fingerprint, and dedup rationale |
+| POST | `/api/workspaces/:id/dreams/run` | Manually run a read-only Ask-mode dream pass for the workspace. Body accepts optional `provider`, `config.model`, `config.reasoningEffort`, `confidenceThreshold`, `maxCandidates`, `conversationLimit`, and `timeoutMs` |
+| POST | `/api/workspaces/:id/dreams/cards/:cardId/approve` | Mark a visible card approved; this records intent only and does not perform a next action |
+| POST | `/api/workspaces/:id/dreams/cards/:cardId/dismiss` | Dismiss a visible card, optionally recording `dedupRationale` |
+| POST | `/api/workspaces/:id/dreams/cards/:cardId/convert` | Mark a visible or approved card converted with `{ artifactType, artifactId, artifactUrl? }` after an explicit external next action completes |
+| POST | `/api/workspaces/:id/dreams/cards/:cardId/supersede` | Mark a candidate or visible card superseded with required `dedupRationale` and optional `supersededByCardId` |
+
 ## Schedules
 
 | Method | Path | Description |

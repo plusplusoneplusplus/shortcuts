@@ -22,7 +22,7 @@ import { prepareTaskForEnqueue } from './queue-enqueue';
 import { registerTaskRoutes, registerTaskWriteRoutes } from '../tasks/tasks-handler';
 import { registerTaskGenerationRoutes } from '../tasks/task-generation-handler';
 import { registerPromptRoutes } from '../prompts/prompt-handler';
-import { registerPreferencesRoutes } from '../preferences-handler';
+import { readRepoPreferences, registerPreferencesRoutes } from '../preferences-handler';
 import { registerAdminRoutes } from '../admin/admin-handler';
 import { registerTaskCommentsRoutes } from '../tasks/comments/task-comments-handler';
 import { registerDiffCommentsRoutes } from '../tasks/comments/diff-comments-handler';
@@ -79,7 +79,7 @@ import type { EnqueueFunction } from '../work-items/work-item-executor';
 import { upsertWorkItemTaskFile, toTaskFileStatus } from '../work-items/work-item-task-file';
 import { clearWorkItemResponseCacheForWorkspace } from '../work-items/work-item-response-cache';
 import { execGit } from '@plusplusoneplusplus/forge';
-import type { WorkItemChangeCommit } from '../work-items/types';
+import { TERMINAL_WORK_ITEM_STATUSES, WORK_ITEM_STATUSES, type WorkItemChangeCommit } from '../work-items/types';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
 import type { ResolvedCLIConfig } from '../../config';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
@@ -104,6 +104,9 @@ import { registerMapReduceRoutes } from './map-reduce-routes';
 import { FileMapReduceRunStore } from '../map-reduce/map-reduce-run-store';
 import { createMapReducePlanGenerator } from '../map-reduce/map-reduce-plan-generator';
 import { MapReduceRunExecutor } from '../map-reduce/map-reduce-run-executor';
+import { registerDreamRoutes } from '../dreams/dream-routes';
+import { FileDreamStore } from '../dreams/dream-store';
+import { DreamRunExecutor } from '../dreams/dream-runner';
 import { registerLoopRoutes } from '../loops/loop-handler';
 import type { LoopStore } from '../loops/loop-store';
 import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
@@ -681,8 +684,48 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         resolveDefaultProvider,
     });
 
-    // Work item routes
     const workItemStore = new FileWorkItemStore({ dataDir });
+
+    // Dreams routes: reviewable, workspace-scoped cards plus manual run trigger.
+    // Route registration is always present; the live config guard controls availability.
+    const dreamStore = new FileDreamStore({ dataDir });
+    const getDreamsEnabled = opts.runtimeConfigService
+        ? () => opts.runtimeConfigService!.config.dreams?.enabled ?? false
+        : () => opts.resolvedConfig?.dreams?.enabled ?? false;
+    const activeWorkItemStatuses = WORK_ITEM_STATUSES.filter(status => !TERMINAL_WORK_ITEM_STATUSES.has(status));
+    const dreamRunExecutor = new DreamRunExecutor({
+        store: dreamStore,
+        processStore: store,
+        aiService: resolvedAiService,
+        resolveAiServiceForProvider: opts.resolveAiServiceForProvider,
+        getDreamsEnabled,
+        getWorkspaceDreamsEnabled: (workspaceId) => readRepoPreferences(dataDir, workspaceId).dreams?.enabled === true,
+        listWorkspaceTasks: () => queueFacade.getAll(),
+        getRelatedRecords: async (workspaceId) => {
+            const result = await workItemStore.listWorkItems({
+                repoId: workspaceId,
+                status: activeWorkItemStatuses,
+            });
+            return result.items
+                .filter(item => !item.archivedAt)
+                .map(item => ({
+                    kind: 'work-item' as const,
+                    id: item.id,
+                    status: item.status,
+                    title: item.title,
+                    summary: item.description?.trim() || item.title,
+                    recommendation: item.title,
+                }));
+        },
+    });
+    registerDreamRoutes({
+        routes,
+        store: dreamStore,
+        runner: dreamRunExecutor,
+        getDreamsEnabled,
+    });
+
+    // Work item routes
     const enqueueForWorkItems = (async (input: Parameters<EnqueueFunction>[0]) => {
         await prepareEnqueueTask(input as CreateTaskInput);
         return bridge.enqueue(input as CreateTaskInput);

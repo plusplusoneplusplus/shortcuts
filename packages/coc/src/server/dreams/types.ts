@@ -35,12 +35,15 @@ export interface DreamSourceRange {
     endTurnIndex: number;
 }
 
-export type DreamConversionArtifactType =
-    | 'skill-hardening-task'
-    | 'note'
-    | 'memory'
-    | 'work-item'
-    | 'other';
+export const DREAM_CONVERSION_ARTIFACT_TYPES = [
+    'skill-hardening-task',
+    'note',
+    'memory',
+    'work-item',
+    'other',
+] as const;
+
+export type DreamConversionArtifactType = typeof DREAM_CONVERSION_ARTIFACT_TYPES[number];
 
 export interface DreamConversionLink {
     artifactType: DreamConversionArtifactType;
