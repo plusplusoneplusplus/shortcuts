@@ -502,7 +502,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             let allTurns: ConversationTurn[];
             let assistantTurnIndex = process.conversationTurns?.length ?? 0;
 
-            const appendResult = await this.store.appendConversationTurn(
+            const appendResult = await this.appendFinalConversationTurn(
                 processId,
                 (turnIndex) => {
                     assistantTurnIndex = turnIndex;
@@ -646,7 +646,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             const partialSuggestions = session?.pendingSuggestions;
             const hasPartial = partialContent.length > 0 || partialTimeline.length > 0;
 
-            await this.store.appendConversationTurn(
+            await this.appendFinalConversationTurn(
                 processId,
                 (turnIndex) => ({
                     role: 'assistant' as const,

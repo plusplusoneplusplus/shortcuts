@@ -505,7 +505,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             try {
                 const tokenUsage = (result as any)?.tokenUsage;
                 let assistantTurnIndex = 0;
-                const appendResult = await this.store.appendConversationTurn(
+                const appendResult = await this.appendFinalConversationTurn(
                     processId,
                     (turnIndex) => {
                         assistantTurnIndex = turnIndex;
@@ -736,7 +736,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
 
                     if (hasPartial) {
                         try {
-                            await this.store.appendConversationTurn(
+                            await this.appendFinalConversationTurn(
                                 processId,
                                 (turnIndex) => ({
                                     role: 'assistant' as const,

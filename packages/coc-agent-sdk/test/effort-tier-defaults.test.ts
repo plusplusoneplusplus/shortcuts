@@ -32,12 +32,15 @@ describe('getDefaultEffortTiers', () => {
     });
 
     it('returns the claude defaults', () => {
+        // Claude tiers must reference Claude CLI catalog aliases — ids the CLI
+        // initialize response advertises — so executor-side effort validation
+        // can resolve their metadata. Haiku supports no reasoning effort.
         const defaults = getDefaultEffortTiers('claude');
         expect(defaults).toEqual({
-            'very-low': { model: 'claude-haiku-4.5',  reasoningEffort: 'low'    },
-            low:    { model: 'claude-sonnet-4.6', reasoningEffort: 'high'   },
-            medium: { model: 'claude-opus-4-7',   reasoningEffort: 'medium' },
-            high:   { model: 'claude-opus-4-7',   reasoningEffort: 'xhigh'  },
+            'very-low': { model: 'haiku',  reasoningEffort: null     },
+            low:    { model: 'sonnet', reasoningEffort: 'high'   },
+            medium: { model: 'opus',   reasoningEffort: 'medium' },
+            high:   { model: 'opus',   reasoningEffort: 'xhigh'  },
         });
     });
 

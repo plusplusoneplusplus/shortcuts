@@ -33,6 +33,7 @@ import type {
 import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import {
     approveAllPermissions,
+    findClaudeCatalogModel,
     getLogger,
     LogCategory,
     mergeConsecutiveContentItems,
@@ -217,7 +218,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
      * non-default providers (Codex/Claude) resolve from their own `listModels()`
      * result, cached here to avoid re-spawning a CLI on every turn.
      */
-    private readonly providerReasoningModelCache = new Map<ChatProvider, Map<string, ModelInfo>>();
+    private readonly providerReasoningModelCache = new Map<ChatProvider, ModelInfo[]>();
 
     constructor(store: ProcessStore, options: ChatModeExecutorOptions, dataDir?: string) {
         super(store, dataDir);
@@ -286,23 +287,23 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         provider?: ChatProvider,
         service?: ISDKService,
     ): Promise<ModelInfo | undefined> {
-        if (!modelId) {
-            return undefined;
-        }
-
-        let model = modelMetadataStore.getModel(modelId);
-        if (!model && !modelMetadataStore.isInitialized()) {
-            await modelMetadataStore.initialize(this.aiService as unknown as { listModels(): Promise<ModelInfo[]> });
-            model = modelMetadataStore.getModel(modelId);
-        }
-        if (model) {
-            return model;
+        if (modelId) {
+            let model = modelMetadataStore.getModel(modelId);
+            if (!model && !modelMetadataStore.isInitialized()) {
+                await modelMetadataStore.initialize(this.aiService as unknown as { listModels(): Promise<ModelInfo[]> });
+                model = modelMetadataStore.getModel(modelId);
+            }
+            if (model) {
+                return model;
+            }
         }
 
         // The shared store only holds the default provider's catalog (typically
         // Copilot). For other providers, resolve from that provider's own model
         // list so reasoning-effort validation sees the model's supported efforts
-        // instead of failing with "Supported efforts: unknown".
+        // instead of failing with "Supported efforts: unknown". An undefined
+        // modelId (provider default) resolves to the provider's own default
+        // catalog entry when it advertises one.
         if (provider && provider !== 'copilot' && service) {
             return this.getProviderReasoningModel(provider, service, modelId);
         }
@@ -312,23 +313,29 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     private async getProviderReasoningModel(
         provider: ChatProvider,
         service: ISDKService,
-        modelId: string,
+        modelId: string | undefined,
     ): Promise<ModelInfo | undefined> {
-        let byId = this.providerReasoningModelCache.get(provider);
-        if (!byId) {
+        let models = this.providerReasoningModelCache.get(provider);
+        if (!models) {
             if (typeof service.listModels !== 'function') {
                 return undefined;
             }
             try {
-                const models = await service.listModels() as unknown as ModelInfo[];
-                byId = new Map(models.map(m => [m.id, m] as const));
-                this.providerReasoningModelCache.set(provider, byId);
+                models = await service.listModels() as unknown as ModelInfo[];
+                this.providerReasoningModelCache.set(provider, models);
             } catch {
                 // Leave the cache unset so a later turn can retry discovery.
                 return undefined;
             }
         }
-        return byId.get(modelId);
+        // Claude catalogs use CLI alias ids ('default'/'opus'/'haiku') while
+        // configs and effort tiers may carry family aliases ('sonnet') or
+        // legacy dashed/dotted ids — bridge those shapes. Other providers
+        // match by exact id only.
+        if (provider === 'claude') {
+            return findClaudeCatalogModel(models, modelId);
+        }
+        return modelId ? models.find(m => m.id === modelId) : undefined;
     }
 
     // ========================================================================
@@ -751,7 +758,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             if (hasPartial) {
                 const errorMsg = err instanceof Error ? err.message : String(err);
                 try {
-                    await this.store.appendConversationTurn(
+                    await this.appendFinalConversationTurn(
                         processId,
                         (turnIndex) => ({
                             role: 'assistant' as const,
