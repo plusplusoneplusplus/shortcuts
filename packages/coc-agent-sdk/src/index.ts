@@ -150,6 +150,11 @@ export {
 } from './model-reasoning';
 
 export {
+    findClaudeCatalogModel,
+    ClaudeCatalogModelLike,
+} from './claude-model-catalog';
+
+export {
     MCPConfigFile,
     MCPConfigLoadResult,
     VSCodeMCPConfigFile,

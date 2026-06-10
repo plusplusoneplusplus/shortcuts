@@ -119,6 +119,27 @@ describe('ProviderEffortTiersSection', () => {
         expect(optionValues).toContain('');  // "Not set" option
     });
 
+    it('keeps a tier model and stored effort selectable when absent from the provider catalog', async () => {
+        // A stored/default tier may reference a model id the provider catalog
+        // does not list (e.g. legacy ids); the row must not render blank.
+        mockGetEffortTiers.mockResolvedValue(makeEffortTiersResponse({
+            high: { model: 'legacy-model-id', reasoningEffort: 'xhigh', source: 'config' },
+        }));
+        render(<ProviderEffortTiersSection provider="copilot" />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('effort-tiers-table')).toBeTruthy();
+        });
+
+        const modelSelect = screen.getByTestId('effort-tier-model-select-high') as HTMLSelectElement;
+        expect(modelSelect.value).toBe('legacy-model-id');
+        expect(Array.from(modelSelect.options).map(o => o.value)).toContain('legacy-model-id');
+
+        const effortSelect = screen.getByTestId('effort-tier-effort-select-high') as HTMLSelectElement;
+        expect(effortSelect.value).toBe('xhigh');
+        expect(Array.from(effortSelect.options).map(o => o.value)).toContain('xhigh');
+    });
+
     it('effort dropdown shows model reasoning options after selecting a model', async () => {
         render(<ProviderEffortTiersSection provider="copilot" />);
 

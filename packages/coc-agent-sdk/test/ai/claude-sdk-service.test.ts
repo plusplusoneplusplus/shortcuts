@@ -438,6 +438,34 @@ describe('ClaudeSDKService.listModels', () => {
         ]);
     });
 
+    it('maps model descriptions so alias/family catalog matching can use them', async () => {
+        const child = mockClaudeCliSpawn();
+        const modelsPromise = svc.listModels();
+        await waitForClaudeCliSpawn(child);
+
+        child.writeStdoutLine(JSON.stringify({
+            type: 'control_response',
+            request_id: 'init-1',
+            response: {
+                response: {
+                    models: [
+                        { value: 'default', displayName: 'Default (recommended)', description: 'Sonnet 4.6 · Best for everyday tasks' },
+                        { value: 'opus', displayName: 'Opus', description: '  Opus 4.8 · Most capable  ' },
+                        { value: 'haiku', displayName: 'Haiku', description: '' },
+                    ],
+                },
+            },
+        }));
+
+        const models = await modelsPromise;
+
+        expect(models).toEqual([
+            { id: 'default', name: 'Default (recommended)', description: 'Sonnet 4.6 · Best for everyday tasks' },
+            { id: 'opus', name: 'Opus', description: 'Opus 4.8 · Most capable' },
+            { id: 'haiku', name: 'Haiku' },
+        ]);
+    });
+
     it('ignores malformed stdout until the matching initialize response arrives', async () => {
         const child = mockClaudeCliSpawn();
         const modelsPromise = svc.listModels();
@@ -472,9 +500,9 @@ describe('ClaudeSDKService.listModels', () => {
 
         const models = await modelsPromise;
 
-        expect(models).toContainEqual({ id: 'claude-opus-4-7', name: 'Claude Opus 4.7' });
-        expect(models).toContainEqual({ id: 'claude-opus-4-6', name: 'Claude Opus 4.6' });
-        expect(models).toContainEqual({ id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' });
+        expect(models).toContainEqual({ id: 'claude-opus-4-7', name: 'Claude Opus 4.7', supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh'] });
+        expect(models).toContainEqual({ id: 'claude-opus-4-6', name: 'Claude Opus 4.6', supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh'] });
+        expect(models).toContainEqual({ id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', supportedReasoningEfforts: ['low', 'medium', 'high'] });
         expect(models).toContainEqual({ id: 'claude-provider-default', name: 'Claude Provider Default' });
         expect(queryFn).not.toHaveBeenCalledWith({ prompt: '' });
         expect(child.kill).toHaveBeenCalledWith('SIGTERM');

@@ -108,6 +108,8 @@ export {
     resolveReasoningEffort,
     resolveReasoningSelection,
     resolveModelForProvider,
+    findClaudeCatalogModel,
+    type ClaudeCatalogModelLike,
     ResolvedReasoningSelection,
     ResolveReasoningEffortOptions,
     ProviderModelResolution,

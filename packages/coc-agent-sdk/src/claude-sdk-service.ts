@@ -412,10 +412,14 @@ export class ClaudeSDKService implements ISDKService {
         const avail = await this.isAvailable();
         if (!avail.available) throw new Error(avail.error ?? 'Claude Code SDK is not available');
 
+        // Curated baseline used when CLI model discovery fails. Advertised
+        // efforts mirror known model capabilities so effort-tier validation
+        // still resolves; the Claude SDK silently downgrades an effort the
+        // model turns out not to support. Haiku exposes no effort levels.
         const fallbackModels: IModelInfo[] = [
-            { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
-            { id: 'claude-opus-4-7', name: 'Claude Opus 4.7' },
-            { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
+            { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', supportedReasoningEfforts: ['low', 'medium', 'high'] },
+            { id: 'claude-opus-4-7', name: 'Claude Opus 4.7', supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh'] },
+            { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh'] },
             { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
             { id: 'claude-provider-default', name: 'Claude Provider Default' },
         ];
@@ -562,6 +566,11 @@ export class ClaudeSDKService implements ISDKService {
                 const displayName = typeof record.displayName === 'string' ? record.displayName.trim() : '';
                 if (!value || !displayName) return null;
                 const info: IModelInfo = { id: value, name: displayName };
+                // The description names the underlying model family (e.g.
+                // "Sonnet 4.6 · Best for everyday tasks" for the `default`
+                // alias) — keep it so catalog alias matching can use it.
+                const description = typeof record.description === 'string' ? record.description.trim() : '';
+                if (description) info.description = description;
                 const efforts = this.mapClaudeCliEffortLevels(record.supportedEffortLevels);
                 if (efforts.length > 0) info.supportedReasoningEfforts = efforts;
                 return info;

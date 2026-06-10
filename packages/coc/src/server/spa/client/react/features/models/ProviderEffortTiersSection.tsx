@@ -156,6 +156,12 @@ export function ProviderEffortTiersSection({ provider }: ProviderEffortTiersSect
                                             data-testid={`effort-tier-model-select-${tier}`}
                                         >
                                             <option value="">— Not set —</option>
+                                            {selectedModel && !modelInfo && (
+                                                // Keep a configured/default model visible even when the
+                                                // provider catalog does not list it, so the row never
+                                                // renders a blank selection.
+                                                <option value={selectedModel}>{selectedModel}</option>
+                                            )}
                                             {sortedModels.map(m => (
                                                 <option key={m.id} value={m.id}>
                                                     {m.name || m.id}{!m.enabled ? ' (disabled)' : ''}
@@ -184,6 +190,11 @@ export function ProviderEffortTiersSection({ provider }: ProviderEffortTiersSect
                                             data-testid={`effort-tier-effort-select-${tier}`}
                                         >
                                             <option value="">Auto</option>
+                                            {selectedEffort && !effortOptions.includes(selectedEffort) && (
+                                                // Keep a stored effort visible when the catalog does not
+                                                // advertise it for this model (legacy config or unknown model).
+                                                <option value={selectedEffort}>{selectedEffort}</option>
+                                            )}
                                             {effortOptions.map(e => (
                                                 <option key={e} value={e}>{e}</option>
                                             ))}

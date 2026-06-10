@@ -519,6 +519,121 @@ describe('reasoningEffort wiring in queue executor bridge', () => {
         expect((sdkMocks.mockSendMessage.mock.calls[1][0] as Record<string, unknown>).reasoningEffort).toBe('high');
     });
 
+    // =========================================================================
+    // Claude catalog alias bridging
+    // =========================================================================
+
+    /** Mirror of the live Claude CLI initialize-response catalog. */
+    function claudeCliCatalog(): ModelInfo[] {
+        return [
+            { id: 'default', name: 'Default (recommended)', description: 'Sonnet 4.6 · Best for everyday tasks', supportedReasoningEfforts: ['low', 'medium', 'high'] },
+            { id: 'opus', name: 'Opus', description: 'Opus 4.8 · Most capable for complex work', supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh'] },
+            { id: 'haiku', name: 'Haiku', description: 'Haiku 4.5 · Fastest for quick answers' },
+        ] as unknown as ModelInfo[];
+    }
+
+    // -------------------------------------------------------------------------
+    it("executeWithAI() resolves the Claude high-tier default ('opus' + xhigh) against the CLI alias catalog", async () => {
+        getModelSpy.mockReturnValue(undefined);
+        sdkMocks.mockListModels.mockResolvedValue(claudeCliCatalog());
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        await executor.execute(chatTaskWithProvider('claude', 'opus', 'xhigh'));
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
+        expect(call.model).toBe('opus');
+        expect(call.reasoningEffort).toBe('xhigh');
+    });
+
+    // -------------------------------------------------------------------------
+    it('executeWithAI() resolves a legacy dashed Claude id via family matching (regression: xhigh → "Supported efforts: unknown")', async () => {
+        // Stored configs and old tier defaults carry ids like 'claude-opus-4-7'
+        // that the CLI catalog (default/opus/haiku) does not list. Family
+        // matching must bridge them so xhigh validates instead of throwing.
+        getModelSpy.mockReturnValue(undefined);
+        sdkMocks.mockListModels.mockResolvedValue(claudeCliCatalog());
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        await executor.execute(chatTaskWithProvider('claude', 'claude-opus-4-7', 'xhigh'));
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
+        expect(call.model).toBe('claude-opus-4-7');
+        expect(call.reasoningEffort).toBe('xhigh');
+    });
+
+    // -------------------------------------------------------------------------
+    it("executeWithAI() resolves the 'sonnet' tier alias via the default entry's description", async () => {
+        getModelSpy.mockReturnValue(undefined);
+        sdkMocks.mockListModels.mockResolvedValue(claudeCliCatalog());
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        await executor.execute(chatTaskWithProvider('claude', 'sonnet', 'high'));
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
+        expect(call.model).toBe('sonnet');
+        expect(call.reasoningEffort).toBe('high');
+    });
+
+    // -------------------------------------------------------------------------
+    it('executeWithAI() validates an explicit effort against the default catalog entry when no model is set (regression: model "unknown")', async () => {
+        // A Claude chat with an effort but no model used to throw
+        // 'Unsupported reasoning effort "..." requested for model "unknown".
+        // Supported efforts: unknown' because metadata lookup required a model
+        // id. The provider-default turn must validate against the catalog's
+        // own 'default' entry instead.
+        getModelSpy.mockReturnValue(undefined);
+        sdkMocks.mockListModels.mockResolvedValue(claudeCliCatalog());
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task: QueuedTask = {
+            id: 'task-re-claude-default',
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Hello', provider: 'claude' as any },
+            config: { timeoutMs: 30000, reasoningEffort: 'high' },
+            displayName: 'Hello',
+        };
+        await executor.execute(task);
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
+        expect(call.model).toBeUndefined();
+        expect(call.reasoningEffort).toBe('high');
+    });
+
+    // -------------------------------------------------------------------------
+    it('executeWithAI() still rejects an effort the resolved Claude catalog entry does not support', async () => {
+        // The default entry (Sonnet) advertises low/medium/high — an explicit
+        // xhigh on a provider-default turn must fail loud with the resolved
+        // supported list rather than "Supported efforts: unknown".
+        getModelSpy.mockReturnValue(undefined);
+        sdkMocks.mockListModels.mockResolvedValue(claudeCliCatalog());
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task: QueuedTask = {
+            id: 'task-re-claude-default-xhigh',
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Hello', provider: 'claude' as any },
+            config: { timeoutMs: 30000, reasoningEffort: 'xhigh' },
+            displayName: 'Hello',
+        };
+        const result = await executor.execute(task);
+
+        expect(sdkMocks.mockSendMessage).not.toHaveBeenCalled();
+        expect(result.success).toBe(false);
+        expect(result.error?.message).toContain('Unsupported reasoning effort "xhigh"');
+        expect(result.error?.message).toContain('low, medium, high');
+        expect(result.error?.message).not.toContain('Supported efforts: unknown');
+    });
+
     // -------------------------------------------------------------------------
     it('executeFollowUp() uses provider-scoped reasoningEfforts for Codex session (Auto path)', async () => {
         getModelSpy.mockImplementation((id: string) =>

@@ -53,6 +53,37 @@ describe('resolveEffortTierConfig', () => {
         expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
     });
 
+    it('resolves Claude tiers to CLI catalog aliases (regression: high tier xhigh)', () => {
+        // The Claude high-tier default must reference a model id the Claude
+        // CLI catalog advertises ('opus'), so executor-side effort validation
+        // can resolve its supported efforts and accept xhigh.
+        const input = makeInput({
+            payload: { kind: 'chat', mode: 'autopilot', prompt: 'test', provider: 'claude' },
+            config: { effortTier: 'high' } as CreateTaskInput['config'] & { effortTier: string },
+        });
+
+        resolveEffortTierConfig(input, makeContext());
+
+        expect(input.config.model).toBe('opus');
+        expect(input.config.reasoningEffort).toBe('xhigh');
+        expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
+    });
+
+    it('resolves the Claude very-low tier to haiku with no pinned effort', () => {
+        // Haiku advertises no reasoning-effort levels, so the tier must not
+        // pin one (a pinned effort would fail validation).
+        const input = makeInput({
+            payload: { kind: 'chat', mode: 'autopilot', prompt: 'test', provider: 'claude' },
+            config: { effortTier: 'very-low' } as CreateTaskInput['config'] & { effortTier: string },
+        });
+
+        resolveEffortTierConfig(input, makeContext());
+
+        expect(input.config.model).toBe('haiku');
+        expect(input.config.reasoningEffort).toBeUndefined();
+        expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
+    });
+
     it('resolves the very-low tier from provider defaults', () => {
         const input = makeInput({
             payload: { kind: 'chat', mode: 'autopilot', prompt: 'test', provider: 'codex' },
@@ -186,7 +217,7 @@ describe('prepareTaskForEnqueue', () => {
 
         expect(resolveDefaultProvider).not.toHaveBeenCalled();
         expect((input.payload as any).provider).toBe('claude');
-        expect(input.config.model).toBe('claude-haiku-4.5');
+        expect(input.config.model).toBe('haiku');
     });
 
     it('does not mark follow-up tasks for Auto routing', async () => {

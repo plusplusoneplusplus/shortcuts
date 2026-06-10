@@ -40,11 +40,15 @@ const CODEX_DEFAULTS: EffortTierDefaultsMap = {
     high:   { model: 'gpt-5.5',       reasoningEffort: 'xhigh' },
 };
 
+// Claude tier models use the Claude CLI catalog aliases ('opus', 'sonnet',
+// 'haiku') — the ids the CLI's initialize response advertises and accepts as
+// `--model` values. Haiku advertises no effort levels, so its tier pins no
+// reasoning effort.
 const CLAUDE_DEFAULTS: EffortTierDefaultsMap = {
-    'very-low': { model: 'claude-haiku-4.5',  reasoningEffort: 'low'    },
-    low:    { model: 'claude-sonnet-4.6', reasoningEffort: 'high'   },
-    medium: { model: 'claude-opus-4-7',   reasoningEffort: 'medium' },
-    high:   { model: 'claude-opus-4-7',   reasoningEffort: 'xhigh'  },
+    'very-low': { model: 'haiku',  reasoningEffort: null     },
+    low:    { model: 'sonnet', reasoningEffort: 'high'   },
+    medium: { model: 'opus',   reasoningEffort: 'medium' },
+    high:   { model: 'opus',   reasoningEffort: 'xhigh'  },
 };
 
 const PROVIDER_DEFAULTS: Record<DefaultedProvider, EffortTierDefaultsMap> = {

@@ -25,6 +25,12 @@ export interface IModelInfo {
     /** Human-readable model name */
     name: string;
     /**
+     * Provider-supplied model description (e.g. Claude CLI's
+     * "Sonnet 4.6 · Best for everyday tasks"). Used for alias/family matching
+     * when a configured model id is not an exact catalog id.
+     */
+    description?: string;
+    /**
      * Reasoning-effort levels this model supports, when the provider advertises
      * them (e.g. `['low', 'medium', 'high', 'xhigh']`). Omitted or empty means
      * the model exposes no selectable effort levels, so effort is left to the
