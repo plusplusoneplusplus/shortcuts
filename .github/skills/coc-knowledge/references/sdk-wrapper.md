@@ -24,7 +24,7 @@ Location: `packages/coc-agent-sdk/src/`
 | `streaming-state-machine.ts` | Pure state machine: `Idle → Streaming → Settled \| Cancelled` |
 | `session-timer-manager.ts` | Timer management: overall timeout, idle timeout, turn-end grace |
 | `session-telemetry.ts` | Token usage accumulation, tool-call tracking |
-| `sdk-client-factory.ts` | Per-request `CopilotClient` spawning: cwd validation, folder trust |
+| `sdk-client-factory.ts` | Per-request `CopilotClient` spawning: working-directory validation, folder trust |
 | `sdk-loader.ts` | SDK binary discovery + ESM import workaround |
 | `sdk-esm-loader.ts` | Dynamic ESM import helper (webpack-safe `new Function` indirection) |
 | `types.ts` | Shared types: `SendMessageOptions`, MCP configs, permissions, tools, token usage |
@@ -200,7 +200,7 @@ Claude tool-call capture treats assistant `tool_use` blocks as start events and 
 8. sessionManager.track(session)
 9. Route: streaming (timeoutMs>120s or onStreamingChunk) vs sendAndWait
 10. Empty-response handling (turnCount>0 = success)
-11. FINALLY: remove abort listener, untrack + session.destroy + client.stop
+11. FINALLY: remove abort listener, untrack + session.disconnect + client.stop
 ```
 
 ## Streaming Internals
@@ -250,7 +250,11 @@ provider SDK — keeping the runtime + bridge free of any compile-time dependenc
 `@github/copilot-sdk`. `defineTool()` is a local pure data-merge. A compile-time
 guard in `types.ts` asserts the native contract stays structurally interchangeable
 with the Copilot SDK's, since the Copilot path assigns the same bundle to the SDK's
-`SessionConfig.tools` (`request-runner.ts`).
+`SessionConfig.tools` (`request-runner.ts`). Matching the SDK (>= 1.0.0),
+`Tool.handler` is optional (declaration-only tools); every CoC-authored tool
+supplies one, and `CocToolRuntime.callTool` returns an error result for a
+handler-less tool instead of throwing. CoC's local `defineTool()` still requires
+a handler.
 
 Pipeline (all in `coc-agent-sdk/src/llm-tools/`):
 1. `CocToolRuntime` wraps the per-invocation `Tool<any>[]` → `listTools()` (JSON-schema
@@ -321,6 +325,6 @@ Without a call to `initSDKLogger`, all internal SDK log statements are silently 
 - **Shared ISDKService mock** in `packages/coc-agent-sdk/src/testing/` — vitest-free, exposed via `@plusplusoneplusplus/coc-agent-sdk/testing` subpath export. Factories: `createMockSDKService`, `createUnavailableMock`, `createStreamingMock`, `createFailingMock`, `createMockBridge`, `createExpiredSessionBridge`. Accepts an injectable mock-fn factory (`fn` parameter); consumers pass `vi.fn` for vitest spy assertions.
 - `packages/coc/test/helpers/mock-sdk-service.ts` is a thin wrapper that binds `vi.fn` and re-exports from the shared mock.
 - Lower-level mock helpers in `packages/coc-agent-sdk/test/helpers/mock-sdk.ts` (MockCopilotClient — different layer, not migrated).
-- 539+ tests in `packages/coc-agent-sdk/test/`
+- 580+ tests in `packages/coc-agent-sdk/test/`
 - Set `serviceAny.sdkModule` and `serviceAny.availabilityCache` to bypass real SDK
 - Unit tests cover: session-manager, streaming-session, sdk-loader, sdk-client-factory, stream-error-guard, request-runner, logger, codex-sdk-service

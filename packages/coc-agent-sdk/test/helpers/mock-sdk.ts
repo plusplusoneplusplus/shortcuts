@@ -18,7 +18,7 @@ import type { CopilotSDKService } from '../../src/copilot-sdk-service';
 export interface MockSession {
     sessionId: string;
     sendAndWait: ReturnType<typeof vi.fn>;
-    destroy: ReturnType<typeof vi.fn>;
+    disconnect: ReturnType<typeof vi.fn>;
     setModel: ReturnType<typeof vi.fn>;
 }
 
@@ -76,7 +76,7 @@ export function createMockSession(overrides?: Partial<{
             : vi.fn().mockResolvedValue(
                 overrides?.sendAndWaitResponse ?? { data: { content: 'mock response' } }
             ),
-        destroy: vi.fn().mockResolvedValue(undefined),
+        disconnect: vi.fn().mockResolvedValue(undefined),
         setModel: vi.fn().mockResolvedValue(undefined),
     };
 }
@@ -93,7 +93,7 @@ export function createStreamingMockSession(sessionId?: string): StreamingMockSes
     const session: MockStreamingSession = {
         sessionId: sid,
         sendAndWait: vi.fn(),
-        destroy: vi.fn().mockResolvedValue(undefined),
+        disconnect: vi.fn().mockResolvedValue(undefined),
         setModel: vi.fn().mockResolvedValue(undefined),
         on: vi.fn().mockImplementation((handler: (event: any) => void) => {
             handlers.push(handler);
@@ -130,7 +130,7 @@ export function createMockSDKModule(sessionOrFactory?: any): MockSDKModule {
             ? vi.fn().mockResolvedValue({
                 sessionId: 'test-session',
                 sendAndWait: vi.fn().mockResolvedValue('response'),
-                destroy: vi.fn().mockResolvedValue(undefined),
+                disconnect: vi.fn().mockResolvedValue(undefined),
                 setModel: vi.fn().mockResolvedValue(undefined),
             })
             : typeof sessionOrFactory === 'function'

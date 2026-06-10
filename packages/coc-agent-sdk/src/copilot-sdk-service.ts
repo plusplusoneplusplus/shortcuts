@@ -151,7 +151,7 @@ export class CopilotSDKService implements ISDKService {
 
     public async createClient(cwd?: string): Promise<CopilotClient> {
         if (this.disposed) throw new Error('CopilotSDKService has been disposed');
-        return createSdkClient({ cwd });
+        return createSdkClient({ workingDirectory: cwd });
     }
 
     /**

@@ -15,7 +15,7 @@ export interface AIInvocationResult { success: boolean; response?: string; error
 // The CoC tool contract is owned here rather than aliased from a specific
 // provider's SDK. This keeps the provider-neutral tool runtime + MCP bridge
 // (see ./llm-tools) free of any compile-time dependency on @github/copilot-sdk
-// and insulates every CoC tool from churn in that pre-1.0 package. The Copilot
+// and insulates every CoC tool from churn in that package. The Copilot
 // provider path still hands the same `Tool[]` bundle straight to the SDK, so a
 // compile-time drift guard (below) asserts these stay structurally
 // interchangeable with the Copilot SDK's contract.
@@ -40,9 +40,15 @@ export type ToolResultType = 'success' | 'failure' | 'rejected' | 'denied' | 'ti
 export interface ToolBinaryResult {
     data: string;
     mimeType: string;
-    type: string;
+    type: 'image' | 'resource';
     description?: string;
 }
+
+/**
+ * Per-tool telemetry payload attached to a structured tool result.
+ * Matches the Copilot SDK's `ToolTelemetry`.
+ */
+export type ToolTelemetry = Record<string, Record<string, unknown> | undefined>;
 
 /**
  * Structured tool-handler result. Structurally identical to the Copilot SDK's
@@ -54,7 +60,7 @@ export interface ToolResultObject {
     resultType: ToolResultType;
     error?: string;
     sessionLog?: string;
-    toolTelemetry?: Record<string, unknown>;
+    toolTelemetry?: ToolTelemetry;
 }
 
 /**
@@ -87,12 +93,17 @@ export interface ZodSchema<T = unknown> {
 /**
  * Tool definition. `parameters` may be a Zod-like schema (enabling handler-arg
  * inference), a raw JSON Schema object, or omitted.
+ *
+ * `handler` is optional to stay structurally interchangeable with the Copilot
+ * SDK's `Tool` (which supports declaration-only tools resolved via external
+ * tool-request events). Every CoC-authored tool supplies a handler; the CoC
+ * tool runtime fails the call with an error result when one is absent.
  */
 export interface Tool<TArgs = unknown> {
     name: string;
     description?: string;
     parameters?: ZodSchema<TArgs> | Record<string, unknown>;
-    handler: ToolHandler<TArgs>;
+    handler?: ToolHandler<TArgs>;
     /**
      * When true, explicitly indicates this tool is intended to override a
      * built-in tool of the same name. If unset and the name clashes with a
@@ -435,7 +446,7 @@ export interface SendMessageOptions {
      * a new child process, and will **not** call `client.stop()` in the finally
      * block (the caller owns the client's lifecycle).
      *
-     * Session `destroy()` is still called per-request to release in-memory
+     * Session `disconnect()` is still called per-request to release in-memory
      * resources, but the underlying CLI process stays alive for future calls.
      */
     client?: import('@github/copilot-sdk').CopilotClient;
@@ -731,7 +742,7 @@ export const denyAllPermissions: import('@github/copilot-sdk').PermissionHandler
 
 /**
  * Check whether a permission result represents an approval.
- * v0.3.0 of the SDK has three approval kinds: approve-once, approve-for-session, approve-for-location.
+ * The SDK has three approval kinds: approve-once, approve-for-session, approve-for-location.
  */
 export function isPermissionApproved(result: { kind: string }): boolean {
     return result.kind === 'approve-once' || result.kind === 'approve-for-session' || result.kind === 'approve-for-location';

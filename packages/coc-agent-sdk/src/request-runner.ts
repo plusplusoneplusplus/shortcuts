@@ -322,11 +322,11 @@ export class RequestRunner {
             }
 
             const abortSession = () => {
-                sessionLog.debug('Abort signal received — destroying session');
-                const destroy = () => session?.destroy().catch(() => {});
+                sessionLog.debug('Abort signal received — disconnecting session');
+                const disconnect = () => session?.disconnect().catch(() => {});
                 const abort = typeof (session as { abort?: () => Promise<void> }).abort === 'function'
-                    ? (session as { abort: () => Promise<void> }).abort().catch(() => undefined).then(destroy)
-                    : destroy();
+                    ? (session as { abort: () => Promise<void> }).abort().catch(() => undefined).then(disconnect)
+                    : disconnect();
                 Promise.resolve(abort).catch(() => {});
             };
             options.signal?.addEventListener('abort', abortSession, { once: true });
@@ -404,10 +404,10 @@ export class RequestRunner {
                 this.sessionManager.untrack(session.sessionId);
                 const finalSessionLog = createSessionLogger(session.sessionId);
                 try {
-                    await session.destroy();
-                    finalSessionLog.debug('Session destroyed');
-                } catch (destroyError) {
-                    finalSessionLog.debug({ err: destroyError }, 'Warning: Error destroying session');
+                    await session.disconnect();
+                    finalSessionLog.debug('Session disconnected');
+                } catch (disconnectError) {
+                    finalSessionLog.debug({ err: disconnectError }, 'Warning: Error disconnecting session');
                 }
                 if (client && clientOwned) {
                     try { await client.stop(); } catch { /* ignore */ }

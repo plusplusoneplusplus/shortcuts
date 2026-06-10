@@ -70,7 +70,7 @@ interface RpcShape {
 interface SessionShape {
     sessionId: string;
     on?: (event: string, handler: (event: unknown) => void) => void;
-    destroy?: () => Promise<void>;
+    disconnect?: () => Promise<void>;
 }
 
 interface ClientShape {
@@ -180,7 +180,7 @@ export async function initiateMcpOAuth(opts: InitiateMcpOAuthOptions): Promise<I
                 LogCategory.MCP,
                 `[McpOAuthInitiator] Server "${serverName}" already authenticated — no flow required`,
             );
-            await safeDestroy(session);
+            await safeDisconnect(session);
             return { requestId: '', alreadyAuthenticated: true };
         }
 
@@ -205,7 +205,7 @@ export async function initiateMcpOAuth(opts: InitiateMcpOAuthOptions): Promise<I
         return { requestId: entry.id, authorizationUrl, alreadyAuthenticated: false };
     } catch (err) {
         // Best-effort cleanup on failure paths
-        if (session) await safeDestroy(session);
+        if (session) await safeDisconnect(session);
         throw err;
     }
 }
@@ -235,7 +235,7 @@ function scheduleSessionRelease(
                 );
                 manager.resolve(requestId, 'completed');
                 clearInterval(interval);
-                void safeDestroy(session);
+                void safeDisconnect(session);
                 return;
             }
         }
@@ -252,7 +252,7 @@ function scheduleSessionRelease(
                     resolved ? entry?.status : missing ? 'manager-evicted' : 'timeout'
                 }`,
             );
-            void safeDestroy(session);
+            void safeDisconnect(session);
         }
     }, SESSION_HOLD_POLL_INTERVAL_MS);
 
@@ -260,9 +260,9 @@ function scheduleSessionRelease(
     if (typeof interval.unref === 'function') interval.unref();
 }
 
-async function safeDestroy(session: SessionShape): Promise<void> {
+async function safeDisconnect(session: SessionShape): Promise<void> {
     try {
-        await session.destroy?.();
+        await session.disconnect?.();
     } catch {
         // Non-fatal — best-effort cleanup.
     }
