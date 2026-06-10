@@ -16,6 +16,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isMyWorkEnabled: () => false,
     isMyLifeEnabled: () => false,
     isScratchpadEnabled: () => false,
+    isDreamsEnabled: () => false,
     isVimNavigationEnabled: () => false,
     isWorkflowsEnabled: () => false,
     isPullRequestsEnabled: () => false,
@@ -38,6 +39,7 @@ describe('useDisplaySettings — scratchpadEnabled', () => {
             isMyWorkEnabled: () => false,
             isMyLifeEnabled: () => false,
             isScratchpadEnabled: () => false,
+            isDreamsEnabled: () => false,
             isVimNavigationEnabled: () => false,
             isWorkflowsEnabled: () => false,
             isPullRequestsEnabled: () => false,
@@ -90,5 +92,31 @@ describe('useDisplaySettings — scratchpadEnabled', () => {
             expect(result.current.terminalEnabled).toBe(true);
         });
         expect(result.current.scratchpadEnabled).toBe(false);
+    });
+
+    it('defaults dreamsEnabled to false', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ resolved: {} }),
+        });
+        const { useDisplaySettings } = await import('../../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings');
+        const { result } = renderHook(() => useDisplaySettings());
+        expect(result.current.dreamsEnabled).toBe(false);
+    });
+
+    it('returns dreamsEnabled=true from resolved config', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                resolved: {
+                    dreams: { enabled: true },
+                },
+            }),
+        });
+        const { useDisplaySettings } = await import('../../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings');
+        const { result } = renderHook(() => useDisplaySettings());
+        await waitFor(() => {
+            expect(result.current.dreamsEnabled).toBe(true);
+        });
     });
 });

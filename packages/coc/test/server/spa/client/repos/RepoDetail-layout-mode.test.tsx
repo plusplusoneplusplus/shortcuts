@@ -19,6 +19,7 @@ beforeAll(() => {
 const mockDispatch = vi.fn();
 let mockActiveRepoSubTab = 'chats';
 let mockUiLayoutMode = 'dev-workflow';
+let mockDreamsEnabled = false;
 
 vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
@@ -91,6 +92,10 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/usePullR
     usePullRequestsEnabled: () => false,
 }));
 
+vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useDreamsEnabled', () => ({
+    useDreamsEnabled: () => mockDreamsEnabled,
+}));
+
 vi.mock('../../../../../src/server/spa/client/react/features/notes/hooks/useNotesAutoCommit', () => ({
     useNotesAutoCommit: () => false,
 }));
@@ -155,6 +160,9 @@ vi.mock('../../../../../src/server/spa/client/react/features/work-items/WorkItem
 vi.mock('../../../../../src/server/spa/client/react/processes/dag', () => ({ WorkflowDetailView: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/features/terminal/TerminalView', () => ({ TerminalView: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/features/notes/NotesView', () => ({ NotesView: () => null }));
+vi.mock('../../../../../src/server/spa/client/react/features/dreams/DreamsPanel', () => ({
+    DreamsPanel: (props: any) => <div data-testid="dreams-panel" data-workspace-id={props.workspaceId} />,
+}));
 vi.mock('../../../../../src/server/spa/client/react/repos/AddRepoDialog', () => ({ AddRepoDialog: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/tasks/GenerateTaskDialog', () => ({ GenerateTaskDialog: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/tasks/TasksPanel', () => ({
@@ -186,6 +194,7 @@ describe('RepoDetail — layout mode chat tab mounting', () => {
     beforeEach(() => {
         mockDispatch.mockClear();
         mockQueueDispatch.mockClear();
+        mockDreamsEnabled = false;
         location.hash = '';
     });
 
@@ -298,12 +307,52 @@ describe('RepoDetail — layout mode chat tab mounting', () => {
         const workItemsTab = container.querySelector('[data-subtab="work-items"]');
         expect(workItemsTab).toBeTruthy();
     });
+
+    it('hides the Dreams tab when the feature is disabled', () => {
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'chats';
+        mockDreamsEnabled = false;
+        const { container } = renderDetail();
+
+        expect(container.querySelector('[data-subtab="dreams"]')).toBeNull();
+        expect(screen.queryByTestId('dreams-panel')).toBeNull();
+    });
+
+    it('shows the Dreams tab when the feature is enabled', () => {
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'chats';
+        mockDreamsEnabled = true;
+        const { container } = renderDetail();
+
+        expect(container.querySelector('[data-subtab="dreams"]')).toBeTruthy();
+    });
+
+    it('does not mount DreamsPanel when the feature is disabled and dreams is active', () => {
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'dreams';
+        mockDreamsEnabled = false;
+        const { container } = renderDetail();
+
+        expect(container.querySelector('[data-subtab="dreams"]')).toBeNull();
+        expect(screen.queryByTestId('dreams-panel')).toBeNull();
+    });
+
+    it('mounts DreamsPanel when the feature is enabled and dreams is active', () => {
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'dreams';
+        mockDreamsEnabled = true;
+        const { container } = renderDetail();
+
+        expect(container.querySelector('[data-subtab="dreams"]')).toBeTruthy();
+        expect(screen.getByTestId('dreams-panel')).toBeTruthy();
+    });
 });
 
 describe('RepoDetail — header action buttons by layout mode', () => {
     beforeEach(() => {
         mockDispatch.mockClear();
         mockQueueDispatch.mockClear();
+        mockDreamsEnabled = false;
         location.hash = '';
     });
 
