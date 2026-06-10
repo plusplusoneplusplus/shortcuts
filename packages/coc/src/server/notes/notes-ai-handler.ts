@@ -14,6 +14,7 @@ import { sendJSON, sendError } from '../core/api-handler';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
+import { isInheritedLensChatMode } from '../tasks/task-types';
 
 // ============================================================================
 // Route registration
@@ -41,6 +42,7 @@ export function registerNotesAICreateRoutes(
 
             const prompt = body.prompt as string | undefined;
             const chatTaskId = body.chatTaskId as string | undefined;
+            const lensChat = isInheritedLensChatMode(body.lensChat) ? body.lensChat : undefined;
             if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
                 return sendError(res, 400, 'Missing required field: prompt');
             }
@@ -63,6 +65,7 @@ export function registerNotesAICreateRoutes(
                                 prompt: prompt.trim(),
                                 ...(chatTaskId ? { chatTaskId } : {}),
                             },
+                            ...(lensChat ? { lensChat } : {}),
                         },
                     },
                     config: {},

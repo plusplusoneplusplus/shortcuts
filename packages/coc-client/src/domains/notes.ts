@@ -244,6 +244,7 @@ export class NotesClient {
           ...(request.attachments && request.attachments.length > 0 ? { attachments: [...request.attachments] } : {}),
           context: {
             noteChat: request.notePath ? { notePath: request.notePath, noteTitle: request.noteTitle } : undefined,
+            ...(request.lensChat ? { lensChat: request.lensChat } : {}),
             ...(request.skills && request.skills.length > 0 ? { skills: [...request.skills] } : {}),
           },
         },
@@ -270,10 +271,19 @@ export class NotesClient {
     });
   }
 
-  createWithAI(workspaceId: string, prompt: string, chatTaskId?: string): Promise<CreateNoteWithAIResponse> {
+  createWithAI(
+    workspaceId: string,
+    prompt: string,
+    chatTaskId?: string,
+    lensChat?: { inherited: true; source: 'features.commitChatLens' },
+  ): Promise<CreateNoteWithAIResponse> {
     return this.transport.request<CreateNoteWithAIResponse>(workspaceNotesPath(workspaceId, '/ai-create'), {
       method: 'POST',
-      body: { prompt, ...(chatTaskId ? { chatTaskId } : {}) },
+      body: {
+        prompt,
+        ...(chatTaskId ? { chatTaskId } : {}),
+        ...(lensChat ? { lensChat } : {}),
+      },
     });
   }
 
@@ -392,4 +402,3 @@ export class NotesClient {
     });
   }
 }
-

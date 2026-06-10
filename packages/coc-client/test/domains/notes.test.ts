@@ -107,6 +107,7 @@ describe('NotesClient', () => {
       model: 'model-1',
       skills: ['impl'],
       attachments: [{ name: 'note.txt', mimeType: 'text/plain', size: 12, dataUrl: 'data:text/plain;base64,AA==' }],
+      lensChat: { inherited: true, source: 'features.commitChatLens' },
     });
     await client.sendCommentResolutionMessage('process/1', {
       content: 'Resolve comments',
@@ -117,7 +118,7 @@ describe('NotesClient', () => {
       documentContent: '# Note',
       workspaceId: 'repo/a',
     });
-    await client.createWithAI('repo/a', 'Create a note', 'chat-task-1');
+    await client.createWithAI('repo/a', 'Create a note', 'chat-task-1', { inherited: true, source: 'features.commitChatLens' });
     await client.listNoteEdits('process/1');
     await client.undoNoteEdit('process/1', 'edit/1', { force: true });
     await client.initializeGit('repo/a');
@@ -145,13 +146,27 @@ describe('NotesClient', () => {
               workspaceId: 'repo/a',
               mode: 'autopilot',
               model: 'model-1',
-              context: { noteChat: { notePath: 'Notebook/Page.md', noteTitle: 'Page' }, skills: ['impl'] },
+              context: {
+                noteChat: { notePath: 'Notebook/Page.md', noteTitle: 'Page' },
+                lensChat: { inherited: true, source: 'features.commitChatLens' },
+                skills: ['impl'],
+              },
             },
           },
         },
       },
       { path: '/processes/process%2F1/message', options: { method: 'POST' } },
-      { path: '/workspaces/repo%2Fa/notes/ai-create', options: { method: 'POST', body: { prompt: 'Create a note', chatTaskId: 'chat-task-1' } } },
+      {
+        path: '/workspaces/repo%2Fa/notes/ai-create',
+        options: {
+          method: 'POST',
+          body: {
+            prompt: 'Create a note',
+            chatTaskId: 'chat-task-1',
+            lensChat: { inherited: true, source: 'features.commitChatLens' },
+          },
+        },
+      },
       { path: '/processes/process%2F1/note-edits' },
       { path: '/processes/process%2F1/note-edits/edit%2F1/undo', options: { method: 'POST', query: { force: true } } },
       { path: '/workspaces/repo%2Fa/notes/git/init', options: { method: 'POST' } },
@@ -290,4 +305,3 @@ describe('NotesClient', () => {
     ]);
   });
 });
-

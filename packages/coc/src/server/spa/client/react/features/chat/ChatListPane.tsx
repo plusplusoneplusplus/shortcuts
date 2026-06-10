@@ -34,7 +34,7 @@ import { ForEachRunRow } from './ForEachRunRow';
 import { groupByMapReduceRun, getMapReduceEntryTimestamp, getMapReduceRunId, type MapReduceRunGroup, type MapReduceRunHistoryEntry } from './map-reduce-run-grouping';
 import { MapReduceRunRow } from './MapReduceRunRow';
 import { getGroupPinKey, isPinnedGroupEntry, mergePinnedEntries, partitionPinnedGroups, type PinnedGroupEntry, type PinnedListEntry } from './group-pinning';
-import { isRalphEnabled, isLoopsEnabled, isSessionContextAttachmentsEnabled, isForEachEnabled, isMapReduceEnabled } from '../../utils/config';
+import { isRalphEnabled, isLoopsEnabled, isSessionContextAttachmentsEnabled, isForEachEnabled, isMapReduceEnabled, isCommitChatLensEnabled } from '../../utils/config';
 import { getListModeConfig } from './list-mode-config';
 import { useAllLoops, type ProcessLoopState } from './hooks/useAllLoops';
 import { LoopIcon } from './icons/LoopIcon';
@@ -3607,6 +3607,9 @@ export function ChatListPane({
                     processIds: summarizeDialogIds,
                     workspaceId,
                     userPrompt: userPrompt || undefined,
+                    ...(isCommitChatLensEnabled()
+                        ? { lensChat: { inherited: true, source: 'features.commitChatLens' } as const }
+                        : {}),
                 });
                 setSummarizeDialogOpen(false);
                 if (data.taskId) {

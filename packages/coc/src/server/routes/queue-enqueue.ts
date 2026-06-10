@@ -32,7 +32,7 @@ import {
 } from './queue-shared';
 import { NoteChatBindingStore } from '../notes/note-chat-binding-store';
 import { normalizeRelativeNotePath } from '../notes/note-chat-bindings-handler';
-import type { ChatProvider } from '../tasks/task-types';
+import { isInheritedLensChatMode, type ChatProvider } from '../tasks/task-types';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 
 const EFFORT_TIER_KEYS = new Set(['very-low', 'low', 'medium', 'high']);
@@ -388,6 +388,7 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
             const rawUserPrompt = typeof body.userPrompt === 'string'
                 ? body.userPrompt.trim().slice(0, 2000)
                 : undefined;
+            const lensChat = isInheritedLensChatMode(body.lensChat) ? body.lensChat : undefined;
             const conversations: SummarizeConversation[] = [];
             for (const id of body.processIds as string[]) {
                 const normalized = ensureQueueProcessId(id.trim());
@@ -416,6 +417,7 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
                     mode: 'ask' as const,
                     prompt,
                     workspaceId,
+                    ...(lensChat ? { context: { lensChat } } : {}),
                 },
                 displayName: `Summarize ${body.processIds.length} conversations`,
             };

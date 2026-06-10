@@ -751,6 +751,28 @@ describe('ProcessLifecycleRunner — metadata.notePath from context.noteChat', (
         expect(proc?.metadata?.notePath).toBeUndefined();
         expect(proc?.metadata?.noteTitle).toBeUndefined();
     });
+
+    it('copies inherited Lens Chat mode context to process metadata for note-producing tasks', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Update the note',
+                workspaceId: 'ws-abc',
+                context: {
+                    noteChat: { notePath: 'my-note.md' },
+                    lensChat: { inherited: true, source: 'features.commitChatLens' },
+                },
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.metadata?.lensChat).toEqual({
+            inherited: true,
+            source: 'features.commitChatLens',
+        });
+    });
 });
 
 // ============================================================================

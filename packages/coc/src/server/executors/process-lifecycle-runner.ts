@@ -445,6 +445,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     : isDreamRunPayload(task.payload) && payload?.context && typeof payload.context === 'object'
                         ? (payload.context as Record<string, unknown>).autoProviderRouting
                         : undefined,
+                lensChat: isChatPayload(task.payload)
+                    ? task.payload.context?.lensChat
+                    : undefined,
             },
         };
 

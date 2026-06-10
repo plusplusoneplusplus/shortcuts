@@ -517,6 +517,15 @@ describe('ChatListPane pinned chats', () => {
                 expect(block).toContain('workspaceId');
             });
 
+            it('summarize inherits Lens Chat mode from the shared Lens flag', () => {
+                const dialogIdx = source.indexOf('<SummarizeChatDialog');
+                expect(dialogIdx).toBeGreaterThan(-1);
+                const block = source.substring(dialogIdx, dialogIdx + 1500);
+                expect(block).toContain('isCommitChatLensEnabled()');
+                expect(block).toContain("lensChat: { inherited: true, source: 'features.commitChatLens' }");
+                expect(source).not.toContain('notesLensChat');
+            });
+
             it('summarize is capped at 20 items', () => {
                 const bulkBlock = getBulkContextMenuBlock();
                 expect(bulkBlock).toContain('ids.length <= 20');

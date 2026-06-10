@@ -34,6 +34,12 @@ import {
     type UploadNoteImageResponse,
 } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient, translateSpaCocClientError } from '../../api/cocClient';
+import { isCommitChatLensEnabled } from '../../utils/config';
+
+const INHERITED_LENS_CHAT_MODE = {
+    inherited: true,
+    source: 'features.commitChatLens',
+} as const;
 
 export type {
     Comment,
@@ -163,7 +169,12 @@ export const notesApi = {
     },
 
     createWithAI(wsId: string, prompt: string, chatTaskId?: string): Promise<CreateNoteWithAIResponse> {
-        return withSpaErrors(notesClient().createWithAI(wsId, prompt, chatTaskId));
+        return withSpaErrors(notesClient().createWithAI(
+            wsId,
+            prompt,
+            chatTaskId,
+            isCommitChatLensEnabled() ? INHERITED_LENS_CHAT_MODE : undefined,
+        ));
     },
 
     initializeGit(wsId: string): Promise<{ initialized: boolean }> {

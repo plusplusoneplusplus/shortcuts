@@ -147,6 +147,7 @@ export class QueueClient {
         processIds: [...request.processIds],
         workspaceId: request.workspaceId,
         userPrompt: request.userPrompt,
+        ...(request.lensChat ? { lensChat: request.lensChat } : {}),
       },
     });
   }

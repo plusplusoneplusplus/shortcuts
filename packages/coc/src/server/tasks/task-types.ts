@@ -118,6 +118,11 @@ export type TaskType = 'chat' | 'run-workflow' | 'run-script' | 'dream-run';
 /** Controls permissions and concurrency for chat tasks. */
 export type ChatMode = 'ask' | 'autopilot' | 'ralph';
 
+export interface InheritedLensChatMode {
+    inherited: true;
+    source: 'features.commitChatLens';
+}
+
 /**
  * Legacy chat-mode wire values accepted for runtime compatibility only.
  * `plan` is normalized to `ask` before execution or persistence.
@@ -247,6 +252,8 @@ export interface ChatContext {
         prompt: string;
         chatTaskId?: string;
     };
+    /** Inherited Lens Chat mode marker for note-producing AI flows. */
+    lensChat?: InheritedLensChatMode;
     /** Schedule-specific metadata. */
     scheduleId?: string;
     /** Schedule run record ID that originated this task chain. */
@@ -577,6 +584,13 @@ export function hasNoteChatContext(payload: Record<string, unknown>): boolean {
 /** Check whether a chat payload carries note-create context. */
 export function hasNoteCreateContext(payload: Record<string, unknown>): boolean {
     return isChatPayload(payload) && !!payload.context?.noteCreate;
+}
+
+/** Check whether a value is the inherited Lens Chat mode marker. */
+export function isInheritedLensChatMode(value: unknown): value is InheritedLensChatMode {
+    if (!value || typeof value !== 'object') return false;
+    const candidate = value as Record<string, unknown>;
+    return candidate.inherited === true && candidate.source === 'features.commitChatLens';
 }
 
 /** Check whether a chat payload carries Ralph-mode orchestration context. */
