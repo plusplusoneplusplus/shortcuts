@@ -299,7 +299,7 @@ export class WorkItemGitHubPullPoller {
             issue,
             candidateIssues,
             this.now,
-            { pruneMissing: true },
+            { pruneMissing: true, skipClosedWithoutLocal: true },
         );
     }
 

@@ -103,6 +103,13 @@ export interface ImportGitHubEpicTreeResult {
 
 export interface ImportGitHubEpicTreeOptions {
     pruneMissing?: boolean;
+    /**
+     * When true, do not create new local mirrors for closed GitHub issues that
+     * have no existing local item. Used by the pull poller so that deleting a
+     * closed work item locally is durable and is not undone on the next sync.
+     * The Epic root and any issue that still has a local mirror are unaffected.
+     */
+    skipClosedWithoutLocal?: boolean;
 }
 
 export interface CreateGitHubIssueForLocalChildOptions {
@@ -991,6 +998,17 @@ export async function importGitHubEpicTreeAsWorkItems(
 
     for (const { issue, parsed } of tree) {
         const existing = await findLocalMirrorForIssue(context, repo, index, issue, parsed);
+        // On re-sync (pull poller), skip recreating a local mirror for a closed
+        // GitHub issue that no longer has a local item. Without this, a closed
+        // issue would resurrect a work item the user deliberately deleted. The
+        // root issue and any issue with an existing local mirror are unaffected,
+        // and the issue stays in the prune set so existing mirrors are retained.
+        if (options.skipClosedWithoutLocal
+            && !existing
+            && issue.state === 'closed'
+            && issue.number !== rootIssue.number) {
+            continue;
+        }
         const type = mirrorTypeForIssue(issue, rootIssue, parsed);
         const proposedParentId = issue.number === rootIssue.number
             ? undefined
