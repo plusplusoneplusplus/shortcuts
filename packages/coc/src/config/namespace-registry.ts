@@ -41,6 +41,7 @@ export type ResolvedConfigNamespaceValues = Pick<
     | 'mapReduce'
     | 'vimNavigation'
     | 'loops'
+    | 'dreams'
     | 'mcpOauth'
     | 'excalidraw'
     | 'containerDefaultAgent'

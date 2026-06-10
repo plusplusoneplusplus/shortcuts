@@ -75,6 +75,7 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.forEachEnabled).toBe(false);
         expect(result.features.vimNavigationEnabled).toBe(false);
         expect(result.features.loopsEnabled).toBe(false);
+        expect(result.features.dreamsEnabled).toBe(false);
         expect(result.features.excalidrawEnabled).toBe(false);
         expect(result.features.mcpOauthEnabled).toBe(false);
         expect(result.features.focusedDiffEnabled).toBe(false);
@@ -158,6 +159,12 @@ describe('buildRuntimeDashboardConfig', () => {
         const svc = createMockRuntimeConfigService({ forEach: { enabled: true } });
         const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
         expect(result.features.forEachEnabled).toBe(true);
+    });
+
+    it('reflects dreams.enabled = true from config', () => {
+        const svc = createMockRuntimeConfigService({ dreams: { enabled: true } });
+        const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
+        expect(result.features.dreamsEnabled).toBe(true);
     });
 
     it('defaults workItemsHierarchyEnabled to false', () => {

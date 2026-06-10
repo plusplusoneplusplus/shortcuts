@@ -5,6 +5,7 @@ import {
     getCommitChatLensDormantMode,
     isAutoAgentProviderRoutingEnabled,
     isCommitChatLensEnabled,
+    isDreamsEnabled,
     isPullRequestsAutoClassifyTeamEnabled,
     isServersEnabled,
 } from '../../../../src/server/spa/client/react/utils/config';
@@ -48,6 +49,18 @@ describe('isCommitChatLensEnabled', () => {
     it('returns true when commitChatLensEnabled is explicitly true', () => {
         (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', commitChatLensEnabled: true };
         expect(isCommitChatLensEnabled()).toBe(true);
+    });
+});
+
+describe('isDreamsEnabled', () => {
+    it('returns false when dreamsEnabled is omitted from config', () => {
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws' };
+        expect(isDreamsEnabled()).toBe(false);
+    });
+
+    it('returns true when dreamsEnabled is explicitly true', () => {
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', dreamsEnabled: true };
+        expect(isDreamsEnabled()).toBe(true);
     });
 });
 

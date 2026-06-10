@@ -178,6 +178,9 @@ forEach:
 mapReduce:
   enabled: false
 
+dreams:
+  enabled: false
+
 codex:
   enabled: false
 

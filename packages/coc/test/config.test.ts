@@ -65,6 +65,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.pullRequests.autoClassifyTeam).toBe(false);
             expect(DEFAULT_CONFIG.forEach).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.mapReduce).toEqual({ enabled: false });
+            expect(DEFAULT_CONFIG.dreams).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.features.gitCrossCloneCherryPick).toBe(true);
             expect(DEFAULT_CONFIG.features.commitChatLens).toBe(false);
             expect(DEFAULT_CONFIG.features.autoAgentProviderRouting).toBe(false);
@@ -925,6 +926,8 @@ timeout: 300
                 '  enabled: true',
                 'loops:',
                 '  enabled: true',
+                'dreams:',
+                '  enabled: true',
                 'mcpOauth:',
                 '  enabled: true',
                 '  autoRefresh:',
@@ -968,6 +971,7 @@ timeout: 300
                 '  commitChatLens: true',
                 '  commitChatLensDormantMode: pill',
                 '  autoAgentProviderRouting: true',
+                '  ralphMultiAgentGrill: true',
                 'memoryPromotion:',
                 '  batchSize: 25',
                 '  timeoutMs: 80000',
@@ -1154,6 +1158,9 @@ timeout: 300
                     "enabled": false,
                   },
                   "defaultProvider": "copilot",
+                  "dreams": {
+                    "enabled": false,
+                  },
                   "effortLevels": {
                     "enabled": false,
                   },
@@ -1168,6 +1175,7 @@ timeout: 300
                     "focusedDiff": true,
                     "gitCommitLookup": false,
                     "gitCrossCloneCherryPick": true,
+                    "ralphMultiAgentGrill": false,
                     "sessionContextAttachments": false,
                   },
                   "forEach": {
@@ -1313,6 +1321,7 @@ timeout: 300
                   "codex.enabled": "default",
                   "containerDefaultAgent.enabled": "default",
                   "defaultProvider": "default",
+                  "dreams.enabled": "default",
                   "effortLevels.enabled": "default",
                   "excalidraw.enabled": "default",
                   "features.autoAgentProviderRouting": "default",
@@ -1321,6 +1330,7 @@ timeout: 300
                   "features.commitChatLensDormantMode": "default",
                   "features.focusedDiff": "file",
                   "features.gitCrossCloneCherryPick": "default",
+                  "features.ralphMultiAgentGrill": "default",
                   "features.sessionContextAttachments": "default",
                   "forEach.enabled": "file",
                   "groupSingleLineMessages": "file",
@@ -1419,6 +1429,7 @@ timeout: 300
             expect(defaults['workflows.enabled']).toBe(DEFAULT_CONFIG.workflows.enabled);
             expect(defaults['excalidraw.enabled']).toBe(DEFAULT_CONFIG.excalidraw.enabled);
             expect(defaults['loops.enabled']).toBe(DEFAULT_CONFIG.loops.enabled);
+            expect(defaults['dreams.enabled']).toBe(DEFAULT_CONFIG.dreams.enabled);
             expect(defaults['features.focusedDiff']).toBe(DEFAULT_CONFIG.features.focusedDiff);
             expect(defaults['features.gitCrossCloneCherryPick']).toBe(DEFAULT_CONFIG.features.gitCrossCloneCherryPick);
             expect(defaults['pullRequests.autoClassifyTeam']).toBe(DEFAULT_CONFIG.pullRequests.autoClassifyTeam);

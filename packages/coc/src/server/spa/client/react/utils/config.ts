@@ -35,6 +35,7 @@ interface DashboardConfig {
     vimNavigationEnabled?: boolean;
     containerMode?: boolean;
     loopsEnabled?: boolean;
+    dreamsEnabled?: boolean;
     excalidrawEnabled?: boolean;
     mcpOauthEnabled?: boolean;
     focusedDiffEnabled?: boolean;
@@ -270,6 +271,10 @@ export function isContainerMode(): boolean {
 
 export function isLoopsEnabled(): boolean {
     return getConfig().loopsEnabled === true;
+}
+
+export function isDreamsEnabled(): boolean {
+    return getConfig().dreamsEnabled === true;
 }
 
 export function isExcalidrawEnabled(): boolean {

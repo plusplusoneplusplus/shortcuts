@@ -206,6 +206,10 @@ const WorkItemsPreferencesSchema = z.object({
     sync: WorkItemsSyncSchema.optional().catch(undefined),
 }).strip().transform(dropIfEmpty);
 
+const DreamsPreferencesSchema = z.object({
+    enabled: z.boolean().optional().catch(undefined),
+}).strip().transform(dropIfEmpty);
+
 const SyncSchema = z.object({
     gitRemote: z.string().optional().catch(undefined),
     intervalMinutes: z.number().int().min(1).optional().catch(undefined),
@@ -294,6 +298,7 @@ export const PerRepoPreferencesSchema = z.object({
         .optional(),
     sync: SyncSchema.optional(),
     workItems: WorkItemsPreferencesSchema.optional(),
+    dreams: DreamsPreferencesSchema.optional().catch(undefined),
     enabledMcpTools: EnabledMcpToolsSchema.optional(),
 }).strip();
 

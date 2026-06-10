@@ -77,6 +77,10 @@ export interface PerRepoPreferences {
       };
     };
   };
+  /** Workspace opt-in for reviewable dream cards. Global dreams.enabled must also be on. */
+  dreams?: {
+    enabled?: boolean;
+  };
   [key: string]: unknown;
 }
 

@@ -84,6 +84,7 @@ export interface AdminResolvedConfig {
   servers?: { enabled?: boolean };
   forEach?: { enabled?: boolean };
   mapReduce?: { enabled?: boolean };
+  dreams?: { enabled?: boolean };
   excalidraw?: { enabled?: boolean };
   codex?: { enabled?: boolean };
   claude?: { enabled?: boolean };
@@ -164,6 +165,7 @@ export interface AdminConfigUpdate {
   'servers.enabled'?: boolean;
   'forEach.enabled'?: boolean;
   'mapReduce.enabled'?: boolean;
+  'dreams.enabled'?: boolean;
   'excalidraw.enabled'?: boolean;
   'mcpOauth.enabled'?: boolean;
   'mcpOauth.autoRefresh.enabled'?: boolean;
@@ -209,6 +211,7 @@ export interface RuntimeDashboardConfig {
     mapReduceEnabled: boolean;
     vimNavigationEnabled: boolean;
     loopsEnabled: boolean;
+    dreamsEnabled: boolean;
     excalidrawEnabled: boolean;
     mcpOauthEnabled: boolean;
     focusedDiffEnabled: boolean;

@@ -581,6 +581,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'dreams.enabled', default: false, runtime: 'live', runtimeFlag: 'dreamsEnabled',
+        ui: {
+            group: 'aiModes', order: 50, label: 'Dreams', badge: 'experimental',
+            hint: 'Enables workspace opt-in review cards from idle-time reflection. Disabled by default; workspaces must also opt in individually.',
+            testId: 'toggle-dreams-enabled',
+        },
+    }),
+    bool({
         key: 'excalidraw.enabled', default: false, runtime: 'live', runtimeFlag: 'excalidrawEnabled',
         ui: {
             group: 'review', order: 60, label: 'Excalidraw diagrams',

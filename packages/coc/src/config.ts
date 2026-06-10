@@ -173,6 +173,10 @@ export interface CLIConfig {
     loops?: {
         enabled?: boolean;
     };
+    /** Dreams review subsystem configuration. Disabled by default. */
+    dreams?: {
+        enabled?: boolean;
+    };
     /** MCP OAuth support (auto-detect mcp.oauth_required events). Disabled by default. */
     mcpOauth?: {
         enabled?: boolean;
@@ -433,6 +437,10 @@ export interface ResolvedCLIConfig {
     loops: {
         enabled: boolean;
     };
+    /** Dreams review subsystem configuration. */
+    dreams: {
+        enabled: boolean;
+    };
     /** MCP OAuth subsystem configuration. */
     mcpOauth: {
         enabled: boolean;
@@ -649,6 +657,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     loops: {
         enabled: true,
+    },
+    dreams: {
+        enabled: false,
     },
     mcpOauth: {
         enabled: false,
