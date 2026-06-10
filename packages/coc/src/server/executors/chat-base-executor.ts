@@ -708,6 +708,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                         timeoutMs,
                         skillDirectories,
                         disabledSkills,
+                        previousState: this.getOrCreateSession(processId).ralphGrill,
                     },
                 );
                 ralphGrillPlanning.state.plan = questionPlan;

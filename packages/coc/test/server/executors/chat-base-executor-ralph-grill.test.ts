@@ -147,4 +147,129 @@ describe('buildRalphGrillSuffix', () => {
             'How should the grouped form look?',
         ]);
     });
+
+    it('passes stored role sessions into grill planning on later turns', async () => {
+        const store = {
+            getProcess: vi.fn().mockResolvedValue({ metadata: { type: 'chat' } }),
+            updateProcess: vi.fn().mockResolvedValue(undefined),
+            emitProcessEvent: vi.fn(),
+            emitProcessOutput: vi.fn(),
+            registerFlushHandler: vi.fn(),
+            unregisterFlushHandler: vi.fn(),
+            appendConversationTurn: vi.fn().mockResolvedValue(undefined),
+        } as unknown as ProcessStore;
+        const aiService = {
+            isAvailable: vi.fn().mockResolvedValue({ available: true }),
+            sendMessage: vi.fn(async (options: { prompt: string; sessionId?: string }) => {
+                if (options.sessionId === 'product-session') {
+                    return {
+                        success: true,
+                        response: JSON.stringify({
+                            questions: [{ question: 'Which admin workflow should the follow-up cover?', type: 'text' }],
+                        }),
+                        sessionId: 'product-session',
+                    };
+                }
+                if (options.sessionId === 'ux-session') {
+                    return {
+                        success: true,
+                        response: JSON.stringify({ questions: [] }),
+                        sessionId: 'ux-session',
+                    };
+                }
+                if (options.sessionId === 'architecture-session') {
+                    return {
+                        success: true,
+                        response: JSON.stringify({ questions: [] }),
+                        sessionId: 'architecture-session',
+                    };
+                }
+                if (options.prompt.includes('Agent role: Product Agent')) {
+                    return {
+                        success: true,
+                        response: JSON.stringify({
+                            questions: [{ question: 'What product outcome should define success?', type: 'text' }],
+                        }),
+                        sessionId: 'product-session',
+                    };
+                }
+                if (options.prompt.includes('Agent role: UX Agent')) {
+                    return {
+                        success: true,
+                        response: JSON.stringify({
+                            questions: [{ question: 'How should the grouped form look?', type: 'text' }],
+                        }),
+                        sessionId: 'ux-session',
+                    };
+                }
+                if (options.prompt.includes('Agent role: Architecture/System Agent')) {
+                    return {
+                        success: true,
+                        response: JSON.stringify({
+                            questions: [{ question: 'Which system boundary should constrain follow-ups?', type: 'text' }],
+                        }),
+                        sessionId: 'architecture-session',
+                    };
+                }
+                return { success: true, response: 'done', sessionId: 'main-session' };
+            }),
+        };
+        const executor = new InspectableChatExecutor(store, {
+            aiService: aiService as any,
+            defaultTimeoutMs: 60_000,
+            followUpSuggestions: { enabled: false, count: 0 },
+            askUser: { enabled: true },
+            resolveSkillConfig: vi.fn().mockResolvedValue({}),
+            resolveWorkspaceIdForPath: vi.fn().mockResolvedValue('ws-1'),
+            ralphMultiAgentGrillEnabled: true,
+        });
+        const task = {
+            id: 'grill-task',
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'Design the new Ralph grilling experience',
+                context: {
+                    ralph: {
+                        originalGoal: 'Design the new Ralph grilling experience',
+                        phase: 'grilling',
+                        grill: {
+                            enabled: true,
+                            depth: 'light',
+                            agents: [
+                                { role: 'product', provider: 'copilot', model: 'gpt-5.5' },
+                                { role: 'ux', provider: 'copilot', model: 'gpt-5.5' },
+                            ],
+                        },
+                    },
+                },
+            },
+            config: {},
+        } as unknown as QueuedTask;
+
+        await executor.execute(task, 'Design the new Ralph grilling experience');
+        aiService.sendMessage.mockClear();
+
+        await executor.execute(task, 'Answer: optimize for repository admins first.');
+
+        const resumedCalls = aiService.sendMessage.mock.calls
+            .map(call => call[0])
+            .filter(options => options.sessionId === 'product-session' || options.sessionId === 'ux-session');
+        expect(resumedCalls).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                sessionId: 'product-session',
+                prompt: expect.stringContaining('Answer: optimize for repository admins first.'),
+            }),
+            expect.objectContaining({
+                sessionId: 'ux-session',
+                prompt: expect.stringContaining('Answer: optimize for repository admins first.'),
+            }),
+        ]));
+        expect(resumedCalls[0].prompt).not.toContain('Original user request or current Ralph grilling context');
+        expect(executor.getRalphGrillState(toQueueProcessId(task.id))?.roundsRun).toBe(2);
+    });
 });

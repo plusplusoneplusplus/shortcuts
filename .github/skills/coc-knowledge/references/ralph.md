@@ -209,16 +209,20 @@ context. The planning helpers live in
 sets, per-agent provider/tier selection shape, provenance labels (`Role Agent ·
 provider/tier` when a tier applies, falling back to `Role Agent ·
 provider/model`), context normalization, strict JSON candidate-question parsing,
-and the preflight runner that invokes one isolated SDK request per selected
-grill agent before the main grilling turn. Each isolated agent uses its own
-resolved model and reasoning effort, falling back to the enclosing task defaults
-only when the agent does not specify them. Successful isolated runs record the
-SDK `sessionId` returned by that role agent; failed or unavailable agents record
-no session ID. The executor folds the plan into in-memory `ProcessSessionState`
-as `ralphGrill` state, preserving `roundsRun`, per-role status/session IDs,
-cumulative selected user-facing questions, and compact warnings across chat-turn
-cleanup for the same process. Failed, unavailable, or empty agents produce
-warnings and do not block the main consolidated grilling turn. The planner
+and the preflight runner that invokes one SDK request per selected grill agent
+before the main grilling turn. Each agent uses its own resolved model and
+reasoning effort, falling back to the enclosing task defaults only when the
+agent does not specify them. Successful first-round runs record the SDK
+`sessionId` returned by that role agent; failed or unavailable agents record no
+session ID. On later grilling turns, the executor passes the retained
+`ProcessSessionState.ralphGrill` state back into the planner, and role agents
+with stored session IDs are resumed with the user's latest answers instead of a
+fresh original-request prompt. The executor folds each plan into in-memory
+`ProcessSessionState` as `ralphGrill` state, preserving `roundsRun`, per-role
+status/session IDs, cumulative selected user-facing questions, and compact
+warnings across chat-turn cleanup for the same process. Failed, unavailable, or
+empty agents produce warnings and do not block the main consolidated grilling
+turn. The planner
 consolidates candidate questions before the main turn: exact duplicates and
 conservative semantic duplicates merge with combined provenance, recognized
 conflicts become one select-style decision question, duplicate-only agent

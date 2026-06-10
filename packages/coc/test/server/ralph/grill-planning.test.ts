@@ -395,6 +395,123 @@ describe('Ralph grill planning', () => {
         expect(processState.askedQuestions).toEqual(plan.selectedQuestions.map(question => question.question));
     });
 
+    it('resumes prior role agent sessions with the latest user answers on follow-up turns', async () => {
+        const service = {
+            isAvailable: vi.fn().mockResolvedValue({ available: true }),
+            sendMessage: vi.fn(async (options: { prompt: string; sessionId?: string }) => {
+                if (options.sessionId === 'product-session') {
+                    return {
+                        success: true,
+                        response: JSON.stringify({
+                            questions: [{
+                                question: 'What admin workflow should the follow-up optimize first?',
+                                type: 'text',
+                            }],
+                        }),
+                        sessionId: 'product-session',
+                    };
+                }
+                if (options.sessionId === 'ux-session') {
+                    return {
+                        success: true,
+                        response: JSON.stringify({ questions: [] }),
+                        sessionId: 'ux-session',
+                    };
+                }
+                if (options.sessionId === 'architecture-session') {
+                    return {
+                        success: true,
+                        response: JSON.stringify({ questions: [] }),
+                        sessionId: 'architecture-session',
+                    };
+                }
+                if (options.prompt.includes('Product Agent')) {
+                    return {
+                        success: true,
+                        response: JSON.stringify({
+                            questions: [{ question: 'Which users should this optimize for?', type: 'text' }],
+                        }),
+                        sessionId: 'product-session',
+                    };
+                }
+                if (options.prompt.includes('Architecture/System Agent')) {
+                    return {
+                        success: true,
+                        response: JSON.stringify({
+                            questions: [{ question: 'Which system boundary should constrain follow-ups?', type: 'text' }],
+                        }),
+                        sessionId: 'architecture-session',
+                    };
+                }
+                return {
+                    success: true,
+                    response: JSON.stringify({
+                        questions: [{ question: 'How should the grouped form look?', type: 'text' }],
+                    }),
+                    sessionId: 'ux-session',
+                };
+            }),
+        };
+        const setup = {
+            enabled: true,
+            depth: 'light' as const,
+            agents: [
+                { role: 'product' as const, provider: 'copilot' as const, model: 'gpt-5.5' },
+                { role: 'ux' as const, provider: 'copilot' as const, model: 'gpt-5.5' },
+            ],
+        };
+        const firstPlan = await planRalphGrillCandidateQuestions(
+            { aiService: service as any },
+            {
+                setup,
+                prompt: 'Design the new Ralph grilling experience',
+                defaultProvider: 'copilot',
+            },
+        );
+        const firstState = buildRalphGrillProcessStateFromPlan(firstPlan);
+        service.sendMessage.mockClear();
+
+        const secondPlan = await planRalphGrillCandidateQuestions(
+            { aiService: service as any },
+            {
+                setup,
+                prompt: 'Answer: optimize for repository admins first.',
+                previousState: firstState,
+                defaultProvider: 'copilot',
+            },
+        );
+
+        expect(service.sendMessage).toHaveBeenCalledTimes(3);
+        const resumedCalls = service.sendMessage.mock.calls
+            .map(call => call[0])
+            .filter(options => options.sessionId);
+        expect(resumedCalls).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                sessionId: 'product-session',
+                prompt: expect.stringContaining('Answer: optimize for repository admins first.'),
+            }),
+            expect.objectContaining({
+                sessionId: 'ux-session',
+                prompt: expect.stringContaining('Answer: optimize for repository admins first.'),
+            }),
+        ]));
+        expect(resumedCalls[0].prompt).not.toContain('Design the new Ralph grilling experience');
+        expect(secondPlan.agentResults.map(result => [result.agent.role, result.sessionId])).toEqual([
+            ['product', 'product-session'],
+            ['ux', 'ux-session'],
+            ['architecture-system', 'architecture-session'],
+        ]);
+        expect(secondPlan.selectedQuestions.map(question => question.question)).toContain('What admin workflow should the follow-up optimize first?');
+
+        const secondState = buildRalphGrillProcessStateFromPlan(secondPlan, firstState);
+        expect(secondState.roundsRun).toBe(2);
+        expect(secondState.agents.product?.sessionId).toBe('product-session');
+        expect(secondState.askedQuestions).toEqual(expect.arrayContaining([
+            'Which users should this optimize for?',
+            'What admin workflow should the follow-up optimize first?',
+        ]));
+    });
+
     it('warns when an agent contributes only duplicate questions after consolidation', async () => {
         const service = {
             isAvailable: vi.fn().mockResolvedValue({ available: true }),

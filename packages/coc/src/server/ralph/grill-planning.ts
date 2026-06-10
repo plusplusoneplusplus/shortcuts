@@ -165,6 +165,7 @@ export interface RalphGrillPlanningProgress {
 export interface RalphGrillQuestionPlanningContext {
     setup?: RalphGrillSetup | null;
     prompt: string;
+    previousState?: RalphGrillProcessState;
     defaultProvider?: ChatProvider;
     defaultModel?: string;
     reasoningEffort?: ReasoningEffort;
@@ -1023,6 +1024,22 @@ ${ctx.prompt}
 Return role-specific candidate questions as strict JSON.`;
 }
 
+function buildRalphGrillAgentFollowUpPrompt(ctx: RalphGrillQuestionPlanningContext, agent: ResolvedRalphGrillAgent): string {
+    const providerModel = agent.provider || agent.model || agent.effortTier
+        ? `\nProvider/tier or provider/model provenance for this run: ${agent.provenanceLabel}`
+        : '';
+    return `\
+Ralph grilling follow-up round for your existing ${agent.label} session.
+Agent focus: ${agent.focus}.${providerModel}
+
+The user answered the previously consolidated Ralph grilling questions with:
+${ctx.prompt}
+
+Use your retained session context to decide whether your role needs answer-dependent follow-up clarification.
+Return only new, non-repeated role-specific candidate follow-up questions as strict JSON.
+If your role has enough information, return {"questions":[]}.`;
+}
+
 function resolveAgentForExecution(
     agent: ResolvedRalphGrillAgent,
     ctx: RalphGrillQuestionPlanningContext,
@@ -1063,6 +1080,7 @@ async function runSingleRalphGrillAgent(
     baseAgent: ResolvedRalphGrillAgent,
 ): Promise<RalphGrillAgentRunResult> {
     const { agent, provider, model, reasoningEffort, warnings } = resolveAgentForExecution(baseAgent, ctx, options);
+    const resumeSessionId = ctx.previousState?.agents[baseAgent.role]?.sessionId;
     try {
         const aiService = provider && options.resolveAiServiceForProvider
             ? options.resolveAiServiceForProvider(provider)
@@ -1081,7 +1099,10 @@ async function runSingleRalphGrillAgent(
         }
 
         const result = await aiService.sendMessage({
-            prompt: buildRalphGrillAgentPrompt(ctx, agent),
+            prompt: resumeSessionId
+                ? buildRalphGrillAgentFollowUpPrompt(ctx, agent)
+                : buildRalphGrillAgentPrompt(ctx, agent),
+            ...(resumeSessionId ? { sessionId: resumeSessionId } : {}),
             ...(model ? { model } : {}),
             ...(reasoningEffort ? { reasoningEffort } : {}),
             workingDirectory: ctx.workingDirectory,
