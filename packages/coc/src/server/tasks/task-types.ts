@@ -22,6 +22,7 @@
 
 import type { Attachment, MCPServerConfig } from '@plusplusoneplusplus/forge';
 import type { ForEachItem, MapReduceChildMode, MapReduceItem } from '@plusplusoneplusplus/coc-client';
+import type { RalphGrillSetup } from '../ralph/grill-planning';
 
 // ============================================================================
 // Target Type
@@ -368,6 +369,8 @@ export interface RalphContext {
     loopIndex?: number;
     /** Current stage of the Ralph session. */
     phase?: 'grilling' | 'executing' | 'complete';
+    /** Optional multi-agent grilling setup. Honored only when the server feature flag is enabled. */
+    grill?: RalphGrillSetup;
     /**
      * Present on final-check tasks only (AC-01/02). Identifies this as a
      * read-only goal-gap checker task. When set, `enqueueRalphNextIteration`

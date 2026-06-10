@@ -674,6 +674,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     },
     bool({ key: 'features.autoAgentProviderRouting', default: false, runtime: 'restartRequired', runtimeFlag: 'autoAgentProviderRoutingEnabled' }),
+    bool({ key: 'features.ralphMultiAgentGrill', default: false, runtime: 'restartRequired', runtimeFlag: 'ralphMultiAgentGrillEnabled' }),
 
     bool({
         key: 'workItems.hierarchy.enabled', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'workItemsHierarchyEnabled',

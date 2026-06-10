@@ -35,7 +35,7 @@ function createMockRuntimeConfigService(overrides: Partial<ResolvedCLIConfig> = 
         loops: { enabled: false },
         excalidraw: { enabled: false },
         mcpOauth: { enabled: false },
-        features: { focusedDiff: false, autoMemoryPromotion: false, gitCommitLookup: false, gitCrossCloneCherryPick: true, sessionContextAttachments: false, commitChatLens: false },
+        features: { focusedDiff: false, autoMemoryPromotion: false, gitCommitLookup: false, gitCrossCloneCherryPick: true, sessionContextAttachments: false, commitChatLens: false, ralphMultiAgentGrill: false },
         memoryPromotion: { enabled: false },
         defaultModels: {},
         ...overrides,
@@ -82,6 +82,7 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.sessionContextAttachmentsEnabled).toBe(false);
         expect(result.features.commitChatLensEnabled).toBe(false);
         expect(result.features.autoAgentProviderRoutingEnabled).toBe(false);
+        expect(result.features.ralphMultiAgentGrillEnabled).toBe(false);
         expect(result.features.codexEnabled).toBe(false);
         expect(result.features.defaultProvider).toBe('copilot');
         expect(result.features.workItemsSyncEnabled).toBe(false);
@@ -101,6 +102,21 @@ describe('buildRuntimeDashboardConfig', () => {
         } as any);
         const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
         expect(result.features.autoAgentProviderRoutingEnabled).toBe(true);
+    });
+
+    it('reflects features.ralphMultiAgentGrill = true from config', () => {
+        const svc = createMockRuntimeConfigService({
+            features: {
+                focusedDiff: false,
+                autoMemoryPromotion: false,
+                gitCommitLookup: false,
+                gitCrossCloneCherryPick: true,
+                sessionContextAttachments: false,
+                ralphMultiAgentGrill: true,
+            },
+        } as any);
+        const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
+        expect(result.features.ralphMultiAgentGrillEnabled).toBe(true);
     });
 
     it('reflects pullRequests.autoClassifyTeam = true from config', () => {

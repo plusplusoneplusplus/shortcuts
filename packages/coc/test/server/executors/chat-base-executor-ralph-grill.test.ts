@@ -13,6 +13,24 @@ describe('buildRalphGrillSuffix', () => {
 
         expect(suffix).toContain('/tmp/coc/notes/Plans/<chosen-folder>/<descriptive-name>.goal.md');
         expect(suffix).toContain('Existing folders: frontend');
+        expect(suffix).not.toContain('Multi-agent grilling is enabled');
+    });
+
+    it('adds the multi-agent grilling directive only when a grill setup is enabled', () => {
+        const suffix = buildRalphGrillSuffix(autoFolderContext, {
+            grill: {
+                enabled: true,
+                depth: 'standard',
+                agents: [
+                    { role: 'ux', provider: 'claude', model: 'claude-sonnet-4.6' },
+                ],
+            },
+        });
+
+        expect(suffix).toContain('Multi-agent grilling is enabled');
+        expect(suffix).toContain('Selected depth: standard');
+        expect(suffix).toContain('UX Agent · claude/claude-sonnet-4.6');
+        expect(suffix).toContain('/tmp/coc/notes/Plans/<chosen-folder>/<descriptive-name>.goal.md');
     });
 
     it('suppresses Notes goal-file output for Work Item Goal grilling', () => {

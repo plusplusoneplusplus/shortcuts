@@ -327,6 +327,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         () => mcpOauthInfra?.manager,
         effectiveProvider,
         resolveAiServiceForProvider,
+        resolvedConfig.features.ralphMultiAgentGrill,
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by

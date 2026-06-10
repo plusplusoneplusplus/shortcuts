@@ -33,6 +33,8 @@ export interface ExecutorRegistryOptions {
     askUser?: { enabled: boolean };
     /** Default AI provider name recorded on new processes when the task has no provider override. */
     provider?: 'copilot' | 'codex' | 'claude';
+    /** Enables the gated multi-agent Ralph grilling prompt contract. */
+    ralphMultiAgentGrillEnabled?: boolean;
     /**
      * Resolve an ISDKService for a given provider, checking enablement.
      * Injected from the bridge so executors can route per-chat without
@@ -94,6 +96,7 @@ export class ExecutorRegistry {
             getLoopInfra: options.getLoopInfra,
             getMcpOauthManager: options.getMcpOauthManager,
             provider: options.provider,
+            ralphMultiAgentGrillEnabled: options.ralphMultiAgentGrillEnabled,
             resolveAiServiceForProvider: options.resolveAiServiceForProvider,
         };
 

@@ -185,6 +185,7 @@ claude:
 
 features:
   autoAgentProviderRouting: false  # enables Auto for omitted-provider default paths
+  ralphMultiAgentGrill: false      # gated multi-agent Ralph grilling prompt contract
 
 agentProviderRouting:
   auto:

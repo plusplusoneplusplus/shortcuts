@@ -26,6 +26,8 @@ export interface CLITaskExecutorOptions {
     askUser?: { enabled: boolean };
     /** Default AI provider name recorded on new processes when the task has no provider override. */
     provider?: 'copilot' | 'codex' | 'claude';
+    /** Enables the gated multi-agent Ralph grilling prompt contract. */
+    ralphMultiAgentGrillEnabled?: boolean;
     /**
      * Resolve an ISDKService for a given provider, checking enablement.
      * Supplied by the server so executors can perform per-chat routing without
@@ -123,6 +125,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             followUpSuggestions: options.followUpSuggestions ?? DEFAULT_FOLLOW_UP_SUGGESTIONS,
             askUser: options.askUser,
             provider: options.provider,
+            ralphMultiAgentGrillEnabled: options.ralphMultiAgentGrillEnabled,
             resolveAiServiceForProvider: options.resolveAiServiceForProvider,
             resolveSkillConfig: skillCfg,
             resolveWorkspaceIdForPath: (p: string) => this.resolveWorkspaceIdForPath(p),

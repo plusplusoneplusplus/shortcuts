@@ -106,6 +106,7 @@ export interface AdminResolvedConfig {
     commitChatLens?: boolean;
     commitChatLensDormantMode?: 'ghost' | 'pill';
     autoAgentProviderRouting?: boolean;
+    ralphMultiAgentGrill?: boolean;
   };
   workItems?: { hierarchy?: { enabled?: boolean }; sync?: { enabled?: boolean }; aiAuthoring?: { enabled?: boolean }; workflow?: { enabled?: boolean } };
   effortLevels?: { enabled?: boolean };
@@ -215,6 +216,7 @@ export interface RuntimeDashboardConfig {
     claudeEnabled: boolean;
     defaultProvider: AdminDefaultProvider;
     autoAgentProviderRoutingEnabled: boolean;
+    ralphMultiAgentGrillEnabled: boolean;
     workItemsHierarchyEnabled: boolean;
     workItemsSyncEnabled: boolean;
     workItemsAiAuthoringEnabled: boolean;

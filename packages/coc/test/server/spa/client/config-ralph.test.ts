@@ -7,12 +7,14 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 describe('isRalphEnabled', () => {
     let isRalphEnabled: () => boolean;
+    let isRalphMultiAgentGrillEnabled: () => boolean;
     let isForEachEnabled: () => boolean;
 
     beforeEach(async () => {
         // Fresh import each time to avoid module cache
         const mod = await import('../../../../src/server/spa/client/react/utils/config');
         isRalphEnabled = mod.isRalphEnabled;
+        isRalphMultiAgentGrillEnabled = mod.isRalphMultiAgentGrillEnabled;
         isForEachEnabled = mod.isForEachEnabled;
     });
 
@@ -38,6 +40,14 @@ describe('isRalphEnabled', () => {
     it('returns true when ralphEnabled is true', () => {
         (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', ralphEnabled: true };
         expect(isRalphEnabled()).toBe(true);
+    });
+
+    it('returns true only when ralphMultiAgentGrillEnabled is true', () => {
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', ralphMultiAgentGrillEnabled: false };
+        expect(isRalphMultiAgentGrillEnabled()).toBe(false);
+
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', ralphMultiAgentGrillEnabled: true };
+        expect(isRalphMultiAgentGrillEnabled()).toBe(true);
     });
 
     it('returns true only when forEachEnabled is true', () => {

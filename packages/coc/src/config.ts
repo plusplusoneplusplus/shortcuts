@@ -227,6 +227,8 @@ export interface CLIConfig {
         commitChatLensDormantMode?: 'ghost' | 'pill';
         /** Auto agent provider routing in Admin -> AI Provider. Disabled by default. */
         autoAgentProviderRouting?: boolean;
+        /** Multi-agent Ralph grilling experience. Disabled by default. */
+        ralphMultiAgentGrill?: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion?: {
@@ -494,6 +496,8 @@ export interface ResolvedCLIConfig {
         commitChatLensDormantMode: 'ghost' | 'pill';
         /** Auto agent provider routing in Admin -> AI Provider. Disabled by default. */
         autoAgentProviderRouting: boolean;
+        /** Multi-agent Ralph grilling experience. Disabled by default. */
+        ralphMultiAgentGrill: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion: {
@@ -711,6 +715,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         commitChatLens: false,
         commitChatLensDormantMode: 'ghost',
         autoAgentProviderRouting: false,
+        ralphMultiAgentGrill: false,
     },
     memoryPromotion: {
         batchSize: 50,

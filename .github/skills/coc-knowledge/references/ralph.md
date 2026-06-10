@@ -186,8 +186,20 @@ with a `*.goal.md` filename. This keeps the goal file out of the repository
 working tree and lets the Notes/scratchpad UI open and edit it (`isGoalFile`
 detects `*.goal.md`). The generic bundled `grill-me` skill stays host-agnostic:
 it defers to whatever save location the host supplies and only falls back to a
-working-directory-relative `Plans/<area>/<feature>/` when none is given. Work
-Item Goal grilling passes `context.workItemGoalGrilling`, which makes
+working-directory-relative `Plans/<area>/<feature>/` when none is given.
+
+The disabled-by-default `features.ralphMultiAgentGrill` gate enables the
+multi-agent grilling prompt contract only when the task context also carries
+`context.ralph.grill.enabled=true`. The pure planning helpers live in
+`packages/coc/src/server/ralph/grill-planning.ts`; they define the Light,
+Standard (default), and Deep depth role sets, per-agent provider/model selection
+shape, provenance labels (`Role Agent · provider/model` with unavailable-model
+fallbacks), and the prompt block requiring actual separate grill agents,
+semantic dedupe/conflict consolidation, one consolidated `ask_user` batch, and a
+coverage summary in the final goal. When the flag is off or the context lacks an
+enabled grill setup, existing single-agent grilling prompts remain unchanged.
+
+Work Item Goal grilling passes `context.workItemGoalGrilling`, which makes
 `buildRalphGrillSuffix(...)` omit the Notes goal-file directive and tell the
 model to emit the final `## Goal` spec in chat for immutable Work Item content
 versioning instead. When that bound grilling chat completes and the durable Work

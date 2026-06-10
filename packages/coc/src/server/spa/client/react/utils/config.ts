@@ -41,6 +41,7 @@ interface DashboardConfig {
     sessionContextAttachmentsEnabled?: boolean;
     commitChatLensEnabled?: boolean;
     commitChatLensDormantMode?: 'ghost' | 'pill';
+    ralphMultiAgentGrillEnabled?: boolean;
     containerDefaultAgentEnabled?: boolean;
     bindAddress?: string;
     /** Whether the Codex SDK provider is enabled (feature flag). */
@@ -245,6 +246,10 @@ export function isServersEnabled(): boolean {
 
 export function isRalphEnabled(): boolean {
     return getConfig().ralphEnabled === true;
+}
+
+export function isRalphMultiAgentGrillEnabled(): boolean {
+    return getConfig().ralphMultiAgentGrillEnabled === true;
 }
 
 export function isForEachEnabled(): boolean {

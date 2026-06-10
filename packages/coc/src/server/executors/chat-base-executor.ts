@@ -64,6 +64,8 @@ import type { MemoryV2Addon } from './memory-v2-addon';
 import { resolveAutoFolderContext } from './auto-folder-utils';
 import { systemMessageBuilder } from './system-message-builder';
 import { buildChatTurnContext } from './chat-turn-context-builder';
+import { buildRalphMultiAgentGrillDirective } from '../ralph/grill-planning';
+import type { RalphGrillSetup } from '../ralph/grill-planning';
 // ============================================================================
 // Ralph grilling-phase system message suffix
 // ============================================================================
@@ -80,6 +82,7 @@ export interface RalphGrillSuffixOptions {
         workItemId?: string;
         title?: string;
     };
+    grill?: RalphGrillSetup;
 }
 
 /**
@@ -95,12 +98,17 @@ export interface RalphGrillSuffixOptions {
  * skill stays host-agnostic.
  */
 export function buildRalphGrillSuffix(autoFolderContext?: AutoFolderContext, options: RalphGrillSuffixOptions = {}): string {
+    const multiAgentDirective = buildRalphMultiAgentGrillDirective(options.grill);
+    const baseSuffix = multiAgentDirective
+        ? `${RALPH_GRILL_SUFFIX}\n\n${multiAgentDirective}`
+        : RALPH_GRILL_SUFFIX;
+
     if (options.workItemGoal) {
         const title = options.workItemGoal.title?.trim();
         const goalLabel = title ? ` "${title}"` : '';
-        return `${RALPH_GRILL_SUFFIX}\n\nWork Item Goal${goalLabel}: this grilling session is bound to a local Goal item in the Work Items system. Do not create or require a Notes-backed \`.goal.md\` file for this workflow. When the user is done, emit the final \`## Goal\` spec in chat so the Work Item workflow can save it as an immutable Goal content version.`;
+        return `${baseSuffix}\n\nWork Item Goal${goalLabel}: this grilling session is bound to a local Goal item in the Work Items system. Do not create or require a Notes-backed \`.goal.md\` file for this workflow. When the user is done, emit the final \`## Goal\` spec in chat so the Work Item workflow can save it as an immutable Goal content version.`;
     }
-    if (!autoFolderContext) return RALPH_GRILL_SUFFIX;
+    if (!autoFolderContext) return baseSuffix;
 
     const root = toForwardSlashes(autoFolderContext.tasksRoot);
     const filtered = autoFolderContext.existingFolders.filter(
@@ -110,7 +118,7 @@ export function buildRalphGrillSuffix(autoFolderContext?: AutoFolderContext, opt
     const fileBlock = `\
 Goal file: persist the final goal spec as a file at \`${root}/<chosen-folder>/<descriptive-name>.goal.md\` so it appears in the Notes tab and can be opened and edited manually. Pick the most relevant existing folder or create a new kebab-case one (≤3 words). Existing folders: ${folderList}. Do not write the goal file into the repository working tree.`;
 
-    return `${RALPH_GRILL_SUFFIX}\n\n${fileBlock}`;
+    return `${baseSuffix}\n\n${fileBlock}`;
 }
 
 // ============================================================================
@@ -157,6 +165,8 @@ export interface ChatModeExecutorOptions {
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     /** Active AI provider. Used to detect provider mismatches on follow-up resume. */
     provider?: 'copilot' | 'codex' | 'claude';
+    /** Enables the gated multi-agent Ralph grilling prompt contract. */
+    ralphMultiAgentGrillEnabled?: boolean;
     /**
      * Resolve an ISDKService for a given provider name, checking enablement and
      * availability. Throws with a user-facing message if the provider is disabled
@@ -210,6 +220,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     /** Active AI provider — used to guard against provider mismatches on follow-up resume. */
     protected readonly provider: 'copilot' | 'codex' | 'claude';
+    protected readonly ralphMultiAgentGrillEnabled: boolean;
     /** Resolves per-task SDK service by provider, checking enablement. Optional — falls back to sdkServiceRegistry. */
     protected readonly resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
     /**
@@ -233,6 +244,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.getLoopInfra = options.getLoopInfra;
         this.getMcpOauthManager = options.getMcpOauthManager;
         this.provider = options.provider ?? 'copilot';
+        this.ralphMultiAgentGrillEnabled = options.ralphMultiAgentGrillEnabled === true;
         this.resolveAiServiceForProvider = options.resolveAiServiceForProvider;
     }
 
@@ -440,6 +452,9 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
 
         const isGrilling = payload.context?.ralph?.phase === 'grilling';
         const workItemGoalGrilling = payload.context?.workItemGoalGrilling;
+        const ralphGrillSetup = this.ralphMultiAgentGrillEnabled
+            ? payload.context?.ralph?.grill
+            : undefined;
         const forEachGeneration = (() => {
             const context = getForEachContext({ payload });
             return isForEachGenerationContext(context) ? context : null;
@@ -468,7 +483,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         // (skill pointer, machine contract, and output destination) to the user
         // prompt so the model receives it on every grilling turn.
         const effectivePrompt = isGrilling
-            ? `${buildRalphGrillSuffix(autoFolderContext, { workItemGoal: workItemGoalGrilling })}\n\n${prompt}`
+            ? `${buildRalphGrillSuffix(autoFolderContext, { workItemGoal: workItemGoalGrilling, grill: ralphGrillSetup })}\n\n${prompt}`
             : prompt;
 
         return {

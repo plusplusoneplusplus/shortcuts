@@ -132,6 +132,12 @@ explicit AI Review action that enqueues a `code-review` chat as a non-mutating
 timeline entry, plus a Submit PR action only when the implementation change has
 eligible commits and no recorded PR.
 
+`features.ralphMultiAgentGrill` is a disabled-by-default runtime feature flag
+surfaced to the SPA as `ralphMultiAgentGrillEnabled` from bootstrap config and
+`GET /api/config/runtime`; use `isRalphMultiAgentGrillEnabled()` for UI gates.
+The flag only enables the multi-agent Ralph grilling setup surfaces and prompt
+contract. Notes direct goal launch remains separate because it skips grilling.
+
 ## Chat UI Architecture
 
 `ConversationTurnBubble` renders:
