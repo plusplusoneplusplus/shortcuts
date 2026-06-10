@@ -14,7 +14,7 @@
  * No execution-mode logic (chat, autopilot, workflows, scripts) lives here.
  */
 
-import type { GenericProcessMetadata, ProcessStore, TimelineItem, ToolEvent, BackgroundTasksInfo } from '@plusplusoneplusplus/forge';
+import type { ConversationTurn, GenericProcessMetadata, ProcessStore, TimelineItem, ToolEvent, BackgroundTasksInfo } from '@plusplusoneplusplus/forge';
 import { getLogger, LogCategory, mergeConsecutiveContentItems } from '@plusplusoneplusplus/forge';
 import { OutputFileManager } from '../processes/output-file-manager';
 import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
@@ -32,6 +32,18 @@ export interface ProcessSessionState {
     timelineBuffer: TimelineItem[];
     throttleState: { chunksSinceLastFlush: number; lastFlushTime: number };
     pendingSuggestions: string[] | undefined;
+    /**
+     * True once the turn's final assistant turn has been persisted. Blocks
+     * late streaming flushes (e.g. an SSE subscriber's requestFlush racing
+     * turn completion) from re-inserting the buffered content as a zombie
+     * streaming turn after the final append.
+     */
+    turnFinalized: boolean;
+    /**
+     * Serializes streaming-flush and final-append store writes for this
+     * process so they cannot interleave across async store implementations.
+     */
+    turnWriteChain: Promise<void>;
     /** Pending ask-user tool instance for mid-turn user interaction. */
     pendingAskUser?: {
         answerQuestion: (questionId: string, answer: AskUserAnswerValue) => boolean;
@@ -80,6 +92,8 @@ export abstract class BaseExecutor {
                 timelineBuffer: [],
                 throttleState: { chunksSinceLastFlush: 0, lastFlushTime: 0 },
                 pendingSuggestions: undefined,
+                turnFinalized: false,
+                turnWriteChain: Promise.resolve(),
             };
             this.sessions.set(processId, session);
         }
@@ -107,6 +121,7 @@ export abstract class BaseExecutor {
         session.pendingSuggestions = undefined;
         session.throttleState.chunksSinceLastFlush = 0;
         session.throttleState.lastFlushTime = 0;
+        session.turnFinalized = false;
     }
 
     /** Look up the pending ask-user handles for a process (if any). */
@@ -183,24 +198,69 @@ export abstract class BaseExecutor {
     }
 
     /**
+     * Run a conversation-turn store write through the per-process chain so a
+     * streaming flush and the final turn append cannot interleave, regardless
+     * of how the underlying store schedules its writes.
+     */
+    private chainTurnWrite<T>(processId: string, op: () => Promise<T>): Promise<T> {
+        const session = this.getOrCreateSession(processId);
+        const result = session.turnWriteChain.then(op, op);
+        session.turnWriteChain = result.then(() => undefined, () => undefined);
+        return result;
+    }
+
+    /**
      * Flush current streaming content to the store as a conversation turn.
      * When `streaming` is true, marks the turn as in-progress so the UI
      * can show a streaming indicator. On completion, call with `streaming: false`.
+     *
+     * No-ops once the turn has been finalized: an SSE subscriber's
+     * `requestFlush` can race turn completion, and an upsert landing after
+     * `appendFinalConversationTurn` would re-insert the streamed content as a
+     * permanent duplicate streaming turn.
      */
     protected async flushConversationTurn(processId: string, streaming: boolean): Promise<void> {
         const session = this.sessions.get(processId);
-        const buffer = session?.outputBuffer;
-        const hasTimeline = (session?.timelineBuffer.length ?? 0) > 0;
+        if (!session || session.turnFinalized) return;
+        const buffer = session.outputBuffer;
+        const hasTimeline = session.timelineBuffer.length > 0;
         if (buffer == null && !hasTimeline) return;
 
-        // Snapshot current timeline for this flush, merging consecutive content items
-        const timelineSnapshot = mergeConsecutiveContentItems([...(session?.timelineBuffer || [])]);
+        // Snapshot buffer + timeline synchronously at call time so throttled
+        // flushes persist progressively growing content; only the store write
+        // itself is serialized through the chain.
+        const timelineSnapshot = mergeConsecutiveContentItems([...session.timelineBuffer]);
 
-        try {
-            await this.store.upsertStreamingTurn(processId, buffer ?? '', streaming, timelineSnapshot);
-        } catch {
-            // Non-fatal: don't fail the task because of flush
-        }
+        return this.chainTurnWrite(processId, async () => {
+            // Re-validate inside the chain: the turn may have been finalized
+            // or the session cleaned up while this flush waited its turn.
+            if (session !== this.sessions.get(processId) || session.turnFinalized) return;
+            try {
+                await this.store.upsertStreamingTurn(processId, buffer ?? '', streaming, timelineSnapshot);
+            } catch {
+                // Non-fatal: don't fail the task because of flush
+            }
+        });
+    }
+
+    /**
+     * Append the turn's final conversation turn, replacing any persisted
+     * streaming turn (`filterStreaming: true` semantics are supplied by the
+     * caller via `options`) and blocking subsequent streaming flushes for this
+     * turn. Serialized against in-flight flushes via the per-process write
+     * chain so a concurrent flush can neither interleave with nor land after
+     * the final append.
+     */
+    protected appendFinalConversationTurn(
+        processId: string,
+        makeTurn: (turnIndex: number) => ConversationTurn,
+        options?: Parameters<ProcessStore['appendConversationTurn']>[2],
+    ): Promise<{ turn: ConversationTurn; allTurns: ConversationTurn[] } | undefined> {
+        return this.chainTurnWrite(processId, async () => {
+            const session = this.getOrCreateSession(processId);
+            session.turnFinalized = true;
+            return this.store.appendConversationTurn(processId, makeTurn, options);
+        });
     }
 
     // ========================================================================

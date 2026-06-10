@@ -758,7 +758,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             if (hasPartial) {
                 const errorMsg = err instanceof Error ? err.message : String(err);
                 try {
-                    await this.store.appendConversationTurn(
+                    await this.appendFinalConversationTurn(
                         processId,
                         (turnIndex) => ({
                             role: 'assistant' as const,
