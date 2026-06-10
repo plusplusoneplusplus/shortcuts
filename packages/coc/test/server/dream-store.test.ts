@@ -178,6 +178,45 @@ describe('FileDreamStore', () => {
         });
     });
 
+    it('records completed dream run coverage for incremental future passes', async () => {
+        await withTempDir(async (dataDir) => {
+            const store = new FileDreamStore({ dataDir });
+            const run = await store.createRun({ workspaceId: WORKSPACE_ID, trigger: 'manual' });
+            const created = await store.createCandidate(candidate({
+                runId: run.id,
+                sourceRanges: [{ processId: 'process-card', startTurnIndex: 4, endTurnIndex: 7 }],
+            }));
+
+            const completed = await store.completeRun(WORKSPACE_ID, run.id, {
+                sourceRanges: [
+                    { processId: 'process-run', startTurnIndex: 0, endTurnIndex: 3 },
+                    { processId: 'process-run', startTurnIndex: 0, endTurnIndex: 3 },
+                ],
+                candidateCardIds: [created.id, created.id],
+            });
+            expect(completed.status).toBe('completed');
+            expect(completed.candidateCardIds).toEqual([created.id]);
+            expect(completed.sourceRanges).toEqual([
+                { processId: 'process-run', startTurnIndex: 0, endTurnIndex: 3 },
+            ]);
+
+            const failedRun = await store.createRun({ workspaceId: WORKSPACE_ID, trigger: 'idle' });
+            await store.failRun(WORKSPACE_ID, failedRun.id, {
+                error: 'critic failed',
+                sourceRanges: [{ processId: 'process-failed', startTurnIndex: 0, endTurnIndex: 2 }],
+            });
+
+            const covered = await store.listCoveredSourceRanges(WORKSPACE_ID);
+            expect(covered).toEqual([
+                { processId: 'process-card', startTurnIndex: 4, endTurnIndex: 7 },
+                { processId: 'process-run', startTurnIndex: 0, endTurnIndex: 3 },
+            ]);
+
+            const runs = await store.listRuns(WORKSPACE_ID);
+            expect(runs.map(storedRun => storedRun.status).sort()).toEqual(['completed', 'failed']);
+        });
+    });
+
     it('builds stable fingerprints from normalized recommendation signals', () => {
         const first = buildDreamDedupFingerprint(candidate());
         const second = buildDreamDedupFingerprint(candidate({

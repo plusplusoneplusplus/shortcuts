@@ -4,6 +4,8 @@ import * as path from 'path';
 import { getRepoDataPath } from '@plusplusoneplusplus/forge';
 import { atomicWriteJSON } from '../shared/fs-utils';
 import type {
+    CompleteDreamRunInput,
+    CreateDreamRunInput,
     CreateDreamCandidateInput,
     DreamCard,
     DreamCardCategory,
@@ -12,18 +14,27 @@ import type {
     DreamConversionLink,
     DreamDismissOptions,
     DreamPromotionOptions,
+    DreamRunRecord,
+    DreamRunStatus,
     DreamSourceRange,
     DreamSupersedeOptions,
+    FailDreamRunInput,
 } from './types';
 import {
     DREAM_CARD_CATEGORIES,
     DREAM_CARD_STATUSES,
     DREAM_REVIEW_VISIBLE_STATUSES,
+    DREAM_RUN_STATUSES,
 } from './types';
 
 interface StoredDreamCardsFile {
     version: 1;
     cards: DreamCard[];
+}
+
+interface StoredDreamRunsFile {
+    version: 1;
+    runs: DreamRunRecord[];
 }
 
 export interface FileDreamStoreOptions {
@@ -46,6 +57,10 @@ function mintCardId(): string {
     return `dream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function mintRunId(): string {
+    return `dream-run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function assertCardId(cardId: string): string {
     if (!CARD_ID_PATTERN.test(cardId)) {
         throw new Error(`Invalid dream card ID: ${cardId}`);
@@ -59,6 +74,10 @@ function isDreamCategory(value: unknown): value is DreamCardCategory {
 
 function isDreamStatus(value: unknown): value is DreamCardStatus {
     return typeof value === 'string' && (DREAM_CARD_STATUSES as readonly string[]).includes(value);
+}
+
+function isDreamRunStatus(value: unknown): value is DreamRunStatus {
+    return typeof value === 'string' && (DREAM_RUN_STATUSES as readonly string[]).includes(value);
 }
 
 function normalizeRequiredText(value: unknown, label: string, reasons: string[]): string {
@@ -84,16 +103,24 @@ function normalizeOptionalText(value: unknown, label: string, reasons: string[])
     return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function normalizeSourceRanges(value: unknown, reasons: string[]): DreamSourceRange[] {
+function normalizeSourceRanges(
+    value: unknown,
+    reasons: string[],
+    options: { label?: string; allowEmpty?: boolean } = {},
+): DreamSourceRange[] {
+    const label = options.label ?? 'sourceRanges';
     if (!Array.isArray(value) || value.length === 0) {
-        reasons.push('sourceRanges must include at least one source reference');
+        if (Array.isArray(value) && value.length === 0 && options.allowEmpty) {
+            return [];
+        }
+        reasons.push(`${label} must include at least one source reference`);
         return [];
     }
 
     const ranges: DreamSourceRange[] = [];
     for (const [index, raw] of value.entries()) {
         if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-            reasons.push(`sourceRanges[${index}] must be an object`);
+            reasons.push(`${label}[${index}] must be an object`);
             continue;
         }
         const entry = raw as Record<string, unknown>;
@@ -101,20 +128,20 @@ function normalizeSourceRanges(value: unknown, reasons: string[]): DreamSourceRa
         const startTurnIndex = entry.startTurnIndex;
         const endTurnIndex = entry.endTurnIndex;
         if (!processId) {
-            reasons.push(`sourceRanges[${index}].processId is required`);
+            reasons.push(`${label}[${index}].processId is required`);
         }
         if (!Number.isInteger(startTurnIndex) || (startTurnIndex as number) < 0) {
-            reasons.push(`sourceRanges[${index}].startTurnIndex must be a non-negative integer`);
+            reasons.push(`${label}[${index}].startTurnIndex must be a non-negative integer`);
         }
         if (!Number.isInteger(endTurnIndex) || (endTurnIndex as number) < 0) {
-            reasons.push(`sourceRanges[${index}].endTurnIndex must be a non-negative integer`);
+            reasons.push(`${label}[${index}].endTurnIndex must be a non-negative integer`);
         }
         if (
             Number.isInteger(startTurnIndex)
             && Number.isInteger(endTurnIndex)
             && (startTurnIndex as number) > (endTurnIndex as number)
         ) {
-            reasons.push(`sourceRanges[${index}].startTurnIndex must be <= endTurnIndex`);
+            reasons.push(`${label}[${index}].startTurnIndex must be <= endTurnIndex`);
         }
         if (
             processId
@@ -130,6 +157,15 @@ function normalizeSourceRanges(value: unknown, reasons: string[]): DreamSourceRa
                 endTurnIndex: endTurnIndex as number,
             });
         }
+    }
+    return ranges;
+}
+
+function normalizeRunSourceRanges(value: unknown, label: string, allowEmpty: boolean): DreamSourceRange[] {
+    const reasons: string[] = [];
+    const ranges = normalizeSourceRanges(value, reasons, { label, allowEmpty });
+    if (reasons.length > 0) {
+        throw new Error(`Invalid dream run source ranges: ${reasons.join('; ')}`);
     }
     return ranges;
 }
@@ -251,6 +287,45 @@ function sortCards(cards: DreamCard[]): DreamCard[] {
     return [...cards].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.createdAt.localeCompare(a.createdAt));
 }
 
+function sortRuns(runs: DreamRunRecord[]): DreamRunRecord[] {
+    return [...runs].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+}
+
+function normalizeRunTrigger(value: unknown): CreateDreamRunInput['trigger'] {
+    if (value === 'manual' || value === 'idle') return value;
+    throw new Error('Dream run trigger must be manual or idle');
+}
+
+function normalizeCandidateCardIds(value: unknown): string[] {
+    if (value === undefined) return [];
+    if (!Array.isArray(value)) {
+        throw new Error('candidateCardIds must be an array');
+    }
+    const ids = value.map(raw => {
+        if (typeof raw !== 'string' || !raw.trim()) {
+            throw new Error('candidateCardIds entries must be non-empty strings');
+        }
+        return assertCardId(raw.trim());
+    });
+    return [...new Set(ids)];
+}
+
+function dedupeSourceRanges(ranges: readonly DreamSourceRange[]): DreamSourceRange[] {
+    const seen = new Set<string>();
+    const deduped: DreamSourceRange[] = [];
+    for (const range of ranges) {
+        const key = `${range.processId}:${range.startTurnIndex}:${range.endTurnIndex}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        deduped.push(range);
+    }
+    return deduped.sort((a, b) =>
+        a.processId.localeCompare(b.processId)
+        || a.startTurnIndex - b.startTurnIndex
+        || a.endTurnIndex - b.endTurnIndex
+    );
+}
+
 export class FileDreamStore {
     private readonly dataDir: string;
     private writeQueue: Promise<void> = Promise.resolve();
@@ -265,6 +340,10 @@ export class FileDreamStore {
 
     private cardsPath(workspaceId: string): string {
         return path.join(this.dreamsDir(workspaceId), 'cards.json');
+    }
+
+    private runsPath(workspaceId: string): string {
+        return path.join(this.dreamsDir(workspaceId), 'runs.json');
     }
 
     private enqueueWrite<T>(fn: () => Promise<T>): Promise<T> {
@@ -296,6 +375,110 @@ export class FileDreamStore {
 
     private async writeCards(workspaceId: string, cards: DreamCard[]): Promise<void> {
         await atomicWriteJSON(this.cardsPath(workspaceId), { version: 1, cards } satisfies StoredDreamCardsFile);
+    }
+
+    private async readRuns(workspaceId: string): Promise<DreamRunRecord[]> {
+        try {
+            const raw = await fs.readFile(this.runsPath(workspaceId), 'utf-8');
+            const parsed = JSON.parse(raw) as unknown;
+            if (
+                typeof parsed === 'object'
+                && parsed !== null
+                && Array.isArray((parsed as StoredDreamRunsFile).runs)
+            ) {
+                return (parsed as StoredDreamRunsFile).runs;
+            }
+            throw new Error(`Invalid dream runs file for workspace '${workspaceId}'`);
+        } catch (err: any) {
+            if (err?.code === 'ENOENT') return [];
+            throw err;
+        }
+    }
+
+    private async writeRuns(workspaceId: string, runs: DreamRunRecord[]): Promise<void> {
+        await atomicWriteJSON(this.runsPath(workspaceId), { version: 1, runs } satisfies StoredDreamRunsFile);
+    }
+
+    async createRun(input: CreateDreamRunInput): Promise<DreamRunRecord> {
+        const workspaceId = input.workspaceId.trim();
+        if (!workspaceId) {
+            throw new Error('workspaceId is required');
+        }
+        const trigger = normalizeRunTrigger(input.trigger);
+
+        return this.enqueueWrite(async () => {
+            const runs = await this.readRuns(workspaceId);
+            let id = mintRunId();
+            const existingIds = new Set(runs.map(run => run.id));
+            while (existingIds.has(id)) {
+                id = mintRunId();
+            }
+            const now = new Date().toISOString();
+            const run: DreamRunRecord = {
+                id,
+                workspaceId,
+                trigger,
+                status: 'running',
+                sourceRanges: [],
+                candidateCardIds: [],
+                startedAt: now,
+            };
+            await this.writeRuns(workspaceId, [...runs, run]);
+            return run;
+        });
+    }
+
+    async listRuns(workspaceId: string): Promise<DreamRunRecord[]> {
+        return sortRuns(await this.readRuns(workspaceId));
+    }
+
+    async getRun(workspaceId: string, runId: string): Promise<DreamRunRecord | undefined> {
+        const safeRunId = assertCardId(runId);
+        const runs = await this.readRuns(workspaceId);
+        return runs.find(run => run.id === safeRunId);
+    }
+
+    async completeRun(workspaceId: string, runId: string, input: CompleteDreamRunInput): Promise<DreamRunRecord> {
+        const sourceRanges = normalizeRunSourceRanges(input.sourceRanges, 'sourceRanges', true);
+        const candidateCardIds = normalizeCandidateCardIds(input.candidateCardIds);
+        return this.transitionRun(workspaceId, runId, 'completed', run => ({
+            ...run,
+            status: 'completed',
+            sourceRanges: dedupeSourceRanges(sourceRanges),
+            candidateCardIds,
+            completedAt: new Date().toISOString(),
+        }));
+    }
+
+    async failRun(workspaceId: string, runId: string, input: FailDreamRunInput): Promise<DreamRunRecord> {
+        const error = input.error.trim();
+        if (!error) {
+            throw new Error('error is required');
+        }
+        const sourceRanges = input.sourceRanges
+            ? normalizeRunSourceRanges(input.sourceRanges, 'sourceRanges', true)
+            : [];
+        const candidateCardIds = normalizeCandidateCardIds(input.candidateCardIds);
+        return this.transitionRun(workspaceId, runId, 'failed', run => ({
+            ...run,
+            status: 'failed',
+            sourceRanges: dedupeSourceRanges(sourceRanges),
+            candidateCardIds,
+            failedAt: new Date().toISOString(),
+            error,
+        }));
+    }
+
+    async listCoveredSourceRanges(workspaceId: string): Promise<DreamSourceRange[]> {
+        const [runs, cards] = await Promise.all([
+            this.readRuns(workspaceId),
+            this.readCards(workspaceId),
+        ]);
+        const completedRunRanges = runs
+            .filter(run => run.status === 'completed')
+            .flatMap(run => run.sourceRanges);
+        const cardRanges = cards.flatMap(card => card.sourceRanges);
+        return dedupeSourceRanges([...completedRunRanges, ...cardRanges]);
     }
 
     async createCandidate(input: CreateDreamCandidateInput): Promise<DreamCard> {
@@ -505,6 +688,32 @@ export class FileDreamStore {
             const next = buildNext(current, new Date().toISOString());
             cards[index] = next;
             await this.writeCards(workspaceId, cards);
+            return next;
+        });
+    }
+
+    private async transitionRun(
+        workspaceId: string,
+        runId: string,
+        nextStatus: DreamRunStatus,
+        buildNext: (run: DreamRunRecord) => DreamRunRecord,
+    ): Promise<DreamRunRecord> {
+        if (!isDreamRunStatus(nextStatus)) {
+            throw new Error(`Invalid dream run status: ${String(nextStatus)}`);
+        }
+        return this.enqueueWrite(async () => {
+            const runs = await this.readRuns(workspaceId);
+            const index = runs.findIndex(run => run.id === assertCardId(runId));
+            if (index < 0) {
+                throw new Error(`Dream run not found: ${runId}`);
+            }
+            const current = runs[index];
+            if (current.status !== 'running') {
+                throw new Error(`Dream run '${runId}' is ${current.status}; only running dream runs can become ${nextStatus}`);
+            }
+            const next = buildNext(current);
+            runs[index] = next;
+            await this.writeRuns(workspaceId, runs);
             return next;
         });
     }

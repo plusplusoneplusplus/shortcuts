@@ -19,6 +19,16 @@ export type DreamCardStatus = typeof DREAM_CARD_STATUSES[number];
 
 export const DREAM_REVIEW_VISIBLE_STATUSES = ['visible'] as const satisfies readonly DreamCardStatus[];
 
+export const DREAM_RUN_STATUSES = [
+    'running',
+    'completed',
+    'failed',
+] as const;
+
+export type DreamRunStatus = typeof DREAM_RUN_STATUSES[number];
+
+export type DreamRunTrigger = 'manual' | 'idle';
+
 export interface DreamSourceRange {
     processId: string;
     startTurnIndex: number;
@@ -66,6 +76,19 @@ export interface DreamCard {
     supersededAt?: string;
 }
 
+export interface DreamRunRecord {
+    id: string;
+    workspaceId: string;
+    trigger: DreamRunTrigger;
+    status: DreamRunStatus;
+    sourceRanges: DreamSourceRange[];
+    candidateCardIds: string[];
+    startedAt: string;
+    completedAt?: string;
+    failedAt?: string;
+    error?: string;
+}
+
 export interface CreateDreamCandidateInput {
     workspaceId: string;
     runId?: string;
@@ -99,4 +122,20 @@ export interface DreamSupersedeOptions {
 
 export interface DreamDismissOptions {
     dedupRationale?: string;
+}
+
+export interface CreateDreamRunInput {
+    workspaceId: string;
+    trigger: DreamRunTrigger;
+}
+
+export interface CompleteDreamRunInput {
+    sourceRanges: DreamSourceRange[];
+    candidateCardIds?: string[];
+}
+
+export interface FailDreamRunInput {
+    error: string;
+    sourceRanges?: DreamSourceRange[];
+    candidateCardIds?: string[];
 }
