@@ -446,6 +446,72 @@ describe('ChatDetail', () => {
             expect(screen.getByTestId('activity-chat-conversation')).toBeTruthy();
         });
 
+        it('renders generated plan review cards inside the scrollable conversation area', async () => {
+            const forEachItems = [
+                { id: 'item-1', title: 'First generated item', prompt: 'Handle first item', status: 'pending' },
+                { id: 'item-2', title: 'Second generated item', prompt: 'Handle second item', status: 'pending' },
+            ];
+            const mapReduceItems = [
+                { id: 'map-1', title: 'First map item', prompt: 'Map first item', status: 'pending' },
+            ];
+            const proc = makeProcess({
+                metadata: {
+                    mode: 'ask',
+                    sessionId: 'sess-1',
+                    forEach: {
+                        kind: 'generation',
+                        workspaceId: 'ws-1',
+                        generationId: 'for-each-gen-1',
+                        childMode: 'ask',
+                        originalRequest: 'Split this work',
+                        status: 'draft',
+                        latestItemCount: forEachItems.length,
+                        latestPlanTurnIndex: 1,
+                        latestPlan: {
+                            turnIndex: 1,
+                            childMode: 'ask',
+                            items: forEachItems,
+                            rawJson: JSON.stringify({ items: forEachItems }),
+                        },
+                    },
+                    mapReduce: {
+                        kind: 'generation',
+                        workspaceId: 'ws-1',
+                        generationId: 'map-reduce-gen-1',
+                        childMode: 'ask',
+                        originalRequest: 'Map then reduce this work',
+                        status: 'draft',
+                        latestItemCount: mapReduceItems.length,
+                        latestPlanTurnIndex: 1,
+                        latestPlan: {
+                            turnIndex: 1,
+                            childMode: 'ask',
+                            items: mapReduceItems,
+                            reduceInstructions: 'Summarize the map results.',
+                            maxParallel: 2,
+                            rawJson: JSON.stringify({
+                                items: mapReduceItems,
+                                reduceInstructions: 'Summarize the map results.',
+                                maxParallel: 2,
+                            }),
+                        },
+                    },
+                },
+            });
+            setupStandardFetch(makeTask({ payload: { kind: 'chat', mode: 'ask', prompt: 'Split this work' } }), proc);
+            render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+
+            await waitFor(() => {
+                expect(screen.getByTestId('for-each-plan-review-card')).toBeTruthy();
+                expect(screen.getByTestId('map-reduce-plan-review-card')).toBeTruthy();
+            });
+
+            const conversation = screen.getByTestId('activity-chat-conversation');
+            expect(conversation.contains(screen.getByTestId('for-each-plan-review-card'))).toBe(true);
+            expect(conversation.contains(screen.getByTestId('map-reduce-plan-review-card'))).toBe(true);
+            expect(conversation.contains(screen.getByTestId('activity-chat-send-btn'))).toBe(false);
+        });
+
         it('renders send button', async () => {
             setupStandardFetch();
             render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);

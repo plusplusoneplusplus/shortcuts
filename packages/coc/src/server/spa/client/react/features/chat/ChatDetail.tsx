@@ -1406,6 +1406,37 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         </div>
     );
 
+    const planReviewCards = (
+        <>
+            {forEachGeneration && (
+                <ForEachPlanReviewCard
+                    workspaceId={workspaceId ?? forEachGeneration.workspaceId}
+                    processId={processId}
+                    metadataProcess={metadataProcess}
+                    forEach={forEachGeneration}
+                    turns={turns}
+                    provider={sessionProvider}
+                    model={sessionModel}
+                    reasoningEffort={sessionReasoningEffort}
+                    onApprovedRun={onOpenForEachRun}
+                />
+            )}
+            {mapReduceGeneration && (
+                <MapReducePlanReviewCard
+                    workspaceId={workspaceId ?? mapReduceGeneration.workspaceId}
+                    processId={processId}
+                    metadataProcess={metadataProcess}
+                    mapReduce={mapReduceGeneration}
+                    turns={turns}
+                    provider={sessionProvider}
+                    model={sessionModel}
+                    reasoningEffort={sessionReasoningEffort}
+                    onApprovedRun={onOpenMapReduceRun}
+                />
+            )}
+        </>
+    );
+
     return (
         <div className="flex-1 flex flex-col min-h-0" data-testid="activity-chat-detail" {...(workspaceId ? { 'data-ws-id': workspaceId } : {})}>
             <ChatHeader
@@ -1512,6 +1543,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         onMcpOAuthFailed={(requestId) => setMcpOAuthPrompts(prev => prev.filter(p => p.requestId !== requestId))}
                         processError={processDetails?.error ?? null}
                         provider={sessionProvider}
+                        postConversationContent={planReviewCards}
                     />
                     {variant !== 'floating' && !isMobile && (
                         <ConversationMiniMap
@@ -1565,32 +1597,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         }
                         return null;
                     })()}
-                    {forEachGeneration && (
-                        <ForEachPlanReviewCard
-                            workspaceId={workspaceId ?? forEachGeneration.workspaceId}
-                            processId={processId}
-                            metadataProcess={metadataProcess}
-                            forEach={forEachGeneration}
-                            turns={turns}
-                            provider={sessionProvider}
-                            model={sessionModel}
-                            reasoningEffort={sessionReasoningEffort}
-                            onApprovedRun={onOpenForEachRun}
-                        />
-                    )}
-                    {mapReduceGeneration && (
-                        <MapReducePlanReviewCard
-                            workspaceId={workspaceId ?? mapReduceGeneration.workspaceId}
-                            processId={processId}
-                            metadataProcess={metadataProcess}
-                            mapReduce={mapReduceGeneration}
-                            turns={turns}
-                            provider={sessionProvider}
-                            model={sessionModel}
-                            reasoningEffort={sessionReasoningEffort}
-                            onApprovedRun={onOpenMapReduceRun}
-                        />
-                    )}
                     {/* Plan file complete — offer one-click handoff to autopilot */}
                     {isTerminal && !planChatBusy && resolveLoadedTaskMode(task) === 'ask' && effectivePlanPath && (
                         <ImplementPlanCard

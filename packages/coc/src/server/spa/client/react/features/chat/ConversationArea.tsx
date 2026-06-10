@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Spinner } from '../../ui';
 import { ConversationTurnBubble } from './conversation/ConversationTurnBubble';
 import { useMessageNavigation } from './hooks/useMessageNavigation';
@@ -104,6 +104,8 @@ export interface ConversationAreaProps {
      * provider's brand color (Copilot=green, Claude=orange, Codex=indigo).
      */
     provider?: ChatProvider;
+    /** Additional cards that should remain reachable via the main conversation scroll area. */
+    postConversationContent?: ReactNode;
 }
 
 export function ConversationArea({
@@ -147,6 +149,7 @@ export function ConversationArea({
     onMcpOAuthFailed,
     processError,
     provider,
+    postConversationContent,
 }: ConversationAreaProps) {
     const [showArchived, setShowArchived] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -412,6 +415,7 @@ export function ConversationArea({
                         )}
                     </div>
                 )}
+                {postConversationContent}
             </div>
             {/* Undo delete toast */}
             {undoDeleteTurnIndex != null && onUndoDelete && (
