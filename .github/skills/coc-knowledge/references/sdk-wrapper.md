@@ -198,7 +198,7 @@ Claude tool-call capture treats assistant `tool_use` blocks as start events and 
 6. onSessionCreated callback fires
 7. Attach AbortSignal listener for cancellation
 8. sessionManager.track(session)
-9. Route: streaming (timeoutMs>120s or onStreamingChunk) vs sendAndWait
+9. Route: streaming (timeoutMs>120s or onStreamingChunk) vs race-safe non-streaming send+idle wait (not the SDK's `sendAndWait`, whose `session.error` handler can reject its internal promise before a catch is attached — an unhandled rejection on slow hosts; falls back to `sendAndWait` only for sessions lacking `on`/`send`)
 10. Empty-response handling (turnCount>0 = success)
 11. FINALLY: remove abort listener, untrack + session.disconnect + client.stop
 ```

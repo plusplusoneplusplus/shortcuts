@@ -68,8 +68,6 @@ describe('CopilotSDKService - Skills Passthrough', () => {
             sessionId: 'skills-dir-test',
             sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'response' } }),
             disconnect: vi.fn().mockResolvedValue(undefined),
-            on: vi.fn(),
-            send: vi.fn(),
         };
 
         const { MockCopilotClient, mockClient } = createMockSDKModule(mockSession);
@@ -99,8 +97,6 @@ describe('CopilotSDKService - Skills Passthrough', () => {
             sessionId: 'disabled-skills-test',
             sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'response' } }),
             disconnect: vi.fn().mockResolvedValue(undefined),
-            on: vi.fn(),
-            send: vi.fn(),
         };
 
         const { MockCopilotClient, mockClient } = createMockSDKModule(mockSession);
@@ -130,8 +126,6 @@ describe('CopilotSDKService - Skills Passthrough', () => {
             sessionId: 'both-skills-test',
             sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'response' } }),
             disconnect: vi.fn().mockResolvedValue(undefined),
-            on: vi.fn(),
-            send: vi.fn(),
         };
 
         const { MockCopilotClient, mockClient } = createMockSDKModule(mockSession);
@@ -163,8 +157,6 @@ describe('CopilotSDKService - Skills Passthrough', () => {
             sessionId: 'no-skills-test',
             sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'response' } }),
             disconnect: vi.fn().mockResolvedValue(undefined),
-            on: vi.fn(),
-            send: vi.fn(),
         };
 
         const { MockCopilotClient, mockClient } = createMockSDKModule(mockSession);
@@ -194,8 +186,6 @@ describe('CopilotSDKService - Skills Passthrough', () => {
             sessionId: 'empty-skills-test',
             sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'response' } }),
             disconnect: vi.fn().mockResolvedValue(undefined),
-            on: vi.fn(),
-            send: vi.fn(),
         };
 
         const { MockCopilotClient, mockClient } = createMockSDKModule(mockSession);

@@ -8,7 +8,7 @@
  * independently of CopilotSDKService.
  */
 
-import type { CopilotClient, CopilotSession, SessionConfig, AssistantMessageEvent } from '@github/copilot-sdk';
+import type { CopilotClient, CopilotSession, SessionConfig, AssistantMessageEvent, SessionEvent } from '@github/copilot-sdk';
 import { ToolCall } from './tool-call';
 import { getAIServiceLogger, createSessionLogger } from './logger';
 import { loadEffectiveMcpConfig } from './mcp-config-loader';
@@ -525,13 +525,58 @@ export class RequestRunner {
         });
     }
 
-    /** Send a message without streaming (non-streaming path). */
-    private sendWithTimeout(
+    /**
+     * Send a message without streaming (non-streaming path).
+     *
+     * Deliberately does NOT use the SDK's `sendAndWait()`: that helper rejects
+     * its internal idle promise from a `session.error` handler, but only
+     * attaches rejection handling after `await send()` resolves. When the
+     * error event outraces the send acknowledgment (observed on slow CI hosts
+     * with an unauthenticated CLI), the rejection has no handler attached and
+     * surfaces as an unhandled rejection in the host process. This
+     * re-implementation attaches all handlers before issuing `send()`.
+     */
+    private async sendWithTimeout(
         session: CopilotSession,
         prompt: string,
         timeoutMs: number,
         attachments?: Attachment[],
     ): Promise<AssistantMessageEvent | undefined> {
-        return session.sendAndWait({ prompt, attachments }, timeoutMs);
+        if (typeof session.on !== 'function' || typeof session.send !== 'function') {
+            return session.sendAndWait({ prompt, attachments }, timeoutMs);
+        }
+
+        let lastAssistantMessage: AssistantMessageEvent | undefined;
+        let unsubscribe: (() => void) | undefined;
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        try {
+            const settled = new Promise<AssistantMessageEvent | undefined>((resolve, reject) => {
+                unsubscribe = session.on((event: SessionEvent) => {
+                    if (event.type === 'assistant.message') {
+                        lastAssistantMessage = event as AssistantMessageEvent;
+                    } else if (event.type === 'session.idle') {
+                        resolve(lastAssistantMessage);
+                    } else if (event.type === 'session.error') {
+                        const data = (event as { data?: { message?: string; stack?: string } }).data;
+                        const error = new Error(data?.message ?? 'Unknown session error');
+                        if (data?.stack) error.stack = data.stack;
+                        reject(error);
+                    }
+                });
+                timeoutId = setTimeout(
+                    () => reject(new Error(`Timeout after ${timeoutMs}ms waiting for session.idle`)),
+                    timeoutMs,
+                );
+            });
+            // Mark `settled` handled before send() is issued so a session.error
+            // arriving mid-send can never become an unhandled rejection; the
+            // real consumer is the `await settled` below.
+            settled.catch(() => { /* consumed below */ });
+            await session.send({ prompt, attachments });
+            return await settled;
+        } finally {
+            if (timeoutId !== undefined) clearTimeout(timeoutId);
+            unsubscribe?.();
+        }
     }
 }

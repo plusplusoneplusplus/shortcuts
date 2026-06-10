@@ -1466,13 +1466,26 @@ describe('CopilotSDKService - Non-streaming (sendAndWait)', () => {
         resetCopilotSDKService();
     });
 
-    it('should use sendAndWait when timeout <= 120000 and streaming is not set', async () => {
+    it('should use the race-safe send + idle wait when timeout <= 120000 and streaming is not set', async () => {
+        const handlers: Array<(event: any) => void> = [];
         const mockSession = {
             sessionId: 'non-streaming-session',
-            sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'Non-streaming response' } }),
+            sendAndWait: vi.fn(),
             disconnect: vi.fn().mockResolvedValue(undefined),
-            on: vi.fn(),
-            send: vi.fn(),
+            on: vi.fn().mockImplementation((handler: (event: any) => void) => {
+                handlers.push(handler);
+                return () => {
+                    const idx = handlers.indexOf(handler);
+                    if (idx >= 0) handlers.splice(idx, 1);
+                };
+            }),
+            send: vi.fn().mockImplementation(async () => {
+                setTimeout(() => {
+                    for (const h of [...handlers]) h({ type: 'assistant.message', data: { content: 'Non-streaming response' } });
+                    for (const h of [...handlers]) h({ type: 'session.idle', data: {} });
+                }, 5);
+                return 'message-id';
+            }),
         };
 
         const capturedOptions: any[] = [];
@@ -1495,14 +1508,77 @@ describe('CopilotSDKService - Non-streaming (sendAndWait)', () => {
         const result = await service.sendMessage({
             prompt: 'Test',
             workingDirectory: '/test',
-            timeoutMs: 60000, // <= 120000, should use sendAndWait
+            timeoutMs: 60000, // <= 120000 → non-streaming path
             loadDefaultMcpConfig: false,
         });
 
         expect(result.success).toBe(true);
         expect(result.response).toBe('Non-streaming response');
-        expect(mockSession.sendAndWait).toHaveBeenCalledWith({ prompt: 'Test' }, 60000);
-        expect(mockSession.send).not.toHaveBeenCalled();
+        expect(mockSession.send).toHaveBeenCalledWith({ prompt: 'Test', attachments: undefined });
+        // The SDK's sendAndWait must NOT be used — its session.error handler can
+        // reject an internal promise before any catch is attached (unhandled rejection).
+        expect(mockSession.sendAndWait).not.toHaveBeenCalled();
+    });
+
+    it('does not produce an unhandled rejection when session.error outraces the send acknowledgment', async () => {
+        const handlers: Array<(event: any) => void> = [];
+        const mockSession = {
+            sessionId: 'racy-error-session',
+            sendAndWait: vi.fn(),
+            disconnect: vi.fn().mockResolvedValue(undefined),
+            on: vi.fn().mockImplementation((handler: (event: any) => void) => {
+                handlers.push(handler);
+                return () => {
+                    const idx = handlers.indexOf(handler);
+                    if (idx >= 0) handlers.splice(idx, 1);
+                };
+            }),
+            send: vi.fn().mockImplementation(() => {
+                // Emit the failure synchronously — before the send promise
+                // resolves — mimicking a slow host where the CLI's session.error
+                // event wins the race against the send acknowledgment.
+                for (const h of [...handlers]) {
+                    h({ type: 'session.error', data: { message: 'Execution failed: Error: Session was not created with authentication info or custom provider' } });
+                }
+                return new Promise<string>(resolve => setTimeout(() => resolve('message-id'), 10));
+            }),
+        };
+
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+
+        class MockCopilotClient {
+            constructor() {
+                Object.assign(this, mockClient);
+            }
+        }
+
+        const serviceAny = service as any;
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        const unhandled: unknown[] = [];
+        const listener = (reason: unknown) => { unhandled.push(reason); };
+        process.on('unhandledRejection', listener);
+        try {
+            const result = await service.sendMessage({
+                prompt: 'Test',
+                workingDirectory: '/test',
+                timeoutMs: 60000,
+                loadDefaultMcpConfig: false,
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Session was not created with authentication info');
+
+            // Flush micro/macrotasks so any unhandled rejection would have fired.
+            await new Promise(resolve => setTimeout(resolve, 20));
+            expect(unhandled).toHaveLength(0);
+        } finally {
+            process.removeListener('unhandledRejection', listener);
+        }
     });
 
     it('should fall back to sendAndWait when session lacks on/send methods', async () => {
