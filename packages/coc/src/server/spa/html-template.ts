@@ -76,6 +76,11 @@ export function getBundleETag(configRevision?: number): string {
     return etag;
 }
 
+/** JSON.stringify with `<` escaped so the payload is safe inside a <script> tag. */
+function safeJsonForScript(value: unknown): string {
+    return JSON.stringify(value ?? {}).replace(/</g, '\\u003c');
+}
+
 export function generateDashboardHtml(options: DashboardOptions = {}): string {
     const {
         hostname,
@@ -84,33 +89,8 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
         wsPath = '/ws',
         apiBasePath = '/api',
         enableWiki = false,
-        terminalEnabled = true,
-        notesEnabled,
-        myWorkEnabled,
-        myLifeEnabled,
-        scratchpadEnabled,
-        scratchpadLayout,
-        workflowsEnabled,
-        pullRequestsEnabled,
-        pullRequestsSuggestionsEnabled,
-        serversEnabled,
-        ralphEnabled,
-        forEachEnabled,
-        mapReduceEnabled,
-        vimNavigationEnabled,
+        features,
         containerMode,
-        loopsEnabled,
-        excalidrawEnabled,
-        mcpOauthEnabled,
-        focusedDiffEnabled,
-        sessionContextAttachmentsEnabled,
-        commitChatLensEnabled,
-        commitChatLensDormantMode,
-        autoAgentProviderRoutingEnabled,
-        workItemsHierarchyEnabled,
-        workItemsSyncEnabled,
-        workItemsAiAuthoringEnabled,
-        workItemsWorkflowEnabled,
         reviewFilePath,
         projectDir,
         bindAddress,
@@ -146,34 +126,9 @@ ${getBundleCss()}
             wsPath: '${escapeHtml(wsPath)}',
             version: '${escapeHtml(getBundleETag())}'${hostname ? `,
             hostname: '${escapeHtml(hostname)}'` : ''},
-            terminalEnabled: ${!!terminalEnabled},
-            notesEnabled: ${!!notesEnabled},
-            myWorkEnabled: ${!!myWorkEnabled},
-            myLifeEnabled: ${!!myLifeEnabled},
-            scratchpadEnabled: ${!!scratchpadEnabled},
-            scratchpadLayout: '${scratchpadLayout || 'horizontal'}',
-            workflowsEnabled: ${!!workflowsEnabled},
-            pullRequestsEnabled: ${!!pullRequestsEnabled},
-            pullRequestsSuggestionsEnabled: ${!!pullRequestsSuggestionsEnabled},
-            serversEnabled: ${!!serversEnabled},
-            ralphEnabled: ${!!ralphEnabled},
-            forEachEnabled: ${!!forEachEnabled},
-            mapReduceEnabled: ${!!mapReduceEnabled},
-            vimNavigationEnabled: ${!!vimNavigationEnabled},
-            containerMode: ${!!containerMode},
-            loopsEnabled: ${!!loopsEnabled},
-            excalidrawEnabled: ${!!excalidrawEnabled},
-            mcpOauthEnabled: ${!!mcpOauthEnabled},
-            focusedDiffEnabled: ${!!focusedDiffEnabled},
-            sessionContextAttachmentsEnabled: ${!!sessionContextAttachmentsEnabled},
-            commitChatLensEnabled: ${!!commitChatLensEnabled},
-            commitChatLensDormantMode: '${commitChatLensDormantMode || 'ghost'}',
-            autoAgentProviderRoutingEnabled: ${!!autoAgentProviderRoutingEnabled}${bindAddress ? `,
+            containerMode: ${!!containerMode}${bindAddress ? `,
             bindAddress: '${escapeHtml(bindAddress)}'` : ''},
-            workItemsHierarchyEnabled: ${!!workItemsHierarchyEnabled},
-            workItemsSyncEnabled: ${!!workItemsSyncEnabled},
-            workItemsAiAuthoringEnabled: ${!!workItemsAiAuthoringEnabled},
-            workItemsWorkflowEnabled: ${!!workItemsWorkflowEnabled}
+            features: ${safeJsonForScript(features)}
         };
     </script>${reviewFilePath ? `
     <script>

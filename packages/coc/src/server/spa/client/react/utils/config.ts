@@ -11,6 +11,13 @@ interface DashboardConfig {
     apiBasePath: string;
     wsPath: string;
     hostname?: string;
+    /**
+     * Raw feature-flag map as embedded by the server / returned by
+     * GET /api/config/runtime. Flags are flattened onto this object on read,
+     * so new registry-driven flags need no per-flag plumbing here — read them
+     * with isFeatureEnabled()/getFeatureValue() or add a typed accessor below.
+     */
+    features?: Record<string, unknown>;
     terminalEnabled?: boolean;
     notesEnabled?: boolean;
     myWorkEnabled?: boolean;
@@ -67,12 +74,31 @@ function getBootstrapConfig(): DashboardConfig {
     if (!config) {
         return { apiBasePath: '/api', wsPath: '/ws' };
     }
+    // Flatten the embedded feature map so flags are readable as top-level
+    // config fields (legacy flat embeds keep working unchanged).
+    if (config.features && typeof config.features === 'object') {
+        return { ...config, ...config.features };
+    }
     return config;
 }
 
 function getConfig(): DashboardConfig {
     if (_runtimeConfig) return _runtimeConfig;
     return getBootstrapConfig();
+}
+
+/**
+ * Generic read of a boolean runtime feature flag by its
+ * RuntimeDashboardConfig.features name (e.g. 'serversEnabled').
+ * Prefer this (or a typed accessor below) for new registry-driven flags.
+ */
+export function isFeatureEnabled(flag: string): boolean {
+    return (getConfig() as unknown as Record<string, unknown>)[flag] === true;
+}
+
+/** Generic read of a non-boolean runtime feature value (e.g. 'scratchpadLayout'). */
+export function getFeatureValue(flag: string): unknown {
+    return (getConfig() as unknown as Record<string, unknown>)[flag];
 }
 
 /**
@@ -102,42 +128,14 @@ async function _fetchAndApplyRuntimeConfig(apiBase: string): Promise<void> {
         const data = await resp.json();
         if (!data || typeof data !== 'object' || !data.features) return;
 
-        // Merge runtime features into the active config, preserving bootstrap-only fields
+        // Merge runtime features into the active config, preserving
+        // bootstrap-only fields. Flags are spread flat so every flag in
+        // RuntimeDashboardConfig.features lands on the config without
+        // per-flag plumbing.
         _runtimeConfig = {
             ...bootstrap,
-            terminalEnabled: data.features.terminalEnabled,
-            notesEnabled: data.features.notesEnabled,
-            myWorkEnabled: data.features.myWorkEnabled,
-            myLifeEnabled: data.features.myLifeEnabled,
-            scratchpadEnabled: data.features.scratchpadEnabled,
-            scratchpadLayout: data.features.scratchpadLayout,
-            workflowsEnabled: data.features.workflowsEnabled,
-            pullRequestsEnabled: data.features.pullRequestsEnabled,
-            pullRequestsSuggestionsEnabled: data.features.pullRequestsSuggestionsEnabled,
-            pullRequestsAutoClassifyTeamEnabled: data.features.pullRequestsAutoClassifyTeamEnabled,
-            serversEnabled: data.features.serversEnabled,
-            ralphEnabled: data.features.ralphEnabled,
-            forEachEnabled: data.features.forEachEnabled,
-            mapReduceEnabled: data.features.mapReduceEnabled,
-            vimNavigationEnabled: data.features.vimNavigationEnabled,
-            loopsEnabled: data.features.loopsEnabled,
-            excalidrawEnabled: data.features.excalidrawEnabled,
-            mcpOauthEnabled: data.features.mcpOauthEnabled,
-            focusedDiffEnabled: data.features.focusedDiffEnabled,
-            sessionContextAttachmentsEnabled: data.features.sessionContextAttachmentsEnabled,
-            commitChatLensEnabled: data.features.commitChatLensEnabled,
-            commitChatLensDormantMode: data.features.commitChatLensDormantMode,
-            containerDefaultAgentEnabled: data.features.containerDefaultAgentEnabled,
-            codexEnabled: data.features.codexEnabled,
-            defaultProvider: data.features.defaultProvider,
-            autoAgentProviderRoutingEnabled: data.features.autoAgentProviderRoutingEnabled,
-            workItemsHierarchyEnabled: data.features.workItemsHierarchyEnabled,
-            workItemsSyncEnabled: data.features.workItemsSyncEnabled,
-            workItemsAiAuthoringEnabled: data.features.workItemsAiAuthoringEnabled,
-            workItemsWorkflowEnabled: data.features.workItemsWorkflowEnabled,
-            gitCommitLookupEnabled: data.features.gitCommitLookupEnabled,
-            gitCrossCloneCherryPickEnabled: data.features.gitCrossCloneCherryPickEnabled,
-            effortLevelsEnabled: data.features.effortLevelsEnabled,
+            ...data.features,
+            features: data.features,
             hostname: data.hostname ?? bootstrap.hostname,
             bindAddress: data.bindAddress ?? bootstrap.bindAddress,
         };

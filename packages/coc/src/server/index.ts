@@ -39,6 +39,7 @@ import { createWebSocketInfrastructure } from './infrastructure/websocket-infras
 import { createWatcherInfrastructure } from './infrastructure/watcher-infrastructure';
 import { createTerminalInfrastructure } from './infrastructure/terminal-infrastructure';
 import { HeapMonitor } from './admin/heap-monitor';
+import { buildRuntimeFeatures } from './config/runtime-config-handler';
 import { RuntimeConfigService } from '../config/runtime-config-service';
 import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
 import { autoUpdateBundledSkills, autoInstallDefaultSkills, autoInstallMyWorkSkills, DEFAULT_SKILLS_SETTINGS } from '@plusplusoneplusplus/forge';
@@ -606,32 +607,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             return generateDashboardHtml({
                 enableWiki: true,
                 hostname: liveConfig.serve?.serverName || shortenHostname(rawHostname),
-                terminalEnabled: liveConfig.terminal?.enabled ?? true,
-                notesEnabled: liveConfig.notes?.enabled ?? true,
-                myWorkEnabled: liveConfig.myWork?.enabled ?? false,
-                myLifeEnabled: liveConfig.myLife?.enabled ?? false,
-                scratchpadEnabled: liveConfig.scratchpad?.enabled ?? false,
-                scratchpadLayout: liveConfig.scratchpad?.layout ?? 'horizontal',
-                workflowsEnabled: liveConfig.workflows?.enabled ?? false,
-                pullRequestsEnabled: liveConfig.pullRequests?.enabled ?? false,
-                pullRequestsSuggestionsEnabled: liveConfig.pullRequests?.suggestions ?? false,
-                serversEnabled: liveConfig.servers?.enabled ?? false,
-                ralphEnabled: liveConfig.ralph?.enabled ?? false,
-                forEachEnabled: liveConfig.forEach?.enabled ?? false,
-                mapReduceEnabled: liveConfig.mapReduce?.enabled ?? false,
-                vimNavigationEnabled: liveConfig.vimNavigation?.enabled ?? false,
-                loopsEnabled: liveConfig.loops?.enabled ?? false,
-                excalidrawEnabled: liveConfig.excalidraw?.enabled ?? false,
-                mcpOauthEnabled: liveConfig.mcpOauth?.enabled ?? false,
-                focusedDiffEnabled: liveConfig.features?.focusedDiff ?? false,
-                sessionContextAttachmentsEnabled: liveConfig.features?.sessionContextAttachments ?? false,
-                commitChatLensEnabled: liveConfig.features?.commitChatLens ?? false,
-                commitChatLensDormantMode: liveConfig.features?.commitChatLensDormantMode ?? 'ghost',
-                autoAgentProviderRoutingEnabled: liveConfig.features?.autoAgentProviderRouting ?? false,
-                workItemsHierarchyEnabled: liveConfig.workItems?.hierarchy?.enabled ?? false,
-                workItemsSyncEnabled: liveConfig.workItems?.sync?.enabled ?? false,
-                workItemsAiAuthoringEnabled: liveConfig.workItems?.aiAuthoring?.enabled ?? false,
-                workItemsWorkflowEnabled: liveConfig.workItems?.workflow?.enabled ?? false,
+                features: buildRuntimeFeatures(liveConfig),
                 bindAddress: host,
             });
         },

@@ -2,21 +2,30 @@
 
 Covers the editable admin config registry in `packages/coc/` and the self-contained styling system for the admin route in the dashboard SPA. Load this when adding or modifying any admin-exposed configuration field or admin UI element.
 
-## Admin Config Field Registry
+## Unified Admin Setting Registry
 
-Editable admin config fields are defined in a single registry: `packages/coc/src/server/admin/admin-config-fields.ts` (`ADMIN_CONFIG_FIELDS`).
+Admin-editable settings have ONE source of truth: `packages/coc/src/config/admin-setting-definitions.ts` (`ADMIN_SETTING_DEFINITIONS`). Each definition declares the flat key (e.g. `'loops.enabled'`), a value spec (`boolean` | `string` | `number` | `enum` | `custom`) from which validation derives, the resolved `default`, the `runtime` behavior (`live`/`restartRequired`), an optional `absentFallback` (value assumed when a partial config lacks the key — used for bootstrap-conservative flags whose resolved default is on), an optional `runtimeFlag` (property name in `RuntimeDashboardConfig.features`), an optional `customMerge` escape hatch, and optional `ui` metadata (group/order/label/hint/badge/dependsOn/control/testId) for the admin Features card. The file is dependency-free (no Node/zod imports) because the SPA bundle imports it directly.
 
-Each entry provides a flat key (e.g. `'loops.enabled'`), a field-local `validate()` function, and an `apply()` function. The `PUT /api/admin/config` handler derives `editableKeys`, field-local validation, and merge logic from this registry. Cross-field constraints belong in `CLIConfigSchema`/`validateConfigWithSchema()` and the admin write path re-validates the merged config before persisting so admin updates and config-file loading reject the same invalid combinations.
+Everything else derives from the registry:
 
-To expose a new config field via the admin API, add ONE entry to `ADMIN_CONFIG_FIELDS`. Also update:
+- `packages/coc/src/server/admin/admin-config-fields.ts` maps definitions to `ADMIN_CONFIG_FIELDS` (validate/apply specs); the `PUT /api/admin/config` handler and `RuntimeConfigService` consume it unchanged.
+- `packages/coc/src/config/schema.ts` generates nested zod fragments per setting and deep-merges them with a hand-written base tree that only declares non-admin fields (queue, models, logging, monitoring, skills, memoryPromotion, serve host/port, `features.autoMemoryPromotion`/`gitCommitLookup`). Settings with `kind: 'custom'` must register a file schema in `CUSTOM_FILE_SCHEMAS` there.
+- `packages/coc/src/config/namespace-registry.ts` merges every dotted registry key generically (`override ?? base ?? default`) and tracks its `file`/`default` source by path; hand-written namespace descriptors remain only for non-admin sections and `agentProviderRouting.auto` (`customMerge`).
+- `buildRuntimeFeatures()` in `packages/coc/src/server/config/runtime-config-handler.ts` builds `RuntimeDashboardConfig.features` from all `runtimeFlag` definitions (plus the hand-mapped non-admin `gitCommitLookupEnabled`). Both `GET /api/config/runtime` and the `spaHtml` bootstrap embed in `packages/coc/src/server/index.ts` use it; the HTML template embeds the whole map as `window.__DASHBOARD_CONFIG__.features` (JSON, `<`-escaped) and the SPA `utils/config.ts` flattens it generically — no per-flag plumbing through `DashboardOptions`/`html-template`/`utils/config`. New flags are readable client-side via `isFeatureEnabled('xyzEnabled')` or a typed accessor.
+- The admin Features card in `AdminPanel.tsx` renders groups/rows/badges/selects from the registry `ui` metadata; row state, dirty tracking, save payload (flat keys), and cancel all operate on a generic `featureValues` record.
+- `packages/coc/test/config/admin-setting-definitions.test.ts` runs generic contract tests over every definition (DEFAULT_CONFIG consistency, schema accept/reject, validate/apply round-trip, merge override, source tracking, runtime flag exposure, UI metadata integrity) — a new setting gets this coverage automatically.
 
-1. `CLIConfig` / `ResolvedCLIConfig` / `DEFAULT_CONFIG` in `packages/coc/src/config.ts`
-2. `CLIConfigSchema` in `packages/coc/src/config/schema.ts`
-3. Namespace registry in `packages/coc/src/config/namespace-registry.ts` (nested fields)
-4. `AdminResolvedConfig` / `AdminConfigUpdate` in `packages/coc-client/src/contracts/admin.ts`
-5. `AdminPanel.tsx` or the focused admin subpage component for the UI control
+To add a new admin-exposed setting:
 
-The `spaHtml` function in `packages/coc/src/server/index.ts` re-reads the config file on every page request, so feature-flag changes (e.g. `terminal.enabled`) take effect on the next browser reload — no server restart required.
+1. Add the field to `CLIConfig` / `ResolvedCLIConfig` / `DEFAULT_CONFIG` in `packages/coc/src/config.ts` (a contract test fails if the registry default and `DEFAULT_CONFIG` disagree).
+2. Add ONE definition entry to `ADMIN_SETTING_DEFINITIONS`. Include `ui` to surface it on the Features card and `runtimeFlag` to expose it to the dashboard.
+3. Only if `runtimeFlag` is set: add the flag name to `RuntimeDashboardConfig.features` in `packages/coc-client/src/contracts/admin.ts` (cross-package type; `AdminResolvedConfig`/`AdminConfigUpdate` absorb new keys via their index signatures).
+
+Behavior-specific tests (what the flag gates) still belong with the feature; the standard setting contract needs no new tests.
+
+Cross-field constraints belong in `CLIConfigSchema`/`validateConfigWithSchema()` and the admin write path re-validates the merged config before persisting so admin updates and config-file loading reject the same invalid combinations.
+
+The `spaHtml` function in `packages/coc/src/server/index.ts` reads the RuntimeConfigService snapshot on every page request, so feature-flag changes (e.g. `terminal.enabled`) take effect on the next browser reload — no server restart required.
 
 Work Items expose live flags through this path: `workItems.hierarchy.enabled` enables the hierarchy board, `workItems.sync.enabled` enables remote provider integration, `workItems.aiAuthoring.enabled` enables AI-assisted authoring, and `workItems.workflow.enabled` gates the durable Work Items/Goals workflow command center. Sync UI helpers treat provider integration as enabled only when both hierarchy and sync flags are true; provider credentials stay external and are not admin config fields. The durable workflow flag is disabled by default and should gate new Work Items/Goals workflow behavior so existing Chat and Work Items behavior stays unchanged while the flag is off. Pull Requests exposes `pullRequests.enabled`, `pullRequests.suggestions`, and `pullRequests.autoClassifyTeam` through Admin -> Configure -> Features; auto-classifying Team PRs is disabled by default. Dedicated mode flags such as `forEach.enabled` and `mapReduce.enabled` live as top-level namespaces and are disabled by default. Experimental dashboard/chat flags live under `features.*`; `features.gitCrossCloneCherryPick` enables the cross-clone cherry-pick commit context-menu modal and is enabled by default, `features.sessionContextAttachments` enables drag/drop session-context attachments in chat composers and is disabled by default, and `features.commitChatLens` enables desktop review-chat lens placement for supported commit and PR chat surfaces and is disabled by default. `features.commitChatLensDormantMode` (`'ghost'` | `'pill'`, default `'ghost'`) controls how the lens recedes when the cursor leaves: ghost fades to near-transparent with scale-down, pill collapses to a compact status pill. `features.autoAgentProviderRouting` is edited from Admin -> AI Provider, enables Auto provider routing, and is disabled by default.
 

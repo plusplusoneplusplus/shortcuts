@@ -11,58 +11,13 @@ export interface DashboardOptions {
     apiBasePath?: string;
     /** Enable wiki tab with CDN libs for markdown/mermaid rendering */
     enableWiki?: boolean;
-    /** Whether the web terminal feature is enabled in server config. */
-    terminalEnabled?: boolean;
-    /** Whether the notes feature is enabled in server config. */
-    notesEnabled?: boolean;
-    /** Whether the My Work feature is enabled in server config. */
-    myWorkEnabled?: boolean;
-    /** Whether the My Life feature is enabled in server config. */
-    myLifeEnabled?: boolean;
-    /** Whether the scratchpad feature is enabled in server config. */
-    scratchpadEnabled?: boolean;
-    /** Scratchpad split layout direction. */
-    scratchpadLayout?: 'horizontal' | 'vertical';
-    /** Whether the workflows feature is enabled in server config. */
-    workflowsEnabled?: boolean;
-    /** Whether the pull requests feature is enabled in server config. */
-    pullRequestsEnabled?: boolean;
-    /** Whether the AI-suggested PR reviews feature is enabled. */
-    pullRequestsSuggestionsEnabled?: boolean;
-    /** Whether the servers feature is enabled in server config. */
-    serversEnabled?: boolean;
-    /** Whether the Ralph mode feature is enabled in server config. */
-    ralphEnabled?: boolean;
-    /** Whether the dedicated For Each mode feature is enabled in server config. */
-    forEachEnabled?: boolean;
-    /** Whether the dedicated Map Reduce mode feature is enabled in server config. */
-    mapReduceEnabled?: boolean;
-    /** Whether vim-style navigation (hjkl/jk/gg/G/Esc/i bindings) is enabled. */
-    vimNavigationEnabled?: boolean;
-    /** Whether the loops/recurring follow-up subsystem is enabled in server config. */
-    loopsEnabled?: boolean;
-    /** Whether the Excalidraw diagram feature is enabled in server config. */
-    excalidrawEnabled?: boolean;
-    /** Whether the focused-diff classification feature is enabled. */
-    focusedDiffEnabled?: boolean;
-    /** Whether drag/drop session-context attachments are enabled in chat composers. */
-    sessionContextAttachmentsEnabled?: boolean;
-    /** Whether commit chat opens as a bottom-right lens on desktop commit-review surfaces. */
-    commitChatLensEnabled?: boolean;
-    /** Dormant mode for the lens when cursor leaves: 'ghost' (fade) or 'pill' (collapse). */
-    commitChatLensDormantMode?: 'ghost' | 'pill';
-    /** Whether Auto agent provider routing is enabled in Admin -> AI Provider. */
-    autoAgentProviderRoutingEnabled?: boolean;
-    /** Whether the Work Items hierarchy board is enabled in server config. */
-    workItemsHierarchyEnabled?: boolean;
-    /** Whether remote Work Items provider integration is enabled in server config. */
-    workItemsSyncEnabled?: boolean;
-    /** Whether AI-assisted Work Items authoring is enabled in server config. */
-    workItemsAiAuthoringEnabled?: boolean;
-    /** Whether the durable Work Items/Goals workflow is enabled in server config. */
-    workItemsWorkflowEnabled?: boolean;
-    /** Whether the MCP OAuth auto-detection subsystem is enabled in server config. */
-    mcpOauthEnabled?: boolean;
+    /**
+     * Runtime feature flags embedded as bootstrap config
+     * (window.__DASHBOARD_CONFIG__.features). Built generically from the admin
+     * setting registry — see buildRuntimeFeatureFlags() — so individual flags
+     * never need to be plumbed through here.
+     */
+    features?: Record<string, unknown>;
     /** When set, injects __REVIEW_CONFIG__ for the review editor page. */
     reviewFilePath?: string;
     /** Server project directory (for display in review editor). */

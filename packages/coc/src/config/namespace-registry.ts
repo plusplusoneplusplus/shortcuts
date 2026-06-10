@@ -1,4 +1,10 @@
 import type { AutoProviderRoutingConfig, CLIConfig, ConfigFieldSource, ResolvedCLIConfig } from '../config';
+import {
+    ADMIN_SETTING_DEFINITIONS,
+    NAMESPACED_ADMIN_SETTING_KEYS,
+    getConfigValueAtPath,
+    setConfigValueAtPath,
+} from './admin-setting-definitions';
 
 type ConfigObject = Record<string, unknown>;
 type ResolvedAutoProviderRoutingConfig = ResolvedCLIConfig['agentProviderRouting']['auto'];
@@ -50,62 +56,44 @@ export type ResolvedConfigNamespaceValues = Pick<
     | 'effortLevels'
 >;
 
-const CHAT_FOLLOW_UP_SOURCE_KEYS = [
-    'chat.followUpSuggestions.enabled',
-    'chat.followUpSuggestions.count',
-] as const;
+// ── hand-tracked source keys (fields NOT covered by the admin setting registry) ──
 
-const CHAT_ASK_USER_SOURCE_KEYS = [
-    'chat.askUser.enabled',
-] as const;
-
-const SERVE_SOURCE_KEYS = [
+const SERVE_BASE_SOURCE_KEYS = [
     'serve.port',
     'serve.host',
     'serve.dataDir',
     'serve.theme',
-    'serve.serverName',
 ] as const;
 
-const TERMINAL_SOURCE_KEYS = ['terminal.enabled'] as const;
-const NOTES_SOURCE_KEYS = ['notes.enabled'] as const;
-const MY_WORK_SOURCE_KEYS = ['myWork.enabled'] as const;
-const MY_LIFE_SOURCE_KEYS = ['myLife.enabled'] as const;
-const SCRATCHPAD_SOURCE_KEYS = ['scratchpad.enabled', 'scratchpad.layout'] as const;
-const WORKFLOWS_SOURCE_KEYS = ['workflows.enabled'] as const;
-const PULL_REQUESTS_SOURCE_KEYS = [
-    'pullRequests.enabled',
-    'pullRequests.suggestions',
-    'pullRequests.autoClassifyTeam',
-] as const;
-const SERVERS_SOURCE_KEYS = ['servers.enabled'] as const;
-const RALPH_SOURCE_KEYS = ['ralph.enabled'] as const;
-const RALPH_FINAL_CHECK_SOURCE_KEYS = ['ralph.finalCheck.maxGapFixLoops'] as const;
-const FOR_EACH_SOURCE_KEYS = ['forEach.enabled'] as const;
-const MAP_REDUCE_SOURCE_KEYS = ['mapReduce.enabled'] as const;
-const VIM_NAVIGATION_SOURCE_KEYS = ['vimNavigation.enabled'] as const;
-const LOOPS_SOURCE_KEYS = ['loops.enabled'] as const;
-const MCP_OAUTH_SOURCE_KEYS = ['mcpOauth.enabled'] as const;
-const MCP_OAUTH_AUTO_REFRESH_SOURCE_KEYS = ['mcpOauth.autoRefresh.enabled'] as const;
-const EXCALIDRAW_SOURCE_KEYS = ['excalidraw.enabled'] as const;
-const CONTAINER_DEFAULT_AGENT_SOURCE_KEYS = ['containerDefaultAgent.enabled'] as const;
-const AGENT_PROVIDER_ROUTING_SOURCE_KEYS = ['agentProviderRouting.auto'] as const;
-const CODEX_SOURCE_KEYS = ['codex.enabled'] as const;
-const CLAUDE_SOURCE_KEYS = ['claude.enabled'] as const;
-const FEATURES_SOURCE_KEYS = [
+const FEATURES_BASE_SOURCE_KEYS = [
     'features.autoMemoryPromotion',
-    'features.focusedDiff',
-    'features.gitCrossCloneCherryPick',
-    'features.sessionContextAttachments',
-    'features.commitChatLens',
-    'features.commitChatLensDormantMode',
-    'features.autoAgentProviderRouting',
 ] as const;
-const WORK_ITEMS_HIERARCHY_SOURCE_KEYS = ['workItems.hierarchy.enabled'] as const;
-const WORK_ITEMS_SYNC_SOURCE_KEYS = ['workItems.sync.enabled'] as const;
-const WORK_ITEMS_AI_AUTHORING_SOURCE_KEYS = ['workItems.aiAuthoring.enabled'] as const;
-const WORK_ITEMS_WORKFLOW_SOURCE_KEYS = ['workItems.workflow.enabled'] as const;
-const EFFORT_LEVELS_SOURCE_KEYS = ['effortLevels.enabled'] as const;
+
+const MEMORY_PROMOTION_SOURCE_KEYS = [
+    'memoryPromotion.batchSize',
+    'memoryPromotion.timeoutMs',
+    'memoryPromotion.model',
+] as const;
+
+const MEMORY_PROMOTION_AI_NORMALIZATION_SOURCE_KEYS = [
+    'memoryPromotion.aiNormalization.enabled',
+    'memoryPromotion.aiNormalization.timeoutMs',
+    'memoryPromotion.aiNormalization.model',
+] as const;
+
+/**
+ * All namespaced (dot-notation) config keys with per-field source tracking:
+ * every namespaced admin setting plus the hand-tracked non-admin fields above.
+ */
+export const CONFIG_NAMESPACE_SOURCE_KEYS: readonly string[] = [
+    ...NAMESPACED_ADMIN_SETTING_KEYS,
+    ...SERVE_BASE_SOURCE_KEYS,
+    ...FEATURES_BASE_SOURCE_KEYS,
+    ...MEMORY_PROMOTION_SOURCE_KEYS,
+    ...MEMORY_PROMOTION_AI_NORMALIZATION_SOURCE_KEYS,
+];
+
+const NAMESPACED_ADMIN_SETTING_KEY_SET = new Set(NAMESPACED_ADMIN_SETTING_KEYS);
 
 const DEFAULT_AUTO_PROVIDER_ROUTING: ResolvedAutoProviderRoutingConfig = {
     rules: [
@@ -131,53 +119,6 @@ const DEFAULT_AUTO_PROVIDER_ROUTING: ResolvedAutoProviderRoutingConfig = {
     fallbackProvider: 'copilot',
 };
 
-const MEMORY_PROMOTION_SOURCE_KEYS = [
-    'memoryPromotion.batchSize',
-    'memoryPromotion.timeoutMs',
-    'memoryPromotion.model',
-] as const;
-
-const MEMORY_PROMOTION_AI_NORMALIZATION_SOURCE_KEYS = [
-    'memoryPromotion.aiNormalization.enabled',
-    'memoryPromotion.aiNormalization.timeoutMs',
-    'memoryPromotion.aiNormalization.model',
-] as const;
-
-export const CONFIG_NAMESPACE_SOURCE_KEYS = [
-    ...CHAT_FOLLOW_UP_SOURCE_KEYS,
-    ...CHAT_ASK_USER_SOURCE_KEYS,
-    ...SERVE_SOURCE_KEYS,
-    ...TERMINAL_SOURCE_KEYS,
-    ...NOTES_SOURCE_KEYS,
-    ...MY_WORK_SOURCE_KEYS,
-    ...MY_LIFE_SOURCE_KEYS,
-    ...SCRATCHPAD_SOURCE_KEYS,
-    ...WORKFLOWS_SOURCE_KEYS,
-    ...PULL_REQUESTS_SOURCE_KEYS,
-    ...SERVERS_SOURCE_KEYS,
-    ...RALPH_SOURCE_KEYS,
-    ...RALPH_FINAL_CHECK_SOURCE_KEYS,
-    ...FOR_EACH_SOURCE_KEYS,
-    ...MAP_REDUCE_SOURCE_KEYS,
-    ...VIM_NAVIGATION_SOURCE_KEYS,
-    ...LOOPS_SOURCE_KEYS,
-    ...MCP_OAUTH_SOURCE_KEYS,
-    ...MCP_OAUTH_AUTO_REFRESH_SOURCE_KEYS,
-    ...EXCALIDRAW_SOURCE_KEYS,
-    ...CONTAINER_DEFAULT_AGENT_SOURCE_KEYS,
-    ...AGENT_PROVIDER_ROUTING_SOURCE_KEYS,
-    ...CODEX_SOURCE_KEYS,
-    ...CLAUDE_SOURCE_KEYS,
-    ...FEATURES_SOURCE_KEYS,
-    ...MEMORY_PROMOTION_SOURCE_KEYS,
-    ...MEMORY_PROMOTION_AI_NORMALIZATION_SOURCE_KEYS,
-    ...WORK_ITEMS_HIERARCHY_SOURCE_KEYS,
-    ...WORK_ITEMS_SYNC_SOURCE_KEYS,
-    ...WORK_ITEMS_AI_AUTHORING_SOURCE_KEYS,
-    ...WORK_ITEMS_WORKFLOW_SOURCE_KEYS,
-    ...EFFORT_LEVELS_SOURCE_KEYS,
-] as const;
-
 const source = (
     prefix: string,
     path: readonly string[],
@@ -189,37 +130,21 @@ const source = (
 });
 
 /**
- * Registry of namespaced CoC config sections.
+ * Registry of namespaced CoC config sections that need HAND-WRITTEN merge
+ * logic — sections that are not (or not fully) admin-editable, plus custom
+ * resolution like agentProviderRouting.
  *
- * To add a namespaced config section, add one descriptor here with:
- * - source descriptors for fields surfaced by getResolvedConfigWithSource()
- * - merge logic for applying partial file config on top of resolved defaults
+ * Admin-editable leaves are merged GENERICALLY from the setting registry in
+ * admin-setting-definitions.ts (see mergeConfigNamespaces) — a new admin
+ * setting in an existing or new namespace needs NO entry here.
  *
  * Top-level scalar fields remain in config.ts.
  */
 export function createConfigNamespaceRegistry(defaultBundledSkills: readonly string[]): readonly ConfigNamespaceDescriptor[] {
     return [
         {
-            name: 'chat',
-            sourceDescriptors: [
-                source('chat.followUpSuggestions.', ['chat', 'followUpSuggestions'], CHAT_FOLLOW_UP_SOURCE_KEYS),
-                source('chat.askUser.', ['chat', 'askUser'], CHAT_ASK_USER_SOURCE_KEYS),
-            ],
-            merge: (base, override) => ({
-                chat: {
-                    followUpSuggestions: {
-                        enabled: override?.chat?.followUpSuggestions?.enabled ?? base.chat.followUpSuggestions.enabled,
-                        count: override?.chat?.followUpSuggestions?.count ?? base.chat.followUpSuggestions.count,
-                    },
-                    askUser: {
-                        enabled: override?.chat?.askUser?.enabled ?? base.chat.askUser.enabled,
-                    },
-                },
-            }),
-        },
-        {
             name: 'serve',
-            sourceDescriptors: [source('serve.', ['serve'], SERVE_SOURCE_KEYS)],
+            sourceDescriptors: [source('serve.', ['serve'], SERVE_BASE_SOURCE_KEYS)],
             merge: (base, override) => ({
                 serve: {
                     port: override?.serve?.port ?? base.serve?.port ?? 4000,
@@ -263,121 +188,8 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
             merge: (base, override) => ({ logging: override?.logging ?? base.logging }),
         },
         {
-            name: 'terminal',
-            sourceDescriptors: [source('terminal.', ['terminal'], TERMINAL_SOURCE_KEYS)],
-            merge: (base, override) => ({ terminal: { enabled: override?.terminal?.enabled ?? base.terminal?.enabled ?? true } }),
-        },
-        {
-            name: 'notes',
-            sourceDescriptors: [source('notes.', ['notes'], NOTES_SOURCE_KEYS)],
-            merge: (base, override) => ({ notes: { enabled: override?.notes?.enabled ?? base.notes?.enabled ?? true } }),
-        },
-        {
-            name: 'myWork',
-            sourceDescriptors: [source('myWork.', ['myWork'], MY_WORK_SOURCE_KEYS)],
-            merge: (base, override) => ({ myWork: { enabled: override?.myWork?.enabled ?? base.myWork?.enabled ?? false } }),
-        },
-        {
-            name: 'myLife',
-            sourceDescriptors: [source('myLife.', ['myLife'], MY_LIFE_SOURCE_KEYS)],
-            merge: (base, override) => ({ myLife: { enabled: override?.myLife?.enabled ?? base.myLife?.enabled ?? false } }),
-        },
-        {
-            name: 'scratchpad',
-            sourceDescriptors: [source('scratchpad.', ['scratchpad'], SCRATCHPAD_SOURCE_KEYS)],
-            merge: (base, override) => ({
-                scratchpad: {
-                    enabled: override?.scratchpad?.enabled ?? base.scratchpad?.enabled ?? false,
-                    layout: override?.scratchpad?.layout ?? base.scratchpad?.layout ?? 'vertical',
-                },
-            }),
-        },
-        {
-            name: 'workflows',
-            sourceDescriptors: [source('workflows.', ['workflows'], WORKFLOWS_SOURCE_KEYS)],
-            merge: (base, override) => ({ workflows: { enabled: override?.workflows?.enabled ?? base.workflows?.enabled ?? false } }),
-        },
-        {
-            name: 'pullRequests',
-            sourceDescriptors: [source('pullRequests.', ['pullRequests'], PULL_REQUESTS_SOURCE_KEYS)],
-            merge: (base, override) => ({
-                pullRequests: {
-                    enabled: override?.pullRequests?.enabled ?? base.pullRequests?.enabled ?? true,
-                    suggestions: override?.pullRequests?.suggestions ?? base.pullRequests?.suggestions ?? false,
-                    autoClassifyTeam: override?.pullRequests?.autoClassifyTeam ?? base.pullRequests?.autoClassifyTeam ?? false,
-                },
-            }),
-        },
-        {
-            name: 'servers',
-            sourceDescriptors: [source('servers.', ['servers'], SERVERS_SOURCE_KEYS)],
-            merge: (base, override) => ({ servers: { enabled: override?.servers?.enabled ?? base.servers?.enabled ?? true } }),
-        },
-        {
-            name: 'ralph',
-            sourceDescriptors: [
-                source('ralph.finalCheck.', ['ralph', 'finalCheck'], RALPH_FINAL_CHECK_SOURCE_KEYS),
-                source('ralph.', ['ralph'], RALPH_SOURCE_KEYS),
-            ],
-            merge: (base, override) => ({
-                ralph: {
-                    enabled: override?.ralph?.enabled ?? base.ralph?.enabled ?? false,
-                    finalCheck: {
-                        maxGapFixLoops: override?.ralph?.finalCheck?.maxGapFixLoops ?? base.ralph?.finalCheck?.maxGapFixLoops ?? 3,
-                    },
-                },
-            }),
-        },
-        {
-            name: 'forEach',
-            sourceDescriptors: [source('forEach.', ['forEach'], FOR_EACH_SOURCE_KEYS)],
-            merge: (base, override) => ({ forEach: { enabled: override?.forEach?.enabled ?? base.forEach?.enabled ?? false } }),
-        },
-        {
-            name: 'mapReduce',
-            sourceDescriptors: [source('mapReduce.', ['mapReduce'], MAP_REDUCE_SOURCE_KEYS)],
-            merge: (base, override) => ({ mapReduce: { enabled: override?.mapReduce?.enabled ?? base.mapReduce?.enabled ?? false } }),
-        },
-        {
-            name: 'vimNavigation',
-            sourceDescriptors: [source('vimNavigation.', ['vimNavigation'], VIM_NAVIGATION_SOURCE_KEYS)],
-            merge: (base, override) => ({ vimNavigation: { enabled: override?.vimNavigation?.enabled ?? base.vimNavigation?.enabled ?? false } }),
-        },
-        {
-            name: 'loops',
-            sourceDescriptors: [source('loops.', ['loops'], LOOPS_SOURCE_KEYS)],
-            merge: (base, override) => ({ loops: { enabled: override?.loops?.enabled ?? base.loops?.enabled ?? false } }),
-        },
-        {
-            name: 'mcpOauth',
-            sourceDescriptors: [
-                source('mcpOauth.', ['mcpOauth'], MCP_OAUTH_SOURCE_KEYS),
-                source('mcpOauth.autoRefresh.', ['mcpOauth', 'autoRefresh'], MCP_OAUTH_AUTO_REFRESH_SOURCE_KEYS),
-            ],
-            merge: (base, override) => ({
-                mcpOauth: {
-                    enabled: override?.mcpOauth?.enabled ?? base.mcpOauth?.enabled ?? false,
-                    autoRefresh: {
-                        enabled: override?.mcpOauth?.autoRefresh?.enabled
-                            ?? base.mcpOauth?.autoRefresh?.enabled
-                            ?? false,
-                    },
-                },
-            }),
-        },
-        {
-            name: 'excalidraw',
-            sourceDescriptors: [source('excalidraw.', ['excalidraw'], EXCALIDRAW_SOURCE_KEYS)],
-            merge: (base, override) => ({ excalidraw: { enabled: override?.excalidraw?.enabled ?? base.excalidraw?.enabled ?? false } }),
-        },
-        {
-            name: 'containerDefaultAgent',
-            sourceDescriptors: [source('containerDefaultAgent.', ['containerDefaultAgent'], CONTAINER_DEFAULT_AGENT_SOURCE_KEYS)],
-            merge: (base, override) => ({ containerDefaultAgent: { enabled: override?.containerDefaultAgent?.enabled ?? base.containerDefaultAgent?.enabled ?? false } }),
-        },
-        {
             name: 'agentProviderRouting',
-            sourceDescriptors: [source('agentProviderRouting.', ['agentProviderRouting'], AGENT_PROVIDER_ROUTING_SOURCE_KEYS)],
+            sourceDescriptors: [],
             merge: (base, override) => ({
                 agentProviderRouting: {
                     auto: resolveAutoProviderRouting(base.agentProviderRouting?.auto, override?.agentProviderRouting?.auto),
@@ -385,29 +197,15 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
             }),
         },
         {
-            name: 'codex',
-            sourceDescriptors: [source('codex.', ['codex'], CODEX_SOURCE_KEYS)],
-            merge: (base, override) => ({ codex: { enabled: override?.codex?.enabled ?? base.codex?.enabled ?? false } }),
-        },
-        {
-            name: 'claude',
-            sourceDescriptors: [source('claude.', ['claude'], CLAUDE_SOURCE_KEYS)],
-            merge: (base, override) => ({ claude: { enabled: override?.claude?.enabled ?? base.claude?.enabled ?? false } }),
-        },
-        {
             name: 'features',
-            sourceDescriptors: [source('features.', ['features'], FEATURES_SOURCE_KEYS)],
+            sourceDescriptors: [source('features.', ['features'], FEATURES_BASE_SOURCE_KEYS)],
             merge: (base, override) => ({
+                // Admin-editable features.* leaves are filled in by the generic
+                // registry merge pass; only file-only flags are merged here.
                 features: {
                     autoMemoryPromotion: override?.features?.autoMemoryPromotion ?? base.features?.autoMemoryPromotion ?? false,
-                    focusedDiff: override?.features?.focusedDiff ?? base.features?.focusedDiff ?? false,
                     gitCommitLookup: override?.features?.gitCommitLookup ?? base.features?.gitCommitLookup ?? false,
-                    gitCrossCloneCherryPick: override?.features?.gitCrossCloneCherryPick ?? base.features?.gitCrossCloneCherryPick ?? true,
-                    sessionContextAttachments: override?.features?.sessionContextAttachments ?? base.features?.sessionContextAttachments ?? false,
-                    commitChatLens: override?.features?.commitChatLens ?? base.features?.commitChatLens ?? false,
-                    commitChatLensDormantMode: override?.features?.commitChatLensDormantMode ?? base.features?.commitChatLensDormantMode ?? 'ghost',
-                    autoAgentProviderRouting: override?.features?.autoAgentProviderRouting ?? base.features?.autoAgentProviderRouting ?? false,
-                },
+                } as ResolvedCLIConfig['features'],
             }),
         },
         {
@@ -471,42 +269,36 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
                 },
             }),
         },
-        {
-            name: 'workItems',
-            sourceDescriptors: [
-                source('workItems.hierarchy.', ['workItems', 'hierarchy'], WORK_ITEMS_HIERARCHY_SOURCE_KEYS),
-                source('workItems.sync.', ['workItems', 'sync'], WORK_ITEMS_SYNC_SOURCE_KEYS),
-                source('workItems.aiAuthoring.', ['workItems', 'aiAuthoring'], WORK_ITEMS_AI_AUTHORING_SOURCE_KEYS),
-                source('workItems.workflow.', ['workItems', 'workflow'], WORK_ITEMS_WORKFLOW_SOURCE_KEYS),
-            ],
-            merge: (base, override) => ({
-                workItems: {
-                    hierarchy: {
-                        enabled: override?.workItems?.hierarchy?.enabled ?? base.workItems?.hierarchy?.enabled ?? false,
-                    },
-                    sync: {
-                        enabled: override?.workItems?.sync?.enabled ?? base.workItems?.sync?.enabled ?? false,
-                    },
-                    aiAuthoring: {
-                        enabled: override?.workItems?.aiAuthoring?.enabled ?? base.workItems?.aiAuthoring?.enabled ?? false,
-                    },
-                    workflow: {
-                        enabled: override?.workItems?.workflow?.enabled ?? base.workItems?.workflow?.enabled ?? false,
-                    },
-                },
-            }),
-        },
-        {
-            name: 'effortLevels',
-            sourceDescriptors: [source('effortLevels.', ['effortLevels'], EFFORT_LEVELS_SOURCE_KEYS)],
-            merge: (base, override) => ({ effortLevels: { enabled: override?.effortLevels?.enabled ?? base.effortLevels?.enabled ?? false } }),
-        },
     ];
 }
 
 export const CONFIG_NAMESPACE_SOURCE_DESCRIPTORS = createConfigNamespaceRegistry([])
     .flatMap(descriptor => descriptor.sourceDescriptors)
     .sort((a, b) => b.prefix.length - a.prefix.length);
+
+/**
+ * Generic merge for namespaced admin settings: for every dot-notation setting
+ * in the registry (except custom-merged ones), resolve
+ * `override ?? base ?? default` and write it into the result, creating
+ * namespace containers as needed.
+ */
+function applyAdminSettingLeaves(
+    result: ConfigObject,
+    base: ResolvedCLIConfig,
+    override: CLIConfig | undefined
+): void {
+    for (const def of ADMIN_SETTING_DEFINITIONS) {
+        if (!def.key.includes('.') || def.customMerge) {
+            continue;
+        }
+        const value = getConfigValueAtPath(override, def.key)
+            ?? getConfigValueAtPath(base, def.key)
+            ?? def.default;
+        if (value !== undefined) {
+            setConfigValueAtPath(result, def.key, value);
+        }
+    }
+}
 
 export function mergeConfigNamespaces(
     base: ResolvedCLIConfig,
@@ -517,12 +309,17 @@ export function mergeConfigNamespaces(
         (merged, descriptor) => ({ ...merged, ...descriptor.merge(base, override) }),
         {}
     );
+    applyAdminSettingLeaves(merged as ConfigObject, base, override);
     return merged as ResolvedConfigNamespaceValues;
 }
 
 export function getNamespaceFieldSource(key: string, fileConfig: CLIConfig | undefined): ConfigFieldSource | undefined {
     if (!fileConfig) {
         return 'default';
+    }
+
+    if (NAMESPACED_ADMIN_SETTING_KEY_SET.has(key)) {
+        return getConfigValueAtPath(fileConfig, key) !== undefined ? 'file' : 'default';
     }
 
     for (const descriptor of CONFIG_NAMESPACE_SOURCE_DESCRIPTORS) {

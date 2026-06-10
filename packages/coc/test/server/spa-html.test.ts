@@ -162,24 +162,22 @@ describe('generateDashboardHtml', () => {
         expect(configMatch![1]).not.toContain('bindAddress:');
     });
 
-    it('defaults serversEnabled to false in __DASHBOARD_CONFIG__', () => {
-        const html = generateDashboardHtml();
-        expect(html).toContain('serversEnabled: false');
+    it('embeds feature flags as a JSON features map in __DASHBOARD_CONFIG__', () => {
+        const html = generateDashboardHtml({ features: { serversEnabled: false, workItemsWorkflowEnabled: false } });
+        expect(html).toContain('"serversEnabled":false');
+        expect(html).toContain('"workItemsWorkflowEnabled":false');
     });
 
-    it('reflects serversEnabled=true in __DASHBOARD_CONFIG__', () => {
-        const html = generateDashboardHtml({ serversEnabled: true });
-        expect(html).toContain('serversEnabled: true');
+    it('reflects enabled flags in the embedded features map', () => {
+        const html = generateDashboardHtml({ features: { serversEnabled: true, workItemsWorkflowEnabled: true } });
+        expect(html).toContain('"serversEnabled":true');
+        expect(html).toContain('"workItemsWorkflowEnabled":true');
     });
 
-    it('defaults workItemsWorkflowEnabled to false in __DASHBOARD_CONFIG__', () => {
-        const html = generateDashboardHtml();
-        expect(html).toContain('workItemsWorkflowEnabled: false');
-    });
-
-    it('reflects workItemsWorkflowEnabled=true in __DASHBOARD_CONFIG__', () => {
-        const html = generateDashboardHtml({ workItemsWorkflowEnabled: true });
-        expect(html).toContain('workItemsWorkflowEnabled: true');
+    it('escapes < in embedded feature values to prevent script injection', () => {
+        const html = generateDashboardHtml({ features: { scratchpadLayout: '</script><script>alert(1)' } });
+        expect(html).not.toContain('</script><script>alert(1)');
+        expect(html).toContain('\\u003c/script>\\u003cscript>alert(1)');
     });
 });
 
