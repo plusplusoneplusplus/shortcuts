@@ -188,22 +188,27 @@ detects `*.goal.md`). The generic bundled `grill-me` skill stays host-agnostic:
 it defers to whatever save location the host supplies and only falls back to a
 working-directory-relative `Plans/<area>/<feature>/` when none is given.
 
-The disabled-by-default `features.ralphMultiAgentGrill` gate enables the
-multi-agent grilling prompt contract only when the task context also carries
+The disabled-by-default `features.ralphMultiAgentGrill` gate enables
+multi-agent grilling only when the task context also carries
 `context.ralph.grill.enabled=true`. The SPA exposes a "Question planning setup"
 card on New Chat Ralph grilling and promoted ask-mode Ralph sessions while the
 flag is enabled; the card lets users choose Light, Standard (default), or Deep
 depth and assign provider/model selections per grill agent role before the
 consolidated question round starts. Promotion requests accept an optional
 `grill` payload, sanitize it on the server, and mirror it into
-`metadata.ralph.grill` plus the queued synthesis task context. The pure planning
+`metadata.ralph.grill` plus the queued synthesis task context. The planning
 helpers live in `packages/coc/src/server/ralph/grill-planning.ts`; they define
 the depth role sets, per-agent provider/model selection shape, provenance labels
 (`Role Agent · provider/model` with unavailable-model fallbacks), context
-normalization, and the prompt block requiring actual separate grill agents,
-semantic dedupe/conflict consolidation, one consolidated `ask_user` batch, and a
-coverage summary in the final goal. When the flag is off or the context lacks an
-enabled grill setup, existing single-agent grilling prompts remain unchanged.
+normalization, strict JSON candidate-question parsing, and the preflight runner
+that invokes one isolated SDK request per selected grill agent before the main
+grilling turn. Failed, unavailable, or empty agents produce warnings and do not
+block the main consolidated grilling turn. The resulting candidate-question plan
+is appended to the main user prompt so the grill phase can perform semantic
+dedupe/conflict consolidation, one consolidated `ask_user` batch, and final-goal
+coverage synthesis with concrete provenance. When the flag is off or the context
+lacks an enabled grill setup, existing single-agent grilling prompts remain
+unchanged.
 
 Work Item Goal grilling passes `context.workItemGoalGrilling`, which makes
 `buildRalphGrillSuffix(...)` omit the Notes goal-file directive and tell the

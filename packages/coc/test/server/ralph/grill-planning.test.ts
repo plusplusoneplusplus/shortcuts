@@ -1,9 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
     buildRalphMultiAgentGrillDirective,
+    formatRalphGrillQuestionPlanForPrompt,
     formatRalphGrillProvenance,
     getRalphGrillAgentDefinitions,
     normalizeRalphGrillSetupForContext,
+    parseRalphGrillAgentResponse,
+    planRalphGrillCandidateQuestions,
     resolveRalphGrillSetup,
 } from '../../../src/server/ralph/grill-planning';
 
@@ -115,5 +118,111 @@ describe('Ralph grill planning', () => {
             ]),
         });
         expect(setup?.agents?.some(agent => agent.role === 'not-a-role')).toBe(false);
+    });
+
+    it('parses candidate questions with source provenance', () => {
+        const [agent] = resolveRalphGrillSetup({
+            enabled: true,
+            depth: 'light',
+            agents: [{ role: 'product', provider: 'copilot', model: 'gpt-5.5' }],
+        }).agents;
+
+        const questions = parseRalphGrillAgentResponse(JSON.stringify({
+            questions: [
+                {
+                    question: 'Which users should this optimize for?',
+                    type: 'select',
+                    options: [{ value: 'admins', label: 'Admins' }],
+                    defaultValue: 'admins',
+                    rationale: 'User segment changes the acceptance criteria.',
+                },
+            ],
+        }), agent);
+
+        expect(questions).toEqual([
+            {
+                question: 'Which users should this optimize for?',
+                type: 'select',
+                options: [{ value: 'admins', label: 'Admins' }],
+                defaultValue: 'admins',
+                rationale: 'User segment changes the acceptance criteria.',
+                sources: [{
+                    role: 'product',
+                    roleLabel: 'Product Agent',
+                    provider: 'copilot',
+                    model: 'gpt-5.5',
+                    provenanceLabel: 'Product Agent · copilot/gpt-5.5',
+                }],
+            },
+        ]);
+    });
+
+    it('runs actual separate grill agents and keeps planning when one agent fails', async () => {
+        const copilotService = {
+            isAvailable: vi.fn().mockResolvedValue({ available: true }),
+            sendMessage: vi.fn(async (options: any) => ({
+                success: true,
+                response: JSON.stringify({
+                    questions: [{
+                        question: options.prompt.includes('Product Agent')
+                            ? 'What product outcome should define success?'
+                            : 'Which system boundary is most constrained?',
+                        type: 'text',
+                    }],
+                }),
+                sessionId: 'agent-session',
+            })),
+        };
+        const claudeService = {
+            isAvailable: vi.fn().mockResolvedValue({ available: true }),
+            sendMessage: vi.fn().mockResolvedValue({ success: false, error: 'rate limit' }),
+        };
+        const resolveAiServiceForProvider = vi.fn((provider: string) =>
+            provider === 'claude' ? claudeService : copilotService);
+
+        const plan = await planRalphGrillCandidateQuestions(
+            {
+                aiService: copilotService as any,
+                resolveAiServiceForProvider: resolveAiServiceForProvider as any,
+            },
+            {
+                setup: {
+                    enabled: true,
+                    depth: 'light',
+                    agents: [
+                        { role: 'product', provider: 'copilot', model: 'gpt-5.5' },
+                        { role: 'ux', provider: 'claude', model: 'claude-sonnet-4.6' },
+                    ],
+                },
+                prompt: 'Design the new Ralph grilling experience',
+                defaultProvider: 'copilot',
+                workingDirectory: '/repo',
+            },
+        );
+
+        expect(resolveAiServiceForProvider).toHaveBeenCalledWith('copilot');
+        expect(resolveAiServiceForProvider).toHaveBeenCalledWith('claude');
+        expect(copilotService.sendMessage).toHaveBeenCalledTimes(2);
+        expect(claudeService.sendMessage).toHaveBeenCalledTimes(1);
+        expect(copilotService.sendMessage.mock.calls[0][0]).toMatchObject({
+            model: 'gpt-5.5',
+            workingDirectory: '/repo',
+            loadDefaultMcpConfig: false,
+            systemMessage: expect.objectContaining({ mode: 'replace' }),
+        });
+        expect(plan.agentResults.map(result => [result.agent.role, result.status])).toEqual([
+            ['product', 'completed'],
+            ['ux', 'failed'],
+            ['architecture-system', 'completed'],
+        ]);
+        expect(plan.candidateQuestions).toHaveLength(2);
+        expect(plan.candidateQuestions[0].sources[0].provenanceLabel).toBe('Product Agent · copilot/gpt-5.5');
+        expect(plan.warnings).toContain('UX Agent failed: rate limit');
+
+        const promptBlock = formatRalphGrillQuestionPlanForPrompt(plan);
+        expect(promptBlock).toContain('Actual grill-agent planning result');
+        expect(promptBlock).toContain('UX Agent · claude/claude-sonnet-4.6: failed');
+        expect(promptBlock).toContain('UX Agent failed: rate limit');
+        expect(promptBlock).toContain('[Product Agent · copilot/gpt-5.5]');
     });
 });

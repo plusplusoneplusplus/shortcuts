@@ -1,3 +1,7 @@
+import type { ISDKService } from '@plusplusoneplusplus/forge';
+import type { SystemMessageConfig } from '@plusplusoneplusplus/coc-agent-sdk';
+import type { ChatProvider, ReasoningEffort } from '../tasks/task-types';
+
 export const RALPH_GRILL_DEPTHS = ['light', 'standard', 'deep'] as const;
 export type RalphGrillDepth = typeof RALPH_GRILL_DEPTHS[number];
 
@@ -45,7 +49,107 @@ export interface ResolvedRalphGrillSetup {
     agents: ResolvedRalphGrillAgent[];
 }
 
+export type RalphGrillQuestionType = 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text';
+
+export interface RalphGrillQuestionOption {
+    value: string;
+    label: string;
+    description?: string;
+}
+
+export interface RalphGrillQuestionSource {
+    role: RalphGrillAgentRole;
+    roleLabel: string;
+    provider?: RalphGrillAgentProvider;
+    model?: string;
+    provenanceLabel: string;
+}
+
+export interface RalphGrillCandidateQuestion {
+    question: string;
+    type: RalphGrillQuestionType;
+    options?: RalphGrillQuestionOption[];
+    defaultValue?: string | string[];
+    rationale?: string;
+    sources: RalphGrillQuestionSource[];
+}
+
+export interface RalphGrillAgentRunResult {
+    agent: ResolvedRalphGrillAgent;
+    status: 'completed' | 'empty' | 'failed';
+    questions: RalphGrillCandidateQuestion[];
+    warnings: string[];
+    effectiveModel?: string;
+}
+
+export interface RalphGrillQuestionPlanningResult {
+    enabled: boolean;
+    depth: RalphGrillDepth;
+    agentResults: RalphGrillAgentRunResult[];
+    candidateQuestions: RalphGrillCandidateQuestion[];
+    warnings: string[];
+}
+
+export interface RalphGrillQuestionPlanningContext {
+    setup?: RalphGrillSetup | null;
+    prompt: string;
+    defaultProvider?: ChatProvider;
+    defaultModel?: string;
+    reasoningEffort?: ReasoningEffort;
+    workingDirectory?: string;
+    timeoutMs?: number;
+    skillDirectories?: string[];
+    disabledSkills?: string[];
+}
+
+export interface RalphGrillQuestionPlannerOptions {
+    aiService: ISDKService;
+    resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
+    resolveModelForProvider?: (provider: ChatProvider, model: string | undefined) => {
+        model?: string;
+        coerced?: boolean;
+        requestedModel?: string;
+    };
+}
+
 const DEFAULT_DEPTH: RalphGrillDepth = 'standard';
+const GRILL_AGENT_TIMEOUT_MS = 60_000;
+const MAX_QUESTIONS_PER_AGENT = 6;
+const QUESTION_TYPES = new Set<RalphGrillQuestionType>(['select', 'multi-select', 'yes-no', 'confirm', 'text']);
+
+const GRILL_AGENT_SYSTEM_PROMPT: SystemMessageConfig = {
+    mode: 'replace',
+    content: `\
+You are one specialized Ralph grill agent.
+
+Your job is to propose clarification questions only from your assigned role and focus area. Do not synthesize the final goal. Do not ask the user directly. Do not call tools.
+
+STRICT OUTPUT CONTRACT
+======================
+Respond with ONLY a valid JSON object. No prose, no markdown, no code fences.
+
+Schema:
+{
+  "questions": [
+    {
+      "question": "Concrete clarification question text.",
+      "type": "text",
+      "options": [
+        { "value": "option-id", "label": "Option label", "description": "Optional description" }
+      ],
+      "defaultValue": "optional default value",
+      "rationale": "Why this question matters for the final goal spec."
+    }
+  ]
+}
+
+Rules:
+- Produce 2 to 4 high-value questions.
+- Keep each question answerable in one consolidated user form later.
+- Avoid generic questions and obvious overlap with other roles.
+- Use select, multi-select, yes-no, or confirm only when the options are clear; otherwise use text.
+- Do not include provenance fields; the host records provenance.`
+};
 
 const AGENT_DEFINITIONS: Record<RalphGrillAgentRole, RalphGrillAgentDefinition> = {
     product: {
@@ -216,4 +320,302 @@ Consolidation:
 Final goal synthesis:
 - Include the selected depth, models used per agent, coverage summary, dedupe/conflict outcomes, constraints, out-of-scope items, references to load, and Definition of Done details for every acceptance criterion.
 - Do not carry duplicate user-facing questions forward as separate open issues.`;
+}
+
+function stripCodeFences(raw: string): string {
+    const trimmed = raw.trim();
+    const fenced = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```\s*$/);
+    return fenced ? fenced[1].trim() : trimmed;
+}
+
+function sourceFor(agent: ResolvedRalphGrillAgent): RalphGrillQuestionSource {
+    return {
+        role: agent.role,
+        roleLabel: agent.label,
+        ...(agent.provider ? { provider: agent.provider } : {}),
+        ...(agent.model ? { model: agent.model } : {}),
+        provenanceLabel: agent.provenanceLabel,
+    };
+}
+
+function sanitizeOptions(raw: unknown): RalphGrillQuestionOption[] | undefined {
+    if (!Array.isArray(raw)) {
+        return undefined;
+    }
+    const options = raw
+        .map((option): RalphGrillQuestionOption | undefined => {
+            if (!option || typeof option !== 'object') {
+                return undefined;
+            }
+            const record = option as Record<string, unknown>;
+            const value = typeof record.value === 'string' ? record.value.trim() : '';
+            const label = typeof record.label === 'string' ? record.label.trim() : '';
+            const description = typeof record.description === 'string' ? record.description.trim() : '';
+            if (!value || !label) {
+                return undefined;
+            }
+            return {
+                value,
+                label,
+                ...(description ? { description } : {}),
+            };
+        })
+        .filter((option): option is RalphGrillQuestionOption => !!option)
+        .slice(0, 8);
+    return options.length > 0 ? options : undefined;
+}
+
+function sanitizeDefaultValue(raw: unknown): string | string[] | undefined {
+    if (typeof raw === 'string') {
+        const value = raw.trim();
+        return value || undefined;
+    }
+    if (Array.isArray(raw)) {
+        const values = raw
+            .filter((value): value is string => typeof value === 'string')
+            .map(value => value.trim())
+            .filter(Boolean);
+        return values.length > 0 ? values : undefined;
+    }
+    return undefined;
+}
+
+export function parseRalphGrillAgentResponse(raw: string, agent: ResolvedRalphGrillAgent): RalphGrillCandidateQuestion[] {
+    const jsonText = stripCodeFences(raw);
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(jsonText);
+    } catch {
+        throw new Error(`AI returned non-JSON Ralph grill questions: ${raw.slice(0, 200)}`);
+    }
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('AI Ralph grill question response must be a JSON object');
+    }
+
+    const rawQuestions = (parsed as { questions?: unknown }).questions;
+    if (!Array.isArray(rawQuestions)) {
+        throw new Error('AI Ralph grill question response must include a questions array');
+    }
+
+    const source = sourceFor(agent);
+    return rawQuestions
+        .map((item): RalphGrillCandidateQuestion | undefined => {
+            if (!item || typeof item !== 'object') {
+                return undefined;
+            }
+            const record = item as Record<string, unknown>;
+            const question = typeof record.question === 'string' ? record.question.trim() : '';
+            if (!question) {
+                return undefined;
+            }
+            const rawType = typeof record.type === 'string' && QUESTION_TYPES.has(record.type as RalphGrillQuestionType)
+                ? record.type as RalphGrillQuestionType
+                : 'text';
+            const options = sanitizeOptions(record.options);
+            const defaultValue = sanitizeDefaultValue(record.defaultValue);
+            const rationale = typeof record.rationale === 'string' ? record.rationale.trim() : '';
+            return {
+                question,
+                type: rawType,
+                ...(options ? { options } : {}),
+                ...(defaultValue !== undefined ? { defaultValue } : {}),
+                ...(rationale ? { rationale } : {}),
+                sources: [source],
+            };
+        })
+        .filter((question): question is RalphGrillCandidateQuestion => !!question)
+        .slice(0, MAX_QUESTIONS_PER_AGENT);
+}
+
+export function buildRalphGrillAgentPrompt(ctx: RalphGrillQuestionPlanningContext, agent: ResolvedRalphGrillAgent): string {
+    const providerModel = agent.provider || agent.model
+        ? `\nProvider/model provenance for this run: ${agent.provenanceLabel}`
+        : '';
+    return `\
+Selected Ralph grilling depth: ${normalizeRalphGrillDepth(ctx.setup?.depth)}
+Agent role: ${agent.label}
+Agent focus: ${agent.focus}.${providerModel}
+
+Original user request or current Ralph grilling context:
+${ctx.prompt}
+
+Return role-specific candidate questions as strict JSON.`;
+}
+
+function resolveAgentForExecution(
+    agent: ResolvedRalphGrillAgent,
+    ctx: RalphGrillQuestionPlanningContext,
+    options: RalphGrillQuestionPlannerOptions,
+): { agent: ResolvedRalphGrillAgent; provider?: ChatProvider; model?: string; warnings: string[] } {
+    const provider = agent.provider ?? ctx.defaultProvider;
+    const requestedModel = agent.model ?? ctx.defaultModel;
+    const warnings: string[] = [];
+    let model = requestedModel;
+
+    if (provider && requestedModel && options.resolveModelForProvider) {
+        const resolved = options.resolveModelForProvider(provider, requestedModel);
+        if (resolved.coerced) {
+            warnings.push(`${agent.label} requested model '${resolved.requestedModel}' is unavailable for provider '${provider}'; provider default will be used.`);
+        }
+        model = resolved.model;
+    }
+
+    const resolvedAgent: ResolvedRalphGrillAgent = {
+        ...agent,
+        ...(provider ? { provider } : {}),
+        ...(model ? { model } : {}),
+        provenanceLabel: formatRalphGrillProvenance({
+            roleLabel: agent.label,
+            provider,
+            model,
+        }),
+    };
+    return { agent: resolvedAgent, provider, model, warnings };
+}
+
+async function runSingleRalphGrillAgent(
+    options: RalphGrillQuestionPlannerOptions,
+    ctx: RalphGrillQuestionPlanningContext,
+    baseAgent: ResolvedRalphGrillAgent,
+): Promise<RalphGrillAgentRunResult> {
+    const { agent, provider, model, warnings } = resolveAgentForExecution(baseAgent, ctx, options);
+    try {
+        const aiService = provider && options.resolveAiServiceForProvider
+            ? options.resolveAiServiceForProvider(provider)
+            : options.aiService;
+        const availability = await aiService.isAvailable();
+        if (!availability.available) {
+            return {
+                agent,
+                status: 'failed',
+                questions: [],
+                warnings: [
+                    ...warnings,
+                    `${agent.label} unavailable: ${availability.error || 'unknown reason'}`,
+                ],
+            };
+        }
+
+        const result = await aiService.sendMessage({
+            prompt: buildRalphGrillAgentPrompt(ctx, agent),
+            ...(model ? { model } : {}),
+            ...(ctx.reasoningEffort ? { reasoningEffort: ctx.reasoningEffort } : {}),
+            workingDirectory: ctx.workingDirectory,
+            timeoutMs: Math.min(ctx.timeoutMs ?? GRILL_AGENT_TIMEOUT_MS, GRILL_AGENT_TIMEOUT_MS),
+            loadDefaultMcpConfig: false,
+            systemMessage: GRILL_AGENT_SYSTEM_PROMPT,
+            skillDirectories: ctx.skillDirectories,
+            disabledSkills: ctx.disabledSkills,
+        });
+        if (!result.success) {
+            return {
+                agent,
+                status: 'failed',
+                questions: [],
+                warnings: [
+                    ...warnings,
+                    `${agent.label} failed: ${result.error || 'AI execution failed'}`,
+                ],
+            };
+        }
+
+        const effectiveAgent = result.effectiveModel && result.effectiveModel !== agent.model
+            ? {
+                ...agent,
+                model: result.effectiveModel,
+                provenanceLabel: formatRalphGrillProvenance({
+                    roleLabel: agent.label,
+                    provider: agent.provider,
+                    model: result.effectiveModel,
+                }),
+            }
+            : agent;
+        const questions = parseRalphGrillAgentResponse(result.response ?? '', effectiveAgent);
+        return {
+            agent: effectiveAgent,
+            status: questions.length > 0 ? 'completed' : 'empty',
+            questions,
+            warnings: questions.length > 0
+                ? warnings
+                : [...warnings, `${agent.label} returned no usable candidate questions.`],
+            ...(result.effectiveModel ? { effectiveModel: result.effectiveModel } : {}),
+        };
+    } catch (err) {
+        return {
+            agent,
+            status: 'failed',
+            questions: [],
+            warnings: [
+                ...warnings,
+                `${agent.label} failed: ${err instanceof Error ? err.message : String(err)}`,
+            ],
+        };
+    }
+}
+
+export async function planRalphGrillCandidateQuestions(
+    options: RalphGrillQuestionPlannerOptions,
+    ctx: RalphGrillQuestionPlanningContext,
+): Promise<RalphGrillQuestionPlanningResult> {
+    const setup = resolveRalphGrillSetup(ctx.setup);
+    if (!setup.enabled) {
+        return {
+            enabled: false,
+            depth: setup.depth,
+            agentResults: [],
+            candidateQuestions: [],
+            warnings: [],
+        };
+    }
+
+    const agentResults = await Promise.all(
+        setup.agents.map(agent => runSingleRalphGrillAgent(options, ctx, agent)),
+    );
+    const candidateQuestions = agentResults.flatMap(result => result.questions);
+    const warnings = agentResults.flatMap(result => result.warnings);
+    return {
+        enabled: true,
+        depth: setup.depth,
+        agentResults,
+        candidateQuestions,
+        warnings,
+    };
+}
+
+export function formatRalphGrillQuestionPlanForPrompt(plan: RalphGrillQuestionPlanningResult): string {
+    if (!plan.enabled) {
+        return '';
+    }
+    const agentLines = plan.agentResults
+        .map(result => `- ${result.agent.provenanceLabel}: ${result.status}, ${result.questions.length} candidate question${result.questions.length === 1 ? '' : 's'}.`)
+        .join('\n');
+    const warningLines = plan.warnings.length > 0
+        ? plan.warnings.map(warning => `- ${warning}`).join('\n')
+        : '- none';
+    const questionLines = plan.candidateQuestions.length > 0
+        ? plan.candidateQuestions.map((question, index) => {
+            const provenance = question.sources.map(source => source.provenanceLabel).join('; ');
+            const options = question.options?.length
+                ? ` Options: ${question.options.map(option => `${option.value}=${option.label}`).join(', ')}.`
+                : '';
+            return `${index + 1}. [${provenance}] (${question.type}) ${question.question}${options}`;
+        }).join('\n')
+        : 'No usable candidate questions were returned; continue with normal Ralph grilling and include a reduced-coverage warning.';
+
+    return `\
+Actual grill-agent planning result:
+- Selected depth: ${plan.depth}.
+- CoC already invoked the separate grill agents below before this turn; do not simulate or rerun these roles inside one persona response.
+
+Agent outcomes:
+${agentLines}
+
+Warnings:
+${warningLines}
+
+Candidate questions before consolidation:
+${questionLines}
+
+Use these candidate questions as the input for semantic deduplication, conflict conversion, provenance rendering, and the one consolidated ask_user batch. Preserve combined provenance when questions merge.`;
 }

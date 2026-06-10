@@ -776,6 +776,67 @@ describe('ChatExecutor ralph grilling phase', () => {
         expect(toolNames).toContain('ask_user');
     });
 
+    it('precomputes a multi-agent question plan before the consolidated grilling turn', async () => {
+        sdkMocks.mockSendMessage.mockImplementation(async (options: any) => {
+            if (options.systemMessage?.content?.includes('one specialized Ralph grill agent')) {
+                const role = /Agent role: (.+)/.exec(options.prompt)?.[1] ?? 'Unknown Agent';
+                return {
+                    success: true,
+                    response: JSON.stringify({
+                        questions: [{
+                            question: `Question from ${role}`,
+                            type: 'text',
+                        }],
+                    }),
+                    sessionId: `agent-${role}`,
+                };
+            }
+            return { success: true, response: 'ok', sessionId: 'main-session' };
+        });
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            askUser: { enabled: true },
+            ralphMultiAgentGrillEnabled: true,
+        } as any));
+        const task = makeGrillingTask('task-grill-agent-plan');
+        task.payload = {
+            ...(task.payload as any),
+            provider: 'copilot',
+            context: {
+                ralph: {
+                    phase: 'grilling',
+                    grill: {
+                        enabled: true,
+                        depth: 'light',
+                        agents: [
+                            { role: 'product', provider: 'copilot', model: 'gpt-5.5' },
+                            { role: 'ux', provider: 'copilot', model: 'gpt-5.5' },
+                            { role: 'architecture-system', provider: 'copilot', model: 'gpt-5.5' },
+                        ],
+                    },
+                },
+            },
+        } as any;
+
+        await executor.execute(task, 'Grill me on this idea');
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(4);
+        const agentCalls = sdkMocks.mockSendMessage.mock.calls.slice(0, 3).map(call => call[0]);
+        expect(agentCalls.map(call => call.prompt)).toEqual([
+            expect.stringContaining('Agent role: Product Agent'),
+            expect.stringContaining('Agent role: UX Agent'),
+            expect.stringContaining('Agent role: Architecture/System Agent'),
+        ]);
+        expect(agentCalls.every(call => call.loadDefaultMcpConfig === false)).toBe(true);
+
+        const mainCall = sdkMocks.mockSendMessage.mock.calls[3][0];
+        expect(mainCall.prompt).toContain('Multi-agent grilling is enabled');
+        expect(mainCall.prompt).toContain('Actual grill-agent planning result');
+        expect(mainCall.prompt).toContain('CoC already invoked the separate grill agents');
+        expect(mainCall.prompt).toContain('[Product Agent · copilot/gpt-5.5] (text) Question from Product Agent');
+        expect(mainCall.prompt).toContain('[UX Agent · copilot/gpt-5.5] (text) Question from UX Agent');
+        expect((mainCall.tools ?? []).map((tool: any) => tool.name)).toContain('ask_user');
+    });
+
     it('does NOT add the grilling directive to a non-grilling ask task', async () => {
         const executor = new ChatExecutor(store, makeOptions(store, {
             askUser: { enabled: true },
