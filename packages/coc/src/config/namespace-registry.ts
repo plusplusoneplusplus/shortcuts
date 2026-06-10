@@ -231,7 +231,7 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
                     confidenceThreshold: override?.dreams?.confidenceThreshold ?? base.dreams?.confidenceThreshold ?? 0.85,
                     maxCandidates: override?.dreams?.maxCandidates ?? base.dreams?.maxCandidates ?? 8,
                     conversationLimit: override?.dreams?.conversationLimit ?? base.dreams?.conversationLimit ?? 20,
-                    timeoutMs: override?.dreams?.timeoutMs ?? base.dreams?.timeoutMs ?? 90_000,
+                    timeoutMs: override?.dreams?.timeoutMs ?? base.dreams?.timeoutMs ?? 3_600_000,
                 } as ResolvedCLIConfig['dreams'],
             }),
         },

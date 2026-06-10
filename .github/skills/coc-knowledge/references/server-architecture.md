@@ -185,7 +185,7 @@ dreams:
   confidenceThreshold: 0.85
   maxCandidates: 8
   conversationLimit: 20
-  timeoutMs: 90000
+  timeoutMs: 3600000
 
 codex:
   enabled: false

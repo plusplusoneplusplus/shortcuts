@@ -3,6 +3,7 @@ import type { ISDKService } from '@plusplusoneplusplus/forge';
 import type { DreamConversationSelection } from '../../src/server/dreams/dream-source-selector';
 import type { DreamCard } from '../../src/server/dreams/types';
 import {
+    DEFAULT_DREAM_ANALYSIS_TIMEOUT_MS,
     analyzeDreamConversations,
     buildDreamCriticPrompt,
     normalizeDreamAnalysisCandidates,
@@ -202,12 +203,39 @@ describe('analyzeDreamConversations', () => {
                 mcpServers: {},
                 availableTools: [],
                 tools: [],
+                timeoutMs: 3_600_000,
                 systemMessage: { mode: 'replace' },
             });
             expect(options.onPermissionRequest).toBeTypeOf('function');
         }
         expect((service.sendMessage as any).mock.calls[0][0].systemMessage.content).toContain('Dream analyzer');
         expect((service.sendMessage as any).mock.calls[1][0].systemMessage.content).toContain('Dream critic');
+    });
+
+    it('honors per-request timeout overrides for analyzer and critic calls', async () => {
+        const service = mockAiService(
+            JSON.stringify({ candidates: [rawCandidate()] }),
+            JSON.stringify({
+                decisions: [{
+                    candidateIndex: 0,
+                    verdict: 'accept',
+                    rationale: 'Evidence is repeated, source-linked, and actionable.',
+                }],
+            }),
+        );
+
+        await analyzeDreamConversations({
+            aiService: service,
+            workspaceId: WORKSPACE_ID,
+            runId: RUN_ID,
+            selection: selection(),
+            timeoutMs: 45_000,
+        });
+
+        for (const [options] of (service.sendMessage as any).mock.calls) {
+            expect(options.timeoutMs).toBe(45_000);
+        }
+        expect(DEFAULT_DREAM_ANALYSIS_TIMEOUT_MS).toBe(3_600_000);
     });
 
     it('rejects critic duplicates before they become accepted candidates', async () => {

@@ -11,7 +11,7 @@ import type {
 import { DREAM_CARD_CATEGORIES } from './types';
 import type { DreamConversationSelection } from './dream-source-selector';
 
-export const DEFAULT_DREAM_ANALYSIS_TIMEOUT_MS = 90_000;
+export const DEFAULT_DREAM_ANALYSIS_TIMEOUT_MS = 3_600_000;
 export const DEFAULT_DREAM_CONFIDENCE_THRESHOLD = 0.85;
 export const DEFAULT_DREAM_MAX_CANDIDATES = 8;
 

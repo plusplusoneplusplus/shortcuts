@@ -72,7 +72,7 @@ describe('Config', () => {
                 confidenceThreshold: 0.85,
                 maxCandidates: 8,
                 conversationLimit: 20,
-                timeoutMs: 90_000,
+                timeoutMs: 3_600_000,
             });
             expect(DEFAULT_CONFIG.features.gitCrossCloneCherryPick).toBe(true);
             expect(DEFAULT_CONFIG.features.commitChatLens).toBe(false);
@@ -390,6 +390,24 @@ timeout: 300
             expect(result.mcpConfig).toBe('/path/to/mcp.json');
             expect(result.timeout).toBe(600);
             expect(result.persist).toBe(false);
+        });
+
+        it('should use Dreams namespace fallback defaults when the base namespace is absent', () => {
+            const base = {
+                ...DEFAULT_CONFIG,
+                dreams: undefined as unknown as ResolvedCLIConfig['dreams'],
+            };
+            const result = mergeConfig(base, {});
+
+            expect(result.dreams).toEqual({
+                enabled: false,
+                idleCheckIntervalMs: 300_000,
+                minIdleMs: 900_000,
+                confidenceThreshold: 0.85,
+                maxCandidates: 8,
+                conversationLimit: 20,
+                timeoutMs: 3_600_000,
+            });
         });
 
         it('should not let undefined override overwrite base', () => {
@@ -1179,7 +1197,7 @@ timeout: 300
                     "idleCheckIntervalMs": 300000,
                     "maxCandidates": 8,
                     "minIdleMs": 900000,
-                    "timeoutMs": 90000,
+                    "timeoutMs": 3600000,
                   },
                   "effortLevels": {
                     "enabled": false,
@@ -1458,6 +1476,7 @@ timeout: 300
             expect(defaults['dreams.enabled']).toBe(DEFAULT_CONFIG.dreams.enabled);
             expect(defaults['dreams.minIdleMs']).toBe(DEFAULT_CONFIG.dreams.minIdleMs);
             expect(defaults['dreams.confidenceThreshold']).toBe(DEFAULT_CONFIG.dreams.confidenceThreshold);
+            expect(defaults['dreams.timeoutMs']).toBe(DEFAULT_CONFIG.dreams.timeoutMs);
             expect(defaults['features.focusedDiff']).toBe(DEFAULT_CONFIG.features.focusedDiff);
             expect(defaults['features.gitCrossCloneCherryPick']).toBe(DEFAULT_CONFIG.features.gitCrossCloneCherryPick);
             expect(defaults['pullRequests.autoClassifyTeam']).toBe(DEFAULT_CONFIG.pullRequests.autoClassifyTeam);

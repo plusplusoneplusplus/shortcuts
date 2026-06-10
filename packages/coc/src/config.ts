@@ -186,7 +186,7 @@ export interface CLIConfig {
         maxCandidates?: number;
         /** Maximum recently completed conversations considered per dream pass. Default: 20. */
         conversationLimit?: number;
-        /** Timeout for each read-only analyzer/critic AI request. Default: 90 seconds. */
+        /** Timeout for each read-only analyzer/critic AI request. Default: 60 minutes. */
         timeoutMs?: number;
     };
     /** MCP OAuth support (auto-detect mcp.oauth_required events). Disabled by default. */
@@ -683,7 +683,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         confidenceThreshold: 0.85,
         maxCandidates: 8,
         conversationLimit: 20,
-        timeoutMs: 90_000,
+        timeoutMs: 3_600_000,
     },
     mcpOauth: {
         enabled: false,
