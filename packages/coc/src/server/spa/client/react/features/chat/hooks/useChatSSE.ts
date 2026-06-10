@@ -25,6 +25,38 @@ export interface AskUserQuestion {
     turnIndex: number;
     index: number;
     batchSize: number;
+    ralphGrill?: {
+        sources?: Array<{
+            role: string;
+            roleLabel: string;
+            provider?: string;
+            model?: string;
+            provenanceLabel: string;
+        }>;
+        consolidation?: {
+            kind: string;
+            mergedCandidateCount: number;
+        };
+        planning?: {
+            depth: string;
+            agentOutcomes: Array<{
+                role: string;
+                roleLabel: string;
+                provenanceLabel: string;
+                status: 'completed' | 'empty' | 'failed';
+                candidateCount: number;
+            }>;
+            consolidation: {
+                rawCandidateCount: number;
+                selectedQuestionCount: number;
+                exactDuplicatesMerged: number;
+                semanticDuplicatesMerged: number;
+                conflictsConverted: number;
+                duplicateOnlyAgents: string[];
+            };
+            warnings: string[];
+        };
+    };
 }
 
 export interface AskUserBatch {

@@ -71,7 +71,10 @@ multi-agent Ralph grilling setup card when `features.ralphMultiAgentGrill` is
 enabled. New Chat Ralph grilling (`NewChatArea`) and promoted ask-mode chats
 (`FollowUpInputArea` via `ChatDetail`) both use the same card so users choose
 Light/Standard/Deep depth and provider/model selections per grill role before
-the consolidated question-planning turn is submitted.
+the consolidated question-planning turn is submitted. The live `ask_user` form
+then renders any Ralph grill planning metadata from `pendingAskUser` as one
+compact "Question planning" card plus grouped role sections and provenance chips;
+it does not create separate agent threads or separate answer submissions.
 
 ## Key Contexts
 
@@ -233,15 +236,19 @@ choice marks that question complete for batch submission and reveals an optional
 short note field. Unsubmitted live-batch drafts are saved in browser
 localStorage scoped by process id and batch id, restored after navigation or
 refresh for the same batch, and cleared on accepted submission, skip-all,
-process cancellation, or replacement by a newer batch id. Completed `ask_user`
-tool calls render as read-only historical
-question cards via `AskUserHistoryCard` inside `ConversationTurnBubble`; the
-history card displays persisted `args.questions[]` plus the completed
-answer/skip/deferred result, including "Need more context" notes, with a
-compatibility unwrap for older Codex MCP captures stored as
-`args.arguments.questions[]`, and is kept visible outside whisper collapse.
-Generic `ToolCallView` still handles `ask_user` as a fallback and summarizes
-`args.questions[0].question` when present.
+process cancellation, or replacement by a newer batch id. For Ralph
+multi-agent grilling, optional per-question metadata renders a compact
+"Question planning" summary, role-group headers, provenance chips such as
+`UX Agent · provider/model`, consolidation chips for merged questions, and
+warning copy for failed, empty, unavailable, or duplicate-only agent coverage
+while keeping the same single batch submission. Completed `ask_user` tool calls
+render as read-only historical question cards via `AskUserHistoryCard` inside
+`ConversationTurnBubble`; the history card displays persisted
+`args.questions[]` plus the completed answer/skip/deferred result, including
+"Need more context" notes, with a compatibility unwrap for older Codex MCP
+captures stored as `args.arguments.questions[]`, and is kept visible outside
+whisper collapse. Generic `ToolCallView` still handles `ask_user` as a fallback
+and summarizes `args.questions[0].question` when present.
 
 `toolNormalization.ts` → `normalizeToolName()` canonicalises SDK-specific names before display and storage. Notable aliases: `read_file`/`open_file` → `view`, `edit_file`/`str_replace`/`str_replace_editor` → `edit`, `write_file`/`create_file` → `create`, `command_execution` → `shell`, `file_change` → `apply_patch`, `Skill` (Claude Code SDK PascalCase) → `skill`. All downstream logic (`getToolKindInfo`, `getToolSummary`, `filterWhisperChunks` skill counting) operates on the normalised lowercase name.
 For Codex `file_change` calls normalized to `apply_patch`, `ToolCallView`

@@ -5,6 +5,7 @@ import type {
     RalphGrillQuestionOption,
 } from '../../../src/server/ralph/grill-planning';
 import {
+    attachRalphGrillMetadataToAskUserPayloads,
     buildRalphMultiAgentGrillDirective,
     consolidateRalphGrillCandidateQuestions,
     formatRalphGrillQuestionPlanForPrompt,
@@ -391,5 +392,101 @@ describe('Ralph grill planning', () => {
         expect(plan.consolidation.semanticDuplicatesMerged).toBe(1);
         expect(plan.consolidation.duplicateOnlyAgents).toEqual(['UX Agent']);
         expect(plan.warnings).toContain('UX Agent contributed only duplicate candidate questions after consolidation.');
+    });
+
+    it('attaches planning and provenance metadata to ask_user payloads', () => {
+        const productQuestion = candidateQuestion('Which users should this optimize for?', 'product');
+        const uxQuestion = candidateQuestion('How should the grouped form look?', 'ux');
+        const setup = resolveRalphGrillSetup({
+            enabled: true,
+            depth: 'light',
+            agents: [
+                { role: 'product', provider: 'copilot', model: 'gpt-5.5' },
+                { role: 'ux', provider: 'claude' },
+            ],
+        });
+        const plan = {
+            enabled: true,
+            depth: 'light' as const,
+            agentResults: [
+                {
+                    agent: setup.agents[0],
+                    status: 'completed' as const,
+                    questions: [productQuestion],
+                    warnings: [],
+                },
+                {
+                    agent: setup.agents[1],
+                    status: 'failed' as const,
+                    questions: [],
+                    warnings: ['UX Agent failed: unavailable'],
+                },
+            ],
+            candidateQuestions: [productQuestion, uxQuestion],
+            selectedQuestions: [productQuestion, uxQuestion].map(question => ({
+                ...question,
+                consolidation: {
+                    kind: 'unique' as const,
+                    mergedCandidateCount: 1,
+                    mergedQuestions: [question.question],
+                },
+            })),
+            consolidation: {
+                rawCandidateCount: 2,
+                selectedQuestionCount: 2,
+                exactDuplicatesMerged: 0,
+                semanticDuplicatesMerged: 0,
+                conflictsConverted: 0,
+                duplicateOnlyAgents: [],
+            },
+            warnings: ['UX Agent failed: unavailable'],
+        };
+
+        const enriched = attachRalphGrillMetadataToAskUserPayloads([
+            {
+                batchId: 'batch-1',
+                questionId: 'q-1',
+                question: 'Which users should this optimize for?',
+                type: 'text',
+                turnIndex: 1,
+                index: 0,
+                batchSize: 2,
+            },
+            {
+                batchId: 'batch-1',
+                questionId: 'q-2',
+                question: 'Slightly rephrased second question',
+                type: 'text',
+                turnIndex: 1,
+                index: 1,
+                batchSize: 2,
+            },
+        ], plan);
+
+        expect(enriched[0].ralphGrill?.planning).toMatchObject({
+            depth: 'light',
+            consolidation: {
+                rawCandidateCount: 2,
+                selectedQuestionCount: 2,
+            },
+            warnings: ['UX Agent failed: unavailable'],
+        });
+        expect(enriched[0].ralphGrill?.planning?.agentOutcomes).toEqual([
+            expect.objectContaining({
+                role: 'product',
+                provenanceLabel: 'Product Agent · copilot/gpt-5.5',
+                status: 'completed',
+                candidateCount: 1,
+            }),
+            expect.objectContaining({
+                role: 'ux',
+                provenanceLabel: 'UX Agent · claude/model unavailable',
+                status: 'failed',
+                candidateCount: 0,
+            }),
+        ]);
+        expect(enriched[0].ralphGrill?.sources?.[0].provenanceLabel).toBe('Product Agent · copilot/product-model');
+        expect(enriched[1].ralphGrill?.sources?.[0].provenanceLabel).toBe('UX Agent · copilot/ux-model');
+        expect(enriched[1].ralphGrill?.planning).toBeUndefined();
     });
 });

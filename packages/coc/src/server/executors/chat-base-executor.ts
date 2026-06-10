@@ -64,8 +64,8 @@ import type { MemoryV2Addon } from './memory-v2-addon';
 import { resolveAutoFolderContext } from './auto-folder-utils';
 import { systemMessageBuilder } from './system-message-builder';
 import { buildChatTurnContext } from './chat-turn-context-builder';
-import { buildRalphMultiAgentGrillDirective, formatRalphGrillQuestionPlanForPrompt, planRalphGrillCandidateQuestions } from '../ralph/grill-planning';
-import type { RalphGrillSetup } from '../ralph/grill-planning';
+import { attachRalphGrillMetadataToAskUserPayloads, buildRalphMultiAgentGrillDirective, formatRalphGrillQuestionPlanForPrompt, planRalphGrillCandidateQuestions } from '../ralph/grill-planning';
+import type { RalphGrillQuestionPlanningResult, RalphGrillSetup } from '../ralph/grill-planning';
 // ============================================================================
 // Ralph grilling-phase system message suffix
 // ============================================================================
@@ -205,6 +205,9 @@ export interface ChatModeAIOptions {
     ralphGrillPlanning?: {
         setup: RalphGrillSetup;
         sourcePrompt: string;
+        state: {
+            plan?: RalphGrillQuestionPlanningResult;
+        };
     };
 }
 
@@ -420,6 +423,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
 
         const loopDeps = this.buildLoopToolDeps(processId);
 
+        const ralphGrillPlanningState: { plan?: RalphGrillQuestionPlanningResult } = {};
         const ctx = await buildChatTurnContext({
             dataDir: this.dataDir,
             store: this.store,
@@ -434,8 +438,12 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 enabled: mode === 'ask' && this.askUser.enabled,
                 deps: {
                     emitQuestions: async (questionPayloads) => {
-                        await this.store.updateProcess(processId, { pendingAskUser: questionPayloads });
-                        for (const questionPayload of questionPayloads) {
+                        const enrichedQuestionPayloads = attachRalphGrillMetadataToAskUserPayloads(
+                            questionPayloads,
+                            ralphGrillPlanningState.plan,
+                        );
+                        await this.store.updateProcess(processId, { pendingAskUser: enrichedQuestionPayloads });
+                        for (const questionPayload of enrichedQuestionPayloads) {
                             this.store.emitProcessEvent(processId, {
                                 type: 'ask-user',
                                 askUser: questionPayload,
@@ -499,7 +507,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             excludedTools: ctx.excludedTools,
             dispose: ctx.dispose,
             ...(isGrilling && ralphGrillSetup?.enabled === true
-                ? { ralphGrillPlanning: { setup: ralphGrillSetup, sourcePrompt: prompt } }
+                ? { ralphGrillPlanning: { setup: ralphGrillSetup, sourcePrompt: prompt, state: ralphGrillPlanningState } }
                 : {}),
         };
     }
@@ -683,6 +691,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                         disabledSkills,
                     },
                 );
+                ralphGrillPlanning.state.plan = questionPlan;
                 const questionPlanBlock = formatRalphGrillQuestionPlanForPrompt(questionPlan);
                 if (questionPlanBlock) {
                     effectivePrompt = `${effectivePrompt}\n\n${questionPlanBlock}`;

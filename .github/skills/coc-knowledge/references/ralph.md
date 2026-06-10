@@ -202,16 +202,23 @@ the depth role sets, per-agent provider/model selection shape, provenance labels
 (`Role Agent · provider/model` with unavailable-model fallbacks), context
 normalization, strict JSON candidate-question parsing, and the preflight runner
 that invokes one isolated SDK request per selected grill agent before the main
- grilling turn. Failed, unavailable, or empty agents produce warnings and do not
- block the main consolidated grilling turn. The planner consolidates candidate
- questions before the main turn: exact duplicates and conservative semantic
- duplicates merge with combined provenance, recognized conflicts become one
- select-style decision question, duplicate-only agent contributions are reported
- as compact warnings, and the selected question set plus consolidation summary
- are appended to the main user prompt. The grill phase uses that plan for one
- consolidated `ask_user` batch and final-goal coverage synthesis with concrete
- provenance. When the flag is off or the context lacks an enabled grill setup,
- existing single-agent grilling prompts remain unchanged.
+grilling turn. Failed, unavailable, or empty agents produce warnings and do not
+block the main consolidated grilling turn. The planner consolidates candidate
+questions before the main turn: exact duplicates and conservative semantic
+duplicates merge with combined provenance, recognized conflicts become one
+select-style decision question, duplicate-only agent contributions are reported
+as compact warnings, and the selected question set plus consolidation summary
+are appended to the main user prompt. When the model emits the consolidated
+`ask_user` batch, the executor enriches the persisted/SSE question payloads with
+the preflight planning summary, per-question provenance, and consolidation
+metadata. `AskUserInline` renders that metadata as a compact "Question planning"
+card, grouped role sections, provenance chips, and reduced-coverage warnings
+while preserving the normal single-form answer/skip/defer submission flow. The
+main grilling prompt also instructs the model to carry the selected depth,
+models used per agent, warnings, and dedupe/conflict outcomes into the final goal
+coverage summary. When the flag is off or the context lacks an enabled grill
+setup, existing single-agent grilling prompts and plain `ask_user` rendering
+remain unchanged.
 
 Work Item Goal grilling passes `context.workItemGoalGrilling`, which makes
 `buildRalphGrillSuffix(...)` omit the Notes goal-file directive and tell the

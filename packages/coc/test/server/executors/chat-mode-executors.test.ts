@@ -837,6 +837,96 @@ describe('ChatExecutor ralph grilling phase', () => {
         expect((mainCall.tools ?? []).map((tool: any) => tool.name)).toContain('ask_user');
     });
 
+    it('enriches the consolidated ask_user batch with Ralph grill provenance metadata', async () => {
+        const task = makeGrillingTask('task-grill-agent-ask');
+        const processId = `queue_${task.id}`;
+        store.processes.set(processId, {
+            id: processId,
+            type: 'chat',
+            status: 'running',
+            startTime: new Date(),
+            promptPreview: 'Grill me',
+            fullPrompt: 'Grill me',
+        });
+        task.payload = {
+            ...(task.payload as any),
+            provider: 'copilot',
+            context: {
+                ralph: {
+                    phase: 'grilling',
+                    grill: {
+                        enabled: true,
+                        depth: 'light',
+                        agents: [
+                            { role: 'product', provider: 'copilot', model: 'gpt-5.5' },
+                            { role: 'ux', provider: 'copilot', model: 'gpt-5.5' },
+                            { role: 'architecture-system', provider: 'copilot', model: 'gpt-5.5' },
+                        ],
+                    },
+                },
+            },
+        } as any;
+
+        sdkMocks.mockSendMessage.mockImplementation(async (options: any) => {
+            if (options.systemMessage?.content?.includes('one specialized Ralph grill agent')) {
+                const role = /Agent role: (.+)/.exec(options.prompt)?.[1] ?? 'Unknown Agent';
+                return {
+                    success: true,
+                    response: JSON.stringify({
+                        questions: [{
+                            question: `Question from ${role}`,
+                            type: 'text',
+                        }],
+                    }),
+                    sessionId: `agent-${role}`,
+                };
+            }
+
+            const askTool = options.tools?.find((tool: any) => tool.name === 'ask_user');
+            expect(askTool).toBeDefined();
+            const responsePromise = askTool.handler({
+                questions: [{
+                    question: 'Question from Product Agent',
+                    type: 'text',
+                }],
+            });
+            await vi.waitFor(() => {
+                const pendingQuestion = store.processes.get(processId)?.pendingAskUser?.[0];
+                expect(pendingQuestion).toMatchObject({
+                    question: 'Question from Product Agent',
+                    ralphGrill: {
+                        planning: {
+                            depth: 'light',
+                            consolidation: {
+                                rawCandidateCount: 3,
+                                selectedQuestionCount: 3,
+                            },
+                        },
+                        sources: [expect.objectContaining({
+                            role: 'product',
+                            provenanceLabel: 'Product Agent · copilot/gpt-5.5',
+                        })],
+                    },
+                });
+            });
+            const questionId = store.processes.get(processId)!.pendingAskUser![0].questionId;
+            expect(executor.getAskUserHandles(processId)?.answerQuestion(questionId, 'answer')).toBe(true);
+            await expect(responsePromise).resolves.toMatchObject([{
+                questionId,
+                answer: 'answer',
+                skipped: false,
+            }]);
+            return { success: true, response: 'ok', sessionId: 'main-session' };
+        });
+
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            askUser: { enabled: true },
+            ralphMultiAgentGrillEnabled: true,
+        } as any));
+
+        await executor.execute(task, 'Grill me on this idea');
+    });
+
     it('does NOT add the grilling directive to a non-grilling ask task', async () => {
         const executor = new ChatExecutor(store, makeOptions(store, {
             askUser: { enabled: true },

@@ -35,6 +35,13 @@ interface QuestionState {
 }
 
 const CUSTOM_OPTION_VALUE = '__ask_user_custom__';
+type RalphGrillPlanningSummary = NonNullable<NonNullable<AskUserQuestion['ralphGrill']>['planning']>;
+
+interface QuestionGroup {
+    key: string;
+    label?: string;
+    questions: AskUserQuestion[];
+}
 
 function initialValue(question: AskUserQuestion): AnswerValue {
     if (question.type === 'yes-no' || question.type === 'confirm') return null;
@@ -110,10 +117,117 @@ function responseFor(question: AskUserQuestion, state: QuestionState): AskUserRe
     return { questionId: question.questionId, answer: answerFor(question, state) };
 }
 
+function planningSummaryFor(batch: AskUserBatch): RalphGrillPlanningSummary | undefined {
+    return batch.questions.find(question => question.ralphGrill?.planning)?.ralphGrill?.planning;
+}
+
+function roleGroupLabel(question: AskUserQuestion): string | undefined {
+    const labels = question.ralphGrill?.sources
+        ?.map(source => source.roleLabel)
+        .filter((label, index, all) => all.indexOf(label) === index);
+    if (!labels || labels.length === 0) return undefined;
+    return labels.join(' + ');
+}
+
+function groupQuestions(questions: AskUserQuestion[]): QuestionGroup[] {
+    if (!questions.some(question => question.ralphGrill?.sources?.length)) {
+        return [{ key: 'all', questions }];
+    }
+
+    const groups: QuestionGroup[] = [];
+    const byKey = new Map<string, QuestionGroup>();
+    for (const question of questions) {
+        const label = roleGroupLabel(question) ?? 'Other questions';
+        const key = label.toLowerCase();
+        let group = byKey.get(key);
+        if (!group) {
+            group = { key, label, questions: [] };
+            byKey.set(key, group);
+            groups.push(group);
+        }
+        group.questions.push(question);
+    }
+    return groups;
+}
+
+function formatDepth(depth: string): string {
+    return depth ? depth.charAt(0).toUpperCase() + depth.slice(1) : 'Standard';
+}
+
+function PlanningCard({ planning }: { planning: RalphGrillPlanningSummary }) {
+    const completedCount = planning.agentOutcomes.filter(outcome => outcome.status === 'completed').length;
+    const failedCount = planning.agentOutcomes.filter(outcome => outcome.status === 'failed').length;
+    const emptyCount = planning.agentOutcomes.filter(outcome => outcome.status === 'empty').length;
+    const warningCount = planning.warnings.length;
+    return (
+        <div className="mb-4 rounded-md border border-purple-200 bg-purple-50/80 p-3 text-xs text-purple-900 dark:border-purple-500/30 dark:bg-purple-500/10 dark:text-purple-100" data-testid="ralph-grill-planning-card">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                    <div className="font-semibold">Question planning</div>
+                    <div className="mt-0.5 text-purple-800/80 dark:text-purple-100/75">
+                        {formatDepth(planning.depth)} depth · {planning.consolidation.rawCandidateCount} candidates → {planning.consolidation.selectedQuestionCount} questions
+                    </div>
+                </div>
+                <div className="rounded-full bg-white/80 px-2 py-0.5 font-medium text-purple-700 dark:bg-purple-500/15 dark:text-purple-200">
+                    {completedCount} completed{failedCount ? ` · ${failedCount} failed` : ''}{emptyCount ? ` · ${emptyCount} empty` : ''}
+                </div>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1">
+                {planning.agentOutcomes.map(outcome => (
+                    <span
+                        key={`${outcome.role}-${outcome.provenanceLabel}`}
+                        className="rounded-full border border-purple-200 bg-white/80 px-2 py-0.5 text-[11px] text-purple-800 dark:border-purple-500/30 dark:bg-[#1f1f1f]/70 dark:text-purple-100"
+                        data-testid="ralph-grill-agent-outcome-chip"
+                    >
+                        {outcome.provenanceLabel} · {outcome.status} · {outcome.candidateCount}
+                    </span>
+                ))}
+            </div>
+            <div className="mt-2 text-[11px] text-purple-800/85 dark:text-purple-100/75">
+                Dedupe: {planning.consolidation.exactDuplicatesMerged} exact, {planning.consolidation.semanticDuplicatesMerged} semantic, {planning.consolidation.conflictsConverted} conflicts converted.
+                {planning.consolidation.duplicateOnlyAgents.length > 0 && (
+                    <> Duplicate-only: {planning.consolidation.duplicateOnlyAgents.join(', ')}.</>
+                )}
+            </div>
+            {warningCount > 0 && (
+                <div className="mt-2 rounded border border-amber-300/60 bg-amber-50 px-2 py-1 text-[11px] text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200" data-testid="ralph-grill-planning-warnings">
+                    {warningCount === 1 ? planning.warnings[0] : `${warningCount} planning warnings; goal creation can continue.`}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function QuestionProvenance({ question }: { question: AskUserQuestion }) {
+    const sources = question.ralphGrill?.sources ?? [];
+    const consolidation = question.ralphGrill?.consolidation;
+    if (sources.length === 0 && !consolidation) return null;
+    return (
+        <div className="mt-2 flex flex-wrap gap-1" data-testid="ask-user-provenance-row">
+            {sources.map(source => (
+                <span
+                    key={`${source.role}-${source.provenanceLabel}`}
+                    className="rounded-full bg-purple-50 px-2 py-0.5 text-[11px] font-medium text-purple-700 dark:bg-purple-500/10 dark:text-purple-200"
+                    data-testid="ask-user-provenance-chip"
+                >
+                    {source.provenanceLabel}
+                </span>
+            ))}
+            {consolidation && consolidation.mergedCandidateCount > 1 && (
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600 dark:bg-[#2d2d2d] dark:text-[#cccccc]" data-testid="ask-user-consolidation-chip">
+                    {consolidation.kind} · {consolidation.mergedCandidateCount} candidates
+                </span>
+            )}
+        </div>
+    );
+}
+
 export function AskUserInline({ batch, processId, onAnswered }: AskUserInlineProps) {
     const responseAcceptedRef = useRef(false);
     const [answers, setAnswers] = useState<Record<string, QuestionState>>(() => initialAnswers(batch, processId));
     const [submitting, setSubmitting] = useState(false);
+    const planning = planningSummaryFor(batch);
+    const questionGroups = groupQuestions(batch.questions);
 
     const updateQuestion = useCallback((questionId: string, patch: Partial<QuestionState>) => {
         setAnswers(prev => ({ ...prev, [questionId]: { ...prev[questionId], ...patch } }));
@@ -167,37 +281,52 @@ export function AskUserInline({ batch, processId, onAnswered }: AskUserInlinePro
                 </div>
             </div>
 
+            {planning && <PlanningCard planning={planning} />}
+
             <div className="space-y-4">
-                {batch.questions.map((question, questionIndex) => {
-                    const state = answers[question.questionId];
-                    const isCustomSelected = question.type === 'select' && state.value === CUSTOM_OPTION_VALUE;
-                    const inputDisabled = submitting || state.disposition !== 'answer';
-                    return (
-                        <div key={question.questionId} className="rounded-md border border-[#d4d4d4]/70 dark:border-[#3e3e3e] bg-white/70 dark:bg-[#1e1e1e]/60 p-3" data-testid="ask-user-question">
-                            <div className="flex items-start justify-between gap-3 mb-3">
-                                <div className="text-sm text-[#1e1e1e] dark:text-[#e0e0e0] font-medium flex items-start gap-1 min-w-0">
-                                    <span className="text-[#848484] shrink-0">{questionIndex + 1}.</span>
-                                    <AskUserMarkdown
-                                        markdown={question.question}
-                                        className="markdown-body ask-user-markdown min-w-0 flex-1"
-                                        data-testid="ask-user-question-markdown"
-                                    />
-                                </div>
-                                <label className="shrink-0">
-                                    <span className="sr-only">Response type for question {questionIndex + 1}</span>
-                                    <select
-                                        value={state.disposition}
-                                        onChange={e => updateQuestion(question.questionId, { disposition: e.target.value as AskUserQuestionDisposition })}
-                                        disabled={submitting}
-                                        className="max-w-[11rem] rounded border border-[#d4d4d4] dark:border-[#3e3e3e] bg-white dark:bg-[#252526] px-2 py-1 text-xs text-[#4b5563] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
-                                        data-testid="ask-user-question-disposition"
-                                    >
-                                        <option value="answer">Answer</option>
-                                        <option value="skip">Skip / not applicable</option>
-                                        <option value="needs-context">Need more context</option>
-                                    </select>
-                                </label>
+                {questionGroups.map(group => (
+                    <div key={group.key} className="space-y-2" data-testid="ask-user-question-group">
+                        {group.label && (
+                            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-purple-700 dark:text-purple-200" data-testid="ask-user-question-group-label">
+                                <span className="h-px flex-1 bg-purple-200 dark:bg-purple-500/30" />
+                                {group.label}
+                                <span className="h-px flex-1 bg-purple-200 dark:bg-purple-500/30" />
                             </div>
+                        )}
+                        {group.questions.map((question) => {
+                            const questionIndex = batch.questions.findIndex(item => item.questionId === question.questionId);
+                            const state = answers[question.questionId];
+                            const isCustomSelected = question.type === 'select' && state.value === CUSTOM_OPTION_VALUE;
+                            const inputDisabled = submitting || state.disposition !== 'answer';
+                            return (
+                                <div key={question.questionId} className="rounded-md border border-[#d4d4d4]/70 dark:border-[#3e3e3e] bg-white/70 dark:bg-[#1e1e1e]/60 p-3" data-testid="ask-user-question">
+                                    <div className="flex items-start justify-between gap-3 mb-3">
+                                        <div className="text-sm text-[#1e1e1e] dark:text-[#e0e0e0] font-medium flex items-start gap-1 min-w-0">
+                                            <span className="text-[#848484] shrink-0">{questionIndex + 1}.</span>
+                                            <div className="min-w-0 flex-1">
+                                                <AskUserMarkdown
+                                                    markdown={question.question}
+                                                    className="markdown-body ask-user-markdown min-w-0"
+                                                    data-testid="ask-user-question-markdown"
+                                                />
+                                                <QuestionProvenance question={question} />
+                                            </div>
+                                        </div>
+                                        <label className="shrink-0">
+                                            <span className="sr-only">Response type for question {questionIndex + 1}</span>
+                                            <select
+                                                value={state.disposition}
+                                                onChange={e => updateQuestion(question.questionId, { disposition: e.target.value as AskUserQuestionDisposition })}
+                                                disabled={submitting}
+                                                className="max-w-[11rem] rounded border border-[#d4d4d4] dark:border-[#3e3e3e] bg-white dark:bg-[#252526] px-2 py-1 text-xs text-[#4b5563] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
+                                                data-testid="ask-user-question-disposition"
+                                            >
+                                                <option value="answer">Answer</option>
+                                                <option value="skip">Skip / not applicable</option>
+                                                <option value="needs-context">Need more context</option>
+                                            </select>
+                                        </label>
+                                    </div>
 
                             {state.disposition === 'skip' ? (
                                 <p className="text-xs text-[#848484]">This question will be skipped.</p>
@@ -367,9 +496,11 @@ export function AskUserInline({ batch, processId, onAnswered }: AskUserInlinePro
                                     )}
                                 </>
                             )}
-                        </div>
-                    );
-                })}
+                            </div>
+                            );
+                        })}
+                    </div>
+                ))}
             </div>
 
             <div className="flex items-center gap-2 mt-4">
