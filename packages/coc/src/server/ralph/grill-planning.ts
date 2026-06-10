@@ -127,6 +127,7 @@ export interface RalphGrillQuestionPlanningResult {
     maxRounds: number;
     terminal: boolean;
     terminationReason?: RalphGrillTerminationReason;
+    promptHistory: string[];
     agentResults: RalphGrillAgentRunResult[];
     candidateQuestions: RalphGrillCandidateQuestion[];
     selectedQuestions: RalphGrillConsolidatedQuestion[];
@@ -150,6 +151,8 @@ export interface RalphGrillProcessState {
     terminationReason?: RalphGrillTerminationReason;
     agents: Partial<Record<RalphGrillAgentRole, RalphGrillRoleSessionState>>;
     askedQuestions: string[];
+    /** Original request plus later user answer turns, used to seed fresh fallback agents. */
+    promptHistory?: string[];
     warnings: string[];
 }
 
@@ -307,6 +310,15 @@ function formatRalphGrillTerminationReason(reason: RalphGrillTerminationReason |
         default:
             return 'grilling is complete';
     }
+}
+
+function buildRalphGrillPromptHistory(ctx: RalphGrillQuestionPlanningContext): string[] {
+    const history = [...(ctx.previousState?.promptHistory ?? [])];
+    const prompt = ctx.prompt.trim();
+    if (prompt && history[history.length - 1] !== prompt) {
+        history.push(prompt);
+    }
+    return history;
 }
 
 const GRILL_AGENT_SYSTEM_PROMPT: SystemMessageConfig = {
@@ -1059,6 +1071,7 @@ export function buildRalphGrillProcessStateFromPlan(
         ...(previous?.askedQuestions ?? []),
         ...plan.selectedQuestions.map(question => question.question),
     ];
+    const promptHistory = plan.promptHistory ?? previous?.promptHistory ?? [];
 
     return {
         roundsRun: plan.roundsRun,
@@ -1067,6 +1080,7 @@ export function buildRalphGrillProcessStateFromPlan(
         ...(plan.terminationReason ? { terminationReason: plan.terminationReason } : {}),
         agents,
         askedQuestions: [...new Set(askedQuestions)],
+        promptHistory,
         warnings: [...new Set([
             ...(previous?.warnings ?? []),
             ...plan.warnings,
@@ -1103,6 +1117,44 @@ ${ctx.prompt}
 Use your retained session context to decide whether your role needs answer-dependent follow-up clarification.
 Return only new, non-repeated role-specific candidate follow-up questions as strict JSON.
 If your role has enough information, return {"questions":[]}.`;
+}
+
+function buildRalphGrillAgentResumeFallbackPrompt(ctx: RalphGrillQuestionPlanningContext, agent: ResolvedRalphGrillAgent): string {
+    const providerModel = agent.provider || agent.model || agent.effortTier
+        ? `\nProvider/tier or provider/model provenance for this run: ${agent.provenanceLabel}`
+        : '';
+    const promptHistory = buildRalphGrillPromptHistory(ctx);
+    const askedQuestions = ctx.previousState?.askedQuestions ?? [];
+    const askedQuestionLines = askedQuestions.length > 0
+        ? askedQuestions.map((question, index) => `${index + 1}. ${question}`).join('\n')
+        : '- none recorded';
+    const promptHistoryLines = promptHistory.length > 0
+        ? promptHistory
+            .map((prompt, index) => {
+                const label = index === 0 ? 'Original request' : `Round ${index} user answers`;
+                return `${label}:\n${prompt}`;
+            })
+            .join('\n\n')
+        : 'No prior prompt history was recorded.';
+
+    return `\
+Ralph grilling follow-up round for a fresh ${agent.label} fallback session.
+Agent focus: ${agent.focus}.${providerModel}
+
+The prior SDK session could not be resumed, so native conversation history may be unavailable. Reconstruct your role-specific state from the full accumulated Ralph grilling Q&A below.
+
+Already asked user-facing questions:
+${askedQuestionLines}
+
+Original request and accumulated user answers:
+${promptHistoryLines}
+
+Ask only new, non-repeated role-specific follow-up questions that are still needed after this accumulated Q&A.
+Return strict JSON. If your role has enough information, return {"questions":[]}.`;
+}
+
+function formatRalphGrillResumeFallbackWarning(agent: ResolvedRalphGrillAgent): string {
+    return `${agent.label} resume history was unavailable; re-seeded with accumulated Q&A at reduced fidelity.`;
 }
 
 function resolveAgentForExecution(
@@ -1163,11 +1215,7 @@ async function runSingleRalphGrillAgent(
             };
         }
 
-        const result = await aiService.sendMessage({
-            prompt: resumeSessionId
-                ? buildRalphGrillAgentFollowUpPrompt(ctx, agent)
-                : buildRalphGrillAgentPrompt(ctx, agent),
-            ...(resumeSessionId ? { sessionId: resumeSessionId } : {}),
+        const sendBase = {
             ...(model ? { model } : {}),
             ...(reasoningEffort ? { reasoningEffort } : {}),
             workingDirectory: ctx.workingDirectory,
@@ -1176,14 +1224,29 @@ async function runSingleRalphGrillAgent(
             systemMessage: GRILL_AGENT_SYSTEM_PROMPT,
             skillDirectories: ctx.skillDirectories,
             disabledSkills: ctx.disabledSkills,
+        };
+        let result = await aiService.sendMessage({
+            prompt: resumeSessionId
+                ? buildRalphGrillAgentFollowUpPrompt(ctx, agent)
+                : buildRalphGrillAgentPrompt(ctx, agent),
+            ...(resumeSessionId ? { sessionId: resumeSessionId } : {}),
+            ...sendBase,
         });
+        const invocationWarnings = [...warnings];
+        if (resumeSessionId && result.success && result.sessionId && result.sessionId !== resumeSessionId) {
+            invocationWarnings.push(formatRalphGrillResumeFallbackWarning(agent));
+            result = await aiService.sendMessage({
+                prompt: buildRalphGrillAgentResumeFallbackPrompt(ctx, agent),
+                ...sendBase,
+            });
+        }
         if (!result.success) {
             return {
                 agent,
                 status: 'failed',
                 questions: [],
                 warnings: [
-                    ...warnings,
+                    ...invocationWarnings,
                     `${agent.label} failed: ${result.error || 'AI execution failed'}`,
                 ],
             };
@@ -1208,8 +1271,8 @@ async function runSingleRalphGrillAgent(
             status,
             questions,
             warnings: questions.length > 0 || resumeSessionId
-                ? warnings
-                : [...warnings, `${agent.label} returned no usable candidate questions.`],
+                ? invocationWarnings
+                : [...invocationWarnings, `${agent.label} returned no usable candidate questions.`],
             ...(result.effectiveModel ? { effectiveModel: result.effectiveModel } : {}),
             ...(result.sessionId ? { sessionId: result.sessionId } : {}),
         };
@@ -1233,6 +1296,7 @@ export async function planRalphGrillCandidateQuestions(
     const setup = resolveRalphGrillSetup(ctx.setup);
     const previousRoundsRun = Math.min(ctx.previousState?.roundsRun ?? 0, RALPH_GRILL_MAX_ROUNDS);
     const nextRound = Math.min(previousRoundsRun + 1, RALPH_GRILL_MAX_ROUNDS);
+    const promptHistory = buildRalphGrillPromptHistory(ctx);
     if (!setup.enabled) {
         return {
             enabled: false,
@@ -1241,6 +1305,7 @@ export async function planRalphGrillCandidateQuestions(
             roundsRun: previousRoundsRun,
             maxRounds: RALPH_GRILL_MAX_ROUNDS,
             terminal: false,
+            promptHistory,
             agentResults: [],
             candidateQuestions: [],
             selectedQuestions: [],
@@ -1263,6 +1328,7 @@ export async function planRalphGrillCandidateQuestions(
             maxRounds: RALPH_GRILL_MAX_ROUNDS,
             terminal: true,
             terminationReason: terminalBeforePlanning,
+            promptHistory,
             agentResults: [],
             candidateQuestions: [],
             selectedQuestions: [],
@@ -1291,6 +1357,7 @@ export async function planRalphGrillCandidateQuestions(
         maxRounds: RALPH_GRILL_MAX_ROUNDS,
         terminal: allResumedAgentsEmpty,
         ...(allResumedAgentsEmpty ? { terminationReason: 'all-agents-empty' as const } : {}),
+        promptHistory,
         agentResults,
         candidateQuestions,
         selectedQuestions: consolidation.selectedQuestions,

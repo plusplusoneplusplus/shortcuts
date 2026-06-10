@@ -7,6 +7,7 @@ import type {
 import {
     attachRalphGrillMetadataToAskUserPayloads,
     buildRalphGrillProcessStateFromPlan,
+    buildRalphGrillPlanningCompletedProgress,
     buildRalphMultiAgentGrillDirective,
     consolidateRalphGrillCandidateQuestions,
     formatRalphGrillQuestionPlanForPrompt,
@@ -511,6 +512,124 @@ describe('Ralph grill planning', () => {
             'Which users should this optimize for?',
             'What admin workflow should the follow-up optimize first?',
         ]));
+    });
+
+    it('re-seeds a fresh role agent with accumulated Q&A when resume loses history', async () => {
+        const service = {
+            isAvailable: vi.fn().mockResolvedValue({ available: true }),
+            sendMessage: vi.fn(async (options: { prompt: string; sessionId?: string }) => {
+                if (options.sessionId === 'product-session') {
+                    return {
+                        success: true,
+                        response: JSON.stringify({ questions: [] }),
+                        sessionId: 'fresh-product-session',
+                    };
+                }
+                if (options.prompt.includes('fresh Product Agent fallback session')) {
+                    return {
+                        success: true,
+                        response: JSON.stringify({
+                            questions: [{
+                                question: 'Which rollout risk from the admin answer should be clarified?',
+                                type: 'text',
+                            }],
+                        }),
+                        sessionId: 'fallback-product-session',
+                    };
+                }
+                return {
+                    success: true,
+                    response: JSON.stringify({ questions: [] }),
+                    sessionId: options.sessionId,
+                };
+            }),
+        };
+        const setup = resolveRalphGrillSetup({
+            enabled: true,
+            depth: 'light',
+            agents: [
+                { role: 'product', provider: 'copilot', model: 'gpt-5.5' },
+                { role: 'ux', provider: 'copilot', model: 'gpt-5.5' },
+                { role: 'architecture-system', provider: 'copilot', model: 'gpt-5.5' },
+            ],
+        });
+        const previousState = {
+            roundsRun: 2,
+            maxRounds: RALPH_GRILL_MAX_ROUNDS,
+            terminal: false,
+            agents: {
+                product: {
+                    role: 'product' as const,
+                    roleLabel: setup.agents[0].label,
+                    provenanceLabel: setup.agents[0].provenanceLabel,
+                    status: 'completed' as const,
+                    candidateCount: 1,
+                    sessionId: 'product-session',
+                },
+                ux: {
+                    role: 'ux' as const,
+                    roleLabel: setup.agents[1].label,
+                    provenanceLabel: setup.agents[1].provenanceLabel,
+                    status: 'completed' as const,
+                    candidateCount: 1,
+                    sessionId: 'ux-session',
+                },
+                'architecture-system': {
+                    role: 'architecture-system' as const,
+                    roleLabel: setup.agents[2].label,
+                    provenanceLabel: setup.agents[2].provenanceLabel,
+                    status: 'completed' as const,
+                    candidateCount: 1,
+                    sessionId: 'architecture-session',
+                },
+            },
+            askedQuestions: [
+                'Which users should this optimize for?',
+                'What admin workflow should the follow-up optimize first?',
+            ],
+            promptHistory: [
+                'Design the new Ralph grilling experience',
+                'Answer: prioritize repository admins first.',
+            ],
+            warnings: [],
+        };
+
+        const plan = await planRalphGrillCandidateQuestions(
+            { aiService: service as any },
+            {
+                setup: { enabled: true, depth: 'light' },
+                prompt: 'Answer: include staged rollout for risky admin changes.',
+                previousState,
+                defaultProvider: 'copilot',
+            },
+        );
+
+        const productResumeCall = service.sendMessage.mock.calls
+            .map(call => call[0])
+            .find(options => options.sessionId === 'product-session');
+        const productFallbackCall = service.sendMessage.mock.calls
+            .map(call => call[0])
+            .find(options => !options.sessionId && options.prompt.includes('fresh Product Agent fallback session'));
+
+        expect(productResumeCall).toBeDefined();
+        expect(productFallbackCall).toBeDefined();
+        expect(productFallbackCall?.prompt).toContain('full accumulated Ralph grilling Q&A');
+        expect(productFallbackCall?.prompt).toContain('Which users should this optimize for?');
+        expect(productFallbackCall?.prompt).toContain('What admin workflow should the follow-up optimize first?');
+        expect(productFallbackCall?.prompt).toContain('Original request:\nDesign the new Ralph grilling experience');
+        expect(productFallbackCall?.prompt).toContain('Round 1 user answers:\nAnswer: prioritize repository admins first.');
+        expect(productFallbackCall?.prompt).toContain('Round 2 user answers:\nAnswer: include staged rollout for risky admin changes.');
+        expect(plan.warnings).toContain('Product Agent resume history was unavailable; re-seeded with accumulated Q&A at reduced fidelity.');
+        expect(buildRalphGrillPlanningCompletedProgress(plan).warnings).toContain('Product Agent resume history was unavailable; re-seeded with accumulated Q&A at reduced fidelity.');
+        expect(plan.selectedQuestions.map(question => question.question)).toContain('Which rollout risk from the admin answer should be clarified?');
+
+        const nextState = buildRalphGrillProcessStateFromPlan(plan, previousState);
+        expect(nextState.agents.product?.sessionId).toBe('fallback-product-session');
+        expect(nextState.promptHistory).toEqual([
+            'Design the new Ralph grilling experience',
+            'Answer: prioritize repository admins first.',
+            'Answer: include staged rollout for risky admin changes.',
+        ]);
     });
 
     it('marks a resumed round terminal when all agents return no follow-up questions', async () => {

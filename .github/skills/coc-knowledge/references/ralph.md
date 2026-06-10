@@ -222,7 +222,11 @@ fresh original-request prompt. The executor folds each plan into in-memory
 status/session IDs, cumulative selected user-facing questions, and compact
 warnings across chat-turn cleanup for the same process. Failed, unavailable, or
 first-round empty agents produce warnings and do not block the main consolidated
-grilling turn. Empty responses from resumed agents are treated as "no more
+grilling turn. If an SDK resume returns a different session ID, the planner
+treats native history as unavailable, retries that role as a fresh agent seeded
+with the accumulated original request, user answer turns, and already asked
+questions, and adds a compact reduced-fidelity warning to the planning/progress
+metadata. Empty responses from resumed agents are treated as "no more
 follow-ups" signals; when all resumed agents are empty, when the user sends a
 compact stop signal such as "enough", or when the named three-round cap is
 already reached, the planner returns a terminal result and the executor removes
