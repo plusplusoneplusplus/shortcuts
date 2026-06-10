@@ -208,12 +208,15 @@ questions before the main turn: exact duplicates and conservative semantic
 duplicates merge with combined provenance, recognized conflicts become one
 select-style decision question, duplicate-only agent contributions are reported
 as compact warnings, and the selected question set plus consolidation summary
-are appended to the main user prompt. When the model emits the consolidated
-`ask_user` batch, the executor enriches the persisted/SSE question payloads with
-the preflight planning summary, per-question provenance, and consolidation
-metadata. `AskUserInline` renders that metadata as a compact "Question planning"
-card, grouped role sections, provenance chips, and reduced-coverage warnings
-while preserving the normal single-form answer/skip/defer submission flow. The
+are appended to the main user prompt. While those isolated agents run, the
+executor emits transient `ralph-grill-planning` SSE progress so the SPA can show
+an immediate "Question planning" status card; no raw candidate-question state is
+persisted for that interim UI. When the model emits the consolidated `ask_user`
+batch, the executor enriches the persisted/SSE question payloads with the
+preflight planning summary, per-question provenance, and consolidation metadata.
+`AskUserInline` renders that metadata as a compact "Question planning" card,
+grouped role sections, provenance chips, and reduced-coverage warnings while
+preserving the normal single-form answer/skip/defer submission flow. The
 main grilling prompt carries an explicit final-goal contract requiring a
 `## Agent Coverage Summary` section with the selected depth, models used per
 agent, warnings/reduced-coverage notes, and dedupe/conflict outcomes, plus the

@@ -14,6 +14,21 @@ export interface BackgroundTasksState {
     backgroundWaitingForDrain: boolean;
 }
 
+export interface RalphGrillPlanningProgress {
+    status: 'running' | 'completed';
+    depth: string;
+    agentCount: number;
+    agents: Array<{
+        role: string;
+        roleLabel: string;
+        provenanceLabel: string;
+        status: 'running' | 'completed' | 'empty' | 'failed';
+        candidateCount: number;
+    }>;
+    message: string;
+    warnings: string[];
+}
+
 /** Data for a pending ask-user question from the AI. */
 export interface AskUserQuestion {
     batchId: string;
@@ -96,6 +111,7 @@ export interface UseChatSSEOptions {
     setSessionToolTokens: (v: number | undefined) => void;
     setSessionConversationTokens: (v: number | undefined) => void;
     setBackgroundTasks: (v: BackgroundTasksState | null) => void;
+    setRalphGrillPlanningProgress?: (v: RalphGrillPlanningProgress | null) => void;
     setTurnsAndRef: SetTurnsAndRef;
     refreshConversation: (pid: string) => Promise<void>;
     onSendComplete: () => void;
@@ -123,6 +139,7 @@ export function useChatSSE({
     setSessionToolTokens,
     setSessionConversationTokens,
     setBackgroundTasks,
+    setRalphGrillPlanningProgress,
     setTurnsAndRef,
     refreshConversation,
     onSendComplete,
@@ -264,6 +281,7 @@ export function useChatSSE({
             const costTimeMs = Date.now() - sseStartTime;
             closeSSE();
             setBackgroundTasks(null);
+            setRalphGrillPlanningProgress?.(null);
             // Flip non-terminal status (running OR a stale synthesised `queued`
             // from the queue route fallback) to terminal so the UI doesn't lag
             // behind the SSE close event.
@@ -376,6 +394,28 @@ export function useChatSSE({
             } catch { /* ignore */ }
         });
 
+        es.addEventListener('ralph-grill-planning', (event: Event) => {
+            try {
+                const data = JSON.parse((event as MessageEvent).data);
+                if ((data?.status === 'running' || data?.status === 'completed') && Array.isArray(data.agents)) {
+                    setRalphGrillPlanningProgress?.({
+                        status: data.status,
+                        depth: typeof data.depth === 'string' ? data.depth : 'standard',
+                        agentCount: typeof data.agentCount === 'number' ? data.agentCount : data.agents.length,
+                        agents: data.agents.map((agent: any) => ({
+                            role: typeof agent.role === 'string' ? agent.role : 'unknown',
+                            roleLabel: typeof agent.roleLabel === 'string' ? agent.roleLabel : 'Unknown Agent',
+                            provenanceLabel: typeof agent.provenanceLabel === 'string' ? agent.provenanceLabel : 'Unknown Agent · model unavailable',
+                            status: ['running', 'completed', 'empty', 'failed'].includes(agent.status) ? agent.status : 'running',
+                            candidateCount: typeof agent.candidateCount === 'number' ? agent.candidateCount : 0,
+                        })),
+                        message: typeof data.message === 'string' ? data.message : 'Planning Ralph grill questions.',
+                        warnings: Array.isArray(data.warnings) ? data.warnings.filter((warning: unknown): warning is string => typeof warning === 'string') : [],
+                    });
+                }
+            } catch { /* ignore */ }
+        });
+
         es.addEventListener('ask-user', (event: Event) => {
             try {
                 const data = JSON.parse((event as MessageEvent).data);
@@ -386,6 +426,7 @@ export function useChatSSE({
                     askUserBatchesRef.current.set(question.batchId, batch);
                     if (batch.size >= question.batchSize) {
                         askUserBatchesRef.current.delete(question.batchId);
+                        setRalphGrillPlanningProgress?.(null);
                         onAskUserBatch?.({
                             batchId: question.batchId,
                             questions: Array.from(batch.values()).sort((a, b) => a.index - b.index),

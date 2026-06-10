@@ -28,6 +28,7 @@ import { clearAskUserDraftsForProcess } from './hooks/useAskUserDraftStore';
 import { buildMetadataProcess } from '../../utils/chatUtils';
 import type { QueuedMessage } from '../../utils/chatUtils';
 import { useChatSSE } from './hooks/useChatSSE';
+import type { RalphGrillPlanningProgress } from './hooks/useChatSSE';
 import { hydrateAskUserBatch } from './hooks/hydrateAskUserBatch';
 import { useSendMessage } from './hooks/useSendMessage';
 import { useQueuedTaskPoll } from '../../queue/hooks/useQueuedTaskPoll';
@@ -166,6 +167,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [pendingQueue, setPendingQueue] = useState<QueuedMessage[]>([]);
     const [invalidScratchpadPaths, setInvalidScratchpadPaths] = useState<Set<string>>(() => new Set());
     const [backgroundTasks, setBackgroundTasks] = useState<import('./hooks/useChatSSE').BackgroundTasksState | null>(null);
+    const [ralphGrillPlanningProgress, setRalphGrillPlanningProgress] = useState<RalphGrillPlanningProgress | null>(null);
     const [pendingAskUserBatch, setPendingAskUserBatch] = useState<import('./hooks/useChatSSE').AskUserBatch | null>(null);
     const [mcpOAuthPrompts, setMcpOAuthPrompts] = useState<import('./hooks/useChatSSE').McpOAuthPromptData[]>([]);
     const [noteEdits, setNoteEdits] = useState<Array<{
@@ -780,10 +782,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         setSessionToolTokens,
         setSessionConversationTokens,
         setBackgroundTasks,
+        setRalphGrillPlanningProgress,
         setTurnsAndRef,
         refreshConversation,
         onSendComplete,
-        onAskUserBatch: setPendingAskUserBatch,
+        onAskUserBatch: (batch) => {
+            setRalphGrillPlanningProgress(null);
+            setPendingAskUserBatch(batch);
+        },
         onMcpOAuthRequired: (data) => {
             setMcpOAuthPrompts(prev => {
                 if (prev.some(p => p.requestId === data.requestId)) return prev;
@@ -796,6 +802,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     });
 
     useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, setTurnsAndRef });
+
+    useEffect(() => {
+        setRalphGrillPlanningProgress(null);
+    }, [taskId]);
 
     const { handlePopOut, handleFloat } = useChatWindowActions({ task, taskId, workspaceId });
 
@@ -1513,6 +1523,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         pendingQueue={pendingQueue}
                         backgroundTasks={backgroundTasks}
                         pendingAskUserBatch={pendingAskUserBatch}
+                        ralphGrillPlanningProgress={ralphGrillPlanningProgress}
                         onAskUserAnswered={() => setPendingAskUserBatch(null)}
                         isScrolledUp={isScrolledUp}
                         scrollRef={conversationContainerRef}

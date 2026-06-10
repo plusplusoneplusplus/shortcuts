@@ -820,6 +820,30 @@ describe('ChatExecutor ralph grilling phase', () => {
         await executor.execute(task, 'Grill me on this idea');
 
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(4);
+        const planningEvents = vi.mocked(store.emitProcessEvent).mock.calls
+            .filter(([, event]) => (event as any).type === 'ralph-grill-planning');
+        expect(planningEvents).toHaveLength(2);
+        expect((planningEvents[0][1] as any).ralphGrillPlanning).toMatchObject({
+            status: 'running',
+            depth: 'light',
+            agentCount: 3,
+            agents: [
+                expect.objectContaining({ role: 'product', status: 'running', provenanceLabel: 'Product Agent · copilot/gpt-5.5' }),
+                expect.objectContaining({ role: 'ux', status: 'running', provenanceLabel: 'UX Agent · copilot/gpt-5.5' }),
+                expect.objectContaining({ role: 'architecture-system', status: 'running', provenanceLabel: 'Architecture/System Agent · copilot/gpt-5.5' }),
+            ],
+        });
+        expect((planningEvents[1][1] as any).ralphGrillPlanning).toMatchObject({
+            status: 'completed',
+            depth: 'light',
+            agents: [
+                expect.objectContaining({ role: 'product', status: 'completed', candidateCount: 1 }),
+                expect.objectContaining({ role: 'ux', status: 'completed', candidateCount: 1 }),
+                expect.objectContaining({ role: 'architecture-system', status: 'completed', candidateCount: 1 }),
+            ],
+        });
+        expect(vi.mocked(store.emitProcessEvent).mock.invocationCallOrder[0])
+            .toBeLessThan(sdkMocks.mockSendMessage.mock.invocationCallOrder[0]);
         const agentCalls = sdkMocks.mockSendMessage.mock.calls.slice(0, 3).map(call => call[0]);
         expect(agentCalls.map(call => call.prompt)).toEqual([
             expect.stringContaining('Agent role: Product Agent'),

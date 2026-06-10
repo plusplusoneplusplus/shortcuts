@@ -207,6 +207,42 @@ describe('useChatSSE', () => {
         expect(setTurnsAndRef).toHaveBeenCalledWith([{ role: 'user', content: 'hi' }]);
     });
 
+    it('tracks Ralph grill planning progress and clears it when ask_user arrives', () => {
+        const setRalphGrillPlanningProgress = vi.fn();
+        const onAskUserBatch = vi.fn();
+        const progress = {
+            status: 'completed',
+            depth: 'light',
+            agentCount: 1,
+            agents: [{
+                role: 'product',
+                roleLabel: 'Product Agent',
+                provenanceLabel: 'Product Agent · copilot/gpt-5.5',
+                status: 'completed',
+                candidateCount: 2,
+            }],
+            message: 'Prepared 2 consolidated questions from 2 candidates.',
+            warnings: [],
+        };
+        const question = {
+            batchId: 'batch-ralph',
+            questionId: 'ask-1',
+            question: 'Which users should this optimize for?',
+            type: 'text',
+            turnIndex: 1,
+            index: 0,
+            batchSize: 1,
+        };
+
+        renderHook(() => useChatSSE(makeOptions({ setRalphGrillPlanningProgress, onAskUserBatch })));
+        act(() => { MockEventSource.latest().emit('ralph-grill-planning', progress); });
+        expect(setRalphGrillPlanningProgress).toHaveBeenCalledWith(progress);
+
+        act(() => { MockEventSource.latest().emit('ask-user', question); });
+        expect(setRalphGrillPlanningProgress).toHaveBeenLastCalledWith(null);
+        expect(onAskUserBatch).toHaveBeenCalledWith({ batchId: 'batch-ralph', questions: [question] });
+    });
+
     it('hydrates context breakdown fields from conversation-snapshot', () => {
         const setSessionSystemTokens = vi.fn();
         const setSessionToolTokens = vi.fn();

@@ -71,10 +71,13 @@ multi-agent Ralph grilling setup card when `features.ralphMultiAgentGrill` is
 enabled. New Chat Ralph grilling (`NewChatArea`) and promoted ask-mode chats
 (`FollowUpInputArea` via `ChatDetail`) both use the same card so users choose
 Light/Standard/Deep depth and provider/model selections per grill role before
-the consolidated question-planning turn is submitted. The live `ask_user` form
-then renders any Ralph grill planning metadata from `pendingAskUser` as one
-compact "Question planning" card plus grouped role sections and provenance chips;
-it does not create separate agent threads or separate answer submissions.
+the consolidated question-planning turn is submitted. While the server runs the
+separate grill-agent preflight, `ConversationArea` renders the transient
+`ralph-grill-planning` SSE state as an immediate compact status card. The live
+`ask_user` form then renders any Ralph grill planning metadata from
+`pendingAskUser` as one compact "Question planning" card plus grouped role
+sections and provenance chips; it does not create separate agent threads or
+separate answer submissions.
 
 ## Key Contexts
 

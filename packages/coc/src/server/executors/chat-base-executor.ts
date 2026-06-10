@@ -22,6 +22,7 @@ import type {
     Attachment,
     AutoFolderContext,
     ModelInfo,
+    ProcessOutputEvent,
     ISDKService,
     ProcessStore,
     QueuedTask,
@@ -64,8 +65,8 @@ import type { MemoryV2Addon } from './memory-v2-addon';
 import { resolveAutoFolderContext } from './auto-folder-utils';
 import { systemMessageBuilder } from './system-message-builder';
 import { buildChatTurnContext } from './chat-turn-context-builder';
-import { attachRalphGrillMetadataToAskUserPayloads, buildRalphMultiAgentGrillDirective, formatRalphGrillQuestionPlanForPrompt, planRalphGrillCandidateQuestions } from '../ralph/grill-planning';
-import type { RalphGrillQuestionPlanningResult, RalphGrillSetup } from '../ralph/grill-planning';
+import { attachRalphGrillMetadataToAskUserPayloads, buildRalphGrillPlanningCompletedProgress, buildRalphGrillPlanningStartedProgress, buildRalphMultiAgentGrillDirective, formatRalphGrillQuestionPlanForPrompt, planRalphGrillCandidateQuestions } from '../ralph/grill-planning';
+import type { RalphGrillPlanningProgress, RalphGrillQuestionPlanningResult, RalphGrillSetup } from '../ralph/grill-planning';
 // ============================================================================
 // Ralph grilling-phase system message suffix
 // ============================================================================
@@ -512,6 +513,20 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         };
     }
 
+    private emitRalphGrillPlanningProgress(processId: string, progress: RalphGrillPlanningProgress): void {
+        try {
+            this.store.emitProcessEvent(processId, {
+                type: 'ralph-grill-planning',
+                ralphGrillPlanning: progress,
+            } as unknown as ProcessOutputEvent);
+        } catch (err) {
+            getLogger().debug(
+                LogCategory.AI,
+                `[ChatModeExecutor] Failed to emit Ralph grill planning progress for ${processId}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+        }
+    }
+
     // ========================================================================
     // Shared execute — AI call lifecycle
     // ========================================================================
@@ -673,6 +688,10 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             });
 
             if (ralphGrillPlanning?.setup.enabled === true) {
+                this.emitRalphGrillPlanningProgress(
+                    processId,
+                    buildRalphGrillPlanningStartedProgress(ralphGrillPlanning.setup),
+                );
                 const questionPlan = await planRalphGrillCandidateQuestions(
                     {
                         aiService: effectiveAiService,
@@ -692,6 +711,10 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                     },
                 );
                 ralphGrillPlanning.state.plan = questionPlan;
+                this.emitRalphGrillPlanningProgress(
+                    processId,
+                    buildRalphGrillPlanningCompletedProgress(questionPlan),
+                );
                 const questionPlanBlock = formatRalphGrillQuestionPlanForPrompt(questionPlan);
                 if (questionPlanBlock) {
                     effectivePrompt = `${effectivePrompt}\n\n${questionPlanBlock}`;

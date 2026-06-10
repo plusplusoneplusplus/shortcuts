@@ -118,6 +118,26 @@ export interface RalphGrillQuestionPlanningResult {
     warnings: string[];
 }
 
+export type RalphGrillPlanningProgressStatus = 'running' | 'completed';
+export type RalphGrillPlanningProgressAgentStatus = 'running' | 'completed' | 'empty' | 'failed';
+
+export interface RalphGrillPlanningProgressAgent {
+    role: RalphGrillAgentRole;
+    roleLabel: string;
+    provenanceLabel: string;
+    status: RalphGrillPlanningProgressAgentStatus;
+    candidateCount: number;
+}
+
+export interface RalphGrillPlanningProgress {
+    status: RalphGrillPlanningProgressStatus;
+    depth: RalphGrillDepth;
+    agentCount: number;
+    agents: RalphGrillPlanningProgressAgent[];
+    message: string;
+    warnings: string[];
+}
+
 export interface RalphGrillQuestionPlanningContext {
     setup?: RalphGrillSetup | null;
     prompt: string;
@@ -352,6 +372,42 @@ export function resolveRalphGrillSetup(input?: RalphGrillSetup | null): Resolved
         enabled: input?.enabled === true,
         depth,
         agents,
+    };
+}
+
+export function buildRalphGrillPlanningStartedProgress(input?: RalphGrillSetup | null): RalphGrillPlanningProgress {
+    const setup = resolveRalphGrillSetup(input);
+    return {
+        status: 'running',
+        depth: setup.depth,
+        agentCount: setup.agents.length,
+        agents: setup.agents.map(agent => ({
+            role: agent.role,
+            roleLabel: agent.label,
+            provenanceLabel: agent.provenanceLabel,
+            status: 'running',
+            candidateCount: 0,
+        })),
+        message: `Running ${setup.agents.length} Ralph grill agent${setup.agents.length === 1 ? '' : 's'} to plan consolidated questions.`,
+        warnings: [],
+    };
+}
+
+export function buildRalphGrillPlanningCompletedProgress(plan: RalphGrillQuestionPlanningResult): RalphGrillPlanningProgress {
+    const warnings = [...new Set(plan.warnings)];
+    return {
+        status: 'completed',
+        depth: plan.depth,
+        agentCount: plan.agentResults.length,
+        agents: plan.agentResults.map(result => ({
+            role: result.agent.role,
+            roleLabel: result.agent.label,
+            provenanceLabel: result.agent.provenanceLabel,
+            status: result.status,
+            candidateCount: result.questions.length,
+        })),
+        message: `Prepared ${plan.consolidation.selectedQuestionCount} consolidated question${plan.consolidation.selectedQuestionCount === 1 ? '' : 's'} from ${plan.consolidation.rawCandidateCount} candidate${plan.consolidation.rawCandidateCount === 1 ? '' : 's'}.`,
+        warnings,
     };
 }
 
