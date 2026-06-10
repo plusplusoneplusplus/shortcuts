@@ -97,6 +97,17 @@ describe('CocToolRuntime', () => {
             expect(result.content[0].text).toContain('Unknown tool: nope');
         });
 
+        it('returns an error result for a declaration-only tool (no handler) without throwing', async () => {
+            // SDK >= 1.0.0 allows handler-less tool declarations; the runtime
+            // only executes in-process closures, so such a tool must fail the
+            // call gracefully instead of crashing the bridge.
+            const runtime = new CocToolRuntime([tool('declared_only', { handler: undefined })]);
+            expect(runtime.hasTool('declared_only')).toBe(true);
+            const result = await runtime.callTool('declared_only', {});
+            expect(result.isError).toBe(true);
+            expect(result.content[0].text).toContain('has no handler');
+        });
+
         it('captures handler exceptions as an error result', async () => {
             const runtime = new CocToolRuntime([
                 tool('boom', { handler: async () => { throw new Error('kaboom'); } }),

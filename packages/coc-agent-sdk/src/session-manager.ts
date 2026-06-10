@@ -16,7 +16,7 @@ import type { IStreamableSession } from './streaming-session';
  */
 export interface IAbortableSession {
     sessionId: string;
-    destroy(): Promise<void>;
+    disconnect(): Promise<void>;
 }
 
 /**
@@ -56,11 +56,11 @@ export class SessionManager {
 
     /**
      * Soft-abort an active session by calling the SDK's abort() method.
-     * This signals the CLI to stop in-flight work without destroying the session.
+     * This signals the CLI to stop in-flight work without disconnecting the session.
      * The streaming promise settles with a partial result; the request-runner
-     * finally block handles destroy() and untrack().
+     * finally block handles disconnect() and untrack().
      *
-     * Falls back to hard destroy if abort() is unavailable or fails.
+     * Falls back to hard disconnect if abort() is unavailable or fails.
      *
      * @returns `true` if the session was found and soft-aborted, `false` otherwise.
      */
@@ -81,17 +81,17 @@ export class SessionManager {
                 sessionLog.debug('Session soft-aborted successfully');
                 return true;
             }
-            // No abort method — fall back to hard destroy
-            sessionLog.debug('Session has no abort() — falling back to hard destroy');
-            await session.destroy();
+            // No abort method — fall back to hard disconnect
+            sessionLog.debug('Session has no abort() — falling back to hard disconnect');
+            await session.disconnect();
             this.activeSessions.delete(sessionId);
             return true;
         } catch (error) {
             sessionLog.error(
                 { err: error instanceof Error ? error : undefined },
-                'Error soft-aborting session — falling back to hard destroy',
+                'Error soft-aborting session — falling back to hard disconnect',
             );
-            try { await session.destroy(); } catch { /* best effort */ }
+            try { await session.disconnect(); } catch { /* best effort */ }
             this.activeSessions.delete(sessionId);
             return false;
         }
@@ -99,7 +99,7 @@ export class SessionManager {
 
     /**
      * Abort an active session by its ID.
-     * Destroys the session and removes it from tracking.
+     * Disconnects the session and removes it from tracking.
      *
      * @returns `true` if the session was found and aborted, `false` otherwise.
      */
@@ -115,7 +115,7 @@ export class SessionManager {
         sessionLog.debug('Aborting session');
 
         try {
-            await session.destroy();
+            await session.disconnect();
             this.activeSessions.delete(sessionId);
             sessionLog.debug('Session aborted successfully');
             return true;
@@ -124,7 +124,7 @@ export class SessionManager {
                 { err: error instanceof Error ? error : undefined },
                 'Error aborting session',
             );
-            // Still remove from tracking even if destroy failed
+            // Still remove from tracking even if disconnect failed
             this.activeSessions.delete(sessionId);
             return false;
         }

@@ -146,6 +146,11 @@ export class CocToolRuntime {
         if (!tool) {
             return errorResult(`Unknown tool: ${name}`);
         }
+        // Declaration-only tools (no handler) cannot be executed by the runtime.
+        const handler = tool.handler;
+        if (typeof handler !== 'function') {
+            return errorResult(`Tool "${name}" has no handler and cannot be executed`);
+        }
 
         const invocation: ToolInvocation = {
             sessionId: this.context.sessionId ?? '',
@@ -155,7 +160,7 @@ export class CocToolRuntime {
         };
 
         try {
-            const raw = await tool.handler(args as never, invocation);
+            const raw = await handler(args as never, invocation);
             return normalizeToolResult(raw);
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);

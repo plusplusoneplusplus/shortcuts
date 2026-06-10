@@ -56,7 +56,7 @@ describe('CopilotSDKService - Client Initialization', () => {
         resetCopilotSDKService();
     });
 
-    it('should pass cwd to createSdkClient when working directory is specified', async () => {
+    it('should pass workingDirectory to createSdkClient when working directory is specified', async () => {
         const { MockCopilotClient } = createMockSDKModule();
 
         const serviceAny = service as any;
@@ -65,7 +65,7 @@ describe('CopilotSDKService - Client Initialization', () => {
 
         await service.createClient('/some/project/path');
 
-        expect(createSdkClientMock).toHaveBeenCalledWith({ cwd: '/some/project/path' });
+        expect(createSdkClientMock).toHaveBeenCalledWith({ workingDirectory: '/some/project/path' });
     });
 
     it('should not call ensureFolderTrusted when no working directory is given', async () => {
@@ -80,7 +80,7 @@ describe('CopilotSDKService - Client Initialization', () => {
         expect(trustedFolder.ensureFolderTrusted).not.toHaveBeenCalled();
     });
 
-    it('should pass each cwd to createSdkClient when clients are created', async () => {
+    it('should pass each workingDirectory to createSdkClient when clients are created', async () => {
         const { MockCopilotClient } = createMockSDKModule();
 
         const serviceAny = service as any;
@@ -91,8 +91,8 @@ describe('CopilotSDKService - Client Initialization', () => {
         await service.createClient('/second/path');
 
         expect(createSdkClientMock).toHaveBeenCalledTimes(2);
-        expect(createSdkClientMock).toHaveBeenCalledWith({ cwd: '/first/path' });
-        expect(createSdkClientMock).toHaveBeenCalledWith({ cwd: '/second/path' });
+        expect(createSdkClientMock).toHaveBeenCalledWith({ workingDirectory: '/first/path' });
+        expect(createSdkClientMock).toHaveBeenCalledWith({ workingDirectory: '/second/path' });
     });
 
     it('should still create client successfully even if ensureFolderTrusted throws', async () => {
@@ -109,7 +109,7 @@ describe('CopilotSDKService - Client Initialization', () => {
         await service.createClient('/some/path');
 
         expect(capturedOptions).toHaveLength(1);
-        expect(capturedOptions[0].cwd).toBe('/some/path');
+        expect(capturedOptions[0].workingDirectory).toBe('/some/path');
     });
 });
 
@@ -214,7 +214,7 @@ describe('CopilotSDKService - onSessionCreated callback', () => {
         const mockSession = {
             sessionId: 'non-streaming-early',
             sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'response' } }),
-            destroy: vi.fn().mockResolvedValue(undefined),
+            disconnect: vi.fn().mockResolvedValue(undefined),
         };
         const { MockCopilotClient } = createMockSDKModule(mockSession);
         const serviceAny = service as any;
@@ -268,7 +268,7 @@ describe('CopilotSDKService - onSessionCreated callback', () => {
         const mockSession = {
             sessionId: 'no-callback-session',
             sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'response' } }),
-            destroy: vi.fn().mockResolvedValue(undefined),
+            disconnect: vi.fn().mockResolvedValue(undefined),
         };
         const { MockCopilotClient } = createMockSDKModule(mockSession);
         const serviceAny = service as any;
@@ -430,8 +430,8 @@ describe('CopilotSDKService - Streaming (sendWithStreaming)', () => {
         // Wait for the timeout to fire — don't dispatch any events
         await expect(streamingPromise).rejects.toThrow('Request timed out after 50ms');
 
-        // Session must be force-destroyed on timeout
-        expect(session.destroy).toHaveBeenCalled();
+        // Session must be force-disconnected on timeout
+        expect(session.disconnect).toHaveBeenCalled();
     });
 
     it('should unsubscribe event handler after session.idle resolves', async () => {
@@ -1015,7 +1015,7 @@ describe('CopilotSDKService - Idle Timeout (sendWithStreaming)', () => {
         expect(result.success).toBe(false);
         expect(result.error).toContain('idle-timed out');
         expect(result.error).toContain('50ms');
-        expect(sessions[0].session.destroy).toHaveBeenCalled();
+        expect(sessions[0].session.disconnect).toHaveBeenCalled();
     });
 
     it('should reset idle timer on message_delta events', async () => {
@@ -1039,8 +1039,8 @@ describe('CopilotSDKService - Idle Timeout (sendWithStreaming)', () => {
         const result = await promise;
         expect(result.response).toContain('chunk0');
         expect(result.response).toContain('chunk2');
-        // Session should NOT have been destroyed by idle timeout
-        expect(session.destroy).not.toHaveBeenCalled();
+        // Session should NOT have been disconnected by idle timeout
+        expect(session.disconnect).not.toHaveBeenCalled();
     });
 
     it('should reset idle timer on tool execution events', async () => {
@@ -1064,7 +1064,7 @@ describe('CopilotSDKService - Idle Timeout (sendWithStreaming)', () => {
 
         const result = await promise;
         expect(result.response).toBe('Done');
-        expect(session.destroy).not.toHaveBeenCalled();
+        expect(session.disconnect).not.toHaveBeenCalled();
     });
 
     it('should fire idle timeout independently of total timeout', async () => {
@@ -1078,7 +1078,7 @@ describe('CopilotSDKService - Idle Timeout (sendWithStreaming)', () => {
 
         // Wait for idle timeout to fire (no activity)
         await expect(promise).rejects.toThrow('idle-timed out after 50ms');
-        expect(session.destroy).toHaveBeenCalled();
+        expect(session.disconnect).toHaveBeenCalled();
     });
 
     it('should clear idle timer on successful completion', async () => {
@@ -1098,7 +1098,7 @@ describe('CopilotSDKService - Idle Timeout (sendWithStreaming)', () => {
 
         // Wait past the idle timeout to ensure the timer was cleared and doesn't cause issues
         await new Promise(r => setTimeout(r, 150));
-        // If the idle timer wasn't cleared, it would try to destroy/reject after settle — no crash means pass
+        // If the idle timer was not cleared, it would try to disconnect/reject after settle — no crash means pass
     });
 
     it('should not activate idle timer when idleTimeoutMs is 0', async () => {
@@ -1119,7 +1119,7 @@ describe('CopilotSDKService - Idle Timeout (sendWithStreaming)', () => {
 
         const result = await promise;
         expect(result.response).toBe('response');
-        expect(session.destroy).not.toHaveBeenCalled();
+        expect(session.disconnect).not.toHaveBeenCalled();
     });
 
     it('should reset idle timer on fallback onStreamingChunk (assistant.message without deltas)', async () => {
@@ -1147,7 +1147,7 @@ describe('CopilotSDKService - Idle Timeout (sendWithStreaming)', () => {
         const result = await promise;
         expect(result.response).toBe('Fallback message');
         expect(chunks).toContain('Fallback message');
-        expect(session.destroy).not.toHaveBeenCalled();
+        expect(session.disconnect).not.toHaveBeenCalled();
     });
 });
 
@@ -1466,13 +1466,26 @@ describe('CopilotSDKService - Non-streaming (sendAndWait)', () => {
         resetCopilotSDKService();
     });
 
-    it('should use sendAndWait when timeout <= 120000 and streaming is not set', async () => {
+    it('should use the race-safe send + idle wait when timeout <= 120000 and streaming is not set', async () => {
+        const handlers: Array<(event: any) => void> = [];
         const mockSession = {
             sessionId: 'non-streaming-session',
-            sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'Non-streaming response' } }),
-            destroy: vi.fn().mockResolvedValue(undefined),
-            on: vi.fn(),
-            send: vi.fn(),
+            sendAndWait: vi.fn(),
+            disconnect: vi.fn().mockResolvedValue(undefined),
+            on: vi.fn().mockImplementation((handler: (event: any) => void) => {
+                handlers.push(handler);
+                return () => {
+                    const idx = handlers.indexOf(handler);
+                    if (idx >= 0) handlers.splice(idx, 1);
+                };
+            }),
+            send: vi.fn().mockImplementation(async () => {
+                setTimeout(() => {
+                    for (const h of [...handlers]) h({ type: 'assistant.message', data: { content: 'Non-streaming response' } });
+                    for (const h of [...handlers]) h({ type: 'session.idle', data: {} });
+                }, 5);
+                return 'message-id';
+            }),
         };
 
         const capturedOptions: any[] = [];
@@ -1495,21 +1508,84 @@ describe('CopilotSDKService - Non-streaming (sendAndWait)', () => {
         const result = await service.sendMessage({
             prompt: 'Test',
             workingDirectory: '/test',
-            timeoutMs: 60000, // <= 120000, should use sendAndWait
+            timeoutMs: 60000, // <= 120000 → non-streaming path
             loadDefaultMcpConfig: false,
         });
 
         expect(result.success).toBe(true);
         expect(result.response).toBe('Non-streaming response');
-        expect(mockSession.sendAndWait).toHaveBeenCalledWith({ prompt: 'Test' }, 60000);
-        expect(mockSession.send).not.toHaveBeenCalled();
+        expect(mockSession.send).toHaveBeenCalledWith({ prompt: 'Test', attachments: undefined });
+        // The SDK's sendAndWait must NOT be used — its session.error handler can
+        // reject an internal promise before any catch is attached (unhandled rejection).
+        expect(mockSession.sendAndWait).not.toHaveBeenCalled();
+    });
+
+    it('does not produce an unhandled rejection when session.error outraces the send acknowledgment', async () => {
+        const handlers: Array<(event: any) => void> = [];
+        const mockSession = {
+            sessionId: 'racy-error-session',
+            sendAndWait: vi.fn(),
+            disconnect: vi.fn().mockResolvedValue(undefined),
+            on: vi.fn().mockImplementation((handler: (event: any) => void) => {
+                handlers.push(handler);
+                return () => {
+                    const idx = handlers.indexOf(handler);
+                    if (idx >= 0) handlers.splice(idx, 1);
+                };
+            }),
+            send: vi.fn().mockImplementation(() => {
+                // Emit the failure synchronously — before the send promise
+                // resolves — mimicking a slow host where the CLI's session.error
+                // event wins the race against the send acknowledgment.
+                for (const h of [...handlers]) {
+                    h({ type: 'session.error', data: { message: 'Execution failed: Error: Session was not created with authentication info or custom provider' } });
+                }
+                return new Promise<string>(resolve => setTimeout(() => resolve('message-id'), 10));
+            }),
+        };
+
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+
+        class MockCopilotClient {
+            constructor() {
+                Object.assign(this, mockClient);
+            }
+        }
+
+        const serviceAny = service as any;
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        const unhandled: unknown[] = [];
+        const listener = (reason: unknown) => { unhandled.push(reason); };
+        process.on('unhandledRejection', listener);
+        try {
+            const result = await service.sendMessage({
+                prompt: 'Test',
+                workingDirectory: '/test',
+                timeoutMs: 60000,
+                loadDefaultMcpConfig: false,
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Session was not created with authentication info');
+
+            // Flush micro/macrotasks so any unhandled rejection would have fired.
+            await new Promise(resolve => setTimeout(resolve, 20));
+            expect(unhandled).toHaveLength(0);
+        } finally {
+            process.removeListener('unhandledRejection', listener);
+        }
     });
 
     it('should fall back to sendAndWait when session lacks on/send methods', async () => {
         const mockSession = {
             sessionId: 'basic-session',
             sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'Basic response' } }),
-            destroy: vi.fn().mockResolvedValue(undefined),
+            disconnect: vi.fn().mockResolvedValue(undefined),
             // No on() or send() methods — streaming not supported
         };
 
@@ -1727,7 +1803,7 @@ describe('CopilotSDKService - Token Usage Tracking', () => {
         const mockSession = {
             sessionId: 'non-streaming-session',
             sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'Basic response' } }),
-            destroy: vi.fn().mockResolvedValue(undefined),
+            disconnect: vi.fn().mockResolvedValue(undefined),
         };
 
         const mockClient = {
@@ -2665,7 +2741,7 @@ describe('CopilotSDKService - Client Invalidation on Stream Error', () => {
         const mockSession = {
             sessionId: 'fresh-session',
             sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'success!' } }),
-            destroy: vi.fn().mockResolvedValue(undefined),
+            disconnect: vi.fn().mockResolvedValue(undefined),
         };
         const mockClient2 = {
             createSession: vi.fn().mockResolvedValue(mockSession),

@@ -72,35 +72,35 @@ describe('createSdkClient', () => {
         vi.mocked(fs.existsSync).mockReturnValue(true);
     });
 
-    it('creates a client with no cwd when called without options', () => {
+    it('creates a client with no workingDirectory when called without options', () => {
         createSdkClient();
 
         expect(capturedOptions).toHaveLength(1);
-        expect(capturedOptions[0].cwd).toBeUndefined();
+        expect(capturedOptions[0].workingDirectory).toBeUndefined();
     });
 
-    it('creates a client with no cwd when cwd is undefined', () => {
-        createSdkClient({ cwd: undefined });
+    it('creates a client with no workingDirectory when workingDirectory is undefined', () => {
+        createSdkClient({ workingDirectory: undefined });
 
         expect(capturedOptions).toHaveLength(1);
-        expect(capturedOptions[0].cwd).toBeUndefined();
+        expect(capturedOptions[0].workingDirectory).toBeUndefined();
     });
 
-    it('passes cwd to the CopilotClient constructor when cwd is provided', () => {
-        createSdkClient({ cwd: '/some/project' });
+    it('passes workingDirectory to the CopilotClient constructor when provided', () => {
+        createSdkClient({ workingDirectory: '/some/project' });
 
         expect(capturedOptions).toHaveLength(1);
-        expect(capturedOptions[0].cwd).toBe('/some/project');
+        expect(capturedOptions[0].workingDirectory).toBe('/some/project');
     });
 
-    it('calls ensureFolderTrusted with cwd when cwd is provided', () => {
-        createSdkClient({ cwd: '/my/repo' });
+    it('calls ensureFolderTrusted with workingDirectory when provided', () => {
+        createSdkClient({ workingDirectory: '/my/repo' });
 
         expect(trustedFolder.ensureFolderTrusted).toHaveBeenCalledOnce();
         expect(trustedFolder.ensureFolderTrusted).toHaveBeenCalledWith('/my/repo');
     });
 
-    it('does NOT call ensureFolderTrusted when no cwd is given', () => {
+    it('does NOT call ensureFolderTrusted when no workingDirectory is given', () => {
         createSdkClient();
 
         expect(trustedFolder.ensureFolderTrusted).not.toHaveBeenCalled();
@@ -111,65 +111,64 @@ describe('createSdkClient', () => {
             throw new Error('Permission denied');
         });
 
-        const client = createSdkClient({ cwd: '/protected/path' });
+        const client = createSdkClient({ workingDirectory: '/protected/path' });
 
         expect(client).toBeDefined();
         expect(capturedOptions).toHaveLength(1);
-        expect(capturedOptions[0].cwd).toBe('/protected/path');
+        expect(capturedOptions[0].workingDirectory).toBe('/protected/path');
     });
 
     it('returns the created client instance', () => {
-        const client = createSdkClient({ cwd: '/project' });
+        const client = createSdkClient({ workingDirectory: '/project' });
 
         expect(typeof (client as any).start).toBe('function');
         expect(typeof (client as any).stop).toBe('function');
     });
 
-    it('does NOT warn when cwd exists', () => {
+    it('does NOT warn when workingDirectory exists', () => {
         vi.mocked(fs.existsSync).mockReturnValue(true);
 
-        createSdkClient({ cwd: '/existing/dir' });
+        createSdkClient({ workingDirectory: '/existing/dir' });
 
         expect(fs.existsSync).toHaveBeenCalledWith('/existing/dir');
     });
 
-    it('checks existsSync when cwd is provided', () => {
+    it('checks existsSync when workingDirectory is provided', () => {
         vi.mocked(fs.existsSync).mockReturnValue(false);
 
-        const client = createSdkClient({ cwd: '/nonexistent/dir' });
+        const client = createSdkClient({ workingDirectory: '/nonexistent/dir' });
 
         expect(client).toBeDefined();
         expect(fs.existsSync).toHaveBeenCalledWith('/nonexistent/dir');
     });
 
-    it('does NOT call existsSync when cwd is absent', () => {
+    it('does NOT call existsSync when workingDirectory is absent', () => {
         createSdkClient();
 
         expect(fs.existsSync).not.toHaveBeenCalled();
     });
 
     it('routes WSL working directories to the host filesystem for the Windows Copilot CLI', () => {
-        const cwd = String.raw`\\wsl$\Ubuntu\home\tester\repo`;
-        createSdkClient({ cwd });
+        const workingDirectory = String.raw`\\wsl$\Ubuntu\home\tester\repo`;
+        createSdkClient({ workingDirectory });
 
-        expect(workspaceExecution.resolveWorkspaceExecutionContext).toHaveBeenCalledWith(cwd);
+        expect(workspaceExecution.resolveWorkspaceExecutionContext).toHaveBeenCalledWith(workingDirectory);
         expect(workspaceExecution.translatePathForHostFilesystem).toHaveBeenCalledWith(
-            cwd,
+            workingDirectory,
             expect.objectContaining({
                 kind: 'wsl',
                 linuxWorkingDirectory: '/home/tester/repo',
             }),
         );
-        expect(capturedOptions[0].cwd).toBe(cwd);
-        expect(capturedOptions[0].cliPath).toBeUndefined();
-        expect(capturedOptions[0].cliArgs).toBeUndefined();
+        expect(capturedOptions[0].workingDirectory).toBe(workingDirectory);
+        expect(capturedOptions[0].connection).toBeUndefined();
         expect(capturedOptions[0].env).toBeUndefined();
-        expect(trustedFolder.ensureFolderTrusted).toHaveBeenCalledWith(cwd);
-        expect(fs.existsSync).toHaveBeenCalledWith(cwd);
+        expect(trustedFolder.ensureFolderTrusted).toHaveBeenCalledWith(workingDirectory);
+        expect(fs.existsSync).toHaveBeenCalledWith(workingDirectory);
     });
 
     it('translates Linux-style WSL working directories to host UNC paths', () => {
-        createSdkClient({ cwd: '/home/tester/repo' });
+        createSdkClient({ workingDirectory: '/home/tester/repo' });
 
         expect(workspaceExecution.translatePathForHostFilesystem).toHaveBeenCalledWith(
             '/home/tester/repo',
@@ -178,7 +177,7 @@ describe('createSdkClient', () => {
                 linuxWorkingDirectory: '/home/tester/repo',
             }),
         );
-        expect(capturedOptions[0].cwd).toBe(String.raw`\\wsl$\Ubuntu\home\tester\repo`);
+        expect(capturedOptions[0].workingDirectory).toBe(String.raw`\\wsl$\Ubuntu\home\tester\repo`);
         expect(trustedFolder.ensureFolderTrusted).toHaveBeenCalledWith(String.raw`\\wsl$\Ubuntu\home\tester\repo`);
         expect(fs.existsSync).toHaveBeenCalledWith(String.raw`\\wsl$\Ubuntu\home\tester\repo`);
     });

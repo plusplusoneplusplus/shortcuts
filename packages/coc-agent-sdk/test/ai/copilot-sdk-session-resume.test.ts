@@ -218,7 +218,7 @@ describe('CopilotSDKService - Session Resume', () => {
         const streamingSession = {
             sessionId: 'stream-resumed-sess',
             sendAndWait: vi.fn(),
-            destroy: vi.fn().mockResolvedValue(undefined),
+            disconnect: vi.fn().mockResolvedValue(undefined),
             on: vi.fn().mockImplementation((handler: (event: any) => void) => {
                 streamingHandlers.push(handler);
                 return () => {};

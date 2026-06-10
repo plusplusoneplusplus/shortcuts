@@ -10,14 +10,24 @@ import {
     PermissionHandler
 } from '@plusplusoneplusplus/forge';
 
+/**
+ * Build a minimal synthetic PermissionRequest. The SDK's PermissionRequest is
+ * a union of kind-specific shapes with required tool-specific payload fields;
+ * the handlers under test only read `kind` (and optionally `toolCallId`), so
+ * tests cast minimal objects instead of fabricating full SDK payloads.
+ */
+function makeRequest(kind: PermissionRequest['kind'], extra?: { toolCallId?: string }): PermissionRequest {
+    return { kind, ...extra } as PermissionRequest;
+}
+
 suite('Permission Handler Tests', () => {
     test('approveAllPermissions should approve all request types', async () => {
         const requests: PermissionRequest[] = [
-            { kind: 'read' },
-            { kind: 'write' },
-            { kind: 'shell' },
-            { kind: 'mcp' },
-            { kind: 'url' }
+            makeRequest('read'),
+            makeRequest('write'),
+            makeRequest('shell'),
+            makeRequest('mcp'),
+            makeRequest('url')
         ];
 
         for (const request of requests) {
@@ -28,11 +38,11 @@ suite('Permission Handler Tests', () => {
 
     test('denyAllPermissions should deny all request types', async () => {
         const requests: PermissionRequest[] = [
-            { kind: 'read' },
-            { kind: 'write' },
-            { kind: 'shell' },
-            { kind: 'mcp' },
-            { kind: 'url' }
+            makeRequest('read'),
+            makeRequest('write'),
+            makeRequest('shell'),
+            makeRequest('mcp'),
+            makeRequest('url')
         ];
 
         for (const request of requests) {
@@ -50,8 +60,8 @@ suite('Permission Handler Tests', () => {
             return { kind: 'reject' };
         };
 
-        const readRequest: PermissionRequest = { kind: 'read' };
-        const writeRequest: PermissionRequest = { kind: 'write' };
+        const readRequest: PermissionRequest = makeRequest('read');
+        const writeRequest: PermissionRequest = makeRequest('write');
 
         const readResult = await Promise.resolve(selectiveHandler(readRequest, { sessionId: 'test' }));
         const writeResult = await Promise.resolve(selectiveHandler(writeRequest, { sessionId: 'test' }));
@@ -67,7 +77,7 @@ suite('Permission Handler Tests', () => {
             return { kind: 'approve-once' };
         };
 
-        const request: PermissionRequest = { kind: 'shell' };
+        const request: PermissionRequest = makeRequest('shell');
         const result = await asyncHandler(request, { sessionId: 'test' });
 
         assert.strictEqual(result.kind, 'approve-once');
@@ -79,15 +89,12 @@ suite('Permission Handler Tests', () => {
             return { kind: 'approve-once' };
         };
 
-        const request: PermissionRequest = { kind: 'read' };
+        const request: PermissionRequest = makeRequest('read');
         handler(request, { sessionId: 'my-session-123' });
     });
 
     test('Permission request can include toolCallId metadata', () => {
-        const request: PermissionRequest = {
-            kind: 'write',
-            toolCallId: 'tool-123',
-        };
+        const request: PermissionRequest = makeRequest('write', { toolCallId: 'tool-123' });
 
         // Handler can access all fields
         const handler: PermissionHandler = (req) => {

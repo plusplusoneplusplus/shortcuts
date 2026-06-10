@@ -13,11 +13,11 @@ setLogger(nullLogger);
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-function makeSession(id: string, destroyError?: Error): IAbortableSession {
+function makeSession(id: string, disconnectError?: Error): IAbortableSession {
     return {
         sessionId: id,
-        destroy: destroyError
-            ? vi.fn().mockRejectedValue(destroyError)
+        disconnect: disconnectError
+            ? vi.fn().mockRejectedValue(disconnectError)
             : vi.fn().mockResolvedValue(undefined),
     };
 }
@@ -83,18 +83,18 @@ describe('SessionManager', () => {
         expect(result).toBe(false);
     });
 
-    it('abort destroys the session and untracks it', async () => {
+    it('abort disconnects the session and untracks it', async () => {
         const s = makeSession('s2');
         manager.track(s);
         const result = await manager.abort('s2');
         expect(result).toBe(true);
-        expect(s.destroy).toHaveBeenCalledOnce();
+        expect(s.disconnect).toHaveBeenCalledOnce();
         expect(manager.has('s2')).toBe(false);
         expect(manager.count()).toBe(0);
     });
 
-    it('abort returns false and untracks when destroy throws', async () => {
-        const s = makeSession('err', new Error('destroy failed'));
+    it('abort returns false and untracks when disconnect throws', async () => {
+        const s = makeSession('err', new Error('disconnect failed'));
         manager.track(s);
         const result = await manager.abort('err');
         expect(result).toBe(false);
@@ -111,14 +111,14 @@ describe('SessionManager', () => {
 
     // ── abortAll ──────────────────────────────────────────────────────────────
 
-    it('abortAll destroys all sessions and clears the map', async () => {
+    it('abortAll disconnects all sessions and clears the map', async () => {
         const sessions = ['a', 'b', 'c'].map(id => makeSession(id));
         sessions.forEach(s => manager.track(s));
 
         await manager.abortAll();
 
         for (const s of sessions) {
-            expect(s.destroy).toHaveBeenCalledOnce();
+            expect(s.disconnect).toHaveBeenCalledOnce();
         }
         expect(manager.count()).toBe(0);
     });
@@ -128,28 +128,28 @@ describe('SessionManager', () => {
         expect(manager.count()).toBe(0);
     });
 
-    it('abortAll completes even when some sessions throw on destroy', async () => {
+    it('abortAll completes even when some sessions throw on disconnect', async () => {
         manager.track(makeSession('ok'));
         manager.track(makeSession('bad', new Error('boom')));
         await expect(manager.abortAll()).resolves.not.toThrow();
         expect(manager.count()).toBe(0);
     });
 
-    it('abortAll calls destroy on every session even when one throws', async () => {
+    it('abortAll calls disconnect on every session even when one throws', async () => {
         const good = makeSession('good');
-        const bad = makeSession('bad', new Error('destroy failed'));
+        const bad = makeSession('bad', new Error('disconnect failed'));
         manager.track(bad);
         manager.track(good);
         await manager.abortAll();
-        expect(good.destroy).toHaveBeenCalledOnce();
-        expect(bad.destroy).toHaveBeenCalledOnce();
+        expect(good.disconnect).toHaveBeenCalledOnce();
+        expect(bad.disconnect).toHaveBeenCalledOnce();
     });
 
-    it('abortAll initiates all destroys concurrently via allSettled', async () => {
+    it('abortAll initiates all disconnects concurrently via allSettled', async () => {
         const order: string[] = [];
         const slow = {
             sessionId: 'slow',
-            destroy: vi.fn(async () => {
+            disconnect: vi.fn(async () => {
                 order.push('slow-start');
                 await new Promise(r => setTimeout(r, 20));
                 order.push('slow-end');
@@ -157,7 +157,7 @@ describe('SessionManager', () => {
         };
         const fast = {
             sessionId: 'fast',
-            destroy: vi.fn(async () => {
+            disconnect: vi.fn(async () => {
                 order.push('fast-start');
                 order.push('fast-end');
             }),
@@ -194,7 +194,7 @@ describe('SessionManager', () => {
         manager.track(s);
         expect(await manager.abort('once')).toBe(true);
         expect(await manager.abort('once')).toBe(false);
-        expect(s.destroy).toHaveBeenCalledOnce();
+        expect(s.disconnect).toHaveBeenCalledOnce();
     });
 
     // ── untrack after abort ──────────────────────────────────────────────────
@@ -232,45 +232,45 @@ describe('SessionManager', () => {
         const abortFn = vi.fn().mockResolvedValue(undefined);
         const s = {
             sessionId: 'soft1',
-            destroy: vi.fn().mockResolvedValue(undefined),
+            disconnect: vi.fn().mockResolvedValue(undefined),
             abort: abortFn,
         };
         manager.track(s);
         const result = await manager.softAbort('soft1');
         expect(result).toBe(true);
         expect(abortFn).toHaveBeenCalledOnce();
-        // Does NOT call destroy — request-runner finally block handles that
-        expect(s.destroy).not.toHaveBeenCalled();
+        // Does NOT call disconnect — request-runner finally block handles that
+        expect(s.disconnect).not.toHaveBeenCalled();
         // Does NOT untrack — request-runner finally block handles that
         expect(manager.has('soft1')).toBe(true);
     });
 
-    it('softAbort falls back to destroy when abort() is not available', async () => {
+    it('softAbort falls back to disconnect when abort() is not available', async () => {
         const s = makeSession('no-abort');
         manager.track(s);
         const result = await manager.softAbort('no-abort');
         expect(result).toBe(true);
-        expect(s.destroy).toHaveBeenCalledOnce();
+        expect(s.disconnect).toHaveBeenCalledOnce();
         expect(manager.has('no-abort')).toBe(false);
     });
 
-    it('softAbort falls back to destroy when abort() throws', async () => {
+    it('softAbort falls back to disconnect when abort() throws', async () => {
         const s = {
             sessionId: 'bad-abort',
-            destroy: vi.fn().mockResolvedValue(undefined),
+            disconnect: vi.fn().mockResolvedValue(undefined),
             abort: vi.fn().mockRejectedValue(new Error('abort failed')),
         };
         manager.track(s);
         const result = await manager.softAbort('bad-abort');
         expect(result).toBe(false);
-        expect(s.destroy).toHaveBeenCalledOnce();
+        expect(s.disconnect).toHaveBeenCalledOnce();
         expect(manager.has('bad-abort')).toBe(false);
     });
 
-    it('softAbort handles both abort() and destroy() failing', async () => {
+    it('softAbort handles both abort() and disconnect() failing', async () => {
         const s = {
             sessionId: 'double-fail',
-            destroy: vi.fn().mockRejectedValue(new Error('destroy failed')),
+            disconnect: vi.fn().mockRejectedValue(new Error('disconnect failed')),
             abort: vi.fn().mockRejectedValue(new Error('abort failed')),
         };
         manager.track(s);
@@ -279,22 +279,22 @@ describe('SessionManager', () => {
         expect(manager.has('double-fail')).toBe(false);
     });
 
-    // ── stale session (destroy already resolved) ─────────────────────────────
+    // ── stale session (disconnect already resolved) ─────────────────────────────
 
-    it('abortAll handles a session whose destroy was already resolved gracefully', async () => {
-        // Simulate a "stale" session whose destroy resolves immediately
+    it('abortAll handles a session whose disconnect was already resolved gracefully', async () => {
+        // Simulate a "stale" session whose disconnect resolves immediately
         const stale = makeSession('stale');
         const fresh = makeSession('fresh');
         manager.track(stale);
         manager.track(fresh);
 
-        // Manually call destroy to simulate staleness (session already done)
-        await stale.destroy();
+        // Manually call disconnect to simulate staleness (session already done)
+        await stale.disconnect();
 
         await expect(manager.abortAll()).resolves.not.toThrow();
-        // destroy called twice on stale (once manually, once by abortAll)
-        expect(stale.destroy).toHaveBeenCalledTimes(2);
-        expect(fresh.destroy).toHaveBeenCalledOnce();
+        // disconnect called twice on stale (once manually, once by abortAll)
+        expect(stale.disconnect).toHaveBeenCalledTimes(2);
+        expect(fresh.disconnect).toHaveBeenCalledOnce();
         expect(manager.count()).toBe(0);
     });
 
@@ -313,7 +313,7 @@ describe('SessionManager', () => {
     it('getSession returns the session when it has a send() method', () => {
         const s = {
             sessionId: 'streamable',
-            destroy: vi.fn().mockResolvedValue(undefined),
+            disconnect: vi.fn().mockResolvedValue(undefined),
             send: vi.fn().mockResolvedValue(undefined),
         };
         manager.track(s);
