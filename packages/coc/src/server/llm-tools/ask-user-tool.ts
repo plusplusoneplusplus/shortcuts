@@ -47,6 +47,7 @@ export interface AskUserRalphGrillSource {
     roleLabel: string;
     provider?: string;
     model?: string;
+    effortTier?: string;
     provenanceLabel: string;
 }
 

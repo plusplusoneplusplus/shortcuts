@@ -1710,6 +1710,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             onRalphGrillSetupChange={setRalphGrillSetup}
                             ralphGrillDefaultProvider={sessionProvider}
                             ralphGrillDefaultModel={chatEffectiveModelId}
+                            ralphGrillDefaultReasoningEffort={effectiveFollowUpEffort}
+                            ralphGrillDefaultEffortTier={selectedFollowUpEffortTier}
+                            ralphGrillEffortLevelsEnabled={isEffortLevelsEnabled()}
+                            ralphGrillComposerUsesEffortTierMode={useFollowUpEffortTierMode}
                         />
                     )}
                 </div>
@@ -1835,6 +1839,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     onRalphGrillSetupChange={setRalphGrillSetup}
                     ralphGrillDefaultProvider={sessionProvider}
                     ralphGrillDefaultModel={chatEffectiveModelId}
+                    ralphGrillDefaultReasoningEffort={effectiveFollowUpEffort}
+                    ralphGrillDefaultEffortTier={selectedFollowUpEffortTier}
+                    ralphGrillEffortLevelsEnabled={isEffortLevelsEnabled()}
+                    ralphGrillComposerUsesEffortTierMode={useFollowUpEffortTierMode}
                 />
             )}
             {isMobileScratchpad && (

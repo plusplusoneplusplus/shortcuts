@@ -19,6 +19,8 @@ export const RALPH_GRILL_AGENT_ROLES = [
 export type RalphGrillAgentRole = typeof RALPH_GRILL_AGENT_ROLES[number];
 
 export type RalphGrillAgentProvider = 'copilot' | 'codex' | 'claude';
+export const RALPH_GRILL_EFFORT_TIERS = ['very-low', 'low', 'medium', 'high'] as const;
+export type RalphGrillEffortTier = typeof RALPH_GRILL_EFFORT_TIERS[number];
 
 export interface RalphGrillAgentDefinition {
     role: RalphGrillAgentRole;
@@ -30,6 +32,8 @@ export interface RalphGrillAgentModelSelection {
     role: RalphGrillAgentRole;
     provider?: RalphGrillAgentProvider;
     model?: string;
+    reasoningEffort?: ReasoningEffort;
+    effortTier?: RalphGrillEffortTier;
 }
 
 export interface RalphGrillSetup {
@@ -41,6 +45,8 @@ export interface RalphGrillSetup {
 export interface ResolvedRalphGrillAgent extends RalphGrillAgentDefinition {
     provider?: RalphGrillAgentProvider;
     model?: string;
+    reasoningEffort?: ReasoningEffort;
+    effortTier?: RalphGrillEffortTier;
     provenanceLabel: string;
 }
 
@@ -63,6 +69,7 @@ export interface RalphGrillQuestionSource {
     roleLabel: string;
     provider?: RalphGrillAgentProvider;
     model?: string;
+    effortTier?: RalphGrillEffortTier;
     provenanceLabel: string;
 }
 
@@ -317,6 +324,8 @@ const DEPTH_AGENT_ROLES: Record<RalphGrillDepth, readonly RalphGrillAgentRole[]>
 };
 
 const PROVIDERS = new Set<RalphGrillAgentProvider>(['copilot', 'codex', 'claude']);
+const EFFORT_TIERS = new Set<RalphGrillEffortTier>(RALPH_GRILL_EFFORT_TIERS);
+const REASONING_EFFORTS = new Set<ReasoningEffort>(['low', 'medium', 'high', 'xhigh']);
 
 export function normalizeRalphGrillDepth(depth: unknown): RalphGrillDepth {
     return typeof depth === 'string' && (RALPH_GRILL_DEPTHS as readonly string[]).includes(depth)
@@ -333,13 +342,29 @@ export function formatRalphGrillProvenance(input: {
     roleLabel: string;
     provider?: string;
     model?: string;
+    effortTier?: string;
 }): string {
     const provider = input.provider?.trim();
+    const effortTier = input.effortTier?.trim();
     const model = input.model?.trim();
+    if (provider && effortTier) return `${input.roleLabel} · ${provider}/${effortTier}`;
+    if (effortTier) return `${input.roleLabel} · provider unavailable/${effortTier}`;
     if (provider && model) return `${input.roleLabel} · ${provider}/${model}`;
     if (provider) return `${input.roleLabel} · ${provider}/model unavailable`;
     if (model) return `${input.roleLabel} · provider unavailable/${model}`;
     return `${input.roleLabel} · model unavailable`;
+}
+
+function normalizeRalphGrillEffortTier(value: unknown): RalphGrillEffortTier | undefined {
+    return typeof value === 'string' && EFFORT_TIERS.has(value as RalphGrillEffortTier)
+        ? value as RalphGrillEffortTier
+        : undefined;
+}
+
+function normalizeReasoningEffort(value: unknown): ReasoningEffort | undefined {
+    return typeof value === 'string' && REASONING_EFFORTS.has(value as ReasoningEffort)
+        ? value as ReasoningEffort
+        : undefined;
 }
 
 export function resolveRalphGrillSetup(input?: RalphGrillSetup | null): ResolvedRalphGrillSetup {
@@ -356,14 +381,19 @@ export function resolveRalphGrillSetup(input?: RalphGrillSetup | null): Resolved
             ? selected.provider
             : undefined;
         const model = selected?.model?.trim() || undefined;
+        const reasoningEffort = normalizeReasoningEffort(selected?.reasoningEffort);
+        const effortTier = normalizeRalphGrillEffortTier(selected?.effortTier);
         return {
             ...definition,
             ...(provider ? { provider } : {}),
             ...(model ? { model } : {}),
+            ...(reasoningEffort ? { reasoningEffort } : {}),
+            ...(effortTier ? { effortTier } : {}),
             provenanceLabel: formatRalphGrillProvenance({
                 roleLabel: definition.label,
                 provider,
                 model,
+                effortTier,
             }),
         };
     });
@@ -428,6 +458,8 @@ export function normalizeRalphGrillSetupForContext(input: unknown): RalphGrillSe
             role: agent.role,
             ...(agent.provider ? { provider: agent.provider } : {}),
             ...(agent.model ? { model: agent.model } : {}),
+            ...(agent.reasoningEffort ? { reasoningEffort: agent.reasoningEffort } : {}),
+            ...(agent.effortTier ? { effortTier: agent.effortTier } : {}),
         })),
     };
 }
@@ -458,10 +490,10 @@ Consolidation:
 - Merge exact and semantic duplicates, preserving combined provenance.
 - Convert conflicting candidate questions into one decision question with clear options.
 - Ask the user through one consolidated ask_user batch grouped by lightweight agent role chips or sections; never create one form or chat thread per agent.
-- Do not embed the provenance label in the visible question text; CoC automatically renders a provenance chip ("Role Agent · provider/model", with fallback copy when the concrete model is unavailable) beneath each question from attached metadata.
+- Do not embed the provenance label in the visible question text; CoC automatically renders a provenance chip ("Role Agent · provider/tier" when a tier applies, otherwise "Role Agent · provider/model" with fallback copy when the concrete model is unavailable) beneath each question from attached metadata.
 
 Final goal synthesis:
-- Include the selected depth, models used per agent, coverage summary, dedupe/conflict outcomes, constraints, out-of-scope items, references to load, and Definition of Done details for every acceptance criterion.
+- Include the selected depth, provider/tier or provider/model used per agent, coverage summary, dedupe/conflict outcomes, constraints, out-of-scope items, references to load, and Definition of Done details for every acceptance criterion.
 - Do not carry duplicate user-facing questions forward as separate open issues.`;
 }
 
@@ -477,6 +509,7 @@ function sourceFor(agent: ResolvedRalphGrillAgent): RalphGrillQuestionSource {
         roleLabel: agent.label,
         ...(agent.provider ? { provider: agent.provider } : {}),
         ...(agent.model ? { model: agent.model } : {}),
+        ...(agent.effortTier ? { effortTier: agent.effortTier } : {}),
         provenanceLabel: agent.provenanceLabel,
     };
 }
@@ -606,6 +639,7 @@ function sourceKey(source: RalphGrillQuestionSource): string {
         source.role,
         source.provider ?? '',
         source.model ?? '',
+        source.effortTier ?? '',
         source.provenanceLabel,
     ].join('\u0000');
 }
@@ -926,8 +960,8 @@ export function consolidateRalphGrillCandidateQuestions(
 }
 
 export function buildRalphGrillAgentPrompt(ctx: RalphGrillQuestionPlanningContext, agent: ResolvedRalphGrillAgent): string {
-    const providerModel = agent.provider || agent.model
-        ? `\nProvider/model provenance for this run: ${agent.provenanceLabel}`
+    const providerModel = agent.provider || agent.model || agent.effortTier
+        ? `\nProvider/tier or provider/model provenance for this run: ${agent.provenanceLabel}`
         : '';
     return `\
 Selected Ralph grilling depth: ${normalizeRalphGrillDepth(ctx.setup?.depth)}
@@ -944,9 +978,10 @@ function resolveAgentForExecution(
     agent: ResolvedRalphGrillAgent,
     ctx: RalphGrillQuestionPlanningContext,
     options: RalphGrillQuestionPlannerOptions,
-): { agent: ResolvedRalphGrillAgent; provider?: ChatProvider; model?: string; warnings: string[] } {
+): { agent: ResolvedRalphGrillAgent; provider?: ChatProvider; model?: string; reasoningEffort?: ReasoningEffort; warnings: string[] } {
     const provider = agent.provider ?? ctx.defaultProvider;
     const requestedModel = agent.model ?? ctx.defaultModel;
+    const reasoningEffort = agent.reasoningEffort ?? ctx.reasoningEffort;
     const warnings: string[] = [];
     let model = requestedModel;
 
@@ -962,13 +997,15 @@ function resolveAgentForExecution(
         ...agent,
         ...(provider ? { provider } : {}),
         ...(model ? { model } : {}),
+        ...(reasoningEffort ? { reasoningEffort } : {}),
         provenanceLabel: formatRalphGrillProvenance({
             roleLabel: agent.label,
             provider,
             model,
+            effortTier: agent.effortTier,
         }),
     };
-    return { agent: resolvedAgent, provider, model, warnings };
+    return { agent: resolvedAgent, provider, model, reasoningEffort, warnings };
 }
 
 async function runSingleRalphGrillAgent(
@@ -976,7 +1013,7 @@ async function runSingleRalphGrillAgent(
     ctx: RalphGrillQuestionPlanningContext,
     baseAgent: ResolvedRalphGrillAgent,
 ): Promise<RalphGrillAgentRunResult> {
-    const { agent, provider, model, warnings } = resolveAgentForExecution(baseAgent, ctx, options);
+    const { agent, provider, model, reasoningEffort, warnings } = resolveAgentForExecution(baseAgent, ctx, options);
     try {
         const aiService = provider && options.resolveAiServiceForProvider
             ? options.resolveAiServiceForProvider(provider)
@@ -997,7 +1034,7 @@ async function runSingleRalphGrillAgent(
         const result = await aiService.sendMessage({
             prompt: buildRalphGrillAgentPrompt(ctx, agent),
             ...(model ? { model } : {}),
-            ...(ctx.reasoningEffort ? { reasoningEffort: ctx.reasoningEffort } : {}),
+            ...(reasoningEffort ? { reasoningEffort } : {}),
             workingDirectory: ctx.workingDirectory,
             timeoutMs: Math.min(ctx.timeoutMs ?? GRILL_AGENT_TIMEOUT_MS, GRILL_AGENT_TIMEOUT_MS),
             loadDefaultMcpConfig: false,
@@ -1025,6 +1062,7 @@ async function runSingleRalphGrillAgent(
                     roleLabel: agent.label,
                     provider: agent.provider,
                     model: result.effectiveModel,
+                    effortTier: agent.effortTier,
                 }),
             }
             : agent;
@@ -1156,7 +1194,7 @@ Ask only the selected questions above in one consolidated ask_user batch, groupe
 Final goal coverage summary requirement:
 When the user's answers are complete and you emit or save the final \`## Goal\` spec, include a \`## Agent Coverage Summary\` section using this exact planning data. Do not invent additional agent runs.
 - [decision] Depth: ${plan.depth}
-- [decision] Models used per agent:
+- [decision] Provider/tier or provider/model used per agent:
 ${coverageAgentLines}
 - [decision] Dedupe/conflict outcomes: ${dedupeSummary}
 - [decision] Warnings / reduced coverage: ${warningsSummary}

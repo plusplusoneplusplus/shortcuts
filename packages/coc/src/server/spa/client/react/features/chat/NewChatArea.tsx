@@ -1201,6 +1201,13 @@ export function InitialChatComposer({
                         onChange={setRalphGrillSetup}
                         defaultProvider={selectedProviderForClientHooks}
                         defaultModel={validModelOverride ?? defaultModelId}
+                        defaultReasoningEffort={(useEffortTierMode
+                            ? resolveEffortTier(selectedEffortTier, effortTierMap)?.reasoningEffort
+                            : effortOverride) ?? undefined}
+                        defaultEffortTier={selectedEffortTier}
+                        effortLevelsEnabled={isEffortLevelsEnabled()}
+                        composerUsesEffortTierMode={useEffortTierMode}
+                        workspaceId={workspaceId}
                         disabled={sending}
                         testIdPrefix={`${testIdPrefix}-ralph-grill`}
                     />

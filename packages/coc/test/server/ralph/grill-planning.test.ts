@@ -83,22 +83,24 @@ describe('Ralph grill planning', () => {
             enabled: true,
             depth: 'light',
             agents: [
-                { role: 'product', provider: 'copilot', model: 'gpt-5.5' },
-                { role: 'ux', provider: 'claude', model: 'claude-sonnet-4.6' },
+                { role: 'product', provider: 'copilot', model: 'gpt-5.5', reasoningEffort: 'high', effortTier: 'medium' },
+                { role: 'ux', provider: 'claude', model: 'claude-sonnet-4.6', reasoningEffort: 'xhigh' },
                 { role: 'quality-test', provider: 'codex', model: 'gpt-5.3-codex' },
             ],
         });
 
         expect(setup.enabled).toBe(true);
         expect(setup.depth).toBe('light');
-        expect(setup.agents.map(agent => [agent.role, agent.provider, agent.model, agent.provenanceLabel])).toEqual([
-            ['product', 'copilot', 'gpt-5.5', 'Product Agent · copilot/gpt-5.5'],
-            ['ux', 'claude', 'claude-sonnet-4.6', 'UX Agent · claude/claude-sonnet-4.6'],
-            ['architecture-system', undefined, undefined, 'Architecture/System Agent · model unavailable'],
+        expect(setup.agents.map(agent => [agent.role, agent.provider, agent.model, agent.reasoningEffort, agent.effortTier, agent.provenanceLabel])).toEqual([
+            ['product', 'copilot', 'gpt-5.5', 'high', 'medium', 'Product Agent · copilot/medium'],
+            ['ux', 'claude', 'claude-sonnet-4.6', 'xhigh', undefined, 'UX Agent · claude/claude-sonnet-4.6'],
+            ['architecture-system', undefined, undefined, undefined, undefined, 'Architecture/System Agent · model unavailable'],
         ]);
     });
 
     it('formats fallback provenance when concrete provider or model is unavailable', () => {
+        expect(formatRalphGrillProvenance({ roleLabel: 'UX Agent', provider: 'claude', model: 'claude-opus-4.7', effortTier: 'high' }))
+            .toBe('UX Agent · claude/high');
         expect(formatRalphGrillProvenance({ roleLabel: 'UX Agent', provider: 'copilot' }))
             .toBe('UX Agent · copilot/model unavailable');
         expect(formatRalphGrillProvenance({ roleLabel: 'UX Agent', model: 'gpt-5.5' }))
@@ -140,9 +142,9 @@ describe('Ralph grill planning', () => {
             enabled: true,
             depth: 'deep',
             agents: [
-                { role: 'product', provider: 'copilot', model: 'gpt-5.5' },
-                { role: 'ux', provider: 'bad-provider', model: '  claude-sonnet-4.6  ' },
-                { role: 'not-a-role', provider: 'codex', model: 'ignored' },
+                { role: 'product', provider: 'copilot', model: 'gpt-5.5', reasoningEffort: 'high', effortTier: 'medium' },
+                { role: 'ux', provider: 'bad-provider', model: '  claude-sonnet-4.6  ', reasoningEffort: 'bad-effort', effortTier: 'bad-tier' },
+                { role: 'not-a-role', provider: 'codex', model: 'ignored', effortTier: 'high' },
             ],
         });
 
@@ -150,7 +152,7 @@ describe('Ralph grill planning', () => {
             enabled: true,
             depth: 'deep',
             agents: expect.arrayContaining([
-                { role: 'product', provider: 'copilot', model: 'gpt-5.5' },
+                { role: 'product', provider: 'copilot', model: 'gpt-5.5', reasoningEffort: 'high', effortTier: 'medium' },
                 { role: 'ux', model: 'claude-sonnet-4.6' },
             ]),
         });
@@ -314,12 +316,13 @@ describe('Ralph grill planning', () => {
                     enabled: true,
                     depth: 'light',
                     agents: [
-                        { role: 'product', provider: 'copilot', model: 'gpt-5.5' },
-                        { role: 'ux', provider: 'claude', model: 'claude-sonnet-4.6' },
+                        { role: 'product', provider: 'copilot', model: 'gpt-5.5', reasoningEffort: 'low' },
+                        { role: 'ux', provider: 'claude', model: 'claude-sonnet-4.6', reasoningEffort: 'xhigh' },
                     ],
                 },
                 prompt: 'Design the new Ralph grilling experience',
                 defaultProvider: 'copilot',
+                reasoningEffort: 'medium',
                 workingDirectory: '/repo',
             },
         );
@@ -330,9 +333,17 @@ describe('Ralph grill planning', () => {
         expect(claudeService.sendMessage).toHaveBeenCalledTimes(1);
         expect(copilotService.sendMessage.mock.calls[0][0]).toMatchObject({
             model: 'gpt-5.5',
+            reasoningEffort: 'low',
             workingDirectory: '/repo',
             loadDefaultMcpConfig: false,
             systemMessage: expect.objectContaining({ mode: 'replace' }),
+        });
+        expect(claudeService.sendMessage.mock.calls[0][0]).toMatchObject({
+            model: 'claude-sonnet-4.6',
+            reasoningEffort: 'xhigh',
+        });
+        expect(copilotService.sendMessage.mock.calls[1][0]).toMatchObject({
+            reasoningEffort: 'medium',
         });
         expect(plan.agentResults.map(result => [result.agent.role, result.status])).toEqual([
             ['product', 'completed'],
@@ -358,7 +369,7 @@ describe('Ralph grill planning', () => {
         expect(promptBlock).toContain('Final goal coverage summary requirement');
         expect(promptBlock).toContain('`## Agent Coverage Summary`');
         expect(promptBlock).toContain('[decision] Depth: light');
-        expect(promptBlock).toContain('[decision] Models used per agent:');
+        expect(promptBlock).toContain('[decision] Provider/tier or provider/model used per agent:');
         expect(promptBlock).toContain('  - Product Agent · copilot/gpt-5.5: completed, 1 candidate question.');
         expect(promptBlock).toContain('  - UX Agent · claude/claude-sonnet-4.6: failed, 0 candidate questions.');
         expect(promptBlock).toContain('[decision] Dedupe/conflict outcomes: raw 2 -> selected 2; exact duplicates 0; semantic duplicates 0; conflicts converted 0; duplicate-only agents none');

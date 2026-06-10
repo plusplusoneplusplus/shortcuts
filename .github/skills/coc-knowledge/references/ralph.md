@@ -195,40 +195,49 @@ Admin -> Configure -> Features and enables multi-agent grilling only when the
 task context also carries `context.ralph.grill.enabled=true`. The SPA exposes a
 "Question planning setup" card on New Chat Ralph grilling and promoted ask-mode
 Ralph sessions while the flag is enabled; the card lets users choose Light,
-Standard (default), or Deep depth and assign provider/model selections per grill
-agent role before the consolidated question round starts. Promotion requests
-accept an optional `grill` payload, sanitize it on the server, and mirror it into
-`metadata.ralph.grill` plus the queued synthesis task context. The planning
-helpers live in `packages/coc/src/server/ralph/grill-planning.ts`; they define
-the depth role sets, per-agent provider/model selection shape, provenance labels
-(`Role Agent · provider/model` with unavailable-model fallbacks), context
-normalization, strict JSON candidate-question parsing, and the preflight runner
-that invokes one isolated SDK request per selected grill agent before the main
-grilling turn. Failed, unavailable, or empty agents produce warnings and do not
-block the main consolidated grilling turn. The planner consolidates candidate
-questions before the main turn: exact duplicates and conservative semantic
-duplicates merge with combined provenance, recognized conflicts become one
-select-style decision question, duplicate-only agent contributions are reported
-as compact warnings, and the selected question set plus consolidation summary
-are appended to the main user prompt. While those isolated agents run, the
-executor emits transient `ralph-grill-planning` SSE progress so the SPA can show
-an immediate "Question planning" status card; no raw candidate-question state is
-persisted for that interim UI. When the model emits the consolidated `ask_user`
-batch, the executor enriches the persisted/SSE question payloads with the
-preflight planning summary, per-question provenance, and consolidation metadata.
-`AskUserInline` renders that metadata as a compact "Question planning" card,
-grouped role sections, provenance chips, and reduced-coverage warnings while
-preserving the normal single-form answer/skip/defer submission flow. Because the
-provenance chip is rendered from attached metadata, the grilling prompt instructs
-the model not to embed the provenance label in the visible question text; it is
-kept only in the final `## Agent Coverage Summary`. The
-main grilling prompt carries an explicit final-goal contract requiring a
-`## Agent Coverage Summary` section with the selected depth, models used per
-agent, warnings/reduced-coverage notes, and dedupe/conflict outcomes, plus the
-normal autonomy-ready AC/Definition-of-Done, constraints, out-of-scope, and
-references sections. When the flag is off or the context lacks an enabled grill
-setup, existing single-agent grilling prompts and plain `ask_user` rendering
-remain unchanged.
+Standard (default), or Deep depth. When effort levels are enabled, each role
+inherits the composer's concrete provider and selected effort tier by default,
+with optional per-role provider plus effort-tier overrides. The panel resolves
+each role's provider/tier client-side to concrete `model`, `reasoningEffort`,
+and `effortTier` fields; providers without tier mode use that provider's own
+default model and reasoning-effort preference. When effort levels are disabled,
+the card shows depth only and all roles inherit the composer AI settings.
+Promotion requests accept an optional `grill` payload, sanitize it on the
+server, and mirror it into `metadata.ralph.grill` plus the queued synthesis task
+context. The planning helpers live in
+`packages/coc/src/server/ralph/grill-planning.ts`; they define the depth role
+sets, per-agent provider/tier selection shape, provenance labels (`Role Agent ·
+provider/tier` when a tier applies, falling back to `Role Agent ·
+provider/model`), context normalization, strict JSON candidate-question parsing,
+and the preflight runner that invokes one isolated SDK request per selected
+grill agent before the main grilling turn. Each isolated agent uses its own
+resolved model and reasoning effort, falling back to the enclosing task defaults
+only when the agent does not specify them. Failed, unavailable, or empty agents
+produce warnings and do not block the main consolidated grilling turn. The
+planner consolidates candidate questions before the main turn: exact duplicates
+and conservative semantic duplicates merge with combined provenance, recognized
+conflicts become one select-style decision question, duplicate-only agent
+contributions are reported as compact warnings, and the selected question set
+plus consolidation summary are appended to the main user prompt. While those
+isolated agents run, the executor emits transient `ralph-grill-planning` SSE
+progress so the SPA can show an immediate "Question planning" status card; no
+raw candidate-question state is persisted for that interim UI. When the model
+emits the consolidated `ask_user` batch, the executor enriches the persisted/SSE
+question payloads with the preflight planning summary, per-question provenance,
+and consolidation metadata. `AskUserInline` renders that metadata as a compact
+"Question planning" card, grouped role sections, provenance chips, and
+reduced-coverage warnings while preserving the normal single-form
+answer/skip/defer submission flow. Because the provenance chip is rendered from
+attached metadata, the grilling prompt instructs the model not to embed the
+provenance label in the visible question text; it is kept only in the final
+`## Agent Coverage Summary`. The main grilling prompt carries an explicit
+final-goal contract requiring a `## Agent Coverage Summary` section with the
+selected depth, provider/tier or provider/model used per agent,
+warnings/reduced-coverage notes, and dedupe/conflict outcomes, plus the normal
+autonomy-ready AC/Definition-of-Done, constraints, out-of-scope, and references
+sections. When the flag is off or the context lacks an enabled grill setup,
+existing single-agent grilling prompts and plain `ask_user` rendering remain
+unchanged.
 
 Work Item Goal grilling passes `context.workItemGoalGrilling`, which makes
 `buildRalphGrillSuffix(...)` omit the Notes goal-file directive and tell the

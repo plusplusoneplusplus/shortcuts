@@ -135,11 +135,14 @@ export type RalphGrillAgentRole =
   | 'deduplication'
   | 'provenance';
 export type RalphGrillAgentProvider = 'copilot' | 'codex' | 'claude';
+export type RalphGrillEffortTier = 'very-low' | 'low' | 'medium' | 'high';
 
 export interface RalphGrillAgentModelSelection {
   role: RalphGrillAgentRole;
   provider?: RalphGrillAgentProvider;
   model?: string;
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+  effortTier?: RalphGrillEffortTier;
 }
 
 export interface RalphGrillSetup {
