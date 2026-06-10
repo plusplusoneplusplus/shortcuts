@@ -125,6 +125,10 @@ describe('Ralph grill planning', () => {
         expect(directive).toContain('Semantically deduplicate candidate questions');
         expect(directive).toContain('one consolidated ask_user batch');
         expect(directive).toContain('Do not carry duplicate user-facing questions forward');
+        // Provenance must not be embedded in visible question copy (it is rendered as a chip from metadata).
+        expect(directive).toContain('Do not embed the provenance label in the visible question text');
+        expect(directive).toContain('renders a provenance chip');
+        expect(directive).not.toContain('Every visible question must show provenance');
     });
 
     it('omits the directive when the setup is not enabled', () => {
@@ -361,6 +365,10 @@ describe('Ralph grill planning', () => {
         expect(promptBlock).toContain('[decision] Warnings / reduced coverage: UX Agent failed: rate limit');
         expect(promptBlock).toContain('include functional acceptance criteria with Definition of Done details');
         expect(promptBlock).toContain('no duplicate user-facing questions as separate open issues');
+        // Provenance is rendered as a chip from metadata, so it must not be duplicated in the visible question text.
+        expect(promptBlock).toContain('Do not embed the provenance label in the visible question text');
+        expect(promptBlock).toContain('Preserve the listed combined provenance only in the final coverage summary');
+        expect(promptBlock).not.toContain('in visible question copy');
     });
 
     it('warns when an agent contributes only duplicate questions after consolidation', async () => {

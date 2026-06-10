@@ -458,7 +458,7 @@ Consolidation:
 - Merge exact and semantic duplicates, preserving combined provenance.
 - Convert conflicting candidate questions into one decision question with clear options.
 - Ask the user through one consolidated ask_user batch grouped by lightweight agent role chips or sections; never create one form or chat thread per agent.
-- Every visible question must show provenance using the format "Role Agent · provider/model" when available, with fallback copy when the concrete model is unavailable.
+- Do not embed the provenance label in the visible question text; CoC automatically renders a provenance chip ("Role Agent · provider/model", with fallback copy when the concrete model is unavailable) beneath each question from attached metadata.
 
 Final goal synthesis:
 - Include the selected depth, models used per agent, coverage summary, dedupe/conflict outcomes, constraints, out-of-scope items, references to load, and Definition of Done details for every acceptance criterion.
@@ -1151,7 +1151,7 @@ ${warningLines}
 Selected questions after consolidation:
 ${questionLines}
 
-Ask only the selected questions above in one consolidated ask_user batch, grouped by lightweight role chips or sections. Do not ask raw duplicate candidates separately. Preserve the listed combined provenance in visible question copy and in the final coverage summary.
+Ask only the selected questions above in one consolidated ask_user batch, grouped by lightweight role chips or sections. Do not ask raw duplicate candidates separately. Do not embed the provenance label in the visible question text — CoC renders provenance chips automatically beneath each question from attached metadata. Preserve the listed combined provenance only in the final coverage summary.
 
 Final goal coverage summary requirement:
 When the user's answers are complete and you emit or save the final \`## Goal\` spec, include a \`## Agent Coverage Summary\` section using this exact planning data. Do not invent additional agent runs.

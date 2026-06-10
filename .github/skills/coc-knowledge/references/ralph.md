@@ -216,7 +216,10 @@ batch, the executor enriches the persisted/SSE question payloads with the
 preflight planning summary, per-question provenance, and consolidation metadata.
 `AskUserInline` renders that metadata as a compact "Question planning" card,
 grouped role sections, provenance chips, and reduced-coverage warnings while
-preserving the normal single-form answer/skip/defer submission flow. The
+preserving the normal single-form answer/skip/defer submission flow. Because the
+provenance chip is rendered from attached metadata, the grilling prompt instructs
+the model not to embed the provenance label in the visible question text; it is
+kept only in the final `## Agent Coverage Summary`. The
 main grilling prompt carries an explicit final-goal contract requiring a
 `## Agent Coverage Summary` section with the selected depth, models used per
 agent, warnings/reduced-coverage notes, and dedupe/conflict outcomes, plus the
