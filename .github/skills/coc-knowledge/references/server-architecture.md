@@ -96,7 +96,7 @@ The `src/server/` tree is grouped by feature domain. Cross-cutting plumbing stay
 | `providers/` | Provider abstraction for AI/PRs |
 | `repos/` | Repository management endpoints |
 | `work-items/` | Work-items REST + executors |
-| `dreams/` | Workspace-scoped dream card/run types, deterministic candidate prefiltering, eligible conversation source selection, read-only Ask-mode analyzer/critic validation, lifecycle storage, and durable dedup/coverage history |
+| `dreams/` | Workspace-scoped dream card/run types, deterministic candidate prefiltering, eligible conversation source selection, read-only Ask-mode analyzer/critic validation, lifecycle storage, durable dedup/coverage history, and manual/idle run orchestration with quiet-window readiness checks |
 | `wiki/` | Wiki integration (manager, data, routes, context-builder, conversation-sessions) |
 | `terminal/` | WebSocket-based PTY (session-manager, routes, ws-server) |
 | `memory/` | Memory config, bounded-memory REST, repo-memory, promote, background-review |
