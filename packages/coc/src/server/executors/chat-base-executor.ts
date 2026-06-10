@@ -643,11 +643,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 () => 1,
             );
 
-            const sendTools = tools.length > 0 ? tools : undefined;
-            // Guard: CoC uses its custom ask_user tool (SSE/widget flow).
-            // The SDK's native onUserInputRequest must NOT be set at the same time.
-            assertNoAskUserConflict({ tools: sendTools });
-
             // Resolve per-repo default model when no explicit model is set on the task.
             let effectiveModel = providerModel.model;
             if (!effectiveModel && this.dataDir && payload.workspaceId) {
@@ -725,7 +720,16 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 if (questionPlanBlock) {
                     effectivePrompt = `${effectivePrompt}\n\n${questionPlanBlock}`;
                 }
+                if (questionPlan.terminal) {
+                    tools = tools.filter(tool => tool.name !== 'ask_user');
+                    this.getOrCreateSession(processId).pendingAskUser = undefined;
+                }
             }
+
+            const sendTools = tools.length > 0 ? tools : undefined;
+            // Guard: CoC uses its custom ask_user tool (SSE/widget flow).
+            // The SDK's native onUserInputRequest must NOT be set at the same time.
+            assertNoAskUserConflict({ tools: sendTools });
 
             const sendOptions = {
                 prompt: effectivePrompt,

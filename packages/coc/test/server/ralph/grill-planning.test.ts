@@ -15,6 +15,7 @@ import {
     normalizeRalphGrillSetupForContext,
     parseRalphGrillAgentResponse,
     planRalphGrillCandidateQuestions,
+    RALPH_GRILL_MAX_ROUNDS,
     resolveRalphGrillSetup,
 } from '../../../src/server/ralph/grill-planning';
 
@@ -510,6 +511,205 @@ describe('Ralph grill planning', () => {
             'Which users should this optimize for?',
             'What admin workflow should the follow-up optimize first?',
         ]));
+    });
+
+    it('marks a resumed round terminal when all agents return no follow-up questions', async () => {
+        const service = {
+            isAvailable: vi.fn().mockResolvedValue({ available: true }),
+            sendMessage: vi.fn(async (options: { sessionId?: string }) => ({
+                success: true,
+                response: JSON.stringify({ questions: [] }),
+                sessionId: options.sessionId,
+            })),
+        };
+        const setup = resolveRalphGrillSetup({
+            enabled: true,
+            depth: 'light',
+            agents: [
+                { role: 'product', provider: 'copilot', model: 'gpt-5.5' },
+                { role: 'ux', provider: 'copilot', model: 'gpt-5.5' },
+                { role: 'architecture-system', provider: 'copilot', model: 'gpt-5.5' },
+            ],
+        });
+        const previousState = {
+            roundsRun: 1,
+            maxRounds: RALPH_GRILL_MAX_ROUNDS,
+            terminal: false,
+            agents: {
+                product: {
+                    role: 'product' as const,
+                    roleLabel: setup.agents[0].label,
+                    provenanceLabel: setup.agents[0].provenanceLabel,
+                    status: 'completed' as const,
+                    candidateCount: 1,
+                    sessionId: 'product-session',
+                },
+                ux: {
+                    role: 'ux' as const,
+                    roleLabel: setup.agents[1].label,
+                    provenanceLabel: setup.agents[1].provenanceLabel,
+                    status: 'completed' as const,
+                    candidateCount: 1,
+                    sessionId: 'ux-session',
+                },
+                'architecture-system': {
+                    role: 'architecture-system' as const,
+                    roleLabel: setup.agents[2].label,
+                    provenanceLabel: setup.agents[2].provenanceLabel,
+                    status: 'completed' as const,
+                    candidateCount: 1,
+                    sessionId: 'architecture-session',
+                },
+            },
+            askedQuestions: ['Which users should this optimize for?'],
+            warnings: [],
+        };
+
+        const plan = await planRalphGrillCandidateQuestions(
+            { aiService: service as any },
+            {
+                setup: { enabled: true, depth: 'light' },
+                prompt: 'Answer: optimize for repository admins first.',
+                previousState,
+                defaultProvider: 'copilot',
+            },
+        );
+
+        expect(service.sendMessage).toHaveBeenCalledTimes(3);
+        expect(plan).toMatchObject({
+            round: 2,
+            roundsRun: 2,
+            maxRounds: RALPH_GRILL_MAX_ROUNDS,
+            terminal: true,
+            terminationReason: 'all-agents-empty',
+            selectedQuestions: [],
+            warnings: [],
+        });
+        expect(formatRalphGrillQuestionPlanForPrompt(plan)).toContain('Do not call ask_user or ask any additional clarification questions');
+
+        const nextState = buildRalphGrillProcessStateFromPlan(plan, previousState);
+        expect(nextState.roundsRun).toBe(2);
+        expect(nextState.terminal).toBe(true);
+        expect(nextState.agents.product?.sessionId).toBe('product-session');
+        expect(nextState.askedQuestions).toEqual(['Which users should this optimize for?']);
+    });
+
+    it('stops planning immediately when the user says enough', async () => {
+        const service = {
+            isAvailable: vi.fn().mockResolvedValue({ available: true }),
+            sendMessage: vi.fn(),
+        };
+        const previousState = {
+            roundsRun: 1,
+            maxRounds: RALPH_GRILL_MAX_ROUNDS,
+            terminal: false,
+            agents: {},
+            askedQuestions: ['Which users should this optimize for?'],
+            warnings: [],
+        };
+
+        const plan = await planRalphGrillCandidateQuestions(
+            { aiService: service as any },
+            {
+                setup: { enabled: true, depth: 'light' },
+                prompt: 'enough',
+                previousState,
+                defaultProvider: 'copilot',
+            },
+        );
+
+        expect(service.sendMessage).not.toHaveBeenCalled();
+        expect(plan).toMatchObject({
+            round: 1,
+            roundsRun: 1,
+            maxRounds: RALPH_GRILL_MAX_ROUNDS,
+            terminal: true,
+            terminationReason: 'user-ended',
+            selectedQuestions: [],
+        });
+        expect(formatRalphGrillQuestionPlanForPrompt(plan)).toContain('the user signaled that grilling is complete');
+    });
+
+    it('uses the named round cap to avoid a fourth planning round after a non-empty third round', async () => {
+        const service = {
+            isAvailable: vi.fn().mockResolvedValue({ available: true }),
+            sendMessage: vi.fn(async (options: { sessionId?: string }) => ({
+                success: true,
+                response: JSON.stringify({
+                    questions: [{ question: 'Which final rollout risk needs clarification?', type: 'text' }],
+                }),
+                sessionId: options.sessionId,
+            })),
+        };
+        const previousState = {
+            roundsRun: RALPH_GRILL_MAX_ROUNDS - 1,
+            maxRounds: RALPH_GRILL_MAX_ROUNDS,
+            terminal: false,
+            agents: {
+                product: {
+                    role: 'product' as const,
+                    roleLabel: 'Product Agent',
+                    provenanceLabel: 'Product Agent · copilot/gpt-5.5',
+                    status: 'completed' as const,
+                    candidateCount: 1,
+                    sessionId: 'product-session',
+                },
+                ux: {
+                    role: 'ux' as const,
+                    roleLabel: 'UX Agent',
+                    provenanceLabel: 'UX Agent · copilot/gpt-5.5',
+                    status: 'completed' as const,
+                    candidateCount: 1,
+                    sessionId: 'ux-session',
+                },
+                'architecture-system': {
+                    role: 'architecture-system' as const,
+                    roleLabel: 'Architecture/System Agent',
+                    provenanceLabel: 'Architecture/System Agent · copilot/gpt-5.5',
+                    status: 'completed' as const,
+                    candidateCount: 1,
+                    sessionId: 'architecture-session',
+                },
+            },
+            askedQuestions: ['Which users should this optimize for?'],
+            warnings: [],
+        };
+
+        const thirdPlan = await planRalphGrillCandidateQuestions(
+            { aiService: service as any },
+            {
+                setup: { enabled: true, depth: 'light' },
+                prompt: 'Answer: include staged rollout.',
+                previousState,
+                defaultProvider: 'copilot',
+            },
+        );
+        const cappedState = buildRalphGrillProcessStateFromPlan(thirdPlan, previousState);
+        service.sendMessage.mockClear();
+
+        const fourthPlan = await planRalphGrillCandidateQuestions(
+            { aiService: service as any },
+            {
+                setup: { enabled: true, depth: 'light' },
+                prompt: 'Answer: mitigate launch regressions.',
+                previousState: cappedState,
+                defaultProvider: 'copilot',
+            },
+        );
+
+        expect(thirdPlan.roundsRun).toBe(RALPH_GRILL_MAX_ROUNDS);
+        expect(thirdPlan.selectedQuestions).toHaveLength(1);
+        expect(cappedState.roundsRun).toBe(RALPH_GRILL_MAX_ROUNDS);
+        expect(service.sendMessage).not.toHaveBeenCalled();
+        expect(fourthPlan).toMatchObject({
+            round: RALPH_GRILL_MAX_ROUNDS,
+            roundsRun: RALPH_GRILL_MAX_ROUNDS,
+            maxRounds: RALPH_GRILL_MAX_ROUNDS,
+            terminal: true,
+            terminationReason: 'round-cap',
+            selectedQuestions: [],
+        });
+        expect(formatRalphGrillQuestionPlanForPrompt(fourthPlan)).toContain(`${RALPH_GRILL_MAX_ROUNDS}-round grill cap`);
     });
 
     it('warns when an agent contributes only duplicate questions after consolidation', async () => {

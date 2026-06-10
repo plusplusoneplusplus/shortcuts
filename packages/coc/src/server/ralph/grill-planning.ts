@@ -107,6 +107,9 @@ export interface RalphGrillQuestionConsolidationResult {
     warnings: string[];
 }
 
+export const RALPH_GRILL_MAX_ROUNDS = 3;
+export type RalphGrillTerminationReason = 'all-agents-empty' | 'user-ended' | 'round-cap';
+
 export interface RalphGrillAgentRunResult {
     agent: ResolvedRalphGrillAgent;
     status: 'completed' | 'empty' | 'failed';
@@ -119,6 +122,11 @@ export interface RalphGrillAgentRunResult {
 export interface RalphGrillQuestionPlanningResult {
     enabled: boolean;
     depth: RalphGrillDepth;
+    round: number;
+    roundsRun: number;
+    maxRounds: number;
+    terminal: boolean;
+    terminationReason?: RalphGrillTerminationReason;
     agentResults: RalphGrillAgentRunResult[];
     candidateQuestions: RalphGrillCandidateQuestion[];
     selectedQuestions: RalphGrillConsolidatedQuestion[];
@@ -137,6 +145,9 @@ export interface RalphGrillRoleSessionState {
 
 export interface RalphGrillProcessState {
     roundsRun: number;
+    maxRounds: number;
+    terminal: boolean;
+    terminationReason?: RalphGrillTerminationReason;
     agents: Partial<Record<RalphGrillAgentRole, RalphGrillRoleSessionState>>;
     askedQuestions: string[];
     warnings: string[];
@@ -248,6 +259,55 @@ const OPPOSING_TOKEN_PAIRS: ReadonlyArray<readonly [string, string]> = [
     ['allow', 'block'],
     ['persist', 'discard'],
 ];
+
+function emptyRalphGrillConsolidationSummary(): RalphGrillConsolidationSummary {
+    return {
+        rawCandidateCount: 0,
+        selectedQuestionCount: 0,
+        exactDuplicatesMerged: 0,
+        semanticDuplicatesMerged: 0,
+        conflictsConverted: 0,
+        duplicateOnlyAgents: [],
+    };
+}
+
+function isRalphGrillUserStopSignal(prompt: string): boolean {
+    const normalized = prompt
+        .trim()
+        .toLowerCase()
+        .replace(/[.!?]+$/g, '')
+        .replace(/\s+/g, ' ');
+    if (!normalized || normalized.length > 120) return false;
+    return [
+        'enough',
+        'that is enough',
+        "that's enough",
+        'no more',
+        'no more questions',
+        'stop grilling',
+        'stop the grilling',
+        'proceed',
+        'proceed to synthesis',
+        'synthesize',
+        'synthesize the goal',
+        'finish',
+        'finish the spec',
+        'done',
+    ].includes(normalized);
+}
+
+function formatRalphGrillTerminationReason(reason: RalphGrillTerminationReason | undefined): string {
+    switch (reason) {
+        case 'all-agents-empty':
+            return 'all resumed grill agents returned no follow-up questions';
+        case 'user-ended':
+            return 'the user signaled that grilling is complete';
+        case 'round-cap':
+            return `the ${RALPH_GRILL_MAX_ROUNDS}-round grill cap has been reached`;
+        default:
+            return 'grilling is complete';
+    }
+}
 
 const GRILL_AGENT_SYSTEM_PROMPT: SystemMessageConfig = {
     mode: 'replace',
@@ -981,7 +1041,9 @@ export function buildRalphGrillProcessStateFromPlan(
     plan: RalphGrillQuestionPlanningResult,
     previous?: RalphGrillProcessState,
 ): RalphGrillProcessState {
-    const agents: Partial<Record<RalphGrillAgentRole, RalphGrillRoleSessionState>> = {};
+    const agents: Partial<Record<RalphGrillAgentRole, RalphGrillRoleSessionState>> = {
+        ...(previous?.agents ?? {}),
+    };
     for (const result of plan.agentResults) {
         agents[result.agent.role] = {
             role: result.agent.role,
@@ -999,7 +1061,10 @@ export function buildRalphGrillProcessStateFromPlan(
     ];
 
     return {
-        roundsRun: (previous?.roundsRun ?? 0) + 1,
+        roundsRun: plan.roundsRun,
+        maxRounds: plan.maxRounds,
+        terminal: plan.terminal,
+        ...(plan.terminationReason ? { terminationReason: plan.terminationReason } : {}),
         agents,
         askedQuestions: [...new Set(askedQuestions)],
         warnings: [...new Set([
@@ -1142,7 +1207,7 @@ async function runSingleRalphGrillAgent(
             agent: effectiveAgent,
             status,
             questions,
-            warnings: questions.length > 0
+            warnings: questions.length > 0 || resumeSessionId
                 ? warnings
                 : [...warnings, `${agent.label} returned no usable candidate questions.`],
             ...(result.effectiveModel ? { effectiveModel: result.effectiveModel } : {}),
@@ -1166,21 +1231,42 @@ export async function planRalphGrillCandidateQuestions(
     ctx: RalphGrillQuestionPlanningContext,
 ): Promise<RalphGrillQuestionPlanningResult> {
     const setup = resolveRalphGrillSetup(ctx.setup);
+    const previousRoundsRun = Math.min(ctx.previousState?.roundsRun ?? 0, RALPH_GRILL_MAX_ROUNDS);
+    const nextRound = Math.min(previousRoundsRun + 1, RALPH_GRILL_MAX_ROUNDS);
     if (!setup.enabled) {
         return {
             enabled: false,
             depth: setup.depth,
+            round: previousRoundsRun,
+            roundsRun: previousRoundsRun,
+            maxRounds: RALPH_GRILL_MAX_ROUNDS,
+            terminal: false,
             agentResults: [],
             candidateQuestions: [],
             selectedQuestions: [],
-            consolidation: {
-                rawCandidateCount: 0,
-                selectedQuestionCount: 0,
-                exactDuplicatesMerged: 0,
-                semanticDuplicatesMerged: 0,
-                conflictsConverted: 0,
-                duplicateOnlyAgents: [],
-            },
+            consolidation: emptyRalphGrillConsolidationSummary(),
+            warnings: [],
+        };
+    }
+
+    const terminalBeforePlanning = previousRoundsRun >= RALPH_GRILL_MAX_ROUNDS
+        ? 'round-cap' as const
+        : previousRoundsRun > 0 && isRalphGrillUserStopSignal(ctx.prompt)
+            ? 'user-ended' as const
+            : undefined;
+    if (terminalBeforePlanning) {
+        return {
+            enabled: true,
+            depth: setup.depth,
+            round: previousRoundsRun,
+            roundsRun: previousRoundsRun,
+            maxRounds: RALPH_GRILL_MAX_ROUNDS,
+            terminal: true,
+            terminationReason: terminalBeforePlanning,
+            agentResults: [],
+            candidateQuestions: [],
+            selectedQuestions: [],
+            consolidation: emptyRalphGrillConsolidationSummary(),
             warnings: [],
         };
     }
@@ -1190,6 +1276,9 @@ export async function planRalphGrillCandidateQuestions(
     );
     const candidateQuestions = agentResults.flatMap(result => result.questions);
     const consolidation = consolidateRalphGrillCandidateQuestions(candidateQuestions, agentResults);
+    const allResumedAgentsEmpty = previousRoundsRun > 0
+        && agentResults.length > 0
+        && agentResults.every(result => result.status === 'empty');
     const warnings = [
         ...agentResults.flatMap(result => result.warnings),
         ...consolidation.warnings,
@@ -1197,6 +1286,11 @@ export async function planRalphGrillCandidateQuestions(
     return {
         enabled: true,
         depth: setup.depth,
+        round: nextRound,
+        roundsRun: nextRound,
+        maxRounds: RALPH_GRILL_MAX_ROUNDS,
+        terminal: allResumedAgentsEmpty,
+        ...(allResumedAgentsEmpty ? { terminationReason: 'all-agents-empty' as const } : {}),
         agentResults,
         candidateQuestions,
         selectedQuestions: consolidation.selectedQuestions,
@@ -1209,9 +1303,11 @@ export function formatRalphGrillQuestionPlanForPrompt(plan: RalphGrillQuestionPl
     if (!plan.enabled) {
         return '';
     }
-    const agentLines = plan.agentResults
-        .map(result => `- ${result.agent.provenanceLabel}: ${result.status}, ${result.questions.length} candidate question${result.questions.length === 1 ? '' : 's'}.`)
-        .join('\n');
+    const agentLines = plan.agentResults.length > 0
+        ? plan.agentResults
+            .map(result => `- ${result.agent.provenanceLabel}: ${result.status}, ${result.questions.length} candidate question${result.questions.length === 1 ? '' : 's'}.`)
+            .join('\n')
+        : '- none (terminal turn; no grill agents were run).';
     const uniqueWarnings = [...new Set(plan.warnings)];
     const warningLines = uniqueWarnings.length > 0
         ? uniqueWarnings.map(warning => `- ${warning}`).join('\n')
@@ -1237,12 +1333,19 @@ export function formatRalphGrillQuestionPlanForPrompt(plan: RalphGrillQuestionPl
                 : '';
             return `${index + 1}. [${provenance}] (${question.type}) ${question.question}${options}${mergeInfo}`;
         }).join('\n')
-        : 'No usable candidate questions were returned; continue with normal Ralph grilling and include a reduced-coverage warning.';
+        : plan.terminal
+            ? 'No further grill questions should be asked; proceed to final goal synthesis.'
+            : 'No usable candidate questions were returned; continue with normal Ralph grilling and include a reduced-coverage warning.';
+    const nextStepInstruction = plan.terminal
+        ? `Do not call ask_user or ask any additional clarification questions. Ralph grill questioning is complete because ${formatRalphGrillTerminationReason(plan.terminationReason)}. Proceed directly to synthesize or save the final \`## Goal\` spec from the accumulated conversation and answers.`
+        : 'Ask only the selected questions above in one consolidated ask_user batch, grouped by lightweight role chips or sections. Do not ask raw duplicate candidates separately. Do not embed the provenance label in the visible question text — CoC renders provenance chips automatically beneath each question from attached metadata. Preserve the listed combined provenance only in the final coverage summary.';
 
     return `\
 Actual grill-agent planning result:
 - Selected depth: ${plan.depth}.
 - CoC already invoked the separate grill agents below before this turn; do not simulate or rerun these roles inside one persona response.
+- Grill round: ${plan.round} of up to ${plan.maxRounds}.
+${plan.terminal ? `- Grill termination: ${formatRalphGrillTerminationReason(plan.terminationReason)}.` : '- Grill termination: not reached.'}
 
 Agent outcomes:
 ${agentLines}
@@ -1261,7 +1364,7 @@ ${warningLines}
 Selected questions after consolidation:
 ${questionLines}
 
-Ask only the selected questions above in one consolidated ask_user batch, grouped by lightweight role chips or sections. Do not ask raw duplicate candidates separately. Do not embed the provenance label in the visible question text — CoC renders provenance chips automatically beneath each question from attached metadata. Preserve the listed combined provenance only in the final coverage summary.
+${nextStepInstruction}
 
 Final goal coverage summary requirement:
 When the user's answers are complete and you emit or save the final \`## Goal\` spec, include a \`## Agent Coverage Summary\` section using this exact planning data. Do not invent additional agent runs.

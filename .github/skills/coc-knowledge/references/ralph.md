@@ -221,8 +221,13 @@ fresh original-request prompt. The executor folds each plan into in-memory
 `ProcessSessionState` as `ralphGrill` state, preserving `roundsRun`, per-role
 status/session IDs, cumulative selected user-facing questions, and compact
 warnings across chat-turn cleanup for the same process. Failed, unavailable, or
-empty agents produce warnings and do not block the main consolidated grilling
-turn. The planner
+first-round empty agents produce warnings and do not block the main consolidated
+grilling turn. Empty responses from resumed agents are treated as "no more
+follow-ups" signals; when all resumed agents are empty, when the user sends a
+compact stop signal such as "enough", or when the named three-round cap is
+already reached, the planner returns a terminal result and the executor removes
+the `ask_user` tool from that main turn so synthesis proceeds without another
+question batch. The planner
 consolidates candidate questions before the main turn: exact duplicates and
 conservative semantic duplicates merge with combined provenance, recognized
 conflicts become one select-style decision question, duplicate-only agent
