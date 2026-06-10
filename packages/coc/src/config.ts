@@ -176,6 +176,18 @@ export interface CLIConfig {
     /** Dreams review subsystem configuration. Disabled by default. */
     dreams?: {
         enabled?: boolean;
+        /** Period between automatic idle dream checks. Default: 5 minutes. */
+        idleCheckIntervalMs?: number;
+        /** Minimum quiet-window duration before automatic dream analysis may run. Default: 15 minutes. */
+        minIdleMs?: number;
+        /** Minimum confidence for candidates to become reviewable. Default: 0.85. */
+        confidenceThreshold?: number;
+        /** Maximum visible candidates accepted from one dream pass. Default: 8. */
+        maxCandidates?: number;
+        /** Maximum recently completed conversations considered per dream pass. Default: 20. */
+        conversationLimit?: number;
+        /** Timeout for each read-only analyzer/critic AI request. Default: 90 seconds. */
+        timeoutMs?: number;
     };
     /** MCP OAuth support (auto-detect mcp.oauth_required events). Disabled by default. */
     mcpOauth?: {
@@ -440,6 +452,12 @@ export interface ResolvedCLIConfig {
     /** Dreams review subsystem configuration. */
     dreams: {
         enabled: boolean;
+        idleCheckIntervalMs: number;
+        minIdleMs: number;
+        confidenceThreshold: number;
+        maxCandidates: number;
+        conversationLimit: number;
+        timeoutMs: number;
     };
     /** MCP OAuth subsystem configuration. */
     mcpOauth: {
@@ -660,6 +678,12 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     dreams: {
         enabled: false,
+        idleCheckIntervalMs: 5 * 60 * 1000,
+        minIdleMs: 15 * 60 * 1000,
+        confidenceThreshold: 0.85,
+        maxCandidates: 8,
+        conversationLimit: 20,
+        timeoutMs: 90_000,
     },
     mcpOauth: {
         enabled: false,

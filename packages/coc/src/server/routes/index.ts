@@ -107,6 +107,7 @@ import { MapReduceRunExecutor } from '../map-reduce/map-reduce-run-executor';
 import { registerDreamRoutes } from '../dreams/dream-routes';
 import { FileDreamStore } from '../dreams/dream-store';
 import { DreamRunExecutor } from '../dreams/dream-runner';
+import { DreamIdleScheduler } from '../dreams/dream-idle-scheduler';
 import { registerLoopRoutes } from '../loops/loop-handler';
 import type { LoopStore } from '../loops/loop-store';
 import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
@@ -200,7 +201,7 @@ export interface RegisterRoutesOptions {
     syncEngines?: Map<string, SyncEngine>;
 }
 
-export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; agentProvidersQuotaCache?: AgentProvidersQuotaCache; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher } {
+export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; agentProvidersQuotaCache?: AgentProvidersQuotaCache; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler } {
     const {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
@@ -718,6 +719,23 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                 }));
         },
     });
+    const dreamIdleScheduler = new DreamIdleScheduler({
+        getWorkspaceIds: async () => (await store.getWorkspaces()).map(workspace => workspace.id),
+        getDreamsEnabled,
+        getWorkspaceDreamsEnabled: (workspaceId) => readRepoPreferences(dataDir, workspaceId).dreams?.enabled === true,
+        runIdle: (workspaceId, options) => dreamRunExecutor.runIdle(workspaceId, options),
+        getRunOptions: () => {
+            const dreams = (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.dreams;
+            return {
+                minIdleMs: dreams?.minIdleMs,
+                confidenceThreshold: dreams?.confidenceThreshold,
+                maxCandidates: dreams?.maxCandidates,
+                conversationLimit: dreams?.conversationLimit,
+                timeoutMs: dreams?.timeoutMs,
+            };
+        },
+        intervalMs: (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.dreams?.idleCheckIntervalMs,
+    });
     registerDreamRoutes({
         routes,
         store: dreamStore,
@@ -999,5 +1017,5 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
     );
 
-    return { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, agentProvidersQuotaCache, activeWorkspaceBackgroundRefresher };
+    return { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, agentProvidersQuotaCache, activeWorkspaceBackgroundRefresher, dreamIdleScheduler };
 }

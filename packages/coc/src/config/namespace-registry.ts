@@ -70,6 +70,15 @@ const FEATURES_BASE_SOURCE_KEYS = [
     'features.autoMemoryPromotion',
 ] as const;
 
+const DREAMS_BASE_SOURCE_KEYS = [
+    'dreams.idleCheckIntervalMs',
+    'dreams.minIdleMs',
+    'dreams.confidenceThreshold',
+    'dreams.maxCandidates',
+    'dreams.conversationLimit',
+    'dreams.timeoutMs',
+] as const;
+
 const MEMORY_PROMOTION_SOURCE_KEYS = [
     'memoryPromotion.batchSize',
     'memoryPromotion.timeoutMs',
@@ -90,6 +99,7 @@ export const CONFIG_NAMESPACE_SOURCE_KEYS: readonly string[] = [
     ...NAMESPACED_ADMIN_SETTING_KEYS,
     ...SERVE_BASE_SOURCE_KEYS,
     ...FEATURES_BASE_SOURCE_KEYS,
+    ...DREAMS_BASE_SOURCE_KEYS,
     ...MEMORY_PROMOTION_SOURCE_KEYS,
     ...MEMORY_PROMOTION_AI_NORMALIZATION_SOURCE_KEYS,
 ];
@@ -207,6 +217,22 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
                     autoMemoryPromotion: override?.features?.autoMemoryPromotion ?? base.features?.autoMemoryPromotion ?? false,
                     gitCommitLookup: override?.features?.gitCommitLookup ?? base.features?.gitCommitLookup ?? false,
                 } as ResolvedCLIConfig['features'],
+            }),
+        },
+        {
+            name: 'dreams',
+            sourceDescriptors: [source('dreams.', ['dreams'], DREAMS_BASE_SOURCE_KEYS)],
+            merge: (base, override) => ({
+                // dreams.enabled is admin-editable and filled in by the generic
+                // registry merge pass; only file-only tuning knobs are merged here.
+                dreams: {
+                    idleCheckIntervalMs: override?.dreams?.idleCheckIntervalMs ?? base.dreams?.idleCheckIntervalMs ?? 5 * 60 * 1000,
+                    minIdleMs: override?.dreams?.minIdleMs ?? base.dreams?.minIdleMs ?? 15 * 60 * 1000,
+                    confidenceThreshold: override?.dreams?.confidenceThreshold ?? base.dreams?.confidenceThreshold ?? 0.85,
+                    maxCandidates: override?.dreams?.maxCandidates ?? base.dreams?.maxCandidates ?? 8,
+                    conversationLimit: override?.dreams?.conversationLimit ?? base.dreams?.conversationLimit ?? 20,
+                    timeoutMs: override?.dreams?.timeoutMs ?? base.dreams?.timeoutMs ?? 90_000,
+                } as ResolvedCLIConfig['dreams'],
             }),
         },
         {

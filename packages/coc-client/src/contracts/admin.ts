@@ -84,7 +84,15 @@ export interface AdminResolvedConfig {
   servers?: { enabled?: boolean };
   forEach?: { enabled?: boolean };
   mapReduce?: { enabled?: boolean };
-  dreams?: { enabled?: boolean };
+  dreams?: {
+    enabled?: boolean;
+    idleCheckIntervalMs?: number;
+    minIdleMs?: number;
+    confidenceThreshold?: number;
+    maxCandidates?: number;
+    conversationLimit?: number;
+    timeoutMs?: number;
+  };
   excalidraw?: { enabled?: boolean };
   codex?: { enabled?: boolean };
   claude?: { enabled?: boolean };
