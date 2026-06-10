@@ -71,6 +71,8 @@ interface DashboardConfig {
 let _runtimeConfig: DashboardConfig | null = null;
 let _runtimeConfigPromise: Promise<void> | null = null;
 
+export const DASHBOARD_CONFIG_UPDATED_EVENT = 'coc-dashboard-config-updated';
+
 function getBootstrapConfig(): DashboardConfig {
     const config = (window as any).__DASHBOARD_CONFIG__;
     if (!config) {
@@ -87,6 +89,22 @@ function getBootstrapConfig(): DashboardConfig {
 function getConfig(): DashboardConfig {
     if (_runtimeConfig) return _runtimeConfig;
     return getBootstrapConfig();
+}
+
+export function applyRuntimeConfigPatch(patch: Record<string, unknown>): void {
+    const current = getConfig();
+    const nextFeatures = {
+        ...(current.features ?? {}),
+        ...patch,
+    };
+    _runtimeConfig = {
+        ...current,
+        ...patch,
+        features: nextFeatures,
+    };
+    window.dispatchEvent(new CustomEvent(DASHBOARD_CONFIG_UPDATED_EVENT, {
+        detail: { patch, config: _runtimeConfig },
+    }));
 }
 
 /**

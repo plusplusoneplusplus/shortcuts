@@ -4,7 +4,8 @@ export type CommitChatPresentation = ReviewChatPresentation;
 export type ReviewChatTarget =
     | { type: 'commit'; workspaceId: string; commitHash: string }
     | { type: 'pr'; workspaceId: string; repoId?: string; prId: string; headSha?: string }
-    | { type: 'work-item'; workspaceId: string; workItemId: string };
+    | { type: 'work-item'; workspaceId: string; workItemId: string }
+    | { type: 'notes'; workspaceId: string };
 
 const OPEN_STORAGE_KEY = 'coc.commitChat.open';
 const PLACEMENT_STORAGE_PREFIX = 'coc.commitChat.placement';
@@ -49,6 +50,10 @@ export function getReviewChatTargetStorageId(target: ReviewChatTarget): string {
 
     if (target.type === 'work-item') {
         return encodeStorageSegments(['work-item', target.workspaceId, target.workItemId]);
+    }
+
+    if (target.type === 'notes') {
+        return encodeStorageSegments(['notes', target.workspaceId]);
     }
 
     return encodeStorageSegments([

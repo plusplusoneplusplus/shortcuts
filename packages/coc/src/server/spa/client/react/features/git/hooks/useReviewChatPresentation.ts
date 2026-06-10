@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
-import { isCommitChatLensEnabled } from '../../../utils/config';
+import { DASHBOARD_CONFIG_UPDATED_EVENT, isCommitChatLensEnabled } from '../../../utils/config';
 import {
     clearReviewChatMinimized,
     isReviewChatPinned,
@@ -21,6 +21,7 @@ export interface UseReviewChatPresentationOptions {
     target: ReviewChatTarget | undefined;
     supportsChat?: boolean;
     forceLensOnNonDesktop?: boolean;
+    legacyOpenStorageKey?: string;
 }
 
 export interface UseReviewChatPresentationReturn {
@@ -42,29 +43,60 @@ export function useReviewChatPresentation({
     target,
     supportsChat = true,
     forceLensOnNonDesktop = false,
+    legacyOpenStorageKey,
 }: UseReviewChatPresentationOptions): UseReviewChatPresentationReturn {
     const { isDesktop } = useBreakpoint();
-    const lensFeatureEnabled = isCommitChatLensEnabled();
+    const [configRevision, setConfigRevision] = useState(0);
+    const lensFeatureEnabled = useMemo(() => isCommitChatLensEnabled(), [configRevision]);
     const targetStorageId = useMemo(() => {
         if (!target) return '';
         return getReviewChatTargetStorageId(target);
     }, [target]);
+
+    useEffect(() => {
+        const onConfigUpdated = () => setConfigRevision(value => value + 1);
+        window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, onConfigUpdated);
+        return () => window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, onConfigUpdated);
+    }, []);
+
+    const readLegacyOpenState = useCallback(() => {
+        if (!legacyOpenStorageKey) return false;
+        try {
+            return localStorage.getItem(legacyOpenStorageKey) === 'true';
+        } catch {
+            return false;
+        }
+    }, [legacyOpenStorageKey]);
+
+    const writeLegacyOpenState = useCallback((nextOpen: boolean) => {
+        if (!legacyOpenStorageKey) return;
+        try {
+            localStorage.setItem(legacyOpenStorageKey, String(nextOpen));
+        } catch {
+            /* ignore unavailable client storage */
+        }
+    }, [legacyOpenStorageKey]);
 
     const readOpenState = useCallback(() => {
         if (!supportsChat) return false;
         if (lensFeatureEnabled) {
             return target ? readReviewChatOpen(target) : false;
         }
+        if (legacyOpenStorageKey) return readLegacyOpenState();
         return target?.type === 'commit' ? readCommitChatOpen() : false;
-    }, [supportsChat, lensFeatureEnabled, target, targetStorageId]);
+    }, [supportsChat, lensFeatureEnabled, target, targetStorageId, legacyOpenStorageKey, readLegacyOpenState]);
 
     const writeOpenState = useCallback((open: boolean) => {
         if (lensFeatureEnabled) {
             if (target) writeReviewChatOpen(target, open);
             return;
         }
+        if (legacyOpenStorageKey) {
+            writeLegacyOpenState(open);
+            return;
+        }
         if (target?.type === 'commit') writeCommitChatOpen(open);
-    }, [lensFeatureEnabled, target, targetStorageId]);
+    }, [lensFeatureEnabled, target, targetStorageId, legacyOpenStorageKey, writeLegacyOpenState]);
 
     const [chatOpen, setChatOpen] = useState(readOpenState);
     const [isPinned, setIsPinned] = useState(() => (

@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppContext';
 import { AdminPanel } from '../../../src/server/spa/client/react/admin/AdminPanel';
+import {
+    applyRuntimeConfigPatch,
+    DASHBOARD_CONFIG_UPDATED_EVENT,
+    isCommitChatLensEnabled,
+} from '../../../src/server/spa/client/react/utils/config';
 
 // Mock fetch globally
 const mockFetch = vi.fn();
@@ -1240,6 +1245,12 @@ describe('AdminPanel', () => {
 
         it('commit chat lens toggle saves features.commitChatLens', async () => {
             let capturedBody: Record<string, unknown> | null = null;
+            const configUpdates: Array<Record<string, unknown>> = [];
+            (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', commitChatLensEnabled: false };
+            applyRuntimeConfigPatch({ commitChatLensEnabled: false });
+            window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, ((event: CustomEvent) => {
+                configUpdates.push(event.detail.patch);
+            }) as EventListener);
             mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
                 if (url.includes('/preferences')) {
                     return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -1281,6 +1292,8 @@ describe('AdminPanel', () => {
             });
             await waitFor(() => expect(capturedBody).not.toBeNull());
             expect(capturedBody!['features.commitChatLens']).toBe(true);
+            expect(configUpdates.some((patch) => patch.commitChatLensEnabled === true)).toBe(true);
+            expect(isCommitChatLensEnabled()).toBe(true);
         });
 
         it('Advanced card shows read-only diagnostics without Save button', async () => {

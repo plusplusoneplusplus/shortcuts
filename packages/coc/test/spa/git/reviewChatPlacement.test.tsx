@@ -18,7 +18,11 @@ import {
 } from '../../../src/server/spa/client/react/features/git/commits/commitChatPlacement';
 import { useReviewChatPresentation } from '../../../src/server/spa/client/react/features/git/hooks/useReviewChatPresentation';
 import { ReviewChatPlacementFrame } from '../../../src/server/spa/client/react/features/git/reviewChat/ReviewChatPlacementFrame';
-import { _resetRuntimeConfig } from '../../../src/server/spa/client/react/utils/config';
+import {
+    DASHBOARD_CONFIG_UPDATED_EVENT,
+    _resetRuntimeConfig,
+    applyRuntimeConfigPatch,
+} from '../../../src/server/spa/client/react/utils/config';
 
 beforeEach(() => {
     localStorage.clear();
@@ -61,6 +65,22 @@ describe('review chat placement storage', () => {
         expect(getReviewChatPlacementStorageKey(target)).toBe('coc.reviewChat.placement.pr.ws-a.repo-a.%23123.head%2Fsha');
         expect(getReviewChatMinimizedStorageKey(target)).toBe('coc.reviewChat.minimized.pr.ws-a.repo-a.%23123.head%2Fsha');
         expect(getReviewChatPlacementStorageKey({ ...target, headSha: undefined })).toBe('coc.reviewChat.placement.pr.ws-a.repo-a.%23123.current');
+    });
+
+    it('builds notes storage keys scoped by workspace', () => {
+        const first: ReviewChatTarget = { type: 'notes', workspaceId: 'ws-a' };
+        const second: ReviewChatTarget = { type: 'notes', workspaceId: 'ws-b' };
+
+        writeReviewChatOpen(first, true);
+        pinReviewChat(first);
+
+        expect(getReviewChatOpenStorageKey(first)).toBe('coc.reviewChat.open.notes.ws-a');
+        expect(getReviewChatPlacementStorageKey(first)).toBe('coc.reviewChat.placement.notes.ws-a');
+        expect(getReviewChatMinimizedStorageKey(first)).toBe('coc.reviewChat.minimized.notes.ws-a');
+        expect(readReviewChatOpen(first)).toBe(true);
+        expect(readReviewChatOpen(second)).toBe(false);
+        expect(isReviewChatPinned(first)).toBe(true);
+        expect(isReviewChatPinned(second)).toBe(false);
     });
 
     it('scopes minimized state by review target and clears it without affecting other workspaces', () => {
@@ -425,5 +445,85 @@ describe('useReviewChatPresentation minimize state', () => {
 
         expect(result.current.isMinimized).toBe(false);
         expect(readReviewChatMinimized(target)).toBe(false);
+    });
+
+    it('uses the legacy notes open key when Lens is disabled', () => {
+        (window as any).__DASHBOARD_CONFIG__ = {
+            apiBasePath: '/api',
+            wsPath: '/ws',
+            commitChatLensEnabled: false,
+        };
+        const target: ReviewChatTarget = { type: 'notes', workspaceId: 'ws-a' };
+        const legacyOpenStorageKey = 'coc-notes-chat-panel-open-ws-a';
+        localStorage.setItem(legacyOpenStorageKey, 'true');
+
+        const { result } = renderHook(() => useReviewChatPresentation({
+            target,
+            legacyOpenStorageKey,
+        }));
+
+        expect(result.current.chatOpen).toBe(true);
+        expect(result.current.presentation).toBe('side-panel');
+
+        act(() => result.current.closeChat());
+
+        expect(result.current.chatOpen).toBe(false);
+        expect(localStorage.getItem(legacyOpenStorageKey)).toBe('false');
+        expect(readReviewChatOpen(target)).toBe(false);
+    });
+
+    it('recomputes notes presentation when the Lens runtime config changes', () => {
+        (window as any).__DASHBOARD_CONFIG__ = {
+            apiBasePath: '/api',
+            wsPath: '/ws',
+            commitChatLensEnabled: false,
+        };
+        const target: ReviewChatTarget = { type: 'notes', workspaceId: 'ws-a' };
+        const legacyOpenStorageKey = 'coc-notes-chat-panel-open-ws-a';
+        localStorage.setItem(legacyOpenStorageKey, 'true');
+
+        const { result } = renderHook(() => useReviewChatPresentation({
+            target,
+            legacyOpenStorageKey,
+        }));
+
+        expect(result.current.chatOpen).toBe(true);
+        expect(result.current.presentation).toBe('side-panel');
+
+        act(() => {
+            applyRuntimeConfigPatch({ commitChatLensEnabled: true });
+        });
+
+        expect(result.current.chatOpen).toBe(false);
+        expect(result.current.presentation).toBe('lens');
+
+        act(() => result.current.toggleChat());
+
+        expect(result.current.chatOpen).toBe(true);
+        expect(readReviewChatOpen(target)).toBe(true);
+    });
+
+    it('listens to config update events from other dashboard writers', () => {
+        (window as any).__DASHBOARD_CONFIG__ = {
+            apiBasePath: '/api',
+            wsPath: '/ws',
+            commitChatLensEnabled: true,
+        };
+        const target: ReviewChatTarget = { type: 'notes', workspaceId: 'ws-a' };
+
+        const { result } = renderHook(() => useReviewChatPresentation({ target }));
+        expect(result.current.presentation).toBe('lens');
+
+        act(() => {
+            (window as any).__DASHBOARD_CONFIG__ = {
+                apiBasePath: '/api',
+                wsPath: '/ws',
+                commitChatLensEnabled: false,
+            };
+            _resetRuntimeConfig();
+            window.dispatchEvent(new CustomEvent(DASHBOARD_CONFIG_UPDATED_EVENT));
+        });
+
+        expect(result.current.presentation).toBe('side-panel');
     });
 });

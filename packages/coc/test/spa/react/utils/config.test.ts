@@ -1,5 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
+    DASHBOARD_CONFIG_UPDATED_EVENT,
+    _resetRuntimeConfig,
+    applyRuntimeConfigPatch,
     getConfiguredDefaultProvider,
     getDefaultProvider,
     getCommitChatLensDormantMode,
@@ -11,6 +14,7 @@ import {
 } from '../../../../src/server/spa/client/react/utils/config';
 
 afterEach(() => {
+    _resetRuntimeConfig();
     delete (window as any).__DASHBOARD_CONFIG__;
 });
 
@@ -49,6 +53,21 @@ describe('isCommitChatLensEnabled', () => {
     it('returns true when commitChatLensEnabled is explicitly true', () => {
         (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', commitChatLensEnabled: true };
         expect(isCommitChatLensEnabled()).toBe(true);
+    });
+
+    it('applies runtime patches and emits a config-updated event', () => {
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', commitChatLensEnabled: false };
+        let eventDetail: unknown;
+        window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, (event) => {
+            eventDetail = (event as CustomEvent).detail;
+        }, { once: true });
+
+        applyRuntimeConfigPatch({ commitChatLensEnabled: true });
+
+        expect(isCommitChatLensEnabled()).toBe(true);
+        expect(eventDetail).toMatchObject({
+            patch: { commitChatLensEnabled: true },
+        });
     });
 });
 

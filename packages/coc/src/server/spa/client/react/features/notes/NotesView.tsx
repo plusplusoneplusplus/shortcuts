@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Editor } from '@tiptap/core';
 import { ResponsiveSidebar } from '../../ui/ResponsiveSidebar';
 import { NotesSidebar } from './editor/NotesSidebar';
@@ -18,21 +18,24 @@ import { useApp } from '../../contexts/AppContext';
 import { buildNoteHash } from '../../layout/Router';
 import { useNoteReferences } from './editor/useNoteReferences';
 import { useNotesRoots } from './hooks/useNotesRoots';
+import { ReviewChatPlacementFrame } from '../git/reviewChat/ReviewChatPlacementFrame';
+import { useReviewChatPresentation } from '../git/hooks/useReviewChatPresentation';
+import type { ReviewChatTarget } from '../git/commits/commitChatPlacement';
 
 export interface NotesViewProps {
     workspaceId: string;
     initialNotePath?: string | null;
-    /** External control for the chat panel. When provided, the parent owns the open/close state. */
-    chatPanelOpen?: boolean;
-    /** Callback to toggle the chat panel. When provided, the parent owns the toggle. */
-    onToggleChatPanel?: () => void;
     /** Default chat scope for the NoteChatPanel. Defaults to 'per-workspace'. */
     defaultScope?: ChatScope;
 }
 
 const MAX_NAV_HISTORY = 50;
 
-export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPanelOpenProp, onToggleChatPanel: onToggleChatPanelProp, defaultScope }: NotesViewProps) {
+function getNotesChatLegacyOpenStorageKey(workspaceId: string): string {
+    return `coc-notes-chat-panel-open-${workspaceId}`;
+}
+
+export function NotesView({ workspaceId, initialNotePath, defaultScope }: NotesViewProps) {
     const { dispatch } = useApp();
     const [selectedPath, setSelectedPath] = useState<string | null>(initialNotePath ?? null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -44,21 +47,27 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
     const [navHistory, setNavHistory] = useState<string[]>([]);
     const [historyIndex, setHistoryIndex] = useState<number>(-1);
 
-    // ── Internal chat panel state (used when parent doesn't control it) ──────
-
-    const [internalChatPanelOpen, setInternalChatPanelOpen] = useState(() => {
-        if (chatPanelOpenProp !== undefined) return false; // controlled by parent
-        try { return localStorage.getItem(`coc-notes-chat-panel-open-${workspaceId}`) === 'true'; }
-        catch { return false; }
-    });
-
-    const chatPanelOpen = chatPanelOpenProp !== undefined ? chatPanelOpenProp : internalChatPanelOpen;
-    const handleToggleChatPanel = onToggleChatPanelProp ?? (() => {
-        setInternalChatPanelOpen(v => {
-            const next = !v;
-            try { localStorage.setItem(`coc-notes-chat-panel-open-${workspaceId}`, String(next)); } catch { /* ignore */ }
-            return next;
-        });
+    const notesChatTarget = useMemo<ReviewChatTarget>(() => ({
+        type: 'notes',
+        workspaceId,
+    }), [workspaceId]);
+    const legacyChatOpenStorageKey = useMemo(() => getNotesChatLegacyOpenStorageKey(workspaceId), [workspaceId]);
+    const {
+        chatOpen: chatPanelOpen,
+        toggleChat: handleToggleChatPanel,
+        closeChat: closeNoteChat,
+        minimizeChat: minimizeNoteChat,
+        restoreChat: restoreNoteChat,
+        pinChat: pinNoteChat,
+        unpinChat: unpinNoteChat,
+        isPinned: noteChatPinned,
+        isMinimized: noteChatMinimized,
+        presentation: noteChatPresentation,
+        lensEnabled: noteChatLensEnabled,
+        isDesktop: noteChatIsDesktop,
+    } = useReviewChatPresentation({
+        target: notesChatTarget,
+        legacyOpenStorageKey: legacyChatOpenStorageKey,
     });
 
     // ── Whether the notes chat has an existing conversation ──────────────────
@@ -379,13 +388,36 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
     const isResizing = !isMobile && (sidebarResize.isDragging || commentsPanelResize.isDragging || chatPanelResize.isDragging);
     const commentsVisible = commentsPanelOpen && !!selectedPath && noteViewMode === 'rich';
     const chatVisible = chatPanelOpen;
+    const renderNoteChatPanel = () => (
+        <NoteChatPanel
+            workspaceId={workspaceId}
+            notePath={selectedPath}
+            noteTitle={selectedPath?.split('/').pop()?.replace(/\.md$/, '')}
+            onClose={closeNoteChat}
+            onBeforeSend={async () => { await flushSaveRef.current?.(); }}
+            defaultScope={defaultScope}
+            references={noteRefs.references}
+            onRemoveReference={noteRefs.removeReference}
+            onClearReferences={noteRefs.clearReferences}
+            onHasChatChange={setHasNoteChat}
+        />
+    );
 
     return (
         <div
-            className={`flex h-full${isResizing ? ' select-none' : ''}`}
+            className={`relative flex h-full${isResizing ? ' select-none' : ''}`}
             data-testid="notes-view"
             onPointerDown={handlePointerDown}
         >
+            {noteChatLensEnabled && (
+                <div
+                    className="pointer-events-none absolute right-3 top-2 z-20 rounded-full border border-[#d0d7de] bg-white/90 px-2 py-0.5 text-[10px] font-medium text-[#57606a] shadow-sm dark:border-[#3c3c3c] dark:bg-[#252526]/90 dark:text-[#cccccc]"
+                    data-testid="notes-lens-chat-badge"
+                    title="Notes inherit Lens Chat mode"
+                >
+                    Lens Chat
+                </div>
+            )}
             {/* Left: notes tree sidebar */}
             <ResponsiveSidebar
                 width={sidebarResize.width}
@@ -521,7 +553,23 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
             )}
 
             {/* Chat panel resize handle + panel (collapsible) */}
-            {chatVisible && (
+            {chatVisible && noteChatPresentation === 'lens' && (
+                <ReviewChatPlacementFrame
+                    title="Notes Chat"
+                    identifier={selectedPath?.split('/').pop()?.replace(/\.md$/, '')}
+                    presentation="lens"
+                    onClose={closeNoteChat}
+                    isMinimized={noteChatMinimized}
+                    onMinimize={minimizeNoteChat}
+                    onRestore={restoreNoteChat}
+                    onPin={pinNoteChat}
+                    testIdPrefix="notes-chat"
+                >
+                    {renderNoteChatPanel()}
+                </ReviewChatPlacementFrame>
+            )}
+
+            {chatVisible && noteChatPresentation === 'side-panel' && (
                 <>
                     <div
                         className={`w-1 self-stretch flex-shrink-0 cursor-col-resize bg-[#e0e0e0] dark:bg-[#3c3c3c] hover:bg-[#007acc]/40 active:bg-[#007acc]/60 transition-colors${chatPanelResize.isDragging ? ' bg-[#007acc]/60' : ''}`}
@@ -538,18 +586,18 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
                         className="flex-shrink-0 overflow-hidden bg-white dark:bg-[#1e1e1e]"
                         data-testid="note-chat-panel-container"
                     >
-                        <NoteChatPanel
-                            workspaceId={workspaceId}
-                            notePath={selectedPath}
-                            noteTitle={selectedPath?.split('/').pop()?.replace(/\.md$/, '')}
-                            onClose={() => handleToggleChatPanel()}
-                            onBeforeSend={async () => { await flushSaveRef.current?.(); }}
-                            defaultScope={defaultScope}
-                            references={noteRefs.references}
-                            onRemoveReference={noteRefs.removeReference}
-                            onClearReferences={noteRefs.clearReferences}
-                            onHasChatChange={setHasNoteChat}
-                        />
+                        {noteChatLensEnabled && noteChatPinned && noteChatIsDesktop ? (
+                            <ReviewChatPlacementFrame
+                                title="Notes Chat"
+                                identifier={selectedPath?.split('/').pop()?.replace(/\.md$/, '')}
+                                presentation="side-panel"
+                                onClose={closeNoteChat}
+                                onUnpin={unpinNoteChat}
+                                testIdPrefix="notes-chat"
+                            >
+                                {renderNoteChatPanel()}
+                            </ReviewChatPlacementFrame>
+                        ) : renderNoteChatPanel()}
                     </div>
                 </>
             )}

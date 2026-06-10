@@ -139,16 +139,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const [headerContextDropTarget, setHeaderContextDropTarget] = useState<'task' | 'ask' | null>(null);
     const [headerContextDropFeedback, setHeaderContextDropFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-    // Notes chat panel — per-workspace state so it persists across tab switches
-    const [notesChatPanelOpen, setNotesChatPanelOpen] = useState(() => {
-        try { return localStorage.getItem(`coc-notes-chat-panel-open-${ws.id}`) === 'true'; }
-        catch { return false; }
-    });
-    useEffect(() => {
-        try { localStorage.setItem(`coc-notes-chat-panel-open-${ws.id}`, String(notesChatPanelOpen)); }
-        catch { /* ignore */ }
-    }, [notesChatPanelOpen, ws.id]);
-
     // Work items: load for this repo if not yet in context (for badge)
     const { state: workItemState, dispatch: workItemDispatch } = useWorkItems();
     useEffect(() => {
@@ -835,8 +825,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                     key={ws.id}
                                     workspaceId={ws.id}
                                     initialNotePath={state.selectedNotePath}
-                                    chatPanelOpen={notesChatPanelOpen}
-                                    onToggleChatPanel={() => setNotesChatPanelOpen(v => !v)}
                                     defaultScope="per-note"
                                 />}
                             </div>
