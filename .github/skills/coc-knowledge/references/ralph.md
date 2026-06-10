@@ -214,9 +214,11 @@ the preflight planning summary, per-question provenance, and consolidation
 metadata. `AskUserInline` renders that metadata as a compact "Question planning"
 card, grouped role sections, provenance chips, and reduced-coverage warnings
 while preserving the normal single-form answer/skip/defer submission flow. The
-main grilling prompt also instructs the model to carry the selected depth,
-models used per agent, warnings, and dedupe/conflict outcomes into the final goal
-coverage summary. When the flag is off or the context lacks an enabled grill
+main grilling prompt carries an explicit final-goal contract requiring a
+`## Agent Coverage Summary` section with the selected depth, models used per
+agent, warnings/reduced-coverage notes, and dedupe/conflict outcomes, plus the
+normal autonomy-ready AC/Definition-of-Done, constraints, out-of-scope, and
+references sections. When the flag is off or the context lacks an enabled grill
 setup, existing single-agent grilling prompts and plain `ask_user` rendering
 remain unchanged.
 

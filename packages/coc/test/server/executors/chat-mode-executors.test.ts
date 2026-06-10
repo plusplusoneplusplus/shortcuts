@@ -834,6 +834,12 @@ describe('ChatExecutor ralph grilling phase', () => {
         expect(mainCall.prompt).toContain('CoC already invoked the separate grill agents');
         expect(mainCall.prompt).toContain('[Product Agent · copilot/gpt-5.5] (text) Question from Product Agent');
         expect(mainCall.prompt).toContain('[UX Agent · copilot/gpt-5.5] (text) Question from UX Agent');
+        expect(mainCall.prompt).toContain('Final goal coverage summary requirement');
+        expect(mainCall.prompt).toContain('`## Agent Coverage Summary`');
+        expect(mainCall.prompt).toContain('[decision] Depth: light');
+        expect(mainCall.prompt).toContain('[decision] Models used per agent:');
+        expect(mainCall.prompt).toContain('[decision] Dedupe/conflict outcomes: raw 3 -> selected 3');
+        expect(mainCall.prompt).toContain('[decision] Warnings / reduced coverage: none');
         expect((mainCall.tools ?? []).map((tool: any) => tool.name)).toContain('ask_user');
     });
 

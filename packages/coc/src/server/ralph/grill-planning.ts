@@ -1046,12 +1046,20 @@ export function formatRalphGrillQuestionPlanForPrompt(plan: RalphGrillQuestionPl
     const agentLines = plan.agentResults
         .map(result => `- ${result.agent.provenanceLabel}: ${result.status}, ${result.questions.length} candidate question${result.questions.length === 1 ? '' : 's'}.`)
         .join('\n');
-    const warningLines = plan.warnings.length > 0
-        ? plan.warnings.map(warning => `- ${warning}`).join('\n')
+    const uniqueWarnings = [...new Set(plan.warnings)];
+    const warningLines = uniqueWarnings.length > 0
+        ? uniqueWarnings.map(warning => `- ${warning}`).join('\n')
         : '- none';
     const duplicateOnlyAgents = plan.consolidation.duplicateOnlyAgents.length > 0
         ? plan.consolidation.duplicateOnlyAgents.join(', ')
         : 'none';
+    const coverageAgentLines = plan.agentResults.length > 0
+        ? plan.agentResults
+            .map(result => `  - ${result.agent.provenanceLabel}: ${result.status}, ${result.questions.length} candidate question${result.questions.length === 1 ? '' : 's'}.`)
+            .join('\n')
+        : '  - none';
+    const warningsSummary = uniqueWarnings.length > 0 ? uniqueWarnings.join(' | ') : 'none';
+    const dedupeSummary = `raw ${plan.consolidation.rawCandidateCount} -> selected ${plan.consolidation.selectedQuestionCount}; exact duplicates ${plan.consolidation.exactDuplicatesMerged}; semantic duplicates ${plan.consolidation.semanticDuplicatesMerged}; conflicts converted ${plan.consolidation.conflictsConverted}; duplicate-only agents ${duplicateOnlyAgents}`;
     const questionLines = plan.selectedQuestions.length > 0
         ? plan.selectedQuestions.map((question, index) => {
             const provenance = question.sources.map(source => source.provenanceLabel).join('; ');
@@ -1087,7 +1095,17 @@ ${warningLines}
 Selected questions after consolidation:
 ${questionLines}
 
-Ask only the selected questions above in one consolidated ask_user batch, grouped by lightweight role chips or sections. Do not ask raw duplicate candidates separately. Preserve the listed combined provenance in visible question copy and in the final coverage summary.`;
+Ask only the selected questions above in one consolidated ask_user batch, grouped by lightweight role chips or sections. Do not ask raw duplicate candidates separately. Preserve the listed combined provenance in visible question copy and in the final coverage summary.
+
+Final goal coverage summary requirement:
+When the user's answers are complete and you emit or save the final \`## Goal\` spec, include a \`## Agent Coverage Summary\` section using this exact planning data. Do not invent additional agent runs.
+- [decision] Depth: ${plan.depth}
+- [decision] Models used per agent:
+${coverageAgentLines}
+- [decision] Dedupe/conflict outcomes: ${dedupeSummary}
+- [decision] Warnings / reduced coverage: ${warningsSummary}
+
+Also keep the final spec autonomy-ready: include functional acceptance criteria with Definition of Done details, constraints, out-of-scope items, references to load, and no duplicate user-facing questions as separate open issues.`;
 }
 
 function buildAskUserPlanningSummary(plan: RalphGrillQuestionPlanningResult): AskUserRalphGrillPlanningSummary {

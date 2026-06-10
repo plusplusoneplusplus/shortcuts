@@ -351,6 +351,16 @@ describe('Ralph grill planning', () => {
         expect(promptBlock).toContain('UX Agent · claude/claude-sonnet-4.6: failed');
         expect(promptBlock).toContain('UX Agent failed: rate limit');
         expect(promptBlock).toContain('[Product Agent · copilot/gpt-5.5]');
+        expect(promptBlock).toContain('Final goal coverage summary requirement');
+        expect(promptBlock).toContain('`## Agent Coverage Summary`');
+        expect(promptBlock).toContain('[decision] Depth: light');
+        expect(promptBlock).toContain('[decision] Models used per agent:');
+        expect(promptBlock).toContain('  - Product Agent · copilot/gpt-5.5: completed, 1 candidate question.');
+        expect(promptBlock).toContain('  - UX Agent · claude/claude-sonnet-4.6: failed, 0 candidate questions.');
+        expect(promptBlock).toContain('[decision] Dedupe/conflict outcomes: raw 2 -> selected 2; exact duplicates 0; semantic duplicates 0; conflicts converted 0; duplicate-only agents none');
+        expect(promptBlock).toContain('[decision] Warnings / reduced coverage: UX Agent failed: rate limit');
+        expect(promptBlock).toContain('include functional acceptance criteria with Definition of Done details');
+        expect(promptBlock).toContain('no duplicate user-facing questions as separate open issues');
     });
 
     it('warns when an agent contributes only duplicate questions after consolidation', async () => {
