@@ -23,6 +23,7 @@ import { WorkItemsTab } from '../work-items/WorkItemsTab';
 import { WorkflowDetailView } from '../../processes/dag';
 import { TerminalView } from '../terminal/TerminalView';
 import { NotesView } from '../notes/NotesView';
+import { DreamsPanel } from '../dreams/DreamsPanel';
 import { AddRepoDialog } from '../../repos/AddRepoDialog';
 import { ErrorBoundary } from '../../ui/ErrorBoundary';
 
@@ -60,6 +61,7 @@ export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] =
     { key: 'git', label: 'Git', shortcut: 'Alt+G' },
     { key: 'terminal', label: 'Terminal' },
     { key: 'work-items', label: 'Work Items', shortcut: 'Alt+I' },
+    { key: 'dreams', label: 'Dreams', shortcut: 'Alt+D' },
     { key: 'pull-requests', label: 'Pull Requests', shortcut: 'Alt+R' },
     { key: 'explorer', label: 'Explorer', shortcut: 'Alt+E' },
     { key: 'workflows', label: 'Workflows', shortcut: 'Alt+W' },
@@ -82,7 +84,7 @@ export const VISIBLE_SUB_TABS = SHOW_WIKI_TAB
  */
 const TAB_GROUP_INDEX: Record<string, number> = {
     'chats': 1, 'activity': 1, 'git': 1, 'terminal': 1,
-    'work-items': 2, 'pull-requests': 2, 'tasks': 2,
+    'work-items': 2, 'dreams': 2, 'pull-requests': 2, 'tasks': 2,
     'explorer': 3, 'workflows': 3, 'schedules': 3,
     'notes': 4, 'settings': 4, 'wiki': 4,
 };
@@ -188,7 +190,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 'pull-requests': 'Full Requests',
             };
             const devWorkflowOrder: RepoSubTab[] = [
-                'chats', 'work-items', 'schedules', 'explorer',
+                'chats', 'work-items', 'dreams', 'schedules', 'explorer',
                 'workflows', 'git', 'terminal', 'pull-requests', 'tasks', 'settings',
             ];
             const tabMap = new Map(tabs.map(t => [t.key, t]));
@@ -773,7 +775,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         )}
                     </div>
                 ) : (
-                    <div className={cn("flex flex-col flex-1 min-h-0 min-w-0", activeSubTab === 'activity' || activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' ? "overflow-hidden" : "overflow-y-auto")}>
+                    <div className={cn("flex flex-col flex-1 min-h-0 min-w-0", activeSubTab === 'activity' || activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' || activeSubTab === 'dreams' ? "overflow-hidden" : "overflow-y-auto")}>
                         {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} />}
                         {activeSubTab === 'workflows' && <TemplatesTab key={ws.id} repo={repo} />}
                         {/*
@@ -827,6 +829,9 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                 />}
                             </div>
                         )}
+                        <div style={{ display: activeSubTab === 'dreams' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                            {wasVisited('dreams') && <DreamsPanel key={ws.id} workspaceId={ws.id} />}
+                        </div>
                         {activeSubTab === 'workflow' && state.selectedWorkflowProcessId && <WorkflowDetailView key={state.selectedWorkflowProcessId} processId={state.selectedWorkflowProcessId} />}
                     </div>
                 )}

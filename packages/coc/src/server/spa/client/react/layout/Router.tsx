@@ -428,6 +428,7 @@ const ALL_REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
     c: 'settings',
     i: 'work-items',
     n: 'notes',
+    d: 'dreams',
 };
 
 export const REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = SHOW_WIKI_TAB
