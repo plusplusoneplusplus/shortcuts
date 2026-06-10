@@ -131,4 +131,3 @@ export function formatProviderActivityTimeout(timeoutMs: number | undefined): st
     }
     return `${timeoutMs}ms timeout`;
 }
-
