@@ -32,6 +32,15 @@ describe('parseRalphSignal — signal detection', () => {
         expect(parseRalphSignal(response).signal).toBe('RALPH_COMPLETE');
     });
 
+    it('detects adjacent duplicate Ralph signals without accepting arbitrary suffixes', () => {
+        expect(parseRalphSignal('RALPH_COMPLETERALPH_COMPLETE').signal).toBe('RALPH_COMPLETE');
+        expect(parseRalphSignal('RALPH_NEXTRALPH_NEXT').signal).toBe('RALPH_NEXT');
+        expect(parseRalphSignal('RALPH_NEXTRALPH_COMPLETE').signal).toBe('RALPH_COMPLETE');
+        expect(parseRalphSignal('RALPH_COMPLETERALPH_COMPLETED').signal).toBe('NONE');
+        expect(parseRalphSignal('RALPH_COMPLETED').signal).toBe('NONE');
+        expect(parseRalphSignal('prefixRALPH_COMPLETE').signal).toBe('NONE');
+    });
+
     it('handles Windows line endings (CRLF)', () => {
         const response = 'Work done.\r\n\r\nRALPH_PROGRESS:\r\nSome progress\r\n\r\nRALPH_NEXT';
         const result = parseRalphSignal(response);
@@ -79,6 +88,13 @@ describe('parseRalphSignal — progress extraction', () => {
 
     it('handles progress followed by RALPH_COMPLETE', () => {
         const response = 'RALPH_PROGRESS:\nAll done\nRALPH_COMPLETE';
+        const { progress, signal } = parseRalphSignal(response);
+        expect(progress).toBe('All done');
+        expect(signal).toBe('RALPH_COMPLETE');
+    });
+
+    it('stops progress extraction before adjacent duplicate Ralph signals', () => {
+        const response = 'RALPH_PROGRESS:\nAll done\nRALPH_COMPLETERALPH_COMPLETE';
         const { progress, signal } = parseRalphSignal(response);
         expect(progress).toBe('All done');
         expect(signal).toBe('RALPH_COMPLETE');

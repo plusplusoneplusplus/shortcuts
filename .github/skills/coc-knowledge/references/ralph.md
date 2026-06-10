@@ -38,9 +38,11 @@ iteration appends a Markdown block:
 <body>
 ```
 
-`SIGNAL` is one of `RALPH_NEXT`, `RALPH_COMPLETE`, or `NONE`. The writer uses
-an em dash in generated headings; the parser also accepts a plain hyphen
-separator.
+`SIGNAL` is one of `RALPH_NEXT`, `RALPH_COMPLETE`, or `NONE`. Response parsing
+recognizes standalone signal tokens and valid adjacent signal-token runs such as
+`RALPH_COMPLETERALPH_COMPLETE`, while rejecting arbitrary suffixes such as
+`RALPH_NEXTEND`. The writer uses an em dash in generated headings; the parser
+also accepts a plain hyphen separator.
 
 ## Writer Protocol
 
