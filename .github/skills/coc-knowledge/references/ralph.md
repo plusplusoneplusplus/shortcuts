@@ -212,16 +212,21 @@ provider/model`), context normalization, strict JSON candidate-question parsing,
 and the preflight runner that invokes one isolated SDK request per selected
 grill agent before the main grilling turn. Each isolated agent uses its own
 resolved model and reasoning effort, falling back to the enclosing task defaults
-only when the agent does not specify them. Failed, unavailable, or empty agents
-produce warnings and do not block the main consolidated grilling turn. The
-planner consolidates candidate questions before the main turn: exact duplicates
-and conservative semantic duplicates merge with combined provenance, recognized
+only when the agent does not specify them. Successful isolated runs record the
+SDK `sessionId` returned by that role agent; failed or unavailable agents record
+no session ID. The executor folds the plan into in-memory `ProcessSessionState`
+as `ralphGrill` state, preserving `roundsRun`, per-role status/session IDs,
+cumulative selected user-facing questions, and compact warnings across chat-turn
+cleanup for the same process. Failed, unavailable, or empty agents produce
+warnings and do not block the main consolidated grilling turn. The planner
+consolidates candidate questions before the main turn: exact duplicates and
+conservative semantic duplicates merge with combined provenance, recognized
 conflicts become one select-style decision question, duplicate-only agent
 contributions are reported as compact warnings, and the selected question set
 plus consolidation summary are appended to the main user prompt. While those
 isolated agents run, the executor emits transient `ralph-grill-planning` SSE
-progress so the SPA can show an immediate "Question planning" status card; no
-raw candidate-question state is persisted for that interim UI. When the model
+progress so the SPA can show an immediate "Question planning" status card; raw
+candidate-question state is not persisted for that interim UI. When the model
 emits the consolidated `ask_user` batch, the executor enriches the persisted/SSE
 question payloads with the preflight planning summary, per-question provenance,
 and consolidation metadata. `AskUserInline` renders that metadata as a compact

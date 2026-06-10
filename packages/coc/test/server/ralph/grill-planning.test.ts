@@ -6,6 +6,7 @@ import type {
 } from '../../../src/server/ralph/grill-planning';
 import {
     attachRalphGrillMetadataToAskUserPayloads,
+    buildRalphGrillProcessStateFromPlan,
     buildRalphMultiAgentGrillDirective,
     consolidateRalphGrillCandidateQuestions,
     formatRalphGrillQuestionPlanForPrompt,
@@ -350,6 +351,11 @@ describe('Ralph grill planning', () => {
             ['ux', 'failed'],
             ['architecture-system', 'completed'],
         ]);
+        expect(plan.agentResults.map(result => [result.agent.role, result.sessionId])).toEqual([
+            ['product', 'agent-session'],
+            ['ux', undefined],
+            ['architecture-system', 'agent-session'],
+        ]);
         expect(plan.candidateQuestions).toHaveLength(2);
         expect(plan.selectedQuestions).toHaveLength(2);
         expect(plan.consolidation).toMatchObject({
@@ -380,6 +386,13 @@ describe('Ralph grill planning', () => {
         expect(promptBlock).toContain('Do not embed the provenance label in the visible question text');
         expect(promptBlock).toContain('Preserve the listed combined provenance only in the final coverage summary');
         expect(promptBlock).not.toContain('in visible question copy');
+
+        const processState = buildRalphGrillProcessStateFromPlan(plan);
+        expect(processState.roundsRun).toBe(1);
+        expect(processState.agents.product?.sessionId).toBe('agent-session');
+        expect(processState.agents.ux?.sessionId).toBeUndefined();
+        expect(processState.agents['architecture-system']?.sessionId).toBe('agent-session');
+        expect(processState.askedQuestions).toEqual(plan.selectedQuestions.map(question => question.question));
     });
 
     it('warns when an agent contributes only duplicate questions after consolidation', async () => {

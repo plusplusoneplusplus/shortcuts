@@ -113,6 +113,7 @@ export interface RalphGrillAgentRunResult {
     questions: RalphGrillCandidateQuestion[];
     warnings: string[];
     effectiveModel?: string;
+    sessionId?: string;
 }
 
 export interface RalphGrillQuestionPlanningResult {
@@ -122,6 +123,22 @@ export interface RalphGrillQuestionPlanningResult {
     candidateQuestions: RalphGrillCandidateQuestion[];
     selectedQuestions: RalphGrillConsolidatedQuestion[];
     consolidation: RalphGrillConsolidationSummary;
+    warnings: string[];
+}
+
+export interface RalphGrillRoleSessionState {
+    role: RalphGrillAgentRole;
+    roleLabel: string;
+    provenanceLabel: string;
+    status: RalphGrillAgentRunResult['status'];
+    candidateCount: number;
+    sessionId?: string;
+}
+
+export interface RalphGrillProcessState {
+    roundsRun: number;
+    agents: Partial<Record<RalphGrillAgentRole, RalphGrillRoleSessionState>>;
+    askedQuestions: string[];
     warnings: string[];
 }
 
@@ -959,6 +976,38 @@ export function consolidateRalphGrillCandidateQuestions(
     };
 }
 
+export function buildRalphGrillProcessStateFromPlan(
+    plan: RalphGrillQuestionPlanningResult,
+    previous?: RalphGrillProcessState,
+): RalphGrillProcessState {
+    const agents: Partial<Record<RalphGrillAgentRole, RalphGrillRoleSessionState>> = {};
+    for (const result of plan.agentResults) {
+        agents[result.agent.role] = {
+            role: result.agent.role,
+            roleLabel: result.agent.label,
+            provenanceLabel: result.agent.provenanceLabel,
+            status: result.status,
+            candidateCount: result.questions.length,
+            ...(result.status !== 'failed' && result.sessionId ? { sessionId: result.sessionId } : {}),
+        };
+    }
+
+    const askedQuestions = [
+        ...(previous?.askedQuestions ?? []),
+        ...plan.selectedQuestions.map(question => question.question),
+    ];
+
+    return {
+        roundsRun: (previous?.roundsRun ?? 0) + 1,
+        agents,
+        askedQuestions: [...new Set(askedQuestions)],
+        warnings: [...new Set([
+            ...(previous?.warnings ?? []),
+            ...plan.warnings,
+        ])],
+    };
+}
+
 export function buildRalphGrillAgentPrompt(ctx: RalphGrillQuestionPlanningContext, agent: ResolvedRalphGrillAgent): string {
     const providerModel = agent.provider || agent.model || agent.effortTier
         ? `\nProvider/tier or provider/model provenance for this run: ${agent.provenanceLabel}`
@@ -1067,14 +1116,16 @@ async function runSingleRalphGrillAgent(
             }
             : agent;
         const questions = parseRalphGrillAgentResponse(result.response ?? '', effectiveAgent);
+        const status = questions.length > 0 ? 'completed' : 'empty';
         return {
             agent: effectiveAgent,
-            status: questions.length > 0 ? 'completed' : 'empty',
+            status,
             questions,
             warnings: questions.length > 0
                 ? warnings
                 : [...warnings, `${agent.label} returned no usable candidate questions.`],
             ...(result.effectiveModel ? { effectiveModel: result.effectiveModel } : {}),
+            ...(result.sessionId ? { sessionId: result.sessionId } : {}),
         };
     } catch (err) {
         return {

@@ -65,7 +65,7 @@ import type { MemoryV2Addon } from './memory-v2-addon';
 import { resolveAutoFolderContext } from './auto-folder-utils';
 import { systemMessageBuilder } from './system-message-builder';
 import { buildChatTurnContext } from './chat-turn-context-builder';
-import { attachRalphGrillMetadataToAskUserPayloads, buildRalphGrillPlanningCompletedProgress, buildRalphGrillPlanningStartedProgress, buildRalphMultiAgentGrillDirective, formatRalphGrillQuestionPlanForPrompt, planRalphGrillCandidateQuestions } from '../ralph/grill-planning';
+import { attachRalphGrillMetadataToAskUserPayloads, buildRalphGrillPlanningCompletedProgress, buildRalphGrillPlanningStartedProgress, buildRalphGrillProcessStateFromPlan, buildRalphMultiAgentGrillDirective, formatRalphGrillQuestionPlanForPrompt, planRalphGrillCandidateQuestions } from '../ralph/grill-planning';
 import type { RalphGrillPlanningProgress, RalphGrillQuestionPlanningResult, RalphGrillSetup } from '../ralph/grill-planning';
 // ============================================================================
 // Ralph grilling-phase system message suffix
@@ -711,6 +711,11 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                     },
                 );
                 ralphGrillPlanning.state.plan = questionPlan;
+                const sessionState = this.getOrCreateSession(processId);
+                sessionState.ralphGrill = buildRalphGrillProcessStateFromPlan(
+                    questionPlan,
+                    sessionState.ralphGrill,
+                );
                 this.emitRalphGrillPlanningProgress(
                     processId,
                     buildRalphGrillPlanningCompletedProgress(questionPlan),
