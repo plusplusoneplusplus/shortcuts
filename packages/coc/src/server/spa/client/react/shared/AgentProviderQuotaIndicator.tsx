@@ -17,11 +17,6 @@ import {
 } from './quotaUtils';
 import { Spinner } from '../ui';
 import { cn } from '../ui/cn';
-import {
-    formatProviderActivityTimeout,
-    loadDreamProviderActivity,
-    type AgentProviderWorkActivity,
-} from './providerActivity';
 
 export const AGENT_PROVIDER_QUOTA_POLL_MS = 5 * 60 * 1000;
 
@@ -198,37 +193,12 @@ function renderProviderQuotaRow(provider: ProviderQuotaResult) {
     );
 }
 
-function renderDreamActivityRow(activity: AgentProviderWorkActivity) {
-    const label = PROVIDER_LABELS[activity.provider] ?? activity.provider;
-    const trigger = activity.trigger === 'idle' ? 'Idle' : activity.trigger === 'manual' ? 'Manual' : 'Dreams';
-    const status = activity.status ? activity.status.replace(/-/g, ' ') : 'unknown';
-    const model = activity.model ?? 'provider default';
-    return (
-        <div key={activity.id} className="px-3 py-2 border-b border-[#f0f0f0] dark:border-[#2d2d2d] last:border-b-0" data-testid={`quota-dream-activity-${activity.id}`}>
-            <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">{activity.label}</span>
-                <span className="rounded-full border border-[#d0d7de] dark:border-[#3c3c3c] px-2 py-0.5 text-[10px] font-semibold text-[#6e6e6e] dark:text-[#999]">
-                    {label}
-                </span>
-            </div>
-            <div className="mt-1 text-xs text-[#6e6e6e] dark:text-[#999]">
-                {trigger} · {status} · {model} · {formatProviderActivityTimeout(activity.timeoutMs)}
-            </div>
-            {activity.error && (
-                <div className="mt-1 text-xs text-[#cf222e] dark:text-[#ff938a]">{activity.error}</div>
-            )}
-        </div>
-    );
-}
-
 export function agentProviderQuotaIndicator() {
     const [open, setOpen] = useState(false);
     const [quotaData, setQuotaData] = useState<AgentProvidersQuotaResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [dreamActivity, setDreamActivity] = useState<AgentProviderWorkActivity[]>([]);
-    const [dreamActivityError, setDreamActivityError] = useState<string | null>(null);
     const buttonRef = useRef<HTMLButtonElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const mountedRef = useRef(false);
@@ -266,35 +236,15 @@ export function agentProviderQuotaIndicator() {
         }
     }, []);
 
-    const refreshDreamActivity = useCallback(async () => {
-        setDreamActivityError(null);
-        try {
-            const activity = await loadDreamProviderActivity();
-            if (!mountedRef.current) {
-                return;
-            }
-            setDreamActivity(activity);
-        } catch (err) {
-            if (!mountedRef.current) {
-                return;
-            }
-            setDreamActivityError(getSpaCocClientErrorMessage(err, 'Failed to load Dreams provider activity'));
-        }
-    }, []);
-
     useEffect(() => {
         mountedRef.current = true;
         void refreshQuota();
-        void refreshDreamActivity();
-        const timer = window.setInterval(() => {
-            void refreshQuota();
-            void refreshDreamActivity();
-        }, AGENT_PROVIDER_QUOTA_POLL_MS);
+        const timer = window.setInterval(() => void refreshQuota(), AGENT_PROVIDER_QUOTA_POLL_MS);
         return () => {
             mountedRef.current = false;
             window.clearInterval(timer);
         };
-    }, [refreshQuota, refreshDreamActivity]);
+    }, [refreshQuota]);
 
     useEffect(() => {
         if (!open) {
@@ -385,10 +335,7 @@ export function agentProviderQuotaIndicator() {
                         <button
                             type="button"
                             className="inline-flex items-center gap-1 text-xs text-[#0078d4] hover:underline disabled:opacity-60 disabled:hover:no-underline"
-                            onClick={() => {
-                                void refreshQuota({ force: true });
-                                void refreshDreamActivity();
-                            }}
+                            onClick={() => void refreshQuota({ force: true })}
                             disabled={loading || refreshing}
                             data-testid="agent-provider-quota-refresh"
                         >
@@ -410,24 +357,6 @@ export function agentProviderQuotaIndicator() {
                         ) : (
                             <div className="py-8 text-center text-sm text-[#6e6e6e] dark:text-[#999]" data-testid="agent-provider-quota-empty">
                                 No provider quota data
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="agent-provider-dream-activity">
-                        <div className="px-3 py-2 border-b border-[#f0f0f0] dark:border-[#2d2d2d]">
-                            <div className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Dreams work</div>
-                            <div className="text-xs text-[#6e6e6e] dark:text-[#999]">Active and recent Dream jobs by provider</div>
-                        </div>
-                        {dreamActivityError ? (
-                            <div className="px-3 py-3 text-xs text-[#cf222e] dark:text-[#ff938a]" data-testid="agent-provider-dream-activity-error">
-                                {dreamActivityError}
-                            </div>
-                        ) : dreamActivity.length > 0 ? (
-                            dreamActivity.map(renderDreamActivityRow)
-                        ) : (
-                            <div className="px-3 py-3 text-xs text-[#6e6e6e] dark:text-[#999]" data-testid="agent-provider-dream-activity-empty">
-                                No active or recent Dreams work
                             </div>
                         )}
                     </div>
