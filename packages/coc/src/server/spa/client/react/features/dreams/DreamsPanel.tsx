@@ -61,6 +61,21 @@ const CONVERSION_LABELS: Record<DreamConversionArtifactType, string> = {
     other: 'Other',
 };
 
+const CATEGORY_DESCRIPTIONS: Record<DreamCardCategory, string> = {
+    'skill-or-prompt-improvement': 'Improves an agent skill, prompt, or instruction.',
+    'user-workflow-suggestion': 'Captures a repeatable workflow worth saving.',
+    'product-improvement': 'Suggests a product or backlog change.',
+};
+
+const STATUS_LABELS: Record<DreamCardStatus, string> = {
+    candidate: 'Candidate',
+    visible: 'Needs review',
+    approved: 'Approved',
+    dismissed: 'Dismissed',
+    converted: 'Converted',
+    superseded: 'Superseded',
+};
+
 const WORK_ITEM_TYPES: WorkItemType[] = ['work-item', 'bug', 'goal', 'pbi', 'feature', 'epic'];
 const WORK_ITEM_PRIORITIES: WorkItemPriority[] = ['normal', 'high', 'low'];
 
@@ -76,7 +91,7 @@ function formatDate(iso: string | undefined): string {
 }
 
 function statusLabel(status: DreamCardStatus): string {
-    return status.slice(0, 1).toUpperCase() + status.slice(1);
+    return STATUS_LABELS[status];
 }
 
 function sourceHash(workspaceId: string, processId: string): string {
@@ -95,11 +110,28 @@ function workItemHash(workspaceId: string, workItemId: string): string {
 function nextActionCopy(category: DreamCardCategory): string {
     switch (category) {
         case 'skill-or-prompt-improvement':
-            return 'Next action: explicitly launch or queue a skill-hardening-style task.';
+            return 'Queue a skill-hardening task when you are ready to turn this into a concrete skill or prompt improvement.';
         case 'user-workflow-suggestion':
-            return 'Next action: explicitly save the suggestion to notes or memory.';
+            return 'Save this as a note or memory when it should become durable workflow guidance.';
         case 'product-improvement':
-            return 'Next action: explicitly create or update a work item.';
+            return 'Create or update a work item when you are ready to turn this into backlog work.';
+    }
+}
+
+function reviewGuidanceCopy(card: DreamCard): string {
+    switch (card.status) {
+        case 'candidate':
+            return 'This candidate is still hidden from normal review until it passes promotion and deduplication checks.';
+        case 'visible':
+            return 'Approve this idea to unlock next actions, or dismiss it if it is not useful enough to keep.';
+        case 'approved':
+            return nextActionCopy(card.category);
+        case 'dismissed':
+            return 'This card was dismissed and remains here only for review history.';
+        case 'converted':
+            return 'This card has been linked to a concrete artifact and is kept as traceable history.';
+        case 'superseded':
+            return 'This card was replaced by a newer or better matching dream card.';
     }
 }
 
@@ -122,6 +154,28 @@ function queueTaskActivityHash(task: DreamRunResponse['task']): string {
         ? task.processId
         : toQueueProcessId(task.id);
     return '#process/' + encodeURIComponent(processId);
+}
+
+function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+    return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function formatTurnRange(startTurnIndex: number, endTurnIndex: number): string {
+    return startTurnIndex === endTurnIndex
+        ? `turn ${startTurnIndex}`
+        : `turns ${startTurnIndex}-${endTurnIndex}`;
+}
+
+function sourceRangeLabel(range: DreamCard['sourceRanges'][number], index: number): string {
+    return `Open source ${index + 1}: ${formatTurnRange(range.startTurnIndex, range.endTurnIndex)}`;
+}
+
+function sourceSummary(card: DreamCard): string {
+    if (card.sourceRanges.length === 0) {
+        return 'No source ranges are attached to this card.';
+    }
+    const conversationCount = new Set(card.sourceRanges.map(range => range.processId)).size;
+    return `Evidence from ${pluralize(card.sourceRanges.length, 'source range')} across ${pluralize(conversationCount, 'conversation')}.`;
 }
 
 function renderDreamMarkdown(card: DreamCard): string {
@@ -665,27 +719,48 @@ function DreamCardView({
     const canConvert = card.status === 'visible' || card.status === 'approved';
     const canSupersede = card.status === 'visible' || card.status === 'candidate';
     const isBusy = busyAction?.startsWith(`${card.id}:`) ?? false;
+    const updatedAt = formatDate(card.updatedAt);
 
     return (
-        <Card className="bg-white p-4 dark:bg-[#252526]" data-testid={`dream-card-${card.id}`}>
-            <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                    <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold', CATEGORY_STYLES[card.category])}>
-                        {CATEGORY_LABELS[card.category]}
-                    </span>
-                    <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold', STATUS_STYLES[card.status])}>
-                        {statusLabel(card.status)}
-                    </span>
-                    <span className="rounded-full bg-[#ddf4ff] px-2 py-0.5 text-[11px] font-semibold text-[#0969da] dark:bg-[#3794ff]/20 dark:text-[#79c0ff]">
-                        {formatConfidence(card.confidence)} confidence
-                    </span>
-                    <span className="text-[11px] text-[#848484]">Updated {formatDate(card.updatedAt)}</span>
+        <Card className="bg-white p-4 dark:bg-[#252526]" data-testid={`dream-card-${card.id}`} aria-label={`Dream card ${card.id}: ${statusLabel(card.status)}`}>
+            <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold', CATEGORY_STYLES[card.category])}>
+                                {CATEGORY_LABELS[card.category]}
+                            </span>
+                            <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold', STATUS_STYLES[card.status])}>
+                                {statusLabel(card.status)}
+                            </span>
+                            <span className="rounded-full bg-[#ddf4ff] px-2 py-0.5 text-[11px] font-semibold text-[#0969da] dark:bg-[#3794ff]/20 dark:text-[#79c0ff]">
+                                {formatConfidence(card.confidence)} confidence
+                            </span>
+                        </div>
+                        <div>
+                            <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
+                                {CATEGORY_DESCRIPTIONS[card.category]}
+                            </h3>
+                            <p className="mt-1 text-xs text-[#616161] dark:text-[#999]" data-testid={`dream-source-summary-${card.id}`}>
+                                {sourceSummary(card)}
+                            </p>
+                        </div>
+                    </div>
+                    <div className="shrink-0 text-[11px] text-[#848484]">Updated {updatedAt}</div>
                 </div>
 
-                <div>
-                    <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Observed pattern</h3>
+                <section
+                    className="rounded-lg border border-[#bfdbfe] bg-[#eff6ff] p-3 dark:border-[#1d4ed8]/60 dark:bg-[#1e3a8a]/20"
+                    data-testid={`dream-recommendation-${card.id}`}
+                >
+                    <h4 className="text-xs font-semibold uppercase tracking-wide text-[#0969da] dark:text-[#79c0ff]">Recommended next step</h4>
+                    <p className="mt-1 text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">{card.recommendation}</p>
+                </section>
+
+                <section>
+                    <h4 className="text-xs font-semibold uppercase tracking-wide text-[#848484]">What CoC noticed</h4>
                     <p className="mt-1 text-sm text-[#1e1e1e] dark:text-[#cccccc]">{card.observedPattern}</p>
-                </div>
+                </section>
 
                 <div className="grid gap-3 md:grid-cols-2">
                     <section>
@@ -693,26 +768,31 @@ function DreamCardView({
                         <p className="mt-1 text-sm text-[#1e1e1e] dark:text-[#cccccc]">{card.whyItMatters}</p>
                     </section>
                     <section>
-                        <h4 className="text-xs font-semibold uppercase tracking-wide text-[#848484]">Recommendation</h4>
-                        <p className="mt-1 text-sm text-[#1e1e1e] dark:text-[#cccccc]">{card.recommendation}</p>
-                    </section>
-                    <section>
                         <h4 className="text-xs font-semibold uppercase tracking-wide text-[#848484]">Expected impact</h4>
                         <p className="mt-1 text-sm text-[#1e1e1e] dark:text-[#cccccc]">{card.expectedImpact}</p>
                     </section>
                     <section>
-                        <h4 className="text-xs font-semibold uppercase tracking-wide text-[#848484]">Not already covered</h4>
+                        <h4 className="text-xs font-semibold uppercase tracking-wide text-[#848484]">Coverage check</h4>
                         <p className="mt-1 text-sm text-[#1e1e1e] dark:text-[#cccccc]">{card.notAlreadyCoveredRationale}</p>
                     </section>
                 </div>
 
+                <div
+                    className="rounded-md border border-[#e0e0e0] bg-[#f6f8fa] p-3 text-xs text-[#616161] dark:border-[#3c3c3c] dark:bg-[#1e1e1e] dark:text-[#999]"
+                    data-testid={`dream-review-guidance-${card.id}`}
+                >
+                    <div className="font-semibold uppercase tracking-wide text-[#848484]">Review guidance</div>
+                    <p className="mt-1">{reviewGuidanceCopy(card)}</p>
+                </div>
+
                 {(card.criticRationale || card.dedupRationale || card.conversion) && (
-                    <div className="rounded-md bg-[#f6f8fa] p-3 text-xs text-[#616161] dark:bg-[#1e1e1e] dark:text-[#999]">
-                        {card.criticRationale && <p><strong>Critic:</strong> {card.criticRationale}</p>}
-                        {card.dedupRationale && <p><strong>Dedup:</strong> {card.dedupRationale}</p>}
+                    <div className="space-y-1 rounded-md bg-[#f6f8fa] p-3 text-xs text-[#616161] dark:bg-[#1e1e1e] dark:text-[#999]">
+                        <div className="font-semibold uppercase tracking-wide text-[#848484]">Review notes</div>
+                        {card.criticRationale && <p><strong>Critic rationale:</strong> {card.criticRationale}</p>}
+                        {card.dedupRationale && <p><strong>Dedup rationale:</strong> {card.dedupRationale}</p>}
                         {card.conversion && (
                             <p>
-                                <strong>Converted:</strong> {CONVERSION_LABELS[card.conversion.artifactType]} {card.conversion.artifactId}
+                                <strong>Conversion recorded:</strong> {CONVERSION_LABELS[card.conversion.artifactType]} {card.conversion.artifactId}
                                 {card.conversion.artifactUrl && (
                                     <>
                                         {' '}
@@ -725,18 +805,25 @@ function DreamCardView({
                 )}
 
                 <div>
-                    <h4 className="text-xs font-semibold uppercase tracking-wide text-[#848484]">Sources</h4>
+                    <h4 className="text-xs font-semibold uppercase tracking-wide text-[#848484]">Source evidence</h4>
                     <div className="mt-1 flex flex-wrap gap-2">
-                        {card.sourceRanges.map(range => (
-                            <a
-                                key={`${range.processId}:${range.startTurnIndex}:${range.endTurnIndex}`}
-                                className="rounded border border-[#d0d7de] px-2 py-1 text-xs text-[#0969da] hover:bg-[#ddf4ff] dark:border-[#3c3c3c] dark:text-[#79c0ff] dark:hover:bg-[#3794ff]/20"
-                                href={sourceHash(workspaceId, range.processId)}
-                                data-testid="dream-source-link"
-                            >
-                                {range.processId} turns {range.startTurnIndex}-{range.endTurnIndex}
-                            </a>
-                        ))}
+                        {card.sourceRanges.length === 0 ? (
+                            <p className="text-xs text-[#616161] dark:text-[#999]" data-testid={`dream-no-source-evidence-${card.id}`}>
+                                No source evidence attached.
+                            </p>
+                        ) : (
+                            card.sourceRanges.map((range, index) => (
+                                <a
+                                    key={`${range.processId}:${range.startTurnIndex}:${range.endTurnIndex}`}
+                                    className="rounded border border-[#d0d7de] px-2 py-1 text-xs text-[#0969da] hover:bg-[#ddf4ff] dark:border-[#3c3c3c] dark:text-[#79c0ff] dark:hover:bg-[#3794ff]/20"
+                                    href={sourceHash(workspaceId, range.processId)}
+                                    title={`${range.processId} ${formatTurnRange(range.startTurnIndex, range.endTurnIndex)}`}
+                                    data-testid="dream-source-link"
+                                >
+                                    {sourceRangeLabel(range, index)}
+                                </a>
+                            ))
+                        )}
                     </div>
                 </div>
 
