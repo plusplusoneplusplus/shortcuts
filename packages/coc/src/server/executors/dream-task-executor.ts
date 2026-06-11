@@ -41,6 +41,7 @@ export class DreamTaskExecutor {
         try {
             const result = await runner.runQueued(payload.workspaceId, payload.trigger, {
                 ...dreamOptionsFromPayload(payload, task),
+                ...(task.processId ? { parentProcessId: task.processId } : {}),
                 signal: abortController.signal,
             });
             return summarizeDreamRun(result);
@@ -80,6 +81,10 @@ function summarizeDreamRun(result: DreamRunExecutionResult): Record<string, unkn
     return {
         response,
         run: result.run,
+        processes: {
+            ...(result.run.analyzerProcessId ? { analyzerProcessId: result.run.analyzerProcessId } : {}),
+            ...(result.run.criticProcessId ? { criticProcessId: result.run.criticProcessId } : {}),
+        },
         cardCount: result.cards.length,
         cardIds: result.cards.map(card => card.id),
         selection: {

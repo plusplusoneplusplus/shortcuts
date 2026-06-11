@@ -73,6 +73,10 @@ all have their own `references/*.md`.
 - **Loop ticks** must route completion through
   `ProcessLifecycleRunner → onLoopTickComplete → LoopExecutor.onTickComplete`;
   bookkeeping errors must never mask the follow-up's actual result.
+- **Dreams analyzer/critic AI work** must run through
+  `DreamInternalProcessExecutor`/`ProcessLifecycleRunner` so analyzer and critic
+  prompts/responses are persisted as read-only internal processes. Do not add
+  direct `aiService.sendMessage(...)` calls under `src/server/dreams/`.
 - **Follow-up enqueue sites** must call `resolveFollowUpMode(...)` and set
   `payload.mode`. `FollowUpExecutor.executeFollowUp` fail-loud warns + defaults
   to `'ask'` if missing.

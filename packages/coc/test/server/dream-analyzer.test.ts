@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ISDKService } from '@plusplusoneplusplus/forge';
 import type { DreamConversationSelection } from '../../src/server/dreams/dream-source-selector';
+import type { DreamInternalStepRunner } from '../../src/server/dreams/dream-internal-process';
 import type { DreamCard } from '../../src/server/dreams/types';
 import {
     DEFAULT_DREAM_ANALYSIS_TIMEOUT_MS,
@@ -70,23 +70,16 @@ function rawCandidate(overrides: Record<string, unknown> = {}): Record<string, u
     };
 }
 
-function mockAiService(...responses: string[]): ISDKService {
-    const sendMessage = vi.fn();
-    for (const response of responses) {
-        sendMessage.mockResolvedValueOnce({ success: true, response });
-    }
-    return {
-        sendMessage,
-        isAvailable: vi.fn(),
-        clearAvailabilityCache: vi.fn(),
-        listModels: vi.fn(),
-        transform: vi.fn(),
-        forkSession: vi.fn(),
-        abortSession: vi.fn(),
-        softAbortSession: vi.fn(),
-        loadSessionHistory: vi.fn(),
-        checkSessionHealth: vi.fn(),
-    } as unknown as ISDKService;
+function mockInternalStepRunner(...responses: string[]): DreamInternalStepRunner {
+    const runInternalStep = vi.fn<DreamInternalStepRunner>();
+    responses.forEach((response, index) => {
+        runInternalStep.mockImplementationOnce(async (request) => {
+            const processId = `dream-${request.purpose}-process-${index + 1}`;
+            request.onProcessStarted?.(processId);
+            return { processId, response };
+        });
+    });
+    return runInternalStep;
 }
 
 describe('normalizeDreamAnalysisCandidates', () => {
@@ -168,8 +161,8 @@ describe('buildDreamCriticPrompt', () => {
 });
 
 describe('analyzeDreamConversations', () => {
-    it('runs analyzer and critic as read-only Ask-mode AI calls', async () => {
-        const service = mockAiService(
+    it('runs analyzer and critic through persisted internal process tasks', async () => {
+        const runInternalStep = mockInternalStepRunner(
             JSON.stringify({ candidates: [rawCandidate()] }),
             JSON.stringify({
                 decisions: [{
@@ -181,39 +174,41 @@ describe('analyzeDreamConversations', () => {
         );
 
         const result = await analyzeDreamConversations({
-            aiService: service,
+            runInternalStep,
             workspaceId: WORKSPACE_ID,
             runId: RUN_ID,
+            parentProcessId: 'queue_dream-run-parent',
             selection: selection(),
             model: 'claude-sonnet-4.6',
             reasoningEffort: 'high',
         });
 
         expect(result.candidates).toHaveLength(1);
+        expect(result.analyzerProcessId).toBe('dream-analyzer-process-1');
+        expect(result.criticProcessId).toBe('dream-critic-process-2');
         expect(result.candidates[0].criticRationale).toContain('source-linked');
         expect(result.rejected).toHaveLength(0);
-        expect((service.sendMessage as any).mock.calls).toHaveLength(2);
-        for (const [options] of (service.sendMessage as any).mock.calls) {
-            expect(options).toMatchObject({
+        expect(vi.mocked(runInternalStep).mock.calls).toHaveLength(2);
+        for (const [request] of vi.mocked(runInternalStep).mock.calls) {
+            expect(request).toMatchObject({
+                workspaceId: WORKSPACE_ID,
+                runId: RUN_ID,
+                parentProcessId: 'queue_dream-run-parent',
                 model: 'claude-sonnet-4.6',
                 reasoningEffort: 'high',
-                mode: 'interactive',
-                streaming: false,
-                loadDefaultMcpConfig: false,
-                mcpServers: {},
-                availableTools: [],
-                tools: [],
                 timeoutMs: 3_600_000,
-                systemMessage: { mode: 'replace' },
             });
-            expect(options.onPermissionRequest).toBeTypeOf('function');
+            expect(request.onProcessStarted).toBeTypeOf('function');
         }
-        expect((service.sendMessage as any).mock.calls[0][0].systemMessage.content).toContain('Dream analyzer');
-        expect((service.sendMessage as any).mock.calls[1][0].systemMessage.content).toContain('Dream critic');
+        expect(vi.mocked(runInternalStep).mock.calls[0][0].purpose).toBe('analyzer');
+        expect(vi.mocked(runInternalStep).mock.calls[0][0].systemPrompt).toContain('Dream analyzer');
+        expect(vi.mocked(runInternalStep).mock.calls[1][0].purpose).toBe('critic');
+        expect(vi.mocked(runInternalStep).mock.calls[1][0].systemPrompt).toContain('Dream critic');
+        expect(vi.mocked(runInternalStep).mock.calls[1][0].analyzerProcessId).toBe('dream-analyzer-process-1');
     });
 
     it('honors per-request timeout overrides for analyzer and critic calls', async () => {
-        const service = mockAiService(
+        const runInternalStep = mockInternalStepRunner(
             JSON.stringify({ candidates: [rawCandidate()] }),
             JSON.stringify({
                 decisions: [{
@@ -225,21 +220,21 @@ describe('analyzeDreamConversations', () => {
         );
 
         await analyzeDreamConversations({
-            aiService: service,
+            runInternalStep,
             workspaceId: WORKSPACE_ID,
             runId: RUN_ID,
             selection: selection(),
             timeoutMs: 45_000,
         });
 
-        for (const [options] of (service.sendMessage as any).mock.calls) {
-            expect(options.timeoutMs).toBe(45_000);
+        for (const [request] of vi.mocked(runInternalStep).mock.calls) {
+            expect(request.timeoutMs).toBe(45_000);
         }
         expect(DEFAULT_DREAM_ANALYSIS_TIMEOUT_MS).toBe(3_600_000);
     });
 
     it('rejects critic duplicates before they become accepted candidates', async () => {
-        const service = mockAiService(
+        const runInternalStep = mockInternalStepRunner(
             JSON.stringify({ candidates: [rawCandidate()] }),
             JSON.stringify({
                 decisions: [{
@@ -253,7 +248,7 @@ describe('analyzeDreamConversations', () => {
         );
 
         const result = await analyzeDreamConversations({
-            aiService: service,
+            runInternalStep,
             workspaceId: WORKSPACE_ID,
             runId: RUN_ID,
             selection: selection(),
@@ -272,7 +267,7 @@ describe('analyzeDreamConversations', () => {
     });
 
     it('does not call AI when there are no eligible source conversations', async () => {
-        const service = mockAiService();
+        const runInternalStep = mockInternalStepRunner();
         const emptySelection = {
             ...selection(),
             conversations: [],
@@ -280,7 +275,7 @@ describe('analyzeDreamConversations', () => {
         };
 
         const result = await analyzeDreamConversations({
-            aiService: service,
+            runInternalStep,
             workspaceId: WORKSPACE_ID,
             selection: emptySelection,
         });
@@ -292,6 +287,6 @@ describe('analyzeDreamConversations', () => {
             deterministicCandidateCount: 0,
             sourceRanges: [],
         });
-        expect((service.sendMessage as any).mock.calls).toHaveLength(0);
+        expect(vi.mocked(runInternalStep).mock.calls).toHaveLength(0);
     });
 });

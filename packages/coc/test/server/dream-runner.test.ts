@@ -4,13 +4,13 @@ import * as os from 'os';
 import * as path from 'path';
 import type {
     ConversationTurn,
-    ISDKService,
     ProcessIndexEntry,
     ProcessStore,
     QueuedTask,
 } from '@plusplusoneplusplus/forge';
 import { FileDreamStore } from '../../src/server/dreams/dream-store';
 import { DreamRunExecutor } from '../../src/server/dreams/dream-runner';
+import type { DreamInternalStepRunner } from '../../src/server/dreams/dream-internal-process';
 
 const WORKSPACE_ID = 'ws-dream-runner';
 
@@ -76,23 +76,16 @@ function rawCandidate() {
     };
 }
 
-function mockAiService(...responses: string[]): ISDKService {
-    const sendMessage = vi.fn();
-    for (const response of responses) {
-        sendMessage.mockResolvedValueOnce({ success: true, response });
-    }
-    return {
-        sendMessage,
-        isAvailable: vi.fn(),
-        clearAvailabilityCache: vi.fn(),
-        listModels: vi.fn(),
-        transform: vi.fn(),
-        forkSession: vi.fn(),
-        abortSession: vi.fn(),
-        softAbortSession: vi.fn(),
-        loadSessionHistory: vi.fn(),
-        checkSessionHealth: vi.fn(),
-    } as unknown as ISDKService;
+function mockInternalStepRunner(...responses: string[]): DreamInternalStepRunner {
+    const runInternalStep = vi.fn<DreamInternalStepRunner>();
+    responses.forEach((response, index) => {
+        runInternalStep.mockImplementationOnce(async (request) => {
+            const processId = `queue_dream-${request.purpose}-${index + 1}`;
+            request.onProcessStarted?.(processId);
+            return { processId, response };
+        });
+    });
+    return runInternalStep;
 }
 
 function processStore(options: {
@@ -136,7 +129,7 @@ function processStore(options: {
 
 function createRunner(options: {
     dataDir: string;
-    aiService?: ISDKService;
+    runInternalStep?: DreamInternalStepRunner;
     processStore?: ProcessStore;
     getDreamsEnabled?: () => boolean | Promise<boolean>;
     getWorkspaceDreamsEnabled?: (workspaceId: string) => boolean | Promise<boolean>;
@@ -149,7 +142,7 @@ function createRunner(options: {
         runner: new DreamRunExecutor({
             store,
             processStore: options.processStore ?? processStore(),
-            aiService: options.aiService ?? mockAiService(
+            runInternalStep: options.runInternalStep ?? mockInternalStepRunner(
                 JSON.stringify({ candidates: [rawCandidate()] }),
                 JSON.stringify({
                     decisions: [{
@@ -188,6 +181,8 @@ describe('DreamRunExecutor', () => {
                 reasoningEffort: 'high',
                 timeoutMs: 3_600_000,
                 sourceRanges: [{ processId: 'process-1', startTurnIndex: 0, endTurnIndex: 1 }],
+                analyzerProcessId: 'queue_dream-analyzer-1',
+                criticProcessId: 'queue_dream-critic-2',
             });
             expect(result.cards).toHaveLength(1);
             expect(result.cards[0]).toMatchObject({
@@ -196,6 +191,10 @@ describe('DreamRunExecutor', () => {
                 criticRationale: 'Evidence is repeated, source-linked, and actionable.',
             });
             expect(result.run.candidateCardIds).toEqual([result.cards[0].id]);
+            await expect(store.getRun(WORKSPACE_ID, result.run.id)).resolves.toMatchObject({
+                analyzerProcessId: 'queue_dream-analyzer-1',
+                criticProcessId: 'queue_dream-critic-2',
+            });
             await expect(store.listCoveredSourceRanges(WORKSPACE_ID)).resolves.toEqual([
                 { processId: 'process-1', startTurnIndex: 0, endTurnIndex: 1 },
             ]);
@@ -223,11 +222,11 @@ describe('DreamRunExecutor', () => {
 
     it('marks the run failed when analysis fails after source selection', async () => {
         await withTempDir(async (dataDir) => {
-            const failingService = {
-                ...mockAiService(),
-                sendMessage: vi.fn().mockResolvedValue({ success: false, error: 'model unavailable' }),
-            } as unknown as ISDKService;
-            const { runner, store } = createRunner({ dataDir, aiService: failingService });
+            const failingInternalStep = vi.fn<DreamInternalStepRunner>(async (request) => {
+                request.onProcessStarted?.('queue_dream-analyzer-failed');
+                throw new Error('model unavailable');
+            });
+            const { runner, store } = createRunner({ dataDir, runInternalStep: failingInternalStep });
 
             await expect(runner.runManual(WORKSPACE_ID)).rejects.toThrow(/model unavailable/i);
 
@@ -238,6 +237,28 @@ describe('DreamRunExecutor', () => {
                 error: 'model unavailable',
                 timeoutMs: 3_600_000,
                 sourceRanges: [{ processId: 'process-1', startTurnIndex: 0, endTurnIndex: 1 }],
+                analyzerProcessId: 'queue_dream-analyzer-failed',
+            });
+        });
+    });
+
+    it('does not run a critic process when analyzer returns zero candidates', async () => {
+        await withTempDir(async (dataDir) => {
+            const runInternalStep = mockInternalStepRunner(JSON.stringify({ candidates: [] }));
+            const { runner, store } = createRunner({ dataDir, runInternalStep });
+
+            const result = await runner.runManual(WORKSPACE_ID);
+
+            expect(result.run).toMatchObject({
+                status: 'completed',
+                analyzerProcessId: 'queue_dream-analyzer-1',
+            });
+            expect(result.run).not.toHaveProperty('criticProcessId');
+            expect(result.cards).toHaveLength(0);
+            expect(vi.mocked(runInternalStep).mock.calls).toHaveLength(1);
+            expect(vi.mocked(runInternalStep).mock.calls[0][0].purpose).toBe('analyzer');
+            await expect(store.getRun(WORKSPACE_ID, result.run.id)).resolves.toMatchObject({
+                analyzerProcessId: 'queue_dream-analyzer-1',
             });
         });
     });

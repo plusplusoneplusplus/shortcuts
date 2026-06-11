@@ -1,7 +1,5 @@
-import type { SystemMessageConfig } from '@plusplusoneplusplus/coc-agent-sdk';
-import type { ISDKService } from '@plusplusoneplusplus/forge';
-import { denyAllPermissions } from '@plusplusoneplusplus/forge';
 import type { ChatProvider, ReasoningEffort } from '../tasks/task-types';
+import type { DreamInternalProcessPurpose, DreamInternalStepRunner } from './dream-internal-process';
 import { prefilterDreamCandidate } from './dream-store';
 import type {
     CreateDreamCandidateInput,
@@ -98,10 +96,10 @@ export interface DreamAnalysisPolicy {
 }
 
 export interface DreamAnalyzerOptions extends DreamAnalysisPolicy {
-    aiService: ISDKService;
-    resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
+    runInternalStep: DreamInternalStepRunner;
     workspaceId: string;
     runId?: string;
+    parentProcessId?: string;
     selection: DreamConversationSelection;
     existingCards?: readonly DreamCard[];
     relatedRecords?: readonly DreamRelatedRecord[];
@@ -110,6 +108,7 @@ export interface DreamAnalyzerOptions extends DreamAnalysisPolicy {
     reasoningEffort?: ReasoningEffort;
     timeoutMs?: number;
     signal?: AbortSignal;
+    onInternalProcessStarted?: (purpose: DreamInternalProcessPurpose, processId: string) => void;
 }
 
 export interface NormalizedDreamAnalysisCandidate {
@@ -145,6 +144,8 @@ export interface DreamCandidateNormalizationResult {
 }
 
 export interface DreamAnalysisResult {
+    analyzerProcessId?: string;
+    criticProcessId?: string;
     candidates: DreamValidatedCandidate[];
     rejected: DreamAnalysisRejection[];
     rawCandidateCount: number;
@@ -510,37 +511,6 @@ function applyCriticDecisions(
     return { accepted, rejected };
 }
 
-async function sendReadOnlyAskMessage(options: {
-    aiService: ISDKService;
-    prompt: string;
-    systemPrompt: string;
-    model?: string;
-    reasoningEffort?: ReasoningEffort;
-    timeoutMs: number;
-    signal?: AbortSignal;
-}): Promise<string> {
-    const systemMessage: SystemMessageConfig = { mode: 'replace', content: options.systemPrompt };
-    const result = await options.aiService.sendMessage({
-        prompt: options.prompt,
-        ...(options.model ? { model: options.model } : {}),
-        ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
-        timeoutMs: options.timeoutMs,
-        ...(options.signal ? { signal: options.signal } : {}),
-        mode: 'interactive',
-        systemMessage,
-        streaming: false,
-        loadDefaultMcpConfig: false,
-        mcpServers: {},
-        availableTools: [],
-        tools: [],
-        onPermissionRequest: denyAllPermissions,
-    });
-    if (!result.success) {
-        throw new Error(result.error ?? 'AI Dream analysis failed');
-    }
-    return result.response ?? '';
-}
-
 export async function analyzeDreamConversations(options: DreamAnalyzerOptions): Promise<DreamAnalysisResult> {
     const workspaceId = options.workspaceId.trim();
     if (!workspaceId) {
@@ -561,28 +531,34 @@ export async function analyzeDreamConversations(options: DreamAnalyzerOptions): 
         };
     }
 
-    const aiService = options.provider && options.resolveAiServiceForProvider
-        ? options.resolveAiServiceForProvider(options.provider)
-        : options.aiService;
     const timeoutMs = options.timeoutMs ?? DEFAULT_DREAM_ANALYSIS_TIMEOUT_MS;
     const policy: DreamAnalysisPolicy = {
         confidenceThreshold: options.confidenceThreshold,
         maxCandidates: options.maxCandidates,
     };
-    const analysisResponse = await sendReadOnlyAskMessage({
-        aiService,
-        prompt: buildDreamAnalysisPrompt({
-            workspaceId,
-            runId: options.runId,
-            selection: options.selection,
-            policy,
-        }),
-        systemPrompt: ANALYZER_SYSTEM_PROMPT,
-        model: options.model,
-        reasoningEffort: options.reasoningEffort,
-        timeoutMs,
-        signal: options.signal,
+    const analysisPrompt = buildDreamAnalysisPrompt({
+        workspaceId,
+        runId: options.runId,
+        selection: options.selection,
+        policy,
     });
+    const analysisStep = await options.runInternalStep({
+        purpose: 'analyzer',
+        workspaceId,
+        runId: options.runId ?? 'dream-run',
+        prompt: analysisPrompt,
+        systemPrompt: ANALYZER_SYSTEM_PROMPT,
+        timeoutMs,
+        ...(options.parentProcessId ? { parentProcessId: options.parentProcessId } : {}),
+        ...(options.provider ? { provider: options.provider } : {}),
+        ...(options.model ? { model: options.model } : {}),
+        ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
+        ...(options.signal ? { signal: options.signal } : {}),
+        onProcessStarted: processId => options.onInternalProcessStarted?.('analyzer', processId),
+    });
+    const analysisResponse = analysisStep.response;
+    const analyzerProcessId = analysisStep.processId;
+    options.onInternalProcessStarted?.('analyzer', analyzerProcessId);
     const normalized = normalizeDreamAnalysisCandidates(analysisResponse, {
         workspaceId,
         ...(options.runId ? { runId: options.runId } : {}),
@@ -593,6 +569,7 @@ export async function analyzeDreamConversations(options: DreamAnalyzerOptions): 
 
     if (normalized.candidates.length === 0) {
         return {
+            analyzerProcessId,
             candidates: [],
             rejected: normalized.rejected,
             rawCandidateCount: normalized.rawCandidateCount,
@@ -601,23 +578,33 @@ export async function analyzeDreamConversations(options: DreamAnalyzerOptions): 
         };
     }
 
-    const criticResponse = await sendReadOnlyAskMessage({
-        aiService,
-        prompt: buildDreamCriticPrompt({
-            candidates: normalized.candidates,
-            existingCards: options.existingCards,
-            relatedRecords: options.relatedRecords,
-        }),
-        systemPrompt: CRITIC_SYSTEM_PROMPT,
-        model: options.model,
-        reasoningEffort: options.reasoningEffort,
-        timeoutMs,
-        signal: options.signal,
+    const criticPrompt = buildDreamCriticPrompt({
+        candidates: normalized.candidates,
+        existingCards: options.existingCards,
+        relatedRecords: options.relatedRecords,
     });
-    const decisions = parseDreamCriticResponse(criticResponse);
+    const criticStep = await options.runInternalStep({
+        purpose: 'critic',
+        workspaceId,
+        runId: options.runId ?? 'dream-run',
+        analyzerProcessId,
+        prompt: criticPrompt,
+        systemPrompt: CRITIC_SYSTEM_PROMPT,
+        timeoutMs,
+        ...(options.parentProcessId ? { parentProcessId: options.parentProcessId } : {}),
+        ...(options.provider ? { provider: options.provider } : {}),
+        ...(options.model ? { model: options.model } : {}),
+        ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
+        ...(options.signal ? { signal: options.signal } : {}),
+        onProcessStarted: processId => options.onInternalProcessStarted?.('critic', processId),
+    });
+    options.onInternalProcessStarted?.('critic', criticStep.processId);
+    const decisions = parseDreamCriticResponse(criticStep.response);
     const critic = applyCriticDecisions(normalized.candidates, decisions);
 
     return {
+        analyzerProcessId,
+        criticProcessId: criticStep.processId,
         candidates: critic.accepted,
         rejected: [...normalized.rejected, ...critic.rejected],
         rawCandidateCount: normalized.rawCandidateCount,

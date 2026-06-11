@@ -206,6 +206,8 @@ describe('FileDreamStore', () => {
                     { processId: 'process-run', startTurnIndex: 0, endTurnIndex: 3 },
                 ],
                 candidateCardIds: [created.id, created.id],
+                analyzerProcessId: 'queue_dream-analyzer-1',
+                criticProcessId: 'queue_dream-critic-2',
             });
             expect(completed.status).toBe('completed');
             expect(completed).toMatchObject({
@@ -213,6 +215,8 @@ describe('FileDreamStore', () => {
                 model: 'claude-sonnet-4.6',
                 reasoningEffort: 'high',
                 timeoutMs: 3_600_000,
+                analyzerProcessId: 'queue_dream-analyzer-1',
+                criticProcessId: 'queue_dream-critic-2',
             });
             expect(completed.candidateCardIds).toEqual([created.id]);
             expect(completed.sourceRanges).toEqual([
@@ -223,6 +227,7 @@ describe('FileDreamStore', () => {
             await store.failRun(WORKSPACE_ID, failedRun.id, {
                 error: 'critic failed',
                 sourceRanges: [{ processId: 'process-failed', startTurnIndex: 0, endTurnIndex: 2 }],
+                analyzerProcessId: 'queue_dream-analyzer-failed',
             });
 
             const covered = await store.listCoveredSourceRanges(WORKSPACE_ID);
@@ -233,6 +238,9 @@ describe('FileDreamStore', () => {
 
             const runs = await store.listRuns(WORKSPACE_ID);
             expect(runs.map(storedRun => storedRun.status).sort()).toEqual(['completed', 'failed']);
+            expect(runs.find(storedRun => storedRun.id === failedRun.id)).toMatchObject({
+                analyzerProcessId: 'queue_dream-analyzer-failed',
+            });
         });
     });
 

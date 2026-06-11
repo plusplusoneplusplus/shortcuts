@@ -96,7 +96,7 @@ The `src/server/` tree is grouped by feature domain. Cross-cutting plumbing stay
 | `providers/` | Provider abstraction for AI/PRs |
 | `repos/` | Repository management endpoints |
 | `work-items/` | Work-items REST + executors |
-| `dreams/` | Workspace-scoped dream card/run types, deterministic candidate prefiltering, eligible conversation source selection, read-only Ask-mode analyzer/critic validation, lifecycle storage with provider/model/timeout run attribution, durable dedup/coverage history, queue-backed visible `dream-run` manual/idle orchestration with quiet-window readiness checks, periodic opt-in idle scheduling, and workspace Dreams REST routes |
+| `dreams/` | Workspace-scoped dream card/run types, deterministic candidate prefiltering, eligible conversation source selection, process-lifecycle-backed read-only analyzer/critic validation, lifecycle storage with provider/model/timeout run attribution and analyzer/critic process links, durable dedup/coverage history, queue-backed visible `dream-run` manual/idle orchestration with quiet-window readiness checks, periodic opt-in idle scheduling, and workspace Dreams REST routes |
 | `wiki/` | Wiki integration (manager, data, routes, context-builder, conversation-sessions) |
 | `terminal/` | WebSocket-based PTY (session-manager, routes, ws-server) |
 | `memory/` | Memory config, bounded-memory REST, repo-memory, promote, background-review |
@@ -247,7 +247,7 @@ Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT.
 - `tasks/` — task and plan files
 - `outputs/` — AI conversation output markdown
 - `memory/MEMORY.md` — per-repo bounded memory
-- `dreams/cards.json`, `dreams/runs.json` — reviewable dream cards, hidden candidate/terminal history, and completed-run source coverage for workspace-local dedup/incremental selection
+- `dreams/cards.json`, `dreams/runs.json` — reviewable dream cards, hidden candidate/terminal history, completed-run source coverage, and analyzer/critic process links for workspace-local dedup/incremental selection
 - `ralph-sessions/<sessionId>/` — Ralph `session.json` metadata and `progress.md` journal
 - `for-each-runs/<runId>/` — For Each `run.json` metadata and `items.json` reviewed item plan/state
 - `map-reduce-runs/<runId>/` — Map Reduce `run.json` metadata, `items.json` reviewed map item plan/state, and `reduce-step.json` tracked reduce-step state

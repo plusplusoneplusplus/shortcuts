@@ -1,7 +1,6 @@
 import type {
     AIProcess,
     ConversationTurn,
-    ISDKService,
     ProcessIndexEntry,
     ProcessStore,
     QueuedTask,
@@ -14,6 +13,7 @@ import {
     type DreamAnalysisResult,
     type DreamRelatedRecord,
 } from './dream-analyzer';
+import type { DreamInternalProcessPurpose, DreamInternalStepRunner } from './dream-internal-process';
 import { selectEligibleDreamConversations, type DreamConversationSelection } from './dream-source-selector';
 import type { FileDreamStore } from './dream-store';
 import type { DreamCard, DreamRunRecord, DreamRunTrigger, DreamSourceRange } from './types';
@@ -29,8 +29,7 @@ export interface DreamRunPolicy extends DreamAnalysisPolicy {
 export interface DreamRunExecutorOptions extends DreamRunPolicy {
     store: FileDreamStore;
     processStore: ProcessStore;
-    aiService: ISDKService;
-    resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
+    runInternalStep: DreamInternalStepRunner;
     getDreamsEnabled: () => boolean | Promise<boolean>;
     getWorkspaceDreamsEnabled: (workspaceId: string) => boolean | Promise<boolean>;
     listWorkspaceTasks?: (workspaceId: string) => readonly QueuedTask[] | Promise<readonly QueuedTask[]>;
@@ -48,6 +47,7 @@ export interface DreamRunRequestOptions extends DreamRunPolicy {
     reasoningEffort?: ReasoningEffort;
     timeoutMs?: number;
     signal?: AbortSignal;
+    parentProcessId?: string;
 }
 
 export interface DreamRunExecutionResult {
@@ -203,8 +203,7 @@ async function getLatestWorkspaceActivityAt(
 export class DreamRunExecutor {
     private readonly store: FileDreamStore;
     private readonly processStore: ProcessStore;
-    private readonly aiService: ISDKService;
-    private readonly resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
+    private readonly runInternalStep: DreamInternalStepRunner;
     private readonly getDreamsEnabled: () => boolean | Promise<boolean>;
     private readonly getWorkspaceDreamsEnabled: (workspaceId: string) => boolean | Promise<boolean>;
     private readonly listWorkspaceTasks?: (workspaceId: string) => readonly QueuedTask[] | Promise<readonly QueuedTask[]>;
@@ -222,8 +221,7 @@ export class DreamRunExecutor {
     constructor(options: DreamRunExecutorOptions) {
         this.store = options.store;
         this.processStore = options.processStore;
-        this.aiService = options.aiService;
-        this.resolveAiServiceForProvider = options.resolveAiServiceForProvider;
+        this.runInternalStep = options.runInternalStep;
         this.getDreamsEnabled = options.getDreamsEnabled;
         this.getWorkspaceDreamsEnabled = options.getWorkspaceDreamsEnabled;
         this.listWorkspaceTasks = options.listWorkspaceTasks;
@@ -331,6 +329,8 @@ export class DreamRunExecutor {
         });
         let selection: DreamConversationSelection | undefined;
         let analysis: DreamAnalysisResult | undefined;
+        let analyzerProcessId: string | undefined;
+        let criticProcessId: string | undefined;
         const cards: DreamCard[] = [];
         const candidateCardIds: string[] = [];
 
@@ -348,21 +348,30 @@ export class DreamRunExecutor {
             const existingCards = await this.store.listCards(workspaceId, { includeHidden: true });
             const relatedRecords = await this.getRelatedRecords?.(workspaceId) ?? [];
             analysis = await analyzeDreamConversations({
-                aiService: this.aiService,
-                ...(this.resolveAiServiceForProvider ? { resolveAiServiceForProvider: this.resolveAiServiceForProvider } : {}),
+                runInternalStep: this.runInternalStep,
                 workspaceId,
                 runId: run.id,
+                ...(options.parentProcessId ? { parentProcessId: options.parentProcessId } : {}),
                 selection,
                 existingCards,
                 relatedRecords,
-                provider,
-                model,
-                reasoningEffort,
                 timeoutMs,
-                signal: options.signal,
+                ...(provider ? { provider } : {}),
+                ...(model ? { model } : {}),
+                ...(reasoningEffort ? { reasoningEffort } : {}),
+                ...(options.signal ? { signal: options.signal } : {}),
                 confidenceThreshold: options.confidenceThreshold ?? this.defaultConfidenceThreshold,
                 maxCandidates: options.maxCandidates ?? this.defaultMaxCandidates,
+                onInternalProcessStarted: (purpose: DreamInternalProcessPurpose, processId: string) => {
+                    if (purpose === 'analyzer') {
+                        analyzerProcessId = processId;
+                    } else {
+                        criticProcessId = processId;
+                    }
+                },
             });
+            analyzerProcessId = analysis.analyzerProcessId ?? analyzerProcessId;
+            criticProcessId = analysis.criticProcessId ?? criticProcessId;
 
             for (const validated of analysis.candidates) {
                 const candidate = await this.store.createCandidate(validated.candidate);
@@ -377,6 +386,8 @@ export class DreamRunExecutor {
             const completedRun = await this.store.completeRun(workspaceId, run.id, {
                 sourceRanges: analysis.sourceRanges,
                 candidateCardIds,
+                ...(analyzerProcessId ? { analyzerProcessId } : {}),
+                ...(criticProcessId ? { criticProcessId } : {}),
             });
             return {
                 run: completedRun,
@@ -390,6 +401,8 @@ export class DreamRunExecutor {
                     error: errorMessage(error),
                     sourceRanges: analysis?.sourceRanges ?? candidateSourceRanges(selection),
                     candidateCardIds,
+                    ...(analyzerProcessId ? { analyzerProcessId } : {}),
+                    ...(criticProcessId ? { criticProcessId } : {}),
                 });
             } catch (persistError) {
                 throw new Error(`Dream run failed: ${errorMessage(error)}; additionally failed to persist failure: ${errorMessage(persistError)}`);

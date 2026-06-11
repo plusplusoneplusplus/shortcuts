@@ -343,6 +343,18 @@ function normalizeCandidateCardIds(value: unknown): string[] {
     return [...new Set(ids)];
 }
 
+function normalizeOptionalProcessId(value: unknown, fieldName: string): string | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== 'string') {
+        throw new Error(`${fieldName} must be a string`);
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+        throw new Error(`${fieldName} must be non-empty`);
+    }
+    return trimmed;
+}
+
 function dedupeSourceRanges(ranges: readonly DreamSourceRange[]): DreamSourceRange[] {
     const seen = new Set<string>();
     const deduped: DreamSourceRange[] = [];
@@ -482,11 +494,15 @@ export class FileDreamStore {
     async completeRun(workspaceId: string, runId: string, input: CompleteDreamRunInput): Promise<DreamRunRecord> {
         const sourceRanges = normalizeRunSourceRanges(input.sourceRanges, 'sourceRanges', true);
         const candidateCardIds = normalizeCandidateCardIds(input.candidateCardIds);
+        const analyzerProcessId = normalizeOptionalProcessId(input.analyzerProcessId, 'analyzerProcessId');
+        const criticProcessId = normalizeOptionalProcessId(input.criticProcessId, 'criticProcessId');
         return this.transitionRun(workspaceId, runId, 'completed', run => ({
             ...run,
             status: 'completed',
             sourceRanges: dedupeSourceRanges(sourceRanges),
             candidateCardIds,
+            ...(analyzerProcessId ? { analyzerProcessId } : {}),
+            ...(criticProcessId ? { criticProcessId } : {}),
             completedAt: new Date().toISOString(),
         }));
     }
@@ -500,11 +516,15 @@ export class FileDreamStore {
             ? normalizeRunSourceRanges(input.sourceRanges, 'sourceRanges', true)
             : [];
         const candidateCardIds = normalizeCandidateCardIds(input.candidateCardIds);
+        const analyzerProcessId = normalizeOptionalProcessId(input.analyzerProcessId, 'analyzerProcessId');
+        const criticProcessId = normalizeOptionalProcessId(input.criticProcessId, 'criticProcessId');
         return this.transitionRun(workspaceId, runId, 'failed', run => ({
             ...run,
             status: 'failed',
             sourceRanges: dedupeSourceRanges(sourceRanges),
             candidateCardIds,
+            ...(analyzerProcessId ? { analyzerProcessId } : {}),
+            ...(criticProcessId ? { criticProcessId } : {}),
             failedAt: new Date().toISOString(),
             error,
         }));

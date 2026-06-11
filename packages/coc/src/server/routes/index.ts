@@ -110,6 +110,7 @@ import { FileDreamStore } from '../dreams/dream-store';
 import { DreamRunExecutor, type DreamRunRequestOptions } from '../dreams/dream-runner';
 import { DreamIdleScheduler } from '../dreams/dream-idle-scheduler';
 import { DEFAULT_DREAM_ANALYSIS_TIMEOUT_MS } from '../dreams/dream-analyzer';
+import { DreamInternalProcessExecutor } from '../executors/dream-internal-process-executor';
 import { registerLoopRoutes } from '../loops/loop-handler';
 import type { LoopStore } from '../loops/loop-store';
 import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
@@ -696,11 +697,17 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         ? () => opts.runtimeConfigService!.config.dreams?.enabled ?? false
         : () => opts.resolvedConfig?.dreams?.enabled ?? false;
     const activeWorkItemStatuses = WORK_ITEM_STATUSES.filter(status => !TERMINAL_WORK_ITEM_STATUSES.has(status));
+    const dreamInternalProcessExecutor = new DreamInternalProcessExecutor({
+        store,
+        aiService: resolvedAiService,
+        dataDir,
+        provider: concreteDefaultProvider(),
+        ...(opts.resolveAiServiceForProvider ? { resolveAiServiceForProvider: opts.resolveAiServiceForProvider } : {}),
+    });
     const dreamRunExecutor = new DreamRunExecutor({
         store: dreamStore,
         processStore: store,
-        aiService: resolvedAiService,
-        resolveAiServiceForProvider: opts.resolveAiServiceForProvider,
+        runInternalStep: request => dreamInternalProcessExecutor.runStep(request),
         getDreamsEnabled,
         getWorkspaceDreamsEnabled: (workspaceId) => readRepoPreferences(dataDir, workspaceId).dreams?.enabled === true,
         listWorkspaceTasks: () => queueFacade.getAll(),

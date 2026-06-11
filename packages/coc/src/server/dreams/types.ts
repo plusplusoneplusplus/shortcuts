@@ -92,6 +92,8 @@ export interface DreamRunRecord {
     timeoutMs?: number;
     sourceRanges: DreamSourceRange[];
     candidateCardIds: string[];
+    analyzerProcessId?: string;
+    criticProcessId?: string;
     startedAt: string;
     completedAt?: string;
     failedAt?: string;
@@ -145,10 +147,14 @@ export interface CreateDreamRunInput {
 export interface CompleteDreamRunInput {
     sourceRanges: DreamSourceRange[];
     candidateCardIds?: string[];
+    analyzerProcessId?: string;
+    criticProcessId?: string;
 }
 
 export interface FailDreamRunInput {
     error: string;
     sourceRanges?: DreamSourceRange[];
     candidateCardIds?: string[];
+    analyzerProcessId?: string;
+    criticProcessId?: string;
 }
