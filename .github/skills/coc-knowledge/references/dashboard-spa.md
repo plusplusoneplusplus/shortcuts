@@ -282,6 +282,14 @@ Stacked layout with:
 
 Focus indicator propagates mode-colored ring from contenteditable to parent card.
 
+File/image attachments flow through the shared `useFileAttachments` hook before
+new-chat, follow-up, note-chat, queue, task-generation, review-chat, For Each,
+and Map Reduce send paths serialize them. Browser-supported raster chat images at or above 64 KiB (`png`, `jpg`/`jpeg`,
+`webp`) are canvas-downscaled to at most 1600px on the long edge and re-encoded
+as JPEG only when that reduces the payload before the wire `AttachmentPayload`/
+legacy `images` data URLs reach the server; smaller images, unsupported images,
+and failed canvas conversions retain the original attachment bytes.
+
 When `features.sessionContextAttachments` is enabled, same-workspace chat/process
 rows, Ralph session group rows, Work Item list/hierarchy rows, Git commit rows,
 branch range headers/overview headers, and Pull Request rows are copy-drag

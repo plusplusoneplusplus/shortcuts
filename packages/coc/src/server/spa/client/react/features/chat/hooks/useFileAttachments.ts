@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import type { ChatAttachment, AttachmentPayload } from '../../../types/attachments';
 import { MAX_FILE_SIZE, MAX_ATTACHMENTS, MAX_FILE_SIZE_LABEL, getAttachmentCategory } from '../../../types/attachments';
+import { canCompressChatImageForLlm, compressChatImageForLlm } from '../utils/chatImageCompression';
 
 export interface UseFileAttachmentsResult {
     /** Current list of attachments */
@@ -35,6 +36,16 @@ export function useFileAttachments(maxAttachments: number = MAX_ATTACHMENTS): Us
 
     const clearError = useCallback(() => setError(null), []);
 
+    const addAttachment = useCallback((attachment: ChatAttachment) => {
+        setAttachments(current => {
+            if (current.length >= maxAttachments) return current;
+            if (current.some(a => a.name === attachment.name && a.size === attachment.size)) return current;
+            const next = [...current, attachment];
+            countRef.current = next.length;
+            return next;
+        });
+    }, [maxAttachments]);
+
     const addFiles = useCallback((files: File[]) => {
         if (files.length === 0) return;
 
@@ -61,26 +72,42 @@ export function useFileAttachments(maxAttachments: number = MAX_ATTACHMENTS): Us
             const reader = new FileReader();
             reader.onload = (event) => {
                 const dataUrl = event.target!.result as string;
-                const category = getAttachmentCategory(file.type, file.name);
-                const attachment: ChatAttachment = {
+                const mimeType = file.type || 'application/octet-stream';
+                const category = getAttachmentCategory(mimeType, file.name);
+                const baseAttachment: ChatAttachment = {
                     id: crypto.randomUUID(),
                     name: file.name,
-                    mimeType: file.type || 'application/octet-stream',
+                    mimeType,
                     size: file.size,
                     dataUrl,
                     category,
                 };
-                setAttachments(current => {
-                    if (current.length >= maxAttachments) return current;
-                    if (current.some(a => a.name === attachment.name && a.size === attachment.size)) return current;
-                    const next = [...current, attachment];
-                    countRef.current = next.length;
-                    return next;
+
+                const compressionInput = {
+                    name: baseAttachment.name,
+                    mimeType: baseAttachment.mimeType,
+                    size: baseAttachment.size,
+                    dataUrl: baseAttachment.dataUrl,
+                };
+
+                if (category !== 'image' || !canCompressChatImageForLlm(compressionInput)) {
+                    addAttachment(baseAttachment);
+                    return;
+                }
+
+                void compressChatImageForLlm(compressionInput).then((compressed) => {
+                    addAttachment({
+                        ...baseAttachment,
+                        name: compressed.name,
+                        mimeType: compressed.mimeType,
+                        size: compressed.size,
+                        dataUrl: compressed.dataUrl,
+                    });
                 });
             };
             reader.readAsDataURL(file);
         }
-    }, [maxAttachments]);
+    }, [addAttachment, maxAttachments]);
 
     const addFromPaste = useCallback((e: React.ClipboardEvent) => {
         const items = e.clipboardData?.items;

@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useFileAttachments } from '../../../src/server/spa/client/react/features/chat/hooks/useFileAttachments';
 
 let fileCounter = 0;
 const OriginalFileReader = globalThis.FileReader;
+const OriginalImage = globalThis.Image;
+const originalCreateElement = document.createElement.bind(document);
 
 function createMockPasteEvent(items: Array<{ kind: string; type: string; getAsFile: () => File | null }>): React.ClipboardEvent {
     const preventDefault = vi.fn();
@@ -58,6 +60,7 @@ beforeEach(() => {
 afterEach(() => {
     vi.restoreAllMocks();
     if (OriginalFileReader) globalThis.FileReader = OriginalFileReader;
+    if (OriginalImage) globalThis.Image = OriginalImage;
 });
 
 describe('useFileAttachments', () => {
@@ -249,5 +252,64 @@ describe('useFileAttachments', () => {
         act(() => { result.current.addFromPaste(createMockPasteEvent([createFileItem(file)])); });
 
         expect(result.current.attachments).toHaveLength(1);
+    });
+
+    it('compresses image attachments before exposing image and API payload data URLs', async () => {
+        globalThis.Image = class {
+            onload: (() => void) | null = null;
+            onerror: (() => void) | null = null;
+            naturalWidth = 3200;
+            naturalHeight = 1600;
+            width = 3200;
+            height = 1600;
+
+            set src(_value: string) {
+                queueMicrotask(() => this.onload?.());
+            }
+        } as any;
+
+        const drawImage = vi.fn();
+        const toBlob = vi.fn((callback: (blob: Blob) => void, mimeType: string, quality: number) => {
+            expect(mimeType).toBe('image/jpeg');
+            expect(quality).toBe(0.82);
+            callback(new Blob(['jpeg'], { type: mimeType }));
+        });
+        vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+            if (tagName === 'canvas') {
+                return {
+                    width: 0,
+                    height: 0,
+                    getContext: () => ({ drawImage }),
+                    toBlob,
+                } as any;
+            }
+            return originalCreateElement(tagName);
+        });
+
+        const { result } = renderHook(() => useFileAttachments());
+        const file = createImageFile('screenshot.png');
+        Object.defineProperty(file, 'size', { value: 100_000 });
+
+        act(() => {
+            result.current.addFromFileInput([file]);
+        });
+
+        await waitFor(() => expect(result.current.attachments).toHaveLength(1));
+
+        expect(drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 1600, 800);
+        expect(result.current.attachments[0]).toMatchObject({
+            name: 'screenshot.jpg',
+            mimeType: 'image/jpeg',
+            size: 4,
+            category: 'image',
+        });
+        expect(result.current.attachments[0].dataUrl).toBe('data:image/jpeg;base64,content1');
+        expect(result.current.images).toEqual(['data:image/jpeg;base64,content1']);
+        expect(result.current.toPayload()[0]).toMatchObject({
+            name: 'screenshot.jpg',
+            mimeType: 'image/jpeg',
+            size: 4,
+            dataUrl: 'data:image/jpeg;base64,content1',
+        });
     });
 });
