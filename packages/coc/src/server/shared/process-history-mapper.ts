@@ -31,6 +31,68 @@ export interface HistorySummary {
     provider?: 'copilot' | 'codex' | 'claude';
 }
 
+interface DreamProcessLinks {
+    analyzerProcessId?: string;
+    criticProcessId?: string;
+}
+
+function readDreamMetadata(proc: AIProcess): Record<string, unknown> | undefined {
+    return proc.metadata?.dream && typeof proc.metadata.dream === 'object' && !Array.isArray(proc.metadata.dream)
+        ? proc.metadata.dream as Record<string, unknown>
+        : undefined;
+}
+
+function parseDreamProcessLinks(proc: AIProcess): DreamProcessLinks {
+    const dream = readDreamMetadata(proc);
+    const links: DreamProcessLinks = {};
+    if (typeof dream?.analyzerProcessId === 'string') {
+        links.analyzerProcessId = dream.analyzerProcessId;
+    }
+    if (typeof dream?.criticProcessId === 'string') {
+        links.criticProcessId = dream.criticProcessId;
+    }
+
+    if (typeof proc.result !== 'string' || proc.result.trim().length === 0) {
+        return links;
+    }
+
+    try {
+        const parsed = JSON.parse(proc.result) as unknown;
+        const processes = parsed && typeof parsed === 'object'
+            ? (parsed as Record<string, unknown>).processes
+            : undefined;
+        if (processes && typeof processes === 'object' && !Array.isArray(processes)) {
+            const record = processes as Record<string, unknown>;
+            if (!links.analyzerProcessId && typeof record.analyzerProcessId === 'string') {
+                links.analyzerProcessId = record.analyzerProcessId;
+            }
+            if (!links.criticProcessId && typeof record.criticProcessId === 'string') {
+                links.criticProcessId = record.criticProcessId;
+            }
+        }
+    } catch {
+        return links;
+    }
+    return links;
+}
+
+function buildDreamPayload(proc: AIProcess): Record<string, unknown> | undefined {
+    const dream = readDreamMetadata(proc);
+    if (!dream) return undefined;
+    const processLinks = parseDreamProcessLinks(proc);
+    return {
+        kind: 'dream-run',
+        trigger: dream.trigger,
+        provider: proc.metadata?.provider,
+        model: proc.metadata?.model,
+        reasoningEffort: proc.metadata?.reasoningEffort,
+        timeoutMs: dream.timeoutMs,
+        ...(processLinks.analyzerProcessId || processLinks.criticProcessId
+            ? { processes: processLinks }
+            : {}),
+    };
+}
+
 export function processToHistorySummary(proc: AIProcess): HistorySummary {
     const completedAt = proc.endTime
         ? new Date(proc.endTime).getTime()
@@ -40,6 +102,7 @@ export function processToHistorySummary(proc: AIProcess): HistorySummary {
         || proc.title
         || proc.promptPreview
         || proc.id;
+    const dreamPayload = buildDreamPayload(proc);
 
     return {
         id: isQueueProcessId(proc.id) ? toTaskId(proc.id) : proc.id,
@@ -56,16 +119,7 @@ export function processToHistorySummary(proc: AIProcess): HistorySummary {
             mode: proc.metadata?.mode as string | undefined,
             pipelineName: proc.metadata?.pipelineName as string | undefined,
             workItemId: proc.metadata?.workItemId as string | undefined,
-            ...(proc.metadata?.dream && typeof proc.metadata.dream === 'object'
-                ? {
-                    kind: 'dream-run',
-                    trigger: (proc.metadata.dream as Record<string, unknown>).trigger,
-                    provider: proc.metadata?.provider,
-                    model: proc.metadata?.model,
-                    reasoningEffort: proc.metadata?.reasoningEffort,
-                    timeoutMs: (proc.metadata.dream as Record<string, unknown>).timeoutMs,
-                }
-                : {}),
+            ...(dreamPayload ?? {}),
         },
         customTitle: proc.customTitle,
         lastMessagePreview: proc.lastMessagePreview,
@@ -88,6 +142,8 @@ function mapProcessStatus(status: string): string {
  * the original status and timestamps instead of hardcoding 'queued'.
  */
 export function processToTaskDetail(proc: AIProcess): Partial<QueuedTask> {
+    const dream = readDreamMetadata(proc);
+    const dreamPayload = buildDreamPayload(proc);
     return {
         id: isQueueProcessId(proc.id) ? toTaskId(proc.id) : proc.id,
         type: proc.type === 'clarification' ? 'chat' : proc.type,
@@ -102,12 +158,13 @@ export function processToTaskDetail(proc: AIProcess): Partial<QueuedTask> {
             pipelineName: proc.metadata?.pipelineName,
             workItemId: proc.metadata?.workItemId,
             provider: proc.metadata?.provider,
-            ...(proc.metadata?.dream && typeof proc.metadata.dream === 'object'
+            ...(dreamPayload
                 ? {
-                    trigger: (proc.metadata.dream as Record<string, unknown>).trigger,
-                    model: proc.metadata?.model,
-                    reasoningEffort: proc.metadata?.reasoningEffort,
-                    timeoutMs: (proc.metadata.dream as Record<string, unknown>).timeoutMs,
+                    trigger: dreamPayload.trigger,
+                    model: dreamPayload.model,
+                    reasoningEffort: dreamPayload.reasoningEffort,
+                    timeoutMs: dreamPayload.timeoutMs,
+                    ...(dreamPayload.processes ? { processes: dreamPayload.processes } : {}),
                 }
                 : {}),
         } as any,
@@ -121,14 +178,14 @@ export function processToTaskDetail(proc: AIProcess): Partial<QueuedTask> {
         provider: proc.metadata?.provider,
         model: proc.metadata?.model,
         reasoningEffort: proc.metadata?.reasoningEffort,
-        timeoutMs: proc.metadata?.dream && typeof proc.metadata.dream === 'object'
-            ? (proc.metadata.dream as Record<string, unknown>).timeoutMs as number | undefined
+        timeoutMs: dream
+            ? dream.timeoutMs as number | undefined
             : undefined,
         config: {
             model: proc.metadata?.model as string | undefined,
             reasoningEffort: proc.metadata?.reasoningEffort as string | undefined,
-            timeoutMs: proc.metadata?.dream && typeof proc.metadata.dream === 'object'
-                ? (proc.metadata.dream as Record<string, unknown>).timeoutMs as number | undefined
+            timeoutMs: dream
+                ? dream.timeoutMs as number | undefined
                 : undefined,
         } as any,
         customTitle: proc.customTitle,
@@ -142,6 +199,8 @@ export function processToTaskDetail(proc: AIProcess): Partial<QueuedTask> {
  * re-enqueued for follow-up messages after a server restart.
  */
 export function processToQueuedTask(proc: AIProcess): Partial<QueuedTask> {
+    const dream = readDreamMetadata(proc);
+    const dreamPayload = buildDreamPayload(proc);
     return {
         id: isQueueProcessId(proc.id) ? toTaskId(proc.id) : proc.id,
         type: proc.type === 'clarification' ? 'chat' : proc.type,
@@ -154,12 +213,13 @@ export function processToQueuedTask(proc: AIProcess): Partial<QueuedTask> {
             workspaceId: proc.metadata?.workspaceId,
             mode: proc.metadata?.mode,
             provider: proc.metadata?.provider,
-            ...(proc.metadata?.dream && typeof proc.metadata.dream === 'object'
+            ...(dreamPayload
                 ? {
-                    trigger: (proc.metadata.dream as Record<string, unknown>).trigger,
-                    model: proc.metadata?.model,
-                    reasoningEffort: proc.metadata?.reasoningEffort,
-                    timeoutMs: (proc.metadata.dream as Record<string, unknown>).timeoutMs,
+                    trigger: dreamPayload.trigger,
+                    model: dreamPayload.model,
+                    reasoningEffort: dreamPayload.reasoningEffort,
+                    timeoutMs: dreamPayload.timeoutMs,
+                    ...(dreamPayload.processes ? { processes: dreamPayload.processes } : {}),
                 }
                 : {}),
         } as any,
@@ -170,14 +230,14 @@ export function processToQueuedTask(proc: AIProcess): Partial<QueuedTask> {
         provider: proc.metadata?.provider,
         model: proc.metadata?.model,
         reasoningEffort: proc.metadata?.reasoningEffort,
-        timeoutMs: proc.metadata?.dream && typeof proc.metadata.dream === 'object'
-            ? (proc.metadata.dream as Record<string, unknown>).timeoutMs as number | undefined
+        timeoutMs: dream
+            ? dream.timeoutMs as number | undefined
             : undefined,
-        config: proc.metadata?.dream && typeof proc.metadata.dream === 'object'
+        config: dream
             ? {
                 model: proc.metadata?.model as string | undefined,
                 reasoningEffort: proc.metadata?.reasoningEffort as string | undefined,
-                timeoutMs: (proc.metadata.dream as Record<string, unknown>).timeoutMs as number | undefined,
+                timeoutMs: dream.timeoutMs as number | undefined,
             } as any
             : undefined,
         customTitle: proc.customTitle,

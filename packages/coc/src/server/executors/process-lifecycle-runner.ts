@@ -213,6 +213,29 @@ function isAutoProviderRoutingRequested(payload: ChatPayload): boolean {
     return payload.context?.autoProviderRouting?.requested === true;
 }
 
+function updateDreamMetadataFromResult(
+    metadata: Record<string, unknown>,
+    result: unknown,
+): Record<string, unknown> | undefined {
+    const dream = metadata.dream;
+    if (!dream || typeof dream !== 'object' || Array.isArray(dream)) return undefined;
+    if (!result || typeof result !== 'object' || Array.isArray(result)) return undefined;
+    const processes = (result as Record<string, unknown>).processes;
+    if (!processes || typeof processes !== 'object' || Array.isArray(processes)) return undefined;
+    const record = processes as Record<string, unknown>;
+    const analyzerProcessId = typeof record.analyzerProcessId === 'string' ? record.analyzerProcessId : undefined;
+    const criticProcessId = typeof record.criticProcessId === 'string' ? record.criticProcessId : undefined;
+    if (!analyzerProcessId && !criticProcessId) return undefined;
+    return {
+        ...metadata,
+        dream: {
+            ...(dream as Record<string, unknown>),
+            ...(analyzerProcessId ? { analyzerProcessId } : {}),
+            ...(criticProcessId ? { criticProcessId } : {}),
+        },
+    };
+}
+
 async function resolveExecutionProvider(
     task: QueuedTask,
     opts: LifecycleRunnerOptions,
@@ -610,12 +633,13 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                     responseText,
                                     assistantTurnIndex,
                                 ) ?? forEachMetadata;
+                                const finalMetadata = updateDreamMetadataFromResult(metadata, result) ?? metadata;
                                 return {
                                     status: 'cancelled' as const,
                                     endTime: new Date(),
                                     result: typeof result === 'string' ? result : JSON.stringify(result),
                                     ...(sessionId ? { sdkSessionId: sessionId } : {}),
-                                    metadata,
+                                    metadata: finalMetadata,
                                     ...(tokenLimit !== undefined ? { tokenLimit } : {}),
                                     ...(currentTokens !== undefined ? { currentTokens } : {}),
                                     ...(systemTokens !== undefined ? { systemTokens } : {}),
@@ -639,12 +663,13 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                 responseText,
                                 assistantTurnIndex,
                             ) ?? forEachMetadata;
+                            const finalMetadata = updateDreamMetadataFromResult(metadata, result) ?? metadata;
                             return {
                                 status: 'completed' as const,
                                 endTime: new Date(),
                                 result: typeof result === 'string' ? result : JSON.stringify(result),
                                 ...(sessionId ? { sdkSessionId: sessionId } : {}),
-                                metadata,
+                                metadata: finalMetadata,
                                 ...(tokenLimit !== undefined ? { tokenLimit } : {}),
                                 ...(currentTokens !== undefined ? { currentTokens } : {}),
                                 ...(systemTokens !== undefined ? { systemTokens } : {}),

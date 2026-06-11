@@ -34,7 +34,7 @@ Commit, Pull Request, and Work Item binding routes also expose a workspace-scope
 - **Pending messages:** `pendingMessages` persisted in process metadata
 - **Prompt autocomplete:** `getBestPromptCompletion` and `getPromptAutocompleteContext` for ghost text
 - **Conversation cost read model:** Process detail reads derive `conversationCostEstimate` from turn-level token usage without persisting it. Pricing model resolution starts with `metadata.model`, falls back to `config.model`, and can be overridden by later user turns with a `model` field. `token-usage` process events can also carry the live `cumulativeTokenUsage` and derived `conversationCostEstimate` snapshot for running-chat UI updates; final process reads remain authoritative.
-- **Dream internals:** Dream analyzer and critic steps are persisted as read-only internal process records (`dream-analyzer` / `dream-critic`) with `metadata.dreamStep` carrying workspace ID, Dream run ID, purpose, read-only/no-tools policy, parent Dream process ID, and analyzer-to-critic linkage.
+- **Dream internals:** Dream analyzer and critic steps are persisted as read-only internal process records (`dream-analyzer` / `dream-critic`) with `metadata.dreamStep` carrying workspace ID, Dream run ID, purpose, read-only/no-tools policy, parent Dream process ID, and analyzer-to-critic linkage. Completed outer `dream-run` process metadata also stores analyzer/critic process IDs under `metadata.dream` so queue history and task-detail fallbacks can expose the links without loading full process results.
 
 ### Convenience Methods
 

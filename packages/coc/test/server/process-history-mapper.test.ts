@@ -150,6 +150,48 @@ describe('processToHistorySummary', () => {
         const summary = processToHistorySummary(proc as AIProcess);
         expect(summary.provider).toBe('codex');
     });
+
+    it('preserves dream internal process links from the durable result', () => {
+        const proc = {
+            ...baseProcess,
+            id: 'queue_dream-task-1',
+            type: 'dream-run',
+            result: JSON.stringify({
+                response: 'Dream run completed.',
+                processes: {
+                    analyzerProcessId: 'queue_dream-analyzer-1',
+                    criticProcessId: 'queue_dream-critic-1',
+                },
+            }),
+            metadata: {
+                type: 'dream-run',
+                workspaceId: 'ws-dream',
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+                reasoningEffort: 'high',
+                dream: {
+                    workspaceId: 'ws-dream',
+                    trigger: 'manual',
+                    timeoutMs: 3_600_000,
+                },
+            },
+        } as AIProcess;
+
+        const summary = processToHistorySummary(proc);
+
+        expect(summary.payload).toMatchObject({
+            kind: 'dream-run',
+            trigger: 'manual',
+            provider: 'claude',
+            model: 'claude-sonnet-4.6',
+            reasoningEffort: 'high',
+            timeoutMs: 3_600_000,
+            processes: {
+                analyzerProcessId: 'queue_dream-analyzer-1',
+                criticProcessId: 'queue_dream-critic-1',
+            },
+        });
+    });
 });
 
 // ============================================================================
@@ -290,6 +332,13 @@ describe('processToTaskDetail', () => {
         const proc: AIProcess = {
             ...baseProcess,
             type: 'dream-run',
+            result: JSON.stringify({
+                response: 'Dream run completed.',
+                processes: {
+                    analyzerProcessId: 'queue_dream-analyzer-1',
+                    criticProcessId: 'queue_dream-critic-1',
+                },
+            }),
             metadata: {
                 type: 'dream-run',
                 workspaceId: 'ws-dream',
@@ -317,6 +366,10 @@ describe('processToTaskDetail', () => {
             reasoningEffort: 'high',
             trigger: 'manual',
             timeoutMs: 3_600_000,
+            processes: {
+                analyzerProcessId: 'queue_dream-analyzer-1',
+                criticProcessId: 'queue_dream-critic-1',
+            },
         });
         expect((task.config as any)).toMatchObject({
             model: 'claude-sonnet-4.6',
@@ -390,6 +443,79 @@ describe('Store-backed history across restart', () => {
             error: 'timeout',
             metadata: { type: 'clarification', workspaceId: 'ws-1' },
         } as any);
+        await preStore.addProcess({
+            id: 'queue_dream-task-1',
+            type: 'dream-run',
+            promptPreview: 'Dream Run: Manual',
+            fullPrompt: 'Dream Run: Manual',
+            status: 'completed',
+            startTime: new Date('2026-01-02T01:00:00Z'),
+            endTime: new Date('2026-01-02T01:05:00Z'),
+            result: JSON.stringify({
+                response: 'Dream run dream-run-1 completed.',
+                processes: {
+                    analyzerProcessId: 'queue_dream-analyzer-1',
+                    criticProcessId: 'queue_dream-critic-1',
+                },
+            }),
+            metadata: {
+                type: 'dream-run',
+                workspaceId: 'ws-1',
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+                reasoningEffort: 'high',
+                dream: {
+                    workspaceId: 'ws-1',
+                    trigger: 'manual',
+                    timeoutMs: 3_600_000,
+                    analyzerProcessId: 'queue_dream-analyzer-1',
+                    criticProcessId: 'queue_dream-critic-1',
+                },
+            },
+        } as any);
+        await preStore.addProcess({
+            id: 'queue_dream-analyzer-1',
+            type: 'dream-analyzer',
+            promptPreview: 'Analyze these conversations.',
+            fullPrompt: 'Analyze these conversations.',
+            status: 'completed',
+            startTime: new Date('2026-01-02T01:01:00Z'),
+            endTime: new Date('2026-01-02T01:02:00Z'),
+            metadata: {
+                type: 'dream-analyzer',
+                workspaceId: 'ws-1',
+                dreamStep: {
+                    kind: 'analyzer',
+                    workspaceId: 'ws-1',
+                    runId: 'dream-run-1',
+                    readOnly: true,
+                    toolsEnabled: false,
+                    mcpEnabled: false,
+                },
+            },
+        } as any);
+        await preStore.addProcess({
+            id: 'queue_dream-critic-1',
+            type: 'dream-critic',
+            promptPreview: 'Critic candidates.',
+            fullPrompt: 'Critic candidates.',
+            status: 'completed',
+            startTime: new Date('2026-01-02T01:03:00Z'),
+            endTime: new Date('2026-01-02T01:04:00Z'),
+            metadata: {
+                type: 'dream-critic',
+                workspaceId: 'ws-1',
+                dreamStep: {
+                    kind: 'critic',
+                    workspaceId: 'ws-1',
+                    runId: 'dream-run-1',
+                    analyzerProcessId: 'queue_dream-analyzer-1',
+                    readOnly: true,
+                    toolsEnabled: false,
+                    mcpEnabled: false,
+                },
+            },
+        } as any);
         // Also add a running process — should NOT appear in history
         await preStore.addProcess({
             id: 'proc-running',
@@ -428,6 +554,46 @@ describe('Store-backed history across restart', () => {
             const failedEntry = body.history.find((t: any) => (t.id ?? t.processId) === 'proc-2');
             expect(failedEntry.status).toBe('failed');
             expect(failedEntry.error).toBe('timeout');
+
+            const dreamEntry = body.history.find((t: any) => t.id === 'dream-task-1');
+            expect(dreamEntry).toMatchObject({
+                type: 'dream-run',
+                repoId: 'ws-1',
+                payload: {
+                    kind: 'dream-run',
+                    trigger: 'manual',
+                    provider: 'claude',
+                    model: 'claude-sonnet-4.6',
+                    reasoningEffort: 'high',
+                    timeoutMs: 3_600_000,
+                    processes: {
+                        analyzerProcessId: 'queue_dream-analyzer-1',
+                        criticProcessId: 'queue_dream-critic-1',
+                    },
+                },
+            });
+            await expect(store.getProcess(dreamEntry.payload.processes.analyzerProcessId, 'ws-1')).resolves.toMatchObject({
+                type: 'dream-analyzer',
+                metadata: {
+                    workspaceId: 'ws-1',
+                    dreamStep: {
+                        kind: 'analyzer',
+                        readOnly: true,
+                        toolsEnabled: false,
+                        mcpEnabled: false,
+                    },
+                },
+            });
+            await expect(store.getProcess(dreamEntry.payload.processes.criticProcessId, 'ws-1')).resolves.toMatchObject({
+                type: 'dream-critic',
+                metadata: {
+                    workspaceId: 'ws-1',
+                    dreamStep: {
+                        kind: 'critic',
+                        analyzerProcessId: 'queue_dream-analyzer-1',
+                    },
+                },
+            });
         } finally {
             if (server) await server.close();
             store.close();
@@ -504,6 +670,64 @@ describe('Store-backed history across restart', () => {
             expect(body.task.payload?.mode).toBe('autopilot');
             expect(body.task.completedAt).toBe(new Date('2026-02-01T00:05:00Z').getTime());
             expect(body.task.config?.model).toBe('gpt-4');
+        } finally {
+            if (server) await server.close();
+            store.close();
+        }
+    });
+
+    it('GET /api/queue/:id returns dream internal process links after restart', async () => {
+        const dbPath = path.join(dataDir, 'processes.db');
+
+        const preStore = new SqliteProcessStore({ dbPath });
+        await preStore.addProcess({
+            id: 'queue_dream-task-detail',
+            type: 'dream-run',
+            promptPreview: 'Dream Run: Manual',
+            fullPrompt: 'Dream Run: Manual',
+            status: 'completed',
+            startTime: new Date('2026-02-02T00:00:00Z'),
+            endTime: new Date('2026-02-02T00:05:00Z'),
+            result: JSON.stringify({
+                response: 'Dream run completed.',
+                processes: {
+                    analyzerProcessId: 'queue_dream-analyzer-detail',
+                },
+            }),
+            metadata: {
+                type: 'dream-run',
+                workspaceId: 'ws-dream-detail',
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+                dream: {
+                    workspaceId: 'ws-dream-detail',
+                    trigger: 'manual',
+                    timeoutMs: 3_600_000,
+                },
+            },
+        } as any);
+        preStore.close();
+
+        const store = new SqliteProcessStore({ dbPath });
+        let server: ExecutionServer | undefined;
+        try {
+            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+
+            const res = await request(`${server.url}/api/queue/dream-task-detail`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.task).toMatchObject({
+                id: 'dream-task-detail',
+                type: 'dream-run',
+                status: 'completed',
+                payload: {
+                    kind: 'dream-run',
+                    trigger: 'manual',
+                    processes: {
+                        analyzerProcessId: 'queue_dream-analyzer-detail',
+                    },
+                },
+            });
         } finally {
             if (server) await server.close();
             store.close();
