@@ -53,7 +53,7 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
     {
         name: 'create_update_work_item',
         label: 'Create/Update Work Item',
-        description: 'Creates typed work items and bugs, patches common fields, and saves revised plan versions.',
+        description: 'Creates typed work items and bugs, patches common fields, saves revised plan versions, and links/moves/unlinks items in the hierarchy.',
         enabledByDefault: true,
     },
     {

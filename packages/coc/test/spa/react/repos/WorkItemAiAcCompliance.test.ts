@@ -27,6 +27,7 @@ const ADMIN_PANEL_PATH = path.join(REACT_SRC, 'admin', 'AdminPanel.tsx');
 const SPA_CONFIG_PATH = path.join(REACT_SRC, 'utils', 'config.ts');
 const AI_ROUTES_PATH = path.join(SERVER_SRC, 'routes', 'work-item-ai-routes.ts');
 const WORK_ITEM_ROUTES_PATH = path.join(SERVER_SRC, 'routes', 'work-item-routes.ts');
+const WORK_ITEM_COMMANDS_PATH = path.join(SERVER_SRC, 'work-items', 'work-item-commands.ts');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -297,9 +298,11 @@ describe('AC-04 — Child task breakdowns and hierarchy flag', () => {
             expect(treeSrc).toContain('@plusplusoneplusplus/coc-client');
         });
 
-        it('work-item routes use isValidParentChildTypes for parent-child validation', () => {
+        it('work-item routes delegate to the command service, which uses isValidParentChildTypes', () => {
             const routesSrc = read(WORK_ITEM_ROUTES_PATH);
-            expect(routesSrc).toContain('isValidParentChildTypes');
+            expect(routesSrc).toContain('work-item-commands');
+            const commandsSrc = read(WORK_ITEM_COMMANDS_PATH);
+            expect(commandsSrc).toContain('isValidParentChildTypes');
         });
     });
 

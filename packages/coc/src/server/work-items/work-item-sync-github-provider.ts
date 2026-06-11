@@ -159,7 +159,14 @@ export interface ConvertGitHubEpicTreeTrackerResult {
     localUpdated: number;
 }
 
-const execFileAsync = promisify(execFile) as ExecFileAsync;
+// Resolve child_process.execFile lazily so importing this module has no
+// load-time side effects (tests with partial child_process mocks would
+// otherwise fail on the export access before any transport is used).
+let lazyExecFileAsync: ExecFileAsync | undefined;
+const execFileAsync: ExecFileAsync = (file, args, options) => {
+    lazyExecFileAsync ??= promisify(execFile) as ExecFileAsync;
+    return lazyExecFileAsync(file, args, options);
+};
 
 function repoApiPath(repo: AvailableGitHubWorkItemSyncRepo, suffix = ''): string {
     return `repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo)}${suffix}`;

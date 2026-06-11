@@ -82,6 +82,13 @@ all have their own `references/*.md`.
   per-trigger cap and low priority instead of adding client-side POST loops.
   The Team toolbar status UI should read batch status and route manual
   "Classify now" actions through the same bounded server helper.
+- **Work-item create/update side effects** (hierarchy `parentId` validation,
+  GitHub/Azure Boards provider sync, response-cache invalidation, dashboard
+  broadcasts, auto-execute) live in the shared command service
+  `src/server/work-items/work-item-commands.ts`. Both the REST routes
+  (`src/server/routes/work-item-routes.ts`) and the `create_update_work_item`
+  LLM tool call it — do not re-implement hierarchy or provider logic in either
+  caller.
 - **Direct package builds** use `scripts/prebuild.mjs` to build
   `@plusplusoneplusplus/coc-client`, `@plusplusoneplusplus/coc-workflow`, and `@plusplusoneplusplus/coc-memory`
   before `tsc`, clean `dist` before emitting, and generate

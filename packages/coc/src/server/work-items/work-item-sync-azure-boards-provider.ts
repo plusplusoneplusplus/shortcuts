@@ -190,7 +190,15 @@ interface AzureBoardsJsonPatchOperation {
 }
 
 const AZURE_BOARDS_REMOTE_WINS_FIELDS = ['title', 'description', 'status', 'priority', 'tags', 'parentId'];
-const execFileAsync = promisify(execFile) as ExecFileAsync;
+
+// Resolve child_process.execFile lazily so importing this module has no
+// load-time side effects (tests with partial child_process mocks would
+// otherwise fail on the export access before any transport is used).
+let lazyExecFileAsync: ExecFileAsync | undefined;
+const execFileAsync: ExecFileAsync = (file, args, options) => {
+    lazyExecFileAsync ??= promisify(execFile) as ExecFileAsync;
+    return lazyExecFileAsync(file, args, options);
+};
 
 function authNotChecked(): WorkItemSyncProviderStatus['auth'] {
     return {

@@ -468,6 +468,77 @@ describe('createCreateUpdateWorkItemTool', () => {
         expect(patch.plan.content).toBe(descWithPlan);
     });
 
+    it('parameters expose hierarchy link fields', () => {
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+        const params = tool.parameters as Record<string, any>;
+        expect(params.properties.parentId).toBeDefined();
+        expect(params.properties.parentTarget.type).toBe('string');
+        expect(params.properties.parentWorkItemNumber).toBeDefined();
+    });
+
+    it('tool description mentions hierarchy linking, moving, and unlinking', () => {
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+        expect(tool.description).toContain('parentId');
+        expect(tool.description).toContain('parentTarget');
+        expect(tool.description).toContain('unlink');
+        expect(tool.description).toContain('parentId: null');
+    });
+
+    it('create mode stores parentId when a valid parent is supplied', async () => {
+        const pbi = { ...EXISTING_ITEM, id: 'pbi-uuid', type: 'pbi' as const, title: 'Parent PBI' };
+        mockGetWorkItem.mockImplementation(async (id: string) => (id === 'pbi-uuid' ? pbi : undefined));
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+
+        const result = await tool.handler({ title: 'Child item', parentId: 'pbi-uuid' });
+
+        expect(result).toMatchObject({
+            created: true,
+            parentId: 'pbi-uuid',
+            parentTitle: 'Parent PBI',
+        });
+        const callArg = mockAddWorkItem.mock.calls[0][0];
+        expect(callArg.parentId).toBe('pbi-uuid');
+        expect(callArg.source).toBe('chat');
+    });
+
+    it('create mode rejects a missing parent without writing the item', async () => {
+        mockGetWorkItem.mockResolvedValue(undefined);
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+
+        const result = await tool.handler({ title: 'Child item', parentId: 'missing-parent' });
+
+        expect(result).toMatchObject({ created: false });
+        expect((result as any).error).toContain('Parent work item not found');
+        expect(mockAddWorkItem).not.toHaveBeenCalled();
+    });
+
+    it('update mode unlinks the parent with parentId: null', async () => {
+        const linked = { ...EXISTING_ITEM, parentId: 'pbi-uuid' };
+        mockGetWorkItem.mockResolvedValue(linked);
+        mockUpdateWorkItem.mockImplementation(async (_id, patch) => ({ ...linked, ...patch }));
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+
+        const result = await tool.handler({ workItemId: EXISTING_ITEM.id, parentId: null });
+
+        expect(result).toMatchObject({ updated: true, id: EXISTING_ITEM.id, parentId: null });
+        expect(mockUpdateWorkItem).toHaveBeenCalledOnce();
+        const patch = mockUpdateWorkItem.mock.calls[0][1];
+        expect('parentId' in patch).toBe(true);
+        expect(patch.parentId).toBeUndefined();
+        expect(mockSavePlanVersion).not.toHaveBeenCalled();
+        expect(mockAddChange).not.toHaveBeenCalled();
+    });
+
+    it('update mode rejects an invalid parentId value type', async () => {
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+
+        const result = await tool.handler({ workItemId: EXISTING_ITEM.id, parentId: 42 } as any);
+
+        expect(result).toMatchObject({ updated: false, id: EXISTING_ITEM.id });
+        expect((result as any).error).toContain('Invalid parentId');
+        expect(mockUpdateWorkItem).not.toHaveBeenCalled();
+    });
+
     it('tool description mentions full revised plan content and planning reset', () => {
         const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
         expect(tool.description).toContain('complete revised Markdown plan');

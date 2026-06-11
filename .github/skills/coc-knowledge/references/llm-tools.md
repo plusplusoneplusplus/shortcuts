@@ -34,7 +34,7 @@ preferences are rewritten.
 | `get-conversation-tool.ts` | `get_conversation` | Full transcript by processId, compacted to token budget. 5-level progressive compaction. Supports `fromTurn`/`toTurn` paging. |
 | `suggest-follow-ups-tool.ts` | `suggest_follow_ups` | Emits follow-up action suggestions after AI response. |
 | `tavily-web-search-tool.ts` | `tavily_web_search` | Live web search via Tavily API. Key from `~/.coc/providers.json`. Disabled by default. |
-| `create-update-work-item-tool.ts` | `create_update_work_item` | Creates typed work items and bugs (`work-item`, `bug`, `goal`, `epic`, `feature`, `pbi`), patches common fields on existing items, or saves a full revised plan as the next version for an existing item. |
+| `create-update-work-item-tool.ts` | `create_update_work_item` | Creates typed work items and bugs (`work-item`, `bug`, `goal`, `epic`, `feature`, `pbi`), patches common fields on existing items, or saves a full revised plan as the next version for an existing item. Supports hierarchy links via `parentId` (UUID or `null` to unlink), `parentTarget` (UUID/WI-N), and `parentWorkItemNumber`: create children, move items, and unlink parents without REST. All creates and hierarchy-sensitive updates run through the shared command service (`work-items/work-item-commands.ts`) so the tool reuses REST-route validation, GitHub/Azure Boards provider sync, response-cache invalidation, and dashboard broadcasts; the factory accepts optional `CreateUpdateWorkItemToolDeps` (store, process store, feature flags, transports) and reads `workItems.hierarchy.enabled` / `workItems.sync.enabled` from `<dataDir>/config.yaml` when not injected. |
 
 ## Supporting Modules
 

@@ -644,10 +644,11 @@ describe('buildCreateWorkItemAddon', () => {
         expect(result.tools.map(t => t.name)).not.toContain('create_bug');
     });
 
-    it('passes dataDir, repoId, and broadcastFn to factories', () => {
+    it('passes dataDir, repoId, broadcastFn, and deps to factories', () => {
         const broadcast = vi.fn();
-        buildCreateWorkItemAddon('/data', 'repo-1', broadcast);
-        expect(mockCreateUpdateWorkItemTool).toHaveBeenCalledWith('/data', 'repo-1', broadcast);
+        const deps = { processStore: {} as any };
+        buildCreateWorkItemAddon('/data', 'repo-1', broadcast, deps);
+        expect(mockCreateUpdateWorkItemTool).toHaveBeenCalledWith('/data', 'repo-1', broadcast, deps);
     });
 
 });

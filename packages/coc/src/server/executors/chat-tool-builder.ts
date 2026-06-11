@@ -97,6 +97,7 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
             options.dataDir,
             options.workspaceId,
             options.broadcastWorkItem,
+            { processStore: options.store },
         ));
     }
 

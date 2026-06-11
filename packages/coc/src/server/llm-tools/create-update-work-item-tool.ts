@@ -2,16 +2,36 @@
  * Create/Update Work Item Tool
  *
  * Factory that creates a `create_update_work_item` custom tool for the Copilot SDK.
- * The model calls this tool to either create a new chat-sourced work item or save
- * a complete revised plan as the next version for an existing work item.
+ * The model calls this tool to create a new chat-sourced work item (optionally as a
+ * child in the hierarchy), patch common fields, save a complete revised plan as the
+ * next version, or move/unlink an existing work item in the Epic → Feature → PBI →
+ * Work Item/Bug/Goal hierarchy.
+ *
+ * Hierarchy-sensitive operations (create-with-parent, reparent, unlink) and all
+ * creates run through the shared work-item command service so the tool reuses the
+ * same validation, remote-provider sync, cache invalidation, and dashboard
+ * broadcast behavior as the Work Items REST routes.
  */
 
 import * as crypto from 'crypto';
+import * as path from 'path';
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { resolveConfig, CONFIG_FILE_NAME } from '../../config';
+import { APIError } from '../errors';
 import { FileWorkItemStore } from '../work-items/work-item-store';
-import type { WorkItem, WorkItemPriority, WorkItemStatus, WorkItemType } from '../work-items/types';
+import type { WorkItem, WorkItemPriority, WorkItemStatus, WorkItemStore, WorkItemType } from '../work-items/types';
 import { WORK_ITEM_TYPES } from '../work-items/types';
 import { WORK_ITEM_PLAN_TEMPLATE } from '../work-items/plan-template';
+import {
+    createWorkItemCommand,
+    updateWorkItemCommand,
+    type UpdateWorkItemCommandInput,
+    type WorkItemCommandContext,
+} from '../work-items/work-item-commands';
+import type { GitHubWorkItemIssueTransport } from '../work-items/work-item-sync-github-provider';
+import type { AzureBoardsWorkItemTransport } from '../work-items/work-item-sync-azure-boards-provider';
+import type { WorkItemSyncProviderAdapter } from '../work-items/work-item-sync-provider';
 
 // ============================================================================
 // Types
@@ -34,6 +54,12 @@ export interface CreateUpdateWorkItemArgs {
     plan?: string;
     /** Optional plan version summary for update mode. */
     summary?: string;
+    /** Parent work item UUID for hierarchy linking. On update, `null` (or '') unlinks the item. */
+    parentId?: string | null;
+    /** Parent work item UUID or WI-N target. An empty string unlinks on update. */
+    parentTarget?: string;
+    /** Parent sequential work item number, e.g. 12 or "WI-12". */
+    parentWorkItemNumber?: number | string;
 }
 
 export type BroadcastWorkItemFn = (event: {
@@ -41,6 +67,21 @@ export type BroadcastWorkItemFn = (event: {
     workspaceId: string;
     item: unknown;
 }) => void;
+
+/**
+ * Optional server-side dependencies. When omitted, the tool falls back to a
+ * dataDir-backed store and reads feature flags from `<dataDir>/config.yaml`.
+ */
+export interface CreateUpdateWorkItemToolDeps {
+    workItemStore?: WorkItemStore;
+    /** Required for provider-backed (GitHub/Azure Boards) hierarchy operations. */
+    processStore?: ProcessStore;
+    getHierarchyEnabled?: () => boolean;
+    getSyncEnabled?: () => boolean;
+    githubTransport?: GitHubWorkItemIssueTransport;
+    azureBoardsTransport?: AzureBoardsWorkItemTransport;
+    azureBoardsProvider?: WorkItemSyncProviderAdapter;
+}
 
 // ============================================================================
 // Helpers
@@ -132,7 +173,7 @@ function buildCommonFieldPatch(
 }
 
 async function resolveExistingWorkItem(
-    store: FileWorkItemStore,
+    store: WorkItemStore,
     repoId: string,
     args: CreateUpdateWorkItemArgs,
 ): Promise<WorkItem | undefined> {
@@ -156,6 +197,72 @@ async function resolveExistingWorkItem(
 }
 
 // ============================================================================
+// Parent (hierarchy link) helpers
+// ============================================================================
+
+/** How the model asked the hierarchy link to change. */
+type ParentSpec =
+    | { kind: 'none' }
+    | { kind: 'unlink' }
+    | { kind: 'ref'; value: string };
+
+function hasParentField(args: CreateUpdateWorkItemArgs): boolean {
+    return hasOwn(args, 'parentId') || hasOwn(args, 'parentTarget') || hasOwn(args, 'parentWorkItemNumber');
+}
+
+function getParentSpec(args: CreateUpdateWorkItemArgs): ParentSpec | { error: string } {
+    if (!hasParentField(args)) {
+        return { kind: 'none' };
+    }
+    if (hasOwn(args, 'parentId')) {
+        if (args.parentId === null) return { kind: 'unlink' };
+        if (typeof args.parentId !== 'string') {
+            return { error: 'Invalid parentId: must be a parent work item UUID string, or null to unlink' };
+        }
+        const trimmed = args.parentId.trim();
+        return trimmed ? { kind: 'ref', value: trimmed } : { kind: 'unlink' };
+    }
+    if (hasOwn(args, 'parentTarget')) {
+        if (args.parentTarget === null) return { kind: 'unlink' };
+        if (typeof args.parentTarget !== 'string') {
+            return { error: 'Invalid parentTarget: must be a parent work item UUID or WI-N string' };
+        }
+        const trimmed = args.parentTarget.trim();
+        return trimmed ? { kind: 'ref', value: trimmed } : { kind: 'unlink' };
+    }
+    if (args.parentWorkItemNumber === null) return { kind: 'unlink' };
+    const parsed = parseWorkItemNumber(args.parentWorkItemNumber);
+    if (parsed === undefined) {
+        return { error: `Invalid parentWorkItemNumber: ${String(args.parentWorkItemNumber)}` };
+    }
+    return { kind: 'ref', value: String(parsed) };
+}
+
+/**
+ * Resolve a parent reference (UUID, WI-N, or sequential number) to a work item
+ * in the current workspace.
+ */
+async function resolveParentWorkItem(
+    store: WorkItemStore,
+    repoId: string,
+    ref: string,
+): Promise<{ item: WorkItem } | { error: string }> {
+    const parentNumber = parseWorkItemNumber(ref);
+    if (parentNumber !== undefined) {
+        const { items } = await store.listWorkItems({ repoId });
+        const match = items.find(item => item.workItemNumber === parentNumber);
+        const item = match ? await store.getWorkItem(match.id, repoId) : undefined;
+        return item ? { item } : { error: `Parent work item not found: ${ref}` };
+    }
+    const item = await store.getWorkItem(ref, repoId);
+    return item ? { item } : { error: `Parent work item not found: ${ref}` };
+}
+
+function commandErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
+// ============================================================================
 // Factory
 // ============================================================================
 
@@ -165,24 +272,46 @@ async function resolveExistingWorkItem(
  * @param dataDir     - Base data directory (e.g. `~/.coc`).
  * @param repoId      - Workspace / repository ID the item belongs to.
  * @param broadcastFn - Optional function to broadcast a WebSocket event after creation/update.
+ * @param deps        - Optional server-side dependencies (store, process store, feature flags, transports).
  */
 export function createCreateUpdateWorkItemTool(
     dataDir: string,
     repoId: string,
     broadcastFn?: BroadcastWorkItemFn,
+    deps?: CreateUpdateWorkItemToolDeps,
 ) {
-    const store = new FileWorkItemStore({ dataDir });
+    const store: WorkItemStore = deps?.workItemStore ?? new FileWorkItemStore({ dataDir });
+    const configPath = path.join(dataDir, CONFIG_FILE_NAME);
+    const commandCtx: WorkItemCommandContext = {
+        workItemStore: store,
+        processStore: deps?.processStore,
+        dataDir,
+        getHierarchyEnabled: deps?.getHierarchyEnabled
+            ?? (() => resolveConfig(configPath).workItems.hierarchy.enabled),
+        getSyncEnabled: deps?.getSyncEnabled
+            ?? (() => resolveConfig(configPath).workItems.sync.enabled),
+        githubTransport: deps?.githubTransport,
+        azureBoardsTransport: deps?.azureBoardsTransport,
+        azureBoardsProvider: deps?.azureBoardsProvider,
+        broadcast: broadcastFn,
+    };
 
     const tool = defineTool<CreateUpdateWorkItemArgs>('create_update_work_item', {
         description:
-            'Create a new typed work item, patch common fields on an existing item, or update an existing plan in this repository. ' +
+            'Create a new typed work item, patch common fields on an existing item, update an existing plan, or ' +
+            'link/move/unlink an item in the work-item hierarchy in this repository. ' +
             'Create mode: omit `workItemId`, `target`, and `workItemNumber`; include a non-blank `title`, optional `type` ' +
             '(`work-item`, `bug`, `goal`, `epic`, `feature`, or `pbi`, default `work-item`), optional `description`, ' +
             '`priority`, `tags`, and a full `plan` when available. Use `type: "bug"` to file bugs. ' +
+            'To create the item as a child of an existing parent (Epic → Feature → PBI → Work Item/Bug/Goal), also pass ' +
+            '`parentId` (UUID), `parentTarget` (UUID or WI-N), or `parentWorkItemNumber`; no REST call is needed. ' +
             'Field-update mode: provide `workItemId`, `target` (UUID or WI-N), or `workItemNumber`, and one or more of ' +
             '`title`, `description`, `priority`, or `tags`; this preserves status and does not create a plan version. ' +
             'Update-plan mode: provide an existing target and the complete revised Markdown plan in `plan`; this saves a new ' +
             'plan version, resets status to `planning`, opens a change record, and broadcasts a dashboard update. ' +
+            'Hierarchy-link mode: provide an existing target plus `parentId`/`parentTarget`/`parentWorkItemNumber` to move ' +
+            'the item under a new valid parent, or `parentId: null` to unlink it from its current parent. Link updates can ' +
+            'be combined with field or plan updates and are validated against the allowed parent/child type hierarchy. ' +
             '`type` cannot be changed in update mode; when supplied it must match the existing item type. ' +
             'Do not append raw text or submit a partial diff for `plan`; always send the full revised plan. ' +
             'IMPORTANT: Before calling this tool, you MUST first present a draft summary to the user ' +
@@ -238,6 +367,21 @@ export function createCreateUpdateWorkItemTool(
                     type: 'string',
                     description: 'Optional summary for the new plan version in update-plan mode.',
                 },
+                parentId: {
+                    oneOf: [{ type: 'string' }, { type: 'null' }],
+                    description:
+                        'Parent work item UUID for hierarchy linking. On create, places the new item under this parent. ' +
+                        'On update, moves the item under this parent; pass null to unlink the item from its current parent. ' +
+                        'Omit when not changing the parent.',
+                },
+                parentTarget: {
+                    type: 'string',
+                    description: 'Parent work item UUID or WI-N target (e.g. "WI-12"). Alternative to parentId when only a chat-friendly target is known.',
+                },
+                parentWorkItemNumber: {
+                    oneOf: [{ type: 'number' }, { type: 'string' }],
+                    description: 'Parent sequential work item number, e.g. 12 or "WI-12". Alternative to parentId.',
+                },
             },
             required: [],
         },
@@ -245,9 +389,9 @@ export function createCreateUpdateWorkItemTool(
             const args = normalizePlanFromDescription(rawArgs);
             const existingTarget = getExistingTarget(args);
             if (existingTarget !== undefined && String(existingTarget).trim() !== '') {
-                return updateExistingWorkItemPlan(store, repoId, args, broadcastFn);
+                return updateExistingWorkItem(commandCtx, repoId, args);
             }
-            return createNewWorkItem(store, repoId, args, broadcastFn);
+            return createNewWorkItem(commandCtx, repoId, args);
         },
     });
 
@@ -255,10 +399,9 @@ export function createCreateUpdateWorkItemTool(
 }
 
 async function createNewWorkItem(
-    store: FileWorkItemStore,
+    ctx: WorkItemCommandContext,
     repoId: string,
     args: CreateUpdateWorkItemArgs,
-    broadcastFn?: BroadcastWorkItemFn,
 ) {
     const title = args.title?.trim();
     if (!title) {
@@ -269,61 +412,69 @@ async function createNewWorkItem(
         return { created: false, error: createType.error };
     }
 
-    const now = new Date().toISOString();
+    // Resolve the optional parent reference; `null`/'' parent specs are meaningless
+    // on create (there is nothing to unlink yet) and are treated as "no parent".
+    const parentSpec = getParentSpec(args);
+    if ('error' in parentSpec) {
+        return { created: false, error: parentSpec.error };
+    }
+    let parent: WorkItem | undefined;
+    if (parentSpec.kind === 'ref') {
+        const resolved = await resolveParentWorkItem(ctx.workItemStore, repoId, parentSpec.value);
+        if ('error' in resolved) {
+            return { created: false, error: resolved.error };
+        }
+        parent = resolved.item;
+    }
+
     const hasPlan = !!(args.plan && args.plan.trim());
     const status: WorkItemStatus = hasPlan ? 'planning' : 'created';
 
-    const item: WorkItem = {
-        id: crypto.randomUUID(),
-        repoId,
-        title,
-        description: args.description ?? '',
-        status,
-        type: createType.type,
-        createdAt: now,
-        updatedAt: now,
-        source: 'chat',
-        priority: (args.priority ?? 'normal') as WorkItemPriority,
-        tags: args.tags,
-        ...(hasPlan ? {
-            plan: {
-                version: 1,
-                currentVersion: 1,
-                content: args.plan!.trim(),
-                updatedAt: now,
-                resolvedBy: 'ai' as const,
-                source: 'ai' as const,
-            },
-            currentContentVersion: 1,
-        } : {}),
-    };
-
-    await store.addWorkItem(item);
-
-    if (hasPlan) {
-        await store.savePlanVersion(item.id, {
-            version: 1,
-            content: args.plan!.trim(),
-            createdAt: now,
-            resolvedBy: 'ai',
-            source: 'ai',
-            authorType: 'ai',
-            reason: 'Initial plan from chat',
-            summary: 'Initial plan from chat',
+    try {
+        const item = await createWorkItemCommand(ctx, repoId, {
+            title,
+            description: args.description ?? '',
+            type: createType.type,
+            parentId: parent?.id,
+            source: 'chat',
+            priority: (args.priority ?? 'normal') as WorkItemPriority,
+            tags: args.tags,
+            status,
+            ...(hasPlan ? {
+                plan: {
+                    content: args.plan!.trim(),
+                    resolvedBy: 'ai' as const,
+                    recordInitialVersion: true,
+                    reason: 'Initial plan from chat',
+                    summary: 'Initial plan from chat',
+                },
+            } : {}),
         });
+
+        return {
+            created: true,
+            id: item.id,
+            title: item.title,
+            ...(parent ? {
+                parentId: parent.id,
+                parentTitle: parent.title,
+                parentWorkItemNumber: parent.workItemNumber,
+            } : {}),
+        };
+    } catch (error) {
+        if (error instanceof APIError) {
+            return { created: false, error: error.message };
+        }
+        throw error;
     }
-
-    broadcastFn?.({ type: 'work-item-added', workspaceId: repoId, item });
-
-    return { created: true, id: item.id, title: item.title };
 }
 
-async function updateExistingWorkItemPlan(
-    store: FileWorkItemStore,
+async function updateExistingWorkItem(
+    ctx: WorkItemCommandContext,
     repoId: string,
     args: CreateUpdateWorkItemArgs,
-    broadcastFn?: BroadcastWorkItemFn,
 ) {
+    const store = ctx.workItemStore;
     const existing = await resolveExistingWorkItem(store, repoId, args);
     const target = getExistingTarget(args);
     if (!existing) {
@@ -359,11 +510,21 @@ async function updateExistingWorkItemPlan(
         };
     }
 
+    const parentSpec = getParentSpec(args);
+    if ('error' in parentSpec) {
+        return { updated: false, id: existing.id, error: parentSpec.error };
+    }
+
+    if (parentSpec.kind !== 'none') {
+        return updateWorkItemLink(ctx, repoId, args, existing, patchResult.patch, parentSpec, content);
+    }
+
     if (!content && !patchResult.hasPatch) {
         return {
             updated: false,
             id: existing.id,
-            error: 'No update requested: provide at least one of title, description, priority, tags, or a complete revised plan',
+            error: 'No update requested: provide at least one of title, description, priority, tags, '
+                + 'a parent link change, or a complete revised plan',
         };
     }
 
@@ -373,7 +534,7 @@ async function updateExistingWorkItemPlan(
             return { updated: false, error: `Failed to update work item: ${existing.id}` };
         }
 
-        broadcastFn?.({ type: 'work-item-updated', workspaceId: repoId, item: updated });
+        ctx.broadcast?.({ type: 'work-item-updated', workspaceId: repoId, item: updated });
 
         return {
             updated: true,
@@ -424,7 +585,7 @@ async function updateExistingWorkItemPlan(
         status: 'open',
     });
 
-    broadcastFn?.({ type: 'work-item-updated', workspaceId: repoId, item: updated });
+    ctx.broadcast?.({ type: 'work-item-updated', workspaceId: repoId, item: updated });
 
     return {
         updated: true,
@@ -433,4 +594,69 @@ async function updateExistingWorkItemPlan(
         status: updated.status,
         planVersion: updated.plan?.version,
     };
+}
+
+/**
+ * Apply a hierarchy link change (reparent or unlink), optionally combined with
+ * field and plan updates, through the shared work-item command service. The
+ * service performs one coherent update with a single dashboard broadcast and
+ * reuses REST-route validation, provider sync, and cache invalidation.
+ */
+async function updateWorkItemLink(
+    ctx: WorkItemCommandContext,
+    repoId: string,
+    args: CreateUpdateWorkItemArgs,
+    existing: WorkItem,
+    patch: Partial<Omit<WorkItem, 'id' | 'repoId' | 'createdAt'>>,
+    parentSpec: Exclude<ParentSpec, { kind: 'none' }>,
+    planContent: string | undefined,
+) {
+    let parent: WorkItem | undefined;
+    if (parentSpec.kind === 'ref') {
+        const resolved = await resolveParentWorkItem(ctx.workItemStore, repoId, parentSpec.value);
+        if ('error' in resolved) {
+            return { updated: false, id: existing.id, error: resolved.error };
+        }
+        parent = resolved.item;
+    }
+
+    const input: UpdateWorkItemCommandInput = {
+        ...patch,
+        parentId: parent?.id ?? null,
+    };
+    if (planContent) {
+        const nextVersion = (existing.plan?.version ?? 0) + 1;
+        const summary = args.summary ?? `Plan updated from chat (v${nextVersion})`;
+        input.plan = {
+            content: planContent,
+            resolvedBy: 'ai',
+            reason: summary,
+            summary,
+        };
+        // The tool always resets to planning on plan updates regardless of the
+        // current lifecycle state (legacy tool behavior).
+        input.status = 'planning';
+        input.skipStatusTransitionValidation = true;
+    }
+
+    try {
+        const updated = await updateWorkItemCommand(ctx, repoId, existing.id, input);
+        return {
+            updated: true,
+            id: updated.id,
+            title: updated.title,
+            status: updated.status,
+            planVersion: updated.plan?.version,
+            parentId: updated.parentId ?? null,
+            ...(parent ? {
+                parentTitle: parent.title,
+                parentWorkItemNumber: parent.workItemNumber,
+            } : {}),
+        };
+    } catch (error) {
+        if (error instanceof APIError) {
+            return { updated: false, id: existing.id, error: error.message };
+        }
+        throw error;
+    }
 }

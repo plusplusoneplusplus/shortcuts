@@ -32,7 +32,7 @@ import { createGetConversationTool } from '../llm-tools/get-conversation-tool';
 import { createSuggestFollowUpsTool } from '../llm-tools/suggest-follow-ups-tool';
 import { createAskUserTool } from '../llm-tools/ask-user-tool';
 import type { AskUserAnswerInput, AskUserAnswerValue, AskUserToolDeps } from '../llm-tools/ask-user-tool';
-import { createCreateUpdateWorkItemTool, type BroadcastWorkItemFn } from '../llm-tools/create-update-work-item-tool';
+import { createCreateUpdateWorkItemTool, type BroadcastWorkItemFn, type CreateUpdateWorkItemToolDeps } from '../llm-tools/create-update-work-item-tool';
 import type { ChatMode, ChatPayload, DreamRunPayload, PrClassificationPayload, RunScriptPayload } from '../tasks/task-types';
 import {
     hasCommitChatContext,
@@ -539,17 +539,19 @@ export function buildAskUserAddon(
  * @param dataDir     - Base data directory (e.g. `~/.coc`).
  * @param repoId      - Workspace / repo ID the item should be created in.
  * @param broadcastFn - Optional function to broadcast a WebSocket event after creation.
+ * @param deps        - Optional server-side dependencies (process store, feature flags, transports).
  */
 export function buildCreateWorkItemAddon(
     dataDir: string | undefined,
     repoId: string | undefined,
     broadcastFn?: BroadcastWorkItemFn,
+    deps?: CreateUpdateWorkItemToolDeps,
 ): { tools: Tool<any>[]; suffix: string } {
     if (!dataDir || !repoId) {
         return { tools: [], suffix: '' };
     }
 
-    const { tool: workItemTool } = createCreateUpdateWorkItemTool(dataDir, repoId, broadcastFn);
+    const { tool: workItemTool } = createCreateUpdateWorkItemTool(dataDir, repoId, broadcastFn, deps);
 
     return { tools: [workItemTool], suffix: '' };
 }
