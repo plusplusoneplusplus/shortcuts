@@ -135,7 +135,7 @@ describe('RequestRunner.send() — non-streaming path', () => {
         expect(result.error).toContain('No response received');
     });
 
-    it('destroys the active session when the abort signal fires', async () => {
+    it('disconnects the active session when the abort signal fires', async () => {
         const controller = new AbortController();
         let rejectSend: ((error: Error) => void) | undefined;
         const mockSession = {
@@ -144,7 +144,7 @@ describe('RequestRunner.send() — non-streaming path', () => {
                 rejectSend = reject;
             })),
             abort: vi.fn().mockResolvedValue(undefined),
-            destroy: vi.fn().mockImplementation(() => {
+            disconnect: vi.fn().mockImplementation(() => {
                 rejectSend?.(new Error('destroyed'));
                 return Promise.resolve();
             }),
@@ -168,7 +168,7 @@ describe('RequestRunner.send() — non-streaming path', () => {
         expect(result.success).toBe(false);
         expect(result.error).toContain('destroyed');
         expect(mockSession.abort).toHaveBeenCalledTimes(1);
-        expect(mockSession.destroy).toHaveBeenCalled();
+        expect(mockSession.disconnect).toHaveBeenCalled();
     });
 
     it('translates WSL attachment paths before sending', async () => {
@@ -577,7 +577,7 @@ describe('RequestRunner.send() — external client (keepalive)', () => {
         expect(externalClient.stop).not.toHaveBeenCalled();
     });
 
-    it('still calls session.destroy() even when client is externally provided', async () => {
+    it('still calls session.disconnect() even when client is externally provided', async () => {
         const mockSession = createMockSession({ sendAndWaitResponse: { data: { content: 'hello' } } });
         const externalClient = {
             createSession: vi.fn().mockResolvedValue(mockSession),
@@ -592,7 +592,7 @@ describe('RequestRunner.send() — external client (keepalive)', () => {
             loadDefaultMcpConfig: false,
         });
 
-        expect(mockSession.destroy).toHaveBeenCalled();
+        expect(mockSession.disconnect).toHaveBeenCalled();
     });
 
     it('DOES call client.stop() when client is internally created', async () => {

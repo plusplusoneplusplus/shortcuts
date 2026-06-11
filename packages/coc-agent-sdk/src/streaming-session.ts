@@ -55,9 +55,9 @@ export interface IStreamableSession {
         attachments?: Attachment[];
         mode?: DeliveryMode;
     }) => Promise<string | void>;
-    /** Soft-abort: signals the SDK to stop in-flight work without destroying the session. */
+    /** Soft-abort: signals the SDK to stop in-flight work without disconnecting the session. */
     abort?(): Promise<void>;
-    destroy(): Promise<void>;
+    disconnect(): Promise<void>;
 }
 
 /** SDK event fired by the streaming session. */
@@ -211,9 +211,9 @@ export class StreamingSession {
                     }
                     this.sessionLog.error(
                         { elapsedMs: this.options.timeoutMs, activeTools: [...this.telemetry.activeToolCalls.keys()] },
-                        'Force-destroying session due to timeout',
+                        'Force-disconnecting session due to timeout',
                     );
-                    this.session.destroy().catch(() => {});
+                    this.session.disconnect().catch(() => {});
                     this.settleError(new Error(`Request timed out after ${this.options.timeoutMs}ms`));
                 },
                 onIdleTimeout: () => {
@@ -237,9 +237,9 @@ export class StreamingSession {
                     }
                     this.sessionLog.error(
                         { elapsedMs: effectiveIdleMs },
-                        'Force-destroying session due to idle timeout',
+                        'Force-disconnecting session due to idle timeout',
                     );
-                    this.session.destroy().catch(() => {});
+                    this.session.disconnect().catch(() => {});
                     this.settleError(new Error(`Request idle-timed out after ${effectiveIdleMs}ms with no activity`));
                 },
                 onTurnEndGrace: () => {

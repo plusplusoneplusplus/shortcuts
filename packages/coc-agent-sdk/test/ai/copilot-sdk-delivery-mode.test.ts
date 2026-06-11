@@ -252,7 +252,7 @@ describe('CopilotSDKService - Delivery Mode', () => {
         const mockSession = {
             sessionId: 'non-streaming-session',
             sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'response' } }),
-            destroy: vi.fn().mockResolvedValue(undefined),
+            disconnect: vi.fn().mockResolvedValue(undefined),
         };
 
         const capturedOptions: any[] = [];

@@ -32,7 +32,7 @@ interface FakeSession {
         };
     };
     on: ReturnType<typeof vi.fn>;
-    destroy: ReturnType<typeof vi.fn>;
+    disconnect: ReturnType<typeof vi.fn>;
 }
 
 function makeFakeAiService(opts: {
@@ -56,7 +56,7 @@ function makeFakeAiService(opts: {
                   },
               },
         on: vi.fn(),
-        destroy: vi.fn().mockResolvedValue(undefined),
+        disconnect: vi.fn().mockResolvedValue(undefined),
     };
 
     const client = {
@@ -121,7 +121,7 @@ describe('initiateMcpOAuth', () => {
             aiService: service,
             manager,
         })).rejects.toThrow(/mcp\.oauth\.login RPC/);
-        expect(session.destroy).toHaveBeenCalled();
+        expect(session.disconnect).toHaveBeenCalled();
     });
 
     it('reports alreadyAuthenticated when login returns no URL', async () => {
@@ -135,7 +135,7 @@ describe('initiateMcpOAuth', () => {
         expect(result.alreadyAuthenticated).toBe(true);
         expect(result.requestId).toBe('');
         // Session is released eagerly when no flow is needed
-        expect(session.destroy).toHaveBeenCalled();
+        expect(session.disconnect).toHaveBeenCalled();
         expect(manager.listPending()).toHaveLength(0);
     });
 
@@ -169,7 +169,7 @@ describe('initiateMcpOAuth', () => {
             aiService: service,
             manager,
         })).rejects.toThrow(/OAuth login request failed: network down/);
-        expect(session.destroy).toHaveBeenCalled();
+        expect(session.disconnect).toHaveBeenCalled();
     });
 
     it('passes the server config through to createSession with tools defaulted', async () => {
@@ -226,9 +226,9 @@ describe('initiateMcpOAuth', () => {
             // Advance past the poll interval so the session-release watcher fires.
             await vi.advanceTimersByTimeAsync(2_000);
 
-            // Entry should now be resolved and the session destroyed.
+            // Entry should now be resolved and the session disconnected.
             expect(manager.getPending(result.requestId)?.status).toBe('completed');
-            expect(session.destroy).toHaveBeenCalled();
+            expect(session.disconnect).toHaveBeenCalled();
 
             vi.useRealTimers();
         });
@@ -248,7 +248,7 @@ describe('initiateMcpOAuth', () => {
             await vi.advanceTimersByTimeAsync(4_000);
 
             expect(manager.getPending(result.requestId)?.status).toBe('pending');
-            expect(session.destroy).not.toHaveBeenCalled();
+            expect(session.disconnect).not.toHaveBeenCalled();
 
             vi.useRealTimers();
         });

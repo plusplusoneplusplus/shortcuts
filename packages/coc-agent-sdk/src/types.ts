@@ -40,7 +40,8 @@ export type ToolResultType = 'success' | 'failure' | 'rejected' | 'denied' | 'ti
 export interface ToolBinaryResult {
     data: string;
     mimeType: string;
-    type: string;
+    /** Payload kind. Narrowed to match the Copilot SDK's `ToolBinaryResult["type"]`. */
+    type: 'image' | 'resource';
     description?: string;
 }
 
@@ -54,7 +55,8 @@ export interface ToolResultObject {
     resultType: ToolResultType;
     error?: string;
     sessionLog?: string;
-    toolTelemetry?: Record<string, unknown>;
+    /** Matches the Copilot SDK's `ToolTelemetry` (`Record<string, Record<string, unknown> | undefined>`). */
+    toolTelemetry?: Record<string, Record<string, unknown> | undefined>;
 }
 
 /**
@@ -92,7 +94,12 @@ export interface Tool<TArgs = unknown> {
     name: string;
     description?: string;
     parameters?: ZodSchema<TArgs> | Record<string, unknown>;
-    handler: ToolHandler<TArgs>;
+    /**
+     * Handler invoked when the tool is called. Optional to mirror the Copilot
+     * SDK (v1.0.0+): a tool may be declaration-only, in which case the runtime
+     * exposes it but does not auto-invoke it. CoC's own tools always supply one.
+     */
+    handler?: ToolHandler<TArgs>;
     /**
      * When true, explicitly indicates this tool is intended to override a
      * built-in tool of the same name. If unset and the name clashes with a
@@ -136,7 +143,7 @@ export function defineTool<T = unknown>(
     config: {
         description?: string;
         parameters?: ZodSchema<T> | Record<string, unknown>;
-        handler: ToolHandler<T>;
+        handler?: ToolHandler<T>;
         overridesBuiltInTool?: boolean;
         skipPermission?: boolean;
     },
@@ -731,10 +738,16 @@ export const denyAllPermissions: import('@github/copilot-sdk').PermissionHandler
 
 /**
  * Check whether a permission result represents an approval.
- * v0.3.0 of the SDK has three approval kinds: approve-once, approve-for-session, approve-for-location.
+ *
+ * The Copilot SDK namespaces every approval decision under an `approve`/`approved`
+ * prefix (`approve-once`, `approve-for-session`, `approve-for-location`,
+ * `approve-permanently`, `approved`, `approved-for-session`,
+ * `approved-for-location`), while denials use distinct kinds (`reject`,
+ * `cancelled`, `user-not-available`, `denied-*`, `no-result`). Matching on the
+ * prefix keeps this classifier correct as the SDK adds approval variants.
  */
 export function isPermissionApproved(result: { kind: string }): boolean {
-    return result.kind === 'approve-once' || result.kind === 'approve-for-session' || result.kind === 'approve-for-location';
+    return result.kind.startsWith('approve');
 }
 
 // ============================================================================

@@ -67,7 +67,7 @@ describe('CopilotSDKService - Skills Passthrough', () => {
         const mockSession = {
             sessionId: 'skills-dir-test',
             sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'response' } }),
-            destroy: vi.fn().mockResolvedValue(undefined),
+            disconnect: vi.fn().mockResolvedValue(undefined),
             on: vi.fn(),
             send: vi.fn(),
         };
@@ -98,7 +98,7 @@ describe('CopilotSDKService - Skills Passthrough', () => {
         const mockSession = {
             sessionId: 'disabled-skills-test',
             sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'response' } }),
-            destroy: vi.fn().mockResolvedValue(undefined),
+            disconnect: vi.fn().mockResolvedValue(undefined),
             on: vi.fn(),
             send: vi.fn(),
         };
@@ -129,7 +129,7 @@ describe('CopilotSDKService - Skills Passthrough', () => {
         const mockSession = {
             sessionId: 'both-skills-test',
             sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'response' } }),
-            destroy: vi.fn().mockResolvedValue(undefined),
+            disconnect: vi.fn().mockResolvedValue(undefined),
             on: vi.fn(),
             send: vi.fn(),
         };
@@ -162,7 +162,7 @@ describe('CopilotSDKService - Skills Passthrough', () => {
         const mockSession = {
             sessionId: 'no-skills-test',
             sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'response' } }),
-            destroy: vi.fn().mockResolvedValue(undefined),
+            disconnect: vi.fn().mockResolvedValue(undefined),
             on: vi.fn(),
             send: vi.fn(),
         };
@@ -193,7 +193,7 @@ describe('CopilotSDKService - Skills Passthrough', () => {
         const mockSession = {
             sessionId: 'empty-skills-test',
             sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'response' } }),
-            destroy: vi.fn().mockResolvedValue(undefined),
+            disconnect: vi.fn().mockResolvedValue(undefined),
             on: vi.fn(),
             send: vi.fn(),
         };

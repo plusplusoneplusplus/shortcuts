@@ -76,21 +76,31 @@ describe('createSdkClient', () => {
         createSdkClient();
 
         expect(capturedOptions).toHaveLength(1);
-        expect(capturedOptions[0].cwd).toBeUndefined();
+        expect(capturedOptions[0].workingDirectory).toBeUndefined();
     });
 
     it('creates a client with no cwd when cwd is undefined', () => {
         createSdkClient({ cwd: undefined });
 
         expect(capturedOptions).toHaveLength(1);
-        expect(capturedOptions[0].cwd).toBeUndefined();
+        expect(capturedOptions[0].workingDirectory).toBeUndefined();
     });
 
-    it('passes cwd to the CopilotClient constructor when cwd is provided', () => {
+    it('maps cwd onto the CopilotClient workingDirectory option when cwd is provided', () => {
         createSdkClient({ cwd: '/some/project' });
 
         expect(capturedOptions).toHaveLength(1);
-        expect(capturedOptions[0].cwd).toBe('/some/project');
+        expect(capturedOptions[0].workingDirectory).toBe('/some/project');
+    });
+
+    it('does NOT forward a legacy `cwd` field to the CopilotClient constructor (SDK v1.0.0 dropped it)', () => {
+        createSdkClient({ cwd: '/some/project' });
+
+        expect(capturedOptions).toHaveLength(1);
+        // Regression: v1.0.0 removed CopilotClientOptions.cwd in favor of
+        // workingDirectory. The factory must translate, never pass cwd through.
+        expect(capturedOptions[0].cwd).toBeUndefined();
+        expect(capturedOptions[0].workingDirectory).toBe('/some/project');
     });
 
     it('calls ensureFolderTrusted with cwd when cwd is provided', () => {
@@ -115,7 +125,7 @@ describe('createSdkClient', () => {
 
         expect(client).toBeDefined();
         expect(capturedOptions).toHaveLength(1);
-        expect(capturedOptions[0].cwd).toBe('/protected/path');
+        expect(capturedOptions[0].workingDirectory).toBe('/protected/path');
     });
 
     it('returns the created client instance', () => {
@@ -160,7 +170,7 @@ describe('createSdkClient', () => {
                 linuxWorkingDirectory: '/home/tester/repo',
             }),
         );
-        expect(capturedOptions[0].cwd).toBe(cwd);
+        expect(capturedOptions[0].workingDirectory).toBe(cwd);
         expect(capturedOptions[0].cliPath).toBeUndefined();
         expect(capturedOptions[0].cliArgs).toBeUndefined();
         expect(capturedOptions[0].env).toBeUndefined();
@@ -178,7 +188,7 @@ describe('createSdkClient', () => {
                 linuxWorkingDirectory: '/home/tester/repo',
             }),
         );
-        expect(capturedOptions[0].cwd).toBe(String.raw`\\wsl$\Ubuntu\home\tester\repo`);
+        expect(capturedOptions[0].workingDirectory).toBe(String.raw`\\wsl$\Ubuntu\home\tester\repo`);
         expect(trustedFolder.ensureFolderTrusted).toHaveBeenCalledWith(String.raw`\\wsl$\Ubuntu\home\tester\repo`);
         expect(fs.existsSync).toHaveBeenCalledWith(String.raw`\\wsl$\Ubuntu\home\tester\repo`);
     });

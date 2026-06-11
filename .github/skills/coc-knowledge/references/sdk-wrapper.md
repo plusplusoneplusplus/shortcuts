@@ -24,7 +24,7 @@ Location: `packages/coc-agent-sdk/src/`
 | `streaming-state-machine.ts` | Pure state machine: `Idle → Streaming → Settled \| Cancelled` |
 | `session-timer-manager.ts` | Timer management: overall timeout, idle timeout, turn-end grace |
 | `session-telemetry.ts` | Token usage accumulation, tool-call tracking |
-| `sdk-client-factory.ts` | Per-request `CopilotClient` spawning: cwd validation, folder trust |
+| `sdk-client-factory.ts` | Per-request `CopilotClient` spawning: `cwd`→`workingDirectory` mapping, cwd validation, folder trust |
 | `sdk-loader.ts` | SDK binary discovery + ESM import workaround |
 | `sdk-esm-loader.ts` | Dynamic ESM import helper (webpack-safe `new Function` indirection) |
 | `types.ts` | Shared types: `SendMessageOptions`, MCP configs, permissions, tools, token usage |
@@ -200,7 +200,7 @@ Claude tool-call capture treats assistant `tool_use` blocks as start events and 
 8. sessionManager.track(session)
 9. Route: streaming (timeoutMs>120s or onStreamingChunk) vs sendAndWait
 10. Empty-response handling (turnCount>0 = success)
-11. FINALLY: remove abort listener, untrack + session.destroy + client.stop
+11. FINALLY: remove abort listener, untrack + session.disconnect + client.stop
 ```
 
 ## Streaming Internals

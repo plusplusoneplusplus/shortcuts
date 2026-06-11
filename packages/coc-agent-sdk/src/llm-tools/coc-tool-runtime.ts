@@ -146,6 +146,11 @@ export class CocToolRuntime {
         if (!tool) {
             return errorResult(`Unknown tool: ${name}`);
         }
+        // `Tool.handler` is optional (the SDK allows declaration-only tools), but
+        // the CoC runtime can only execute tools that carry an in-process handler.
+        if (!tool.handler) {
+            return errorResult(`Tool "${name}" is declaration-only (no handler) and cannot be executed`);
+        }
 
         const invocation: ToolInvocation = {
             sessionId: this.context.sessionId ?? '',

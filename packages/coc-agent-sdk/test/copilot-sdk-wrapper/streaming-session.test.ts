@@ -33,7 +33,7 @@ function makeMockSession(sessionId = 'test-session') {
             return () => { handler = undefined; };
         }),
         send: vi.fn(() => Promise.resolve()),
-        destroy: vi.fn(() => Promise.resolve()),
+        disconnect: vi.fn(() => Promise.resolve()),
     };
 
     const emit = (event: ISessionEvent) => {
@@ -145,7 +145,7 @@ describe('StreamingSession — cancellation', () => {
 
         await expect(promise).rejects.toThrow('timed out after 1000ms');
         expect((ss as any).state).toBe(StreamingState.Cancelled);
-        expect(session.destroy).toHaveBeenCalled();
+        expect(session.disconnect).toHaveBeenCalled();
     });
 
     it('idle timeout: Streaming → Cancelled when no activity arrives', async () => {
@@ -160,7 +160,7 @@ describe('StreamingSession — cancellation', () => {
 
         await expect(promise).rejects.toThrow('idle-timed out after 500ms');
         expect((ss as any).state).toBe(StreamingState.Cancelled);
-        expect(session.destroy).toHaveBeenCalled();
+        expect(session.disconnect).toHaveBeenCalled();
     });
 
     it('idle timeout is suppressed while a tool call is in flight (regression: ask_user widget)', async () => {
@@ -181,7 +181,7 @@ describe('StreamingSession — cancellation', () => {
         // the agent is blocked on a human reply, not idle.
         vi.advanceTimersByTime(5000);
         expect((ss as any).state).toBe(StreamingState.Streaming);
-        expect(session.destroy).not.toHaveBeenCalled();
+        expect(session.disconnect).not.toHaveBeenCalled();
 
         // Tool completes; session then settles normally.
         emit({
@@ -213,7 +213,7 @@ describe('StreamingSession — cancellation', () => {
 
         await expect(promise).rejects.toThrow('timed out after 1000ms');
         expect((ss as any).state).toBe(StreamingState.Cancelled);
-        expect(session.destroy).toHaveBeenCalled();
+        expect(session.disconnect).toHaveBeenCalled();
     });
 
     it('idle timeout fires after the tool completes if then no activity arrives', async () => {
