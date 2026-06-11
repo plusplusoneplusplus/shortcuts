@@ -83,9 +83,11 @@ describe('NotesView (notes chat refactor)', () => {
             expect(source).toContain('testIdPrefix="notes-chat"');
         });
 
-        it('shows a lightweight notes Lens Chat badge from the inherited chat flag', () => {
-            expect(source).toContain('notes-lens-chat-badge');
-            expect(source).toContain('Lens Chat');
+        it('does not render a non-interactive Lens Chat badge overlapping the toolbar', () => {
+            // The badge was a pointer-events-none pill that collided with the
+            // editor's Rich/Md toggle and looked clickable but was not. Removed.
+            expect(source).not.toContain('notes-lens-chat-badge');
+            expect(source).not.toContain('Notes inherit Lens Chat mode');
         });
 
         it('keeps RepoDetail from owning a competing notes chat open state', () => {

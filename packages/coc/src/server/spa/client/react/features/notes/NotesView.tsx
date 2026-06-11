@@ -409,15 +409,6 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope }: NotesV
             data-testid="notes-view"
             onPointerDown={handlePointerDown}
         >
-            {noteChatLensEnabled && (
-                <div
-                    className="pointer-events-none absolute right-3 top-2 z-20 rounded-full border border-[#d0d7de] bg-white/90 px-2 py-0.5 text-[10px] font-medium text-[#57606a] shadow-sm dark:border-[#3c3c3c] dark:bg-[#252526]/90 dark:text-[#cccccc]"
-                    data-testid="notes-lens-chat-badge"
-                    title="Notes inherit Lens Chat mode"
-                >
-                    Lens Chat
-                </div>
-            )}
             {/* Left: notes tree sidebar */}
             <ResponsiveSidebar
                 width={sidebarResize.width}
