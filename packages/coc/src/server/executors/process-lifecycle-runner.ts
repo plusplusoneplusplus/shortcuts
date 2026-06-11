@@ -79,6 +79,24 @@ export { TERMINAL_STATUSES };
 /** Tool names that create files (mirrors client-side conversationScan.ts). */
 const CREATE_TOOL_NAMES = new Set(['create', 'write_file', 'create_file', 'apply_patch']);
 
+function getToolCallName(toolCall: NonNullable<ConversationTurn['timeline']>[number]['toolCall']): string {
+    if (!toolCall) return '';
+    return (toolCall as any).toolName || toolCall.name || '';
+}
+
+function extractApplyPatchResultPaths(result: string): string[] {
+    const paths: string[] = [];
+    const addedMatch = /Added \d+ file\(s\): (.+)/.exec(result);
+    if (addedMatch) {
+        paths.push(...addedMatch[1].split(',').map(s => s.trim()).filter(Boolean));
+    }
+    for (const match of result.matchAll(/^add:\s*(.+)$/gm)) {
+        const path = match[1].trim();
+        if (path) paths.push(path);
+    }
+    return paths;
+}
+
 /**
  * Scan conversation turns for a created `.plan.md` file.
  * Mirrors the client-side detection in ChatDetail.tsx.
@@ -87,16 +105,15 @@ export function scanTurnsForPlanFile(turns: ConversationTurn[]): string | undefi
     for (const turn of turns) {
         for (const item of turn.timeline ?? []) {
             if (item.type !== 'tool-complete' || !item.toolCall) continue;
-            const toolName = item.toolCall.name || '';
+            const toolName = getToolCallName(item.toolCall);
             if (!CREATE_TOOL_NAMES.has(toolName)) continue;
 
-            // Handle apply_patch: check result "Added N file(s): ..." and string args "*** Add File: ..."
+            // Handle apply_patch: check result text and string args "*** Add File: ..."
             if (toolName === 'apply_patch') {
                 const paths: string[] = [];
                 const result = item.toolCall.result;
                 if (typeof result === 'string') {
-                    const addedMatch = /Added \d+ file\(s\): (.+)/.exec(result);
-                    if (addedMatch) paths.push(...addedMatch[1].split(',').map(s => s.trim()));
+                    paths.push(...extractApplyPatchResultPaths(result));
                 }
                 const rawArgs = item.toolCall.args as Record<string, unknown>;
                 const patchText = typeof rawArgs?.diff === 'string' ? rawArgs.diff : '';
