@@ -200,4 +200,18 @@ describe('Group Pin REST API', () => {
         const missingWorkspace = await getJSON(groupPinsUrl('missing-workspace'));
         expect(missingWorkspace.status).toBe(404);
     });
+
+    it('accepts the dream-run group kind from the shared task-group registry', async () => {
+        const res = await patchJSON(groupPinsUrl(wsA, 'dream-run', 'dream-run-1'), { pinned: true });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toMatchObject({
+            pin: { type: 'dream-run', groupId: 'dream-run-1', pinnedAt: expect.any(String) },
+        });
+
+        const list = await getJSON(groupPinsUrl(wsA));
+        expect(list.status).toBe(200);
+        expect(JSON.parse(list.body).pins).toEqual([
+            expect.objectContaining({ type: 'dream-run', groupId: 'dream-run-1' }),
+        ]);
+    });
 });

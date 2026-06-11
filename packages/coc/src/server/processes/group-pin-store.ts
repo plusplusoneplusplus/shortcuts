@@ -1,10 +1,13 @@
 import * as fs from 'fs';
+import { isGroupPinType, type ProcessGroupPinType } from '@plusplusoneplusplus/coc-client';
 import { atomicWriteJson } from '../shared/fs-utils';
 import { getRepoDataPath } from '../paths';
 
-export const GROUP_PIN_TYPES = ['ralph-session', 'for-each-run', 'map-reduce-run'] as const;
+// Pin types are sourced from the shared task-group registry in coc-client so a
+// new group kind (e.g. dream-run) becomes pinnable without editing this file.
+export { GROUP_PIN_TYPES, isGroupPinType } from '@plusplusoneplusplus/coc-client';
 
-export type GroupPinType = typeof GROUP_PIN_TYPES[number];
+export type GroupPinType = ProcessGroupPinType;
 
 export interface GroupPin {
     type: GroupPinType;
@@ -20,10 +23,6 @@ interface GroupPinState {
 }
 
 const GROUP_PINS_FILE = 'group-pins.json';
-
-export function isGroupPinType(value: unknown): value is GroupPinType {
-    return typeof value === 'string' && (GROUP_PIN_TYPES as readonly string[]).includes(value);
-}
 
 export function normalizeGroupId(groupId: unknown): string | undefined {
     if (typeof groupId !== 'string') return undefined;
