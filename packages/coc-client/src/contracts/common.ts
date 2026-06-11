@@ -17,12 +17,34 @@ export interface HealthResponse {
 
 export interface OpenApiDocument extends JsonObject {}
 
+/** Long-context tier pricing metadata for models with tiered context windows. */
+export interface ModelBillingTokenPricesLongContext {
+  /** Maximum prompt/context tokens available on the long-context tier. */
+  contextMax?: number;
+  [key: string]: unknown;
+}
+
+/** Tiered token pricing metadata attached to a model's billing info. */
+export interface ModelBillingTokenPrices {
+  longContext?: ModelBillingTokenPricesLongContext;
+  [key: string]: unknown;
+}
+
+/** Billing metadata for a model. */
+export interface ModelBilling {
+  multiplier?: number;
+  tokenPrices?: ModelBillingTokenPrices;
+  [key: string]: unknown;
+}
+
 export interface ModelInfo {
   id: string;
   name?: string;
   label?: string;
   enabled?: boolean;
   capabilities?: JsonObject;
+  /** Billing metadata, including long-context tier support (tokenPrices.longContext.contextMax). */
+  billing?: ModelBilling;
   /** Reasoning efforts the model accepts (e.g. ['low','medium','high','xhigh']). Empty/undefined when unknown. */
   supportedReasoningEfforts?: string[];
   /** Default reasoning effort the model picks when none is requested. */

@@ -155,6 +155,14 @@ describe('OpenAPI spec validation', () => {
     const schemaCount = Object.keys(rawSpec.components.schemas).length;
     expect(schemaCount).toBeGreaterThan(0);
   });
+
+  it('documents long-context billing metadata on the model shape', () => {
+    const schemas = rawSpec.components.schemas;
+    expect(schemas.ModelBilling.properties.tokenPrices.$ref).toBe('#/components/schemas/ModelBillingTokenPrices');
+    expect(schemas.ModelBillingTokenPrices.properties.longContext.$ref).toBe('#/components/schemas/ModelBillingTokenPricesLongContext');
+    expect(schemas.ModelBillingTokenPricesLongContext.properties.contextMax.type).toBe('number');
+    expect(schemas.ModelInfo.properties.billing.$ref).toBe('#/components/schemas/ModelBilling');
+  });
 });
 
 // ---------------------------------------------------------------------------

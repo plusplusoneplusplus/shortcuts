@@ -163,6 +163,25 @@ describe('GET /api/agent-providers/:provider/models', () => {
         expect(data.models.find(m => m.id === 'model-b')?.enabled).toBe(false);
     });
 
+    it('preserves billing.tokenPrices.longContext.contextMax on returned models', async () => {
+        const longContextModel: ModelInfo = {
+            ...makeModelInfo('model-long', 'Model Long'),
+            billing: { multiplier: 1, tokenPrices: { longContext: { contextMax: 1_000_000 } } },
+        };
+        mockGetAll.mockReturnValue([longContextModel, makeModelInfo('model-std', 'Model Std')]);
+        const ctx = makeCtx();
+        server = makeServer(ctx);
+        await startServer();
+
+        const { status, body } = await apiGet('/api/agent-providers/copilot/models');
+        expect(status).toBe(200);
+        const data = body as { models: ModelInfo[] };
+        const longModel = data.models.find(m => m.id === 'model-long');
+        expect(longModel?.billing?.tokenPrices?.longContext?.contextMax).toBe(1_000_000);
+        const stdModel = data.models.find(m => m.id === 'model-std');
+        expect(stdModel?.billing).toBeUndefined();
+    });
+
     it('falls back to static models when store is empty', async () => {
         mockGetAll.mockReturnValue([]);
         const ctx = makeCtx();

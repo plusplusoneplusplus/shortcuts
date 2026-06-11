@@ -23,7 +23,12 @@ export {
     ModelInfo,
     ModelPolicy,
     ModelBilling,
+    ModelBillingTokenPrices,
+    ModelBillingTokenPricesLongContext,
 } from './types';
+
+export type { CopilotContextTier } from './model-context-tier';
+export { getCopilotContextTierForModel, getCopilotLongContextPromptLimit } from './model-context-tier';
 
 export type {
     ReasoningEffort,

@@ -93,6 +93,23 @@ describe('useProviderModels', () => {
         expect(result.current.models).toEqual([]);
     });
 
+    it('preserves long-context billing metadata (billing.tokenPrices.longContext.contextMax)', async () => {
+        mocks.agentProviders.listModels.mockResolvedValue({
+            provider: 'copilot',
+            models: [
+                { id: 'gpt-5-long', name: 'GPT-5 Long', billing: { multiplier: 1, tokenPrices: { longContext: { contextMax: 1_000_000 } } } },
+                { id: 'gpt-5-std', name: 'GPT-5 Std' },
+            ],
+        });
+        const { result } = renderHook(() => useProviderModels('copilot'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        const longModel = result.current.models.find(m => m.id === 'gpt-5-long');
+        expect(longModel?.billing?.tokenPrices?.longContext?.contextMax).toBe(1_000_000);
+        expect(longModel?.billing?.multiplier).toBe(1);
+        const stdModel = result.current.models.find(m => m.id === 'gpt-5-std');
+        expect(stdModel).not.toHaveProperty('billing');
+    });
+
     it('normalizes reasoning efforts from CAPI metadata', async () => {
         mocks.agentProviders.listModels.mockResolvedValue({
             provider: 'copilot',

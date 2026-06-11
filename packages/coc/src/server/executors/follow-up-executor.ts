@@ -25,6 +25,7 @@ import type {
     TurnSource,
 } from '@plusplusoneplusplus/forge';
 import type { ReasoningEffort } from '@plusplusoneplusplus/coc-agent-sdk';
+import { getCopilotContextTierForModel } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { ChatMode, ChatProvider } from '../tasks/task-types';
 import { getForEachContext, getMapReduceContext, isForEachGenerationContext, isMapReduceGenerationContext, normalizeChatModeOrDefault } from '../tasks/task-types';
 import {
@@ -440,6 +441,13 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 logger,
             });
 
+            // Copilot long-context tier: request it only when the resolved
+            // Copilot model's catalog metadata advertises a long-context tier.
+            // Never sent for Codex/Claude or for models without the metadata.
+            const contextTier = sessionProvider === 'copilot'
+                ? getCopilotContextTierForModel(reasoningModelMetadata)
+                : undefined;
+
             const sendOptions = {
                 prompt: followUpMessage,
                 sessionId: process.sdkSessionId,
@@ -447,6 +455,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 mode: agentMode,
                 workingDirectory,
                 ...(reasoningSelection.reasoningEffort ? { reasoningEffort: reasoningSelection.reasoningEffort } : {}),
+                ...(contextTier ? { contextTier } : {}),
                 infiniteSessions: { enabled: true } as const,
                 systemMessage: historySystemMessage,
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,

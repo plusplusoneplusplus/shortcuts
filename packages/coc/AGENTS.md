@@ -76,6 +76,12 @@ all have their own `references/*.md`.
 - **Follow-up enqueue sites** must call `resolveFollowUpMode(...)` and set
   `payload.mode`. `FollowUpExecutor.executeFollowUp` fail-loud warns + defaults
   to `'ask'` if missing.
+- **Copilot long-context tier** is automatic at the provider boundary: chat
+  and follow-up executors derive `contextTier` only via
+  `getCopilotContextTierForModel` (tiered billing metadata —
+  `billing.tokenPrices.longContext.contextMax`). Never hardcode model
+  allow-lists, never infer support from `max_context_window_tokens`, and never
+  send `contextTier` for Codex/Claude or when the metadata is absent.
 - **Pull Requests Team auto-classification** must stay gated by
   `pullRequests.enabled`, `pullRequests.autoClassifyTeam`, and
   `features.focusedDiff`; use the generic classify-diff enqueue helper with the

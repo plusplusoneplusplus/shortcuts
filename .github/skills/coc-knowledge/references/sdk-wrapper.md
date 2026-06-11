@@ -32,6 +32,7 @@ Location: `packages/coc-agent-sdk/src/`
 | `provider-model-resolver.ts` | Provider-aware model override validation/coercion (`resolveModelForProvider`) |
 | `model-metadata-store.ts` | Runtime model metadata cache with SDK polling |
 | `model-reasoning.ts` | Metadata-aware model/reasoning resolver; variant IDs with `capabilities.family` sent as base model + reasoning effort |
+| `model-context-tier.ts` | Copilot context-tier resolver: `getCopilotContextTierForModel`/`getCopilotLongContextPromptLimit` derive `"long_context"` strictly from tiered billing metadata (`billing.tokenPrices.longContext.contextMax`, camelCase or snake_case) |
 | `claude-model-catalog.ts` | `findClaudeCatalogModel` — bridges configured Claude model ids (CLI aliases, dotted marketing ids, dashed CLI ids, provider-default sentinels) to Claude CLI catalog entries via exact, dashed-normalized, and family (id/name/description) matching |
 | `effort-tier-defaults.ts` | Hardcoded per-provider effort-tier defaults (`very-low`/`low`/`medium`/`high` → model + reasoning effort) and stored-config merge helper; Claude tiers reference CLI catalog aliases (`haiku`/`sonnet`/`opus`), with no pinned effort for Haiku |
 | `mcp-config-loader.ts` | Loads/merges MCP config from `~/.copilot/mcp-config.json`, workspace `.vscode/mcp.json`, and explicit request options |
@@ -198,9 +199,9 @@ Claude tool-call capture treats assistant `tool_use` blocks as start events and 
 ```
 1. isAvailable() → check SDK exists
 2. createClient(cwd) → spawn fresh child process
-3. Build ISessionOptions (model, streaming, tools, MCP config, permissions)
+3. Build ISessionOptions (model, streaming, tools, contextTier, MCP config, permissions)
 4. Session creation or resume (falls back to create on resume failure)
-5. session.setModel(model, { reasoningEffort }) after session creation
+5. session.setModel(model, { reasoningEffort, contextTier }) after session creation
 6. onSessionCreated callback fires
 7. Attach AbortSignal listener for cancellation
 8. sessionManager.track(session)
@@ -208,6 +209,8 @@ Claude tool-call capture treats assistant `tool_use` blocks as start events and 
 10. Empty-response handling (turnCount>0 = success)
 11. FINALLY: remove abort listener, untrack + session.disconnect + client.stop
 ```
+
+`SendMessageOptions.contextTier` (`"default" | "long_context"`) selects the Copilot context-window tier. It rides the same session-options object on create and resume; in the delayed model-switch path (model + reasoningEffort both present) it moves to `session.setModel(model, { reasoningEffort, contextTier })` alongside the model. Callers must only set it for Copilot models whose catalog metadata advertises a long-context tier — `getCopilotContextTierForModel` (`model-context-tier.ts`) derives it strictly from `billing.tokenPrices.longContext.contextMax` (camelCase or snake_case runtime shape), never from model names or `max_context_window_tokens`. Passing `long_context` without metadata support can leave the session on normal limits while reporting a long-context selection.
 
 ## Streaming Internals
 

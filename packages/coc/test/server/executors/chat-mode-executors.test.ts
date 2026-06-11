@@ -17,8 +17,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import type { QueuedTask } from '@plusplusoneplusplus/forge';
-import { READ_ONLY_SYSTEM_MESSAGE } from '@plusplusoneplusplus/forge';
+import type { ModelInfo, QueuedTask } from '@plusplusoneplusplus/forge';
+import { modelMetadataStore, READ_ONLY_SYSTEM_MESSAGE } from '@plusplusoneplusplus/forge';
 import { ChatExecutor } from '../../../src/server/executors/chat-executor';
 import { AutopilotExecutor } from '../../../src/server/executors/autopilot-executor';
 import { ClassificationExecutor } from '../../../src/server/executors/classification-executor';
@@ -1488,5 +1488,102 @@ describe('ChatExecutor legacy plan auto-folder path (notes/Plans)', () => {
         const sysContent: string = call.systemMessage?.content ?? '';
         expect(sysContent).toContain('notes');
         expect(sysContent).toContain('Plans');
+    });
+});
+
+// ============================================================================
+// Copilot long-context tier
+// ============================================================================
+
+describe('ChatBaseExecutor contextTier', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    function makeCatalogModel(id: string, billing?: unknown): ModelInfo {
+        return {
+            id,
+            name: id,
+            capabilities: {
+                supports: { vision: false, reasoningEffort: false },
+                limits: { max_context_window_tokens: 128_000 },
+            },
+            ...(billing !== undefined ? { billing: billing as ModelInfo['billing'] } : {}),
+        };
+    }
+
+    const longContextModel = makeCatalogModel('gpt-5-long-ctx', { tokenPrices: { longContext: { contextMax: 1_000_000 } } });
+    const standardModel = makeCatalogModel('gpt-5-standard', { multiplier: 1 });
+
+    beforeEach(async () => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'AI answer',
+            sessionId: 'sess-1',
+            toolCalls: [],
+        });
+        await modelMetadataStore.initialize({ listModels: async () => [longContextModel, standardModel] });
+    });
+
+    afterEach(async () => {
+        // Clear the singleton cache so other suites are unaffected.
+        await modelMetadataStore.initialize({ listModels: async () => [] });
+    });
+
+    function makeExecutorForProvider(provider: 'copilot' | 'codex' | 'claude') {
+        return new ChatExecutor(store, makeOptions(store, {
+            provider,
+            resolveAiServiceForProvider: vi.fn().mockReturnValue(sdkMocks.service as any),
+        }));
+    }
+
+    it('passes contextTier "long_context" for a Copilot model with long-context metadata', async () => {
+        const executor = makeExecutorForProvider('copilot');
+        const task = makeChatTask('ask', 'task-ctx-long');
+        task.config = { model: 'gpt-5-long-ctx' } as any;
+
+        await executor.execute(task, 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.contextTier).toBe('long_context');
+    });
+
+    it('omits contextTier for a Copilot model without long-context metadata', async () => {
+        const executor = makeExecutorForProvider('copilot');
+        const task = makeChatTask('ask', 'task-ctx-standard');
+        task.config = { model: 'gpt-5-standard' } as any;
+
+        await executor.execute(task, 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call).not.toHaveProperty('contextTier');
+    });
+
+    it('omits contextTier for Codex even when the catalog model has long-context metadata', async () => {
+        sdkMocks.mockListModels.mockResolvedValue([longContextModel]);
+        const executor = makeExecutorForProvider('codex');
+        const task = makeChatTask('ask', 'task-ctx-codex');
+        task.config = { model: 'gpt-5-long-ctx' } as any;
+        task.payload = { ...(task.payload as any), provider: 'codex' } as any;
+
+        await executor.execute(task, 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call).not.toHaveProperty('contextTier');
+    });
+
+    it('omits contextTier for Claude even when the catalog model has long-context metadata', async () => {
+        const claudeLongContext = makeCatalogModel('claude-sonnet-4.6', { tokenPrices: { longContext: { contextMax: 1_000_000 } } });
+        sdkMocks.mockListModels.mockResolvedValue([claudeLongContext]);
+        const executor = makeExecutorForProvider('claude');
+        const task = makeChatTask('ask', 'task-ctx-claude');
+        task.config = { model: 'claude-sonnet-4.6' } as any;
+        task.payload = { ...(task.payload as any), provider: 'claude' } as any;
+
+        await executor.execute(task, 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call).not.toHaveProperty('contextTier');
     });
 });

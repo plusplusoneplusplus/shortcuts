@@ -32,6 +32,7 @@ import type {
     TokenUsage,
 } from '@plusplusoneplusplus/forge';
 import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
+import { getCopilotContextTierForModel } from '@plusplusoneplusplus/coc-agent-sdk';
 import {
     approveAllPermissions,
     findClaudeCatalogModel,
@@ -676,11 +677,19 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 const persisted = effortMap[effectiveModel];
                 if (persisted) requestedEffort = persisted as NonNullable<typeof requestedEffort>;
             }
+            const reasoningModelMetadata = await this.getModelMetadataForReasoning(effectiveModel, taskProvider, effectiveAiService);
             const reasoningSelection = resolveReasoningSelection({
                 modelId: effectiveModel,
                 requestedEffort,
-                model: await this.getModelMetadataForReasoning(effectiveModel, taskProvider, effectiveAiService),
+                model: reasoningModelMetadata,
             });
+
+            // Copilot long-context tier: request it only when the selected
+            // Copilot model's catalog metadata advertises a long-context tier.
+            // Never sent for Codex/Claude or for models without the metadata.
+            const contextTier = taskProvider === 'copilot'
+                ? getCopilotContextTierForModel(reasoningModelMetadata)
+                : undefined;
 
             if (ralphGrillPlanning?.setup.enabled === true) {
                 this.emitRalphGrillPlanningProgress(
@@ -739,6 +748,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 mode: agentMode,
                 ...(reasoningSelection.modelId ? { model: reasoningSelection.modelId } : {}),
                 ...(reasoningSelection.reasoningEffort ? { reasoningEffort: reasoningSelection.reasoningEffort } : {}),
+                ...(contextTier ? { contextTier } : {}),
                 infiniteSessions: { enabled: true } as const,
                 workingDirectory,
                 timeoutMs,

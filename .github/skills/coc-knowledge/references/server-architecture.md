@@ -229,7 +229,8 @@ Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT.
 2. Auto-migrations: workspace registry JSON → SQLite, file-based process history → SQLite
 3. Chat/follow-up executors initialize model metadata on demand if task starts before cache warm
 4. Variant models with `capabilities.family` base preserved in process metadata but sent to SDK as base model + reasoning effort
-5. `defaultProvider` is the concrete fallback provider when Auto routing is disabled; when `features.autoAgentProviderRouting` is true, omitted-provider default paths use `agentProviderRouting.auto`, chat payloads with `payload.provider` override it, explicit Auto requests carry `context.autoProviderRouting.requested` and are resolved to a concrete provider before effort-tier expansion, while follow-ups use the provider recorded on the original process
+5. Copilot long-context tier resolved automatically at the provider boundary: chat and follow-up executors pass `contextTier: "long_context"` only when the resolved Copilot model's catalog metadata advertises `billing.tokenPrices.longContext.contextMax` (via `getCopilotContextTierForModel`); the field is omitted for Copilot models without that metadata and never sent for Codex/Claude. Static fallback models carry no long-context metadata, so a failed catalog fetch disables long context for that run
+6. `defaultProvider` is the concrete fallback provider when Auto routing is disabled; when `features.autoAgentProviderRouting` is true, omitted-provider default paths use `agentProviderRouting.auto`, chat payloads with `payload.provider` override it, explicit Auto requests carry `context.autoProviderRouting.requested` and are resolved to a concrete provider before effort-tier expansion, while follow-ups use the provider recorded on the original process
 
 ## Storage Layout
 
