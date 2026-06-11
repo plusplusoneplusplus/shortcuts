@@ -616,8 +616,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                 toolDefinitionsTokens: tokenUsage.toolDefinitionsTokens ?? prevCumulative?.toolDefinitionsTokens,
                                 conversationTokens: tokenUsage.conversationTokens ?? prevCumulative?.conversationTokens,
                             } : prevCumulative;
-                            // If cancellation was requested while executing, finalize as cancelled
-                            if (current.status === 'cancelling') {
+                            // If cancellation was requested while executing, finalize as cancelled.
+                            const wasCancelled = opts.cancelledTasks.has(task.id) || current.status === 'cancelling';
+                            if (wasCancelled) {
                                 const baseMetadata = {
                                     ...(current.metadata ?? {}),
                                     type: current.metadata?.type ?? task.type,

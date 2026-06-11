@@ -86,6 +86,12 @@ export class DreamInternalProcessExecutor {
                 },
                 getWorkingDirectoryFn: () => undefined,
             });
+            if (input.signal?.aborted || cancelledTasks.has(task.id)) {
+                throw new DreamInternalProcessExecutionError(
+                    `Dream ${input.purpose} was cancelled`,
+                    { processId, purpose: input.purpose },
+                );
+            }
             if (!result.success) {
                 throw new DreamInternalProcessExecutionError(
                     result.error?.message ?? 'Dream internal process failed',

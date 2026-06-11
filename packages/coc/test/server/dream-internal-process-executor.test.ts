@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ISDKService } from '@plusplusoneplusplus/forge';
-import { DreamInternalProcessExecutor } from '../../src/server/executors/dream-internal-process-executor';
+import {
+    DreamInternalProcessExecutionError,
+    DreamInternalProcessExecutor,
+} from '../../src/server/executors/dream-internal-process-executor';
 import { createMockProcessStore } from './helpers/mock-process-store';
 
 function mockAiService(response: string): ISDKService {
@@ -144,5 +147,76 @@ describe('DreamInternalProcessExecutor', () => {
                 },
             },
         });
+    });
+
+    it('marks an in-flight internal process cancelled when the outer dream run aborts', async () => {
+        const store = createMockProcessStore();
+        const controller = new AbortController();
+        const aiService = mockAiService(JSON.stringify({ candidates: [] }));
+        vi.mocked(aiService.sendMessage).mockImplementationOnce(async () => {
+            controller.abort();
+            return {
+                success: true,
+                response: JSON.stringify({ candidates: [] }),
+                effectiveModel: 'claude-sonnet-4.6',
+            };
+        });
+        const executor = new DreamInternalProcessExecutor({
+            store,
+            aiService,
+            provider: 'claude',
+        });
+
+        let error: unknown;
+        try {
+            await executor.runStep({
+                purpose: 'analyzer',
+                workspaceId: 'ws-dream-process',
+                runId: 'dream-run-1',
+                parentProcessId: 'queue_outer-dream-run',
+                prompt: 'Analyze these conversations.',
+                systemPrompt: 'You are the CoC Dream analyzer.',
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+                timeoutMs: 45_000,
+                signal: controller.signal,
+            });
+        } catch (caught) {
+            error = caught;
+        }
+
+        expect(error).toBeInstanceOf(DreamInternalProcessExecutionError);
+        expect(error).toMatchObject({
+            purpose: 'analyzer',
+            message: 'Dream analyzer was cancelled',
+        });
+        const processId = (error as DreamInternalProcessExecutionError).processId;
+        const process = await store.getProcess(processId);
+        expect(process).toMatchObject({
+            id: processId,
+            type: 'dream-analyzer',
+            status: 'cancelled',
+            parentProcessId: 'queue_outer-dream-run',
+            metadata: {
+                dreamStep: {
+                    kind: 'analyzer',
+                    runId: 'dream-run-1',
+                    readOnly: true,
+                    toolsEnabled: false,
+                    mcpEnabled: false,
+                    permissionPolicy: 'deny-all',
+                },
+            },
+        });
+        expect(process?.error).toBeUndefined();
+        expect(process?.conversationTurns?.[1]).toMatchObject({
+            role: 'assistant',
+            content: JSON.stringify({ candidates: [] }),
+        });
+        const [sendOptions] = vi.mocked(aiService.sendMessage).mock.calls[0];
+        expect(sendOptions.signal).toBe(controller.signal);
+        expect(sendOptions.loadDefaultMcpConfig).toBe(false);
+        expect(sendOptions.availableTools).toEqual([]);
+        expect(sendOptions.tools).toEqual([]);
     });
 });

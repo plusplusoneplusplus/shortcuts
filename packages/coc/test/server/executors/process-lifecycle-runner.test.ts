@@ -342,6 +342,32 @@ describe('ProcessLifecycleRunner — cancellation detection', () => {
         const proc = await store.getProcess(processId);
         expect(proc?.status).toBe('cancelled');
     });
+
+    it('treats success path as cancelled when cancellation is recorded mid-flight', async () => {
+        const cancelledTasks = new Set<string>();
+        const task = makeTask();
+        const drainFn = vi.fn().mockResolvedValue(undefined);
+        const opts = makeOpts({
+            cancelledTasks,
+            onDrainPendingMessages: drainFn,
+            executeByTypeFn: vi.fn(async () => {
+                cancelledTasks.add(task.id);
+                return { response: 'late result after cancel' };
+            }),
+        });
+
+        await runner.run(task, opts);
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.status).toBe('cancelled');
+        expect(proc?.error).toBeUndefined();
+        expect(proc?.conversationTurns?.[1]).toMatchObject({
+            role: 'assistant',
+            content: 'late result after cancel',
+        });
+        expect(drainFn).not.toHaveBeenCalled();
+    });
 });
 
 // ============================================================================
