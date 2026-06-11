@@ -45,8 +45,9 @@ describe('CommitChatPanel', () => {
             expect(source).toContain('Chat about this commit');
         });
 
-        it('shows "Ask questions about the changes" description', () => {
-            expect(source).toContain('Ask questions about the changes');
+        it('uses commit label and optional commit message in the empty-state description', () => {
+            expect(source).toContain('const commitLabel = commitHash.slice(0, 7);');
+            expect(source).toContain("heroDescription={`${commitLabel}${commitMessage ? ` · ${commitMessage}` : ''}`}");
         });
 
         it('renders empty state only when no taskId, not loading, no error', () => {
@@ -115,8 +116,13 @@ describe('CommitChatPanel', () => {
 
     describe('shows error on fetch failure', () => {
         it('renders error state', () => {
-            expect(source).toContain('{error && !loading && (');
+            expect(source).toContain('{error && !loading && !taskId && (');
             expect(source).toContain('{error}');
+        });
+
+        it('renders an inline error banner when an active chat already exists', () => {
+            expect(source).toContain('{error && !loading && taskId && (');
+            expect(source).toContain('data-testid="commit-chat-error-banner"');
         });
     });
 
@@ -131,7 +137,7 @@ describe('CommitChatPanel', () => {
         });
 
         it('passes title with commit hash prefix', () => {
-            expect(source).toContain('title={`Commit Chat · ${commitHash.slice(0, 7)}`}');
+            expect(source).toContain('title={`Commit Chat · ${commitLabel}`}');
         });
 
         it('passes hideModeSelector', () => {
@@ -140,6 +146,11 @@ describe('CommitChatPanel', () => {
 
         it('passes onBack={onClose}', () => {
             expect(source).toContain('onBack={onClose}');
+        });
+
+        it('passes fresh same-context chat handlers', () => {
+            expect(source).toContain('onStartFreshSameContext={startFreshChat}');
+            expect(source).toContain('startingFreshSameContext={startingFresh}');
         });
     });
 
