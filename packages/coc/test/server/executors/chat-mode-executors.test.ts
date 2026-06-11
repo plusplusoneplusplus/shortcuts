@@ -1290,6 +1290,7 @@ describe('create_update_work_item tool wiring', () => {
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         const toolNames = (call.tools ?? []).map((t: any) => t.name);
+        expect(toolNames).toContain('get_work_item');
         expect(toolNames).toContain('create_update_work_item');
         expect(toolNames).not.toContain('create_work_item');
         expect(toolNames).not.toContain('update_work_item');
@@ -1304,6 +1305,7 @@ describe('create_update_work_item tool wiring', () => {
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         const toolNames = (call.tools ?? []).map((t: any) => t.name);
+        expect(toolNames).toContain('get_work_item');
         expect(toolNames).toContain('create_update_work_item');
         expect(toolNames).not.toContain('create_work_item');
         expect(toolNames).not.toContain('update_work_item');
@@ -1326,6 +1328,7 @@ describe('create_update_work_item tool wiring', () => {
 
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
             const toolNames = (call.tools ?? []).map((t: any) => t.name);
+            expect(toolNames).toContain('get_work_item');
             expect(toolNames).toContain('create_update_work_item');
             expect(toolNames).not.toContain('create_work_item');
             expect(toolNames).not.toContain('update_work_item');
@@ -1375,6 +1378,7 @@ describe('create_update_work_item tool wiring', () => {
 
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
             const toolNames = (call.tools ?? []).map((t: any) => t.name);
+            expect(toolNames).not.toContain('get_work_item');
             expect(toolNames).not.toContain('create_update_work_item');
             expect(toolNames).not.toContain('create_work_item');
             expect(toolNames).not.toContain('update_work_item');

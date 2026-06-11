@@ -10,6 +10,14 @@ export {
     type CompactionLevel,
 } from './get-conversation-tool';
 export { createSuggestFollowUpsTool, type FollowUpSuggestion } from './suggest-follow-ups-tool';
+export {
+    createGetWorkItemTool,
+    type GetWorkItemArgs,
+    type GetWorkItemToolDeps,
+    type GetWorkItemResult,
+    type GetWorkItemSuccess,
+    type GetWorkItemNotFound,
+} from './get-work-item-tool';
 export { createAddDiffCommentTool, type AddDiffCommentArgs, type AddDiffCommentDeps } from './add-diff-comment-tool';
 export {
     createTavilyWebSearchTool,
