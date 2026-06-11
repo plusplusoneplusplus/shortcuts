@@ -38,6 +38,10 @@ export interface MockProcessStoreOptions {
     initialWorkspaces?: WorkspaceInfo[];
 }
 
+function matchesWorkspace(process: AIProcess, workspaceId: string | undefined): boolean {
+    return !workspaceId || process.metadata?.workspaceId === workspaceId;
+}
+
 // ---------------------------------------------------------------------------
 // Factory Functions
 // ---------------------------------------------------------------------------
@@ -82,8 +86,11 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
             }
         }),
         getProcess: vi.fn(async (id: string) => processes.get(id)),
-        getAllProcesses: vi.fn(async (filter?: { parentProcessId?: string; status?: string | string[]; exclude?: string[] }) => {
+        getAllProcesses: vi.fn(async (filter?: { workspaceId?: string; parentProcessId?: string; status?: string | string[]; exclude?: string[] }) => {
             let result = Array.from(processes.values());
+            if (filter?.workspaceId) {
+                result = result.filter(p => matchesWorkspace(p, filter.workspaceId));
+            }
             if (filter?.parentProcessId) {
                 result = result.filter(p => p.parentProcessId === filter.parentProcessId);
             }
@@ -187,8 +194,11 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
             }
             return result.length;
         }),
-        getProcessSummaries: vi.fn(async (filter?: { status?: string | string[]; limit?: number; offset?: number }) => {
+        getProcessSummaries: vi.fn(async (filter?: { workspaceId?: string; status?: string | string[]; limit?: number; offset?: number }) => {
             let result = Array.from(processes.values());
+            if (filter?.workspaceId) {
+                result = result.filter(p => matchesWorkspace(p, filter.workspaceId));
+            }
             if (filter?.status) {
                 const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
                 result = result.filter(p => statuses.includes(p.status));

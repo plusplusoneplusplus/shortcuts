@@ -149,6 +149,69 @@ describe('DreamInternalProcessExecutor', () => {
         });
     });
 
+    it('keeps internal Dream process history scoped by workspace', async () => {
+        const store = createMockProcessStore();
+        const aiService = mockAiService(JSON.stringify({ candidates: [] }));
+        const executor = new DreamInternalProcessExecutor({
+            store,
+            aiService,
+            provider: 'claude',
+        });
+
+        const workspaceOne = await executor.runStep({
+            purpose: 'analyzer',
+            workspaceId: 'ws-dream-one',
+            runId: 'dream-run-one',
+            parentProcessId: 'queue_outer-dream-one',
+            prompt: 'Analyze workspace one.',
+            systemPrompt: 'You are the CoC Dream analyzer.',
+            model: 'claude-sonnet-4.6',
+            timeoutMs: 45_000,
+        });
+        const workspaceTwo = await executor.runStep({
+            purpose: 'critic',
+            workspaceId: 'ws-dream-two',
+            runId: 'dream-run-two',
+            parentProcessId: 'queue_outer-dream-two',
+            analyzerProcessId: 'queue_dream-analyzer-two',
+            prompt: 'Criticize workspace two candidates.',
+            systemPrompt: 'You are the CoC Dream critic.',
+            model: 'claude-sonnet-4.6',
+            timeoutMs: 45_000,
+        });
+
+        await expect(store.getProcessCount({ workspaceId: 'ws-dream-one' })).resolves.toBe(1);
+        await expect(store.getProcessCount({ workspaceId: 'ws-dream-two' })).resolves.toBe(1);
+        const workspaceOneSummaries = await store.getProcessSummaries({ workspaceId: 'ws-dream-one' });
+        const workspaceTwoSummaries = await store.getProcessSummaries({ workspaceId: 'ws-dream-two' });
+        expect(workspaceOneSummaries.entries.map(entry => entry.id)).toEqual([workspaceOne.processId]);
+        expect(workspaceTwoSummaries.entries.map(entry => entry.id)).toEqual([workspaceTwo.processId]);
+
+        await expect(store.getProcess(workspaceOne.processId)).resolves.toMatchObject({
+            type: 'dream-analyzer',
+            metadata: {
+                workspaceId: 'ws-dream-one',
+                dreamStep: {
+                    kind: 'analyzer',
+                    workspaceId: 'ws-dream-one',
+                    parentProcessId: 'queue_outer-dream-one',
+                },
+            },
+        });
+        await expect(store.getProcess(workspaceTwo.processId)).resolves.toMatchObject({
+            type: 'dream-critic',
+            metadata: {
+                workspaceId: 'ws-dream-two',
+                dreamStep: {
+                    kind: 'critic',
+                    workspaceId: 'ws-dream-two',
+                    parentProcessId: 'queue_outer-dream-two',
+                    analyzerProcessId: 'queue_dream-analyzer-two',
+                },
+            },
+        });
+    });
+
     it('marks an in-flight internal process cancelled when the outer dream run aborts', async () => {
         const store = createMockProcessStore();
         const controller = new AbortController();
