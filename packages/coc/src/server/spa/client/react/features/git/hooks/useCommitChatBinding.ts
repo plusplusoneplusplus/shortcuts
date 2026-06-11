@@ -134,7 +134,7 @@ export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseComm
             setError(null);
         }
         try {
-            await getSpaCocClient().git.startFreshChat(workspaceId, commitHash);
+            await getSpaCocClient().git.startFreshCommitChat(workspaceId, commitHash);
             if (isCurrentRequest(requestedWorkspaceId, requestedCommitHash)) {
                 setTaskId(null);
                 setError(null);

@@ -84,6 +84,21 @@ describe('GitClient', () => {
     );
   });
 
+  it('posts startFreshCommitChat to the workspace-scoped fresh endpoint', async () => {
+    const response = { commitHash: 'abc/123', archivedTaskId: 'task-existing' };
+    const adapter = createMockAdapter(response);
+    const client = new GitClient(adapter);
+
+    await expect(client.startFreshCommitChat('repo/a', 'abc/123')).resolves.toBe(response);
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/workspaces/repo%2Fa/commit-chat-bindings/abc%2F123/fresh',
+        options: { method: 'POST', body: {} },
+      },
+    ]);
+  });
+
   it('calls working-tree and operation routes with typed request bodies', async () => {
     const adapter = createMockAdapter({});
     const client = new GitClient(adapter);
