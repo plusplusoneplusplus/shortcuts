@@ -7,55 +7,26 @@
  * on refresh without a server restart.
  */
 
-interface DashboardConfig {
+import { RUNTIME_FEATURE_FLAGS } from '@plusplusoneplusplus/coc-client';
+import type { FeatureFlagRuntimeMap } from '@plusplusoneplusplus/coc-client';
+
+/**
+ * Boolean feature flags (`terminalEnabled`, `excalidrawEnabled`, …) are derived
+ * from the FEATURE_FLAGS registry via Partial<FeatureFlagRuntimeMap>. Only
+ * bootstrap fields and non-boolean runtime settings are declared explicitly.
+ */
+interface DashboardConfig extends Partial<FeatureFlagRuntimeMap> {
     apiBasePath: string;
     wsPath: string;
     hostname?: string;
-    terminalEnabled?: boolean;
-    notesEnabled?: boolean;
-    myWorkEnabled?: boolean;
-    myLifeEnabled?: boolean;
-    scratchpadEnabled?: boolean;
-    scratchpadLayout?: 'horizontal' | 'vertical';
-    workflowsEnabled?: boolean;
-    pullRequestsEnabled?: boolean;
-    pullRequestsSuggestionsEnabled?: boolean;
-    pullRequestsAutoClassifyTeamEnabled?: boolean;
-    serversEnabled?: boolean;
-    ralphEnabled?: boolean;
-    forEachEnabled?: boolean;
-    mapReduceEnabled?: boolean;
-    vimNavigationEnabled?: boolean;
     containerMode?: boolean;
-    loopsEnabled?: boolean;
-    excalidrawEnabled?: boolean;
-    mcpOauthEnabled?: boolean;
-    focusedDiffEnabled?: boolean;
-    sessionContextAttachmentsEnabled?: boolean;
-    commitChatLensEnabled?: boolean;
-    commitChatLensDormantMode?: 'ghost' | 'pill';
-    containerDefaultAgentEnabled?: boolean;
     bindAddress?: string;
-    /** Whether the Codex SDK provider is enabled (feature flag). */
-    codexEnabled?: boolean;
+    /** Scratchpad split direction. */
+    scratchpadLayout?: 'horizontal' | 'vertical';
+    /** Dormant mode for the review chat lens: 'ghost' (fade) or 'pill' (collapse). */
+    commitChatLensDormantMode?: 'ghost' | 'pill';
     /** Concrete default AI provider when Auto routing is disabled. */
     defaultProvider?: 'copilot' | 'codex' | 'claude';
-    /** Whether Auto agent provider routing is enabled. */
-    autoAgentProviderRoutingEnabled?: boolean;
-    /** Whether the Work Items hierarchy board is enabled (feature flag). */
-    workItemsHierarchyEnabled?: boolean;
-    /** Whether remote Work Items provider integration is enabled (requires hierarchy). */
-    workItemsSyncEnabled?: boolean;
-    /** Whether the AI-assisted work item authoring composer is enabled (feature flag). */
-    workItemsAiAuthoringEnabled?: boolean;
-    /** Whether the durable Work Items/Goals workflow command center is enabled (feature flag). */
-    workItemsWorkflowEnabled?: boolean;
-    /** Whether direct commit SHA lookup in the Git tab is enabled (feature flag). */
-    gitCommitLookupEnabled?: boolean;
-    /** Whether cross-clone cherry-pick transfer in the Git tab is enabled (feature flag). */
-    gitCrossCloneCherryPickEnabled?: boolean;
-    /** Whether the Effort Tiers selector (Low/Medium/High) is enabled in the composer. Disabled by default. */
-    effortLevelsEnabled?: boolean;
 }
 
 /** Cached runtime config loaded from the API. */
@@ -102,42 +73,19 @@ async function _fetchAndApplyRuntimeConfig(apiBase: string): Promise<void> {
         const data = await resp.json();
         if (!data || typeof data !== 'object' || !data.features) return;
 
-        // Merge runtime features into the active config, preserving bootstrap-only fields
+        // Merge runtime features into the active config, preserving bootstrap-only
+        // fields. Boolean flags are copied generically from the registry; the
+        // non-boolean runtime settings are copied explicitly.
+        const mergedFeatures: Partial<FeatureFlagRuntimeMap> = {};
+        for (const flag of RUNTIME_FEATURE_FLAGS) {
+            (mergedFeatures as Record<string, unknown>)[flag.runtimeFlag] = data.features[flag.runtimeFlag];
+        }
         _runtimeConfig = {
             ...bootstrap,
-            terminalEnabled: data.features.terminalEnabled,
-            notesEnabled: data.features.notesEnabled,
-            myWorkEnabled: data.features.myWorkEnabled,
-            myLifeEnabled: data.features.myLifeEnabled,
-            scratchpadEnabled: data.features.scratchpadEnabled,
+            ...mergedFeatures,
             scratchpadLayout: data.features.scratchpadLayout,
-            workflowsEnabled: data.features.workflowsEnabled,
-            pullRequestsEnabled: data.features.pullRequestsEnabled,
-            pullRequestsSuggestionsEnabled: data.features.pullRequestsSuggestionsEnabled,
-            pullRequestsAutoClassifyTeamEnabled: data.features.pullRequestsAutoClassifyTeamEnabled,
-            serversEnabled: data.features.serversEnabled,
-            ralphEnabled: data.features.ralphEnabled,
-            forEachEnabled: data.features.forEachEnabled,
-            mapReduceEnabled: data.features.mapReduceEnabled,
-            vimNavigationEnabled: data.features.vimNavigationEnabled,
-            loopsEnabled: data.features.loopsEnabled,
-            excalidrawEnabled: data.features.excalidrawEnabled,
-            mcpOauthEnabled: data.features.mcpOauthEnabled,
-            focusedDiffEnabled: data.features.focusedDiffEnabled,
-            sessionContextAttachmentsEnabled: data.features.sessionContextAttachmentsEnabled,
-            commitChatLensEnabled: data.features.commitChatLensEnabled,
             commitChatLensDormantMode: data.features.commitChatLensDormantMode,
-            containerDefaultAgentEnabled: data.features.containerDefaultAgentEnabled,
-            codexEnabled: data.features.codexEnabled,
             defaultProvider: data.features.defaultProvider,
-            autoAgentProviderRoutingEnabled: data.features.autoAgentProviderRoutingEnabled,
-            workItemsHierarchyEnabled: data.features.workItemsHierarchyEnabled,
-            workItemsSyncEnabled: data.features.workItemsSyncEnabled,
-            workItemsAiAuthoringEnabled: data.features.workItemsAiAuthoringEnabled,
-            workItemsWorkflowEnabled: data.features.workItemsWorkflowEnabled,
-            gitCommitLookupEnabled: data.features.gitCommitLookupEnabled,
-            gitCrossCloneCherryPickEnabled: data.features.gitCrossCloneCherryPickEnabled,
-            effortLevelsEnabled: data.features.effortLevelsEnabled,
             hostname: data.hostname ?? bootstrap.hostname,
             bindAddress: data.bindAddress ?? bootstrap.bindAddress,
         };

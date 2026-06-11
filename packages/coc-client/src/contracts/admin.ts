@@ -1,3 +1,5 @@
+import type { FeatureFlagRuntimeMap, FeatureFlagUpdateMap } from './feature-flags';
+
 export type AdminOutputFormat = 'table' | 'json' | 'csv' | 'markdown';
 export type AdminImportMode = 'replace' | 'merge';
 export type AdminStorageBackend = 'file' | 'sqlite';
@@ -136,7 +138,12 @@ export interface AdminConfigResponse {
   [key: string]: unknown;
 }
 
-export interface AdminConfigUpdate {
+/**
+ * Editable boolean flag keys (e.g. 'excalidraw.enabled') are derived from the
+ * FEATURE_FLAGS registry via FeatureFlagUpdateMap. Only non-registry settings
+ * (scalars, enums, and bespoke booleans) are declared explicitly here.
+ */
+export type AdminConfigUpdate = FeatureFlagUpdateMap & {
   model?: string;
   parallel?: number;
   timeout?: number | null;
@@ -150,38 +157,12 @@ export interface AdminConfigUpdate {
   'chat.followUpSuggestions.count'?: number;
   'chat.askUser.enabled'?: boolean;
   'serve.serverName'?: string | null;
-  'terminal.enabled'?: boolean;
-  'notes.enabled'?: boolean;
-  'myWork.enabled'?: boolean;
-  'myLife.enabled'?: boolean;
-  'scratchpad.enabled'?: boolean;
   'scratchpad.layout'?: 'horizontal' | 'vertical';
-  'workflows.enabled'?: boolean;
-  'pullRequests.enabled'?: boolean;
-  'pullRequests.suggestions'?: boolean;
-  'pullRequests.autoClassifyTeam'?: boolean;
-  'servers.enabled'?: boolean;
-  'forEach.enabled'?: boolean;
-  'mapReduce.enabled'?: boolean;
-  'excalidraw.enabled'?: boolean;
-  'mcpOauth.enabled'?: boolean;
-  'mcpOauth.autoRefresh.enabled'?: boolean;
-  'codex.enabled'?: boolean;
-  'claude.enabled'?: boolean;
   defaultProvider?: AdminDefaultProvider;
   'agentProviderRouting.auto'?: AdminAutoProviderRoutingConfig;
-  'workItems.hierarchy.enabled'?: boolean;
-  'workItems.sync.enabled'?: boolean;
-  'workItems.aiAuthoring.enabled'?: boolean;
-  'workItems.workflow.enabled'?: boolean;
-  'features.gitCrossCloneCherryPick'?: boolean;
-  'features.sessionContextAttachments'?: boolean;
-  'features.commitChatLens'?: boolean;
   'features.commitChatLensDormantMode'?: 'ghost' | 'pill';
-  'features.autoAgentProviderRouting'?: boolean;
-  'effortLevels.enabled'?: boolean;
   [key: string]: unknown;
-}
+};
 
 /**
  * Response from GET /api/config/runtime.
@@ -190,41 +171,15 @@ export interface AdminConfigUpdate {
  */
 export interface RuntimeDashboardConfig {
   revision: number;
-  features: {
-    terminalEnabled: boolean;
-    notesEnabled: boolean;
-    myWorkEnabled: boolean;
-    myLifeEnabled: boolean;
-    scratchpadEnabled: boolean;
+  /**
+   * Boolean feature flags are derived from the FEATURE_FLAGS registry
+   * (see contracts/feature-flags.ts). Non-boolean runtime settings are declared
+   * inline below. To add a boolean flag, add ONE entry to the registry.
+   */
+  features: FeatureFlagRuntimeMap & {
     scratchpadLayout: 'horizontal' | 'vertical';
-    workflowsEnabled: boolean;
-    pullRequestsEnabled: boolean;
-    pullRequestsSuggestionsEnabled: boolean;
-    pullRequestsAutoClassifyTeamEnabled: boolean;
-    serversEnabled: boolean;
-    ralphEnabled: boolean;
-    forEachEnabled: boolean;
-    mapReduceEnabled: boolean;
-    vimNavigationEnabled: boolean;
-    loopsEnabled: boolean;
-    excalidrawEnabled: boolean;
-    mcpOauthEnabled: boolean;
-    focusedDiffEnabled: boolean;
-    containerDefaultAgentEnabled: boolean;
-    codexEnabled: boolean;
-    claudeEnabled: boolean;
     defaultProvider: AdminDefaultProvider;
-    autoAgentProviderRoutingEnabled: boolean;
-    workItemsHierarchyEnabled: boolean;
-    workItemsSyncEnabled: boolean;
-    workItemsAiAuthoringEnabled: boolean;
-    workItemsWorkflowEnabled: boolean;
-    gitCommitLookupEnabled: boolean;
-    gitCrossCloneCherryPickEnabled: boolean;
-    sessionContextAttachmentsEnabled: boolean;
-    commitChatLensEnabled: boolean;
     commitChatLensDormantMode: 'ghost' | 'pill';
-    effortLevelsEnabled: boolean;
   };
   hostname?: string;
   bindAddress?: string;

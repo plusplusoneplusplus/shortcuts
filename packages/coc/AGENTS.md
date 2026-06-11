@@ -44,12 +44,20 @@ all have their own `references/*.md`.
   Claude Code discovers them as slash commands. A sidecar marker
   `.coc-<name>.json` tracks CoC-managed commands to distinguish them from
   user-authored ones.
-- **Adding an editable config field** is usually a single registry entry. Put
-  field-local validation in `src/server/admin/admin-config-fields.ts`; reserve
-  `admin-handler.ts` changes for cross-field validation shared with config-file
-  loading (see [admin-config.md](../../.github/skills/coc-knowledge/references/admin-config.md)).
+- **Adding a boolean feature flag** is a single entry in the FEATURE_FLAGS
+  registry (`packages/coc-client/src/contracts/feature-flags.ts`). It auto-drives
+  the admin field, runtime config handler, client runtime types/readers, the
+  namespace merge for simple `<ns>.enabled` flags, and the Admin → Features
+  toggle. Still hand-write the nested type/default/schema/source-key; the
+  `test/server/feature-flags-registry.test.ts` drift guard fails (naming the key)
+  if any is missing (see [admin-config.md](../../.github/skills/coc-knowledge/references/admin-config.md)).
+- **Adding a non-boolean editable config field** is a bespoke entry in
+  `src/server/admin/admin-config-fields.ts`; reserve `admin-handler.ts` changes
+  for cross-field validation shared with config-file loading.
 - **Adding a namespaced config field** must update
-  `src/config/namespace-registry.ts`; do not expand branch lists in `config.ts`.
+  `src/config/namespace-registry.ts` (composite namespaces only — simple
+  `<ns>.enabled` flags are generated from the registry); do not expand branch
+  lists in `config.ts`.
 - **MCP REST surface** must never expose secrets (`env`, headers, full `args`).
 - **Ralph iteration prompts** must not hard-code implementation skill names
   or set `context.skills`; the `<work_intent>` block must stay generic.

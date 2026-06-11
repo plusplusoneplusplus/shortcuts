@@ -144,10 +144,12 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.forEachEnabled).toBe(true);
     });
 
-    it('defaults workItemsHierarchyEnabled to false', () => {
+    it('defaults workItemsHierarchyEnabled to true (matches DEFAULT_CONFIG)', () => {
+        // The hierarchy board is enabled by default in DEFAULT_CONFIG, so a resolved
+        // config that omits workItems resolves to the registry default of true.
         const svc = createMockRuntimeConfigService();
         const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
-        expect(result.features.workItemsHierarchyEnabled).toBe(false);
+        expect(result.features.workItemsHierarchyEnabled).toBe(true);
     });
 
     it('reflects workItems.hierarchy.enabled = true from config', () => {

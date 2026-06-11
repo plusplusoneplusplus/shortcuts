@@ -1,4 +1,5 @@
 import type { AutoProviderRoutingConfig, CLIConfig, ConfigFieldSource, ResolvedCLIConfig } from '../config';
+import { FEATURE_FLAGS, readFlagValue } from '@plusplusoneplusplus/coc-client';
 
 type ConfigObject = Record<string, unknown>;
 type ResolvedAutoProviderRoutingConfig = ResolvedCLIConfig['agentProviderRouting']['auto'];
@@ -95,6 +96,7 @@ const CLAUDE_SOURCE_KEYS = ['claude.enabled'] as const;
 const FEATURES_SOURCE_KEYS = [
     'features.autoMemoryPromotion',
     'features.focusedDiff',
+    'features.gitCommitLookup',
     'features.gitCrossCloneCherryPick',
     'features.sessionContextAttachments',
     'features.commitChatLens',
@@ -189,9 +191,41 @@ const source = (
 });
 
 /**
+ * Namespaces whose merge is hand-written below because they carry non-flag or
+ * nested fields (e.g. scratchpad.layout, ralph.finalCheck). Every other
+ * FEATURE_FLAGS entry shaped as a single `<ns>.enabled` boolean directly under a
+ * top-level namespace gets an auto-generated descriptor.
+ */
+const COMPOSITE_FLAG_NAMESPACES = new Set<string>(['scratchpad', 'pullRequests', 'ralph', 'mcpOauth']);
+
+/**
+ * Generate merge + source descriptors for simple single-boolean `<ns>.enabled`
+ * namespaces straight from the feature-flag registry. Adding such a flag needs
+ * no edit here — the registry entry is enough.
+ */
+function buildSimpleFlagNamespaceDescriptors(): ConfigNamespaceDescriptor[] {
+    return FEATURE_FLAGS
+        .filter(flag => flag.path.length === 2 && flag.path[1] === 'enabled' && !COMPOSITE_FLAG_NAMESPACES.has(flag.path[0]))
+        .map((flag): ConfigNamespaceDescriptor => {
+            const ns = flag.path[0];
+            return {
+                name: ns,
+                sourceDescriptors: [source(`${ns}.`, [ns], [flag.key])],
+                merge: (base, override) => ({
+                    [ns]: {
+                        enabled: readFlagValue(override, flag.path) ?? readFlagValue(base, flag.path) ?? flag.default,
+                    },
+                }) as Partial<ResolvedConfigNamespaceValues>,
+            };
+        });
+}
+
+/**
  * Registry of namespaced CoC config sections.
  *
- * To add a namespaced config section, add one descriptor here with:
+ * Simple `<ns>.enabled` toggles are generated from the FEATURE_FLAGS registry
+ * (see buildSimpleFlagNamespaceDescriptors). Composite namespaces — those with
+ * non-flag or nested fields — are declared explicitly below with:
  * - source descriptors for fields surfaced by getResolvedConfigWithSource()
  * - merge logic for applying partial file config on top of resolved defaults
  *
@@ -199,6 +233,7 @@ const source = (
  */
 export function createConfigNamespaceRegistry(defaultBundledSkills: readonly string[]): readonly ConfigNamespaceDescriptor[] {
     return [
+        ...buildSimpleFlagNamespaceDescriptors(),
         {
             name: 'chat',
             sourceDescriptors: [
@@ -263,26 +298,6 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
             merge: (base, override) => ({ logging: override?.logging ?? base.logging }),
         },
         {
-            name: 'terminal',
-            sourceDescriptors: [source('terminal.', ['terminal'], TERMINAL_SOURCE_KEYS)],
-            merge: (base, override) => ({ terminal: { enabled: override?.terminal?.enabled ?? base.terminal?.enabled ?? true } }),
-        },
-        {
-            name: 'notes',
-            sourceDescriptors: [source('notes.', ['notes'], NOTES_SOURCE_KEYS)],
-            merge: (base, override) => ({ notes: { enabled: override?.notes?.enabled ?? base.notes?.enabled ?? true } }),
-        },
-        {
-            name: 'myWork',
-            sourceDescriptors: [source('myWork.', ['myWork'], MY_WORK_SOURCE_KEYS)],
-            merge: (base, override) => ({ myWork: { enabled: override?.myWork?.enabled ?? base.myWork?.enabled ?? false } }),
-        },
-        {
-            name: 'myLife',
-            sourceDescriptors: [source('myLife.', ['myLife'], MY_LIFE_SOURCE_KEYS)],
-            merge: (base, override) => ({ myLife: { enabled: override?.myLife?.enabled ?? base.myLife?.enabled ?? false } }),
-        },
-        {
             name: 'scratchpad',
             sourceDescriptors: [source('scratchpad.', ['scratchpad'], SCRATCHPAD_SOURCE_KEYS)],
             merge: (base, override) => ({
@@ -291,11 +306,6 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
                     layout: override?.scratchpad?.layout ?? base.scratchpad?.layout ?? 'vertical',
                 },
             }),
-        },
-        {
-            name: 'workflows',
-            sourceDescriptors: [source('workflows.', ['workflows'], WORKFLOWS_SOURCE_KEYS)],
-            merge: (base, override) => ({ workflows: { enabled: override?.workflows?.enabled ?? base.workflows?.enabled ?? false } }),
         },
         {
             name: 'pullRequests',
@@ -307,11 +317,6 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
                     autoClassifyTeam: override?.pullRequests?.autoClassifyTeam ?? base.pullRequests?.autoClassifyTeam ?? false,
                 },
             }),
-        },
-        {
-            name: 'servers',
-            sourceDescriptors: [source('servers.', ['servers'], SERVERS_SOURCE_KEYS)],
-            merge: (base, override) => ({ servers: { enabled: override?.servers?.enabled ?? base.servers?.enabled ?? true } }),
         },
         {
             name: 'ralph',
@@ -327,26 +332,6 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
                     },
                 },
             }),
-        },
-        {
-            name: 'forEach',
-            sourceDescriptors: [source('forEach.', ['forEach'], FOR_EACH_SOURCE_KEYS)],
-            merge: (base, override) => ({ forEach: { enabled: override?.forEach?.enabled ?? base.forEach?.enabled ?? false } }),
-        },
-        {
-            name: 'mapReduce',
-            sourceDescriptors: [source('mapReduce.', ['mapReduce'], MAP_REDUCE_SOURCE_KEYS)],
-            merge: (base, override) => ({ mapReduce: { enabled: override?.mapReduce?.enabled ?? base.mapReduce?.enabled ?? false } }),
-        },
-        {
-            name: 'vimNavigation',
-            sourceDescriptors: [source('vimNavigation.', ['vimNavigation'], VIM_NAVIGATION_SOURCE_KEYS)],
-            merge: (base, override) => ({ vimNavigation: { enabled: override?.vimNavigation?.enabled ?? base.vimNavigation?.enabled ?? false } }),
-        },
-        {
-            name: 'loops',
-            sourceDescriptors: [source('loops.', ['loops'], LOOPS_SOURCE_KEYS)],
-            merge: (base, override) => ({ loops: { enabled: override?.loops?.enabled ?? base.loops?.enabled ?? false } }),
         },
         {
             name: 'mcpOauth',
@@ -366,16 +351,6 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
             }),
         },
         {
-            name: 'excalidraw',
-            sourceDescriptors: [source('excalidraw.', ['excalidraw'], EXCALIDRAW_SOURCE_KEYS)],
-            merge: (base, override) => ({ excalidraw: { enabled: override?.excalidraw?.enabled ?? base.excalidraw?.enabled ?? false } }),
-        },
-        {
-            name: 'containerDefaultAgent',
-            sourceDescriptors: [source('containerDefaultAgent.', ['containerDefaultAgent'], CONTAINER_DEFAULT_AGENT_SOURCE_KEYS)],
-            merge: (base, override) => ({ containerDefaultAgent: { enabled: override?.containerDefaultAgent?.enabled ?? base.containerDefaultAgent?.enabled ?? false } }),
-        },
-        {
             name: 'agentProviderRouting',
             sourceDescriptors: [source('agentProviderRouting.', ['agentProviderRouting'], AGENT_PROVIDER_ROUTING_SOURCE_KEYS)],
             merge: (base, override) => ({
@@ -383,16 +358,6 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
                     auto: resolveAutoProviderRouting(base.agentProviderRouting?.auto, override?.agentProviderRouting?.auto),
                 },
             }),
-        },
-        {
-            name: 'codex',
-            sourceDescriptors: [source('codex.', ['codex'], CODEX_SOURCE_KEYS)],
-            merge: (base, override) => ({ codex: { enabled: override?.codex?.enabled ?? base.codex?.enabled ?? false } }),
-        },
-        {
-            name: 'claude',
-            sourceDescriptors: [source('claude.', ['claude'], CLAUDE_SOURCE_KEYS)],
-            merge: (base, override) => ({ claude: { enabled: override?.claude?.enabled ?? base.claude?.enabled ?? false } }),
         },
         {
             name: 'features',
@@ -495,11 +460,6 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
                     },
                 },
             }),
-        },
-        {
-            name: 'effortLevels',
-            sourceDescriptors: [source('effortLevels.', ['effortLevels'], EFFORT_LEVELS_SOURCE_KEYS)],
-            merge: (base, override) => ({ effortLevels: { enabled: override?.effortLevels?.enabled ?? base.effortLevels?.enabled ?? false } }),
         },
     ];
 }

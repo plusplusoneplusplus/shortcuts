@@ -1,5 +1,6 @@
 export * from './admin';
 export * from './common';
+export * from './feature-flags';
 export * from './db-browser';
 export * from './explorer';
 export * from './for-each';

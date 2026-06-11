@@ -10,6 +10,7 @@ import type { Route } from '../types';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
 import { sendJson } from '../shared/router';
 import type { RuntimeDashboardConfig } from '@plusplusoneplusplus/coc-client';
+import { buildFeatureFlagRuntimeMap } from '@plusplusoneplusplus/coc-client';
 import { shortenHostname } from '../core/hostname-utils';
 
 export interface RuntimeConfigRouteOptions {
@@ -30,40 +31,12 @@ export function buildRuntimeDashboardConfig(
     return {
         revision: runtimeConfigService.revision,
         features: {
-            terminalEnabled: config.terminal?.enabled ?? true,
-            notesEnabled: config.notes?.enabled ?? true,
-            myWorkEnabled: config.myWork?.enabled ?? false,
-            myLifeEnabled: config.myLife?.enabled ?? false,
-            scratchpadEnabled: config.scratchpad?.enabled ?? false,
+            // Boolean flags are derived from the FEATURE_FLAGS registry.
+            ...buildFeatureFlagRuntimeMap(config),
+            // Non-boolean runtime settings remain explicit.
             scratchpadLayout: config.scratchpad?.layout ?? 'horizontal',
-            workflowsEnabled: config.workflows?.enabled ?? false,
-            pullRequestsEnabled: config.pullRequests?.enabled ?? false,
-            pullRequestsSuggestionsEnabled: config.pullRequests?.suggestions ?? false,
-            pullRequestsAutoClassifyTeamEnabled: config.pullRequests?.autoClassifyTeam ?? false,
-            serversEnabled: config.servers?.enabled ?? false,
-            ralphEnabled: config.ralph?.enabled ?? false,
-            forEachEnabled: config.forEach?.enabled ?? false,
-            mapReduceEnabled: config.mapReduce?.enabled ?? false,
-            vimNavigationEnabled: config.vimNavigation?.enabled ?? false,
-            loopsEnabled: config.loops?.enabled ?? false,
-            excalidrawEnabled: config.excalidraw?.enabled ?? false,
-            mcpOauthEnabled: config.mcpOauth?.enabled ?? false,
-            focusedDiffEnabled: config.features?.focusedDiff ?? false,
-            containerDefaultAgentEnabled: config.containerDefaultAgent?.enabled ?? false,
-            codexEnabled: config.codex?.enabled ?? false,
-            claudeEnabled: config.claude?.enabled ?? false,
             defaultProvider: config.defaultProvider ?? 'copilot',
-            autoAgentProviderRoutingEnabled: config.features?.autoAgentProviderRouting ?? false,
-            workItemsHierarchyEnabled: config.workItems?.hierarchy?.enabled ?? false,
-            workItemsSyncEnabled: config.workItems?.sync?.enabled ?? false,
-            workItemsAiAuthoringEnabled: config.workItems?.aiAuthoring?.enabled ?? false,
-            workItemsWorkflowEnabled: config.workItems?.workflow?.enabled ?? false,
-            gitCommitLookupEnabled: config.features?.gitCommitLookup ?? false,
-            gitCrossCloneCherryPickEnabled: config.features?.gitCrossCloneCherryPick ?? false,
-            sessionContextAttachmentsEnabled: config.features?.sessionContextAttachments ?? false,
-            commitChatLensEnabled: config.features?.commitChatLens ?? false,
             commitChatLensDormantMode: config.features?.commitChatLensDormantMode ?? 'ghost',
-            effortLevelsEnabled: config.effortLevels?.enabled ?? false,
         },
         hostname: config.serve?.serverName || shortenHostname(hostname),
         bindAddress,

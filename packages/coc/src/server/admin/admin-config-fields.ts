@@ -1,20 +1,28 @@
 /**
  * Admin Config Field Registry
  *
- * Single source of truth for editable admin config fields.
- * Each entry defines the flat key, a validator, and an apply function.
+ * Source of truth for editable admin config fields. Each entry defines the flat
+ * key, a validator, and an apply function.
  *
- * To add a new editable admin config field:
- *   1. Add the field to CLIConfig / ResolvedCLIConfig in config.ts (if structural)
- *   2. Add a default in DEFAULT_CONFIG in config.ts
- *   3. Add schema validation in config/schema.ts
- *   4. Add namespace tracking in config/namespace-registry.ts (for nested fields)
- *   5. Add ONE entry here — the admin handler picks it up automatically
- *   6. Update AdminResolvedConfig / AdminConfigUpdate in coc-client/src/contracts/admin.ts
- *   7. Add UI in AdminPanel.tsx
+ * Boolean feature-flag fields are GENERATED from the FEATURE_FLAGS registry
+ * (packages/coc-client/src/contracts/feature-flags.ts) — to add an editable
+ * boolean flag, add ONE entry there and it is picked up automatically here, in
+ * the runtime config handler, in the client contracts, and in the Admin UI.
+ *
+ * Only bespoke scalar/enum fields (model, output, scratchpad.layout,
+ * defaultProvider, …) are declared explicitly below.
+ *
+ * To add a new editable admin config field that is NOT a simple boolean flag:
+ *   1. Add the field to CLIConfig / ResolvedCLIConfig + DEFAULT_CONFIG in config.ts
+ *   2. Add schema validation in config/schema.ts
+ *   3. Add namespace tracking in config/namespace-registry.ts (for nested fields)
+ *   4. Add ONE bespoke entry here
+ *   5. Update AdminResolvedConfig / AdminConfigUpdate in coc-client/src/contracts/admin.ts
+ *   6. Add UI in AdminPanel.tsx
  */
 
 import type { AutoProviderRoutingConfig, CLIConfig, ConcreteAgentProvider, DefaultAgentProvider } from '../../config';
+import { FEATURE_FLAGS, setFlagValue } from '@plusplusoneplusplus/coc-client';
 
 /** Runtime behavior classification for admin-editable config fields. */
 export type AdminConfigFieldRuntime = 'live' | 'reloadable' | 'restartRequired';
@@ -98,6 +106,22 @@ function validateAutoProviderRouting(value: unknown): string | undefined {
         return `agentProviderRouting.auto.fallbackProvider must be one of: ${VALID_CONCRETE_PROVIDER_VALUES.join(', ')}`;
     }
     return undefined;
+}
+
+/**
+ * Generate admin field specs for every editable boolean flag in the registry.
+ * Each validates a boolean and writes the value into the CLIConfig at the
+ * flag's path (creating intermediate objects as needed).
+ */
+function buildFeatureFlagFieldSpecs(): AdminConfigFieldSpec[] {
+    return FEATURE_FLAGS
+        .filter(flag => flag.editable)
+        .map((flag): AdminConfigFieldSpec => ({
+            key: flag.key,
+            runtime: flag.runtime,
+            validate: (v) => typeof v === 'boolean' ? undefined : `${flag.key} must be a boolean`,
+            apply: (cfg, v) => setFlagValue(cfg as unknown as Record<string, unknown>, flag.path, v as boolean),
+        }));
 }
 
 // ── registry ─────────────────────────────────────────────────────────────────
@@ -202,27 +226,7 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         cfg.chat.askUser.enabled = v;
     }),
 
-    // ── feature flags ─────────────────────────────────────────────────────────
-    bool('terminal.enabled', (cfg, v) => {
-        if (!cfg.terminal) { cfg.terminal = {}; }
-        cfg.terminal.enabled = v;
-    }, 'restartRequired'),
-    bool('notes.enabled', (cfg, v) => {
-        if (!cfg.notes) { cfg.notes = {}; }
-        cfg.notes.enabled = v;
-    }),
-    bool('myWork.enabled', (cfg, v) => {
-        if (!cfg.myWork) { cfg.myWork = {}; }
-        cfg.myWork.enabled = v;
-    }),
-    bool('myLife.enabled', (cfg, v) => {
-        if (!cfg.myLife) { cfg.myLife = {}; }
-        cfg.myLife.enabled = v;
-    }),
-    bool('scratchpad.enabled', (cfg, v) => {
-        if (!cfg.scratchpad) { cfg.scratchpad = {}; }
-        cfg.scratchpad.enabled = v;
-    }),
+    // ── scratchpad layout (enum; the scratchpad.enabled toggle is a feature flag) ─
     {
         key: 'scratchpad.layout',
         runtime: 'live',
@@ -234,38 +238,8 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
             cfg.scratchpad.layout = v as 'horizontal' | 'vertical';
         },
     },
-    bool('workflows.enabled', (cfg, v) => {
-        if (!cfg.workflows) { cfg.workflows = {}; }
-        cfg.workflows.enabled = v;
-    }),
-    bool('pullRequests.enabled', (cfg, v) => {
-        if (!cfg.pullRequests) { cfg.pullRequests = {}; }
-        cfg.pullRequests.enabled = v;
-    }),
-    bool('pullRequests.suggestions', (cfg, v) => {
-        if (!cfg.pullRequests) { cfg.pullRequests = {}; }
-        cfg.pullRequests.suggestions = v;
-    }),
-    bool('pullRequests.autoClassifyTeam', (cfg, v) => {
-        if (!cfg.pullRequests) { cfg.pullRequests = {}; }
-        cfg.pullRequests.autoClassifyTeam = v;
-    }),
-    bool('servers.enabled', (cfg, v) => {
-        if (!cfg.servers) { cfg.servers = {}; }
-        cfg.servers.enabled = v;
-    }),
-    bool('ralph.enabled', (cfg, v) => {
-        if (!cfg.ralph) { cfg.ralph = {}; }
-        cfg.ralph.enabled = v;
-    }),
-    bool('forEach.enabled', (cfg, v) => {
-        if (!cfg.forEach) { cfg.forEach = {}; }
-        cfg.forEach.enabled = v;
-    }),
-    bool('mapReduce.enabled', (cfg, v) => {
-        if (!cfg.mapReduce) { cfg.mapReduce = {}; }
-        cfg.mapReduce.enabled = v;
-    }),
+
+    // ── ralph final-check (numeric; ralph.enabled is a feature flag) ────────────
     {
         key: 'ralph.finalCheck.maxGapFixLoops',
         runtime: 'live' as AdminConfigFieldRuntime,
@@ -278,39 +252,8 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
             cfg.ralph.finalCheck.maxGapFixLoops = v as number;
         },
     },
-    bool('vimNavigation.enabled', (cfg, v) => {
-        if (!cfg.vimNavigation) { cfg.vimNavigation = {}; }
-        cfg.vimNavigation.enabled = v;
-    }),
-    bool('loops.enabled', (cfg, v) => {
-        if (!cfg.loops) { cfg.loops = {}; }
-        cfg.loops.enabled = v;
-    }, 'restartRequired'),
-    bool('excalidraw.enabled', (cfg, v) => {
-        if (!cfg.excalidraw) { cfg.excalidraw = {}; }
-        cfg.excalidraw.enabled = v;
-    }),
-    bool('mcpOauth.enabled', (cfg, v) => {
-        if (!cfg.mcpOauth) { cfg.mcpOauth = {}; }
-        cfg.mcpOauth.enabled = v;
-    }, 'restartRequired'),
-    bool('mcpOauth.autoRefresh.enabled', (cfg, v) => {
-        if (!cfg.mcpOauth) { cfg.mcpOauth = {}; }
-        if (!cfg.mcpOauth.autoRefresh) { cfg.mcpOauth.autoRefresh = {}; }
-        cfg.mcpOauth.autoRefresh.enabled = v;
-    }, 'restartRequired'),
-    bool('containerDefaultAgent.enabled', (cfg, v) => {
-        if (!cfg.containerDefaultAgent) { cfg.containerDefaultAgent = {}; }
-        cfg.containerDefaultAgent.enabled = v;
-    }),
-    bool('codex.enabled', (cfg, v) => {
-        if (!cfg.codex) { cfg.codex = {}; }
-        cfg.codex.enabled = v;
-    }),
-    bool('claude.enabled', (cfg, v) => {
-        if (!cfg.claude) { cfg.claude = {}; }
-        cfg.claude.enabled = v;
-    }),
+
+    // ── AI provider (enums; codex/claude/autoAgentProviderRouting are feature flags) ─
     {
         key: 'defaultProvider',
         runtime: 'restartRequired',
@@ -329,22 +272,7 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         },
     },
 
-    bool('features.focusedDiff', (cfg, v) => {
-        if (!cfg.features) { cfg.features = {}; }
-        cfg.features.focusedDiff = v;
-    }),
-    bool('features.gitCrossCloneCherryPick', (cfg, v) => {
-        if (!cfg.features) { cfg.features = {}; }
-        cfg.features.gitCrossCloneCherryPick = v;
-    }),
-    bool('features.sessionContextAttachments', (cfg, v) => {
-        if (!cfg.features) { cfg.features = {}; }
-        cfg.features.sessionContextAttachments = v;
-    }),
-    bool('features.commitChatLens', (cfg, v) => {
-        if (!cfg.features) { cfg.features = {}; }
-        cfg.features.commitChatLens = v;
-    }),
+    // ── commit chat lens dormant mode (enum; commitChatLens is a feature flag) ──
     {
         key: 'features.commitChatLensDormantMode',
         runtime: 'live' as AdminConfigFieldRuntime,
@@ -354,39 +282,9 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
             cfg.features.commitChatLensDormantMode = v as 'ghost' | 'pill';
         },
     },
-    bool('features.autoAgentProviderRouting', (cfg, v) => {
-        if (!cfg.features) { cfg.features = {}; }
-        cfg.features.autoAgentProviderRouting = v;
-    }, 'restartRequired'),
 
-    bool('workItems.hierarchy.enabled', (cfg, v) => {
-        if (!cfg.workItems) { cfg.workItems = {}; }
-        if (!cfg.workItems.hierarchy) { cfg.workItems.hierarchy = {}; }
-        cfg.workItems.hierarchy.enabled = v;
-    }),
-
-    bool('workItems.sync.enabled', (cfg, v) => {
-        if (!cfg.workItems) { cfg.workItems = {}; }
-        if (!cfg.workItems.sync) { cfg.workItems.sync = {}; }
-        cfg.workItems.sync.enabled = v;
-    }),
-
-    bool('workItems.aiAuthoring.enabled', (cfg, v) => {
-        if (!cfg.workItems) { cfg.workItems = {}; }
-        if (!cfg.workItems.aiAuthoring) { cfg.workItems.aiAuthoring = {}; }
-        cfg.workItems.aiAuthoring.enabled = v;
-    }),
-
-    bool('workItems.workflow.enabled', (cfg, v) => {
-        if (!cfg.workItems) { cfg.workItems = {}; }
-        if (!cfg.workItems.workflow) { cfg.workItems.workflow = {}; }
-        cfg.workItems.workflow.enabled = v;
-    }),
-
-    bool('effortLevels.enabled', (cfg, v) => {
-        if (!cfg.effortLevels) { cfg.effortLevels = {}; }
-        cfg.effortLevels.enabled = v;
-    }),
+    // ── boolean feature flags (generated from FEATURE_FLAGS registry) ───────────
+    ...buildFeatureFlagFieldSpecs(),
 ];
 
 /** Flat keys accepted by PUT /api/admin/config — derived from the registry. */

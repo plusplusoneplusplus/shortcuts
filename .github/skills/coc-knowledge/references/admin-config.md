@@ -2,19 +2,21 @@
 
 Covers the editable admin config registry in `packages/coc/` and the self-contained styling system for the admin route in the dashboard SPA. Load this when adding or modifying any admin-exposed configuration field or admin UI element.
 
-## Admin Config Field Registry
+## Feature Flag Registry (single source of truth for boolean flags)
 
-Editable admin config fields are defined in a single registry: `packages/coc/src/server/admin/admin-config-fields.ts` (`ADMIN_CONFIG_FIELDS`).
+Boolean dashboard/feature flags live in ONE registry: `packages/coc-client/src/contracts/feature-flags.ts` (`FEATURE_FLAGS`). Each entry carries the flat `key` (e.g. `'excalidraw.enabled'`), nested `path`, `default`, admin `runtime` class, `editable`, an optional `runtimeFlag` (camelCase name surfaced to the SPA), and optional Admin Features-card `ui` metadata (`group`/`label`/`hint`/`testid`/`badge`/`showWhenKey`).
 
-Each entry provides a flat key (e.g. `'loops.enabled'`), a field-local `validate()` function, and an `apply()` function. The `PUT /api/admin/config` handler derives `editableKeys`, field-local validation, and merge logic from this registry. Cross-field constraints belong in `CLIConfigSchema`/`validateConfigWithSchema()` and the admin write path re-validates the merged config before persisting so admin updates and config-file loading reject the same invalid combinations.
+The registry auto-drives all the mechanical plumbing:
 
-To expose a new config field via the admin API, add ONE entry to `ADMIN_CONFIG_FIELDS`. Also update:
+- `ADMIN_CONFIG_FIELDS` boolean entries (`admin-config-fields.ts`) — generated from editable flags (validate boolean + `apply` at `path` via `setFlagValue`).
+- `buildRuntimeDashboardConfig` boolean flags (`server/config/runtime-config-handler.ts`) via `buildFeatureFlagRuntimeMap`.
+- `RuntimeDashboardConfig.features` booleans + `AdminConfigUpdate` boolean keys (`coc-client/contracts/admin.ts`) and the client `DashboardConfig` flags + runtime merge (`utils/config.ts`) — via mapped types (`FeatureFlagRuntimeMap`, `FeatureFlagUpdateMap`).
+- The namespace merge + source descriptor for simple `<ns>.enabled` flags (`namespace-registry.ts` — `buildSimpleFlagNamespaceDescriptors`; composite namespaces stay hand-written).
+- The Admin -> Configure -> Features toggle list (`AdminPanel.tsx`), rendered generically from `ADMIN_FEATURE_TOGGLES` + `FEATURE_FLAG_GROUPS` (a single `featureFlags` record holds toggle state; the two enum sub-selects — scratchpad layout, commit-chat-lens dormant mode — and `showWhenKey` sub-rows are interleaved).
 
-1. `CLIConfig` / `ResolvedCLIConfig` / `DEFAULT_CONFIG` in `packages/coc/src/config.ts`
-2. `CLIConfigSchema` in `packages/coc/src/config/schema.ts`
-3. Namespace registry in `packages/coc/src/config/namespace-registry.ts` (nested fields)
-4. `AdminResolvedConfig` / `AdminConfigUpdate` in `packages/coc-client/src/contracts/admin.ts`
-5. `AdminPanel.tsx` or the focused admin subpage component for the UI control
+To add a boolean feature flag: add ONE registry entry, then the nested pieces it cannot generate — `CLIConfig`/`ResolvedCLIConfig`/`DEFAULT_CONFIG` in `config.ts`, the Zod entry in `config/schema.ts`, the `CONFIG_NAMESPACE_SOURCE_KEYS` entry in `namespace-registry.ts`, and `AdminResolvedConfig` in `coc-client/contracts/admin.ts`. The drift guard `packages/coc/test/server/feature-flags-registry.test.ts` fails — naming the missing key — if any is omitted or a default disagrees, so nothing ships half-wired. Named client readers (`isExcalidrawEnabled()`) stay one line each in `utils/config.ts` for existing call sites.
+
+Non-boolean editable fields (model, scratchpad.layout, defaultProvider, commitChatLensDormantMode, chat.followUpSuggestions.count, …) and plain display booleans (showReportIntent, groupSingleLineMessages, chat.*) are bespoke entries in `ADMIN_CONFIG_FIELDS`, not the registry. The `PUT /api/admin/config` handler derives `editableKeys`, field-local validation, and merge logic from `ADMIN_CONFIG_FIELDS`. Cross-field constraints belong in `CLIConfigSchema`/`validateConfigWithSchema()`; the admin write path re-validates the merged config before persisting so admin updates and config-file loading reject the same invalid combinations.
 
 The `spaHtml` function in `packages/coc/src/server/index.ts` re-reads the config file on every page request, so feature-flag changes (e.g. `terminal.enabled`) take effect on the next browser reload — no server restart required.
 
@@ -55,6 +57,6 @@ When adding UI to the admin page, prefer the existing primitives:
 - **AI Provider page:** the `agents` tab content lives in `AIProviderPage.tsx` (not inline in `AdminPanel`). It uses a tab bar (`ar-subtab-row`) with two tabs: Provider routing (summary grid + routing table plus feature-gated Auto routing editor/preview) and Model catalog (lazy-loaded `ProviderModelsSection` + `ProviderEffortTiersSection`). All styles use `aip-*` classes in `admin-redesign.css`.
 - **New top-level tabs:** add to `AdminSubTab`, `TAB_LABELS`, `TAB_ICONS`, and `TAB_DESCRIPTIONS`, then place the destination in the grouped `navGroups` definition near the bottom of `AdminPanel.tsx` so the sidebar and mobile select expose it in the right user-intent group.
 
-- **Feature groups:** Inside the Features settings card, toggles are organized into named sections using `<div className="ar-feature-group">` with a `<div className="ar-feature-group-head">` heading. Groups are: Dashboard Modules, Development Tools, Work Items, AI Execution Modes, Code Review & Collaboration, and Infrastructure. New feature toggles should be added to the appropriate group.
+- **Feature groups:** Inside the Features settings card, toggles render generically from the `FEATURE_FLAGS` registry — `FEATURE_FLAG_GROUPS` defines the ordered named sections (each a `<div className="ar-feature-group">` with a `<div className="ar-feature-group-head">` heading: Dashboard Modules, Development Tools, Work Items, AI Execution Modes, Code Review & Collaboration, Infrastructure) and each flag's `ui.group` places it. A new boolean toggle appears automatically by adding a registry entry with `ui` metadata; no AdminPanel edit is needed.
 
 Avoid introducing Tailwind utilities or inline `bg-*`/`text-*` classes for admin-only UI — extend `admin-redesign.css` instead so the look stays cohesive.

@@ -2,24 +2,24 @@ import { describe, expect, it } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const ADMIN_PANEL_PATH = path.join(
+// The Features-card copy now lives in the FEATURE_FLAGS registry (coc-client),
+// which the Admin UI renders generically.
+const REGISTRY_PATH = path.join(
     __dirname,
     '..',
     '..',
     '..',
     '..',
+    '..',
+    'coc-client',
     'src',
-    'server',
-    'spa',
-    'client',
-    'react',
-    'admin',
-    'AdminPanel.tsx',
+    'contracts',
+    'feature-flags.ts',
 );
 
 describe('AdminPanel — remote work item provider integration copy', () => {
     it('describes workItems.sync.enabled as remote provider integration, not manual GitHub sync', () => {
-        const src = fs.readFileSync(ADMIN_PANEL_PATH, 'utf-8');
+        const src = fs.readFileSync(REGISTRY_PATH, 'utf-8');
 
         expect(src).toContain('Remote Work Items');
         expect(src).toContain('remote provider integration');
