@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { getSpaCocClient } from '../../../api/cocClient';
 import type { AttachmentPayload } from '../../../types/attachments';
 
@@ -28,6 +28,10 @@ export interface UseCommitChatBindingReturn {
     error: string | null;
     /** Create a new chat for this commit. Returns the new taskId. */
     createChat: (prompt: string, options?: ReviewChatComposerSendOptions) => Promise<string | null>;
+    /** Archive the currently bound chat and return this commit to an empty chat state. */
+    startFreshChat: () => Promise<boolean>;
+    /** True while the fresh-chat binding reset is in progress. */
+    startingFresh: boolean;
 }
 
 export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseCommitChatBindingReturn {
@@ -35,14 +39,30 @@ export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseComm
     const [taskId, setTaskId] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [startingFresh, setStartingFresh] = useState(false);
+    const mountedRef = useRef(false);
+    const currentRequestRef = useRef({ workspaceId, commitHash });
+    currentRequestRef.current = { workspaceId, commitHash };
+
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+    }, []);
+
+    const isCurrentRequest = useCallback((requestedWorkspaceId: string, requestedCommitHash: string | undefined) => (
+        mountedRef.current
+        && currentRequestRef.current.workspaceId === requestedWorkspaceId
+        && currentRequestRef.current.commitHash === requestedCommitHash
+    ), []);
 
     // Fetch binding when commitHash changes
     useEffect(() => {
-        if (!commitHash) { setTaskId(null); return; }
+        if (!commitHash) { setTaskId(null); setStartingFresh(false); return; }
         let cancelled = false;
         setLoading(true);
         setError(null);
         setTaskId(null);
+        setStartingFresh(false);
 
         getSpaCocClient().git.getCommitChatBinding(workspaceId, commitHash)
             .then(data => { if (!cancelled) setTaskId(data.taskId); })
@@ -59,6 +79,11 @@ export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseComm
     // Create a new chat for this commit
     const createChat = useCallback(async (prompt: string, options: ReviewChatComposerSendOptions = {}): Promise<string | null> => {
         if (!commitHash) return null;
+        const requestedWorkspaceId = workspaceId;
+        const requestedCommitHash = commitHash;
+        if (isCurrentRequest(requestedWorkspaceId, requestedCommitHash)) {
+            setError(null);
+        }
         try {
             // Create queue task
             const res = await getSpaCocClient().queue.enqueue({
@@ -87,13 +112,45 @@ export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseComm
             // Save binding
             await getSpaCocClient().git.createCommitChatBinding(workspaceId, commitHash, newTaskId);
 
-            setTaskId(newTaskId);
+            if (isCurrentRequest(requestedWorkspaceId, requestedCommitHash)) {
+                setError(null);
+                setTaskId(newTaskId);
+            }
             return newTaskId;
         } catch (err: any) {
-            setError(err?.message ?? 'Failed to create commit chat');
+            if (isCurrentRequest(requestedWorkspaceId, requestedCommitHash)) {
+                setError(err?.message ?? 'Failed to create commit chat');
+            }
             return null;
         }
-    }, [workspaceId, commitHash, commitMessage]);
+    }, [workspaceId, commitHash, commitMessage, isCurrentRequest]);
 
-    return { taskId, loading, error, createChat };
+    const startFreshChat = useCallback(async (): Promise<boolean> => {
+        if (!commitHash) return false;
+        const requestedWorkspaceId = workspaceId;
+        const requestedCommitHash = commitHash;
+        if (isCurrentRequest(requestedWorkspaceId, requestedCommitHash)) {
+            setStartingFresh(true);
+            setError(null);
+        }
+        try {
+            await getSpaCocClient().git.startFreshChat(workspaceId, commitHash);
+            if (isCurrentRequest(requestedWorkspaceId, requestedCommitHash)) {
+                setTaskId(null);
+                setError(null);
+            }
+            return true;
+        } catch (err: any) {
+            if (isCurrentRequest(requestedWorkspaceId, requestedCommitHash)) {
+                setError(err?.message ?? 'Failed to start fresh commit chat');
+            }
+            return false;
+        } finally {
+            if (isCurrentRequest(requestedWorkspaceId, requestedCommitHash)) {
+                setStartingFresh(false);
+            }
+        }
+    }, [workspaceId, commitHash, isCurrentRequest]);
+
+    return { taskId, loading, error, createChat, startFreshChat, startingFresh };
 }

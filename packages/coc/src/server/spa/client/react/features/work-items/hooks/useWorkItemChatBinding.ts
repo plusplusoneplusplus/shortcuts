@@ -28,6 +28,8 @@ export interface UseWorkItemChatBindingReturn {
     loading: boolean;
     error: string | null;
     createChat: (prompt: string, options?: WorkItemChatComposerSendOptions) => Promise<string | null>;
+    startFreshChat: () => Promise<boolean>;
+    startingFresh: boolean;
 }
 
 function makeWorkItemLabel(workItemId: string, workItemNumber?: number): string {
@@ -62,6 +64,7 @@ export function useWorkItemChatBinding(opts: UseWorkItemChatBindingOptions): Use
     const [taskId, setTaskId] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [startingFresh, setStartingFresh] = useState(false);
     const mountedRef = useRef(false);
     const currentRequestRef = useRef({ workspaceId, workItemId });
     currentRequestRef.current = { workspaceId, workItemId };
@@ -78,11 +81,12 @@ export function useWorkItemChatBinding(opts: UseWorkItemChatBindingOptions): Use
     ), []);
 
     useEffect(() => {
-        if (!workItemId) { setTaskId(null); return; }
+        if (!workItemId) { setTaskId(null); setStartingFresh(false); return; }
         let cancelled = false;
         setLoading(true);
         setError(null);
         setTaskId(null);
+        setStartingFresh(false);
 
         getSpaCocClient().workItems.getChatBinding(workspaceId, workItemId)
             .then(data => { if (!cancelled) setTaskId(data.taskId); })
@@ -143,5 +147,32 @@ export function useWorkItemChatBinding(opts: UseWorkItemChatBindingOptions): Use
         }
     }, [workspaceId, workItemId, status, type, workItemNumber, isCurrentRequest]);
 
-    return { taskId, loading, error, createChat };
+    const startFreshChat = useCallback(async (): Promise<boolean> => {
+        if (!workItemId) return false;
+        const requestedWorkspaceId = workspaceId;
+        const requestedWorkItemId = workItemId;
+        if (isCurrentRequest(requestedWorkspaceId, requestedWorkItemId)) {
+            setStartingFresh(true);
+            setError(null);
+        }
+        try {
+            await getSpaCocClient().workItems.startFreshChat(workspaceId, workItemId);
+            if (isCurrentRequest(requestedWorkspaceId, requestedWorkItemId)) {
+                setTaskId(null);
+                setError(null);
+            }
+            return true;
+        } catch (err: any) {
+            if (isCurrentRequest(requestedWorkspaceId, requestedWorkItemId)) {
+                setError(err?.message ?? 'Failed to start fresh work item chat');
+            }
+            return false;
+        } finally {
+            if (isCurrentRequest(requestedWorkspaceId, requestedWorkItemId)) {
+                setStartingFresh(false);
+            }
+        }
+    }, [workspaceId, workItemId, isCurrentRequest]);
+
+    return { taskId, loading, error, createChat, startFreshChat, startingFresh };
 }

@@ -525,9 +525,12 @@ export interface ConversationMetadataPopoverProps {
     /** When provided, a "Fork conversation" action button is shown at the bottom of the popover. */
     onFork?: () => void;
     forking?: boolean;
+    /** When provided, a fresh same-context lens chat action is shown at the bottom of the popover. */
+    onStartFreshSameContext?: () => Promise<boolean> | boolean | void;
+    startingFreshSameContext?: boolean;
 }
 
-export function ConversationMetadataPopover({ process, turnsCount, resumeSessionId, resumeLaunching, onLaunchInteractiveResume, onFork, forking }: ConversationMetadataPopoverProps) {
+export function ConversationMetadataPopover({ process, turnsCount, resumeSessionId, resumeLaunching, onLaunchInteractiveResume, onFork, forking, onStartFreshSameContext, startingFreshSameContext }: ConversationMetadataPopoverProps) {
     const [open, setOpen] = useState(false);
     const [systemPromptOpen, setSystemPromptOpen] = useState(false);
     const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
@@ -679,7 +682,7 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
                     </div>
                 )}
             </div>
-            {(resumeSessionId && onLaunchInteractiveResume || onFork) && (
+            {(resumeSessionId && onLaunchInteractiveResume || onFork || onStartFreshSameContext) && (
                 <div className="mt-3 pt-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-wrap gap-2">
                     {resumeSessionId && onLaunchInteractiveResume && (
                         <button
@@ -690,6 +693,22 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
                         >
                             <span>▶</span>
                             {resumeLaunching ? 'Launching…' : 'Resume In CLI'}
+                        </button>
+                    )}
+                    {onStartFreshSameContext && (
+                        <button
+                            type="button"
+                            disabled={startingFreshSameContext}
+                            onClick={() => {
+                                const result = onStartFreshSameContext();
+                                void Promise.resolve(result).catch(error => console.error('Failed to start fresh chat:', error));
+                                setOpen(false);
+                            }}
+                            title="Start an empty chat for this same lens context"
+                            className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs text-[#0078d4] dark:text-[#3794ff] border border-[#0078d4] dark:border-[#3794ff] hover:bg-[#e8f0fb] dark:hover:bg-[#1a2a40] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <span>＋</span>
+                            New chat with same context
                         </button>
                     )}
                     {onFork && (

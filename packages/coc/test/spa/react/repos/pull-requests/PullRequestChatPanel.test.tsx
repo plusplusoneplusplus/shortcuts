@@ -11,6 +11,7 @@ import { forwardRef } from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
 const mockCreateChat = vi.fn();
+const mockStartFreshChat = vi.fn();
 const mockUsePullRequestChatBinding = vi.fn();
 
 vi.mock('../../../../../src/server/spa/client/react/features/pull-requests/hooks/usePullRequestChatBinding', () => ({
@@ -25,7 +26,15 @@ vi.mock('../../../../../src/server/spa/client/react/features/chat/ChatDetail', (
              data-standalone={props.standalone ? 'true' : undefined}
              data-title={props.title}
              data-hide-mode-selector={props.hideModeSelector ? 'true' : undefined}
-        />
+             data-has-fresh-context-action={props.onStartFreshSameContext ? 'true' : 'false'}
+             data-starting-fresh={props.startingFreshSameContext ? 'true' : 'false'}
+        >
+            {props.onStartFreshSameContext && (
+                <button type="button" data-testid="mock-new-chat-same-context" onClick={props.onStartFreshSameContext}>
+                    New chat with same context
+                </button>
+            )}
+        </div>
     ),
 }));
 
@@ -69,6 +78,7 @@ describe('PullRequestChatPanel', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockCreateChat.mockResolvedValue('new-task-id');
+        mockStartFreshChat.mockResolvedValue(true);
         mockToPayload.mockReturnValue([]);
     });
 
@@ -87,6 +97,8 @@ describe('PullRequestChatPanel', () => {
             loading: false,
             error: null,
             createChat: mockCreateChat,
+            startFreshChat: mockStartFreshChat,
+            startingFresh: false,
             ...overrides,
         });
     }
@@ -101,6 +113,7 @@ describe('PullRequestChatPanel', () => {
 
         expect(screen.getByTestId('pr-chat-panel')).toBeTruthy();
         expect(screen.getByText('Chat about this PR')).toBeTruthy();
+        expect(screen.getByText('#142 · Add retry logic')).toBeTruthy();
         expect(screen.getByTestId('pr-chat-send-btn')).toBeTruthy();
         expect(screen.getByTestId('compact-ai-settings-chip')).toBeTruthy();
         expect(screen.queryByTestId('agent-selector-chip-btn')).toBeNull();
@@ -160,6 +173,35 @@ describe('PullRequestChatPanel', () => {
         expect(detail.getAttribute('data-variant')).toBe('floating');
         expect(detail.getAttribute('data-standalone')).toBe('true');
         expect(detail.getAttribute('data-hide-mode-selector')).toBe('true');
+        expect(detail.getAttribute('data-has-fresh-context-action')).toBe('true');
+    });
+
+    it('passes the fresh same-context action into the active PR chat window', async () => {
+        setupHook({ taskId: 'task-123', startingFresh: true });
+        await act(async () => { render(<PullRequestChatPanel {...defaultProps} />); });
+
+        const detail = screen.getByTestId('activity-chat-detail');
+        expect(detail.getAttribute('data-starting-fresh')).toBe('true');
+        expect(screen.getByTestId('mock-new-chat-same-context').textContent).toBe('New chat with same context');
+    });
+
+    it('starts a fresh same-context PR chat from the active chat window action', async () => {
+        setupHook({ taskId: 'task-123' });
+        await act(async () => { render(<PullRequestChatPanel {...defaultProps} />); });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('mock-new-chat-same-context'));
+        });
+
+        expect(mockStartFreshChat).toHaveBeenCalledOnce();
+    });
+
+    it('shows active-chat errors as a compact banner without replacing ChatDetail', async () => {
+        setupHook({ taskId: 'task-123', error: 'Failed to start fresh pull request chat' });
+        await act(async () => { render(<PullRequestChatPanel {...defaultProps} />); });
+
+        expect(screen.getByTestId('pr-chat-error-banner').textContent).toBe('Failed to start fresh pull request chat');
+        expect(screen.getByTestId('activity-chat-detail').getAttribute('data-task-id')).toBe('task-123');
     });
 
     it('hides empty-state header when taskId is present', async () => {
@@ -192,7 +234,7 @@ describe('PullRequestChatPanel', () => {
                 />,
             );
         });
-        expect(screen.getByText('PR-ABC')).toBeTruthy();
+        expect(screen.getAllByText('PR-ABC').length).toBeGreaterThan(0);
     });
 
     it('displays prNumber in ChatDetail title', async () => {

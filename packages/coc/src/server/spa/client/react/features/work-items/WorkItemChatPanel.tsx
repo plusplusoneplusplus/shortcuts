@@ -44,7 +44,7 @@ export function WorkItemChatPanel({
     onClose,
     hideEmptyHeader = false,
 }: WorkItemChatPanelProps) {
-    const { taskId, loading, error, createChat } = useWorkItemChatBinding({
+    const { taskId, loading, error, createChat, startFreshChat, startingFresh } = useWorkItemChatBinding({
         workspaceId,
         workItemId,
         title,
@@ -109,9 +109,18 @@ export function WorkItemChatPanel({
                 </div>
             )}
 
-            {error && !loading && (
+            {error && !loading && !taskId && (
                 <div className="flex flex-1 items-center justify-center">
                     <div className="text-sm text-[#f14c4c]">{error}</div>
+                </div>
+            )}
+
+            {error && !loading && taskId && (
+                <div
+                    className="border-b border-red-200 bg-red-50 px-3 py-2 text-[11px] leading-snug text-red-700 dark:border-red-900/70 dark:bg-red-900/20 dark:text-red-200"
+                    data-testid="work-item-chat-error-banner"
+                >
+                    {error}
                 </div>
             )}
 
@@ -142,6 +151,8 @@ export function WorkItemChatPanel({
                         title={`Work Item Chat · ${identifier}`}
                         hideModeSelector
                         onBack={onClose}
+                        onStartFreshSameContext={startFreshChat}
+                        startingFreshSameContext={startingFresh}
                     />
                 </ChatPreferencesProvider>
             )}

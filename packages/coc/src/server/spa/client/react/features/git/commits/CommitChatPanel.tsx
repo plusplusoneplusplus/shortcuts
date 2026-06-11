@@ -14,9 +14,10 @@ export interface CommitChatPanelProps {
 }
 
 export function CommitChatPanel({ workspaceId, commitHash, commitMessage, onClose, hideEmptyHeader = false }: CommitChatPanelProps) {
-    const { taskId, loading, error, createChat } = useCommitChatBinding({ workspaceId, commitHash, commitMessage });
+    const { taskId, loading, error, createChat, startFreshChat, startingFresh } = useCommitChatBinding({ workspaceId, commitHash, commitMessage });
 
     const draftKey = `review-chat:${getReviewChatTargetStorageId({ type: 'commit', workspaceId, commitHash })}`;
+    const commitLabel = commitHash.slice(0, 7);
 
     const handleComposerSubmit = async (submission: InitialChatComposerSubmission) => createChat(submission.prompt, {
         mode: submission.mode,
@@ -55,9 +56,18 @@ export function CommitChatPanel({ workspaceId, commitHash, commitMessage, onClos
             )}
 
             {/* Error state */}
-            {error && !loading && (
+            {error && !loading && !taskId && (
                 <div className="flex-1 flex items-center justify-center">
                     <div className="text-sm text-[#f14c4c]">{error}</div>
+                </div>
+            )}
+
+            {error && !loading && taskId && (
+                <div
+                    className="border-b border-red-200 bg-red-50 px-3 py-2 text-[11px] leading-snug text-red-700 dark:border-red-900/70 dark:bg-red-900/20 dark:text-red-200"
+                    data-testid="commit-chat-error-banner"
+                >
+                    {error}
                 </div>
             )}
 
@@ -68,7 +78,7 @@ export function CommitChatPanel({ workspaceId, commitHash, commitMessage, onClos
                         workspaceId={workspaceId}
                         onSubmit={handleComposerSubmit}
                         heroTitle="Chat about this commit"
-                        heroDescription="Ask questions about the changes"
+                        heroDescription={`${commitLabel}${commitMessage ? ` · ${commitMessage}` : ''}`}
                         placeholder="Ask about this commit, or type / for commands..."
                         testIdPrefix="commit-chat"
                         draftKey={draftKey}
@@ -87,9 +97,11 @@ export function CommitChatPanel({ workspaceId, commitHash, commitMessage, onClos
                         workspaceId={workspaceId}
                         variant="floating"
                         standalone
-                        title={`Commit Chat · ${commitHash.slice(0, 7)}`}
+                        title={`Commit Chat · ${commitLabel}`}
                         hideModeSelector
                         onBack={onClose}
+                        onStartFreshSameContext={startFreshChat}
+                        startingFreshSameContext={startingFresh}
                     />
                 </ChatPreferencesProvider>
             )}

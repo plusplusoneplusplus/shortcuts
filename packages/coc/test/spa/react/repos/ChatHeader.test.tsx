@@ -66,13 +66,20 @@ vi.mock('../../../../src/server/spa/client/react/ui/BottomSheet', () => ({
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationMetadataPopover', () => ({
-    ConversationMetadataPopover: ({ resumeSessionId, onLaunchInteractiveResume }: any) => (
+    ConversationMetadataPopover: ({ resumeSessionId, onLaunchInteractiveResume, onStartFreshSameContext, startingFreshSameContext }: any) => (
         <span
             data-testid="metadata-popover"
             data-resume-session-id={resumeSessionId ?? ''}
             data-has-resume-handler={onLaunchInteractiveResume ? 'true' : 'false'}
+            data-has-fresh-handler={onStartFreshSameContext ? 'true' : 'false'}
+            data-starting-fresh={startingFreshSameContext ? 'true' : 'false'}
         >
             i
+            {onStartFreshSameContext && (
+                <button type="button" data-testid="metadata-new-chat-same-context" onClick={onStartFreshSameContext}>
+                    New chat with same context
+                </button>
+            )}
         </span>
     ),
 }));
@@ -111,8 +118,14 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/ChatHeaderOverflo
                     data-testid="overflow-menu"
                     data-count={items.length}
                     data-keys={items.map((item: any) => item.key).join(',')}
+                    data-labels={items.map((item: any) => item.label).join('|')}
                 >
                     ⋮
+                    {items.map((item: any) => (
+                        <button key={item.key} type="button" data-testid={`overflow-item-${item.key}`} onClick={item.onClick}>
+                            {item.label}
+                        </button>
+                    ))}
                 </span>
             )
             : null,
@@ -597,6 +610,59 @@ describe('ChatHeader', () => {
             const count = parseInt(menu.getAttribute('data-count') ?? '0');
             // copy-html + export-pdf + fork = 3
             expect(count).toBe(3);
+        });
+    });
+
+    describe('fresh same-context action', () => {
+        it('passes the exact action label to the metadata popover in wide lens-sized chat headers', () => {
+            setTier('wide');
+            const onStartFreshSameContext = vi.fn();
+            render(<ChatHeader {...defaultProps({ onStartFreshSameContext, startingFreshSameContext: true })} />);
+
+            const action = screen.getByTestId('metadata-new-chat-same-context');
+            expect(action.textContent).toBe('New chat with same context');
+            expect(screen.getByTestId('metadata-popover').getAttribute('data-has-fresh-handler')).toBe('true');
+            expect(screen.getByTestId('metadata-popover').getAttribute('data-starting-fresh')).toBe('true');
+        });
+
+        it('invokes the fresh same-context callback from the metadata popover', () => {
+            setTier('wide');
+            const onStartFreshSameContext = vi.fn();
+            render(<ChatHeader {...defaultProps({ onStartFreshSameContext })} />);
+
+            screen.getByTestId('metadata-new-chat-same-context').click();
+
+            expect(onStartFreshSameContext).toHaveBeenCalledOnce();
+        });
+
+        it('includes the exact fresh same-context action in overflow without dropping existing actions', () => {
+            setTier('medium');
+            const onStartFreshSameContext = vi.fn();
+            render(<ChatHeader {...defaultProps({
+                onStartFreshSameContext,
+                onToggleSelecting: vi.fn(),
+                onFork: vi.fn(),
+            })} />);
+
+            const menu = screen.getByTestId('overflow-menu');
+            const keys = menu.getAttribute('data-keys')?.split(',') ?? [];
+            expect(keys).toContain('copy-html');
+            expect(keys).toContain('select-turns');
+            expect(keys).toContain('export-pdf');
+            expect(keys).toContain('metadata');
+            expect(keys).toContain('new-chat-same-context');
+            expect(keys).toContain('fork');
+            expect(menu.getAttribute('data-labels')?.split('|')).toContain('New chat with same context');
+
+            screen.getByTestId('overflow-item-new-chat-same-context').click();
+            expect(onStartFreshSameContext).toHaveBeenCalledOnce();
+        });
+
+        it('omits the fresh same-context action when no callback is provided', () => {
+            setTier('medium');
+            render(<ChatHeader {...defaultProps()} />);
+
+            expect(screen.getByTestId('overflow-menu').getAttribute('data-keys')?.split(',')).not.toContain('new-chat-same-context');
         });
     });
 

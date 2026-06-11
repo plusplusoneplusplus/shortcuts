@@ -121,9 +121,13 @@ export interface ChatDetailProps {
     onOpenForEachRun?: (runId: string) => void;
     /** Opens the reviewed Map Reduce parent-run pane after approval. */
     onOpenMapReduceRun?: (runId: string) => void;
+    /** Starts a new empty chat bound to the same embedding lens target. */
+    onStartFreshSameContext?: () => Promise<boolean> | boolean | void;
+    /** True while the embedding lens target is resetting its active chat binding. */
+    startingFreshSameContext?: boolean;
 }
 
-export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, compactModeSelector = false, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onOpenForEachRun, onOpenMapReduceRun }: ChatDetailProps) {
+export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, compactModeSelector = false, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onOpenForEachRun, onOpenMapReduceRun, onStartFreshSameContext, startingFreshSameContext = false }: ChatDetailProps) {
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
 
@@ -1492,6 +1496,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 hasActiveLoops={loopsHook.hasActiveLoops}
                 onToggleLoopPanel={() => setLoopPanelOpen(v => !v)}
                 onRenameTitle={processId ? () => setRenameOpen(true) : undefined}
+                onStartFreshSameContext={onStartFreshSameContext}
+                startingFreshSameContext={startingFreshSameContext}
             />
             {loopPanelOpen && isLoopsEnabled() && (
                 <div className="relative">

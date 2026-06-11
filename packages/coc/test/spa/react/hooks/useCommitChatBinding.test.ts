@@ -20,6 +20,7 @@ const { mockClient } = vi.hoisted(() => ({
         git: {
             getCommitChatBinding: vi.fn(),
             createCommitChatBinding: vi.fn(),
+            startFreshChat: vi.fn(),
         },
     },
 }));
@@ -45,6 +46,7 @@ describe('useCommitChatBinding', () => {
         vi.clearAllMocks();
         mockClient.git.getCommitChatBinding.mockResolvedValue({ taskId: null });
         mockClient.git.createCommitChatBinding.mockResolvedValue({});
+        mockClient.git.startFreshChat.mockResolvedValue({ commitHash: 'abc123', archivedTaskId: 'task-existing' });
         mockClient.queue.enqueue.mockResolvedValue({ task: { id: 'task-commit' } });
     });
 
@@ -199,19 +201,66 @@ describe('useCommitChatBinding', () => {
         });
 
         it('returns null on failure', () => {
-            const catchBlock = source.substring(
-                source.lastIndexOf('catch (err: any)'),
-                source.lastIndexOf('catch (err: any)') + 200
-            );
-            expect(catchBlock).toContain('return null');
+            expect(source).toContain('return null');
         });
     });
 
-    it('returns taskId, loading, error, and createChat', () => {
-        expect(source).toContain('return { taskId, loading, error, createChat }');
+    describe('startFreshChat clears the active binding', () => {
+        it('calls the fresh commit endpoint and resets taskId to the empty same-context state', async () => {
+            mockClient.git.getCommitChatBinding.mockResolvedValueOnce({ commitHash: 'abc123', taskId: 'task-existing' });
+            const { result } = renderHook(() => useCommitChatBinding({
+                workspaceId: 'ws-1',
+                commitHash: 'abc123',
+                commitMessage: 'fix: bug',
+            }));
+
+            await act(async () => {
+                await Promise.resolve();
+            });
+            expect(result.current.taskId).toBe('task-existing');
+
+            let freshResult = false;
+            await act(async () => {
+                freshResult = await result.current.startFreshChat();
+            });
+
+            expect(freshResult).toBe(true);
+            expect(mockClient.git.startFreshChat).toHaveBeenCalledWith('ws-1', 'abc123');
+            expect(mockClient.queue.enqueue).not.toHaveBeenCalled();
+            expect(result.current.taskId).toBeNull();
+            expect(result.current.error).toBeNull();
+            expect(result.current.startingFresh).toBe(false);
+        });
+
+        it('keeps the old taskId visible and surfaces an error when fresh reset fails', async () => {
+            mockClient.git.getCommitChatBinding.mockResolvedValueOnce({ commitHash: 'abc123', taskId: 'task-existing' });
+            mockClient.git.startFreshChat.mockRejectedValueOnce(new Error('archive failed'));
+            const { result } = renderHook(() => useCommitChatBinding({
+                workspaceId: 'ws-1',
+                commitHash: 'abc123',
+            }));
+
+            await act(async () => {
+                await Promise.resolve();
+            });
+
+            let freshResult = true;
+            await act(async () => {
+                freshResult = await result.current.startFreshChat();
+            });
+
+            expect(freshResult).toBe(false);
+            expect(result.current.taskId).toBe('task-existing');
+            expect(result.current.error).toBe('archive failed');
+            expect(result.current.startingFresh).toBe(false);
+        });
+    });
+
+    it('returns taskId, loading, error, createChat, and startFreshChat state', () => {
+        expect(source).toContain('return { taskId, loading, error, createChat, startFreshChat, startingFresh }');
     });
 
     it('does not return early when commitHash is empty', () => {
-        expect(source).toContain("if (!commitHash) { setTaskId(null); return; }");
+        expect(source).toContain("if (!commitHash) { setTaskId(null); setStartingFresh(false); return; }");
     });
 });
