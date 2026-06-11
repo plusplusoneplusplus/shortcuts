@@ -186,7 +186,9 @@ describe('prepareTaskForEnqueue', () => {
 
         expect(resolveDefaultProvider).not.toHaveBeenCalled();
         expect((input.payload as any).provider).toBe('claude');
-        expect(input.config.model).toBe('claude-haiku-4.5');
+        // Claude tier defaults use the dashed id form that the Claude catalog
+        // (listModels) is keyed by, so reasoning-effort lookup matches.
+        expect(input.config.model).toBe('claude-haiku-4-5');
     });
 
     it('does not mark follow-up tasks for Auto routing', async () => {

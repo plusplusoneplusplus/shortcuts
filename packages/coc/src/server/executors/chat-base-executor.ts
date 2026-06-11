@@ -632,6 +632,11 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 modelId: effectiveModel,
                 requestedEffort,
                 model: await this.getModelMetadataForReasoning(effectiveModel, taskProvider, effectiveAiService),
+                // Claude's SDK silently downgrades an unsupported effort, and its
+                // catalog often omits effort metadata (or resolves to the provider
+                // default with no model id). When support is unknown, pass the
+                // effort through rather than blocking with "Supported efforts: unknown".
+                allowUnknownEffort: taskProvider === 'claude',
             });
 
             const sendOptions = {

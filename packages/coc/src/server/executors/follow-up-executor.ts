@@ -134,6 +134,11 @@ function resolveFollowUpReasoningSelection(options: {
             modelId: reasoningModel,
             requestedEffort,
             model: modelMetadata,
+            // Claude's SDK downgrades an unsupported effort on its own; when the
+            // catalog has no effort metadata for the model (support unknown),
+            // pass the requested effort through instead of failing. A
+            // known-incompatible effort still throws and is omitted below.
+            allowUnknownEffort: sessionProvider === 'claude',
         });
     } catch (err) {
         if (!perTurnReasoningEffort || requestedEffort !== perTurnReasoningEffort || !isReasoningEffort(perTurnReasoningEffort)) {

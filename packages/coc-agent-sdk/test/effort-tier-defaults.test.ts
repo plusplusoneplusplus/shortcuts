@@ -34,11 +34,21 @@ describe('getDefaultEffortTiers', () => {
     it('returns the claude defaults', () => {
         const defaults = getDefaultEffortTiers('claude');
         expect(defaults).toEqual({
-            'very-low': { model: 'claude-haiku-4.5',  reasoningEffort: 'low'    },
-            low:    { model: 'claude-sonnet-4.6', reasoningEffort: 'high'   },
+            'very-low': { model: 'claude-haiku-4-5',  reasoningEffort: 'low'    },
+            low:    { model: 'claude-sonnet-4-6', reasoningEffort: 'high'   },
             medium: { model: 'claude-opus-4-7',   reasoningEffort: 'medium' },
             high:   { model: 'claude-opus-4-7',   reasoningEffort: 'xhigh'  },
         });
+    });
+
+    it('uses the dashed model-id form for every claude tier so catalog lookup matches', () => {
+        // The Claude catalog (listModels) is keyed by dashed ids; a dotted id
+        // (e.g. claude-haiku-4.5) would miss the catalog and surface efforts as
+        // "unknown". Guard against reintroducing the mixed-format regression.
+        const defaults = getDefaultEffortTiers('claude');
+        for (const tier of ['very-low', 'low', 'medium', 'high'] as const) {
+            expect(defaults?.[tier].model).not.toContain('.');
+        }
     });
 
     it('returns null for unknown providers', () => {

@@ -160,6 +160,45 @@ describe('resolveReasoningEffort', () => {
         })).toThrow('Unsupported reasoning effort "high" requested for model "unknown-support". Supported efforts: unknown');
     });
 
+    it('passes a requested effort through when support is unknown and allowUnknownEffort is set', () => {
+        // Self-downgrading providers (e.g. Claude) keep the requested level even
+        // when no catalog metadata is available instead of throwing.
+        expect(resolveReasoningEffort({
+            modelId: 'claude-opus-4-7',
+            requestedEffort: 'xhigh',
+            allowUnknownEffort: true,
+        })).toBe('xhigh');
+    });
+
+    it('passes a requested effort through with allowUnknownEffort even when no model id is known', () => {
+        // Mirrors the provider-default Claude path that produced the reported
+        // 'model "unknown" / Supported efforts: unknown' error: no model id, no
+        // metadata, but the SDK still accepts (and downgrades) the effort.
+        expect(resolveReasoningEffort({
+            requestedEffort: 'xhigh',
+            allowUnknownEffort: true,
+        })).toBe('xhigh');
+    });
+
+    it('still throws for a KNOWN-incompatible effort even when allowUnknownEffort is set', () => {
+        // allowUnknownEffort only relaxes the unknown-support case; a catalog
+        // that lists a supported set excluding the request is authoritative.
+        expect(() => resolveReasoningEffort({
+            modelId: 'high-only',
+            requestedEffort: 'xhigh',
+            model: model('high-only', { supportedEfforts: ['high'] }),
+            allowUnknownEffort: true,
+        })).toThrow('Unsupported reasoning effort "xhigh" requested for model "high-only". Supported efforts: high');
+    });
+
+    it('still throws for an unrecognized effort even when allowUnknownEffort is set', () => {
+        expect(() => resolveReasoningEffort({
+            modelId: 'claude-opus-4-7',
+            requestedEffort: 'turbo' as never,
+            allowUnknownEffort: true,
+        })).toThrow('Unsupported reasoning effort "turbo" requested for model "claude-opus-4-7". Known efforts: low, medium, high, xhigh');
+    });
+
     it('returns undefined for non-reasoning models', () => {
         expect(resolveReasoningEffort({
             modelId: 'plain-model',
@@ -233,6 +272,20 @@ describe('resolveReasoningEffort', () => {
         })).toEqual({
             modelId: 'claude-opus-4.7-internal',
             reasoningEffort: 'medium',
+        });
+    });
+
+    it('keeps the requested effort and model id when allowUnknownEffort is set and metadata is missing', () => {
+        // Provider-default-style Claude path: a concrete model id with no catalog
+        // metadata. The effort passes through and the id is left untouched
+        // (no effort suffix to strip).
+        expect(resolveReasoningSelection({
+            modelId: 'claude-opus-4-7',
+            requestedEffort: 'xhigh',
+            allowUnknownEffort: true,
+        })).toEqual({
+            modelId: 'claude-opus-4-7',
+            reasoningEffort: 'xhigh',
         });
     });
 });

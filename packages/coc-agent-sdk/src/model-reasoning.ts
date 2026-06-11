@@ -8,6 +8,23 @@ export interface ResolveReasoningEffortOptions {
     modelId?: string;
     requestedEffort?: ReasoningEffort;
     model?: ModelInfo;
+    /**
+     * When true, a recognized requested effort (one of
+     * {@link KNOWN_REASONING_EFFORTS}) whose support is *unknown* — because no
+     * catalog metadata was found for the model (no model id, model absent from
+     * the catalog, or the catalog omits effort levels) — is passed through
+     * instead of throwing.
+     *
+     * Intended for providers whose SDK silently downgrades an unsupported
+     * effort (e.g. Claude, whose `effort` option is best-effort and the model
+     * picks the closest level it supports). For these providers a missing or
+     * partial model catalog must never block the request with
+     * "Supported efforts: unknown". This does NOT relax a *known*-incompatible
+     * effort: when the catalog lists a supported set that excludes the request
+     * the call still throws (the caller decides whether to omit it). A value
+     * that is not a recognized effort at all (e.g. a typo) also still throws.
+     */
+    allowUnknownEffort?: boolean;
 }
 
 export interface ResolvedReasoningSelection {
@@ -69,7 +86,7 @@ function formatSupportedEfforts(supportedEfforts: ReasoningEffort[] | undefined)
  * because it is the most direct source for the values CAPI accepts.
  */
 export function resolveReasoningEffort(options: ResolveReasoningEffortOptions): ReasoningEffort | undefined {
-    const { modelId, requestedEffort, model } = options;
+    const { modelId, requestedEffort, model, allowUnknownEffort } = options;
     const supportedEfforts = getSupportedReasoningEfforts(model);
 
     if (requestedEffort !== undefined) {
@@ -78,6 +95,13 @@ export function resolveReasoningEffort(options: ResolveReasoningEffortOptions): 
         }
 
         if (supportedEfforts?.includes(requestedEffort)) {
+            return requestedEffort;
+        }
+
+        // Support is unknown (no catalog metadata for the model). Providers
+        // whose SDK downgrades an unsupported effort on its own (e.g. Claude)
+        // opt into passing it through rather than blocking the turn.
+        if (supportedEfforts === undefined && allowUnknownEffort) {
             return requestedEffort;
         }
 

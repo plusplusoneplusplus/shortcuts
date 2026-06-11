@@ -520,6 +520,44 @@ describe('reasoningEffort wiring in queue executor bridge', () => {
     });
 
     // -------------------------------------------------------------------------
+    it('executeWithAI() passes a Claude effort through when the catalog omits effort metadata', async () => {
+        // Reproduces the production failure: the Claude CLI catalog lists the
+        // model but omits supportedEffortLevels, so effort support is unknown.
+        // Claude's SDK downgrades on its own, so the requested effort must pass
+        // through instead of throwing "Supported efforts: unknown".
+        getModelSpy.mockReturnValue(undefined);
+        sdkMocks.mockListModels.mockResolvedValue([
+            modelInfo('claude-opus-4-7', { supportsReasoning: true }), // efforts unadvertised → unknown
+        ]);
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        await executor.execute(chatTaskWithProvider('claude', 'claude-opus-4-7', 'xhigh'));
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
+        expect(call.model).toBe('claude-opus-4-7');
+        expect(call.reasoningEffort).toBe('xhigh');
+    });
+
+    // -------------------------------------------------------------------------
+    it('executeWithAI() passes a Claude effort through when the model is absent from the catalog', async () => {
+        // The "model unknown" path: the requested model is not in the provider
+        // catalog (id mismatch / stale list), so support is unknown. The turn
+        // must proceed with the requested effort rather than throwing.
+        getModelSpy.mockReturnValue(undefined);
+        sdkMocks.mockListModels.mockResolvedValue([
+            modelInfo('claude-sonnet-4-6', { supportedEfforts: ['low', 'medium', 'high', 'xhigh'] }),
+        ]);
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        await executor.execute(chatTaskWithProvider('claude', 'claude-opus-4-7', 'xhigh'));
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
+        expect(call.reasoningEffort).toBe('xhigh');
+    });
+
+    // -------------------------------------------------------------------------
     it('executeFollowUp() uses provider-scoped reasoningEfforts for Codex session (Auto path)', async () => {
         getModelSpy.mockImplementation((id: string) =>
             id === 'gpt-5.5'

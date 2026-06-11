@@ -40,9 +40,12 @@ const CODEX_DEFAULTS: EffortTierDefaultsMap = {
     high:   { model: 'gpt-5.5',       reasoningEffort: 'xhigh' },
 };
 
+// Claude provider model IDs use the dashed form (e.g. `claude-opus-4-7`) that
+// the Claude catalog (`listModels()`) is keyed by; reasoning-effort metadata
+// lookup matches on these exact IDs, so every tier must use the dashed form.
 const CLAUDE_DEFAULTS: EffortTierDefaultsMap = {
-    'very-low': { model: 'claude-haiku-4.5',  reasoningEffort: 'low'    },
-    low:    { model: 'claude-sonnet-4.6', reasoningEffort: 'high'   },
+    'very-low': { model: 'claude-haiku-4-5',  reasoningEffort: 'low'    },
+    low:    { model: 'claude-sonnet-4-6', reasoningEffort: 'high'   },
     medium: { model: 'claude-opus-4-7',   reasoningEffort: 'medium' },
     high:   { model: 'claude-opus-4-7',   reasoningEffort: 'xhigh'  },
 };
