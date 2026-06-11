@@ -72,10 +72,12 @@ as standalone rows.
 `features/chat/RalphGrillSetupPanel.tsx` renders the disabled-by-default
 multi-agent Ralph grilling setup card when `features.ralphMultiAgentGrill` is
 enabled. New Chat Ralph grilling (`NewChatArea`) and promoted ask-mode chats
-(`FollowUpInputArea` via `ChatDetail`) both use the same card so users choose
-Light/Standard/Deep depth and provider/model selections per grill role before
-the consolidated question-planning turn is submitted. While the server runs the
-separate grill-agent preflight, `ConversationArea` renders the transient
+(`FollowUpInputArea` via `ChatDetail`) both use the same compact card so users
+choose Light/Standard/Deep depth, see inherited provider/effort defaults once,
+and expand individual role rows only when per-role provider/tier overrides are
+needed before the consolidated question-planning turn is submitted. While the
+server runs the separate grill-agent preflight, `ConversationArea` renders the
+transient
 `ralph-grill-planning` SSE state as an immediate compact status card. The live
 `ask_user` form then renders any Ralph grill planning metadata from
 `pendingAskUser` as one compact "Question planning" card plus grouped role

@@ -815,6 +815,7 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         await waitFor(() => expect(screen.getByTestId('new-chat-ralph-grill-panel')).toBeTruthy());
 
         fireEvent.click(screen.getByTestId('new-chat-ralph-grill-depth-deep'));
+        fireEvent.click(screen.getByTestId('new-chat-ralph-grill-agent-ux-edit'));
         fireEvent.change(screen.getByTestId('new-chat-ralph-grill-agent-ux-provider'), {
             target: { value: 'claude' },
         });

@@ -117,6 +117,8 @@ export abstract class BaseExecutor {
             timelineBuffer: [],
             throttleState: { chunksSinceLastFlush: 0, lastFlushTime: 0 },
             pendingSuggestions: undefined,
+            turnFinalized: false,
+            turnWriteChain: Promise.resolve(),
             ralphGrill,
         });
     }

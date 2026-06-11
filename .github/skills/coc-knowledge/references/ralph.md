@@ -197,11 +197,13 @@ task context also carries `context.ralph.grill.enabled=true`. The SPA exposes a
 Ralph sessions while the flag is enabled; the card lets users choose Light,
 Standard (default), or Deep depth. When effort levels are enabled, each role
 inherits the composer's concrete provider and selected effort tier by default,
-with optional per-role provider plus effort-tier overrides. The panel resolves
-each role's provider/tier client-side to concrete `model`, `reasoningEffort`,
-and `effortTier` fields; providers without tier mode use that provider's own
-default model and reasoning-effort preference. When effort levels are disabled,
-the card shows depth only and all roles inherit the composer AI settings.
+with optional per-role provider plus effort-tier overrides behind collapsed role
+rows; the compact summary shows the inherited defaults and override count. The
+panel resolves each role's provider/tier client-side to concrete `model`,
+`reasoningEffort`, and `effortTier` fields; providers without tier mode use that
+provider's own default model and reasoning-effort preference. When effort levels
+are disabled, the card shows depth only and all roles inherit the composer AI
+settings.
 Promotion requests accept an optional `grill` payload, sanitize it on the
 server, and mirror it into `metadata.ralph.grill` plus the queued synthesis task
 context. The planning helpers live in

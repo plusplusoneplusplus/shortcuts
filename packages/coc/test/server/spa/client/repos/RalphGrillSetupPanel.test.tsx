@@ -177,6 +177,12 @@ describe('RalphGrillSetupPanel', () => {
             reasoningEffort: 'high',
             effortTier: 'medium',
         });
+        expect(screen.getByTestId('ralph-grill-setup-summary').textContent).toContain('Standard');
+        expect(screen.getByTestId('ralph-grill-setup-summary').textContent).toContain('6 agents');
+        expect(screen.getByTestId('ralph-grill-setup-summary').textContent).toContain('Inherited: Copilot / Medium');
+        expect(screen.getByTestId('ralph-grill-setup-override-count').textContent).toBe('No overrides');
+        expect(screen.getByTestId('ralph-grill-setup-agent-product-provider-summary').textContent).toBe('Inherit (Copilot)');
+        expect(screen.queryByTestId('ralph-grill-setup-agent-product-provider')).toBeNull();
         expect(screen.queryByTestId('ralph-grill-setup-agent-product-model')).toBeNull();
     });
 
@@ -195,6 +201,7 @@ describe('RalphGrillSetupPanel', () => {
 
     it('preserves per-agent provider and tier selections with resolved model and effort', async () => {
         const { onChange } = renderPanel();
+        fireEvent.click(screen.getByTestId('ralph-grill-setup-agent-ux-edit'));
         const uxRow = screen.getByTestId('ralph-grill-setup-agent-ux');
 
         fireEvent.change(within(uxRow).getByTestId('ralph-grill-setup-agent-ux-provider'), {
@@ -213,11 +220,15 @@ describe('RalphGrillSetupPanel', () => {
                 effortTier: 'high',
             });
         });
+        expect(screen.getByTestId('ralph-grill-setup-override-count').textContent).toBe('1 override');
+        expect(screen.getByTestId('ralph-grill-setup-agent-ux-provider-summary').textContent).toBe('Claude');
+        expect(screen.getByTestId('ralph-grill-setup-agent-ux-tier-summary').textContent).toBe('High');
     });
 
     it('keeps the inherited tier when only provider changes', async () => {
         const { onChange } = renderPanel({ defaultEffortTier: 'low' });
 
+        fireEvent.click(screen.getByTestId('ralph-grill-setup-agent-ux-edit'));
         fireEvent.change(screen.getByTestId('ralph-grill-setup-agent-ux-provider'), {
             target: { value: 'claude' },
         });
@@ -256,6 +267,7 @@ describe('RalphGrillSetupPanel', () => {
     it('hides tier pills for providers without tiers and resolves provider defaults', async () => {
         const { onChange } = renderPanel();
 
+        fireEvent.click(screen.getByTestId('ralph-grill-setup-agent-ux-edit'));
         fireEvent.change(screen.getByTestId('ralph-grill-setup-agent-ux-provider'), {
             target: { value: 'codex' },
         });
@@ -272,7 +284,7 @@ describe('RalphGrillSetupPanel', () => {
         });
     });
 
-    it('wraps the depth selector and all agent rows in a single bounded scroll region', () => {
+    it('wraps the depth selector and compact agent rows in a single bounded scroll region', () => {
         renderPanel();
 
         const scroll = screen.getByTestId('ralph-grill-setup-scroll');
@@ -281,11 +293,12 @@ describe('RalphGrillSetupPanel', () => {
         expect(scroll.className).toContain('overflow-y-auto');
         expect(scroll.className).toContain('max-h-[55vh]');
 
-        // Depth selector and the per-role provider/tier rows scroll together as one
+        // Depth selector and compact per-role override rows scroll together as one
         // combined panel (both live inside the single scroll wrapper).
         expect(within(scroll).getByTestId('ralph-grill-setup-depth-standard')).toBeTruthy();
         const agents = within(scroll).getByTestId('ralph-grill-setup-agents');
         expect(within(scroll).getByTestId('ralph-grill-setup-agent-product')).toBeTruthy();
+        expect(within(scroll).queryByTestId('ralph-grill-setup-agent-product-provider')).toBeNull();
 
         // Avoid separate independent scroll regions: only the wrapper scrolls.
         expect(agents.className).not.toContain('overflow-y-auto');
