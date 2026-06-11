@@ -16,6 +16,7 @@ export * from './schedules';
 export * from './seen-state';
 export * from './skills';
 export * from './stats';
+export * from './task-groups';
 export * from './tasks';
 export * from './templates';
 export * from './servers';

@@ -1,4 +1,5 @@
 import type { JsonObject } from './common';
+import type { ProcessGroupPinType } from './task-groups';
 
 export type AIProcessStatus = 'queued' | 'running' | 'cancelling' | 'completed' | 'failed' | 'cancelled';
 
@@ -202,8 +203,6 @@ export interface TurnArchiveResponse {
 export interface PinnedTurnsResponse {
   turns: ConversationTurn[];
 }
-
-export type ProcessGroupPinType = 'ralph-session' | 'for-each-run' | 'map-reduce-run';
 
 export interface ProcessGroupPin {
   type: ProcessGroupPinType;

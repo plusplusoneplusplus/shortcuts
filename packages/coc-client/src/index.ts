@@ -8,3 +8,4 @@ export * from './domains';
 export * from './realtime';
 export * from './for-each-plan';
 export * from './map-reduce-plan';
+export * from './task-group-ref';
