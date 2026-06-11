@@ -11,6 +11,7 @@ import type {
   PrSuggestionsResponse,
   PullRequestChatBinding,
   PullRequestChatBindingListResponse,
+  PullRequestChatFreshResponse,
   PullRequestChecksResponse,
   PullRequestCommitsResponse,
   PullRequestListQuery,
@@ -216,6 +217,13 @@ export class PullRequestsClient {
     return this.transport.request<void>(
       `/workspaces/${encodePathSegment(workspaceId)}/pull-request-chat-bindings/${encodePathSegment(prId)}`,
       { method: 'DELETE' },
+    );
+  }
+
+  startFreshChat(workspaceId: string, prId: string): Promise<PullRequestChatFreshResponse> {
+    return this.transport.request<PullRequestChatFreshResponse>(
+      `/workspaces/${encodePathSegment(workspaceId)}/pull-request-chat-bindings/${encodePathSegment(prId)}/fresh`,
+      { method: 'POST', body: {} },
     );
   }
 

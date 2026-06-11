@@ -214,6 +214,7 @@ describe('PullRequestsClient', () => {
     await client.getChatBinding('ws/a', '142');
     await client.createChatBinding('ws/a', '142', 'task-1');
     await client.deleteChatBinding('ws/a', '142');
+    await client.startFreshChat('ws/a', '142');
 
     expect(adapter.calls).toEqual([
       { path: '/workspaces/ws%2Fa/pull-request-chat-bindings', options: undefined },
@@ -225,6 +226,10 @@ describe('PullRequestsClient', () => {
       {
         path: '/workspaces/ws%2Fa/pull-request-chat-bindings/142',
         options: { method: 'DELETE' },
+      },
+      {
+        path: '/workspaces/ws%2Fa/pull-request-chat-bindings/142/fresh',
+        options: { method: 'POST', body: {} },
       },
     ]);
   });

@@ -23,6 +23,7 @@ import type {
   WorkItem,
   WorkItemChatBinding,
   WorkItemChatBindingListResponse,
+  WorkItemChatFreshResponse,
   WorkItemAiGenerationResponse,
   WorkItemFilter,
   WorkItemGroupedResponse,
@@ -246,6 +247,13 @@ export class WorkItemsClient {
     return this.transport.request<void>(
       `/workspaces/${encodePathSegment(workspaceId)}/work-item-chat-bindings/${encodePathSegment(workItemId)}`,
       { method: 'DELETE' },
+    );
+  }
+
+  startFreshChat(workspaceId: string, workItemId: string): Promise<WorkItemChatFreshResponse> {
+    return this.transport.request<WorkItemChatFreshResponse>(
+      `/workspaces/${encodePathSegment(workspaceId)}/work-item-chat-bindings/${encodePathSegment(workItemId)}/fresh`,
+      { method: 'POST', body: {} },
     );
   }
 

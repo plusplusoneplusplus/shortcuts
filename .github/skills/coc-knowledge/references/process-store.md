@@ -21,6 +21,8 @@ Default backend. Single `processes.db` file at `~/.coc/processes.db`. Schema ver
 | `pull_request_chat_bindings` | prId → taskId mappings (one persistent chat per PR per workspace) |
 | `work_item_chat_bindings` | workItemId → taskId mappings (one persistent chat per Work Item per workspace) |
 
+Commit, Pull Request, and Work Item binding routes also expose a workspace-scoped fresh-chat operation that archives the currently bound process and deletes only that target's binding. It does not fork the process, copy conversation turns, or create a new process record; the next lens send uses the normal target-specific creation flow to bind a fresh chat.
+
 ### Key Features
 
 - **FTS5 search:** Full-text search on conversation content via `conversation_search` index

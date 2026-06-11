@@ -173,6 +173,11 @@ export interface PullRequestChatBindingListResponse {
   bindings: Record<string, { taskId: string; createdAt: string }>;
 }
 
+export interface PullRequestChatFreshResponse {
+  prId: string;
+  archivedTaskId: string;
+}
+
 // ── Classification (focused-diff) ───────────────────────────────────
 
 /** The hunk categories recognised by the classifier. */
