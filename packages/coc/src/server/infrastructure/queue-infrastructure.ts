@@ -63,6 +63,7 @@ export function createQueueInfrastructure(
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined,
     provider?: 'copilot' | 'codex' | 'claude',
     resolveAiServiceForProvider?: (provider: import('../tasks/task-types').ChatProvider) => import('@plusplusoneplusplus/forge').ISDKService,
+    ralphMultiAgentGrillEnabled?: boolean,
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.
     let db: Database.Database;
@@ -90,6 +91,7 @@ export function createQueueInfrastructure(
         askUser,
         getWsServer,
         provider,
+        ralphMultiAgentGrillEnabled,
         resolveAiServiceForProvider,
         initialDelayMs: options.queue?.restartPickupDelayMs,
         getLoopInfra,

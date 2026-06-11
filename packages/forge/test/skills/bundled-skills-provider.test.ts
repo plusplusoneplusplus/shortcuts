@@ -13,6 +13,7 @@ import {
     getBundledSkillsPath,
     parseBundledSkillVersion,
     autoInstallDefaultSkills,
+    getBundledSkillsRegistry,
 } from '../../src/skills/bundled-skills-provider';
 import type { BundledSkill } from '../../src/skills/types';
 
@@ -32,24 +33,26 @@ describe('getBundledSkills', () => {
         fs.rmdirSync(tmpDir);
     });
 
-    it('includes create-work-item and create-bug in bundled skills', () => {
+    it('does not bundle create-work-item or create-bug (superseded by the create_update_work_item tool)', () => {
+        // Regression guard: these two skills were removed from the bundle in favor of
+        // the unified create_update_work_item LLM tool. They must not reappear in the
+        // registry or as resolved bundled-skill payloads.
+        const registryNames = getBundledSkillsRegistry().map(s => s.name);
+        expect(registryNames).not.toContain('create-work-item');
+        expect(registryNames).not.toContain('create-bug');
+
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'install-'));
         try {
-            const skills = getBundledSkills(tmpDir);
-            const names = skills.map(s => s.name);
-            // These should be in the registry (they may or may not resolve depending on symlinks in test env)
-            const bundledPath = getBundledSkillsPath();
-            const cwi = path.join(bundledPath, 'create-work-item', 'SKILL.md');
-            const cb = path.join(bundledPath, 'create-bug', 'SKILL.md');
-            if (fs.existsSync(cwi)) {
-                expect(names).toContain('create-work-item');
-            }
-            if (fs.existsSync(cb)) {
-                expect(names).toContain('create-bug');
-            }
+            const names = getBundledSkills(tmpDir).map(s => s.name);
+            expect(names).not.toContain('create-work-item');
+            expect(names).not.toContain('create-bug');
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
+
+        const bundledPath = getBundledSkillsPath();
+        expect(fs.existsSync(path.join(bundledPath, 'create-work-item'))).toBe(false);
+        expect(fs.existsSync(path.join(bundledPath, 'create-bug'))).toBe(false);
     });
 
     it('marks skills as alreadyExists when they are installed', () => {
@@ -146,15 +149,6 @@ describe('SKILL.md metadata', () => {
             expect(parsed.name.length).toBeGreaterThan(0);
             expect(parsed.description.length).toBeGreaterThan(10);
         }
-    });
-
-    it('create-bug guidance uses the unified work-item tool', () => {
-        const skillFile = path.join(bundledPath, 'create-bug', 'SKILL.md');
-        const content = fs.readFileSync(skillFile, 'utf-8');
-
-        expect(content).toContain('create_update_work_item');
-        expect(content).toContain('type:        "bug"');
-        expect(content).not.toContain('create_bug');
     });
 });
 

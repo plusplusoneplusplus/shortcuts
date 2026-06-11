@@ -10,7 +10,7 @@ import { useQueue } from '../contexts/QueueContext';
 import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
 import { SHOW_WIKI_TAB } from './TopBar';
-import { isTerminalEnabled, isNotesEnabled } from '../utils/config';
+import { isTerminalEnabled, isNotesEnabled, isDreamsEnabled } from '../utils/config';
 import { getUiLayoutMode } from '../hooks/preferences/useUiLayoutMode';
 import type { UiLayoutMode } from '../types/dashboard';
 import { lazy, Suspense } from 'react';
@@ -428,6 +428,7 @@ const ALL_REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
     c: 'settings',
     i: 'work-items',
     n: 'notes',
+    d: 'dreams',
 };
 
 export const REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = SHOW_WIKI_TAB
@@ -770,6 +771,7 @@ export function Router() {
                 if (rawTab) {
                     if (rawTab === 'terminal' && !isTerminalEnabled()) return;
                     if (rawTab === 'notes' && !isNotesEnabled()) return;
+                    if (rawTab === 'dreams' && !isDreamsEnabled()) return;
                     // The 'chats' shortcut maps to the chat surface, whose canonical
                     // sub-tab key differs by layout mode (`'activity'` in classic).
                     const tab: RepoSubTab = rawTab === 'chats' ? resolveChatSubTab(getUiLayoutMode()) : rawTab;

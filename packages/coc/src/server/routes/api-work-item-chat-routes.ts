@@ -9,6 +9,7 @@ import { handleAPIError, notFound, badRequest } from '../errors';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
 import { WorkItemChatBindingStore } from '../processes/work-item-chat-binding-store';
+import { startFreshLensChat } from '../processes/fresh-lens-chat-binding';
 
 const MAX_WORK_ITEM_ID_LENGTH = 512;
 const CONTROL_CHAR_RE = /[\u0000-\u001F\u007F]/;
@@ -23,6 +24,32 @@ function isValidWorkItemId(value: unknown): value is string {
 export function registerWorkItemChatRoutes(ctx: ApiRouteContext): void {
     const { routes, store, db } = ctx;
     const bindingStore = new WorkItemChatBindingStore(db!);
+
+    // POST /api/workspaces/:id/work-item-chat-bindings/:workItemId/fresh — Archive current chat and clear binding
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/work-item-chat-bindings\/([^/]{1,512})\/fresh$/,
+        handler: async (_req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            const workItemId = decodeURIComponent(match![2]);
+            if (!isValidWorkItemId(workItemId)) {
+                return handleAPIError(res, badRequest('Missing or invalid field: workItemId'));
+            }
+            try {
+                const archivedTaskId = await startFreshLensChat({
+                    store,
+                    workspaceId: ws.id,
+                    binding: bindingStore.get(ws.id, workItemId),
+                    unbind: () => bindingStore.unbind(ws.id, workItemId),
+                });
+                sendJSON(res, 200, { workItemId, archivedTaskId });
+            } catch (error) {
+                handleAPIError(res, error);
+            }
+        },
+    });
 
     // GET /api/workspaces/:id/work-item-chat-bindings — List all bindings
     routes.push({

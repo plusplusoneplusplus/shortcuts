@@ -96,6 +96,7 @@ The `src/server/` tree is grouped by feature domain. Cross-cutting plumbing stay
 | `providers/` | Provider abstraction for AI/PRs |
 | `repos/` | Repository management endpoints |
 | `work-items/` | Work-items REST + executors |
+| `dreams/` | Workspace-scoped dream card/run types, deterministic candidate prefiltering, eligible conversation source selection, process-lifecycle-backed read-only analyzer/critic validation, lifecycle storage with provider/model/timeout run attribution and analyzer/critic process links, durable dedup/coverage history, queue-backed visible `dream-run` manual/idle orchestration with quiet-window readiness checks, periodic opt-in idle scheduling, and workspace Dreams REST routes |
 | `wiki/` | Wiki integration (manager, data, routes, context-builder, conversation-sessions) |
 | `terminal/` | WebSocket-based PTY (session-manager, routes, ws-server) |
 | `memory/` | Memory config, bounded-memory REST, repo-memory, promote, background-review |
@@ -177,6 +178,15 @@ forEach:
 mapReduce:
   enabled: false
 
+dreams:
+  enabled: false
+  idleCheckIntervalMs: 300000
+  minIdleMs: 900000
+  confidenceThreshold: 0.85
+  maxCandidates: 8
+  conversationLimit: 20
+  timeoutMs: 3600000
+
 codex:
   enabled: false
 
@@ -185,6 +195,7 @@ claude:
 
 features:
   autoAgentProviderRouting: false  # enables Auto for omitted-provider default paths
+  ralphMultiAgentGrill: false      # gated multi-agent Ralph grilling setup and agent preflight
 
 agentProviderRouting:
   auto:
@@ -218,7 +229,8 @@ Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT.
 2. Auto-migrations: workspace registry JSON → SQLite, file-based process history → SQLite
 3. Chat/follow-up executors initialize model metadata on demand if task starts before cache warm
 4. Variant models with `capabilities.family` base preserved in process metadata but sent to SDK as base model + reasoning effort
-5. `defaultProvider` is the concrete fallback provider when Auto routing is disabled; when `features.autoAgentProviderRouting` is true, omitted-provider default paths use `agentProviderRouting.auto`, chat payloads with `payload.provider` override it, explicit Auto requests carry `context.autoProviderRouting.requested` and are resolved to a concrete provider before effort-tier expansion, while follow-ups use the provider recorded on the original process
+5. Copilot long-context tier resolved automatically at the provider boundary: chat and follow-up executors pass `contextTier: "long_context"` only when the resolved Copilot model's catalog metadata advertises `billing.tokenPrices.longContext.contextMax` (via `getCopilotContextTierForModel`); the field is omitted for Copilot models without that metadata and never sent for Codex/Claude. Static fallback models carry no long-context metadata, so a failed catalog fetch disables long context for that run
+6. `defaultProvider` is the concrete fallback provider when Auto routing is disabled; when `features.autoAgentProviderRouting` is true, omitted-provider default paths use `agentProviderRouting.auto`, chat payloads with `payload.provider` override it, explicit Auto requests carry `context.autoProviderRouting.requested` and are resolved to a concrete provider before effort-tier expansion, while follow-ups use the provider recorded on the original process
 
 ## Storage Layout
 
@@ -235,6 +247,7 @@ Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT.
 - `tasks/` — task and plan files
 - `outputs/` — AI conversation output markdown
 - `memory/MEMORY.md` — per-repo bounded memory
+- `dreams/cards.json`, `dreams/runs.json` — reviewable dream cards, hidden candidate/terminal history, completed-run source coverage, and analyzer/critic process links for workspace-local dedup/incremental selection
 - `ralph-sessions/<sessionId>/` — Ralph `session.json` metadata and `progress.md` journal
 - `for-each-runs/<runId>/` — For Each `run.json` metadata and `items.json` reviewed item plan/state
 - `map-reduce-runs/<runId>/` — Map Reduce `run.json` metadata, `items.json` reviewed map item plan/state, and `reduce-step.json` tracked reduce-step state

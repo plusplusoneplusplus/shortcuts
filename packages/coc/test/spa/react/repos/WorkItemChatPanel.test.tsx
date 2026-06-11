@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
 const mockCreateChat = vi.fn();
+const mockStartFreshChat = vi.fn();
 const mockUseWorkItemChatBinding = vi.fn();
 
 vi.mock('../../../../src/server/spa/client/react/features/work-items/hooks/useWorkItemChatBinding', () => ({
@@ -18,7 +19,15 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/ChatDetail', () =
             data-standalone={props.standalone ? 'true' : undefined}
             data-title={props.title}
             data-hide-mode-selector={props.hideModeSelector ? 'true' : undefined}
-        />
+            data-has-fresh-context-action={props.onStartFreshSameContext ? 'true' : 'false'}
+            data-starting-fresh={props.startingFreshSameContext ? 'true' : 'false'}
+        >
+            {props.onStartFreshSameContext && (
+                <button type="button" data-testid="mock-new-chat-same-context" onClick={props.onStartFreshSameContext}>
+                    New chat with same context
+                </button>
+            )}
+        </div>
     ),
 }));
 
@@ -66,6 +75,7 @@ describe('WorkItemChatPanel', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockCreateChat.mockResolvedValue('new-task-id');
+        mockStartFreshChat.mockResolvedValue(true);
         mockToPayload.mockReturnValue([]);
     });
 
@@ -85,6 +95,8 @@ describe('WorkItemChatPanel', () => {
             loading: false,
             error: null,
             createChat: mockCreateChat,
+            startFreshChat: mockStartFreshChat,
+            startingFresh: false,
             ...overrides,
         });
     }
@@ -131,7 +143,39 @@ describe('WorkItemChatPanel', () => {
         expect(detail.getAttribute('data-standalone')).toBe('true');
         expect(detail.getAttribute('data-title')).toContain('BUG-7');
         expect(detail.getAttribute('data-hide-mode-selector')).toBe('true');
+        expect(detail.getAttribute('data-has-fresh-context-action')).toBe('true');
         expect(screen.queryByTestId('work-item-chat-close-btn')).toBeNull();
+    });
+
+    it('passes the fresh same-context action into the active Work Item chat window', async () => {
+        setupHook({ taskId: 'task-123', startingFresh: true });
+
+        await act(async () => { render(<WorkItemChatPanel {...defaultProps} />); });
+
+        const detail = screen.getByTestId('activity-chat-detail');
+        expect(detail.getAttribute('data-starting-fresh')).toBe('true');
+        expect(screen.getByTestId('mock-new-chat-same-context').textContent).toBe('New chat with same context');
+    });
+
+    it('starts a fresh same-context Work Item chat from the active chat window action', async () => {
+        setupHook({ taskId: 'task-123' });
+
+        await act(async () => { render(<WorkItemChatPanel {...defaultProps} />); });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('mock-new-chat-same-context'));
+        });
+
+        expect(mockStartFreshChat).toHaveBeenCalledOnce();
+    });
+
+    it('shows active-chat errors as a compact banner without replacing ChatDetail', async () => {
+        setupHook({ taskId: 'task-123', error: 'Failed to start fresh work item chat' });
+
+        await act(async () => { render(<WorkItemChatPanel {...defaultProps} />); });
+
+        expect(screen.getByTestId('work-item-chat-error-banner').textContent).toBe('Failed to start fresh work item chat');
+        expect(screen.getByTestId('activity-chat-detail').getAttribute('data-task-id')).toBe('task-123');
     });
 
     it('passes only saved Work Item labels to the binding hook and warns for unsaved edits', async () => {

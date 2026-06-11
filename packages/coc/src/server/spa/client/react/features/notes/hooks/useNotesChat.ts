@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getSpaCocClient } from '../../../api/cocClient';
 import type { AttachmentPayload } from '../../../types/attachments';
+import { isCommitChatLensEnabled } from '../../../utils/config';
+
+const INHERITED_LENS_CHAT_MODE = {
+    inherited: true,
+    source: 'features.commitChatLens',
+} as const;
 
 /** Whether the chat is scoped to the current note or the whole workspace. */
 export type ChatScope = 'per-note' | 'per-workspace';
@@ -186,6 +192,7 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
                 model,
                 skills,
                 attachments,
+                ...(isCommitChatLensEnabled() ? { lensChat: INHERITED_LENS_CHAT_MODE } : {}),
             });
             const newTaskId = res.task.id;
 

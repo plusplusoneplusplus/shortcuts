@@ -20,6 +20,7 @@ spa/client/react/
 ├── layout/             # Layout (Router, TopBar, BottomNav, ThemeProvider)
 ├── features/
 │   ├── chat/           # Chat UI: ChatDetail, ChatListPane, ConversationArea
+│   ├── dreams/         # Workspace Dreams review panel with feature/opt-in states, queue-backed run-now task summary, provider-attributed Activity/Admin AI Provider visibility, filters, plain-language card guidance, source evidence links, and card lifecycle actions
 │   ├── memory/         # Memory V2 route, facts/review/episodes tabs, repo memory settings section
 │   ├── notes/          # Notes UI: NoteEditor, Mermaid zoom/pan, sidebar, multi-root dropdown with modifier/range root selection and bulk root removal (useNotesRoots)
 │   ├── pull-requests/  # PR dashboard: attention groups, provider-derived PR helpers, shared provider-id/displayName Team author matching, Team auto-classification triggers, real diff-stat queue badges/risk, deterministic review summary, BatchCommandPanel
@@ -37,7 +38,9 @@ spa/client/react/
 └── featureFlags.ts     # Compile-time feature flags
 ```
 
-When `features.commitChatLens` is enabled from Admin -> Configure -> Features, review chat uses `useReviewChatPresentation()` / `useCommitChatPresentation()` to render unpinned supported chat targets such as commit detail, commit-backed file diff, commit review popouts, PR detail Ask AI, PR review popouts, and Work Item detail Ask AI as bottom-right lenses. Commit and PR mobile/tablet layouts use their existing side-panel or drawer fallback, while Work Item chat keeps the lens presentation on non-desktop viewports. Pinned desktop chat targets render with the shared side-panel frame and an Unpin action; Work Item detail places the pinned chat in a right-side resizable column beside the detail content and persists that column width with a workspace- and Work Item-scoped `coc.workItemChatPanel.width.*` key. Lens open, pin, and minimized states are client-local localStorage scoped by workspace plus review target (`commit` hash, PR repo/id/head discriminator, or Work Item ID). Minimized state only affects lens presentation and restores from a compact bottom-right pill while keeping the hidden chat tree mounted so drafts and attachments stay intact. `features.commitChatLensDormantMode` (`'ghost'` | `'pill'`, default `'ghost'`) controls the automatic dormant behavior: when the cursor leaves the lens, after a 600ms delay the lens either ghost-fades (near-transparent with scale-down, click-through) or collapses to a compact status pill; re-entering the lens or pill restores focus immediately. Focus detection uses a `useLensDormantState` hook backed by document-level `mousemove` hit-testing against the card or pill bounding rect (not element-level mouseenter/leave, which is unreliable when child elements toggle `pointerEvents` or when the hit-target shape changes between card and pill). Focus detection uses a `useLensDormantState` hook backed by document-level `mousemove` hit-testing against the card or pill bounding rect (not element-level mouseenter/leave, which is unreliable when child elements toggle `pointerEvents` or when the hit-target shape changes between card and pill). Focus detection uses a `useLensDormantState` hook backed by document-level `mousemove` hit-testing against the card or pill bounding rect (not element-level mouseenter/leave, which is unreliable when child elements toggle `pointerEvents` or when the hit-target shape changes between card and pill). Open lens frames share a visible top-left resize grip that changes width and height while keeping the bottom-right corner anchored; this size is persisted to `localStorage` under `coc.commitChatLens.size` (global, not per-target) and restored on subsequent mounts, clamped to valid viewport bounds. The flag is disabled by default, so commit review keeps the legacy `coc.commitChat.open` visibility key and `coc.commitChatPanel.width` resizing behavior until the admin flag is enabled.
+When `features.commitChatLens` is enabled from Admin -> Configure -> Features, review chat uses `useReviewChatPresentation()` / `useCommitChatPresentation()` to render unpinned supported chat targets such as commit detail, commit-backed file diff, commit review popouts, PR detail Ask AI, PR review popouts, and Work Item detail Ask AI as bottom-right lenses. Commit and PR mobile/tablet layouts use their existing side-panel or drawer fallback, while Work Item chat keeps the lens presentation on non-desktop viewports. Pinned desktop chat targets render with the shared side-panel frame and an Unpin action; Work Item detail places the pinned chat in a right-side resizable column beside the detail content and persists that column width with a workspace- and Work Item-scoped `coc.workItemChatPanel.width.*` key. Lens open, pin, and minimized states are client-local localStorage scoped by workspace plus review target (`commit` hash, PR repo/id/head discriminator, or Work Item ID). Active Commit, PR, and Work Item lens chats pass a **New chat with same context** action into the current chat header's metadata/overflow menu; the action archives and clears the workspace-scoped target binding through the domain client, leaves the previous process recoverable in history, and returns the panel to the compact empty composer for the same workspace and target label. Minimized state only affects lens presentation and restores from a compact bottom-right pill while keeping the hidden chat tree mounted so drafts and attachments stay intact. `features.commitChatLensDormantMode` (`'ghost'` | `'pill'`, default `'ghost'`) controls the automatic dormant behavior: when the cursor leaves the lens, after a 600ms delay the lens either ghost-fades (near-transparent with scale-down, click-through) or collapses to a compact status pill; re-entering the lens or pill restores focus immediately. Focus detection uses a `useLensDormantState` hook backed by document-level `mousemove` hit-testing against the card or pill bounding rect (not element-level mouseenter/leave, which is unreliable when child elements toggle `pointerEvents` or when the hit-target shape changes between card and pill). Focus detection uses a `useLensDormantState` hook backed by document-level `mousemove` hit-testing against the card or pill bounding rect (not element-level mouseenter/leave, which is unreliable when child elements toggle `pointerEvents` or when the hit-target shape changes between card and pill). Focus detection uses a `useLensDormantState` hook backed by document-level `mousemove` hit-testing against the card or pill bounding rect (not element-level mouseenter/leave, which is unreliable when child elements toggle `pointerEvents` or when the hit-target shape changes between card and pill). Open lens frames share a visible top-left resize grip that changes width and height while keeping the bottom-right corner anchored; this size is persisted to `localStorage` under `coc.commitChatLens.size` (global, not per-target) and restored on subsequent mounts, clamped to valid viewport bounds. The flag is disabled by default, so commit review keeps the legacy `coc.commitChat.open` visibility key and `coc.commitChatPanel.width` resizing behavior until the admin flag is enabled.
+
+The Notes view inherits the same `features.commitChatLens` source of truth for its AI chat surface. `NotesView` uses `useReviewChatPresentation()` with a workspace-scoped `notes` target, preserving the legacy workspace-scoped notes chat open key while Lens is disabled and using the shared target-scoped Lens open/pin/minimize keys when Lens is enabled. The notes area shows no separate Lens indicator; no notes-specific Lens setting is stored or exposed. Note-producing SPA flows that originate from notes/chat UI (notes chat edits, AI note creation, and bulk chat summaries) attach `context.lensChat = { inherited: true, source: 'features.commitChatLens' }` only while the shared Lens flag is enabled, so the process metadata records inherited Lens routing without adding persistent notes-specific state.
 
 `features/chat/ChatListPane.tsx` keeps grouped chat-history expansion state
 local to the mounted view. Ralph session groups, For Each run groups, Map
@@ -65,6 +68,21 @@ by workspace-scoped `client.mapReduce.list(workspaceId)` summaries and nest
 linked generation/map/reduce chats by `payload.context.mapReduce`, persisted
 `mapReduce` metadata, or `generationProcessId` so child chats do not duplicate
 as standalone rows.
+
+`features/chat/RalphGrillSetupPanel.tsx` renders the disabled-by-default
+multi-agent Ralph grilling setup card when `features.ralphMultiAgentGrill` is
+enabled. New Chat Ralph grilling (`NewChatArea`) and promoted ask-mode chats
+(`FollowUpInputArea` via `ChatDetail`) both use the same compact card so users
+choose Light/Standard/Deep depth, see inherited provider/effort defaults once,
+and expand individual role rows only when per-role provider/tier overrides are
+needed before the consolidated question-planning turn is submitted. While the
+server runs the separate grill-agent preflight, `ConversationArea` renders the
+transient
+`ralph-grill-planning` SSE state as an immediate compact status card. The live
+`ask_user` form then renders any Ralph grill planning metadata from
+`pendingAskUser` as one compact "Question planning" card plus grouped role
+sections and provenance chips; it does not create separate agent threads or
+separate answer submissions.
 
 ## Key Contexts
 
@@ -131,6 +149,12 @@ the typed Work Items client. In Review, local-only Work Items/Goals expose an
 explicit AI Review action that enqueues a `code-review` chat as a non-mutating
 timeline entry, plus a Submit PR action only when the implementation change has
 eligible commits and no recorded PR.
+
+`features.ralphMultiAgentGrill` is a disabled-by-default runtime feature flag
+surfaced to the SPA as `ralphMultiAgentGrillEnabled` from bootstrap config and
+`GET /api/config/runtime`; use `isRalphMultiAgentGrillEnabled()` for UI gates.
+The flag only enables the multi-agent Ralph grilling setup surfaces and prompt
+contract. Notes direct goal launch remains separate because it skips grilling.
 
 ## Chat UI Architecture
 
@@ -220,15 +244,19 @@ choice marks that question complete for batch submission and reveals an optional
 short note field. Unsubmitted live-batch drafts are saved in browser
 localStorage scoped by process id and batch id, restored after navigation or
 refresh for the same batch, and cleared on accepted submission, skip-all,
-process cancellation, or replacement by a newer batch id. Completed `ask_user`
-tool calls render as read-only historical
-question cards via `AskUserHistoryCard` inside `ConversationTurnBubble`; the
-history card displays persisted `args.questions[]` plus the completed
-answer/skip/deferred result, including "Need more context" notes, with a
-compatibility unwrap for older Codex MCP captures stored as
-`args.arguments.questions[]`, and is kept visible outside whisper collapse.
-Generic `ToolCallView` still handles `ask_user` as a fallback and summarizes
-`args.questions[0].question` when present.
+process cancellation, or replacement by a newer batch id. For Ralph
+multi-agent grilling, optional per-question metadata renders a compact
+"Question planning" summary, role-group headers, provenance chips such as
+`UX Agent · provider/model`, consolidation chips for merged questions, and
+warning copy for failed, empty, unavailable, or duplicate-only agent coverage
+while keeping the same single batch submission. Completed `ask_user` tool calls
+render as read-only historical question cards via `AskUserHistoryCard` inside
+`ConversationTurnBubble`; the history card displays persisted
+`args.questions[]` plus the completed answer/skip/deferred result, including
+"Need more context" notes, with a compatibility unwrap for older Codex MCP
+captures stored as `args.arguments.questions[]`, and is kept visible outside
+whisper collapse. Generic `ToolCallView` still handles `ask_user` as a fallback
+and summarizes `args.questions[0].question` when present.
 
 `toolNormalization.ts` → `normalizeToolName()` canonicalises SDK-specific names before display and storage. Notable aliases: `read_file`/`open_file` → `view`, `edit_file`/`str_replace`/`str_replace_editor` → `edit`, `write_file`/`create_file` → `create`, `command_execution` → `shell`, `file_change` → `apply_patch`, `Skill` (Claude Code SDK PascalCase) → `skill`. All downstream logic (`getToolKindInfo`, `getToolSummary`, `filterWhisperChunks` skill counting) operates on the normalised lowercase name.
 For Codex `file_change` calls normalized to `apply_patch`, `ToolCallView`
@@ -253,6 +281,14 @@ Stacked layout with:
 3. `ComposerMetaStrip`: cwd chip + context-window fuel gauge + provider badge for non-Copilot sessions. The context-window gauge renders a segmented system/tool/conversation breakdown when `useChatSSE` receives all three persisted snapshot values (`sessionSystemTokens`, `sessionToolTokens`, `sessionConversationTokens`) or the same fields from live `token-usage`; otherwise it falls back to the single-colour usage bar. In the follow-up toolbar it sits between the tools zone and the send divider so its info reads as status next to send.
 
 Focus indicator propagates mode-colored ring from contenteditable to parent card.
+
+File/image attachments flow through the shared `useFileAttachments` hook before
+new-chat, follow-up, note-chat, queue, task-generation, review-chat, For Each,
+and Map Reduce send paths serialize them. Browser-supported raster chat images at or above 64 KiB (`png`, `jpg`/`jpeg`,
+`webp`) are canvas-downscaled to at most 1600px on the long edge and re-encoded
+as JPEG only when that reduces the payload before the wire `AttachmentPayload`/
+legacy `images` data URLs reach the server; smaller images, unsupported images,
+and failed canvas conversions retain the original attachment bytes.
 
 When `features.sessionContextAttachments` is enabled, same-workspace chat/process
 rows, Ralph session group rows, Work Item list/hierarchy rows, Git commit rows,
@@ -391,6 +427,10 @@ Each tool's internal sub-tab/hash scheme (e.g. `#skills/installed`,
   Loops independently of the hidden parent group row.
 
 Ralph activity deep-links mount `RalphWorkflowPane`, which shows a unified task timeline alongside a read-only session file browser. The timeline interleaves iteration nodes (the union of `record.iterations` and parsed `progress.md` sections) with final-check nodes built from `record.finalChecks`: each `RalphFinalCheckRecord` renders a distinct `RalphFinalCheckNode` labeled `Final check #<checkIndex>` immediately after the iteration it validates (`sourceIteration`), and therefore before the first iteration of any gap-fix loop it starts. Final-check nodes show status (`queued`/`running`/`completed`/`failed`) and a gap summary (`No gaps`, `1 gap`, `<N> gaps`, or an in-progress/unknown copy); a node with a recorded `processId` is clickable and opens that final-check chat process, while one without is rendered disabled. Gap-fix loops (a loop whose index matches a `finalCheck.gapLoopStarted`/`gapLoopIndex`) render a `Gap fix loop <N>` divider that is not gated behind `RALPH_MULTI_LOOP` since it follows final-check visibility; generic `Loop <N>` dividers keep their existing `RALPH_MULTI_LOOP`-gated behavior. Final-check visibility is display/navigation only — it reads already-persisted session data and adds no new persistence. The file browser lists the raw files returned by the Ralph session API, selects the first file by default, renders Markdown files through the shared markdown renderer, and formats JSON files as plain indented text. For stuck executing sessions with no running iteration, the pane's Resume confirmation renders `ModalJobAiControls`; unchanged recovered `resumeDefaults` are omitted so the resume route preserves prior AI settings, while changed selections are serialized to `workspaces.resumeRalphSession()`. The completed-session Continue-loop confirmation renders the same controls and serializes the extension to `workspaces.continueRalphSession()` (a `RalphContinueRequest` carrying `additionalIterations` plus the optional AI overrides) with the identical omit-when-unchanged behavior. The pane accepts an optional selected filename from the router and reports file selections back to the host so URL hash wiring can deep-link individual session files with `#repos/{workspaceId}/activity/ralph/{sessionId}/{filename}`; bare and trailing-slash session hashes have no pre-selected file and fall back to the first file.
+
+## Dreams Route
+
+The repo-scoped Dreams tab (`features/dreams/DreamsPanel.tsx`) is a dedicated review surface separate from Work Items. It is included in repo tab strips only when the global `dreams.enabled` feature flag is on, then requires the workspace `preferences.dreams.enabled` opt-in before calling Dreams routes. Once enabled, it lists visible cards by default, supports status filters for hidden lifecycle history, exposes a manual **Run dream now** action, shows run summaries/no-new-dreams states, links source process turn ranges back to the Activity conversation route, and offers card lifecycle actions: approve, dismiss, record conversion, and supersede. Approved cards also expose an explicit **Take next action** dialog: skill/prompt cards can queue an Ask-mode skill-hardening task, user-workflow cards can save to Notes or Memory V2, and product cards can create a new Work Item or append the recommendation to an existing Work Item. Each next action runs only after the dialog submit and then records the resulting artifact as a dream conversion.
 
 ## Memory Route
 

@@ -11,12 +11,36 @@ import { handleAPIError, notFound, badRequest } from '../errors';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
 import { CommitChatBindingStore } from '../processes/commit-chat-binding-store';
+import { startFreshLensChat } from '../processes/fresh-lens-chat-binding';
 
 const COMMIT_HASH_RE = /^[a-f0-9]{4,40}$/;
 
 export function registerCommitChatRoutes(ctx: ApiRouteContext): void {
     const { routes, store, db } = ctx;
     const bindingStore = new CommitChatBindingStore(db!);
+
+    // POST /api/workspaces/:id/commit-chat-bindings/:hash/fresh — Archive current chat and clear binding
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/commit-chat-bindings\/([a-f0-9]{4,40})\/fresh$/,
+        handler: async (_req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            const hash = match![2];
+            try {
+                const archivedTaskId = await startFreshLensChat({
+                    store,
+                    workspaceId: ws.id,
+                    binding: bindingStore.get(ws.id, hash),
+                    unbind: () => bindingStore.unbind(ws.id, hash),
+                });
+                sendJSON(res, 200, { commitHash: hash, archivedTaskId });
+            } catch (error) {
+                handleAPIError(res, error);
+            }
+        },
+    });
 
     // POST /api/workspaces/:id/commit-chat-bindings/rebind — Re-map binding
     // Registered before /:hash routes as a defensive measure.

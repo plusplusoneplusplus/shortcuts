@@ -20,6 +20,7 @@ const { mockClient } = vi.hoisted(() => ({
         pullRequests: {
             getChatBinding: vi.fn(),
             createChatBinding: vi.fn(),
+            startFreshChat: vi.fn(),
         },
     },
 }));
@@ -45,6 +46,7 @@ describe('usePullRequestChatBinding', () => {
         vi.clearAllMocks();
         mockClient.pullRequests.getChatBinding.mockResolvedValue({ taskId: null });
         mockClient.pullRequests.createChatBinding.mockResolvedValue({});
+        mockClient.pullRequests.startFreshChat.mockResolvedValue({ prId: '142', archivedTaskId: 'task-existing' });
         mockClient.queue.enqueue.mockResolvedValue({ task: { id: 'task-pr' } });
     });
 
@@ -194,19 +196,68 @@ describe('usePullRequestChatBinding', () => {
         });
 
         it('returns null on failure', () => {
-            const catchBlock = source.substring(
-                source.lastIndexOf('catch (err: any)'),
-                source.lastIndexOf('catch (err: any)') + 200,
-            );
-            expect(catchBlock).toContain('return null');
+            expect(source).toContain('return null');
         });
     });
 
-    it('returns taskId, loading, error, and createChat', () => {
-        expect(source).toContain('return { taskId, loading, error, createChat }');
+    describe('startFreshChat clears the active binding', () => {
+        it('calls the fresh PR endpoint and resets taskId to the empty same-context state', async () => {
+            mockClient.pullRequests.getChatBinding.mockResolvedValueOnce({ prId: '142', taskId: 'task-existing' });
+            const { result } = renderHook(() => usePullRequestChatBinding({
+                workspaceId: 'ws-1',
+                prId: '142',
+                prNumber: 142,
+                prTitle: 'Add retry logic',
+                repoId: 'repo-1',
+            }));
+
+            await act(async () => {
+                await Promise.resolve();
+            });
+            expect(result.current.taskId).toBe('task-existing');
+
+            let freshResult = false;
+            await act(async () => {
+                freshResult = await result.current.startFreshChat();
+            });
+
+            expect(freshResult).toBe(true);
+            expect(mockClient.pullRequests.startFreshChat).toHaveBeenCalledWith('ws-1', '142');
+            expect(mockClient.queue.enqueue).not.toHaveBeenCalled();
+            expect(result.current.taskId).toBeNull();
+            expect(result.current.error).toBeNull();
+            expect(result.current.startingFresh).toBe(false);
+        });
+
+        it('keeps the old taskId visible and surfaces an error when fresh reset fails', async () => {
+            mockClient.pullRequests.getChatBinding.mockResolvedValueOnce({ prId: '142', taskId: 'task-existing' });
+            mockClient.pullRequests.startFreshChat.mockRejectedValueOnce(new Error('archive failed'));
+            const { result } = renderHook(() => usePullRequestChatBinding({
+                workspaceId: 'ws-1',
+                prId: '142',
+            }));
+
+            await act(async () => {
+                await Promise.resolve();
+            });
+
+            let freshResult = true;
+            await act(async () => {
+                freshResult = await result.current.startFreshChat();
+            });
+
+            expect(freshResult).toBe(false);
+            expect(result.current.taskId).toBe('task-existing');
+            expect(result.current.error).toBe('archive failed');
+            expect(result.current.startingFresh).toBe(false);
+        });
+    });
+
+    it('returns taskId, loading, error, createChat, and startFreshChat state', () => {
+        expect(source).toContain('return { taskId, loading, error, createChat, startFreshChat, startingFresh }');
     });
 
     it('exits early when prId is empty', () => {
-        expect(source).toContain('if (!prId) { setTaskId(null); return; }');
+        expect(source).toContain('if (!prId) { setTaskId(null); setStartingFresh(false); return; }');
     });
 });

@@ -134,6 +134,7 @@ export class RequestRunner {
             if (options.tools) sessionOptions.tools = options.tools;
             if (options.systemMessage) sessionOptions.systemMessage = options.systemMessage;
             if (options.reasoningEffort && !switchModelAfterSessionCreate) sessionOptions.reasoningEffort = options.reasoningEffort;
+            if (options.contextTier && !switchModelAfterSessionCreate) sessionOptions.contextTier = options.contextTier;
             if (options.availableTools) sessionOptions.availableTools = options.availableTools;
             if (options.excludedTools) sessionOptions.excludedTools = options.excludedTools;
             if (options.skillDirectories?.length) sessionOptions.skillDirectories = options.skillDirectories;
@@ -317,8 +318,11 @@ export class RequestRunner {
             }
 
             if (switchModelAfterSessionCreate) {
-                await session.setModel(options.model!, { reasoningEffort: options.reasoningEffort });
-                sessionLog.debug({ model: options.model, reasoningEffort: options.reasoningEffort }, 'Model set after session creation');
+                await session.setModel(options.model!, {
+                    reasoningEffort: options.reasoningEffort,
+                    ...(options.contextTier ? { contextTier: options.contextTier } : {}),
+                });
+                sessionLog.debug({ model: options.model, reasoningEffort: options.reasoningEffort, contextTier: options.contextTier }, 'Model set after session creation');
             }
 
             const abortSession = () => {

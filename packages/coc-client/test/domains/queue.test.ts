@@ -18,7 +18,12 @@ describe('QueueClient', () => {
     await client.pauseAutopilot({ repoId: 'repo/b' }, { durationHours: 3 });
     await client.cancel('task/1');
     await client.moveToTop('task/1');
-    await client.summarize({ processIds: ['proc/1', 'proc/2'], workspaceId: 'repo/a', userPrompt: 'focus on risks' });
+    await client.summarize({
+      processIds: ['proc/1', 'proc/2'],
+      workspaceId: 'repo/a',
+      userPrompt: 'focus on risks',
+      lensChat: { inherited: true, source: 'features.commitChatLens' },
+    });
 
     expect(adapter.calls.map(c => c.path)).toEqual([
       '/queue',
@@ -43,7 +48,12 @@ describe('QueueClient', () => {
     expect(adapter.calls[8].options?.body).toEqual({ durationHours: 3 });
     expect(adapter.calls[11].options).toMatchObject({
       method: 'POST',
-      body: { processIds: ['proc/1', 'proc/2'], workspaceId: 'repo/a', userPrompt: 'focus on risks' },
+      body: {
+        processIds: ['proc/1', 'proc/2'],
+        workspaceId: 'repo/a',
+        userPrompt: 'focus on risks',
+        lensChat: { inherited: true, source: 'features.commitChatLens' },
+      },
     });
   });
 

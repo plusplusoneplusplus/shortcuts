@@ -48,10 +48,12 @@ vi.mock(`../../../../src/server/spa/client/react/features/git/hooks/useCommitCom
 }));
 
 vi.mock(`../../../../src/server/spa/client/react/utils/config`, () => ({
+    DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
     isWorkItemsHierarchyEnabled: () => false,
     isWorkItemsAiAuthoringEnabled: () => false,
     isWorkItemsWorkflowEnabled: () => false,
     isCommitChatLensEnabled: () => false,
+    getCommitChatLensDormantMode: () => 'ghost' as const,
 }));
 
 // --- Stub heavy child components ---

@@ -218,6 +218,11 @@ export interface CreateNoteWithAIResponse {
   taskId: string;
 }
 
+export interface InheritedLensChatMode {
+  inherited: true;
+  source: 'features.commitChatLens';
+}
+
 export type NoteChatMode = 'ask' | 'autopilot';
 
 export interface NoteChatAttachmentPayload {
@@ -235,6 +240,7 @@ export interface CreateNoteChatRequest {
   model?: string | null;
   skills?: string[];
   attachments?: NoteChatAttachmentPayload[];
+  lensChat?: InheritedLensChatMode;
 }
 
 export type CreateNoteChatResponse = EnqueueTaskResponse;

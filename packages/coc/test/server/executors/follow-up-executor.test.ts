@@ -12,8 +12,9 @@
  * - Session ID forwarded when process has sdkSessionId
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { AIProcess, ModelInfo } from '@plusplusoneplusplus/forge';
+import { modelMetadataStore } from '@plusplusoneplusplus/forge';
 import { FollowUpExecutor } from '../../../src/server/executors/follow-up-executor';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
@@ -1480,5 +1481,106 @@ describe('FollowUpExecutor', () => {
         await executor.executeFollowUp('proc-memv2-dispose-err', 'follow-up');
 
         expect(mockDispose).toHaveBeenCalledTimes(1);
+    });
+});
+
+// ============================================================================
+// Copilot long-context tier
+// ============================================================================
+
+describe('FollowUpExecutor contextTier', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    function makeBillingModel(id: string, billing?: unknown): ModelInfo {
+        return {
+            ...makeModelInfo(id, undefined),
+            ...(billing !== undefined ? { billing: billing as ModelInfo['billing'] } : {}),
+        };
+    }
+
+    const longContextModel = makeBillingModel('gpt-5-long-ctx', { tokenPrices: { longContext: { contextMax: 1_000_000 } } });
+    const standardModel = makeBillingModel('gpt-5-standard', { multiplier: 1 });
+
+    beforeEach(async () => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        mockBuildChatToolBundle.mockReset().mockReturnValue(makeMockToolBundle());
+        mockBuildMemoryV2Addon.mockReset().mockResolvedValue({
+            systemMessageSuffix: undefined,
+            tools: [],
+            suffix: '',
+            excludedBuiltinTools: [],
+            dispose: vi.fn(),
+        });
+        await modelMetadataStore.initialize({ listModels: async () => [longContextModel, standardModel] });
+    });
+
+    afterEach(async () => {
+        // Clear the singleton cache so other suites are unaffected.
+        await modelMetadataStore.initialize({ listModels: async () => [] });
+    });
+
+    it('passes contextTier "long_context" for a Copilot follow-up on a long-context model', async () => {
+        const proc = makeProcess({
+            id: 'proc-ctx-long',
+            sdkSessionId: 'sdk-1',
+            metadata: { type: 'chat', provider: 'copilot', model: 'gpt-5-long-ctx', mode: 'ask' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-ctx-long', 'follow-up');
+
+        const call = sdkMocks.mockSendMessage.calls[0][0] as Record<string, unknown>;
+        expect(call.contextTier).toBe('long_context');
+    });
+
+    it('omits contextTier for a Copilot follow-up on a model without long-context metadata', async () => {
+        const proc = makeProcess({
+            id: 'proc-ctx-standard',
+            sdkSessionId: 'sdk-1',
+            metadata: { type: 'chat', provider: 'copilot', model: 'gpt-5-standard', mode: 'ask' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-ctx-standard', 'follow-up');
+
+        const call = sdkMocks.mockSendMessage.calls[0][0] as Record<string, unknown>;
+        expect(call).not.toHaveProperty('contextTier');
+    });
+
+    it('omits contextTier for a Codex follow-up even when the catalog model has long-context metadata', async () => {
+        sdkMocks.mockListModels.mockResolvedValue([longContextModel]);
+        const proc = makeProcess({
+            id: 'proc-ctx-codex',
+            sdkSessionId: 'sdk-1',
+            metadata: { type: 'chat', provider: 'codex', model: 'gpt-5-long-ctx', mode: 'ask' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-ctx-codex', 'follow-up');
+
+        const call = sdkMocks.mockSendMessage.calls[0][0] as Record<string, unknown>;
+        expect(call).not.toHaveProperty('contextTier');
+    });
+
+    it('omits contextTier for a Claude follow-up even when the catalog model has long-context metadata', async () => {
+        sdkMocks.mockListModels.mockResolvedValue([
+            makeBillingModel('claude-sonnet-4.6', { tokenPrices: { longContext: { contextMax: 1_000_000 } } }),
+        ]);
+        const proc = makeProcess({
+            id: 'proc-ctx-claude',
+            sdkSessionId: 'sdk-1',
+            metadata: { type: 'chat', provider: 'claude', model: 'claude-sonnet-4.6', mode: 'ask' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-ctx-claude', 'follow-up');
+
+        const call = sdkMocks.mockSendMessage.calls[0][0] as Record<string, unknown>;
+        expect(call).not.toHaveProperty('contextTier');
     });
 });

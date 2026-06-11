@@ -4,7 +4,18 @@
  */
 
 import { useState, useEffect } from 'react';
-import { isTerminalEnabled, isNotesEnabled, isMyWorkEnabled, isMyLifeEnabled, isScratchpadEnabled, getScratchpadLayout, isWorkflowsEnabled, isPullRequestsEnabled, isVimNavigationEnabled } from '../../utils/config';
+import {
+    getScratchpadLayout,
+    isDreamsEnabled,
+    isMyLifeEnabled,
+    isMyWorkEnabled,
+    isNotesEnabled,
+    isPullRequestsEnabled,
+    isScratchpadEnabled,
+    isTerminalEnabled,
+    isVimNavigationEnabled,
+    isWorkflowsEnabled,
+} from '../../utils/config';
 import { getSpaCocClient } from '../../api/cocClient';
 
 interface DisplaySettings {
@@ -21,14 +32,43 @@ interface DisplaySettings {
     scratchpadLayout: 'horizontal' | 'vertical';
     workflowsEnabled: boolean;
     pullRequestsEnabled: boolean;
+    dreamsEnabled: boolean;
     vimNavigationEnabled: boolean;
 }
 
-const DEFAULT_SETTINGS: DisplaySettings = { showReportIntent: false, toolCompactness: 3, taskCardDensity: 'dense', historyGrouping: true, groupSingleLineMessages: true, terminalEnabled: true, notesEnabled: true, myWorkEnabled: false, myLifeEnabled: false, scratchpadEnabled: false, scratchpadLayout: 'vertical', workflowsEnabled: false, pullRequestsEnabled: false, vimNavigationEnabled: false };
+const DEFAULT_SETTINGS: DisplaySettings = {
+    showReportIntent: false,
+    toolCompactness: 3,
+    taskCardDensity: 'dense',
+    historyGrouping: true,
+    groupSingleLineMessages: true,
+    terminalEnabled: true,
+    notesEnabled: true,
+    myWorkEnabled: false,
+    myLifeEnabled: false,
+    scratchpadEnabled: false,
+    scratchpadLayout: 'vertical',
+    workflowsEnabled: false,
+    pullRequestsEnabled: false,
+    dreamsEnabled: false,
+    vimNavigationEnabled: false,
+};
 
 /** Build initial settings seeded from window.__DASHBOARD_CONFIG__ when available. */
 function getInitialSettings(): DisplaySettings {
-    return { ...DEFAULT_SETTINGS, terminalEnabled: isTerminalEnabled(), notesEnabled: isNotesEnabled(), myWorkEnabled: isMyWorkEnabled(), myLifeEnabled: isMyLifeEnabled(), scratchpadEnabled: isScratchpadEnabled(), scratchpadLayout: getScratchpadLayout(), workflowsEnabled: isWorkflowsEnabled(), pullRequestsEnabled: isPullRequestsEnabled(), vimNavigationEnabled: isVimNavigationEnabled() };
+    return {
+        ...DEFAULT_SETTINGS,
+        terminalEnabled: isTerminalEnabled(),
+        notesEnabled: isNotesEnabled(),
+        myWorkEnabled: isMyWorkEnabled(),
+        myLifeEnabled: isMyLifeEnabled(),
+        scratchpadEnabled: isScratchpadEnabled(),
+        scratchpadLayout: getScratchpadLayout(),
+        workflowsEnabled: isWorkflowsEnabled(),
+        pullRequestsEnabled: isPullRequestsEnabled(),
+        dreamsEnabled: isDreamsEnabled(),
+        vimNavigationEnabled: isVimNavigationEnabled(),
+    };
 }
 
 let cachedSettings: DisplaySettings | null = null;
@@ -52,6 +92,7 @@ async function fetchDisplaySettings(): Promise<DisplaySettings> {
             scratchpadLayout: (resolved?.scratchpad?.layout === 'horizontal' ? 'horizontal' : 'vertical') as 'horizontal' | 'vertical',
             workflowsEnabled: resolved?.workflows?.enabled ?? false,
             pullRequestsEnabled: resolved?.pullRequests?.enabled ?? false,
+            dreamsEnabled: resolved?.dreams?.enabled ?? false,
             vimNavigationEnabled: resolved?.vimNavigation?.enabled ?? false,
         };
     } catch {

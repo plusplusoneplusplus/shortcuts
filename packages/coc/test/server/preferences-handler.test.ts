@@ -366,6 +366,21 @@ describe('readPreferences / writePreferences', () => {
         expect(loaded.workItems?.sync?.github).toEqual({ owner: 'octo-org', repo: 'octo-repo' });
     });
 
+    it('round-trips workspace dreams opt-in preference', () => {
+        writeRepoPreferences(tmpDir, 'r', { dreams: { enabled: true } });
+        const loaded = readRepoPreferences(tmpDir, 'r');
+        expect(loaded.dreams).toEqual({ enabled: true });
+    });
+
+    it('strips invalid workspace dreams preference shapes', () => {
+        const repoPrefsPath = path.join(tmpDir, 'repos', 'r', 'preferences.json');
+        fs.mkdirSync(path.dirname(repoPrefsPath), { recursive: true });
+        fs.writeFileSync(repoPrefsPath, JSON.stringify({ dreams: { enabled: 'yes', token: 'secret' } }), 'utf-8');
+        const loaded = readRepoPreferences(tmpDir, 'r');
+        expect(loaded.dreams).toBeUndefined();
+        expect(JSON.stringify(loaded)).not.toContain('secret');
+    });
+
     it('round-trips non-secret workspace Azure Boards project preference', () => {
         writeRepoPreferences(tmpDir, 'r', {
             workItems: {

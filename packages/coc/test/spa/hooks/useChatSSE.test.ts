@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useChatSSE } from '../../../src/server/spa/client/react/features/chat/hooks/useChatSSE';
+import { RALPH_GRILL_MAX_ROUNDS } from '../../../src/server/ralph/grill-planning';
 
 // ── Mock EventSource ──────────────────────────────────────────────────────────
 
@@ -205,6 +206,44 @@ describe('useChatSSE', () => {
             MockEventSource.latest().emit('conversation-snapshot', { turns: [{ role: 'user', content: 'hi' }] });
         });
         expect(setTurnsAndRef).toHaveBeenCalledWith([{ role: 'user', content: 'hi' }]);
+    });
+
+    it('tracks Ralph grill planning progress and clears it when ask_user arrives', () => {
+        const setRalphGrillPlanningProgress = vi.fn();
+        const onAskUserBatch = vi.fn();
+        const progress = {
+            status: 'completed',
+            depth: 'light',
+            round: 2,
+            maxRounds: RALPH_GRILL_MAX_ROUNDS,
+            agentCount: 1,
+            agents: [{
+                role: 'product',
+                roleLabel: 'Product Agent',
+                provenanceLabel: 'Product Agent · copilot/gpt-5.5',
+                status: 'completed',
+                candidateCount: 2,
+            }],
+            message: 'Prepared 2 consolidated questions from 2 candidates.',
+            warnings: [],
+        };
+        const question = {
+            batchId: 'batch-ralph',
+            questionId: 'ask-1',
+            question: 'Which users should this optimize for?',
+            type: 'text',
+            turnIndex: 1,
+            index: 0,
+            batchSize: 1,
+        };
+
+        renderHook(() => useChatSSE(makeOptions({ setRalphGrillPlanningProgress, onAskUserBatch })));
+        act(() => { MockEventSource.latest().emit('ralph-grill-planning', progress); });
+        expect(setRalphGrillPlanningProgress).toHaveBeenCalledWith(progress);
+
+        act(() => { MockEventSource.latest().emit('ask-user', question); });
+        expect(setRalphGrillPlanningProgress).toHaveBeenLastCalledWith(null);
+        expect(onAskUserBatch).toHaveBeenCalledWith({ batchId: 'batch-ralph', questions: [question] });
     });
 
     it('hydrates context breakdown fields from conversation-snapshot', () => {

@@ -7,6 +7,7 @@ import { renderHook, act } from '@testing-library/react';
 import { useChatSSE } from '../../../../src/server/spa/client/react/features/chat/hooks/useChatSSE';
 import type { UseChatSSEOptions } from '../../../../src/server/spa/client/react/features/chat/hooks/useChatSSE';
 import type { ClientConversationTurn } from '../../../../src/server/spa/client/react/types/dashboard';
+import { RALPH_GRILL_MAX_ROUNDS } from '../../../../src/server/ralph/grill-planning';
 
 // ── Minimal EventSource mock ──────────────────────────────────────────
 
@@ -307,11 +308,62 @@ describe('useChatSSE', () => {
         });
     });
 
+    it('tracks Ralph grill planning progress and clears it when ask_user arrives', () => {
+        const setRalphGrillPlanningProgress = vi.fn();
+        const onAskUserBatch = vi.fn();
+        const progress = {
+            status: 'running',
+            depth: 'deep',
+            round: 2,
+            maxRounds: RALPH_GRILL_MAX_ROUNDS,
+            agentCount: 2,
+            agents: [
+                {
+                    role: 'product',
+                    roleLabel: 'Product Agent',
+                    provenanceLabel: 'Product Agent · copilot/gpt-5.5',
+                    status: 'running',
+                    candidateCount: 0,
+                },
+            ],
+            message: 'Running 2 Ralph grill agents to plan consolidated questions.',
+            warnings: [],
+        };
+        const question = {
+            batchId: 'batch-ralph',
+            questionId: 'ask-1',
+            question: 'Which users should this optimize for?',
+            type: 'text',
+            turnIndex: 1,
+            index: 0,
+            batchSize: 1,
+        };
+
+        renderHook(() => useChatSSE(makeOptions({ setRalphGrillPlanningProgress, onAskUserBatch })));
+        act(() => {
+            MockEventSource.last._emit('ralph-grill-planning', progress);
+        });
+        expect(setRalphGrillPlanningProgress).toHaveBeenCalledWith(progress);
+
+        act(() => {
+            MockEventSource.last._emit('ask-user', question);
+        });
+        expect(setRalphGrillPlanningProgress).toHaveBeenLastCalledWith(null);
+        expect(onAskUserBatch).toHaveBeenCalledWith({ batchId: 'batch-ralph', questions: [question] });
+    });
+
     it('clears backgroundTasks on done event', async () => {
         const setBackgroundTasks = vi.fn();
         renderHook(() => useChatSSE(makeOptions({ setBackgroundTasks })));
         await act(async () => { MockEventSource.last._emit('done', {}); });
         expect(setBackgroundTasks).toHaveBeenCalledWith(null);
+    });
+
+    it('clears Ralph grill planning progress on done event', async () => {
+        const setRalphGrillPlanningProgress = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setRalphGrillPlanningProgress })));
+        await act(async () => { MockEventSource.last._emit('done', {}); });
+        expect(setRalphGrillPlanningProgress).toHaveBeenCalledWith(null);
     });
 
     it('sets task status to failed when status SSE event reports failed', async () => {

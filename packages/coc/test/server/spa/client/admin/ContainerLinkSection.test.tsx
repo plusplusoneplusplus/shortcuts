@@ -44,6 +44,7 @@ describe('ContainerLinkSection', () => {
 
     afterEach(() => {
         cleanup();
+        vi.restoreAllMocks();
     });
 
     it('fetches status on mount', async () => {
@@ -111,8 +112,7 @@ describe('ContainerLinkSection', () => {
         // "Connecting..." appears in both the status label and the connect button
         await waitFor(() => expect(screen.getAllByText('Connecting\u2026').length).toBeGreaterThan(0));
 
-        expect(pollingCalls(setIntervalSpy)).toHaveLength(1);
-        setIntervalSpy.mockRestore();
+        await waitFor(() => expect(pollingCalls(setIntervalSpy)).toHaveLength(1));
     });
 
     it('does not set up 3-second polling interval when status is disconnected', async () => {
@@ -121,9 +121,9 @@ describe('ContainerLinkSection', () => {
 
         render(<ContainerLinkSection />);
         await waitFor(() => expect(screen.getByText('Disconnected')).toBeTruthy());
+        await act(async () => { await Promise.resolve(); });
 
         expect(pollingCalls(setIntervalSpy)).toHaveLength(0);
-        setIntervalSpy.mockRestore();
     });
 
     it('poll callback suppresses onError (silent=true during restart)', async () => {
@@ -148,7 +148,7 @@ describe('ContainerLinkSection', () => {
         render(<ContainerLinkSection onError={onError} />);
         // "Connecting..." appears in both status label and button
         await waitFor(() => expect(screen.getAllByText('Connecting\u2026').length).toBeGreaterThan(0));
-        expect(capturedCallback).not.toBeNull();
+        await waitFor(() => expect(capturedCallback).not.toBeNull());
 
         // Invoke the polling callback directly (simulates timer tick)
         await act(async () => { capturedCallback!(); });
@@ -156,7 +156,6 @@ describe('ContainerLinkSection', () => {
 
         // onError must NOT be called — polling fetch failures are silent
         expect(onError).not.toHaveBeenCalled();
-        setIntervalSpy.mockRestore();
     });
 
     it('updated onError reference is used after re-render (no stale closure)', async () => {

@@ -178,6 +178,11 @@ describe('useNotesChat', () => {
         it('includes model in payload when provided', () => {
             expect(source).toContain('model,');
         });
+
+        it('passes inherited Lens Chat mode only when the shared Lens flag is enabled', () => {
+            expect(source).toContain('isCommitChatLensEnabled() ? { lensChat: INHERITED_LENS_CHAT_MODE } : {}');
+            expect(source).not.toContain('coc-notes-lens');
+        });
     });
 
     describe('note attachment link formatting', () => {

@@ -60,6 +60,11 @@ vi.mock('../../src/server/llm-tools/create-update-work-item-tool', () => ({
     createCreateUpdateWorkItemTool: (...args: any[]) => mockCreateUpdateWorkItemTool(...args),
 }));
 
+const mockCreateGetWorkItemTool = vi.fn(() => ({ tool: { name: 'get_work_item' } }));
+vi.mock('../../src/server/llm-tools/get-work-item-tool', () => ({
+    createGetWorkItemTool: (...args: any[]) => mockCreateGetWorkItemTool(...args),
+}));
+
 import {
     buildForEachGenerationSystemMessage,
     buildModeSystemMessage,
@@ -622,6 +627,8 @@ describe('buildCreateWorkItemAddon', () => {
     beforeEach(() => {
         mockCreateUpdateWorkItemTool.mockReset();
         mockCreateUpdateWorkItemTool.mockReturnValue({ tool: { name: 'create_update_work_item' } });
+        mockCreateGetWorkItemTool.mockReset();
+        mockCreateGetWorkItemTool.mockReturnValue({ tool: { name: 'get_work_item' } });
     });
 
     it('returns empty tools when dataDir is undefined', () => {
@@ -636,18 +643,25 @@ describe('buildCreateWorkItemAddon', () => {
         expect(result.suffix).toBe('');
     });
 
-    it('returns only the unified create_update_work_item tool', () => {
+    it('returns both the read get_work_item and write create_update_work_item tools', () => {
         const result = buildCreateWorkItemAddon('/data', 'repo-1');
-        expect(result.tools).toHaveLength(1);
-        expect(result.tools[0].name).toBe('create_update_work_item');
+        expect(result.tools.map(t => t.name)).toEqual(['get_work_item', 'create_update_work_item']);
         expect(result.tools.map(t => t.name)).not.toContain('update_work_item');
         expect(result.tools.map(t => t.name)).not.toContain('create_bug');
     });
 
-    it('passes dataDir, repoId, and broadcastFn to factories', () => {
+    it('includes prompt guidance describing both tools', () => {
+        const result = buildCreateWorkItemAddon('/data', 'repo-1');
+        expect(result.suffix).toContain('get_work_item');
+        expect(result.suffix).toContain('create_update_work_item');
+    });
+
+    it('passes dataDir, repoId, broadcastFn, and deps to factories', () => {
         const broadcast = vi.fn();
-        buildCreateWorkItemAddon('/data', 'repo-1', broadcast);
-        expect(mockCreateUpdateWorkItemTool).toHaveBeenCalledWith('/data', 'repo-1', broadcast);
+        const deps = { processStore: {} as any };
+        buildCreateWorkItemAddon('/data', 'repo-1', broadcast, deps);
+        expect(mockCreateUpdateWorkItemTool).toHaveBeenCalledWith('/data', 'repo-1', broadcast, deps);
+        expect(mockCreateGetWorkItemTool).toHaveBeenCalledWith('/data', 'repo-1', deps);
     });
 
 });

@@ -209,6 +209,7 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('git')).toBe(true);
         expect(VALID_REPO_SUB_TABS.has('tasks')).toBe(true);
         expect(VALID_REPO_SUB_TABS.has('templates')).toBe(true);
+        expect(VALID_REPO_SUB_TABS.has('dreams')).toBe(true);
     });
 
     it('does not include removed tabs', () => {

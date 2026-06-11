@@ -1,7 +1,7 @@
 import type { ConversationTurn, ISDKService, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import { approveAllPermissions, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../tasks/task-types';
-import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext, hasCommitChatContext, hasNoteChatContext, hasNoteCreateContext, hasClassifyDiffContext, isPrClassificationPayload, normalizeChatModeOrDefault } from '../tasks/task-types';
+import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext, hasCommitChatContext, hasNoteChatContext, hasNoteCreateContext, hasClassifyDiffContext, isPrClassificationPayload, isDreamRunPayload, normalizeChatModeOrDefault } from '../tasks/task-types';
 import type { ChatMode } from '../tasks/task-types';
 import type { ExecutionContext } from '../task-strategies';
 import { TaskStrategyRegistry } from '../task-strategies';
@@ -18,6 +18,7 @@ import { CommitChatExecutor } from './commit-chat-executor';
 import { NoteChatExecutor } from './note-chat-executor';
 import { NoteCreateExecutor } from './note-create-executor';
 import { ClassificationExecutor } from './classification-executor';
+import { DreamTaskExecutor } from './dream-task-executor';
 import { ProcessLifecycleRunner } from './process-lifecycle-runner';
 import { WrappedTaskExecutor } from './wrapped-task-executor';
 import type { SkillExecuteFn } from './wrapped-task-executor';
@@ -33,6 +34,8 @@ export interface ExecutorRegistryOptions {
     askUser?: { enabled: boolean };
     /** Default AI provider name recorded on new processes when the task has no provider override. */
     provider?: 'copilot' | 'codex' | 'claude';
+    /** Enables the gated multi-agent Ralph grilling prompt contract. */
+    ralphMultiAgentGrillEnabled?: boolean;
     /**
      * Resolve an ISDKService for a given provider, checking enablement.
      * Injected from the bridge so executors can route per-chat without
@@ -45,6 +48,8 @@ export interface ExecutorRegistryOptions {
     getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
     getLoopInfra?: () => import('./chat-base-executor').LoopInfraDeps | undefined;
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
+    getDreamRunExecutor?: () => import('../dreams/dream-runner').DreamRunExecutor | undefined;
+    cancelledTasks?: Set<string>;
 }
 
 /**
@@ -72,6 +77,7 @@ export class ExecutorRegistry {
     private readonly noteChatExecutor: NoteChatExecutor;
     private readonly noteCreateExecutor: NoteCreateExecutor;
     private readonly classificationExecutor: ClassificationExecutor;
+    private readonly dreamTaskExecutor: DreamTaskExecutor;
     private readonly strategyRegistry: TaskStrategyRegistry;
 
     constructor(store: ProcessStore, options: ExecutorRegistryOptions) {
@@ -94,6 +100,7 @@ export class ExecutorRegistry {
             getLoopInfra: options.getLoopInfra,
             getMcpOauthManager: options.getMcpOauthManager,
             provider: options.provider,
+            ralphMultiAgentGrillEnabled: options.ralphMultiAgentGrillEnabled,
             resolveAiServiceForProvider: options.resolveAiServiceForProvider,
         };
 
@@ -111,6 +118,10 @@ export class ExecutorRegistry {
         this.noteChatExecutor = new NoteChatExecutor(store, chatOpts, options.dataDir);
         this.noteCreateExecutor = new NoteCreateExecutor(store, chatOpts, options.dataDir);
         this.classificationExecutor = new ClassificationExecutor(store, chatOpts, options.dataDir);
+        this.dreamTaskExecutor = new DreamTaskExecutor({
+            getRunner: options.getDreamRunExecutor ?? (() => undefined),
+            cancelledTasks: options.cancelledTasks ?? new Set(),
+        });
         this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded, options.provider);
     }
 
@@ -119,6 +130,7 @@ export class ExecutorRegistry {
         if (isRunWorkflowPayload(task.payload)) return this.workflowExecutor.execute(task);
         if (isRunScriptPayload(task.payload)) return new ShellExecutor(this.store, this.dataDir, this.defaultWorkingDirectory).execute(task);
         if (isPrClassificationPayload(task.payload)) return this.classificationExecutor.execute(task, task.payload.prompt);
+        if (isDreamRunPayload(task.payload)) return this.dreamTaskExecutor.execute(task);
         if (isChatPayload(task.payload) && !isChatFollowUp(task.payload)) {
             const payload = task.payload as unknown as ChatPayload;
             const executor = this.resolveChatExecutor(task, payload);
@@ -143,6 +155,7 @@ export class ExecutorRegistry {
         if (isRunWorkflowPayload(task.payload)) return task.payload.workingDirectory || this.defaultWorkingDirectory;
         if (isRunScriptPayload(task.payload)) return task.payload.workingDirectory || this.defaultWorkingDirectory;
         if (isPrClassificationPayload(task.payload)) return task.payload.workingDirectory || this.defaultWorkingDirectory;
+        if (isDreamRunPayload(task.payload)) return task.payload.workingDirectory || this.defaultWorkingDirectory;
         if (isChatPayload(task.payload)) return task.payload.workingDirectory || (task.payload as unknown as ChatPayload).folderPath || this.defaultWorkingDirectory;
         return this.defaultWorkingDirectory;
     }

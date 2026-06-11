@@ -174,6 +174,14 @@ const BASE_SCHEMA_TREE: SchemaTree = {
         autoMemoryPromotion: z.boolean(),
         gitCommitLookup: z.boolean(),
     },
+    dreams: {
+        idleCheckIntervalMs: z.number().int().positive(),
+        minIdleMs: z.number().int().min(0),
+        confidenceThreshold: z.number().min(0).max(1),
+        maxCandidates: z.number().int().positive(),
+        conversationLimit: z.number().int().positive(),
+        timeoutMs: z.number().int().positive(),
+    },
     memoryPromotion: {
         batchSize: z.number().int().positive(),
         timeoutMs: z.number().int().positive(),

@@ -581,6 +581,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'dreams.enabled', default: false, runtime: 'live', runtimeFlag: 'dreamsEnabled',
+        ui: {
+            group: 'aiModes', order: 50, label: 'Dreams', badge: 'experimental',
+            hint: 'Enables workspace opt-in review cards from idle-time reflection. Disabled by default; workspaces must also opt in individually.',
+            testId: 'toggle-dreams-enabled',
+        },
+    }),
+    bool({
         key: 'excalidraw.enabled', default: false, runtime: 'live', runtimeFlag: 'excalidrawEnabled',
         ui: {
             group: 'review', order: 60, label: 'Excalidraw diagrams',
@@ -674,6 +682,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     },
     bool({ key: 'features.autoAgentProviderRouting', default: false, runtime: 'restartRequired', runtimeFlag: 'autoAgentProviderRoutingEnabled' }),
+    bool({
+        key: 'features.ralphMultiAgentGrill', default: false, runtime: 'live', runtimeFlag: 'ralphMultiAgentGrillEnabled',
+        ui: {
+            group: 'aiModes', order: 15, label: 'Ralph Multi-Agent Grilling', badge: 'experimental',
+            hint: 'Adds the question planning setup card, separate grill-agent calls, dedupe, provenance, and grouped consolidated questions to Ralph grilling. Disabled by default.',
+            testId: 'toggle-ralph-multi-agent-grill-enabled',
+        },
+    }),
 
     bool({
         key: 'workItems.hierarchy.enabled', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'workItemsHierarchyEnabled',

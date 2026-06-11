@@ -93,6 +93,36 @@ describe('serializeTaskSummary', () => {
         expect(p.scheduleId).toBe('sched-1');
     });
 
+    it('promotes dream-run provider, model, effort, and timeout metadata to summary top-level fields', () => {
+        const task = makeTask({
+            type: 'dream-run',
+            payload: {
+                kind: 'dream-run',
+                workspaceId: 'ws-dream',
+                trigger: 'manual',
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+                reasoningEffort: 'high',
+                timeoutMs: 3_600_000,
+            },
+            config: {
+                model: 'claude-sonnet-4.6',
+                reasoningEffort: 'high',
+                timeoutMs: 3_600_000,
+                retryOnFailure: false,
+            },
+        });
+
+        const out = serializeTaskSummary(task);
+
+        expect(out.provider).toBe('claude');
+        expect(out.model).toBe('claude-sonnet-4.6');
+        expect(out.reasoningEffort).toBe('high');
+        expect(out.timeoutMs).toBe(3_600_000);
+        expect((out.payload as any).provider).toBe('claude');
+        expect((out.payload as any).timeoutMs).toBe(3_600_000);
+    });
+
     it('slim payload omits non-listed fields', () => {
         const task = makeTask({
             payload: {

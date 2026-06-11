@@ -71,6 +71,14 @@ vi.mock('../../src/server/executors/chat-executor', function () { return ({
     }); }),
 }); });
 
+// DreamTaskExecutor mock — records calls for dispatch assertions
+const mockDreamTaskExecute = vi.fn();
+vi.mock('../../src/server/executors/dream-task-executor', function () { return ({
+    DreamTaskExecutor: vi.fn().mockImplementation(function () { return ({
+        execute: mockDreamTaskExecute,
+    }); }),
+}); });
+
 // AutopilotExecutor mock — records calls for dispatch assertions
 const mockAutopilotExecute = vi.fn();
 vi.mock('../../src/server/executors/autopilot-executor', function () { return ({
@@ -184,6 +192,25 @@ function makeChatTask(mode: 'ask' | 'plan' | 'autopilot', id?: string): QueuedTa
     };
 }
 
+function makeDreamTask(id = 'dream-task-1'): QueuedTask {
+    return {
+        id,
+        type: 'dream-run',
+        priority: 'normal',
+        status: 'running',
+        createdAt: Date.now(),
+        payload: {
+            kind: 'dream-run',
+            workspaceId: 'ws-dream',
+            trigger: 'manual',
+            provider: 'claude',
+            timeoutMs: 3_600_000,
+        },
+        config: { timeoutMs: 3_600_000 },
+        displayName: 'Dream Run: Manual',
+    };
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -199,6 +226,7 @@ describe('CLITaskExecutor executor dispatch', () => {
         mockFollowUpExecuteFollowUp.mockReset();
         mockChatExecute.mockReset();
         mockAutopilotExecute.mockReset();
+        mockDreamTaskExecute.mockReset();
     });
 
     // ========================================================================
@@ -278,6 +306,56 @@ describe('CLITaskExecutor executor dispatch', () => {
                 'queue_sh-fail-1',
                 expect.objectContaining({ status: 'failed' }),
             );
+        });
+    });
+
+    // ========================================================================
+    // Dispatch — dream-run
+    // ========================================================================
+
+    describe('dream-run dispatch', () => {
+        it('delegates dream-run task to DreamTaskExecutor.execute()', async () => {
+            mockDreamTaskExecute.mockResolvedValue({
+                response: 'Dream run completed',
+                run: { id: 'dream-run-1', status: 'completed' },
+            });
+
+            const executor = new CLITaskExecutor(store);
+            const task = makeDreamTask();
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(true);
+            expect(mockDreamTaskExecute).toHaveBeenCalledOnce();
+            expect(mockDreamTaskExecute).toHaveBeenCalledWith(task);
+        });
+
+        it('backfills the resolved default provider into dream-run payloads before dispatch', async () => {
+            mockDreamTaskExecute.mockResolvedValue({
+                response: 'Dream run completed',
+                run: { id: 'dream-run-1', status: 'completed' },
+            });
+
+            const executor = new CLITaskExecutor(store, { provider: 'claude' });
+            const task = makeDreamTask('dream-default-provider-1');
+            delete (task.payload as any).provider;
+            task.config = {
+                model: 'claude-sonnet-4.6',
+                reasoningEffort: 'high',
+                timeoutMs: 3_600_000,
+            } as any;
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(true);
+            expect(mockDreamTaskExecute).toHaveBeenCalledOnce();
+            const dispatchedTask = mockDreamTaskExecute.mock.calls[0][0] as QueuedTask;
+            expect(dispatchedTask.payload).toMatchObject({
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+                reasoningEffort: 'high',
+                timeoutMs: 3_600_000,
+            });
         });
     });
 

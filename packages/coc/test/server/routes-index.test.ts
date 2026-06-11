@@ -53,6 +53,7 @@ function makeBridge(): any {
         registerRepoId: vi.fn(),
         dispatchToRepo: vi.fn(),
         setResolveDefaultProvider: vi.fn(),
+        setDreamRunExecutor: vi.fn(),
         registry: {
             on: vi.fn(),
         },

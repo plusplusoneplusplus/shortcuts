@@ -2,7 +2,7 @@
  * Tests for the Ralph promotion branch in `useSendMessage`.
  *
  * When `selectedMode === 'ralph'`, calling `sendFollowUp` must:
- *   - call `cocClient.processes.promoteToRalph(processId, { workspaceId, extraGuidance })`
+ *   - call `cocClient.processes.promoteToRalph(processId, { workspaceId, extraGuidance, grill? })`
  *     instead of POSTing a normal /message
  *   - on success: clear input, fire `onPromotedToRalph`, and refresh the conversation
  *   - on failure: surface the error and restore the typed text
@@ -153,6 +153,33 @@ describe('useSendMessage — Ralph promotion branch', () => {
         expect(promoteToRalphMock).toHaveBeenCalledWith('queue_p-1', {
             workspaceId: 'ws-1',
             extraGuidance: undefined,
+        });
+    });
+
+    it('passes multi-agent grill setup to the promotion endpoint when configured', async () => {
+        promoteToRalphMock.mockResolvedValue({ promoted: true });
+        const grill = {
+            enabled: true,
+            depth: 'deep' as const,
+            agents: [
+                { role: 'product' as const, provider: 'copilot' as const, model: 'gpt-5.5' },
+                { role: 'ux' as const, provider: 'claude' as const, model: 'claude-sonnet-4.6' },
+            ],
+        };
+        const opts = makeOptions({
+            followUpInputRef: { current: '  focus on UX  ' },
+            ralphGrillSetup: grill,
+        });
+
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => {
+            await result.current.sendFollowUp();
+        });
+
+        expect(promoteToRalphMock).toHaveBeenCalledWith('queue_p-1', {
+            workspaceId: 'ws-1',
+            extraGuidance: 'focus on UX',
+            grill,
         });
     });
 

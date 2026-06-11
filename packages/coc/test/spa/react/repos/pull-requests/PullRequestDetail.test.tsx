@@ -12,6 +12,7 @@ const configMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
+    DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
     isContainerMode: () => false,
     getApiBase: () => '',
     isRalphEnabled: () => false,

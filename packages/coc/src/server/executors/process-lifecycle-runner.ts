@@ -51,6 +51,7 @@ import { finalizeOrphanedProcess } from '../processes/finalize-orphaned-turn';
 import {
     isChatFollowUp,
     isChatPayload,
+    isDreamRunPayload,
     isPrClassificationPayload,
     isRunWorkflowPayload,
     isRunScriptPayload,
@@ -78,6 +79,24 @@ export { TERMINAL_STATUSES };
 /** Tool names that create files (mirrors client-side conversationScan.ts). */
 const CREATE_TOOL_NAMES = new Set(['create', 'write_file', 'create_file', 'apply_patch']);
 
+function getToolCallName(toolCall: NonNullable<ConversationTurn['timeline']>[number]['toolCall']): string {
+    if (!toolCall) return '';
+    return (toolCall as any).toolName || toolCall.name || '';
+}
+
+function extractApplyPatchResultPaths(result: string): string[] {
+    const paths: string[] = [];
+    const addedMatch = /Added \d+ file\(s\): (.+)/.exec(result);
+    if (addedMatch) {
+        paths.push(...addedMatch[1].split(',').map(s => s.trim()).filter(Boolean));
+    }
+    for (const match of result.matchAll(/^add:\s*(.+)$/gm)) {
+        const path = match[1].trim();
+        if (path) paths.push(path);
+    }
+    return paths;
+}
+
 /**
  * Scan conversation turns for a created `.plan.md` file.
  * Mirrors the client-side detection in ChatDetail.tsx.
@@ -86,16 +105,15 @@ export function scanTurnsForPlanFile(turns: ConversationTurn[]): string | undefi
     for (const turn of turns) {
         for (const item of turn.timeline ?? []) {
             if (item.type !== 'tool-complete' || !item.toolCall) continue;
-            const toolName = item.toolCall.name || '';
+            const toolName = getToolCallName(item.toolCall);
             if (!CREATE_TOOL_NAMES.has(toolName)) continue;
 
-            // Handle apply_patch: check result "Added N file(s): ..." and string args "*** Add File: ..."
+            // Handle apply_patch: check result text and string args "*** Add File: ..."
             if (toolName === 'apply_patch') {
                 const paths: string[] = [];
                 const result = item.toolCall.result;
                 if (typeof result === 'string') {
-                    const addedMatch = /Added \d+ file\(s\): (.+)/.exec(result);
-                    if (addedMatch) paths.push(...addedMatch[1].split(',').map(s => s.trim()));
+                    paths.push(...extractApplyPatchResultPaths(result));
                 }
                 const rawArgs = item.toolCall.args as Record<string, unknown>;
                 const patchText = typeof rawArgs?.diff === 'string' ? rawArgs.diff : '';
@@ -195,11 +213,37 @@ function isAutoProviderRoutingRequested(payload: ChatPayload): boolean {
     return payload.context?.autoProviderRouting?.requested === true;
 }
 
+function updateDreamMetadataFromResult(
+    metadata: Record<string, unknown>,
+    result: unknown,
+): Record<string, unknown> | undefined {
+    const dream = metadata.dream;
+    if (!dream || typeof dream !== 'object' || Array.isArray(dream)) return undefined;
+    if (!result || typeof result !== 'object' || Array.isArray(result)) return undefined;
+    const processes = (result as Record<string, unknown>).processes;
+    if (!processes || typeof processes !== 'object' || Array.isArray(processes)) return undefined;
+    const record = processes as Record<string, unknown>;
+    const analyzerProcessId = typeof record.analyzerProcessId === 'string' ? record.analyzerProcessId : undefined;
+    const criticProcessId = typeof record.criticProcessId === 'string' ? record.criticProcessId : undefined;
+    if (!analyzerProcessId && !criticProcessId) return undefined;
+    return {
+        ...metadata,
+        dream: {
+            ...(dream as Record<string, unknown>),
+            ...(analyzerProcessId ? { analyzerProcessId } : {}),
+            ...(criticProcessId ? { criticProcessId } : {}),
+        },
+    };
+}
+
 async function resolveExecutionProvider(
     task: QueuedTask,
     opts: LifecycleRunnerOptions,
     fallbackProvider: ChatProvider,
 ): Promise<ChatProvider> {
+    if (isDreamRunPayload(task.payload)) {
+        return isConcreteProvider(task.payload.provider) ? task.payload.provider : fallbackProvider;
+    }
     if (!isChatPayload(task.payload)) return fallbackProvider;
 
     const payload = task.payload as ChatPayload;
@@ -383,6 +427,12 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             );
         }
         const processModel = providerModel.model;
+        if (isDreamRunPayload(task.payload)) {
+            task.payload.provider = taskProvider;
+            if (processModel !== undefined) task.payload.model = processModel;
+            if (typeof task.config.reasoningEffort === 'string') task.payload.reasoningEffort = task.config.reasoningEffort;
+            if (typeof task.config.timeoutMs === 'number') task.payload.timeoutMs = task.config.timeoutMs;
+        }
         const seededTokenLimit = processModel !== undefined
             ? modelMetadataStore.getContextWindow(processModel)
             : undefined;
@@ -401,6 +451,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 queueTaskId: task.id,
                 priority: task.priority,
                 model: processModel,
+                reasoningEffort: task.config.reasoningEffort,
                 mode: normalizedPayloadMode,
                 workspaceId: payload?.workspaceId || task.repoId,
                 // Use per-task provider from payload when available; fall back to
@@ -422,8 +473,20 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 forEach: serializeForEachMetadata(task.payload),
                 mapReduce: serializeMapReduceMetadata(task.payload),
                 ralph: serializeRalphMetadata(task.payload),
+                dream: isDreamRunPayload(task.payload)
+                    ? {
+                        workspaceId: task.payload.workspaceId,
+                        trigger: task.payload.trigger,
+                        timeoutMs: task.config.timeoutMs,
+                    }
+                    : undefined,
                 autoProviderRouting: isChatPayload(task.payload)
                     ? task.payload.context?.autoProviderRouting
+                    : isDreamRunPayload(task.payload) && payload?.context && typeof payload.context === 'object'
+                        ? (payload.context as Record<string, unknown>).autoProviderRouting
+                        : undefined,
+                lensChat: isChatPayload(task.payload)
+                    ? task.payload.context?.lensChat
                     : undefined,
             },
         };
@@ -553,8 +616,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                 toolDefinitionsTokens: tokenUsage.toolDefinitionsTokens ?? prevCumulative?.toolDefinitionsTokens,
                                 conversationTokens: tokenUsage.conversationTokens ?? prevCumulative?.conversationTokens,
                             } : prevCumulative;
-                            // If cancellation was requested while executing, finalize as cancelled
-                            if (current.status === 'cancelling') {
+                            // If cancellation was requested while executing, finalize as cancelled.
+                            const wasCancelled = opts.cancelledTasks.has(task.id) || current.status === 'cancelling';
+                            if (wasCancelled) {
                                 const baseMetadata = {
                                     ...(current.metadata ?? {}),
                                     type: current.metadata?.type ?? task.type,
@@ -570,12 +634,13 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                     responseText,
                                     assistantTurnIndex,
                                 ) ?? forEachMetadata;
+                                const finalMetadata = updateDreamMetadataFromResult(metadata, result) ?? metadata;
                                 return {
                                     status: 'cancelled' as const,
                                     endTime: new Date(),
                                     result: typeof result === 'string' ? result : JSON.stringify(result),
                                     ...(sessionId ? { sdkSessionId: sessionId } : {}),
-                                    metadata,
+                                    metadata: finalMetadata,
                                     ...(tokenLimit !== undefined ? { tokenLimit } : {}),
                                     ...(currentTokens !== undefined ? { currentTokens } : {}),
                                     ...(systemTokens !== undefined ? { systemTokens } : {}),
@@ -599,12 +664,13 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                 responseText,
                                 assistantTurnIndex,
                             ) ?? forEachMetadata;
+                            const finalMetadata = updateDreamMetadataFromResult(metadata, result) ?? metadata;
                             return {
                                 status: 'completed' as const,
                                 endTime: new Date(),
                                 result: typeof result === 'string' ? result : JSON.stringify(result),
                                 ...(sessionId ? { sdkSessionId: sessionId } : {}),
-                                metadata,
+                                metadata: finalMetadata,
                                 ...(tokenLimit !== undefined ? { tokenLimit } : {}),
                                 ...(currentTokens !== undefined ? { currentTokens } : {}),
                                 ...(systemTokens !== undefined ? { systemTokens } : {}),

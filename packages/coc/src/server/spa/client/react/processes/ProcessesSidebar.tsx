@@ -17,6 +17,7 @@ import { resolveWorkspaceName, getProcessWorkspaceId, getProcessWorkspaceName } 
 import { isQueueProcessId, toQueueProcessId } from '../utils/queue-process-id';
 import { isSessionContextAttachmentsEnabled } from '../utils/config';
 import { createSessionContextDragPayload, writeSessionContextDragData } from '../features/chat/sessionContextDrag';
+import { getTaskProvider } from '../shared/providerActivity';
 
 export interface TypeFilterOptions {
     includeTypes?: string[];
@@ -44,6 +45,22 @@ export function filterQueueTask(
         if (haystack.indexOf(q) === -1) return false;
     }
     return true;
+}
+
+const PROVIDER_BADGE_STYLES: Record<string, string> = {
+    codex: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
+    claude: 'bg-orange-500/15 text-orange-700 dark:text-orange-300',
+};
+
+function ProviderBadge({ provider }: { provider: string | undefined }) {
+    if (!provider || provider === 'copilot') return null;
+    const label = provider.toUpperCase();
+    const style = PROVIDER_BADGE_STYLES[provider] ?? 'bg-slate-500/15 text-slate-700 dark:text-slate-300';
+    return (
+        <span className={`text-[10px] font-medium px-1 py-0.5 rounded shrink-0 ${style}`} data-testid={`provider-badge-${provider}`}>
+            {label}
+        </span>
+    );
 }
 
 function groupByFolder(tasks: any[]): { folder: string | null; tasks: any[] }[] {
@@ -345,6 +362,7 @@ export function ProcessesSidebar() {
                             : previewSource;
                         const wsId = getProcessWorkspaceId(p);
                         const wsName = resolveWorkspaceName(wsId, getProcessWorkspaceName(p), state.workspaces);
+                        const provider = p.metadata?.provider;
                         const sessionContextPayload = sessionContextDragEnabled
                             ? createSessionContextDragPayload(p, { activeWorkspaceId, idSource: 'process' })
                             : null;
@@ -386,11 +404,7 @@ export function ProcessesSidebar() {
                                         {statusIcon(p.status)} {statusLabel(p.status, p.type)}
                                     </Badge>
                                     <div className="flex items-center gap-1.5">
-                                        {p.metadata?.provider === 'codex' && (
-                                            <span className="text-[10px] font-medium px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 shrink-0">
-                                                CODEX
-                                            </span>
-                                        )}
+                                        <ProviderBadge provider={provider} />
                                         {duration && (
                                             <span className="text-[11px] text-[#848484] whitespace-nowrap">{duration}</span>
                                         )}
@@ -535,11 +549,11 @@ function QueueTaskCard({ task, now, selected, onClick, compact = false, activeWo
             ? formatDuration(task.duration)
             : '';
 
-    const preview = task.prompt
-        ? (task.prompt.length > 60 ? task.prompt.slice(0, 60) + '…' : task.prompt)
-        : task.id;
+    const previewSource = task.displayName || task.prompt || task.payload?.prompt || task.id;
+    const preview = previewSource.length > 60 ? previewSource.slice(0, 60) + '…' : previewSource;
 
     const repo = repoName(task.repoId) || repoName(task.workingDirectory) || repoName(task.payload?.workingDirectory);
+    const provider = getTaskProvider(task);
     const sessionContextPayload = sessionContextDragEnabled
         ? createSessionContextDragPayload(task, { activeWorkspaceId, idSource: 'queue-task' })
         : null;
@@ -566,11 +580,7 @@ function QueueTaskCard({ task, now, selected, onClick, compact = false, activeWo
                     )}
                     <span className="shrink-0 text-[#848484]">{typeLabel(task.type)}</span>
                     <span className="min-w-0 truncate text-[#1e1e1e] dark:text-[#cccccc]">{preview}</span>
-                    {task.provider === 'codex' && (
-                        <span className="shrink-0 text-[10px] font-medium px-1 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
-                            CODEX
-                        </span>
-                    )}
+                    <ProviderBadge provider={provider} />
                     {elapsed && <span className="shrink-0 text-[10px] text-[#848484]">{elapsed}</span>}
                 </div>
             ) : (
@@ -580,11 +590,7 @@ function QueueTaskCard({ task, now, selected, onClick, compact = false, activeWo
                             {task.frozen ? '❄️' : statusIcon(task.status)} {task.frozen ? 'Frozen' : statusLabel(task.status, task.type)}
                         </Badge>
                         <div className="flex items-center gap-1.5">
-                            {task.provider === 'codex' && (
-                                <span className="text-[10px] font-medium px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 shrink-0">
-                                    CODEX
-                                </span>
-                            )}
+                            <ProviderBadge provider={provider} />
                             <span className="text-[10px] text-[#848484]">
                                 {typeLabel(task.type)}
                             </span>

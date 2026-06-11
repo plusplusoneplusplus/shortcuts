@@ -180,7 +180,10 @@ export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 export { AIModel, DEFAULT_MODEL_ID, getActiveModels, getAllModels, getModelCount, getModelDefinition, getModelDescription, getModelLabel, getModelsByTier, isValidModelId, MODEL_REGISTRY, ModelDefinition, VALID_MODELS } from './model-registry';
 
 // Re-export dynamic model info types
-export { ModelBilling, ModelInfo, ModelPolicy } from './model-info';
+export { ModelBilling, ModelBillingTokenPrices, ModelBillingTokenPricesLongContext, ModelInfo, ModelPolicy } from './model-info';
+
+// Re-export Copilot context-tier helpers
+export { CopilotContextTier, getCopilotContextTierForModel, getCopilotLongContextPromptLimit } from './model-context-tier';
 
 // ============================================================================
 // MCP Server Configuration Types
@@ -590,6 +593,15 @@ export interface SendMessageOptions {
      * The SDK silently ignores this field for models that do not support it.
      */
     reasoningEffort?: ReasoningEffort;
+
+    /**
+     * Copilot context-window tier for models with tiered context support.
+     * Callers must pass `"long_context"` only for Copilot models whose
+     * catalog metadata advertises a long-context tier (see
+     * `getCopilotContextTierForModel`), and must omit the field otherwise —
+     * including for non-Copilot providers.
+     */
+    contextTier?: 'default' | 'long_context';
 
     /**
      * Infinite session configuration for automatic context compaction.

@@ -18,6 +18,7 @@ const prefsMocks = vi.hoisted(() => ({
 
 // Mock getApiBase so fetch URLs are predictable.
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
+    DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
     isContainerMode: () => false,
     getApiBase: () => '',
     isRalphEnabled: () => false,
@@ -34,6 +35,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isEffortLevelsEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => false,
     isCommitChatLensEnabled: () => false,
+    getCommitChatLensDormantMode: () => 'ghost' as const,
 }));
 
 // Mock AppContext to avoid full context setup.

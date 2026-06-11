@@ -6,7 +6,10 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '/api',
     isRalphEnabled: () => false,
+    isCommitChatLensEnabled: vi.fn(() => false),
 }));
+
+import { isCommitChatLensEnabled } from '../../../../src/server/spa/client/react/utils/config';
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
     return new Response(JSON.stringify(body), {
@@ -88,5 +91,26 @@ describe('notesApi', () => {
         ]);
         expect(mockFetch.mock.calls[1][1]).toMatchObject({ method: 'POST' });
         expect(mockFetch.mock.calls[2][1]?.body).toBe(JSON.stringify({ intervalMs: 900_000 }));
+    });
+
+    it('includes inherited Lens Chat mode when creating notes with Lens enabled', async () => {
+        vi.mocked(isCommitChatLensEnabled).mockReturnValue(true);
+        mockFetch.mockResolvedValueOnce(jsonResponse({ taskId: 'task-1' }));
+
+        await notesApi.createWithAI('repo/a', 'Create note');
+
+        expect(mockFetch.mock.calls[0][1]?.body).toBe(JSON.stringify({
+            prompt: 'Create note',
+            lensChat: { inherited: true, source: 'features.commitChatLens' },
+        }));
+    });
+
+    it('omits inherited Lens Chat mode when creating notes with Lens disabled', async () => {
+        vi.mocked(isCommitChatLensEnabled).mockReturnValue(false);
+        mockFetch.mockResolvedValueOnce(jsonResponse({ taskId: 'task-1' }));
+
+        await notesApi.createWithAI('repo/a', 'Create note');
+
+        expect(mockFetch.mock.calls[0][1]?.body).toBe(JSON.stringify({ prompt: 'Create note' }));
     });
 });

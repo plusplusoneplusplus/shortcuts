@@ -186,6 +186,38 @@ describe('POST /api/processes/:id/promote-to-ralph', () => {
         expect(enqueueArg.payload.prompt).toContain('focus the goal on the queue refactor');
     });
 
+    it('stores and forwards a normalized multi-agent grill setup when provided', async () => {
+        await store.addProcess(makeFixture({ id: 'queue_p-grill', workspaceId: 'ws-grill' }));
+
+        const res = await post(baseUrl, '/api/processes/queue_p-grill/promote-to-ralph', {
+            workspaceId: 'ws-grill',
+            grill: {
+                enabled: true,
+                depth: 'deep',
+                agents: [
+                    { role: 'product', provider: 'copilot', model: 'gpt-5.5' },
+                    { role: 'ux', provider: 'not-real', model: 'claude-sonnet-4.6' },
+                    { role: 'unknown', provider: 'codex', model: 'ignored' },
+                ],
+            },
+        });
+
+        expect(res.status).toBe(200);
+        const proc = await store.getProcess('queue_p-grill');
+        expect((proc as any)?.metadata?.ralph?.grill).toEqual(expect.objectContaining({
+            enabled: true,
+            depth: 'deep',
+        }));
+        expect((proc as any)?.metadata?.ralph?.grill?.agents).toEqual(expect.arrayContaining([
+            { role: 'product', provider: 'copilot', model: 'gpt-5.5' },
+            { role: 'ux', model: 'claude-sonnet-4.6' },
+        ]));
+        expect((proc as any)?.metadata?.ralph?.grill?.agents.some((agent: any) => agent.role === 'unknown')).toBe(false);
+
+        const enqueueArg = mockEnqueue.mock.calls[0][0];
+        expect(enqueueArg.payload.context.ralph.grill).toEqual((proc as any).metadata.ralph.grill);
+    });
+
     it('accepts processes whose mode/kind only live in metadata (payload=null)', async () => {
         // Real persisted processes do not always mirror the queue-task
         // payload onto the process record — `mode`/`type` live on

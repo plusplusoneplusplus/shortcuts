@@ -22,6 +22,7 @@ describe('GitClient', () => {
     await client.switchBranch('repo/a', 'feature/a space', { force: false });
     await client.getWorkingTreeFileDiff('repo/a', 'src/work tree.ts', { stage: 'unstaged', full: true });
     await client.getCommitChatBinding('repo/a', 'abc123');
+    await client.startFreshCommitChat('repo/a', 'abc123');
     await client.rebindCommitChatBinding('repo/a', 'abc123', 'def456');
     await client.getDiffCommentCounts('repo-a', { oldRef: 'abc^', newRef: 'abc', status: ['open', 'resolved'] });
 
@@ -41,6 +42,7 @@ describe('GitClient', () => {
       '/workspaces/repo%2Fa/git/branches/switch',
       '/workspaces/repo%2Fa/git/changes/files/src%2Fwork%20tree.ts/diff',
       '/workspaces/repo%2Fa/commit-chat-bindings/abc123',
+      '/workspaces/repo%2Fa/commit-chat-bindings/abc123/fresh',
       '/workspaces/repo%2Fa/commit-chat-bindings/rebind',
       '/diff-comment-counts/repo-a',
     ]);
@@ -62,8 +64,9 @@ describe('GitClient', () => {
     expect(adapter.calls[11].options).toMatchObject({ method: 'DELETE', query: { force: true } });
     expect(adapter.calls[12].options).toMatchObject({ method: 'POST', body: { name: 'feature/a space', force: false } });
     expect(adapter.calls[13].options?.query).toEqual({ stage: 'unstaged', full: true });
-    expect(adapter.calls[15].options).toMatchObject({ method: 'POST', body: { oldHash: 'abc123', newHash: 'def456' } });
-    expect(adapter.calls[16].options?.query).toEqual({ oldRef: 'abc^', newRef: 'abc', status: 'open,resolved' });
+    expect(adapter.calls[15].options).toMatchObject({ method: 'POST', body: {} });
+    expect(adapter.calls[16].options).toMatchObject({ method: 'POST', body: { oldHash: 'abc123', newHash: 'def456' } });
+    expect(adapter.calls[17].options?.query).toEqual({ oldRef: 'abc^', newRef: 'abc', status: 'open,resolved' });
   });
 
   it('exposes the commit diff route for cache-based SPA consumers', () => {
@@ -79,6 +82,21 @@ describe('GitClient', () => {
     expect(client.branchRangeFileDiffPath('repo/a space/%', 'src/a file.ts')).toBe(
       '/workspaces/repo%2Fa%20space%2F%25/git/branch-range/files/src%2Fa%20file.ts/diff',
     );
+  });
+
+  it('posts startFreshCommitChat to the workspace-scoped fresh endpoint', async () => {
+    const response = { commitHash: 'abc/123', archivedTaskId: 'task-existing' };
+    const adapter = createMockAdapter(response);
+    const client = new GitClient(adapter);
+
+    await expect(client.startFreshCommitChat('repo/a', 'abc/123')).resolves.toBe(response);
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/workspaces/repo%2Fa/commit-chat-bindings/abc%2F123/fresh',
+        options: { method: 'POST', body: {} },
+      },
+    ]);
   });
 
   it('calls working-tree and operation routes with typed request bodies', async () => {
@@ -178,6 +196,7 @@ describe('GitClient', () => {
     await client.listCommitChatBindings('repo/a');
     await client.createCommitChatBinding('repo/a', 'abc123', 'task/1');
     await client.deleteCommitChatBinding('repo/a', 'abc123');
+    await client.startFreshCommitChat('repo/a', 'abc123');
 
     expect(adapter.calls.map(c => c.path)).toEqual([
       '/diff-comments/repo-a',
@@ -189,6 +208,7 @@ describe('GitClient', () => {
       '/workspaces/repo%2Fa/commit-chat-bindings',
       '/workspaces/repo%2Fa/commit-chat-bindings',
       '/workspaces/repo%2Fa/commit-chat-bindings/abc123',
+      '/workspaces/repo%2Fa/commit-chat-bindings/abc123/fresh',
     ]);
     expect(adapter.calls[0].options?.query).toEqual({ oldRef: 'feature/base', newRef: 'feature/head' });
     expect(adapter.calls[1].options).toMatchObject({ method: 'POST' });
@@ -200,5 +220,6 @@ describe('GitClient', () => {
       body: { oldRef: 'a', newRef: 'b', filePath: 'src/a.ts', skills: ['review'] },
     });
     expect(adapter.calls[7].options).toMatchObject({ method: 'POST', body: { commitHash: 'abc123', taskId: 'task/1' } });
+    expect(adapter.calls[9].options).toMatchObject({ method: 'POST', body: {} });
   });
 });

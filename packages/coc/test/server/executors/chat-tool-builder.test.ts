@@ -47,6 +47,7 @@ describe('buildChatToolBundle', () => {
             'create_or_update_excalidraw',
             'create_update_work_item',
             'get_conversation',
+            'get_work_item',
             'read_excalidraw',
             'search_conversations',
             'suggest_follow_ups',

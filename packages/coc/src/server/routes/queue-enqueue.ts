@@ -11,7 +11,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { getActiveModels, modelMetadataStore, ensureQueueProcessId, toQueueProcessId, isQueueProcessId, toTaskId, SqliteProcessStore, sdkServiceRegistry, mergeEffortTiersWithDefaults } from '@plusplusoneplusplus/forge';
+import { getActiveModels, modelMetadataStore, ensureQueueProcessId, toQueueProcessId, isQueueProcessId, toTaskId, SqliteProcessStore, sdkServiceRegistry, mergeEffortTiersWithDefaults, resolveModelForProvider, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import type { CreateTaskInput, QueuedTask } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
 import {
@@ -32,7 +32,7 @@ import {
 } from './queue-shared';
 import { NoteChatBindingStore } from '../notes/note-chat-binding-store';
 import { normalizeRelativeNotePath } from '../notes/note-chat-bindings-handler';
-import type { ChatProvider } from '../tasks/task-types';
+import { isInheritedLensChatMode, type ChatProvider } from '../tasks/task-types';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 
 const EFFORT_TIER_KEYS = new Set(['very-low', 'low', 'medium', 'high']);
@@ -388,6 +388,7 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
             const rawUserPrompt = typeof body.userPrompt === 'string'
                 ? body.userPrompt.trim().slice(0, 2000)
                 : undefined;
+            const lensChat = isInheritedLensChatMode(body.lensChat) ? body.lensChat : undefined;
             const conversations: SummarizeConversation[] = [];
             for (const id of body.processIds as string[]) {
                 const normalized = ensureQueueProcessId(id.trim());
@@ -416,6 +417,7 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
                     mode: 'ask' as const,
                     prompt,
                     workspaceId,
+                    ...(lensChat ? { context: { lensChat } } : {}),
                 },
                 displayName: `Summarize ${body.processIds.length} conversations`,
             };
@@ -455,8 +457,12 @@ export async function prepareTaskForEnqueue(input: CreateTaskInput, ctx: Pick<Qu
 /**
  * @internal exported for tests
  */
-export async function resolveDefaultProviderForTask(input: CreateTaskInput, ctx: Pick<QueueRouteContext, 'isAutoProviderRoutingActive'>): Promise<void> {
+export async function resolveDefaultProviderForTask(input: CreateTaskInput, ctx: Pick<QueueRouteContext, 'getDefaultProvider' | 'resolveDefaultProvider' | 'isAutoProviderRoutingActive'>): Promise<void> {
     const payload = input.payload as Record<string, unknown>;
+    if (payload.kind === 'dream-run') {
+        await resolveDreamRunProviderForTask(input, ctx);
+        return;
+    }
     if (payload.kind !== 'chat') return;
     if (isChatProvider(payload.provider)) return;
     if (typeof payload.processId === 'string' && payload.processId.trim()) return;
@@ -471,6 +477,57 @@ export async function resolveDefaultProviderForTask(input: CreateTaskInput, ctx:
     markAutoProviderRoutingRequested(payload);
 }
 
+async function resolveDreamRunProviderForTask(input: CreateTaskInput, ctx: Pick<QueueRouteContext, 'getDefaultProvider' | 'resolveDefaultProvider' | 'isAutoProviderRoutingActive'>): Promise<void> {
+    const payload = input.payload as Record<string, unknown>;
+    if (isChatProvider(payload.provider)) {
+        resolveDreamRunModelForProvider(input, payload.provider);
+        return;
+    }
+
+    const autoRequested = isAutoProviderRoutingRequested(payload);
+    const autoRoutingActive = ctx.isAutoProviderRoutingActive?.() === true;
+    if (autoRequested && ctx.isAutoProviderRoutingActive && !autoRoutingActive) {
+        throw new Error('Auto provider routing requires features.autoAgentProviderRouting: true.');
+    }
+
+    const fallbackProvider = ctx.getDefaultProvider?.() ?? 'copilot';
+    const resolution: ResolvedDefaultProviderResolution = autoRequested || autoRoutingActive
+        ? await resolveDefaultProviderResolution(ctx, { forceAuto: autoRequested })
+        : { ...concreteDefaultProviderResolution(fallbackProvider), provider: fallbackProvider };
+    payload.provider = resolution.provider;
+    if (resolution.selectedByAuto) {
+        markResolvedAutoProviderRouting(payload, resolution);
+    }
+    resolveDreamRunModelForProvider(input, resolution.provider);
+}
+
+function resolveDreamRunModelForProvider(input: CreateTaskInput, provider: ChatProvider): void {
+    const payload = input.payload as Record<string, unknown>;
+    const config = input.config as Record<string, unknown>;
+    const rawModel = typeof config.model === 'string' && config.model.trim()
+        ? config.model
+        : typeof payload.model === 'string' && payload.model.trim()
+            ? payload.model
+            : undefined;
+    if (!rawModel) return;
+
+    const resolvedModel = resolveModelForProvider(provider, rawModel);
+    if (resolvedModel.coerced) {
+        getLogger().warn(
+            LogCategory.AI,
+            `[Queue] Dropping model '${resolvedModel.requestedModel}' because provider '${provider}' does not support it; using provider default.`,
+        );
+    }
+
+    if (resolvedModel.model) {
+        config.model = resolvedModel.model;
+        payload.model = resolvedModel.model;
+    } else {
+        delete config.model;
+        delete payload.model;
+    }
+}
+
 function markAutoProviderRoutingRequested(payload: Record<string, unknown>): void {
     const context = payload.context && typeof payload.context === 'object' && !Array.isArray(payload.context)
         ? payload.context as Record<string, unknown>
@@ -478,6 +535,24 @@ function markAutoProviderRoutingRequested(payload: Record<string, unknown>): voi
     payload.context = {
         ...context,
         autoProviderRouting: { requested: true },
+    };
+}
+
+function markResolvedAutoProviderRouting(payload: Record<string, unknown>, resolution: ResolvedDefaultProviderResolution): void {
+    const context = payload.context && typeof payload.context === 'object' && !Array.isArray(payload.context)
+        ? payload.context as Record<string, unknown>
+        : {};
+    payload.context = {
+        ...context,
+        autoProviderRouting: {
+            requested: true,
+            selectedByAuto: true,
+            provider: resolution.provider,
+            fallbackUsed: resolution.fallbackUsed,
+            warnings: resolution.warnings,
+            decisions: resolution.decisions,
+            ...(resolution.fallback ? { fallback: resolution.fallback } : {}),
+        },
     };
 }
 

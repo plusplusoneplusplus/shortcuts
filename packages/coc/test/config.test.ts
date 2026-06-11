@@ -65,6 +65,15 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.pullRequests.autoClassifyTeam).toBe(false);
             expect(DEFAULT_CONFIG.forEach).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.mapReduce).toEqual({ enabled: false });
+            expect(DEFAULT_CONFIG.dreams).toEqual({
+                enabled: false,
+                idleCheckIntervalMs: 300_000,
+                minIdleMs: 900_000,
+                confidenceThreshold: 0.85,
+                maxCandidates: 8,
+                conversationLimit: 20,
+                timeoutMs: 3_600_000,
+            });
             expect(DEFAULT_CONFIG.features.gitCrossCloneCherryPick).toBe(true);
             expect(DEFAULT_CONFIG.features.commitChatLens).toBe(false);
             expect(DEFAULT_CONFIG.features.autoAgentProviderRouting).toBe(false);
@@ -381,6 +390,24 @@ timeout: 300
             expect(result.mcpConfig).toBe('/path/to/mcp.json');
             expect(result.timeout).toBe(600);
             expect(result.persist).toBe(false);
+        });
+
+        it('should use Dreams namespace fallback defaults when the base namespace is absent', () => {
+            const base = {
+                ...DEFAULT_CONFIG,
+                dreams: undefined as unknown as ResolvedCLIConfig['dreams'],
+            };
+            const result = mergeConfig(base, {});
+
+            expect(result.dreams).toEqual({
+                enabled: false,
+                idleCheckIntervalMs: 300_000,
+                minIdleMs: 900_000,
+                confidenceThreshold: 0.85,
+                maxCandidates: 8,
+                conversationLimit: 20,
+                timeoutMs: 3_600_000,
+            });
         });
 
         it('should not let undefined override overwrite base', () => {
@@ -925,6 +952,14 @@ timeout: 300
                 '  enabled: true',
                 'loops:',
                 '  enabled: true',
+                'dreams:',
+                '  enabled: true',
+                '  idleCheckIntervalMs: 120000',
+                '  minIdleMs: 60000',
+                '  confidenceThreshold: 0.9',
+                '  maxCandidates: 4',
+                '  conversationLimit: 10',
+                '  timeoutMs: 45000',
                 'mcpOauth:',
                 '  enabled: true',
                 '  autoRefresh:',
@@ -968,6 +1003,7 @@ timeout: 300
                 '  commitChatLens: true',
                 '  commitChatLensDormantMode: pill',
                 '  autoAgentProviderRouting: true',
+                '  ralphMultiAgentGrill: true',
                 'memoryPromotion:',
                 '  batchSize: 25',
                 '  timeoutMs: 80000',
@@ -1154,6 +1190,15 @@ timeout: 300
                     "enabled": false,
                   },
                   "defaultProvider": "copilot",
+                  "dreams": {
+                    "confidenceThreshold": 0.85,
+                    "conversationLimit": 20,
+                    "enabled": false,
+                    "idleCheckIntervalMs": 300000,
+                    "maxCandidates": 8,
+                    "minIdleMs": 900000,
+                    "timeoutMs": 3600000,
+                  },
                   "effortLevels": {
                     "enabled": false,
                   },
@@ -1168,6 +1213,7 @@ timeout: 300
                     "focusedDiff": true,
                     "gitCommitLookup": false,
                     "gitCrossCloneCherryPick": true,
+                    "ralphMultiAgentGrill": false,
                     "sessionContextAttachments": false,
                   },
                   "forEach": {
@@ -1313,6 +1359,13 @@ timeout: 300
                   "codex.enabled": "default",
                   "containerDefaultAgent.enabled": "default",
                   "defaultProvider": "default",
+                  "dreams.confidenceThreshold": "default",
+                  "dreams.conversationLimit": "default",
+                  "dreams.enabled": "default",
+                  "dreams.idleCheckIntervalMs": "default",
+                  "dreams.maxCandidates": "default",
+                  "dreams.minIdleMs": "default",
+                  "dreams.timeoutMs": "default",
                   "effortLevels.enabled": "default",
                   "excalidraw.enabled": "default",
                   "features.autoAgentProviderRouting": "default",
@@ -1321,6 +1374,7 @@ timeout: 300
                   "features.commitChatLensDormantMode": "default",
                   "features.focusedDiff": "file",
                   "features.gitCrossCloneCherryPick": "default",
+                  "features.ralphMultiAgentGrill": "default",
                   "features.sessionContextAttachments": "default",
                   "forEach.enabled": "file",
                   "groupSingleLineMessages": "file",
@@ -1419,6 +1473,10 @@ timeout: 300
             expect(defaults['workflows.enabled']).toBe(DEFAULT_CONFIG.workflows.enabled);
             expect(defaults['excalidraw.enabled']).toBe(DEFAULT_CONFIG.excalidraw.enabled);
             expect(defaults['loops.enabled']).toBe(DEFAULT_CONFIG.loops.enabled);
+            expect(defaults['dreams.enabled']).toBe(DEFAULT_CONFIG.dreams.enabled);
+            expect(defaults['dreams.minIdleMs']).toBe(DEFAULT_CONFIG.dreams.minIdleMs);
+            expect(defaults['dreams.confidenceThreshold']).toBe(DEFAULT_CONFIG.dreams.confidenceThreshold);
+            expect(defaults['dreams.timeoutMs']).toBe(DEFAULT_CONFIG.dreams.timeoutMs);
             expect(defaults['features.focusedDiff']).toBe(DEFAULT_CONFIG.features.focusedDiff);
             expect(defaults['features.gitCrossCloneCherryPick']).toBe(DEFAULT_CONFIG.features.gitCrossCloneCherryPick);
             expect(defaults['pullRequests.autoClassifyTeam']).toBe(DEFAULT_CONFIG.pullRequests.autoClassifyTeam);

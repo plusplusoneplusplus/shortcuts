@@ -32,7 +32,7 @@ import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
 import { useChatPromptHistory } from '../../hooks/useChatPromptHistory';
-import { isRalphEnabled, isForEachEnabled, isMapReduceEnabled, isLoopsEnabled, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
+import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isForEachEnabled, isMapReduceEnabled, isLoopsEnabled, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
 import type { EffortTierKey } from '../../hooks/useProviderEffortTiers';
 import { EffortTierSelector } from './EffortTierSelector';
@@ -63,6 +63,8 @@ import {
 } from '../../utils/composerKeyboardShortcuts';
 import { RalphLaunchDialog } from '../../shared/RalphLaunchDialog';
 import type { ResolvedModalJobAiSelection } from '../../shared/ModalJobAiControls';
+import type { RalphGrillSetup } from '../../../../../ralph/grill-planning';
+import { RalphGrillSetupPanel } from './RalphGrillSetupPanel';
 import { AttachedContextPreviews } from '../../ui/AttachedContextPreviews';
 import { formatAttachedContext, useAttachedContext } from './hooks/useAttachedContext';
 import type { AttachmentPayload } from '../../types/attachments';
@@ -220,6 +222,7 @@ export function InitialChatComposer({
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
     const [selectedEffortTier, setSelectedEffortTier] = useState<EffortTierKey>('medium');
     const [ralphDirectGoalDraft, setRalphDirectGoalDraft] = useState<string | null>(null);
+    const [ralphGrillSetup, setRalphGrillSetup] = useState<RalphGrillSetup>({ enabled: true, depth: 'standard', agents: [] });
     const [settingsEditorOpen, setSettingsEditorOpen] = useState(false);
     const composerRootRef = useRef<HTMLDivElement>(null);
     const richTextRef = useRef<RichTextInputHandle>(null);
@@ -684,12 +687,14 @@ export function InitialChatComposer({
                 // Grilling phase: submit as ask mode with ralph context.
                 // maxIterations is intentionally omitted — the server resolves
                 // it from per-repo preferences, falling back to the default.
+                const grillSetup = isRalphMultiAgentGrillEnabled() ? ralphGrillSetup : undefined;
                 mode = 'ask';
                 contextOverride = {
                     skills: [...extractedSkills, 'grill-me'],
                     ralph: {
                         phase: 'grilling',
                         sessionId: `ralph-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                        ...(grillSetup ? { grill: grillSetup } : {}),
                     },
                 };
             } else if (selectedMode === 'for-each') {
@@ -1190,6 +1195,23 @@ export function InitialChatComposer({
                     onRemove={attachedContext.remove}
                     data-testid={`${testIdPrefix}-attached-context-previews`}
                 />
+                {selectedMode === 'ralph' && isRalphMultiAgentGrillEnabled() && (
+                    <RalphGrillSetupPanel
+                        value={ralphGrillSetup}
+                        onChange={setRalphGrillSetup}
+                        defaultProvider={selectedProviderForClientHooks}
+                        defaultModel={validModelOverride ?? defaultModelId}
+                        defaultReasoningEffort={(useEffortTierMode
+                            ? resolveEffortTier(selectedEffortTier, effortTierMap)?.reasoningEffort
+                            : effortOverride) ?? undefined}
+                        defaultEffortTier={selectedEffortTier}
+                        effortLevelsEnabled={isEffortLevelsEnabled()}
+                        composerUsesEffortTierMode={useEffortTierMode}
+                        workspaceId={workspaceId}
+                        disabled={sending}
+                        testIdPrefix={`${testIdPrefix}-ralph-grill`}
+                    />
+                )}
                 <AttachmentPreviews attachments={attachments} onRemove={removeAttachment} />
                 <input
                     ref={fileInputRef}

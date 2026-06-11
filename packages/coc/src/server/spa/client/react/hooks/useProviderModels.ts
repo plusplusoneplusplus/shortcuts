@@ -6,6 +6,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 
+/** Billing metadata preserved from the model catalog (e.g. tokenPrices.longContext.contextMax). */
+export interface ProviderModelBillingInfo {
+    multiplier?: number;
+    tokenPrices?: {
+        longContext?: { contextMax?: number; [key: string]: unknown };
+        [key: string]: unknown;
+    };
+    [key: string]: unknown;
+}
+
 export interface ProviderModelInfo {
     id: string;
     tokenLimit: number;
@@ -17,6 +27,8 @@ export interface ProviderModelInfo {
     };
     supportedReasoningEfforts: string[];
     defaultReasoningEffort?: string;
+    /** Billing metadata, including long-context tier support. Preserved verbatim from the catalog. */
+    billing?: ProviderModelBillingInfo;
 }
 
 interface RawModel {
@@ -33,6 +45,7 @@ interface RawModel {
     };
     supportedReasoningEfforts?: unknown;
     defaultReasoningEffort?: unknown;
+    billing?: ProviderModelBillingInfo;
 }
 
 const KNOWN_REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh'] as const;
@@ -79,6 +92,8 @@ function mapModel(m: RawModel): ProviderModelInfo {
         },
         supportedReasoningEfforts,
         defaultReasoningEffort,
+        // Preserve billing metadata (long-context tier support) for future consumers.
+        ...(m.billing !== undefined ? { billing: m.billing } : {}),
     };
 }
 

@@ -11,6 +11,9 @@ const CREATED_FILE_RE = /Created file (.+\.\w+)/;
 /** Regex to extract file paths from apply_patch result: "Added N file(s): path1, path2" */
 const ADDED_FILES_RE = /Added \d+ file\(s\): (.+)/;
 
+/** Regex to extract file paths from Codex apply_patch result lines: "add: path" */
+const ADD_FILE_RE = /^add:\s*(.+)$/gm;
+
 /** Shell tool names whose command args may contain file moves. */
 const SHELL_MOVE_TOOLS = new Set(['shell', 'bash']);
 
@@ -187,6 +190,19 @@ function extractMovedFilePathsFromCommand(command: string, depth = 0): string[] 
     return paths;
 }
 
+function extractApplyPatchResultPaths(result: string): string[] {
+    const paths: string[] = [];
+    const addedMatch = ADDED_FILES_RE.exec(result);
+    if (addedMatch) {
+        paths.push(...addedMatch[1].split(',').map(p => p.trim()).filter(Boolean));
+    }
+    for (const match of result.matchAll(ADD_FILE_RE)) {
+        const path = match[1].trim();
+        if (path) paths.push(path);
+    }
+    return paths;
+}
+
 /** Extract created file paths from an apply_patch tool call. */
 function extractApplyPatchPaths(
     tc: ClientToolCall,
@@ -195,16 +211,13 @@ function extractApplyPatchPaths(
     const paths: string[] = [];
     const localSeen = new Set<string>();
 
-    // 1. Parse result text: "Added N file(s): path1, path2"
+    // 1. Parse result text from either apply_patch implementation.
     if (tc.result) {
-        const match = ADDED_FILES_RE.exec(tc.result);
-        if (match) {
-            for (const p of match[1].split(',')) {
-                const trimmed = p.trim();
-                if (trimmed && !localSeen.has(trimmed)) {
-                    localSeen.add(trimmed);
-                    paths.push(trimmed);
-                }
+        for (const p of extractApplyPatchResultPaths(tc.result)) {
+            const trimmed = p.trim();
+            if (trimmed && !localSeen.has(trimmed)) {
+                localSeen.add(trimmed);
+                paths.push(trimmed);
             }
         }
     }

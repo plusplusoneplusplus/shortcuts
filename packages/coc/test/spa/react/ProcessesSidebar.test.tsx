@@ -252,6 +252,34 @@ describe('ProcessesSidebar pause/resume controls', () => {
         });
     });
 
+    it('shows provider badges for queued dream-run tasks using payload provider metadata', async () => {
+        render(
+            <Wrap
+                stats={makeStats({ queued: 1 })}
+                queued={[{
+                    id: 'dream-task-1',
+                    type: 'dream-run',
+                    status: 'queued',
+                    displayName: 'Dream Run: Manual',
+                    payload: {
+                        kind: 'dream-run',
+                        provider: 'claude',
+                        workspaceId: 'ws-dream',
+                        trigger: 'manual',
+                        timeoutMs: 3_600_000,
+                    },
+                }]}
+            >
+                <ProcessesSidebar />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Dream Run: Manual')).toBeDefined();
+            expect(screen.getByTestId('provider-badge-claude').textContent).toBe('CLAUDE');
+        });
+    });
+
     it('clicking pause calls POST /api/queue/pause then re-fetches and dispatches QUEUE_UPDATED', async () => {
         const updatedQueue = {
             queued: [], running: [], history: [],

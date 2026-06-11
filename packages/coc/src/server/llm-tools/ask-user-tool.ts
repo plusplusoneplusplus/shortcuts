@@ -42,6 +42,46 @@ export interface AskUserQuestion {
 export type AskUserAnswerValue = string | string[] | boolean;
 export type AskUserResponseReason = 'user-skipped' | 'cancelled' | 'needs-context';
 
+export interface AskUserRalphGrillSource {
+    role: string;
+    roleLabel: string;
+    provider?: string;
+    model?: string;
+    effortTier?: string;
+    provenanceLabel: string;
+}
+
+export interface AskUserRalphGrillPlanningSummary {
+    depth: string;
+    round: number;
+    maxRounds: number;
+    agentOutcomes: Array<{
+        role: string;
+        roleLabel: string;
+        provenanceLabel: string;
+        status: 'completed' | 'empty' | 'failed';
+        candidateCount: number;
+    }>;
+    consolidation: {
+        rawCandidateCount: number;
+        selectedQuestionCount: number;
+        exactDuplicatesMerged: number;
+        semanticDuplicatesMerged: number;
+        conflictsConverted: number;
+        duplicateOnlyAgents: string[];
+    };
+    warnings: string[];
+}
+
+export interface AskUserRalphGrillMetadata {
+    sources?: AskUserRalphGrillSource[];
+    consolidation?: {
+        kind: string;
+        mergedCandidateCount: number;
+    };
+    planning?: AskUserRalphGrillPlanningSummary;
+}
+
 export interface AskUserResponse {
     questionId: string;
     answer: AskUserAnswerValue | null;
@@ -62,6 +102,7 @@ export interface AskUserSSEPayload {
     turnIndex: number;
     index: number;
     batchSize: number;
+    ralphGrill?: AskUserRalphGrillMetadata;
 }
 
 export interface AskUserAnswerInput {

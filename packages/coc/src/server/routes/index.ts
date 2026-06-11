@@ -19,10 +19,11 @@ import type { WikiManager } from '../wiki';
 import { registerApiRoutes } from '../core/api-handler';
 import { registerQueueRoutes } from '../queue/queue-handler';
 import { prepareTaskForEnqueue } from './queue-enqueue';
+import { serializeTask } from './queue-shared';
 import { registerTaskRoutes, registerTaskWriteRoutes } from '../tasks/tasks-handler';
 import { registerTaskGenerationRoutes } from '../tasks/task-generation-handler';
 import { registerPromptRoutes } from '../prompts/prompt-handler';
-import { registerPreferencesRoutes } from '../preferences-handler';
+import { readRepoPreferences, registerPreferencesRoutes } from '../preferences-handler';
 import { registerAdminRoutes } from '../admin/admin-handler';
 import { registerTaskCommentsRoutes } from '../tasks/comments/task-comments-handler';
 import { registerDiffCommentsRoutes } from '../tasks/comments/diff-comments-handler';
@@ -79,11 +80,11 @@ import type { EnqueueFunction } from '../work-items/work-item-executor';
 import { upsertWorkItemTaskFile, toTaskFileStatus } from '../work-items/work-item-task-file';
 import { clearWorkItemResponseCacheForWorkspace } from '../work-items/work-item-response-cache';
 import { execGit } from '@plusplusoneplusplus/forge';
-import type { WorkItemChangeCommit } from '../work-items/types';
+import { TERMINAL_WORK_ITEM_STATUSES, WORK_ITEM_STATUSES, type WorkItemChangeCommit } from '../work-items/types';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
 import type { ResolvedCLIConfig } from '../../config';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
-import type { ChatProvider } from '../tasks/task-types';
+import { TaskDefs, type ChatProvider } from '../tasks/task-types';
 import type { TerminalSessionManager } from '../terminal/index';
 import { registerRemoteServerRoutes } from '../servers/remote-server-routes';
 import { RemoteServerStore } from '../servers/remote-server-store';
@@ -104,6 +105,12 @@ import { registerMapReduceRoutes } from './map-reduce-routes';
 import { FileMapReduceRunStore } from '../map-reduce/map-reduce-run-store';
 import { createMapReducePlanGenerator } from '../map-reduce/map-reduce-plan-generator';
 import { MapReduceRunExecutor } from '../map-reduce/map-reduce-run-executor';
+import { registerDreamRoutes } from '../dreams/dream-routes';
+import { FileDreamStore } from '../dreams/dream-store';
+import { DreamRunExecutor, type DreamRunRequestOptions } from '../dreams/dream-runner';
+import { DreamIdleScheduler } from '../dreams/dream-idle-scheduler';
+import { DEFAULT_DREAM_ANALYSIS_TIMEOUT_MS } from '../dreams/dream-analyzer';
+import { DreamInternalProcessExecutor } from '../executors/dream-internal-process-executor';
 import { registerLoopRoutes } from '../loops/loop-handler';
 import type { LoopStore } from '../loops/loop-store';
 import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
@@ -197,7 +204,7 @@ export interface RegisterRoutesOptions {
     syncEngines?: Map<string, SyncEngine>;
 }
 
-export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; agentProvidersQuotaCache?: AgentProvidersQuotaCache; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher } {
+export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; agentProvidersQuotaCache?: AgentProvidersQuotaCache; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler } {
     const {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
@@ -681,8 +688,123 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         resolveDefaultProvider,
     });
 
-    // Work item routes
     const workItemStore = new FileWorkItemStore({ dataDir });
+
+    // Dreams routes: reviewable, workspace-scoped cards plus manual run trigger.
+    // Route registration is always present; the live config guard controls availability.
+    const dreamStore = new FileDreamStore({ dataDir });
+    const getDreamsEnabled = opts.runtimeConfigService
+        ? () => opts.runtimeConfigService!.config.dreams?.enabled ?? false
+        : () => opts.resolvedConfig?.dreams?.enabled ?? false;
+    const activeWorkItemStatuses = WORK_ITEM_STATUSES.filter(status => !TERMINAL_WORK_ITEM_STATUSES.has(status));
+    const dreamInternalProcessExecutor = new DreamInternalProcessExecutor({
+        store,
+        aiService: resolvedAiService,
+        dataDir,
+        provider: concreteDefaultProvider(),
+        ...(opts.resolveAiServiceForProvider ? { resolveAiServiceForProvider: opts.resolveAiServiceForProvider } : {}),
+    });
+    const dreamRunExecutor = new DreamRunExecutor({
+        store: dreamStore,
+        processStore: store,
+        runInternalStep: request => dreamInternalProcessExecutor.runStep(request),
+        getDreamsEnabled,
+        getWorkspaceDreamsEnabled: (workspaceId) => readRepoPreferences(dataDir, workspaceId).dreams?.enabled === true,
+        listWorkspaceTasks: () => queueFacade.getAll(),
+        getRelatedRecords: async (workspaceId) => {
+            const result = await workItemStore.listWorkItems({
+                repoId: workspaceId,
+                status: activeWorkItemStatuses,
+            });
+            return result.items
+                .filter(item => !item.archivedAt)
+                .map(item => ({
+                    kind: 'work-item' as const,
+                    id: item.id,
+                    status: item.status,
+                    title: item.title,
+                    summary: item.description?.trim() || item.title,
+                    recommendation: item.title,
+                }));
+        },
+    });
+    bridge.setDreamRunExecutor(dreamRunExecutor);
+    const getDefaultDreamRunOptions = (): DreamRunRequestOptions => {
+        const dreams = (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.dreams;
+        return {
+            minIdleMs: dreams?.minIdleMs,
+            confidenceThreshold: dreams?.confidenceThreshold,
+            maxCandidates: dreams?.maxCandidates,
+            conversationLimit: dreams?.conversationLimit,
+            timeoutMs: dreams?.timeoutMs ?? DEFAULT_DREAM_ANALYSIS_TIMEOUT_MS,
+        };
+    };
+    const buildDreamRunTask = (
+        workspaceId: string,
+        trigger: 'manual' | 'idle',
+        options: DreamRunRequestOptions,
+    ): CreateTaskInput => {
+        const mergedOptions: DreamRunRequestOptions = {
+            ...getDefaultDreamRunOptions(),
+            ...options,
+        };
+        const payload: Record<string, unknown> = {
+            kind: TaskDefs.dreamRun.kind,
+            workspaceId,
+            trigger,
+            ...(mergedOptions.provider ? { provider: mergedOptions.provider } : {}),
+            ...(mergedOptions.model ? { model: mergedOptions.model } : {}),
+            ...(mergedOptions.reasoningEffort ? { reasoningEffort: mergedOptions.reasoningEffort } : {}),
+            ...(mergedOptions.confidenceThreshold !== undefined ? { confidenceThreshold: mergedOptions.confidenceThreshold } : {}),
+            ...(mergedOptions.maxCandidates !== undefined ? { maxCandidates: mergedOptions.maxCandidates } : {}),
+            ...(mergedOptions.conversationLimit !== undefined ? { conversationLimit: mergedOptions.conversationLimit } : {}),
+            ...(mergedOptions.minIdleMs !== undefined ? { minIdleMs: mergedOptions.minIdleMs } : {}),
+            ...(mergedOptions.timeoutMs !== undefined ? { timeoutMs: mergedOptions.timeoutMs } : {}),
+        };
+        return {
+            type: TaskDefs.dreamRun.kind,
+            priority: trigger === 'idle' ? 'low' : 'normal',
+            repoId: workspaceId,
+            payload,
+            config: {
+                ...(mergedOptions.model ? { model: mergedOptions.model } : {}),
+                ...(mergedOptions.reasoningEffort ? { reasoningEffort: mergedOptions.reasoningEffort } : {}),
+                ...(mergedOptions.timeoutMs !== undefined ? { timeoutMs: mergedOptions.timeoutMs } : {}),
+            },
+            displayName: `Dream Run: ${trigger === 'idle' ? 'Idle' : 'Manual'}`,
+        };
+    };
+    const enqueueDreamRun = async (
+        workspaceId: string,
+        trigger: 'manual' | 'idle',
+        options: DreamRunRequestOptions,
+    ): Promise<Record<string, unknown>> => {
+        if (readRepoPreferences(dataDir, workspaceId).dreams?.enabled !== true) {
+            throw new Error(`Dreaming is not enabled for workspace '${workspaceId}'`);
+        }
+        const input = buildDreamRunTask(workspaceId, trigger, options);
+        await prepareEnqueueTask(input);
+        const taskId = await bridge.enqueue(input);
+        const task = bridge.findManagerForTask(taskId)?.getTask(taskId);
+        return task ? serializeTask(task) : { id: taskId };
+    };
+    const dreamIdleScheduler = new DreamIdleScheduler({
+        getWorkspaceIds: async () => (await store.getWorkspaces()).map(workspace => workspace.id),
+        getDreamsEnabled,
+        getWorkspaceDreamsEnabled: (workspaceId) => readRepoPreferences(dataDir, workspaceId).dreams?.enabled === true,
+        checkIdleReadiness: (workspaceId, options) => dreamRunExecutor.checkIdleReadiness(workspaceId, options),
+        enqueueIdleRun: (workspaceId, options) => enqueueDreamRun(workspaceId, 'idle', options),
+        getRunOptions: getDefaultDreamRunOptions,
+        intervalMs: (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.dreams?.idleCheckIntervalMs,
+    });
+    registerDreamRoutes({
+        routes,
+        store: dreamStore,
+        enqueueRun: (workspaceId, options) => enqueueDreamRun(workspaceId, 'manual', options),
+        getDreamsEnabled,
+    });
+
+    // Work item routes
     const enqueueForWorkItems = (async (input: Parameters<EnqueueFunction>[0]) => {
         await prepareEnqueueTask(input as CreateTaskInput);
         return bridge.enqueue(input as CreateTaskInput);
@@ -956,5 +1078,5 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
     );
 
-    return { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, agentProvidersQuotaCache, activeWorkspaceBackgroundRefresher };
+    return { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, agentProvidersQuotaCache, activeWorkspaceBackgroundRefresher, dreamIdleScheduler };
 }

@@ -2,6 +2,7 @@ export { AdminClient } from './admin';
 export { AgentProvidersClient } from './agent-providers';
 export type { ProviderInstallStatusResponse, ProviderInstallResponse } from './agent-providers';
 export { DbBrowserClient } from './db-browser';
+export { DreamsClient } from './dreams';
 export { ExplorerClient } from './explorer';
 export { ForEachClient } from './for-each';
 export { GitClient } from './git';

@@ -84,10 +84,12 @@ vi.mock('../../../../src/server/spa/client/comments/diff-comment-utils', () => (
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
     isWorkItemsHierarchyEnabled: () => true,
     isWorkItemsAiAuthoringEnabled: () => false,
     isWorkItemsWorkflowEnabled: () => false,
     isCommitChatLensEnabled: () => true,
+    getCommitChatLensDormantMode: () => 'ghost' as const,
     isWorkItemsSyncEnabled: () => true,
     isSessionContextAttachmentsEnabled: () => false,
 }));

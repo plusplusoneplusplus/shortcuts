@@ -23,6 +23,7 @@ import { WorkItemsTab } from '../work-items/WorkItemsTab';
 import { WorkflowDetailView } from '../../processes/dag';
 import { TerminalView } from '../terminal/TerminalView';
 import { NotesView } from '../notes/NotesView';
+import { DreamsPanel } from '../dreams/DreamsPanel';
 import { AddRepoDialog } from '../../repos/AddRepoDialog';
 import { ErrorBoundary } from '../../ui/ErrorBoundary';
 
@@ -36,6 +37,7 @@ import { useTerminalEnabled } from '../../hooks/feature-flags/useTerminalEnabled
 import { useNotesEnabled } from '../notes/hooks/useNotesEnabled';
 import { useWorkflowsEnabled } from '../../hooks/feature-flags/useWorkflowsEnabled';
 import { usePullRequestsEnabled } from '../../hooks/feature-flags/usePullRequestsEnabled';
+import { useDreamsEnabled } from '../../hooks/feature-flags/useDreamsEnabled';
 import { MobileTabBar } from '../../layout/MobileTabBar';
 import { buildRepoSubTabSuffix } from '../../layout/Router';
 import { SHOW_WIKI_TAB } from '../../layout/TopBar';
@@ -60,6 +62,7 @@ export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] =
     { key: 'git', label: 'Git', shortcut: 'Alt+G' },
     { key: 'terminal', label: 'Terminal' },
     { key: 'work-items', label: 'Work Items', shortcut: 'Alt+I' },
+    { key: 'dreams', label: 'Dreams', shortcut: 'Alt+D' },
     { key: 'pull-requests', label: 'Pull Requests', shortcut: 'Alt+R' },
     { key: 'explorer', label: 'Explorer', shortcut: 'Alt+E' },
     { key: 'workflows', label: 'Workflows', shortcut: 'Alt+W' },
@@ -82,7 +85,7 @@ export const VISIBLE_SUB_TABS = SHOW_WIKI_TAB
  */
 const TAB_GROUP_INDEX: Record<string, number> = {
     'chats': 1, 'activity': 1, 'git': 1, 'terminal': 1,
-    'work-items': 2, 'pull-requests': 2, 'tasks': 2,
+    'work-items': 2, 'dreams': 2, 'pull-requests': 2, 'tasks': 2,
     'explorer': 3, 'workflows': 3, 'schedules': 3,
     'notes': 4, 'settings': 4, 'wiki': 4,
 };
@@ -130,20 +133,11 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const notesEnabled = useNotesEnabled();
     const workflowsEnabled = useWorkflowsEnabled();
     const pullRequestsEnabled = usePullRequestsEnabled();
+    const dreamsEnabled = useDreamsEnabled();
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(ws.id, sessionContextAttachmentsEnabled);
     const [headerContextDropTarget, setHeaderContextDropTarget] = useState<'task' | 'ask' | null>(null);
     const [headerContextDropFeedback, setHeaderContextDropFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-
-    // Notes chat panel — per-workspace state so it persists across tab switches
-    const [notesChatPanelOpen, setNotesChatPanelOpen] = useState(() => {
-        try { return localStorage.getItem(`coc-notes-chat-panel-open-${ws.id}`) === 'true'; }
-        catch { return false; }
-    });
-    useEffect(() => {
-        try { localStorage.setItem(`coc-notes-chat-panel-open-${ws.id}`, String(notesChatPanelOpen)); }
-        catch { /* ignore */ }
-    }, [notesChatPanelOpen, ws.id]);
 
     // Work items: load for this repo if not yet in context (for badge)
     const { state: workItemState, dispatch: workItemDispatch } = useWorkItems();
@@ -167,6 +161,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const prevNotesEnabled = useRef(notesEnabled);
     const prevWorkflowsEnabled = useRef(workflowsEnabled);
     const prevPullRequestsEnabled = useRef(pullRequestsEnabled);
+    const prevDreamsEnabled = useRef(dreamsEnabled);
 
     const visibleSubTabs = useMemo(() => {
         let tabs = VISIBLE_SUB_TABS;
@@ -175,6 +170,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         if (!notesEnabled) tabs = tabs.filter(t => t.key !== 'notes');
         if (!workflowsEnabled) tabs = tabs.filter(t => t.key !== 'workflows');
         if (!pullRequestsEnabled) tabs = tabs.filter(t => t.key !== 'pull-requests');
+        if (!dreamsEnabled) tabs = tabs.filter(t => t.key !== 'dreams');
         // Layout mode filtering
         if (uiLayoutMode === 'classic') {
             // Classic: replace Chats with Activity, relabel Tasks as Plans
@@ -188,7 +184,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 'pull-requests': 'Full Requests',
             };
             const devWorkflowOrder: RepoSubTab[] = [
-                'chats', 'work-items', 'schedules', 'explorer',
+                'chats', 'work-items', 'dreams', 'schedules', 'explorer',
                 'workflows', 'git', 'terminal', 'pull-requests', 'tasks', 'settings',
             ];
             const tabMap = new Map(tabs.map(t => [t.key, t]));
@@ -208,7 +204,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             tabs = ordered;
         }
         return tabs;
-    }, [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, uiLayoutMode]);
+    }, [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, uiLayoutMode]);
 
     // Redirect away from git/pull-requests tab when switching to a non-git repo
     useEffect(() => {
@@ -248,6 +244,14 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         }
         prevPullRequestsEnabled.current = pullRequestsEnabled;
     }, [activeSubTab, pullRequestsEnabled, dispatch]);
+
+    // Redirect away from dreams tab only when the feature transitions to disabled
+    useEffect(() => {
+        if (activeSubTab === 'dreams' && !dreamsEnabled && prevDreamsEnabled.current) {
+            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
+        }
+        prevDreamsEnabled.current = dreamsEnabled;
+    }, [activeSubTab, dreamsEnabled, dispatch]);
 
     // Redirect when switching layout modes
     useEffect(() => {
@@ -773,7 +777,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         )}
                     </div>
                 ) : (
-                    <div className={cn("flex flex-col flex-1 min-h-0 min-w-0", activeSubTab === 'activity' || activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' ? "overflow-hidden" : "overflow-y-auto")}>
+                    <div className={cn("flex flex-col flex-1 min-h-0 min-w-0", activeSubTab === 'activity' || activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' || activeSubTab === 'dreams' ? "overflow-hidden" : "overflow-y-auto")}>
                         {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} />}
                         {activeSubTab === 'workflows' && <TemplatesTab key={ws.id} repo={repo} />}
                         {/*
@@ -821,10 +825,13 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                     key={ws.id}
                                     workspaceId={ws.id}
                                     initialNotePath={state.selectedNotePath}
-                                    chatPanelOpen={notesChatPanelOpen}
-                                    onToggleChatPanel={() => setNotesChatPanelOpen(v => !v)}
                                     defaultScope="per-note"
                                 />}
+                            </div>
+                        )}
+                        {dreamsEnabled && (
+                            <div style={{ display: activeSubTab === 'dreams' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                                {wasVisited('dreams') && <DreamsPanel key={ws.id} workspaceId={ws.id} />}
                             </div>
                         )}
                         {activeSubTab === 'workflow' && state.selectedWorkflowProcessId && <WorkflowDetailView key={state.selectedWorkflowProcessId} processId={state.selectedWorkflowProcessId} />}

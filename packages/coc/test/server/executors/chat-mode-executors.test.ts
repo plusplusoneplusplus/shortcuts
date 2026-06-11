@@ -17,8 +17,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import type { QueuedTask } from '@plusplusoneplusplus/forge';
-import { READ_ONLY_SYSTEM_MESSAGE } from '@plusplusoneplusplus/forge';
+import type { ModelInfo, QueuedTask } from '@plusplusoneplusplus/forge';
+import { modelMetadataStore, READ_ONLY_SYSTEM_MESSAGE } from '@plusplusoneplusplus/forge';
 import { ChatExecutor } from '../../../src/server/executors/chat-executor';
 import { AutopilotExecutor } from '../../../src/server/executors/autopilot-executor';
 import { ClassificationExecutor } from '../../../src/server/executors/classification-executor';
@@ -26,6 +26,7 @@ import type { ChatModeExecutorOptions } from '../../../src/server/executors/chat
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
+import { RALPH_GRILL_MAX_ROUNDS } from '../../../src/server/ralph/grill-planning';
 
 // ============================================================================
 // Mocks
@@ -776,6 +777,192 @@ describe('ChatExecutor ralph grilling phase', () => {
         expect(toolNames).toContain('ask_user');
     });
 
+    it('precomputes a multi-agent question plan before the consolidated grilling turn', async () => {
+        sdkMocks.mockSendMessage.mockImplementation(async (options: any) => {
+            if (options.systemMessage?.content?.includes('one specialized Ralph grill agent')) {
+                const role = /Agent role: (.+)/.exec(options.prompt)?.[1] ?? 'Unknown Agent';
+                return {
+                    success: true,
+                    response: JSON.stringify({
+                        questions: [{
+                            question: `Question from ${role}`,
+                            type: 'text',
+                        }],
+                    }),
+                    sessionId: `agent-${role}`,
+                };
+            }
+            return { success: true, response: 'ok', sessionId: 'main-session' };
+        });
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            askUser: { enabled: true },
+            ralphMultiAgentGrillEnabled: true,
+        } as any));
+        const task = makeGrillingTask('task-grill-agent-plan');
+        task.payload = {
+            ...(task.payload as any),
+            provider: 'copilot',
+            context: {
+                ralph: {
+                    phase: 'grilling',
+                    grill: {
+                        enabled: true,
+                        depth: 'light',
+                        agents: [
+                            { role: 'product', provider: 'copilot', model: 'gpt-5.5' },
+                            { role: 'ux', provider: 'copilot', model: 'gpt-5.5' },
+                            { role: 'architecture-system', provider: 'copilot', model: 'gpt-5.5' },
+                        ],
+                    },
+                },
+            },
+        } as any;
+
+        await executor.execute(task, 'Grill me on this idea');
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(4);
+        const planningEvents = vi.mocked(store.emitProcessEvent).mock.calls
+            .filter(([, event]) => (event as any).type === 'ralph-grill-planning');
+        expect(planningEvents).toHaveLength(2);
+        expect((planningEvents[0][1] as any).ralphGrillPlanning).toMatchObject({
+            status: 'running',
+            depth: 'light',
+            round: 1,
+            maxRounds: RALPH_GRILL_MAX_ROUNDS,
+            agentCount: 3,
+            agents: [
+                expect.objectContaining({ role: 'product', status: 'running', provenanceLabel: 'Product Agent · copilot/gpt-5.5' }),
+                expect.objectContaining({ role: 'ux', status: 'running', provenanceLabel: 'UX Agent · copilot/gpt-5.5' }),
+                expect.objectContaining({ role: 'architecture-system', status: 'running', provenanceLabel: 'Architecture/System Agent · copilot/gpt-5.5' }),
+            ],
+        });
+        expect((planningEvents[1][1] as any).ralphGrillPlanning).toMatchObject({
+            status: 'completed',
+            depth: 'light',
+            round: 1,
+            maxRounds: RALPH_GRILL_MAX_ROUNDS,
+            agents: [
+                expect.objectContaining({ role: 'product', status: 'completed', candidateCount: 1 }),
+                expect.objectContaining({ role: 'ux', status: 'completed', candidateCount: 1 }),
+                expect.objectContaining({ role: 'architecture-system', status: 'completed', candidateCount: 1 }),
+            ],
+        });
+        expect(vi.mocked(store.emitProcessEvent).mock.invocationCallOrder[0])
+            .toBeLessThan(sdkMocks.mockSendMessage.mock.invocationCallOrder[0]);
+        const agentCalls = sdkMocks.mockSendMessage.mock.calls.slice(0, 3).map(call => call[0]);
+        expect(agentCalls.map(call => call.prompt)).toEqual([
+            expect.stringContaining('Agent role: Product Agent'),
+            expect.stringContaining('Agent role: UX Agent'),
+            expect.stringContaining('Agent role: Architecture/System Agent'),
+        ]);
+        expect(agentCalls.every(call => call.loadDefaultMcpConfig === false)).toBe(true);
+
+        const mainCall = sdkMocks.mockSendMessage.mock.calls[3][0];
+        expect(mainCall.prompt).toContain('Multi-agent grilling is enabled');
+        expect(mainCall.prompt).toContain('Actual grill-agent planning result');
+        expect(mainCall.prompt).toContain('CoC already invoked the separate grill agents');
+        expect(mainCall.prompt).toContain('[Product Agent · copilot/gpt-5.5] (text) Question from Product Agent');
+        expect(mainCall.prompt).toContain('[UX Agent · copilot/gpt-5.5] (text) Question from UX Agent');
+        expect(mainCall.prompt).toContain('Final goal coverage summary requirement');
+        expect(mainCall.prompt).toContain('`## Agent Coverage Summary`');
+        expect(mainCall.prompt).toContain('[decision] Depth: light');
+        expect(mainCall.prompt).toContain(`[decision] Rounds run: 1 of up to ${RALPH_GRILL_MAX_ROUNDS}`);
+        expect(mainCall.prompt).toContain('[decision] Provider/tier or provider/model used per agent:');
+        expect(mainCall.prompt).toContain('[decision] Dedupe/conflict outcomes: raw 3 -> selected 3');
+        expect(mainCall.prompt).toContain('[decision] Warnings / reduced coverage: none');
+        expect((mainCall.tools ?? []).map((tool: any) => tool.name)).toContain('ask_user');
+    });
+
+    it('enriches the consolidated ask_user batch with Ralph grill provenance metadata', async () => {
+        const task = makeGrillingTask('task-grill-agent-ask');
+        const processId = `queue_${task.id}`;
+        store.processes.set(processId, {
+            id: processId,
+            type: 'chat',
+            status: 'running',
+            startTime: new Date(),
+            promptPreview: 'Grill me',
+            fullPrompt: 'Grill me',
+        });
+        task.payload = {
+            ...(task.payload as any),
+            provider: 'copilot',
+            context: {
+                ralph: {
+                    phase: 'grilling',
+                    grill: {
+                        enabled: true,
+                        depth: 'light',
+                        agents: [
+                            { role: 'product', provider: 'copilot', model: 'gpt-5.5' },
+                            { role: 'ux', provider: 'copilot', model: 'gpt-5.5' },
+                            { role: 'architecture-system', provider: 'copilot', model: 'gpt-5.5' },
+                        ],
+                    },
+                },
+            },
+        } as any;
+
+        sdkMocks.mockSendMessage.mockImplementation(async (options: any) => {
+            if (options.systemMessage?.content?.includes('one specialized Ralph grill agent')) {
+                const role = /Agent role: (.+)/.exec(options.prompt)?.[1] ?? 'Unknown Agent';
+                return {
+                    success: true,
+                    response: JSON.stringify({
+                        questions: [{
+                            question: `Question from ${role}`,
+                            type: 'text',
+                        }],
+                    }),
+                    sessionId: `agent-${role}`,
+                };
+            }
+
+            const askTool = options.tools?.find((tool: any) => tool.name === 'ask_user');
+            expect(askTool).toBeDefined();
+            const responsePromise = askTool.handler({
+                questions: [{
+                    question: 'Question from Product Agent',
+                    type: 'text',
+                }],
+            });
+            await vi.waitFor(() => {
+                const pendingQuestion = store.processes.get(processId)?.pendingAskUser?.[0];
+                expect(pendingQuestion).toMatchObject({
+                    question: 'Question from Product Agent',
+                    ralphGrill: {
+                        planning: {
+                            depth: 'light',
+                            consolidation: {
+                                rawCandidateCount: 3,
+                                selectedQuestionCount: 3,
+                            },
+                        },
+                        sources: [expect.objectContaining({
+                            role: 'product',
+                            provenanceLabel: 'Product Agent · copilot/gpt-5.5',
+                        })],
+                    },
+                });
+            });
+            const questionId = store.processes.get(processId)!.pendingAskUser![0].questionId;
+            expect(executor.getAskUserHandles(processId)?.answerQuestion(questionId, 'answer')).toBe(true);
+            await expect(responsePromise).resolves.toMatchObject([{
+                questionId,
+                answer: 'answer',
+                skipped: false,
+            }]);
+            return { success: true, response: 'ok', sessionId: 'main-session' };
+        });
+
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            askUser: { enabled: true },
+            ralphMultiAgentGrillEnabled: true,
+        } as any));
+
+        await executor.execute(task, 'Grill me on this idea');
+    });
+
     it('does NOT add the grilling directive to a non-grilling ask task', async () => {
         const executor = new ChatExecutor(store, makeOptions(store, {
             askUser: { enabled: true },
@@ -1103,6 +1290,7 @@ describe('create_update_work_item tool wiring', () => {
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         const toolNames = (call.tools ?? []).map((t: any) => t.name);
+        expect(toolNames).toContain('get_work_item');
         expect(toolNames).toContain('create_update_work_item');
         expect(toolNames).not.toContain('create_work_item');
         expect(toolNames).not.toContain('update_work_item');
@@ -1117,6 +1305,7 @@ describe('create_update_work_item tool wiring', () => {
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         const toolNames = (call.tools ?? []).map((t: any) => t.name);
+        expect(toolNames).toContain('get_work_item');
         expect(toolNames).toContain('create_update_work_item');
         expect(toolNames).not.toContain('create_work_item');
         expect(toolNames).not.toContain('update_work_item');
@@ -1139,6 +1328,7 @@ describe('create_update_work_item tool wiring', () => {
 
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
             const toolNames = (call.tools ?? []).map((t: any) => t.name);
+            expect(toolNames).toContain('get_work_item');
             expect(toolNames).toContain('create_update_work_item');
             expect(toolNames).not.toContain('create_work_item');
             expect(toolNames).not.toContain('update_work_item');
@@ -1188,6 +1378,7 @@ describe('create_update_work_item tool wiring', () => {
 
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
             const toolNames = (call.tools ?? []).map((t: any) => t.name);
+            expect(toolNames).not.toContain('get_work_item');
             expect(toolNames).not.toContain('create_update_work_item');
             expect(toolNames).not.toContain('create_work_item');
             expect(toolNames).not.toContain('update_work_item');
@@ -1297,5 +1488,102 @@ describe('ChatExecutor legacy plan auto-folder path (notes/Plans)', () => {
         const sysContent: string = call.systemMessage?.content ?? '';
         expect(sysContent).toContain('notes');
         expect(sysContent).toContain('Plans');
+    });
+});
+
+// ============================================================================
+// Copilot long-context tier
+// ============================================================================
+
+describe('ChatBaseExecutor contextTier', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    function makeCatalogModel(id: string, billing?: unknown): ModelInfo {
+        return {
+            id,
+            name: id,
+            capabilities: {
+                supports: { vision: false, reasoningEffort: false },
+                limits: { max_context_window_tokens: 128_000 },
+            },
+            ...(billing !== undefined ? { billing: billing as ModelInfo['billing'] } : {}),
+        };
+    }
+
+    const longContextModel = makeCatalogModel('gpt-5-long-ctx', { tokenPrices: { longContext: { contextMax: 1_000_000 } } });
+    const standardModel = makeCatalogModel('gpt-5-standard', { multiplier: 1 });
+
+    beforeEach(async () => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'AI answer',
+            sessionId: 'sess-1',
+            toolCalls: [],
+        });
+        await modelMetadataStore.initialize({ listModels: async () => [longContextModel, standardModel] });
+    });
+
+    afterEach(async () => {
+        // Clear the singleton cache so other suites are unaffected.
+        await modelMetadataStore.initialize({ listModels: async () => [] });
+    });
+
+    function makeExecutorForProvider(provider: 'copilot' | 'codex' | 'claude') {
+        return new ChatExecutor(store, makeOptions(store, {
+            provider,
+            resolveAiServiceForProvider: vi.fn().mockReturnValue(sdkMocks.service as any),
+        }));
+    }
+
+    it('passes contextTier "long_context" for a Copilot model with long-context metadata', async () => {
+        const executor = makeExecutorForProvider('copilot');
+        const task = makeChatTask('ask', 'task-ctx-long');
+        task.config = { model: 'gpt-5-long-ctx' } as any;
+
+        await executor.execute(task, 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.contextTier).toBe('long_context');
+    });
+
+    it('omits contextTier for a Copilot model without long-context metadata', async () => {
+        const executor = makeExecutorForProvider('copilot');
+        const task = makeChatTask('ask', 'task-ctx-standard');
+        task.config = { model: 'gpt-5-standard' } as any;
+
+        await executor.execute(task, 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call).not.toHaveProperty('contextTier');
+    });
+
+    it('omits contextTier for Codex even when the catalog model has long-context metadata', async () => {
+        sdkMocks.mockListModels.mockResolvedValue([longContextModel]);
+        const executor = makeExecutorForProvider('codex');
+        const task = makeChatTask('ask', 'task-ctx-codex');
+        task.config = { model: 'gpt-5-long-ctx' } as any;
+        task.payload = { ...(task.payload as any), provider: 'codex' } as any;
+
+        await executor.execute(task, 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call).not.toHaveProperty('contextTier');
+    });
+
+    it('omits contextTier for Claude even when the catalog model has long-context metadata', async () => {
+        const claudeLongContext = makeCatalogModel('claude-sonnet-4.6', { tokenPrices: { longContext: { contextMax: 1_000_000 } } });
+        sdkMocks.mockListModels.mockResolvedValue([claudeLongContext]);
+        const executor = makeExecutorForProvider('claude');
+        const task = makeChatTask('ask', 'task-ctx-claude');
+        task.config = { model: 'claude-sonnet-4.6' } as any;
+        task.payload = { ...(task.payload as any), provider: 'claude' } as any;
+
+        await executor.execute(task, 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call).not.toHaveProperty('contextTier');
     });
 });

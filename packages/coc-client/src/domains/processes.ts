@@ -18,6 +18,7 @@ import type {
   ProcessGroupPinsResponse,
   ProcessGroupPinType,
   ProcessResumeCliResponse,
+  RalphGrillSetup,
   ProcessSearchQuery,
   ProcessSearchResponse,
   ProcessSummariesResponse,
@@ -220,14 +221,15 @@ export class ProcessesClient {
    */
   promoteToRalph(
     processId: string,
-    options?: { workspaceId?: string; extraGuidance?: string },
+    options?: { workspaceId?: string; extraGuidance?: string; grill?: RalphGrillSetup },
   ): Promise<PromoteToRalphResult> {
     const query = options?.workspaceId ? { workspace: options.workspaceId } : undefined;
-    const body: { workspaceId?: string; extraGuidance?: string } = {};
+    const body: { workspaceId?: string; extraGuidance?: string; grill?: RalphGrillSetup } = {};
     if (options?.workspaceId) body.workspaceId = options.workspaceId;
     if (options?.extraGuidance && options.extraGuidance.trim().length > 0) {
       body.extraGuidance = options.extraGuidance;
     }
+    if (options?.grill?.enabled) body.grill = options.grill;
     return this.transport.request<PromoteToRalphResult>(
       `/processes/${encodePathSegment(processId)}/promote-to-ralph`,
       { method: 'POST', query, body },

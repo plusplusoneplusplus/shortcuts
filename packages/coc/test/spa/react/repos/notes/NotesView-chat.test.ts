@@ -9,12 +9,17 @@ import * as path from 'path';
 const VIEW_PATH = path.join(
     __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'notes', 'NotesView.tsx'
 );
+const REPO_DETAIL_PATH = path.join(
+    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'RepoDetail.tsx'
+);
 
 describe('NotesView (notes chat refactor)', () => {
     let source: string;
+    let repoDetailSource: string;
 
     beforeAll(() => {
         source = fs.readFileSync(VIEW_PATH, 'utf-8');
+        repoDetailSource = fs.readFileSync(REPO_DETAIL_PATH, 'utf-8');
     });
 
     describe('no per-note binding references', () => {
@@ -31,13 +36,13 @@ describe('NotesView (notes chat refactor)', () => {
         });
     });
 
-    describe('chat state lifted to parent (optional) with internal fallback', () => {
-        it('accepts chatPanelOpen as an optional prop', () => {
-            expect(source).toContain('chatPanelOpen?: boolean');
+    describe('workspace-scoped chat state ownership', () => {
+        it('does not expose a separate parent-owned chatPanelOpen override', () => {
+            expect(source).not.toContain('chatPanelOpen?: boolean');
         });
 
-        it('accepts onToggleChatPanel as an optional prop', () => {
-            expect(source).toContain('onToggleChatPanel?: () => void');
+        it('does not expose a separate parent-owned onToggleChatPanel override', () => {
+            expect(source).not.toContain('onToggleChatPanel?: () => void');
         });
 
         it('does not own chatPanelOpen state with the old single key', () => {
@@ -48,7 +53,7 @@ describe('NotesView (notes chat refactor)', () => {
             expect(source).not.toContain("localStorage.setItem('coc-notes-chat-panel-open'");
         });
 
-        it('provides internal chatPanelOpen state with workspace-scoped key', () => {
+        it('provides internal non-Lens chatPanelOpen state with workspace-scoped key', () => {
             expect(source).toContain('`coc-notes-chat-panel-open-${workspaceId}`');
         });
 
@@ -64,6 +69,31 @@ describe('NotesView (notes chat refactor)', () => {
 
         it('passes onToggleChatPanel to NoteEditor', () => {
             expect(source).toContain('onToggleChatPanel={handleToggleChatPanel}');
+        });
+    });
+
+    describe('Lens Chat inheritance', () => {
+        it('uses the shared ReviewChat presentation hook with a notes target', () => {
+            expect(source).toContain("type: 'notes'");
+            expect(source).toContain('useReviewChatPresentation({');
+        });
+
+        it('renders the shared ReviewChatPlacementFrame for Lens notes chat', () => {
+            expect(source).toContain('<ReviewChatPlacementFrame');
+            expect(source).toContain('testIdPrefix="notes-chat"');
+        });
+
+        it('does not render a non-interactive Lens Chat badge overlapping the toolbar', () => {
+            // The badge was a pointer-events-none pill that collided with the
+            // editor's Rich/Md toggle and looked clickable but was not. Removed.
+            expect(source).not.toContain('notes-lens-chat-badge');
+            expect(source).not.toContain('Notes inherit Lens Chat mode');
+        });
+
+        it('keeps RepoDetail from owning a competing notes chat open state', () => {
+            expect(repoDetailSource).not.toContain('notesChatPanelOpen');
+            expect(repoDetailSource).not.toContain('chatPanelOpen={');
+            expect(repoDetailSource).not.toContain('onToggleChatPanel={');
         });
     });
 

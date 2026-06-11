@@ -774,3 +774,108 @@ describe('RequestRunner.send() — proactive MCP OAuth probe', () => {
         expect(loginFn).toHaveBeenCalledWith({ serverName: 'failing-server' });
     });
 });
+
+// ============================================================================
+// send() — contextTier
+// ============================================================================
+
+describe('RequestRunner.send() — contextTier', () => {
+    it('passes contextTier to createSession', async () => {
+        const mockSession = createMockSession();
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            resumeSession: vi.fn(),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        await runner.send({ prompt: 'hi', model: 'gpt-5', contextTier: 'long_context', timeoutMs: 5000, loadDefaultMcpConfig: false });
+
+        const sessionConfig = mockClient.createSession.mock.calls[0][0];
+        expect(sessionConfig.contextTier).toBe('long_context');
+        expect(sessionConfig.model).toBe('gpt-5');
+    });
+
+    it('omits contextTier from session config when undefined', async () => {
+        const mockSession = createMockSession();
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            resumeSession: vi.fn(),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        await runner.send({ prompt: 'hi', model: 'gpt-5', timeoutMs: 5000, loadDefaultMcpConfig: false });
+
+        const sessionConfig = mockClient.createSession.mock.calls[0][0];
+        expect(sessionConfig).not.toHaveProperty('contextTier');
+    });
+
+    it('passes contextTier to resumeSession', async () => {
+        const mockSession = createMockSession({ sessionId: 'resumed-session' });
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            resumeSession: vi.fn().mockResolvedValue(mockSession),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        await runner.send({ prompt: 'hi', model: 'gpt-5', contextTier: 'long_context', sessionId: 'resumed-session', timeoutMs: 5000, loadDefaultMcpConfig: false });
+
+        expect(mockClient.resumeSession).toHaveBeenCalledOnce();
+        const sessionConfig = mockClient.resumeSession.mock.calls[0][1];
+        expect(sessionConfig.contextTier).toBe('long_context');
+    });
+
+    it('passes contextTier to session.setModel in the delayed model-switch path', async () => {
+        const mockSession = createMockSession();
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            resumeSession: vi.fn(),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        // model + reasoningEffort triggers the delayed setModel path
+        await runner.send({ prompt: 'hi', model: 'gpt-5', reasoningEffort: 'high', contextTier: 'long_context', timeoutMs: 5000, loadDefaultMcpConfig: false });
+
+        // Session config carries neither the model nor the tier — both follow the model switch
+        const sessionConfig = mockClient.createSession.mock.calls[0][0];
+        expect(sessionConfig).not.toHaveProperty('model');
+        expect(sessionConfig).not.toHaveProperty('contextTier');
+
+        expect(mockSession.setModel).toHaveBeenCalledWith('gpt-5', { reasoningEffort: 'high', contextTier: 'long_context' });
+    });
+
+    it('omits contextTier from setModel options when undefined in the delayed model-switch path', async () => {
+        const mockSession = createMockSession();
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            resumeSession: vi.fn(),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        await runner.send({ prompt: 'hi', model: 'gpt-5', reasoningEffort: 'high', timeoutMs: 5000, loadDefaultMcpConfig: false });
+
+        expect(mockSession.setModel).toHaveBeenCalledWith('gpt-5', { reasoningEffort: 'high' });
+    });
+
+    it('preserves both reasoningEffort and contextTier in session config when no model is set', async () => {
+        const mockSession = createMockSession();
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            resumeSession: vi.fn(),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        // Without a model there is no delayed switch — both fields go to createSession
+        await runner.send({ prompt: 'hi', reasoningEffort: 'high', contextTier: 'long_context', timeoutMs: 5000, loadDefaultMcpConfig: false });
+
+        const sessionConfig = mockClient.createSession.mock.calls[0][0];
+        expect(sessionConfig.reasoningEffort).toBe('high');
+        expect(sessionConfig.contextTier).toBe('long_context');
+        expect(mockSession.setModel).not.toHaveBeenCalled();
+    });
+});

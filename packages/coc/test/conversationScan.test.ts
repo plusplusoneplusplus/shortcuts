@@ -541,6 +541,18 @@ describe('scanTurnsForCreatedFiles', () => {
             expect(results[0].filePath).toBe('/tmp/plan.md');
         });
 
+        it('detects file creation via Codex apply_patch add result text', () => {
+            const turns = [
+                makeApplyPatchResultTurn(
+                    'tc0',
+                    'add: /home/user/.coc/repos/ws-xjvuoc/notes/Plans/work-item-ai/get-work-item-tool.plan.md',
+                ),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/home/user/.coc/repos/ws-xjvuoc/notes/Plans/work-item-ai/get-work-item-tool.plan.md');
+        });
+
         it('detects multi-file creation via result text', () => {
             const turns = [
                 makeApplyPatchResultTurn('tc0', 'Added 2 file(s): /tmp/a.md, /tmp/b.yaml'),

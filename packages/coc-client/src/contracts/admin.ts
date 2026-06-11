@@ -84,6 +84,15 @@ export interface AdminResolvedConfig {
   servers?: { enabled?: boolean };
   forEach?: { enabled?: boolean };
   mapReduce?: { enabled?: boolean };
+  dreams?: {
+    enabled?: boolean;
+    idleCheckIntervalMs?: number;
+    minIdleMs?: number;
+    confidenceThreshold?: number;
+    maxCandidates?: number;
+    conversationLimit?: number;
+    timeoutMs?: number;
+  };
   excalidraw?: { enabled?: boolean };
   codex?: { enabled?: boolean };
   claude?: { enabled?: boolean };
@@ -106,6 +115,7 @@ export interface AdminResolvedConfig {
     commitChatLens?: boolean;
     commitChatLensDormantMode?: 'ghost' | 'pill';
     autoAgentProviderRouting?: boolean;
+    ralphMultiAgentGrill?: boolean;
   };
   workItems?: { hierarchy?: { enabled?: boolean }; sync?: { enabled?: boolean }; aiAuthoring?: { enabled?: boolean }; workflow?: { enabled?: boolean } };
   effortLevels?: { enabled?: boolean };
@@ -163,6 +173,7 @@ export interface AdminConfigUpdate {
   'servers.enabled'?: boolean;
   'forEach.enabled'?: boolean;
   'mapReduce.enabled'?: boolean;
+  'dreams.enabled'?: boolean;
   'excalidraw.enabled'?: boolean;
   'mcpOauth.enabled'?: boolean;
   'mcpOauth.autoRefresh.enabled'?: boolean;
@@ -176,6 +187,7 @@ export interface AdminConfigUpdate {
   'workItems.workflow.enabled'?: boolean;
   'features.gitCrossCloneCherryPick'?: boolean;
   'features.sessionContextAttachments'?: boolean;
+  'features.ralphMultiAgentGrill'?: boolean;
   'features.commitChatLens'?: boolean;
   'features.commitChatLensDormantMode'?: 'ghost' | 'pill';
   'features.autoAgentProviderRouting'?: boolean;
@@ -207,6 +219,7 @@ export interface RuntimeDashboardConfig {
     mapReduceEnabled: boolean;
     vimNavigationEnabled: boolean;
     loopsEnabled: boolean;
+    dreamsEnabled: boolean;
     excalidrawEnabled: boolean;
     mcpOauthEnabled: boolean;
     focusedDiffEnabled: boolean;
@@ -215,6 +228,7 @@ export interface RuntimeDashboardConfig {
     claudeEnabled: boolean;
     defaultProvider: AdminDefaultProvider;
     autoAgentProviderRoutingEnabled: boolean;
+    ralphMultiAgentGrillEnabled: boolean;
     workItemsHierarchyEnabled: boolean;
     workItemsSyncEnabled: boolean;
     workItemsAiAuthoringEnabled: boolean;

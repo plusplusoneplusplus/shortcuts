@@ -13,6 +13,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ProcessStore, ProcessOutputEvent } from '@plusplusoneplusplus/forge';
 import type { AIProcess } from '@plusplusoneplusplus/forge';
 import { getServerLogger } from '../logging/server-logger';
+import type { RalphGrillPlanningProgress } from '../ralph/grill-planning';
 
 // ============================================================================
 // SSE Event Payload Types
@@ -101,6 +102,7 @@ export function emitPendingMessageAdded(store: ProcessStore, processId: string, 
  *   event: ask-user          → { questionId, question, type, options?, defaultValue?, turnIndex }
  *   event: token-usage       → { turnIndex, tokenUsage, cumulativeTokenUsage?, conversationCostEstimate?, sessionTokenLimit?, sessionCurrentTokens?, sessionSystemTokens?, sessionToolTokens?, sessionConversationTokens? }
  *   event: background-tasks  → { backgroundAgents, backgroundShells, backgroundTotalActive, backgroundWaitingForDrain }
+ *   event: ralph-grill-planning → { status, depth, agentCount, agents, message, warnings }
  *   event: status             → { status, result?, error?, duration? }
  *   event: done               → { processId }
  *   event: heartbeat          → {}
@@ -180,6 +182,8 @@ export async function handleProcessStream(
     };
 
     const unsubscribe = store.onProcessOutput(processId, (event) => {
+        const eventType = (event as { type: string }).type;
+        const ralphGrillPlanning = (event as { ralphGrillPlanning?: RalphGrillPlanningProgress }).ralphGrillPlanning;
         eventCount++;
         if (event.type === 'chunk') {
             sendEvent(res, 'chunk', { content: event.content });
@@ -270,6 +274,8 @@ export async function handleProcessStream(
             sendEvent(res, 'mcp-oauth-required', event.mcpOAuth);
         } else if (event.type === 'mcp-oauth-completed' && event.mcpOAuth) {
             sendEvent(res, 'mcp-oauth-completed', event.mcpOAuth);
+        } else if (eventType === 'ralph-grill-planning' && ralphGrillPlanning) {
+            sendEvent(res, 'ralph-grill-planning', ralphGrillPlanning);
         } else if (event.type === 'complete') {
             sendEvent(res, 'status', {
                 status: event.status,

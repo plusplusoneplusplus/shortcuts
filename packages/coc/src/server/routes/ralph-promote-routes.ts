@@ -31,6 +31,7 @@ import {
     RALPH_SYNTHESIS_HINT_MAX_LENGTH,
 } from '../ralph/synthesis-prompt';
 import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
+import { normalizeRalphGrillSetupForContext } from '../ralph/grill-planning';
 
 export interface RalphPromoteRouteContext {
     bridge: MultiRepoQueueRouter;
@@ -74,6 +75,7 @@ export function registerRalphPromoteRoutes(routes: Route[], ctx: RalphPromoteRou
                 );
             }
             const extraGuidance = rawHint || undefined;
+            const grill = normalizeRalphGrillSetupForContext(body.grill);
 
             // Resolve process (handle queue_ prefix vs bare UUID).
             let proc = await store.getProcess(rawId, workspaceId);
@@ -152,7 +154,7 @@ export function registerRalphPromoteRoutes(routes: Route[], ctx: RalphPromoteRou
             const maxIterations = prefMax ?? RALPH_DEFAULT_MAX_ITERATIONS;
 
             const sessionId = mintSessionId();
-            const ralphMetadata = { phase: 'grilling' as const, sessionId };
+            const ralphMetadata = { phase: 'grilling' as const, sessionId, ...(grill ? { grill } : {}) };
 
             // Best-effort: attach the ralph metadata to the existing process
             // so getRalphContext() returns immediately and grouping picks it up.

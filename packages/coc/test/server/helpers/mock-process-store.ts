@@ -7,7 +7,7 @@
  */
 
 import { vi } from 'vitest';
-import type { ProcessStore, AIProcess, WorkspaceInfo, ConversationTurn, TimelineItem } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, AIProcess, WorkspaceInfo, ConversationTurn, TimelineItem, ProcessIndexEntry } from '@plusplusoneplusplus/forge';
 
 // ---------------------------------------------------------------------------
 // Interfaces
@@ -21,6 +21,13 @@ export interface MockProcessStore extends ProcessStore {
     outputs: Map<string, string[]>;
     /** Completion events per process ID */
     completions: Map<string, { status: string; duration: string }>;
+    archiveProcess(id: string): void;
+    unarchiveProcess(id: string): void;
+    pinProcess(id: string, pinnedAt: string): void;
+    unpinProcess(id: string): void;
+    archiveProcesses(ids: string[]): void;
+    unarchiveProcesses(ids: string[]): void;
+    getPinnedProcesses(workspaceId: string): ProcessIndexEntry[];
 }
 
 /** Configuration for process store mock behavior */
@@ -29,6 +36,10 @@ export interface MockProcessStoreOptions {
     initialProcesses?: AIProcess[];
     /** Pre-populate workspaces */
     initialWorkspaces?: WorkspaceInfo[];
+}
+
+function matchesWorkspace(process: AIProcess, workspaceId: string | undefined): boolean {
+    return !workspaceId || process.metadata?.workspaceId === workspaceId;
 }
 
 // ---------------------------------------------------------------------------
@@ -75,8 +86,11 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
             }
         }),
         getProcess: vi.fn(async (id: string) => processes.get(id)),
-        getAllProcesses: vi.fn(async (filter?: { parentProcessId?: string; status?: string | string[]; exclude?: string[] }) => {
+        getAllProcesses: vi.fn(async (filter?: { workspaceId?: string; parentProcessId?: string; status?: string | string[]; exclude?: string[] }) => {
             let result = Array.from(processes.values());
+            if (filter?.workspaceId) {
+                result = result.filter(p => matchesWorkspace(p, filter.workspaceId));
+            }
             if (filter?.parentProcessId) {
                 result = result.filter(p => p.parentProcessId === filter.parentProcessId);
             }
@@ -180,8 +194,11 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
             }
             return result.length;
         }),
-        getProcessSummaries: vi.fn(async (filter?: { status?: string | string[]; limit?: number; offset?: number }) => {
+        getProcessSummaries: vi.fn(async (filter?: { workspaceId?: string; status?: string | string[]; limit?: number; offset?: number }) => {
             let result = Array.from(processes.values());
+            if (filter?.workspaceId) {
+                result = result.filter(p => matchesWorkspace(p, filter.workspaceId));
+            }
             if (filter?.status) {
                 const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
                 result = result.filter(p => statuses.includes(p.status));
@@ -211,6 +228,48 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
             };
         }),
         getProcessIds: vi.fn(async () => Array.from(processes.keys())),
+        archiveProcess: vi.fn((id: string) => {
+            const existing = processes.get(id);
+            if (existing) {
+                processes.set(id, { ...existing, archived: true });
+            }
+        }),
+        unarchiveProcess: vi.fn((id: string) => {
+            const existing = processes.get(id);
+            if (existing) {
+                processes.set(id, { ...existing, archived: false });
+            }
+        }),
+        pinProcess: vi.fn((id: string, pinnedAt: string) => {
+            const existing = processes.get(id);
+            if (existing) {
+                processes.set(id, { ...existing, pinnedAt });
+            }
+        }),
+        unpinProcess: vi.fn((id: string) => {
+            const existing = processes.get(id);
+            if (existing) {
+                const { pinnedAt: _pinnedAt, ...rest } = existing;
+                processes.set(id, rest);
+            }
+        }),
+        archiveProcesses: vi.fn((ids: string[]) => {
+            for (const id of ids) {
+                const existing = processes.get(id);
+                if (existing) {
+                    processes.set(id, { ...existing, archived: true });
+                }
+            }
+        }),
+        unarchiveProcesses: vi.fn((ids: string[]) => {
+            for (const id of ids) {
+                const existing = processes.get(id);
+                if (existing) {
+                    processes.set(id, { ...existing, archived: false });
+                }
+            }
+        }),
+        getPinnedProcesses: vi.fn((_workspaceId: string) => []),
     } as MockProcessStore;
 }
 

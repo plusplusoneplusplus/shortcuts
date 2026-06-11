@@ -66,6 +66,89 @@ describe('AskUserInline', () => {
         expect(screen.getAllByTestId('ask-user-question')).toHaveLength(2);
     });
 
+    it('renders Ralph grill planning, role groups, and provenance in one batch form', () => {
+        render(
+            <AskUserInline
+                batch={makeBatch([
+                    makeQuestion({
+                        batchSize: 2,
+                        ralphGrill: {
+                            planning: {
+                                depth: 'deep',
+                                agentOutcomes: [
+                                    {
+                                        role: 'product',
+                                        roleLabel: 'Product Agent',
+                                        provenanceLabel: 'Product Agent · copilot/gpt-5.5',
+                                        status: 'completed',
+                                        candidateCount: 2,
+                                    },
+                                    {
+                                        role: 'ux',
+                                        roleLabel: 'UX Agent',
+                                        provenanceLabel: 'UX Agent · model unavailable',
+                                        status: 'failed',
+                                        candidateCount: 0,
+                                    },
+                                ],
+                                consolidation: {
+                                    rawCandidateCount: 4,
+                                    selectedQuestionCount: 2,
+                                    exactDuplicatesMerged: 1,
+                                    semanticDuplicatesMerged: 1,
+                                    conflictsConverted: 1,
+                                    duplicateOnlyAgents: ['UX Agent'],
+                                },
+                                warnings: ['UX Agent failed: rate limit'],
+                            },
+                            sources: [{
+                                role: 'product',
+                                roleLabel: 'Product Agent',
+                                provider: 'copilot',
+                                model: 'gpt-5.5',
+                                provenanceLabel: 'Product Agent · copilot/gpt-5.5',
+                            }],
+                            consolidation: { kind: 'merged-duplicate', mergedCandidateCount: 2 },
+                        },
+                    }),
+                    makeQuestion({
+                        questionId: 'q-2',
+                        question: 'Describe the grouped form layout',
+                        type: 'text',
+                        options: undefined,
+                        index: 1,
+                        batchSize: 2,
+                        ralphGrill: {
+                            sources: [{
+                                role: 'ux',
+                                roleLabel: 'UX Agent',
+                                provenanceLabel: 'UX Agent · model unavailable',
+                            }],
+                            consolidation: { kind: 'unique', mergedCandidateCount: 1 },
+                        },
+                    }),
+                ])}
+                processId="proc-1"
+                onAnswered={vi.fn()}
+            />,
+        );
+
+        expect(screen.getByTestId('ralph-grill-planning-card')).toHaveTextContent('Question planning');
+        expect(screen.getByTestId('ralph-grill-planning-card')).toHaveTextContent('Deep depth');
+        expect(screen.getByTestId('ralph-grill-planning-warnings')).toHaveTextContent('UX Agent failed: rate limit');
+        expect(screen.getAllByTestId('ask-user-question')).toHaveLength(2);
+        expect(screen.getAllByTestId('ask-user-question-group-label').map(label => label.textContent)).toEqual([
+            expect.stringContaining('Product Agent'),
+            expect.stringContaining('UX Agent'),
+        ]);
+        expect(screen.getAllByTestId('ask-user-provenance-chip').map(chip => chip.textContent)).toEqual([
+            'Product Agent · copilot/gpt-5.5',
+            'UX Agent · model unavailable',
+        ]);
+        expect(screen.getByTestId('ask-user-consolidation-chip')).toHaveTextContent('merged-duplicate · 2 candidates');
+        expect(screen.getAllByTestId('ask-user-submit-all-btn')).toHaveLength(1);
+    });
+
     it('submits a batch with answers in question order', async () => {
         const onAnswered = vi.fn();
         render(

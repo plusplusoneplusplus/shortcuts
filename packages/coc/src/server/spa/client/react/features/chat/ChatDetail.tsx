@@ -28,6 +28,7 @@ import { clearAskUserDraftsForProcess } from './hooks/useAskUserDraftStore';
 import { buildMetadataProcess } from '../../utils/chatUtils';
 import type { QueuedMessage } from '../../utils/chatUtils';
 import { useChatSSE } from './hooks/useChatSSE';
+import type { RalphGrillPlanningProgress } from './hooks/useChatSSE';
 import { hydrateAskUserBatch } from './hooks/hydrateAskUserBatch';
 import { useSendMessage } from './hooks/useSendMessage';
 import { useQueuedTaskPoll } from '../../queue/hooks/useQueuedTaskPoll';
@@ -53,7 +54,7 @@ import { MobileScratchpadTabBar } from './scratchpad/MobileScratchpadTabBar';
 import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
 import { resolveLoadedTaskMode } from './chatMode';
 import { normalizeChatMode } from '../../repos/modeConfig';
-import { isRalphEnabled, isLoopsEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
+import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isLoopsEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
 import type { ChatMode } from '../../repos/modeConfig';
 import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
@@ -70,6 +71,7 @@ import { useLoops } from './hooks/useLoops';
 import { LoopManagementPanel } from './LoopManagementPanel';
 import { RenameDialog } from '../../ui/RenameDialog';
 import { useConversationRetrievalCapability } from './sessionContextDrop';
+import type { RalphGrillSetup } from '../../../../../ralph/grill-planning';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -119,9 +121,13 @@ export interface ChatDetailProps {
     onOpenForEachRun?: (runId: string) => void;
     /** Opens the reviewed Map Reduce parent-run pane after approval. */
     onOpenMapReduceRun?: (runId: string) => void;
+    /** Starts a new empty chat bound to the same embedding lens target. */
+    onStartFreshSameContext?: () => Promise<boolean> | boolean | void;
+    /** True while the embedding lens target is resetting its active chat binding. */
+    startingFreshSameContext?: boolean;
 }
 
-export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, compactModeSelector = false, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onOpenForEachRun, onOpenMapReduceRun }: ChatDetailProps) {
+export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, compactModeSelector = false, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onOpenForEachRun, onOpenMapReduceRun, onStartFreshSameContext, startingFreshSameContext = false }: ChatDetailProps) {
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
 
@@ -155,6 +161,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
     const [selectedFollowUpEffortTier, setSelectedFollowUpEffortTier] = useState<EffortTierKey>('medium');
+    const [ralphGrillSetup, setRalphGrillSetup] = useState<RalphGrillSetup>({ enabled: true, depth: 'standard', agents: [] });
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [sessionTokenLimit, setSessionTokenLimit] = useState<number | undefined>(undefined);
     const [sessionCurrentTokens, setSessionCurrentTokens] = useState<number | undefined>(undefined);
@@ -164,6 +171,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [pendingQueue, setPendingQueue] = useState<QueuedMessage[]>([]);
     const [invalidScratchpadPaths, setInvalidScratchpadPaths] = useState<Set<string>>(() => new Set());
     const [backgroundTasks, setBackgroundTasks] = useState<import('./hooks/useChatSSE').BackgroundTasksState | null>(null);
+    const [ralphGrillPlanningProgress, setRalphGrillPlanningProgress] = useState<RalphGrillPlanningProgress | null>(null);
     const [pendingAskUserBatch, setPendingAskUserBatch] = useState<import('./hooks/useChatSSE').AskUserBatch | null>(null);
     const [mcpOAuthPrompts, setMcpOAuthPrompts] = useState<import('./hooks/useChatSSE').McpOAuthPromptData[]>([]);
     const [noteEdits, setNoteEdits] = useState<Array<{
@@ -710,6 +718,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const effectiveFollowUpEffort = (followUpTierPayload !== null
         ? followUpTierPayload.reasoningEffort as EffortLevel | null
         : effortOverride);
+    const ralphMultiAgentGrillEnabled = isRalphMultiAgentGrillEnabled();
 
     const { sendFollowUp, closeFollowUpStream, onSendComplete } = useSendMessage({
         processId,
@@ -742,6 +751,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         modelOverride: effectiveFollowUpModelOverride,
         effortOverride: effectiveFollowUpEffort,
         workspaceId,
+        ralphGrillSetup: selectedMode === 'ralph' && ralphMultiAgentGrillEnabled ? ralphGrillSetup : undefined,
         sessionContextAttachmentsEnabled,
         conversationRetrievalAvailable: canRetrieveConversations,
         // After a successful Ralph promotion the follow-up area's `allowedModes`
@@ -776,10 +786,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         setSessionToolTokens,
         setSessionConversationTokens,
         setBackgroundTasks,
+        setRalphGrillPlanningProgress,
         setTurnsAndRef,
         refreshConversation,
         onSendComplete,
-        onAskUserBatch: setPendingAskUserBatch,
+        onAskUserBatch: (batch) => {
+            setRalphGrillPlanningProgress(null);
+            setPendingAskUserBatch(batch);
+        },
         onMcpOAuthRequired: (data) => {
             setMcpOAuthPrompts(prev => {
                 if (prev.some(p => p.requestId === data.requestId)) return prev;
@@ -792,6 +806,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     });
 
     useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, setTurnsAndRef });
+
+    useEffect(() => {
+        setRalphGrillPlanningProgress(null);
+    }, [taskId]);
 
     const { handlePopOut, handleFloat } = useChatWindowActions({ task, taskId, workspaceId });
 
@@ -1478,6 +1496,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 hasActiveLoops={loopsHook.hasActiveLoops}
                 onToggleLoopPanel={() => setLoopPanelOpen(v => !v)}
                 onRenameTitle={processId ? () => setRenameOpen(true) : undefined}
+                onStartFreshSameContext={onStartFreshSameContext}
+                startingFreshSameContext={startingFreshSameContext}
             />
             {loopPanelOpen && isLoopsEnabled() && (
                 <div className="relative">
@@ -1509,6 +1529,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         pendingQueue={pendingQueue}
                         backgroundTasks={backgroundTasks}
                         pendingAskUserBatch={pendingAskUserBatch}
+                        ralphGrillPlanningProgress={ralphGrillPlanningProgress}
                         onAskUserAnswered={() => setPendingAskUserBatch(null)}
                         isScrolledUp={isScrolledUp}
                         scrollRef={conversationContainerRef}
@@ -1690,6 +1711,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             effortTierMap={followUpEffortTierMap}
                             selectedEffortTier={selectedFollowUpEffortTier}
                             onEffortTierChange={handleFollowUpEffortTierChange}
+                            ralphMultiAgentGrillEnabled={ralphMultiAgentGrillEnabled}
+                            ralphGrillSetup={ralphGrillSetup}
+                            onRalphGrillSetupChange={setRalphGrillSetup}
+                            ralphGrillDefaultProvider={sessionProvider}
+                            ralphGrillDefaultModel={chatEffectiveModelId}
+                            ralphGrillDefaultReasoningEffort={effectiveFollowUpEffort}
+                            ralphGrillDefaultEffortTier={selectedFollowUpEffortTier}
+                            ralphGrillEffortLevelsEnabled={isEffortLevelsEnabled()}
+                            ralphGrillComposerUsesEffortTierMode={useFollowUpEffortTierMode}
                         />
                     )}
                 </div>
@@ -1810,6 +1840,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     effortTierMap={followUpEffortTierMap}
                     selectedEffortTier={selectedFollowUpEffortTier}
                     onEffortTierChange={handleFollowUpEffortTierChange}
+                    ralphMultiAgentGrillEnabled={ralphMultiAgentGrillEnabled}
+                    ralphGrillSetup={ralphGrillSetup}
+                    onRalphGrillSetupChange={setRalphGrillSetup}
+                    ralphGrillDefaultProvider={sessionProvider}
+                    ralphGrillDefaultModel={chatEffectiveModelId}
+                    ralphGrillDefaultReasoningEffort={effectiveFollowUpEffort}
+                    ralphGrillDefaultEffortTier={selectedFollowUpEffortTier}
+                    ralphGrillEffortLevelsEnabled={isEffortLevelsEnabled()}
+                    ralphGrillComposerUsesEffortTierMode={useFollowUpEffortTierMode}
                 />
             )}
             {isMobileScratchpad && (

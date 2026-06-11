@@ -215,6 +215,28 @@ describe('scanTurnsForPlanFile', () => {
         expect(scanTurnsForPlanFile(turns)).toBe('/repo/tasks/fix.plan.md');
     });
 
+    it('handles apply_patch with Codex "add:" result and toolName field', () => {
+        const turns = [
+            makeTurn({
+                timeline: [
+                    {
+                        type: 'tool-complete',
+                        timestamp: new Date(),
+                        toolCall: {
+                            id: 'tc-1',
+                            toolName: 'apply_patch',
+                            status: 'completed',
+                            startTime: new Date(),
+                            args: {},
+                            result: 'add: /home/user/.coc/repos/ws-xjvuoc/notes/Plans/work-item-ai/get-work-item-tool.plan.md',
+                        } as any,
+                    },
+                ],
+            }),
+        ];
+        expect(scanTurnsForPlanFile(turns)).toBe('/home/user/.coc/repos/ws-xjvuoc/notes/Plans/work-item-ai/get-work-item-tool.plan.md');
+    });
+
     it('handles apply_patch with "*** Add File:" in args', () => {
         const turns = [
             makeTurn({

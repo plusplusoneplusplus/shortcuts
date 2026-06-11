@@ -11,6 +11,7 @@ import { handleAPIError, notFound, badRequest } from '../errors';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
 import { PullRequestChatBindingStore } from '../processes/pull-request-chat-binding-store';
+import { startFreshLensChat } from '../processes/fresh-lens-chat-binding';
 
 // PR IDs are typically numeric (GitHub, ADO) but can be longer opaque strings
 // in the future. Allow URL-safe characters (alphanumerics, hyphen, underscore)
@@ -20,6 +21,29 @@ const PR_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 export function registerPrChatRoutes(ctx: ApiRouteContext): void {
     const { routes, store, db } = ctx;
     const bindingStore = new PullRequestChatBindingStore(db!);
+
+    // POST /api/workspaces/:id/pull-request-chat-bindings/:prId/fresh — Archive current chat and clear binding
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/pull-request-chat-bindings\/([A-Za-z0-9_-]{1,64})\/fresh$/,
+        handler: async (_req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            const prId = match![2];
+            try {
+                const archivedTaskId = await startFreshLensChat({
+                    store,
+                    workspaceId: ws.id,
+                    binding: bindingStore.get(ws.id, prId),
+                    unbind: () => bindingStore.unbind(ws.id, prId),
+                });
+                sendJSON(res, 200, { prId, archivedTaskId });
+            } catch (error) {
+                handleAPIError(res, error);
+            }
+        },
+    });
 
     // GET /api/workspaces/:id/pull-request-chat-bindings — List all bindings
     routes.push({

@@ -137,6 +137,10 @@ export interface QueueSummarizeRequest {
   processIds: string[];
   workspaceId: string;
   userPrompt?: string;
+  lensChat?: {
+    inherited: true;
+    source: 'features.commitChatLens';
+  };
 }
 
 export interface QueueSummarizeResponse {

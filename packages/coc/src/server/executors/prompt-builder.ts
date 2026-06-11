@@ -32,14 +32,16 @@ import { createGetConversationTool } from '../llm-tools/get-conversation-tool';
 import { createSuggestFollowUpsTool } from '../llm-tools/suggest-follow-ups-tool';
 import { createAskUserTool } from '../llm-tools/ask-user-tool';
 import type { AskUserAnswerInput, AskUserAnswerValue, AskUserToolDeps } from '../llm-tools/ask-user-tool';
-import { createCreateUpdateWorkItemTool, type BroadcastWorkItemFn } from '../llm-tools/create-update-work-item-tool';
-import type { ChatMode, ChatPayload, PrClassificationPayload, RunScriptPayload } from '../tasks/task-types';
+import { createCreateUpdateWorkItemTool, type BroadcastWorkItemFn, type CreateUpdateWorkItemToolDeps } from '../llm-tools/create-update-work-item-tool';
+import { createGetWorkItemTool } from '../llm-tools/get-work-item-tool';
+import type { ChatMode, ChatPayload, DreamRunPayload, PrClassificationPayload, RunScriptPayload } from '../tasks/task-types';
 import {
     hasCommitChatContext,
     hasPullRequestChatContext,
     hasResolveCommentsContext,
     hasTaskGenerationContext,
     isChatPayload,
+    isDreamRunPayload,
     isPrClassificationPayload,
     isRunScriptPayload,
     isRunWorkflowPayload,
@@ -232,6 +234,12 @@ export function extractPrompt(task: QueuedTask): string {
 
     if (isPrClassificationPayload(task.payload)) {
         return (task.payload as unknown as PrClassificationPayload).prompt;
+    }
+
+    if (isDreamRunPayload(task.payload)) {
+        const payload = task.payload as unknown as DreamRunPayload;
+        const trigger = payload.trigger === 'idle' ? 'idle-triggered' : 'manual';
+        return `Run ${trigger} Dreams analysis for workspace ${payload.workspaceId}`;
     }
 
     if (isChatPayload(task.payload)) {
@@ -526,25 +534,36 @@ export function buildAskUserAddon(
 // ============================================================================
 
 /**
- * Builds the tools array and prompt suffix for the `create_update_work_item` tool.
- * The tools are only injected when a valid dataDir and repoId are available.
+ * Builds the tools array and prompt suffix for the work-item tool family: the
+ * read-only `get_work_item` lookup tool and the mutating `create_update_work_item`
+ * tool. Both are only injected when a valid dataDir and repoId are available.
  *
  * @param dataDir     - Base data directory (e.g. `~/.coc`).
- * @param repoId      - Workspace / repo ID the item should be created in.
+ * @param repoId      - Workspace / repo ID the items belong to.
  * @param broadcastFn - Optional function to broadcast a WebSocket event after creation.
+ * @param deps        - Optional server-side dependencies (process store, feature flags, transports).
  */
 export function buildCreateWorkItemAddon(
     dataDir: string | undefined,
     repoId: string | undefined,
     broadcastFn?: BroadcastWorkItemFn,
+    deps?: CreateUpdateWorkItemToolDeps,
 ): { tools: Tool<any>[]; suffix: string } {
     if (!dataDir || !repoId) {
         return { tools: [], suffix: '' };
     }
 
-    const { tool: workItemTool } = createCreateUpdateWorkItemTool(dataDir, repoId, broadcastFn);
+    const { tool: getWorkItemTool } = createGetWorkItemTool(dataDir, repoId, deps);
+    const { tool: workItemTool } = createCreateUpdateWorkItemTool(dataDir, repoId, broadcastFn, deps);
 
-    return { tools: [workItemTool], suffix: '' };
+    const suffix =
+        '\n\nYou have access to the `get_work_item` and `create_update_work_item` tools. ' +
+        'Use `get_work_item` to read an existing work item by UUID, WI-N, or work-item number when the user ' +
+        'references an existing item or attached context supplies a work-item pointer — before drafting changes, ' +
+        'unless the full detail is already in the prompt. It is read-only. ' +
+        'Use `create_update_work_item` only after presenting a draft and receiving user confirmation.';
+
+    return { tools: [getWorkItemTool, workItemTool], suffix };
 }
 
 /**

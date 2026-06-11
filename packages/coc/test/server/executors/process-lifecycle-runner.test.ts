@@ -342,6 +342,32 @@ describe('ProcessLifecycleRunner — cancellation detection', () => {
         const proc = await store.getProcess(processId);
         expect(proc?.status).toBe('cancelled');
     });
+
+    it('treats success path as cancelled when cancellation is recorded mid-flight', async () => {
+        const cancelledTasks = new Set<string>();
+        const task = makeTask();
+        const drainFn = vi.fn().mockResolvedValue(undefined);
+        const opts = makeOpts({
+            cancelledTasks,
+            onDrainPendingMessages: drainFn,
+            executeByTypeFn: vi.fn(async () => {
+                cancelledTasks.add(task.id);
+                return { response: 'late result after cancel' };
+            }),
+        });
+
+        await runner.run(task, opts);
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.status).toBe('cancelled');
+        expect(proc?.error).toBeUndefined();
+        expect(proc?.conversationTurns?.[1]).toMatchObject({
+            role: 'assistant',
+            content: 'late result after cancel',
+        });
+        expect(drainFn).not.toHaveBeenCalled();
+    });
 });
 
 // ============================================================================
@@ -750,6 +776,28 @@ describe('ProcessLifecycleRunner — metadata.notePath from context.noteChat', (
         const proc = await store.getProcess(processId);
         expect(proc?.metadata?.notePath).toBeUndefined();
         expect(proc?.metadata?.noteTitle).toBeUndefined();
+    });
+
+    it('copies inherited Lens Chat mode context to process metadata for note-producing tasks', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Update the note',
+                workspaceId: 'ws-abc',
+                context: {
+                    noteChat: { notePath: 'my-note.md' },
+                    lensChat: { inherited: true, source: 'features.commitChatLens' },
+                },
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.metadata?.lensChat).toEqual({
+            inherited: true,
+            source: 'features.commitChatLens',
+        });
     });
 });
 

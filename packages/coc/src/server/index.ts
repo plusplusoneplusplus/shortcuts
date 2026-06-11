@@ -94,6 +94,7 @@ interface CloseHandlerDeps {
     workItemGitHubPullPoller?: { dispose(): void };
     workItemAzureBoardsPullPoller?: { dispose(): void };
     activeWorkspaceBackgroundRefresher?: { dispose(): void };
+    dreamIdleScheduler?: { dispose(): void };
     agentProvidersQuotaCache?: { dispose(): void };
     containerLink?: { stop(): void };
     activeSockets: Set<import('net').Socket>;
@@ -122,6 +123,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.workItemGitHubPullPoller?.dispose();
         deps.workItemAzureBoardsPullPoller?.dispose();
         deps.activeWorkspaceBackgroundRefresher?.dispose();
+        deps.dreamIdleScheduler?.dispose();
         deps.agentProvidersQuotaCache?.dispose();
         deps.containerLink?.stop();
         gitInfoCache.dispose();
@@ -327,6 +329,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         () => mcpOauthInfra?.manager,
         effectiveProvider,
         resolveAiServiceForProvider,
+        resolvedConfig.features.ralphMultiAgentGrill,
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
@@ -505,7 +508,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     let localBaseUrl = formatLocalBaseUrl(host, port);
     const routes: Route[] = [];
-    const { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, agentProvidersQuotaCache, activeWorkspaceBackgroundRefresher } = registerAllRoutes(routes, {
+    const { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, agentProvidersQuotaCache, activeWorkspaceBackgroundRefresher, dreamIdleScheduler } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
         dataDir, configPath: options.configPath,
@@ -665,6 +668,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         process.stderr.write(`[work-items/azure-boards-poll] Failed to start background polling: ${message}\n`);
     });
     activeWorkspaceBackgroundRefresher.start();
+    dreamIdleScheduler.start();
 
     const address = server.address();
     const actualPort = typeof address === 'object' && address ? address.port : port;
@@ -707,6 +711,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             workItemGitHubPullPoller,
             workItemAzureBoardsPullPoller,
             activeWorkspaceBackgroundRefresher,
+            dreamIdleScheduler,
             agentProvidersQuotaCache,
             containerLink,
             activeSockets, server,

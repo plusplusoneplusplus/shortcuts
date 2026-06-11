@@ -120,6 +120,34 @@ describe('BaseExecutor', () => {
         it('cleanupSession on unknown ID is a no-op', () => {
             expect(() => executor.cleanupSessionPublic('does-not-exist')).not.toThrow();
         });
+
+        it('cleanupSession retains Ralph grill state with fresh turn lifecycle fields', async () => {
+            const session = executor.getOrCreateSessionPublic('proc-ralph-grill');
+            const ralphGrill: NonNullable<ProcessSessionState['ralphGrill']> = {
+                roundsRun: 1,
+                maxRounds: 3,
+                terminal: false,
+                agents: {},
+                askedQuestions: ['Which scope?'],
+                warnings: [],
+            };
+            session.outputBuffer = 'stale output';
+            session.timelineBuffer = [{ type: 'content', content: 'stale output', timestamp: new Date() }];
+            session.turnFinalized = true;
+            session.turnWriteChain = Promise.reject(new Error('stale chain'));
+            session.turnWriteChain.catch(() => undefined);
+            session.ralphGrill = ralphGrill;
+
+            executor.cleanupSessionPublic('proc-ralph-grill');
+
+            const retained = executor.getOrCreateSessionPublic('proc-ralph-grill');
+            expect(retained).not.toBe(session);
+            expect(retained.outputBuffer).toBe('');
+            expect(retained.timelineBuffer).toEqual([]);
+            expect(retained.turnFinalized).toBe(false);
+            expect(retained.ralphGrill).toBe(ralphGrill);
+            await expect(retained.turnWriteChain).resolves.toBeUndefined();
+        });
     });
 
     // ========================================================================

@@ -32,6 +32,7 @@ Location: `packages/coc-agent-sdk/src/`
 | `provider-model-resolver.ts` | Provider-aware model override validation/coercion (`resolveModelForProvider`) |
 | `model-metadata-store.ts` | Runtime model metadata cache with SDK polling |
 | `model-reasoning.ts` | Metadata-aware model/reasoning resolver; variant IDs with `capabilities.family` sent as base model + reasoning effort |
+| `model-context-tier.ts` | Copilot context-tier resolver: `getCopilotContextTierForModel`/`getCopilotLongContextPromptLimit` derive `"long_context"` strictly from tiered billing metadata (`billing.tokenPrices.longContext.contextMax`, camelCase or snake_case) |
 | `claude-model-catalog.ts` | `findClaudeCatalogModel` — bridges configured Claude model ids (CLI aliases, dotted marketing ids, dashed CLI ids, provider-default sentinels) to Claude CLI catalog entries via exact, dashed-normalized, and family (id/name/description) matching |
 | `effort-tier-defaults.ts` | Hardcoded per-provider effort-tier defaults (`very-low`/`low`/`medium`/`high` → model + reasoning effort) and stored-config merge helper; Claude tiers reference CLI catalog aliases (`haiku`/`sonnet`/`opus`), with no pinned effort for Haiku |
 | `mcp-config-loader.ts` | Loads/merges MCP config from `~/.copilot/mcp-config.json`, workspace `.vscode/mcp.json`, and explicit request options |
@@ -150,6 +151,8 @@ sdkServiceRegistry.register(SDK_PROVIDER_CODEX, svc);
 
 Claude consumes CoC-authored `SendMessageOptions.systemMessage` through the Claude Agent SDK's unified `systemPrompt` query option (the SDK's >= 0.1 surface; the legacy `appendSystemPrompt`/`customSystemPrompt` option names are silently ignored by `query()` and must not be used): `mode: "append"` maps to `systemPrompt: { type: 'preset', preset: 'claude_code', append: content }` (Claude Code's default agentic prompt plus CoC instructions), `mode: "replace"` maps to `systemPrompt: content` (custom string), and blank or absent content omits the field entirely (the SDK then runs with an empty system prompt). CoC executor-built content such as ask-mode read-only instructions, repo `.github/coc` instructions, Memory/tool guidance, note permissions, and save-location directives stays in the system-prompt channel rather than being duplicated in the user prompt. Resumed Claude follow-ups still pass the persisted transcript ID via `options.resume` while sending the current CoC system prompt for that turn.
 
+Provider SDK option mappings are treated as provider contracts, not just internal adapter transforms. For prompt delivery, permissions, MCP wiring, resume/session IDs, model selection, and reasoning effort, confirm the installed provider SDK's accepted option surface and keep regression coverage anchored at the SDK boundary: assert the query options delivered to the provider, the initialized request/transcript shape, stream events, or sanitized diagnostics that prove the option was actually received. Wrapper-only argument assertions are insufficient for provider-owned option names because unsupported keys can be ignored without a CoC-side error.
+
 Unsuccessful Claude `result` stream messages are warn-logged through the SDK logger before returning failure. Thrown SDK exceptions from `sendMessage()` are error-logged before returning the same user-facing error string. Diagnostic objects are allowlisted/sanitized: result subtype/error flags, provider session ID, timing/turn metadata, Claude terminal/API reason fields, exception name/message/safe stack/cause summary, requested/effective model, cwd, permission mode, MCP configured state, MCP server names, and latest in-call rate-limit status/type/utilization/reset/overage metadata may appear; prompt text, custom system prompt text, credentials, image payloads, tool results, and arbitrary Claude transcript content are not logged.
 
 Claude token usage is mapped from successful `result.usage` messages into the shared `TokenUsage` result shape. The adapter fills `inputTokens`, `outputTokens`, `cacheReadTokens` from `cache_read_input_tokens`, `cacheWriteTokens` from `cache_creation_input_tokens`, `totalTokens`, native `actualUsdCost` from `total_cost_usd`, `duration`, and `turnCount`. The legacy `cost` field is reserved for provider-reported non-USD units such as Copilot premium request units and must not be displayed as USD. Forge's cost layer resolves displayed USD as `actualUsdCost ?? estimatedUsdCost` and records `displayedUsdCost` plus its source on usage stats and conversation estimates; its pricing lookup normalizes provider model IDs such as Claude CLI hyphenated/datetime/reasoning-suffixed IDs and Codex dated/suffixed IDs onto existing Copilot pricing-table entries before declaring pricing unavailable. When the query handle exposes `getContextUsage()`, the adapter best-effort enriches `TokenUsage` with `tokenLimit`/`currentTokens` and structured context breakdown fields (`systemTokens`, `toolDefinitionsTokens`, `conversationTokens`), even when Claude reports only a context-window snapshot and no per-turn token totals. Context lookup failures and timeouts are ignored so a completed Claude response still succeeds with the result-level totals.
@@ -196,9 +199,9 @@ Claude tool-call capture treats assistant `tool_use` blocks as start events and 
 ```
 1. isAvailable() → check SDK exists
 2. createClient(cwd) → spawn fresh child process
-3. Build ISessionOptions (model, streaming, tools, MCP config, permissions)
+3. Build ISessionOptions (model, streaming, tools, contextTier, MCP config, permissions)
 4. Session creation or resume (falls back to create on resume failure)
-5. session.setModel(model, { reasoningEffort }) after session creation
+5. session.setModel(model, { reasoningEffort, contextTier }) after session creation
 6. onSessionCreated callback fires
 7. Attach AbortSignal listener for cancellation
 8. sessionManager.track(session)
@@ -206,6 +209,8 @@ Claude tool-call capture treats assistant `tool_use` blocks as start events and 
 10. Empty-response handling (turnCount>0 = success)
 11. FINALLY: remove abort listener, untrack + session.disconnect + client.stop
 ```
+
+`SendMessageOptions.contextTier` (`"default" | "long_context"`) selects the Copilot context-window tier. It rides the same session-options object on create and resume; in the delayed model-switch path (model + reasoningEffort both present) it moves to `session.setModel(model, { reasoningEffort, contextTier })` alongside the model. Callers must only set it for Copilot models whose catalog metadata advertises a long-context tier — `getCopilotContextTierForModel` (`model-context-tier.ts`) derives it strictly from `billing.tokenPrices.longContext.contextMax` (camelCase or snake_case runtime shape), never from model names or `max_context_window_tokens`. Passing `long_context` without metadata support can leave the session on normal limits while reporting a long-context selection.
 
 ## Streaming Internals
 
@@ -332,3 +337,4 @@ Without a call to `initSDKLogger`, all internal SDK log statements are silently 
 - 580+ tests in `packages/coc-agent-sdk/test/`
 - Set `serviceAny.sdkModule` and `serviceAny.availabilityCache` to bypass real SDK
 - Unit tests cover: session-manager, streaming-session, sdk-loader, sdk-client-factory, stream-error-guard, request-runner, logger, codex-sdk-service
+- Provider SDK option mappings should be tested at the provider boundary. Use SDK module fakes, protocol fixtures, transcript/request assertions, stream-event assertions, or sanitized log assertions that observe the option after CoC hands it to the provider SDK; do not rely only on wrapper/adapter argument assertions for provider-owned option names.

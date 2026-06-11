@@ -11,6 +11,16 @@ import { useState, useEffect, useCallback } from 'react';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import { getActiveProvider } from '../utils/config';
 
+/** Billing metadata preserved from the model catalog (e.g. tokenPrices.longContext.contextMax). */
+export interface ModelBillingInfo {
+    multiplier?: number;
+    tokenPrices?: {
+        longContext?: { contextMax?: number; [key: string]: unknown };
+        [key: string]: unknown;
+    };
+    [key: string]: unknown;
+}
+
 export interface ModelInfo {
     id: string;
     tokenLimit: number;
@@ -24,6 +34,8 @@ export interface ModelInfo {
     supportedReasoningEfforts: string[];
     /** Default reasoning effort the model picks when none is requested. */
     defaultReasoningEffort?: string;
+    /** Billing metadata, including long-context tier support. Preserved verbatim from the catalog. */
+    billing?: ModelBillingInfo;
 }
 
 interface RawModel {
@@ -42,6 +54,7 @@ interface RawModel {
     /** SDK contract field with the supported reasoning efforts. */
     supportedReasoningEfforts?: unknown;
     defaultReasoningEffort?: unknown;
+    billing?: ModelBillingInfo;
 }
 
 const KNOWN_REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh'] as const;
@@ -97,6 +110,8 @@ function mapModel(m: RawModel): ModelInfo {
         },
         supportedReasoningEfforts,
         defaultReasoningEffort,
+        // Preserve billing metadata (long-context tier support) for future consumers.
+        ...(m.billing !== undefined ? { billing: m.billing } : {}),
     };
 }
 

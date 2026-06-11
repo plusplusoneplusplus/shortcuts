@@ -97,6 +97,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '/api',
     getConfig: () => ({ apiBasePath: '/api' }),
     isRalphEnabled: () => mockRalphEnabled.value,
+    isRalphMultiAgentGrillEnabled: () => false,
     isForEachEnabled: () => mockForEachEnabled.value,
     isMapReduceEnabled: () => false,
     isLoopsEnabled: () => false,

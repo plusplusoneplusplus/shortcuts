@@ -18,6 +18,7 @@ import type { ConversationTurn, GenericProcessMetadata, ProcessStore, TimelineIt
 import { getLogger, LogCategory, mergeConsecutiveContentItems } from '@plusplusoneplusplus/forge';
 import { OutputFileManager } from '../processes/output-file-manager';
 import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
+import type { RalphGrillProcessState } from '../ralph/grill-planning';
 
 // ============================================================================
 // Types
@@ -25,7 +26,8 @@ import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-us
 
 /**
  * Consolidated per-process state held for the lifetime of a single task execution.
- * A single entry is created on first access and deleted atomically in cleanupSession().
+ * A single entry is created on first access. cleanupSession() clears per-turn
+ * streaming state and retains only durable cross-turn state when needed.
  */
 export interface ProcessSessionState {
     outputBuffer: string;
@@ -52,6 +54,8 @@ export interface ProcessSessionState {
         cancelAll: () => void;
         hasPending: () => boolean;
     };
+    /** Multi-round Ralph grill agent state that survives across chat turns for this process. */
+    ralphGrill?: RalphGrillProcessState;
 }
 
 // ============================================================================
@@ -100,9 +104,23 @@ export abstract class BaseExecutor {
         return session;
     }
 
-    /** Delete all session state for a process in one atomic operation. */
+    /** Clear per-turn session state, retaining cross-turn Ralph grill state when present. */
     protected cleanupSession(processId: string): void {
-        this.sessions.delete(processId);
+        const ralphGrill = this.sessions.get(processId)?.ralphGrill;
+        if (!ralphGrill) {
+            this.sessions.delete(processId);
+            return;
+        }
+
+        this.sessions.set(processId, {
+            outputBuffer: '',
+            timelineBuffer: [],
+            throttleState: { chunksSinceLastFlush: 0, lastFlushTime: 0 },
+            pendingSuggestions: undefined,
+            turnFinalized: false,
+            turnWriteChain: Promise.resolve(),
+            ralphGrill,
+        });
     }
 
     protected async clearPendingAskUser(processId: string): Promise<void> {

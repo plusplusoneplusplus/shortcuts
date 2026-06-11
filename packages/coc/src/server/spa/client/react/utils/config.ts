@@ -35,12 +35,14 @@ interface DashboardConfig {
     vimNavigationEnabled?: boolean;
     containerMode?: boolean;
     loopsEnabled?: boolean;
+    dreamsEnabled?: boolean;
     excalidrawEnabled?: boolean;
     mcpOauthEnabled?: boolean;
     focusedDiffEnabled?: boolean;
     sessionContextAttachmentsEnabled?: boolean;
     commitChatLensEnabled?: boolean;
     commitChatLensDormantMode?: 'ghost' | 'pill';
+    ralphMultiAgentGrillEnabled?: boolean;
     containerDefaultAgentEnabled?: boolean;
     bindAddress?: string;
     /** Whether the Codex SDK provider is enabled (feature flag). */
@@ -69,6 +71,8 @@ interface DashboardConfig {
 let _runtimeConfig: DashboardConfig | null = null;
 let _runtimeConfigPromise: Promise<void> | null = null;
 
+export const DASHBOARD_CONFIG_UPDATED_EVENT = 'coc-dashboard-config-updated';
+
 function getBootstrapConfig(): DashboardConfig {
     const config = (window as any).__DASHBOARD_CONFIG__;
     if (!config) {
@@ -85,6 +89,22 @@ function getBootstrapConfig(): DashboardConfig {
 function getConfig(): DashboardConfig {
     if (_runtimeConfig) return _runtimeConfig;
     return getBootstrapConfig();
+}
+
+export function applyRuntimeConfigPatch(patch: Record<string, unknown>): void {
+    const current = getConfig();
+    const nextFeatures = {
+        ...(current.features ?? {}),
+        ...patch,
+    };
+    _runtimeConfig = {
+        ...current,
+        ...patch,
+        features: nextFeatures,
+    };
+    window.dispatchEvent(new CustomEvent(DASHBOARD_CONFIG_UPDATED_EVENT, {
+        detail: { patch, config: _runtimeConfig },
+    }));
 }
 
 /**
@@ -247,6 +267,10 @@ export function isRalphEnabled(): boolean {
     return getConfig().ralphEnabled === true;
 }
 
+export function isRalphMultiAgentGrillEnabled(): boolean {
+    return getConfig().ralphMultiAgentGrillEnabled === true;
+}
+
 export function isForEachEnabled(): boolean {
     return getConfig().forEachEnabled === true;
 }
@@ -265,6 +289,10 @@ export function isContainerMode(): boolean {
 
 export function isLoopsEnabled(): boolean {
     return getConfig().loopsEnabled === true;
+}
+
+export function isDreamsEnabled(): boolean {
+    return getConfig().dreamsEnabled === true;
 }
 
 export function isExcalidrawEnabled(): boolean {

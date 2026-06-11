@@ -173,6 +173,22 @@ export interface CLIConfig {
     loops?: {
         enabled?: boolean;
     };
+    /** Dreams review subsystem configuration. Disabled by default. */
+    dreams?: {
+        enabled?: boolean;
+        /** Period between automatic idle dream checks. Default: 5 minutes. */
+        idleCheckIntervalMs?: number;
+        /** Minimum quiet-window duration before automatic dream analysis may run. Default: 15 minutes. */
+        minIdleMs?: number;
+        /** Minimum confidence for candidates to become reviewable. Default: 0.85. */
+        confidenceThreshold?: number;
+        /** Maximum visible candidates accepted from one dream pass. Default: 8. */
+        maxCandidates?: number;
+        /** Maximum recently completed conversations considered per dream pass. Default: 20. */
+        conversationLimit?: number;
+        /** Timeout for each read-only analyzer/critic AI request. Default: 60 minutes. */
+        timeoutMs?: number;
+    };
     /** MCP OAuth support (auto-detect mcp.oauth_required events). Disabled by default. */
     mcpOauth?: {
         enabled?: boolean;
@@ -227,6 +243,8 @@ export interface CLIConfig {
         commitChatLensDormantMode?: 'ghost' | 'pill';
         /** Auto agent provider routing in Admin -> AI Provider. Disabled by default. */
         autoAgentProviderRouting?: boolean;
+        /** Multi-agent Ralph grilling experience. Disabled by default. */
+        ralphMultiAgentGrill?: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion?: {
@@ -431,6 +449,16 @@ export interface ResolvedCLIConfig {
     loops: {
         enabled: boolean;
     };
+    /** Dreams review subsystem configuration. */
+    dreams: {
+        enabled: boolean;
+        idleCheckIntervalMs: number;
+        minIdleMs: number;
+        confidenceThreshold: number;
+        maxCandidates: number;
+        conversationLimit: number;
+        timeoutMs: number;
+    };
     /** MCP OAuth subsystem configuration. */
     mcpOauth: {
         enabled: boolean;
@@ -494,6 +522,8 @@ export interface ResolvedCLIConfig {
         commitChatLensDormantMode: 'ghost' | 'pill';
         /** Auto agent provider routing in Admin -> AI Provider. Disabled by default. */
         autoAgentProviderRouting: boolean;
+        /** Multi-agent Ralph grilling experience. Disabled by default. */
+        ralphMultiAgentGrill: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion: {
@@ -646,6 +676,15 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     loops: {
         enabled: true,
     },
+    dreams: {
+        enabled: false,
+        idleCheckIntervalMs: 5 * 60 * 1000,
+        minIdleMs: 15 * 60 * 1000,
+        confidenceThreshold: 0.85,
+        maxCandidates: 8,
+        conversationLimit: 20,
+        timeoutMs: 3_600_000,
+    },
     mcpOauth: {
         enabled: false,
         autoRefresh: {
@@ -711,6 +750,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         commitChatLens: false,
         commitChatLensDormantMode: 'ghost',
         autoAgentProviderRouting: false,
+        ralphMultiAgentGrill: false,
     },
     memoryPromotion: {
         batchSize: 50,

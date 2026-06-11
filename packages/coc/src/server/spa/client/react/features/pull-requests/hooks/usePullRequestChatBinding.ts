@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { getSpaCocClient } from '../../../api/cocClient';
 import type { AttachmentPayload } from '../../../types/attachments';
 
@@ -35,6 +35,10 @@ export interface UsePullRequestChatBindingReturn {
     error: string | null;
     /** Create a new chat for this PR. Returns the new taskId. */
     createChat: (prompt: string, options?: ReviewChatComposerSendOptions) => Promise<string | null>;
+    /** Archive the currently bound chat and return this PR to an empty chat state. */
+    startFreshChat: () => Promise<boolean>;
+    /** True while the fresh-chat binding reset is in progress. */
+    startingFresh: boolean;
 }
 
 export function usePullRequestChatBinding(opts: UsePullRequestChatBindingOptions): UsePullRequestChatBindingReturn {
@@ -42,13 +46,29 @@ export function usePullRequestChatBinding(opts: UsePullRequestChatBindingOptions
     const [taskId, setTaskId] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [startingFresh, setStartingFresh] = useState(false);
+    const mountedRef = useRef(false);
+    const currentRequestRef = useRef({ workspaceId, prId });
+    currentRequestRef.current = { workspaceId, prId };
 
     useEffect(() => {
-        if (!prId) { setTaskId(null); return; }
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+    }, []);
+
+    const isCurrentRequest = useCallback((requestedWorkspaceId: string, requestedPrId: string | undefined) => (
+        mountedRef.current
+        && currentRequestRef.current.workspaceId === requestedWorkspaceId
+        && currentRequestRef.current.prId === requestedPrId
+    ), []);
+
+    useEffect(() => {
+        if (!prId) { setTaskId(null); setStartingFresh(false); return; }
         let cancelled = false;
         setLoading(true);
         setError(null);
         setTaskId(null);
+        setStartingFresh(false);
 
         getSpaCocClient().pullRequests.getChatBinding(workspaceId, prId)
             .then(data => { if (!cancelled) setTaskId(data.taskId); })
@@ -64,6 +84,11 @@ export function usePullRequestChatBinding(opts: UsePullRequestChatBindingOptions
 
     const createChat = useCallback(async (prompt: string, options: ReviewChatComposerSendOptions = {}): Promise<string | null> => {
         if (!prId) return null;
+        const requestedWorkspaceId = workspaceId;
+        const requestedPrId = prId;
+        if (isCurrentRequest(requestedWorkspaceId, requestedPrId)) {
+            setError(null);
+        }
         try {
             const res = await getSpaCocClient().queue.enqueue({
                 type: 'chat',
@@ -90,13 +115,45 @@ export function usePullRequestChatBinding(opts: UsePullRequestChatBindingOptions
 
             await getSpaCocClient().pullRequests.createChatBinding(workspaceId, prId, newTaskId);
 
-            setTaskId(newTaskId);
+            if (isCurrentRequest(requestedWorkspaceId, requestedPrId)) {
+                setError(null);
+                setTaskId(newTaskId);
+            }
             return newTaskId;
         } catch (err: any) {
-            setError(err?.message ?? 'Failed to create pull request chat');
+            if (isCurrentRequest(requestedWorkspaceId, requestedPrId)) {
+                setError(err?.message ?? 'Failed to create pull request chat');
+            }
             return null;
         }
-    }, [workspaceId, prId, prNumber, prTitle, repoId]);
+    }, [workspaceId, prId, prNumber, prTitle, repoId, isCurrentRequest]);
 
-    return { taskId, loading, error, createChat };
+    const startFreshChat = useCallback(async (): Promise<boolean> => {
+        if (!prId) return false;
+        const requestedWorkspaceId = workspaceId;
+        const requestedPrId = prId;
+        if (isCurrentRequest(requestedWorkspaceId, requestedPrId)) {
+            setStartingFresh(true);
+            setError(null);
+        }
+        try {
+            await getSpaCocClient().pullRequests.startFreshChat(workspaceId, prId);
+            if (isCurrentRequest(requestedWorkspaceId, requestedPrId)) {
+                setTaskId(null);
+                setError(null);
+            }
+            return true;
+        } catch (err: any) {
+            if (isCurrentRequest(requestedWorkspaceId, requestedPrId)) {
+                setError(err?.message ?? 'Failed to start fresh pull request chat');
+            }
+            return false;
+        } finally {
+            if (isCurrentRequest(requestedWorkspaceId, requestedPrId)) {
+                setStartingFresh(false);
+            }
+        }
+    }, [workspaceId, prId, isCurrentRequest]);
+
+    return { taskId, loading, error, createChat, startFreshChat, startingFresh };
 }

@@ -1137,12 +1137,27 @@ components:
           type: string
           description: 'Policy state (e.g. "enabled", "disabled")'
 
+    ModelBillingTokenPricesLongContext:
+      type: object
+      properties:
+        contextMax:
+          type: number
+          description: Maximum prompt/context tokens available on the long-context tier
+
+    ModelBillingTokenPrices:
+      type: object
+      properties:
+        longContext:
+          $ref: '#/components/schemas/ModelBillingTokenPricesLongContext'
+
     ModelBilling:
       type: object
       properties:
         multiplier:
           type: number
           description: Billing multiplier
+        tokenPrices:
+          $ref: '#/components/schemas/ModelBillingTokenPrices'
 
     ModelInfo:
       type: object

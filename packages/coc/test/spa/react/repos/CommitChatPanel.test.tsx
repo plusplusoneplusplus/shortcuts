@@ -11,6 +11,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 // --- Module mocks (hoisted by Vitest) ---
 
 const mockCreateChat = vi.fn();
+const mockStartFreshChat = vi.fn();
 const mockUseCommitChatBinding = vi.fn();
 
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useCommitChatBinding', () => ({
@@ -25,7 +26,15 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/ChatDetail', () =
              data-standalone={props.standalone ? 'true' : undefined}
              data-title={props.title}
              data-hide-mode-selector={props.hideModeSelector ? 'true' : undefined}
-        />
+             data-has-fresh-context-action={props.onStartFreshSameContext ? 'true' : 'false'}
+             data-starting-fresh={props.startingFreshSameContext ? 'true' : 'false'}
+        >
+            {props.onStartFreshSameContext && (
+                <button type="button" data-testid="mock-new-chat-same-context" onClick={props.onStartFreshSameContext}>
+                    New chat with same context
+                </button>
+            )}
+        </div>
     ),
 }));
 
@@ -71,6 +80,7 @@ describe('CommitChatPanel', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockCreateChat.mockResolvedValue('new-task-id');
+        mockStartFreshChat.mockResolvedValue(true);
         mockCommitToPayload.mockReturnValue([]);
     });
 
@@ -86,6 +96,8 @@ describe('CommitChatPanel', () => {
             loading: false,
             error: null,
             createChat: mockCreateChat,
+            startFreshChat: mockStartFreshChat,
+            startingFresh: false,
             ...overrides,
         });
     }
@@ -100,6 +112,7 @@ describe('CommitChatPanel', () => {
 
         expect(screen.getByTestId('commit-chat-panel')).toBeTruthy();
         expect(screen.getByText('Chat about this commit')).toBeTruthy();
+        expect(screen.getAllByText('abc123d').length).toBeGreaterThan(0);
         expect(screen.getByTestId('commit-chat-send-btn')).toBeTruthy();
         expect(screen.getByTestId('compact-ai-settings-chip')).toBeTruthy();
         expect(screen.queryByTestId('agent-selector-chip-btn')).toBeNull();
@@ -147,6 +160,35 @@ describe('CommitChatPanel', () => {
         expect(detail.getAttribute('data-variant')).toBe('floating');
         expect(detail.getAttribute('data-standalone')).toBe('true');
         expect(detail.getAttribute('data-hide-mode-selector')).toBe('true');
+        expect(detail.getAttribute('data-has-fresh-context-action')).toBe('true');
+    });
+
+    it('passes the fresh same-context action into the active Commit chat window', async () => {
+        setupHook({ taskId: 'task-123', startingFresh: true });
+        await act(async () => { render(<CommitChatPanel {...defaultProps} />); });
+
+        const detail = screen.getByTestId('activity-chat-detail');
+        expect(detail.getAttribute('data-starting-fresh')).toBe('true');
+        expect(screen.getByTestId('mock-new-chat-same-context').textContent).toBe('New chat with same context');
+    });
+
+    it('starts a fresh same-context Commit chat from the active chat window action', async () => {
+        setupHook({ taskId: 'task-123' });
+        await act(async () => { render(<CommitChatPanel {...defaultProps} />); });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('mock-new-chat-same-context'));
+        });
+
+        expect(mockStartFreshChat).toHaveBeenCalledOnce();
+    });
+
+    it('shows active-chat errors as a compact banner without replacing ChatDetail', async () => {
+        setupHook({ taskId: 'task-123', error: 'Failed to start fresh commit chat' });
+        await act(async () => { render(<CommitChatPanel {...defaultProps} />); });
+
+        expect(screen.getByTestId('commit-chat-error-banner').textContent).toBe('Failed to start fresh commit chat');
+        expect(screen.getByTestId('activity-chat-detail').getAttribute('data-task-id')).toBe('task-123');
     });
 
     it('hides header when taskId is present', async () => {
@@ -165,7 +207,7 @@ describe('CommitChatPanel', () => {
         await act(async () => { render(<CommitChatPanel {...defaultProps} />); });
 
         // The header shows the first 7 chars of the hash
-        expect(screen.getByText('abc123d')).toBeTruthy();
+        expect(screen.getAllByText('abc123d').length).toBeGreaterThan(0);
     });
 
     it('displays short hash in ChatDetail title', async () => {

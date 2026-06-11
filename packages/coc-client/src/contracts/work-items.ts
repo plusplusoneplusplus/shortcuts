@@ -260,6 +260,11 @@ export interface WorkItemChatBindingListResponse {
   bindings: Record<string, { taskId: string; createdAt: string }>;
 }
 
+export interface WorkItemChatFreshResponse {
+  workItemId: string;
+  archivedTaskId: string;
+}
+
 export interface WorkItemGroupedResponse {
   groups: Record<string, { items: WorkItem[]; total: number; hasMore: boolean }>;
 }

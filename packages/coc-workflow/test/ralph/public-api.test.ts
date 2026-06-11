@@ -67,6 +67,22 @@ describe('parseRalphSignal', () => {
         expect(parseRalphSignal('RALPH_NEXT\nRALPH_COMPLETE').signal).toBe('RALPH_COMPLETE');
     });
 
+    it('detects adjacent duplicate Ralph signals without accepting arbitrary suffixes', () => {
+        expect(parseRalphSignal('RALPH_COMPLETERALPH_COMPLETE').signal).toBe('RALPH_COMPLETE');
+        expect(parseRalphSignal('RALPH_NEXTRALPH_NEXT').signal).toBe('RALPH_NEXT');
+        expect(parseRalphSignal('RALPH_NEXTRALPH_COMPLETE').signal).toBe('RALPH_COMPLETE');
+        expect(parseRalphSignal('RALPH_COMPLETERALPH_COMPLETED').signal).toBe('NONE');
+        expect(parseRalphSignal('RALPH_COMPLETED').signal).toBe('NONE');
+        expect(parseRalphSignal('prefixRALPH_COMPLETE').signal).toBe('NONE');
+    });
+
+    it('stops progress extraction before adjacent duplicate Ralph signals', () => {
+        expect(parseRalphSignal('RALPH_PROGRESS:\nDone\nRALPH_COMPLETERALPH_COMPLETE')).toEqual({
+            signal: 'RALPH_COMPLETE',
+            progress: 'Done',
+        });
+    });
+
     it('normalizes CRLF line endings and avoids partial signal matches', () => {
         expect(parseRalphSignal('Work\r\nRALPH_PROGRESS:\r\nLine\r\nRALPH_NEXT').progress).toBe('Line');
         expect(parseRalphSignal('RALPH_NEXTEND').signal).toBe('NONE');

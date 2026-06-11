@@ -21,6 +21,8 @@ Default backend. Single `processes.db` file at `~/.coc/processes.db`. Schema ver
 | `pull_request_chat_bindings` | prId → taskId mappings (one persistent chat per PR per workspace) |
 | `work_item_chat_bindings` | workItemId → taskId mappings (one persistent chat per Work Item per workspace) |
 
+Commit, Pull Request, and Work Item binding routes also expose a workspace-scoped fresh-chat operation that archives the currently bound process and deletes only that target's binding. It does not fork the process, copy conversation turns, or create a new process record; the next lens send uses the normal target-specific creation flow to bind a fresh chat.
+
 ### Key Features
 
 - **FTS5 search:** Full-text search on conversation content via `conversation_search` index
@@ -32,6 +34,7 @@ Default backend. Single `processes.db` file at `~/.coc/processes.db`. Schema ver
 - **Pending messages:** `pendingMessages` persisted in process metadata
 - **Prompt autocomplete:** `getBestPromptCompletion` and `getPromptAutocompleteContext` for ghost text
 - **Conversation cost read model:** Process detail reads derive `conversationCostEstimate` from turn-level token usage without persisting it. Pricing model resolution starts with `metadata.model`, falls back to `config.model`, and can be overridden by later user turns with a `model` field. `token-usage` process events can also carry the live `cumulativeTokenUsage` and derived `conversationCostEstimate` snapshot for running-chat UI updates; final process reads remain authoritative.
+- **Dream internals:** Dream analyzer and critic steps are persisted as read-only internal process records (`dream-analyzer` / `dream-critic`) with `metadata.dreamStep` carrying workspace ID, Dream run ID, purpose, read-only/no-tools policy, parent Dream process ID, and analyzer-to-critic linkage. Completed outer `dream-run` process metadata also stores analyzer/critic process IDs under `metadata.dream` so queue history and task-detail fallbacks can expose the links without loading full process results. If the outer Dream run aborts while an internal step is in flight, the internal process is finalized as `cancelled` rather than left running or treated as a usable successful step.
 
 ### Convenience Methods
 

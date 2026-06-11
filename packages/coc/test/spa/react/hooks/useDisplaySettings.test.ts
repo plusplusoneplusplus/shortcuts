@@ -67,9 +67,10 @@ describe('useDisplaySettings — __DASHBOARD_CONFIG__ seeding', () => {
         source = fs.readFileSync(USE_DISPLAY_SETTINGS_PATH, 'utf-8');
     });
 
-    it('imports isTerminalEnabled and isNotesEnabled from config', () => {
+    it('imports feature flag helpers from config', () => {
         expect(source).toContain('isTerminalEnabled');
         expect(source).toContain('isNotesEnabled');
+        expect(source).toContain('isDreamsEnabled');
         expect(source).toMatch(/from\s+['"]\.\.\/\.\.\/utils\/config['"]/);
     });
 
@@ -78,11 +79,36 @@ describe('useDisplaySettings — __DASHBOARD_CONFIG__ seeding', () => {
         expect(source).toContain('...DEFAULT_SETTINGS');
         expect(source).toContain('isTerminalEnabled()');
         expect(source).toContain('isNotesEnabled()');
+        expect(source).toContain('isDreamsEnabled()');
     });
 
     it('uses getInitialSettings() as useState fallback instead of DEFAULT_SETTINGS', () => {
         expect(source).toContain('cachedSettings ?? getInitialSettings()');
         // Should NOT fall back to DEFAULT_SETTINGS in useState
         expect(source).not.toMatch(/useState.*cachedSettings\s*\?\?\s*DEFAULT_SETTINGS/);
+    });
+});
+
+describe('useDisplaySettings — Dreams feature flag', () => {
+    let source: string;
+
+    beforeAll(() => {
+        source = fs.readFileSync(USE_DISPLAY_SETTINGS_PATH, 'utf-8');
+    });
+
+    it('includes dreamsEnabled in DisplaySettings', () => {
+        expect(source).toContain('dreamsEnabled: boolean');
+    });
+
+    it('defaults dreamsEnabled to false', () => {
+        expect(source).toContain('dreamsEnabled: false');
+    });
+
+    it('seeds dreamsEnabled from bootstrap runtime config', () => {
+        expect(source).toContain('dreamsEnabled: isDreamsEnabled()');
+    });
+
+    it('maps dreamsEnabled from resolved admin config', () => {
+        expect(source).toContain('dreamsEnabled: resolved?.dreams?.enabled ?? false');
     });
 });

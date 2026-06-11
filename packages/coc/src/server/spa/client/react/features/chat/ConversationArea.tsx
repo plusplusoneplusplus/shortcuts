@@ -10,7 +10,7 @@ import { AskUserInline } from './AskUserInline';
 import { McpOAuthPrompt } from './McpOAuthPrompt';
 import type { ClientConversationTurn } from '../../types/dashboard';
 import type { QueuedMessage } from '../../utils/chatUtils';
-import type { BackgroundTasksState, AskUserBatch, McpOAuthPromptData } from './hooks/useChatSSE';
+import type { BackgroundTasksState, AskUserBatch, McpOAuthPromptData, RalphGrillPlanningProgress } from './hooks/useChatSSE';
 import { MODE_ICONS, MODE_TEXT_COLORS, normalizeChatMode } from '../../repos/modeConfig';
 import type { ChatMode } from '../../repos/modeConfig';
 import type { ChatProvider } from './ProviderBadge';
@@ -23,6 +23,8 @@ export interface ConversationAreaProps {
     backgroundTasks?: BackgroundTasksState | null;
     /** Pending ask-user question batch from the AI, if any. */
     pendingAskUserBatch?: AskUserBatch | null;
+    /** Transient progress while Ralph multi-agent grill planning is running. */
+    ralphGrillPlanningProgress?: RalphGrillPlanningProgress | null;
     /** Called when the user answers or skips the pending question batch. */
     onAskUserAnswered?: () => void;
     isScrolledUp: boolean;
@@ -115,6 +117,7 @@ export function ConversationArea({
     pendingQueue,
     backgroundTasks,
     pendingAskUserBatch,
+    ralphGrillPlanningProgress,
     onAskUserAnswered,
     isScrolledUp,
     scrollRef,
@@ -172,6 +175,7 @@ export function ConversationArea({
     const focusFollowUpInput = () => {
         inputRef?.current?.focus();
     };
+    const showRalphGrillPlanningProgress = !!ralphGrillPlanningProgress && !pendingAskUserBatch;
 
     return (
         <div
@@ -193,6 +197,8 @@ export function ConversationArea({
                     <div className="flex items-center gap-2 text-[#848484] text-sm">
                         <Spinner size="sm" /> Loading conversation...
                     </div>
+                ) : turns.length === 0 && showRalphGrillPlanningProgress ? (
+                    <RalphGrillPlanningProgressCard progress={ralphGrillPlanningProgress} />
                 ) : turns.length === 0 ? (
                     processError ? (
                         <div
@@ -386,6 +392,9 @@ export function ConversationArea({
                                 onAnswered={onAskUserAnswered ?? (() => {})}
                             />
                         )}
+                        {showRalphGrillPlanningProgress && (
+                            <RalphGrillPlanningProgressCard progress={ralphGrillPlanningProgress} />
+                        )}
                         {mcpOAuthPrompts && mcpOAuthPrompts.length > 0 && mcpOAuthPrompts.map(prompt => (
                             <McpOAuthPrompt
                                 key={prompt.requestId}
@@ -472,6 +481,65 @@ export function ConversationArea({
                     >
                         ✕
                     </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function formatDepth(depth: string): string {
+    return depth ? depth.charAt(0).toUpperCase() + depth.slice(1) : 'Standard';
+}
+
+function RalphGrillPlanningProgressCard({ progress }: { progress: RalphGrillPlanningProgress }) {
+    const runningCount = progress.agents.filter(agent => agent.status === 'running').length;
+    const failedCount = progress.agents.filter(agent => agent.status === 'failed').length;
+    const emptyCount = progress.agents.filter(agent => agent.status === 'empty').length;
+    const completedCount = progress.agents.filter(agent => agent.status === 'completed').length;
+    const statusCopy = progress.status === 'running'
+        ? `Running ${runningCount} of ${progress.agentCount} grill agents`
+        : `Preparing consolidated form from ${completedCount} completed${failedCount ? `, ${failedCount} failed` : ''}${emptyCount ? `, ${emptyCount} empty` : ''}`;
+
+    return (
+        <div
+            className="my-2 rounded-md border border-purple-200 bg-purple-50/80 p-3 text-xs text-purple-900 dark:border-purple-500/30 dark:bg-purple-500/10 dark:text-purple-100"
+            data-testid="ralph-grill-planning-progress-card"
+            role="status"
+            aria-live="polite"
+        >
+            <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                    <div className="font-semibold">Question planning</div>
+                    <div className="mt-0.5 text-purple-800/80 dark:text-purple-100/75">
+                        Round {progress.round} of up to {progress.maxRounds} · {formatDepth(progress.depth)} depth · {statusCopy}
+                    </div>
+                </div>
+                <div className={cn(
+                    'rounded-full px-2 py-0.5 font-medium',
+                    progress.status === 'running'
+                        ? 'bg-white/80 text-purple-700 dark:bg-purple-500/15 dark:text-purple-200'
+                        : 'bg-purple-100 text-purple-800 dark:bg-purple-500/20 dark:text-purple-100',
+                )}>
+                    {progress.status === 'running' ? 'Running' : 'Planned'}
+                </div>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1">
+                {progress.agents.map(agent => (
+                    <span
+                        key={`${agent.role}-${agent.provenanceLabel}`}
+                        className="rounded-full border border-purple-200 bg-white/80 px-2 py-0.5 text-[11px] text-purple-800 dark:border-purple-500/30 dark:bg-[#1f1f1f]/70 dark:text-purple-100"
+                        data-testid="ralph-grill-planning-progress-chip"
+                    >
+                        {agent.provenanceLabel} · {agent.status}{agent.status !== 'running' ? ` · ${agent.candidateCount}` : ''}
+                    </span>
+                ))}
+            </div>
+            <div className="mt-2 text-[11px] text-purple-800/85 dark:text-purple-100/75">
+                {progress.message}
+            </div>
+            {progress.warnings.length > 0 && (
+                <div className="mt-2 rounded border border-amber-300/60 bg-amber-50 px-2 py-1 text-[11px] text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200" data-testid="ralph-grill-planning-progress-warnings">
+                    {progress.warnings.length === 1 ? progress.warnings[0] : `${progress.warnings.length} planning warnings; goal creation can continue.`}
                 </div>
             )}
         </div>

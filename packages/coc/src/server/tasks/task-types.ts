@@ -3,7 +3,7 @@
  *
  * Unified task type model with mode-based AI dispatch for chat tasks.
  *
- *   CocTaskKind = 'chat' | 'run-workflow' | 'run-script' | 'pr-classification'
+ *   CocTaskKind = 'chat' | 'run-workflow' | 'run-script' | 'pr-classification' | 'dream-run'
  *   ChatMode = 'ask' | 'autopilot' | 'ralph'
  *
  * All former AI task types (follow-prompt, ai-clarification, code-review,
@@ -22,6 +22,7 @@
 
 import type { Attachment, MCPServerConfig } from '@plusplusoneplusplus/forge';
 import type { ForEachItem, MapReduceChildMode, MapReduceItem } from '@plusplusoneplusplus/coc-client';
+import type { RalphGrillSetup } from '../ralph/grill-planning';
 
 // ============================================================================
 // Target Type
@@ -78,6 +79,12 @@ export const TaskDefs = {
         exclusive: false,
         visible: false,
     },
+    dreamRun: {
+        kind: 'dream-run',
+        label: 'Dream Run',
+        exclusive: false,
+        visible: true,
+    },
 } as const satisfies Record<string, TaskTypeDef>;
 
 /** Union of all task type kind strings, derived from TaskDefs. */
@@ -102,7 +109,7 @@ export const VALID_ENQUEUE_TYPES: ReadonlySet<string> = new Set(
 // Task Type Union
 // ============================================================================
 
-export type TaskType = 'chat' | 'run-workflow' | 'run-script';
+export type TaskType = 'chat' | 'run-workflow' | 'run-script' | 'dream-run';
 
 // ============================================================================
 // Chat Mode
@@ -110,6 +117,11 @@ export type TaskType = 'chat' | 'run-workflow' | 'run-script';
 
 /** Controls permissions and concurrency for chat tasks. */
 export type ChatMode = 'ask' | 'autopilot' | 'ralph';
+
+export interface InheritedLensChatMode {
+    inherited: true;
+    source: 'features.commitChatLens';
+}
 
 /**
  * Legacy chat-mode wire values accepted for runtime compatibility only.
@@ -240,6 +252,8 @@ export interface ChatContext {
         prompt: string;
         chatTaskId?: string;
     };
+    /** Inherited Lens Chat mode marker for note-producing AI flows. */
+    lensChat?: InheritedLensChatMode;
     /** Schedule-specific metadata. */
     scheduleId?: string;
     /** Schedule run record ID that originated this task chain. */
@@ -368,6 +382,8 @@ export interface RalphContext {
     loopIndex?: number;
     /** Current stage of the Ralph session. */
     phase?: 'grilling' | 'executing' | 'complete';
+    /** Optional multi-agent grilling setup. Honored only when the server feature flag is enabled. */
+    grill?: RalphGrillSetup;
     /**
      * Present on final-check tasks only (AC-01/02). Identifies this as a
      * read-only goal-gap checker task. When set, `enqueueRalphNextIteration`
@@ -476,11 +492,31 @@ export interface PrClassificationPayload {
     reasoningEffort?: ReasoningEffort;
 }
 
+export type DreamRunTrigger = 'manual' | 'idle';
+
+export interface DreamRunPayload {
+    readonly kind: 'dream-run';
+    workspaceId: string;
+    trigger: DreamRunTrigger;
+    confidenceThreshold?: number;
+    maxCandidates?: number;
+    conversationLimit?: number;
+    minIdleMs?: number;
+    timeoutMs?: number;
+    /** AI provider to use (optional; falls back to server default). */
+    provider?: ChatProvider;
+    /** Model override for this dream run. */
+    model?: string;
+    /** Reasoning effort override for models that support it. */
+    reasoningEffort?: ReasoningEffort;
+    workingDirectory?: string;
+}
+
 // ============================================================================
 // Payload Union
 // ============================================================================
 
-export type TaskPayload = ChatPayload | RunWorkflowPayload | RunScriptPayload | PrClassificationPayload;
+export type TaskPayload = ChatPayload | RunWorkflowPayload | RunScriptPayload | PrClassificationPayload | DreamRunPayload;
 
 // ============================================================================
 // Type Guards
@@ -504,6 +540,10 @@ export function isRunScriptPayload(payload: Record<string, unknown>): payload is
 
 export function isPrClassificationPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & PrClassificationPayload {
     return payload.kind === 'pr-classification';
+}
+
+export function isDreamRunPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & DreamRunPayload {
+    return payload.kind === 'dream-run';
 }
 
 /** Check whether a chat payload carries task-generation context. */
@@ -544,6 +584,13 @@ export function hasNoteChatContext(payload: Record<string, unknown>): boolean {
 /** Check whether a chat payload carries note-create context. */
 export function hasNoteCreateContext(payload: Record<string, unknown>): boolean {
     return isChatPayload(payload) && !!payload.context?.noteCreate;
+}
+
+/** Check whether a value is the inherited Lens Chat mode marker. */
+export function isInheritedLensChatMode(value: unknown): value is InheritedLensChatMode {
+    if (!value || typeof value !== 'object') return false;
+    const candidate = value as Record<string, unknown>;
+    return candidate.inherited === true && candidate.source === 'features.commitChatLens';
 }
 
 /** Check whether a chat payload carries Ralph-mode orchestration context. */

@@ -35,7 +35,7 @@ export function PullRequestChatPanel({
     onClose,
     hideEmptyHeader = false,
 }: PullRequestChatPanelProps) {
-    const { taskId, loading, error, createChat } = usePullRequestChatBinding({
+    const { taskId, loading, error, createChat, startFreshChat, startingFresh } = usePullRequestChatBinding({
         workspaceId,
         prId,
         prNumber,
@@ -96,9 +96,18 @@ export function PullRequestChatPanel({
             )}
 
             {/* Error state */}
-            {error && !loading && (
+            {error && !loading && !taskId && (
                 <div className="flex-1 flex items-center justify-center">
                     <div className="text-sm text-[#f14c4c]">{error}</div>
+                </div>
+            )}
+
+            {error && !loading && taskId && (
+                <div
+                    className="border-b border-red-200 bg-red-50 px-3 py-2 text-[11px] leading-snug text-red-700 dark:border-red-900/70 dark:bg-red-900/20 dark:text-red-200"
+                    data-testid="pr-chat-error-banner"
+                >
+                    {error}
                 </div>
             )}
 
@@ -109,7 +118,7 @@ export function PullRequestChatPanel({
                         workspaceId={workspaceId}
                         onSubmit={handleComposerSubmit}
                         heroTitle="Chat about this PR"
-                        heroDescription="Ask questions about risk, tests, files, or reviewer replies"
+                        heroDescription={`${prLabel}${prTitle ? ` · ${prTitle}` : ''}`}
                         placeholder="Ask about this pull request, or type / for commands..."
                         testIdPrefix="pr-chat"
                         draftKey={draftKey}
@@ -131,6 +140,8 @@ export function PullRequestChatPanel({
                         title={`PR Chat · ${prLabel}`}
                         hideModeSelector
                         onBack={onClose}
+                        onStartFreshSameContext={startFreshChat}
+                        startingFreshSameContext={startingFresh}
                     />
                 </ChatPreferencesProvider>
             )}

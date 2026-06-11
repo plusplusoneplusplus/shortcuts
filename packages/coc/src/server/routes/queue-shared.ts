@@ -110,6 +110,22 @@ export function serializeTask(task: QueuedTask): Record<string, unknown> {
     const payload = task.payload as any;
     const { images, imagesFilePath, ...restPayload } = payload || {};
     const imagesCount = Array.isArray(images) ? images.length : (payload?.imagesCount ?? 0);
+    const provider = typeof payload?.provider === 'string' ? payload.provider : undefined;
+    const model = typeof task.config?.model === 'string'
+        ? task.config.model
+        : typeof payload?.model === 'string'
+            ? payload.model
+            : undefined;
+    const reasoningEffort = typeof task.config?.reasoningEffort === 'string'
+        ? task.config.reasoningEffort
+        : typeof payload?.reasoningEffort === 'string'
+            ? payload.reasoningEffort
+            : undefined;
+    const timeoutMs = typeof task.config?.timeoutMs === 'number'
+        ? task.config.timeoutMs
+        : typeof payload?.timeoutMs === 'number'
+            ? payload.timeoutMs
+            : undefined;
     const serializedPayload = {
         ...restPayload,
         imagesCount,
@@ -131,6 +147,10 @@ export function serializeTask(task: QueuedTask): Record<string, unknown> {
         customTitle: (task as any).customTitle,
         lastMessagePreview: (task as any).lastMessagePreview,
         title: (task as any).title,
+        provider,
+        model,
+        reasoningEffort,
+        timeoutMs,
         processId: task.processId,
         result: task.result,
         error: task.error,
@@ -166,6 +186,22 @@ export function serializeTaskSummary(task: QueuedTask): Record<string, unknown> 
     const imagesCount = Array.isArray(payload?.images)
         ? payload.images.length
         : (payload?.imagesCount ?? 0);
+    const provider = typeof payload?.provider === 'string' ? payload.provider : undefined;
+    const model = typeof task.config?.model === 'string'
+        ? task.config.model
+        : typeof payload?.model === 'string'
+            ? payload.model
+            : undefined;
+    const reasoningEffort = typeof task.config?.reasoningEffort === 'string'
+        ? task.config.reasoningEffort
+        : typeof payload?.reasoningEffort === 'string'
+            ? payload.reasoningEffort
+            : undefined;
+    const timeoutMs = typeof task.config?.timeoutMs === 'number'
+        ? task.config.timeoutMs
+        : typeof payload?.timeoutMs === 'number'
+            ? payload.timeoutMs
+            : undefined;
 
     // Only the payload sub-fields the SPA list views actually read
     const slimPayload: Record<string, unknown> = {
@@ -176,10 +212,12 @@ export function serializeTaskSummary(task: QueuedTask): Record<string, unknown> 
         planFilePath: payload?.planFilePath,
         filePath: payload?.filePath,
         workflowPath: payload?.workflowPath,
+        trigger: payload?.trigger,
         workingDirectory: payload?.workingDirectory,
         workspaceId: payload?.workspaceId,
         scheduleId: payload?.scheduleId,
         workItemId: payload?.workItemId,
+        timeoutMs: payload?.timeoutMs,
         imagesCount,
         hasImages: imagesCount > 0 || !!payload?.imagesFilePath,
         // Required by ChatListPane to color-code running/queued tasks by provider
@@ -223,6 +261,10 @@ export function serializeTaskSummary(task: QueuedTask): Record<string, unknown> 
         customTitle: (task as any).customTitle,
         lastMessagePreview: (task as any).lastMessagePreview,
         title: (task as any).title,
+        provider,
+        model,
+        reasoningEffort,
+        timeoutMs,
         processId: task.processId,
         error: truncateString(task.error, 500),
         retryCount: task.retryCount,
@@ -267,6 +309,10 @@ export function generateDisplayName(type: string, payload: any): string {
         if (typeof payload.workflowPath === 'string' && payload.workflowPath.trim()) {
             const basename = path.basename(payload.workflowPath);
             return `${typeLabel}: ${basename}`;
+        }
+        if (payload.kind === TaskDefs.dreamRun.kind) {
+            const trigger = payload.trigger === 'idle' ? 'Idle' : 'Manual';
+            return `${typeLabel}: ${trigger}`;
         }
     }
 
@@ -331,6 +377,23 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
     }
     if (taskSpec.type === TaskDefs.runScript.kind && !payload.kind) payload.kind = TaskDefs.runScript.kind;
     if (taskSpec.type === TaskDefs.runWorkflow.kind && !payload.kind) payload.kind = TaskDefs.runWorkflow.kind;
+    if (taskSpec.type === TaskDefs.dreamRun.kind && !payload.kind) payload.kind = TaskDefs.dreamRun.kind;
+
+    if (taskSpec.type === TaskDefs.dreamRun.kind) {
+        if (typeof payload.workspaceId !== 'string' || !payload.workspaceId.trim()) {
+            return { valid: false, error: 'Dream run payload.workspaceId is required' };
+        }
+        payload.workspaceId = payload.workspaceId.trim();
+        if (payload.trigger !== 'manual' && payload.trigger !== 'idle') {
+            return { valid: false, error: 'Dream run payload.trigger must be manual or idle' };
+        }
+        if (payload.provider !== undefined && !VALID_CHAT_PROVIDERS.has(payload.provider)) {
+            return {
+                valid: false,
+                error: `Invalid provider: '${payload.provider}'. Valid providers: ${[...VALID_CHAT_PROVIDERS].join(', ')}`,
+            };
+        }
+    }
 
     if (typeof taskSpec.prompt === 'string' && taskSpec.prompt.trim() && !payload.prompt) {
         payload.prompt = taskSpec.prompt.trim();
@@ -380,7 +443,9 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         };
     }
 
-    const taskProvider = taskSpec.type === 'chat' && typeof payload.provider === 'string' && VALID_CHAT_PROVIDERS.has(payload.provider)
+    const taskProvider = (taskSpec.type === 'chat' || taskSpec.type === TaskDefs.dreamRun.kind)
+        && typeof payload.provider === 'string'
+        && VALID_CHAT_PROVIDERS.has(payload.provider)
         ? payload.provider
         : 'copilot';
     const rawModel = taskSpec.config?.model ?? (typeof payload.model === 'string' ? payload.model : undefined);
@@ -398,7 +463,10 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         payload,
         config: {
             model: resolvedModel.model,
-            timeoutMs: taskSpec.config?.timeoutMs,
+            timeoutMs: taskSpec.config?.timeoutMs
+                ?? (taskSpec.type === TaskDefs.dreamRun.kind && typeof payload.timeoutMs === 'number'
+                    ? payload.timeoutMs
+                    : undefined),
             retryOnFailure: taskSpec.config?.retryOnFailure ?? false,
             retryAttempts: taskSpec.config?.retryAttempts,
             retryDelayMs: taskSpec.config?.retryDelayMs,

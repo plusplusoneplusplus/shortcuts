@@ -5,12 +5,18 @@ import { agentProviderQuotaIndicator as AgentProviderQuotaIndicator } from '../.
 
 const mocks = vi.hoisted(() => ({
     getAgentProvidersQuota: vi.fn(),
+    queueList: vi.fn(),
+    queueHistory: vi.fn(),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         admin: {
             getAgentProvidersQuota: mocks.getAgentProvidersQuota,
+        },
+        queue: {
+            list: mocks.queueList,
+            history: mocks.queueHistory,
         },
     }),
     getSpaCocClientErrorMessage: (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback,
@@ -44,6 +50,10 @@ describe('AgentProviderQuotaIndicator', () => {
         vi.useFakeTimers({ shouldAdvanceTime: true });
         vi.setSystemTime(new Date('2026-06-06T10:02:00.000Z'));
         mocks.getAgentProvidersQuota.mockReset();
+        mocks.queueList.mockReset();
+        mocks.queueHistory.mockReset();
+        mocks.queueList.mockResolvedValue({ queued: [], running: [], stats: {} });
+        mocks.queueHistory.mockResolvedValue({ history: [] });
     });
 
     afterEach(() => {
@@ -149,6 +159,26 @@ describe('AgentProviderQuotaIndicator', () => {
 
         expect(screen.getByTestId('agent-provider-quota-last-updated').textContent).toBe('Last updated 2m ago');
         expect(screen.getByTestId('agent-provider-quota-admin-link').getAttribute('href')).toBe('#admin/agents');
+    });
+
+    it('keeps the dropdown scoped to provider quota instead of Dreams activity', async () => {
+        mocks.getAgentProvidersQuota.mockResolvedValue(quotaResponse({
+            providers: [
+                { id: 'claude', quotaTypes: [quotaType({ type: 'messages', remainingPercentage: 0.9 })] },
+            ],
+        }));
+
+        render(<AgentProviderQuotaIndicator />);
+        fireEvent.click(await screen.findByTestId('agent-provider-quota-indicator'));
+
+        const panel = await screen.findByTestId('agent-provider-quota-panel');
+        expect(within(panel).getByTestId('quota-provider-row-claude').textContent).toContain('Claude');
+        expect(screen.queryByTestId('agent-provider-dream-activity')).toBeNull();
+
+        fireEvent.click(screen.getByTestId('agent-provider-quota-refresh'));
+        await waitFor(() => expect(mocks.getAgentProvidersQuota).toHaveBeenCalledWith({ force: true }));
+        expect(mocks.queueList).not.toHaveBeenCalled();
+        expect(mocks.queueHistory).not.toHaveBeenCalled();
     });
 
     it('marks an elapsed reset as due and handles a missing reset date', async () => {

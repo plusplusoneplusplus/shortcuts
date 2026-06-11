@@ -11,6 +11,7 @@ import type { AttachmentPayload } from '../../../types/attachments';
 import { CocApiError, type ProcessMessageRequest } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../../api/cocClient';
 import { validateSessionContextAttachmentsForSend } from '../sessionContextDrop';
+import type { RalphGrillSetup } from '../../../../../../ralph/grill-planning';
 
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
 
@@ -66,6 +67,8 @@ export interface UseSendMessageOptions {
     sessionContextAttachmentsEnabled?: boolean;
     /** Conversation retrieval capability for the active workspace/provider mode. */
     conversationRetrievalAvailable?: boolean | null;
+    /** Optional multi-agent grill setup used when promoting an ask-mode chat to Ralph. */
+    ralphGrillSetup?: RalphGrillSetup;
     /**
      * Reset the mode pill back to 'ask' after a successful Ralph promotion.
      * Caller-owned because the visible pill is hidden by `allowedModes`
@@ -107,6 +110,7 @@ export function useSendMessage({
     workspaceId,
     sessionContextAttachmentsEnabled = false,
     conversationRetrievalAvailable,
+    ralphGrillSetup,
     onPromotedToRalph,
 }: UseSendMessageOptions): {
     sendFollowUp: (overrideContent?: string, deliveryMode?: DeliveryMode) => Promise<void>;
@@ -205,6 +209,7 @@ export function useSendMessage({
                 await getSpaCocClient().processes.promoteToRalph(processId, {
                     workspaceId,
                     extraGuidance: userText || undefined,
+                    ...(ralphGrillSetup?.enabled ? { grill: ralphGrillSetup } : {}),
                 });
                 lastFailedMessageRef.current = '';
                 clearImages();

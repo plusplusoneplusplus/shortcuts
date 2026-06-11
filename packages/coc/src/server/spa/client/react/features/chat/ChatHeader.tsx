@@ -99,6 +99,10 @@ export interface ChatHeaderProps {
     onToggleLoopPanel?: () => void;
     /** Called when the user double-clicks the title to rename. Header always shows the user-set name. */
     onRenameTitle?: () => void;
+    /** Called by lens chat embeddings to archive the current binding and show an empty same-target composer. */
+    onStartFreshSameContext?: () => Promise<boolean> | boolean | void;
+    /** True while the lens chat fresh-context operation is in progress. */
+    startingFreshSameContext?: boolean;
 }
 
 /** Build overflow menu items based on what's hidden at the current container tier */
@@ -139,6 +143,8 @@ function buildOverflowItems(
         onOpenScratchpad?: () => void;
         onFork?: () => void;
         forking?: boolean;
+        onStartFreshSameContext?: () => Promise<boolean> | boolean | void;
+        startingFreshSameContext?: boolean;
     },
 ): OverflowMenuItem[] {
     if (tier === 'wide') return [];
@@ -257,6 +263,17 @@ function buildOverflowItems(
         });
     }
 
+    if (props.onStartFreshSameContext) {
+        items.push({
+            key: 'new-chat-same-context',
+            label: 'New chat with same context',
+            icon: <span className="text-[10px]">＋</span>,
+            onClick: props.startingFreshSameContext
+                ? () => {}
+                : () => { void props.onStartFreshSameContext?.(); },
+        });
+    }
+
     // Fork — in overflow at non-wide tiers
     if (props.onFork) {
         items.push({
@@ -327,6 +344,8 @@ export function ChatHeader({
     hasActiveLoops = false,
     onToggleLoopPanel,
     onRenameTitle,
+    onStartFreshSameContext,
+    startingFreshSameContext = false,
 }: ChatHeaderProps) {
     const { isMobile } = useBreakpoint();
     const { isFloating } = useFloatingChats();
@@ -414,7 +433,9 @@ export function ChatHeader({
         onOpenScratchpad,
         onFork,
         forking,
-    }), [tier, task, loading, turns, isPending, resumeSessionId, resumeLaunching, metadataProcess, planPath, createdFiles, sessionTokenLimit, sessionCurrentTokens, sessionModel, sessionSystemTokens, sessionToolTokens, sessionConversationTokens, variant, isPopOut, isMobile, taskId, copiedHtml, onFloat, onPopOut, onLaunchInteractiveResume, isFloating, wsId, onToggleSelecting, isSelecting, showScratchpadButton, onOpenScratchpad, onFork, forking]); // eslint-disable-line react-hooks/exhaustive-deps
+        onStartFreshSameContext,
+        startingFreshSameContext,
+    }), [tier, task, loading, turns, isPending, resumeSessionId, resumeLaunching, metadataProcess, planPath, createdFiles, sessionTokenLimit, sessionCurrentTokens, sessionModel, sessionSystemTokens, sessionToolTokens, sessionConversationTokens, variant, isPopOut, isMobile, taskId, copiedHtml, onFloat, onPopOut, onLaunchInteractiveResume, isFloating, wsId, onToggleSelecting, isSelecting, showScratchpadButton, onOpenScratchpad, onFork, forking, onStartFreshSameContext, startingFreshSameContext]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
         <div
@@ -606,6 +627,8 @@ export function ChatHeader({
                                 onLaunchInteractiveResume={isMobile ? undefined : onLaunchInteractiveResume}
                                 onFork={onFork}
                                 forking={forking}
+                                onStartFreshSameContext={onStartFreshSameContext}
+                                startingFreshSameContext={startingFreshSameContext}
                             />
                         )}
                     </>

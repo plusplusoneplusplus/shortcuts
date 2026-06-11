@@ -14,6 +14,7 @@ const { mockClient } = vi.hoisted(() => ({
         workItems: {
             getChatBinding: vi.fn(),
             createChatBinding: vi.fn(),
+            startFreshChat: vi.fn(),
         },
     },
 }));
@@ -39,6 +40,7 @@ describe('useWorkItemChatBinding', () => {
         vi.clearAllMocks();
         mockClient.workItems.getChatBinding.mockResolvedValue({ taskId: null });
         mockClient.workItems.createChatBinding.mockResolvedValue({});
+        mockClient.workItems.startFreshChat.mockResolvedValue({ workItemId: 'wi-1', archivedTaskId: 'task-existing' });
         mockClient.queue.enqueue.mockResolvedValue({ task: { id: 'task-work-item' } });
     });
 
@@ -260,6 +262,58 @@ describe('useWorkItemChatBinding', () => {
         expect(result.current.taskId).toBe('task-retry');
         expect(result.current.error).toBeNull();
         expect(mockClient.workItems.createChatBinding).toHaveBeenCalledWith('ws-1', 'wi-1', 'task-retry');
+    });
+
+    it('calls the fresh Work Item endpoint and resets taskId to the empty same-context state', async () => {
+        mockClient.workItems.getChatBinding.mockResolvedValueOnce({ workItemId: 'wi-1', taskId: 'task-existing' });
+
+        const { result } = renderHook(() => useWorkItemChatBinding({
+            workspaceId: 'ws-1',
+            workItemId: 'wi-1',
+            workItemNumber: 7,
+            type: 'bug',
+        }));
+
+        await act(async () => {
+            await Promise.resolve();
+        });
+        expect(result.current.taskId).toBe('task-existing');
+
+        let freshResult = false;
+        await act(async () => {
+            freshResult = await result.current.startFreshChat();
+        });
+
+        expect(freshResult).toBe(true);
+        expect(mockClient.workItems.startFreshChat).toHaveBeenCalledWith('ws-1', 'wi-1');
+        expect(mockClient.queue.enqueue).not.toHaveBeenCalled();
+        expect(result.current.taskId).toBeNull();
+        expect(result.current.error).toBeNull();
+        expect(result.current.startingFresh).toBe(false);
+    });
+
+    it('keeps the old taskId visible and surfaces an error when Work Item fresh reset fails', async () => {
+        mockClient.workItems.getChatBinding.mockResolvedValueOnce({ workItemId: 'wi-1', taskId: 'task-existing' });
+        mockClient.workItems.startFreshChat.mockRejectedValueOnce(new Error('archive failed'));
+
+        const { result } = renderHook(() => useWorkItemChatBinding({
+            workspaceId: 'ws-1',
+            workItemId: 'wi-1',
+        }));
+
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        let freshResult = true;
+        await act(async () => {
+            freshResult = await result.current.startFreshChat();
+        });
+
+        expect(freshResult).toBe(false);
+        expect(result.current.taskId).toBe('task-existing');
+        expect(result.current.error).toBe('archive failed');
+        expect(result.current.startingFresh).toBe(false);
     });
 
     it('returns null without creating chat when no work item is selected', async () => {

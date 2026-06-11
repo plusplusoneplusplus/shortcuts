@@ -8,6 +8,7 @@ import type {
   GitCommit,
   GitCommitChatBinding,
   GitCommitChatBindingListResponse,
+  GitCommitChatFreshResponse,
   GitCommitChatRebindResponse,
   GitCommitFilesResponse,
   GitCommitListResponse,
@@ -443,6 +444,13 @@ export class GitClient {
 
   deleteCommitChatBinding(workspaceId: string, commitHash: string): Promise<void> {
     return this.transport.request<void>(workspacePath(workspaceId, `/commit-chat-bindings/${encodePathSegment(commitHash)}`), { method: 'DELETE' });
+  }
+
+  startFreshCommitChat(workspaceId: string, commitHash: string): Promise<GitCommitChatFreshResponse> {
+    return this.transport.request<GitCommitChatFreshResponse>(
+      workspacePath(workspaceId, `/commit-chat-bindings/${encodePathSegment(commitHash)}/fresh`),
+      { method: 'POST', body: {} },
+    );
   }
 
   rebindCommitChatBinding(workspaceId: string, oldHash: string, newHash: string): Promise<GitCommitChatRebindResponse> {

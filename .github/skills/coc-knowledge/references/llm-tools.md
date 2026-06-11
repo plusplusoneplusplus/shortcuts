@@ -12,7 +12,7 @@ AI tool factories injected into chat executor sessions. Each factory follows a p
 
 Exports: `DEFAULT_DISABLED_LLM_TOOLS`, `isLlmToolEnabled()`, `filterDisabledLlmTools()`.
 
-**Mode-aware defaults:** `getEffectiveDefaultDisabledTools(uiLayoutMode)` disables `tavily_web_search` at registry level, and also disables `create_update_work_item` in classic mode.
+**Mode-aware defaults:** `getEffectiveDefaultDisabledTools(uiLayoutMode)` disables `tavily_web_search` at registry level, and also disables the work-item tool family (`get_work_item` and `create_update_work_item`) in classic mode.
 
 **Per-repo overrides:** `PerRepoPreferences.disabledLlmTools` explicitly overrides defaults (empty array = enable all). API: `GET/PUT /api/workspaces/:id/llm-tools-config`.
 The GET/PUT response also includes `conversationRetrievalAvailable`, which is
@@ -34,7 +34,8 @@ preferences are rewritten.
 | `get-conversation-tool.ts` | `get_conversation` | Full transcript by processId, compacted to token budget. 5-level progressive compaction. Supports `fromTurn`/`toTurn` paging. |
 | `suggest-follow-ups-tool.ts` | `suggest_follow_ups` | Emits follow-up action suggestions after AI response. |
 | `tavily-web-search-tool.ts` | `tavily_web_search` | Live web search via Tavily API. Key from `~/.coc/providers.json`. Disabled by default. |
-| `create-update-work-item-tool.ts` | `create_update_work_item` | Creates typed work items and bugs (`work-item`, `bug`, `goal`, `epic`, `feature`, `pbi`), patches common fields on existing items, or saves a full revised plan as the next version for an existing item. |
+| `get-work-item-tool.ts` | `get_work_item` | Read-only lookup of an existing work item by UUID, `WI-N`, or work-item number. Resolves one target from `workItemId`/`target`/`workItemNumber`; numeric refs match the workspace listing, UUID-like refs read directly via `store.getWorkItem(target, repoId)`. Returns `{ found: true, item }` (full `WorkItem`) or `{ found: false, error }`. Workspace-scoped (`repoId`), so it cannot read items from another workspace, and never mutates, versions, broadcasts, or calls provider write transports. Factory accepts optional `GetWorkItemToolDeps` (`workItemStore`) for injection. |
+| `create-update-work-item-tool.ts` | `create_update_work_item` | Creates typed work items and bugs (`work-item`, `bug`, `goal`, `epic`, `feature`, `pbi`), patches common fields on existing items, or saves a full revised plan as the next version for an existing item. Supports hierarchy links via `parentId` (UUID or `null` to unlink), `parentTarget` (UUID/WI-N), and `parentWorkItemNumber`: create children, move items, and unlink parents without REST. All creates and hierarchy-sensitive updates run through the shared command service (`work-items/work-item-commands.ts`) so the tool reuses REST-route validation, GitHub/Azure Boards provider sync, response-cache invalidation, and dashboard broadcasts; the factory accepts optional `CreateUpdateWorkItemToolDeps` (store, process store, feature flags, transports) and reads `workItems.hierarchy.enabled` / `workItems.sync.enabled` from `<dataDir>/config.yaml` when not injected. |
 
 ## Supporting Modules
 

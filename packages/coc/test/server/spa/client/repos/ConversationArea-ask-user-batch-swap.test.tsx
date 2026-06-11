@@ -77,6 +77,72 @@ const baseProps = {
 };
 
 describe('ConversationArea AskUserInline batch swap', () => {
+    it('renders transient Ralph grill planning progress before the ask_user batch arrives', () => {
+        render(
+            <ConversationArea
+                {...baseProps}
+                pendingAskUserBatch={null}
+                ralphGrillPlanningProgress={{
+                    status: 'running',
+                    depth: 'deep',
+                    agentCount: 3,
+                    agents: [
+                        {
+                            role: 'product',
+                            roleLabel: 'Product Agent',
+                            provenanceLabel: 'Product Agent · copilot/gpt-5.5',
+                            status: 'running',
+                            candidateCount: 0,
+                        },
+                        {
+                            role: 'ux',
+                            roleLabel: 'UX Agent',
+                            provenanceLabel: 'UX Agent · claude/claude-sonnet-4.6',
+                            status: 'running',
+                            candidateCount: 0,
+                        },
+                    ],
+                    message: 'Running 3 Ralph grill agents to plan consolidated questions.',
+                    warnings: [],
+                }}
+            />,
+        );
+
+        expect(screen.getByTestId('ralph-grill-planning-progress-card')).toHaveTextContent('Question planning');
+        expect(screen.getByTestId('ralph-grill-planning-progress-card')).toHaveTextContent('Deep depth');
+        expect(screen.getByTestId('ralph-grill-planning-progress-card')).toHaveTextContent('Running 2 of 3 grill agents');
+        expect(screen.getAllByTestId('ralph-grill-planning-progress-chip').map(chip => chip.textContent)).toEqual([
+            'Product Agent · copilot/gpt-5.5 · running',
+            'UX Agent · claude/claude-sonnet-4.6 · running',
+        ]);
+    });
+
+    it('hides transient Ralph grill planning progress after the ask_user batch is available', () => {
+        render(
+            <ConversationArea
+                {...baseProps}
+                pendingAskUserBatch={makeBatch('batch-1', 'q-1', 'First question?')}
+                ralphGrillPlanningProgress={{
+                    status: 'completed',
+                    depth: 'light',
+                    agentCount: 1,
+                    agents: [{
+                        role: 'product',
+                        roleLabel: 'Product Agent',
+                        provenanceLabel: 'Product Agent · copilot/gpt-5.5',
+                        status: 'completed',
+                        candidateCount: 1,
+                    }],
+                    message: 'Prepared 1 consolidated question from 1 candidate.',
+                    warnings: [],
+                }}
+            />,
+        );
+
+        expect(screen.queryByTestId('ralph-grill-planning-progress-card')).toBeNull();
+        expect(screen.getByText('First question?')).toBeInTheDocument();
+    });
+
     it('renders a new batch with different questionIds without crashing (regression)', () => {
         const first = makeBatch('batch-1', 'q-1', 'First question?');
         const second = makeBatch('batch-2', 'q-2', 'Second question?');

@@ -34,13 +34,13 @@ describe('RepoDetail SUB_TABS', () => {
         expect(SUB_TABS[1].key).toBe('git');
     });
 
-    it('has exactly 12 entries', () => {
-        expect(SUB_TABS).toHaveLength(12);
+    it('has exactly 13 entries', () => {
+        expect(SUB_TABS).toHaveLength(13);
     });
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['chats', 'git', 'terminal', 'work-items', 'pull-requests', 'explorer', 'workflows', 'schedules', 'tasks', 'notes', 'settings', 'wiki']);
+        expect(keys).toEqual(['chats', 'git', 'terminal', 'work-items', 'dreams', 'pull-requests', 'explorer', 'workflows', 'schedules', 'tasks', 'notes', 'settings', 'wiki']);
     });
 
     it('includes "wiki" entry without a shortcut', () => {
@@ -49,8 +49,8 @@ describe('RepoDetail SUB_TABS', () => {
         expect(wikiTab!.shortcut).toBeUndefined();
     });
 
-    it('has explorer as the sixth tab (after schedules)', () => {
-        expect(SUB_TABS[5].key).toBe('explorer');
+    it('has explorer as the seventh tab (after pull requests)', () => {
+        expect(SUB_TABS[6].key).toBe('explorer');
     });
 
     it('chats is the first entry', () => {
@@ -69,13 +69,13 @@ describe('RepoDetail VISIBLE_SUB_TABS', () => {
         expect(VISIBLE_SUB_TABS.find(t => t.key === 'wiki')).toBeUndefined();
     });
 
-    it('has 11 entries (all SUB_TABS minus wiki)', () => {
-        expect(VISIBLE_SUB_TABS).toHaveLength(11);
+    it('has 12 entries (all SUB_TABS minus wiki)', () => {
+        expect(VISIBLE_SUB_TABS).toHaveLength(12);
     });
 
     it('contains all non-wiki tabs in order', () => {
         const keys = VISIBLE_SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['chats', 'git', 'terminal', 'work-items', 'pull-requests', 'explorer', 'workflows', 'schedules', 'tasks', 'notes', 'settings']);
+        expect(keys).toEqual(['chats', 'git', 'terminal', 'work-items', 'dreams', 'pull-requests', 'explorer', 'workflows', 'schedules', 'tasks', 'notes', 'settings']);
     });
 
     it('renders visibleSubTabs.map in the tab strip', () => {
@@ -84,6 +84,34 @@ describe('RepoDetail VISIBLE_SUB_TABS', () => {
 
     it('passes visibleSubTabs to MobileTabBar', () => {
         expect(REPO_DETAIL_SOURCE).toContain('tabs={visibleSubTabs}');
+    });
+});
+
+describe('RepoDetail Dreams tab feature gating', () => {
+    it('imports useDreamsEnabled hook', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("import { useDreamsEnabled } from '../../hooks/feature-flags/useDreamsEnabled'");
+    });
+
+    it('calls useDreamsEnabled() inside the component', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('useDreamsEnabled()');
+    });
+
+    it('filters dreams tab from visibleSubTabs when disabled', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("t.key !== 'dreams'");
+    });
+
+    it('visibleSubTabs depends on dreamsEnabled', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('[isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, uiLayoutMode]');
+    });
+
+    it('redirects away from dreams when the feature transitions to disabled', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'dreams' && !dreamsEnabled && prevDreamsEnabled.current");
+        expect(REPO_DETAIL_SOURCE).toContain('prevDreamsEnabled.current = dreamsEnabled');
+    });
+
+    it('guards DreamsPanel mounting on dreamsEnabled', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('{dreamsEnabled && (');
+        expect(REPO_DETAIL_SOURCE).toContain('<DreamsPanel key={ws.id} workspaceId={ws.id} />');
     });
 });
 
@@ -707,7 +735,7 @@ describe('RepoDetail dev-workflow tab relabeling and reorder', () => {
 
     it('dev-workflow branch defines the correct tab order', () => {
         expect(REPO_DETAIL_SOURCE).toContain(
-            "'chats', 'work-items', 'schedules', 'explorer',",
+            "'chats', 'work-items', 'dreams', 'schedules', 'explorer',",
         );
         expect(REPO_DETAIL_SOURCE).toContain(
             "'workflows', 'git', 'terminal', 'pull-requests', 'tasks', 'settings',",

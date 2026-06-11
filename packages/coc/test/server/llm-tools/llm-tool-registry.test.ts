@@ -22,6 +22,7 @@ describe('LLM_TOOL_REGISTRY', () => {
         expect(names).toContain('search_conversations');
         expect(names).toContain('get_conversation');
         expect(names).toContain('ask_user');
+        expect(names).toContain('get_work_item');
         expect(names).toContain('create_update_work_item');
         expect(names).not.toContain('create_work_item');
         expect(names).not.toContain('update_work_item');
@@ -71,9 +72,9 @@ describe('DEFAULT_DISABLED_LLM_TOOLS', () => {
 });
 
 describe('getEffectiveDefaultDisabledTools', () => {
-    it('disables the unified work item and web search tools in classic mode', () => {
+    it('disables the work item tool family and web search tools in classic mode', () => {
         expect(getEffectiveDefaultDisabledTools('classic')).toEqual(
-            expect.arrayContaining(['create_update_work_item', 'tavily_web_search']),
+            expect.arrayContaining(['get_work_item', 'create_update_work_item', 'tavily_web_search']),
         );
         expect(getEffectiveDefaultDisabledTools('classic')).not.toContain('create_bug');
     });
@@ -84,6 +85,7 @@ describe('getEffectiveDefaultDisabledTools', () => {
 
     it('uses only registry-level defaults in dev-workflow mode', () => {
         expect(getEffectiveDefaultDisabledTools('dev-workflow')).toEqual(DEFAULT_DISABLED_LLM_TOOLS);
+        expect(getEffectiveDefaultDisabledTools('dev-workflow')).not.toContain('get_work_item');
         expect(getEffectiveDefaultDisabledTools('dev-workflow')).not.toEqual(
             expect.arrayContaining(CLASSIC_MODE_EXTRA_DISABLED_TOOLS),
         );

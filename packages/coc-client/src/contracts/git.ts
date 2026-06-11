@@ -250,6 +250,11 @@ export interface GitCommitChatRebindResponse {
   taskId: string;
 }
 
+export interface GitCommitChatFreshResponse {
+  commitHash: string;
+  archivedTaskId: string;
+}
+
 export interface GitDiffCommentSelection {
   diffLineStart: number;
   diffLineEnd: number;

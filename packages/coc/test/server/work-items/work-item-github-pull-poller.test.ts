@@ -322,4 +322,75 @@ describe('WorkItemGitHubPullPoller', () => {
         });
         expect(await store.getWorkItem(imported.root.id, REPO_ID)).toBeUndefined();
     });
+
+    it('does not resurrect a deleted closed-issue mirror on re-poll, but still re-imports open issues', async () => {
+        const issues = new Map<number, GitHubWorkItemIssue>([
+            [100, makeIssue(100, 'Remote Epic', {
+                labels: ['coc:type:epic'],
+                body: 'Remote epic',
+            })],
+            [101, makeIssue(101, 'Open Child', {
+                body: `Open child\n\n${metadataBlock({
+                    issueNumber: 101,
+                    type: 'feature',
+                    parent: { owner: OWNER, repo: REPO, issueNumber: 100 },
+                })}`,
+            })],
+            [102, makeIssue(102, 'Closed Child', {
+                state: 'closed',
+                body: `Closed child\n\n${metadataBlock({
+                    issueNumber: 102,
+                    type: 'feature',
+                    parent: { owner: OWNER, repo: REPO, issueNumber: 100 },
+                })}`,
+            })],
+        ]);
+        const imported = await importTree(store, issues);
+        const openChild = imported.items.find(item => item.githubMirror?.issueNumber === 101)!;
+        const closedChild = imported.items.find(item => item.githubMirror?.issueNumber === 102)!;
+        // Closed issues are still part of the initial import.
+        expect(closedChild).toBeDefined();
+        expect(closedChild.githubMirror?.state).toBe('closed');
+
+        writeRepoPreferences(tmpDir, REPO_ID, {
+            workItems: {
+                sync: {
+                    github: {
+                        owner: OWNER,
+                        repo: REPO,
+                        pollingEnabled: true,
+                    },
+                },
+            },
+        });
+        const poller = new WorkItemGitHubPullPoller({
+            dataDir: tmpDir,
+            processStore: processStore(tmpDir),
+            workItemStore: store,
+            transport: makeTransport(issues),
+            now: () => '2026-01-03T00:00:00.000Z',
+        });
+
+        // An untouched closed mirror is preserved across polls (not pruned, not recreated).
+        const firstPoll = await poller.pollWorkspace(REPO_ID);
+        expect(firstPoll).toMatchObject({ created: 0, deleted: 0, errors: [] });
+        expect(await store.getWorkItem(closedChild.id, REPO_ID)).toBeDefined();
+
+        // Deleting the closed mirror locally must be durable: the next poll must not recreate it.
+        expect(await store.removeWorkItem(closedChild.id)).toBe(true);
+        const afterClosedDelete = await poller.pollWorkspace(REPO_ID);
+        expect(afterClosedDelete).toMatchObject({ created: 0, deleted: 0, errors: [] });
+        expect(await store.getWorkItem(closedChild.id, REPO_ID)).toBeUndefined();
+        const afterClosed = await store.listWorkItems({ repoId: REPO_ID });
+        expect(afterClosed.items.map(item => item.githubMirror?.issueNumber).filter(Boolean).sort())
+            .toEqual([100, 101]);
+
+        // Open issues stay authoritative on GitHub: deleting one locally re-imports it on the next poll.
+        expect(await store.removeWorkItem(openChild.id)).toBe(true);
+        const afterOpenDelete = await poller.pollWorkspace(REPO_ID);
+        expect(afterOpenDelete).toMatchObject({ created: 1, errors: [] });
+        const afterOpen = await store.listWorkItems({ repoId: REPO_ID });
+        expect(afterOpen.items.map(item => item.githubMirror?.issueNumber).filter(Boolean).sort())
+            .toEqual([100, 101]);
+    });
 });

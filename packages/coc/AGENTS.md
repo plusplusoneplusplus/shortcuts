@@ -73,15 +73,32 @@ all have their own `references/*.md`.
 - **Loop ticks** must route completion through
   `ProcessLifecycleRunner → onLoopTickComplete → LoopExecutor.onTickComplete`;
   bookkeeping errors must never mask the follow-up's actual result.
+- **Dreams analyzer/critic AI work** must run through
+  `DreamInternalProcessExecutor`/`ProcessLifecycleRunner` so analyzer and critic
+  prompts/responses are persisted as read-only internal processes. Do not add
+  direct `aiService.sendMessage(...)` calls under `src/server/dreams/`.
 - **Follow-up enqueue sites** must call `resolveFollowUpMode(...)` and set
   `payload.mode`. `FollowUpExecutor.executeFollowUp` fail-loud warns + defaults
   to `'ask'` if missing.
+- **Copilot long-context tier** is automatic at the provider boundary: chat
+  and follow-up executors derive `contextTier` only via
+  `getCopilotContextTierForModel` (tiered billing metadata —
+  `billing.tokenPrices.longContext.contextMax`). Never hardcode model
+  allow-lists, never infer support from `max_context_window_tokens`, and never
+  send `contextTier` for Codex/Claude or when the metadata is absent.
 - **Pull Requests Team auto-classification** must stay gated by
   `pullRequests.enabled`, `pullRequests.autoClassifyTeam`, and
   `features.focusedDiff`; use the generic classify-diff enqueue helper with the
   per-trigger cap and low priority instead of adding client-side POST loops.
   The Team toolbar status UI should read batch status and route manual
   "Classify now" actions through the same bounded server helper.
+- **Work-item create/update side effects** (hierarchy `parentId` validation,
+  GitHub/Azure Boards provider sync, response-cache invalidation, dashboard
+  broadcasts, auto-execute) live in the shared command service
+  `src/server/work-items/work-item-commands.ts`. Both the REST routes
+  (`src/server/routes/work-item-routes.ts`) and the `create_update_work_item`
+  LLM tool call it — do not re-implement hierarchy or provider logic in either
+  caller.
 - **Direct package builds** use `scripts/prebuild.mjs` to build
   `@plusplusoneplusplus/coc-client`, `@plusplusoneplusplus/coc-workflow`, and `@plusplusoneplusplus/coc-memory`
   before `tsc`, clean `dist` before emitting, and generate

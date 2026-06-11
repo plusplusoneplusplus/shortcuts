@@ -113,6 +113,7 @@ export function typeLabel(type: string): string {
         'code-review-group': 'CR Group',
         'pipeline-execution': 'Workflow',
         'pipeline-item': 'Workflow Item',
+        'dream-run': 'Dream Run',
         'clarification': 'Clarification',
         'discovery': 'Discovery'
     };

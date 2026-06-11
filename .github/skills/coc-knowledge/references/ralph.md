@@ -38,9 +38,11 @@ iteration appends a Markdown block:
 <body>
 ```
 
-`SIGNAL` is one of `RALPH_NEXT`, `RALPH_COMPLETE`, or `NONE`. The writer uses
-an em dash in generated headings; the parser also accepts a plain hyphen
-separator.
+`SIGNAL` is one of `RALPH_NEXT`, `RALPH_COMPLETE`, or `NONE`. Response parsing
+recognizes standalone signal tokens and valid adjacent signal-token runs such as
+`RALPH_COMPLETERALPH_COMPLETE`, while rejecting arbitrary suffixes such as
+`RALPH_NEXTEND`. The writer uses an em dash in generated headings; the parser
+also accepts a plain hyphen separator.
 
 ## Writer Protocol
 
@@ -186,8 +188,83 @@ with a `*.goal.md` filename. This keeps the goal file out of the repository
 working tree and lets the Notes/scratchpad UI open and edit it (`isGoalFile`
 detects `*.goal.md`). The generic bundled `grill-me` skill stays host-agnostic:
 it defers to whatever save location the host supplies and only falls back to a
-working-directory-relative `Plans/<area>/<feature>/` when none is given. Work
-Item Goal grilling passes `context.workItemGoalGrilling`, which makes
+working-directory-relative `Plans/<area>/<feature>/` when none is given.
+
+The disabled-by-default `features.ralphMultiAgentGrill` gate is editable from
+Admin -> Configure -> Features and enables multi-agent grilling only when the
+task context also carries `context.ralph.grill.enabled=true`. The SPA exposes a
+"Question planning setup" card on New Chat Ralph grilling and promoted ask-mode
+Ralph sessions while the flag is enabled; the card lets users choose Light,
+Standard (default), or Deep depth. When effort levels are enabled, each role
+inherits the composer's concrete provider and selected effort tier by default,
+with optional per-role provider plus effort-tier overrides behind collapsed role
+rows; the compact summary shows the inherited defaults and override count. The
+panel resolves each role's provider/tier client-side to concrete `model`,
+`reasoningEffort`, and `effortTier` fields; providers without tier mode use that
+provider's own default model and reasoning-effort preference. When effort levels
+are disabled, the card shows depth only and all roles inherit the composer AI
+settings.
+Promotion requests accept an optional `grill` payload, sanitize it on the
+server, and mirror it into `metadata.ralph.grill` plus the queued synthesis task
+context. The planning helpers live in
+`packages/coc/src/server/ralph/grill-planning.ts`; they define the depth role
+sets, per-agent provider/tier selection shape, provenance labels (`Role Agent ·
+provider/tier` when a tier applies, falling back to `Role Agent ·
+provider/model`), context normalization, strict JSON candidate-question parsing,
+and the preflight runner that invokes one SDK request per selected grill agent
+before the main grilling turn. Each agent uses its own resolved model and
+reasoning effort, falling back to the enclosing task defaults only when the
+agent does not specify them. Successful first-round runs record the SDK
+`sessionId` returned by that role agent; failed or unavailable agents record no
+session ID. On later grilling turns, the executor passes the retained
+`ProcessSessionState.ralphGrill` state back into the planner, and role agents
+with stored session IDs are resumed with the user's latest answers instead of a
+fresh original-request prompt. The executor folds each plan into in-memory
+`ProcessSessionState` as `ralphGrill` state, preserving `roundsRun`, per-role
+status/session IDs, cumulative selected user-facing questions, and compact
+warnings across chat-turn cleanup for the same process. Failed, unavailable, or
+first-round empty agents produce warnings and do not block the main consolidated
+grilling turn. If an SDK resume returns a different session ID, the planner
+treats native history as unavailable, retries that role as a fresh agent seeded
+with the accumulated original request, user answer turns, and already asked
+questions, and adds a compact reduced-fidelity warning to the planning/progress
+metadata. Planning/progress metadata includes the current round number and
+three-round cap so the live and consolidated question-planning cards can show
+"Round N of up to 3". Empty responses from resumed agents are treated as "no more
+follow-ups" signals; when all resumed agents are empty, when the user sends a
+compact stop signal such as "enough", or when the named three-round cap is
+already reached, the planner returns a terminal result and the executor removes
+the `ask_user` tool from that main turn so synthesis proceeds without another
+question batch. The planner
+consolidates candidate questions before the main turn: exact duplicates and
+conservative semantic duplicates merge with combined provenance, recognized
+conflicts become one select-style decision question, and follow-up-round
+candidates that exact- or semantic-match the cumulative already-asked question
+set are dropped so the user never sees a repeated question. Duplicate-only agent
+contributions are reported as compact warnings, and the selected question set
+plus consolidation summary are appended to the main user prompt. The appended
+coverage-summary requirement includes a rounds-run line. While those
+isolated agents run, the executor emits transient `ralph-grill-planning` SSE
+progress so the SPA can show an immediate "Question planning" status card; raw
+candidate-question state is not persisted for that interim UI. When the model
+emits the consolidated `ask_user` batch, the executor enriches the persisted/SSE
+question payloads with the preflight planning summary, per-question provenance,
+and consolidation metadata. `AskUserInline` renders that metadata as a compact
+"Question planning" card, grouped role sections, provenance chips, and
+reduced-coverage warnings while preserving the normal single-form
+answer/skip/defer submission flow. Because the provenance chip is rendered from
+attached metadata, the grilling prompt instructs the model not to embed the
+provenance label in the visible question text; it is kept only in the final
+`## Agent Coverage Summary`. The main grilling prompt carries an explicit
+final-goal contract requiring a `## Agent Coverage Summary` section with the
+selected depth, provider/tier or provider/model used per agent,
+warnings/reduced-coverage notes, and dedupe/conflict outcomes, plus the normal
+autonomy-ready AC/Definition-of-Done, constraints, out-of-scope, and references
+sections. When the flag is off or the context lacks an enabled grill setup,
+existing single-agent grilling prompts and plain `ask_user` rendering remain
+unchanged.
+
+Work Item Goal grilling passes `context.workItemGoalGrilling`, which makes
 `buildRalphGrillSuffix(...)` omit the Notes goal-file directive and tell the
 model to emit the final `## Goal` spec in chat for immutable Work Item content
 versioning instead. When that bound grilling chat completes and the durable Work
