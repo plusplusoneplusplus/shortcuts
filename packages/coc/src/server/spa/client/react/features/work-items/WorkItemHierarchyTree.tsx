@@ -357,7 +357,7 @@ export function WorkItemHierarchyTree({
     ]);
 
     // Refresh when workspace-scoped Work Item WebSocket events arrive.
-    const realtimeRevision = workItemState.realtimeRevisionByRepo[workspaceId] || 0;
+    const realtimeRevision = workItemState.realtimeRevisionByRepo?.[workspaceId] ?? 0;
     const prevRealtimeRevisionRef = useRef(realtimeRevision);
     useEffect(() => {
         if (prevRealtimeRevisionRef.current === realtimeRevision) return;

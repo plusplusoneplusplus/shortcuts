@@ -21,6 +21,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/WorkItemContext', () =
             workItemsByRepo: {},
             paginationByRepo: {},
             loading: {},
+            realtimeRevisionByRepo: {},
         },
         dispatch: mocks.dispatch,
     }),

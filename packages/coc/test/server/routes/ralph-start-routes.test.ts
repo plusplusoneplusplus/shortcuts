@@ -153,7 +153,7 @@ describe('POST /api/processes/:id/ralph-start', () => {
         expect(enqueueArg.payload.prompt).toContain('<goal>');
         expect(enqueueArg.payload.prompt).toContain('ultra-ralph');
         expect(enqueueArg.payload.prompt).not.toBe('Begin Ralph execution loop.');
-        expect(Object.keys(enqueueArg.payload.context)).toEqual(['ralph']);
+        expect(Object.keys(enqueueArg.payload.context)).toEqual(['ralph', 'taskGroup']);
         expect(enqueueArg.payload.context).not.toHaveProperty('skills');
         expect(enqueueArg.payload.provider).toBeUndefined();
         expect(enqueueArg.config).toEqual({});
