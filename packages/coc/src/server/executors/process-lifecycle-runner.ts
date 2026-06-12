@@ -408,9 +408,14 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         const processId = toQueueProcessId(task.id);
         const prompt = applySkillContent(extractPrompt(task), task);
         const payload = task.payload as any;
+        // pr-classification tasks always run read-only ask mode (see
+        // ClassificationExecutor). Record it explicitly so UI surfaces don't
+        // fall back to labelling a mode-less classification process 'autopilot'.
         const normalizedPayloadMode = isChatPayload(task.payload)
             ? normalizeChatMode(payload?.mode)
-            : undefined;
+            : isPrClassificationPayload(task.payload)
+                ? 'ask'
+                : undefined;
         const selectedSkills = isChatPayload(task.payload)
             ? (task.payload as ChatPayload).context?.skills
             : isPrClassificationPayload(task.payload)
