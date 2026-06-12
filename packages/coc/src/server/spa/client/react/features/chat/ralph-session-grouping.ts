@@ -4,6 +4,7 @@
  * Pure utility: no React, no side effects.
  */
 
+import { deriveTaskGroupRef } from '@plusplusoneplusplus/coc-client';
 import { deriveRalphTitle } from './ralph-title';
 
 export interface RalphSession {
@@ -39,7 +40,8 @@ export type RalphSessionPhase = 'grilling' | 'executing' | 'complete' | 'failed'
  * field forwarded by `toProcessHistoryItem()`.
  */
 export function getRalphSessionId(task: any): string | undefined {
-    return (task.payload?.context?.ralph?.sessionId ?? task.ralph?.sessionId) as string | undefined;
+    const ref = deriveTaskGroupRef(task);
+    return ref?.kind === 'ralph' ? ref.groupId : undefined;
 }
 
 /** Extract ralph.originalGoal from a process/task.
