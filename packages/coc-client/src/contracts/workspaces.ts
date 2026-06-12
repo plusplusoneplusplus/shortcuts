@@ -236,6 +236,13 @@ export interface ProcessHistoryItem {
     lastPlanErrorTurnIndex?: number;
   };
   mapReduce?: MapReduceProcessContext;
+  /** Dream analyzer/critic step metadata forwarded from proc.metadata.dreamStep. */
+  dream?: {
+    runId: string;
+    kind?: 'analyzer' | 'critic';
+    purpose?: string;
+    readOnly?: boolean;
+  };
 }
 
 export interface ProcessHistoryResponse {

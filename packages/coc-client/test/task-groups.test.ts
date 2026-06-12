@@ -162,6 +162,11 @@ describe('deriveTaskGroupRef — legacy dream', () => {
         const proc = { metadata: { dreamStep: { runId: 'dream-1', kind: 'critic' } } };
         expect(deriveTaskGroupRef(proc)).toEqual({ kind: 'dream', groupId: 'dream-1', role: 'child', itemId: 'critic' });
     });
+
+    it('maps a history item dream field (forwarded from metadata.dreamStep)', () => {
+        const item = { dream: { runId: 'dream-2', kind: 'critic', purpose: 'Dream Critic', readOnly: true } };
+        expect(deriveTaskGroupRef(item)).toEqual({ kind: 'dream', groupId: 'dream-2', role: 'child', itemId: 'critic' });
+    });
 });
 
 describe('deriveTaskGroupRef — non-grouped & invalid input', () => {

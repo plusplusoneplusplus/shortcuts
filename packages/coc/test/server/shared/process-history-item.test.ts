@@ -303,6 +303,39 @@ describe('toProcessHistoryItem', () => {
         });
     });
 
+    it('forwards metadata.dreamStep as dream when present', () => {
+        const proc = makeProcess({
+            metadata: {
+                type: 'chat',
+                workspaceId: 'ws-abc',
+                mode: 'ask',
+                dreamStep: {
+                    kind: 'analyzer',
+                    purpose: 'Dream Analyzer',
+                    workspaceId: 'ws-abc',
+                    runId: 'dream-run-1',
+                    readOnly: true,
+                },
+            },
+        } as any);
+
+        const item = toProcessHistoryItem(proc);
+
+        expect(item.dream).toEqual({
+            kind: 'analyzer',
+            purpose: 'Dream Analyzer',
+            workspaceId: 'ws-abc',
+            runId: 'dream-run-1',
+            readOnly: true,
+        });
+    });
+
+    it('omits dream when metadata.dreamStep is absent', () => {
+        const proc = makeProcess();
+        const item = toProcessHistoryItem(proc);
+        expect(item.dream).toBeUndefined();
+    });
+
     it('omits forEach when metadata.forEach is absent', () => {
         const proc = makeProcess();
         const item = toProcessHistoryItem(proc);

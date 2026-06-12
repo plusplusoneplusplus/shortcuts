@@ -70,9 +70,12 @@ function ralphRef(task: AnyTask): TaskGroupRef | undefined {
 }
 
 function dreamRef(task: AnyTask): TaskGroupRef | undefined {
-    // Legacy dream linkage lives on the internal step's process metadata
-    // (`metadata.dreamStep`) keyed by `runId`; the outer run job is the anchor.
-    const step = (task as any)?.metadata?.dreamStep ?? (task as any)?.payload?.context?.dreamStep;
+    // Dream linkage is exposed on the history item's `dream` field (forwarded
+    // from the internal step's process metadata) and, for raw processes, on
+    // `metadata.dreamStep` / `payload.context.dreamStep` — all keyed by `runId`.
+    const step = (task as any)?.dream
+        ?? (task as any)?.metadata?.dreamStep
+        ?? (task as any)?.payload?.context?.dreamStep;
     if (!step || typeof step !== 'object') return undefined;
     const groupId = nonEmpty(step.runId);
     if (!groupId) return undefined;

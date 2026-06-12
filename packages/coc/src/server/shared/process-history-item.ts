@@ -61,6 +61,20 @@ export interface ProcessHistoryItem {
     forEach?: ForEachContext;
     /** Map Reduce map/reduce child metadata forwarded from proc.metadata.mapReduce. */
     mapReduce?: MapReduceContext;
+    /**
+     * Dream analyzer/critic step metadata forwarded from proc.metadata.dreamStep.
+     * Lets the SPA group a dream run's internal steps under one parent row, the
+     * same way ralph/forEach/mapReduce are grouped.
+     */
+    dream?: DreamStepContext;
+}
+
+/** Groupable subset of a dream internal step's persisted metadata. */
+export interface DreamStepContext {
+    runId: string;
+    kind?: 'analyzer' | 'critic';
+    purpose?: string;
+    readOnly?: boolean;
 }
 
 export function toProcessHistoryItem(
@@ -107,5 +121,6 @@ export function toProcessHistoryItem(
         ralph: proc.metadata?.ralph as ProcessHistoryItem['ralph'],
         forEach: proc.metadata?.forEach as ProcessHistoryItem['forEach'],
         mapReduce: proc.metadata?.mapReduce as ProcessHistoryItem['mapReduce'],
+        dream: proc.metadata?.dreamStep as ProcessHistoryItem['dream'],
     };
 }
