@@ -89,4 +89,9 @@ export const BUNDLED_SKILLS_REGISTRY: readonly BundledSkill[] = [
         description: 'Core instruction sets for Ralph autonomous coding loop phases — grill (clarification), synthesis (goal extraction), execution (iteration), iteration (user prompt), and final-check (read-only validation)',
         relativePath: 'ultra-ralph',
     },
+    {
+        name: 'dream',
+        description: 'System prompts for the CoC Dream analyzer and critic internal steps — proposes and validates high-confidence dream card candidates from completed workspace conversations',
+        relativePath: 'dream',
+    },
 ];
