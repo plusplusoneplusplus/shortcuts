@@ -21,11 +21,13 @@ function TestConsumer({ repoId = 'repo-1' }: { repoId?: string }) {
     testDispatch = dispatch;
     const items = state.workItemsByRepo[repoId] || [];
     const unseen = state.unseenByRepo[repoId] || [];
+    const realtimeRevision = state.realtimeRevisionByRepo[repoId] || 0;
     return (
         <div>
             <span data-testid="item-count">{items.length}</span>
             <span data-testid="unseen-count">{unseen.length}</span>
             <span data-testid="unseen-ids">{unseen.join(',')}</span>
+            <span data-testid="realtime-revision">{realtimeRevision}</span>
         </div>
     );
 }
@@ -131,8 +133,18 @@ describe('WorkItemContext: unseen tracking', () => {
             testDispatch({ type: 'WORK_ITEM_ADDED', repoId: 'repo-1', item: makeItem('w1') });
             testDispatch({ type: 'WORK_ITEM_ADDED', repoId: 'repo-1', item: makeItem('w1') });
         });
-        // Two items in list (context appends), but only one unseen ID
+        expect(screen.getByTestId('item-count').textContent).toBe('1');
         expect(screen.getByTestId('unseen-ids').textContent).toBe('w1');
+    });
+
+    it('increments realtime revision for workspace-scoped work item events', () => {
+        renderWithProvider();
+        act(() => testDispatch({ type: 'WORK_ITEM_ADDED', repoId: 'repo-1', item: makeItem('w1') }));
+        expect(screen.getByTestId('realtime-revision').textContent).toBe('1');
+        act(() => testDispatch({ type: 'WORK_ITEM_UPDATED', repoId: 'repo-1', item: makeItem('w1', 'planning') }));
+        expect(screen.getByTestId('realtime-revision').textContent).toBe('2');
+        act(() => testDispatch({ type: 'WORK_ITEM_REMOVED', repoId: 'repo-1', id: 'w1' }));
+        expect(screen.getByTestId('realtime-revision').textContent).toBe('3');
     });
 
     it('SET_WORK_ITEMS does not affect unseen set', () => {

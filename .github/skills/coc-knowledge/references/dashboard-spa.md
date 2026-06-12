@@ -122,7 +122,11 @@ leaf rows. Remote/Synced trees keep the type avatar, title, remote mirror badge,
 and container rollups, but omit local work-item numbers and leaf status chips so
 remote identifiers remain the primary row metadata. Compact GitHub mirror badges
 render the issue number only; full detail-page badges keep the provider label and
-link title.
+link title. `work-item-added`, `work-item-updated`, and `work-item-removed`
+WebSocket events update `WorkItemContext` for the matching workspace and advance
+a workspace-scoped realtime revision used by `WorkItemHierarchyTree` to refetch
+its tree data. The hierarchy toolbar exposes a Refresh control that calls the
+same tree fetch path and is disabled while the tree request is in flight.
 
 `workItems.workflow.enabled` is the disabled-by-default durable workflow gate for
 turning local Work Items and Goals into the command-center planning/execution

@@ -283,13 +283,13 @@ function AppInner() {
                 });
                 break;
             case 'work-item-added':
-                if (msg.item) workItemDispatch({ type: 'WORK_ITEM_ADDED', repoId: msg.workspaceId, item: msg.item });
+                if (msg.workspaceId && msg.item) workItemDispatch({ type: 'WORK_ITEM_ADDED', repoId: msg.workspaceId, item: msg.item });
                 break;
             case 'work-item-updated':
-                if (msg.item) workItemDispatch({ type: 'WORK_ITEM_UPDATED', repoId: msg.workspaceId, item: msg.item });
+                if (msg.workspaceId && msg.item) workItemDispatch({ type: 'WORK_ITEM_UPDATED', repoId: msg.workspaceId, item: msg.item });
                 break;
             case 'work-item-removed':
-                if (msg.itemId) workItemDispatch({ type: 'WORK_ITEM_REMOVED', repoId: msg.workspaceId, id: msg.itemId });
+                if (msg.workspaceId && msg.itemId) workItemDispatch({ type: 'WORK_ITEM_REMOVED', repoId: msg.workspaceId, id: msg.itemId });
                 break;
             case 'ralph-session-complete':
                 window.dispatchEvent(new CustomEvent('ralph-session-complete', { detail: { repoId: msg.repoId } }));

@@ -356,16 +356,16 @@ export function WorkItemHierarchyTree({
         remoteProviderFilter,
     ]);
 
-    // Refresh when WebSocket events arrive (work item context changes)
-    const repoItems = workItemState.workItemsByRepo[workspaceId];
-    const prevRepoItemsRef = useRef(repoItems);
+    // Refresh when workspace-scoped Work Item WebSocket events arrive.
+    const realtimeRevision = workItemState.realtimeRevisionByRepo[workspaceId] || 0;
+    const prevRealtimeRevisionRef = useRef(realtimeRevision);
     useEffect(() => {
-        if (prevRepoItemsRef.current === repoItems) return;
-        prevRepoItemsRef.current = repoItems;
+        if (prevRealtimeRevisionRef.current === realtimeRevision) return;
+        prevRealtimeRevisionRef.current = realtimeRevision;
         // Debounce to avoid multiple rapid refreshes
         const timer = setTimeout(() => fetchTree(), 300);
         return () => clearTimeout(timer);
-    }, [repoItems, fetchTree]);
+    }, [realtimeRevision, fetchTree]);
 
     // Persist collapse state
     useEffect(() => {
@@ -601,12 +601,15 @@ export function WorkItemHierarchyTree({
                         </button>
                     )}
                     <button
-                        className="inline-flex items-center justify-center w-7 h-7 border border-[#d0d7de] dark:border-[#555] rounded-md bg-[#f6f8fa] dark:bg-[#333] text-[#1f2328] dark:text-[#f0f0f0] text-[12px] font-semibold hover:bg-[#f3f4f6] dark:hover:bg-[#3c3c3c]"
+                        className="inline-flex items-center justify-center h-7 border border-[#d0d7de] dark:border-[#555] rounded-md bg-[#f6f8fa] dark:bg-[#333] text-[#1f2328] dark:text-[#f0f0f0] px-2 text-[12px] font-semibold whitespace-nowrap hover:bg-[#f3f4f6] dark:hover:bg-[#3c3c3c] disabled:opacity-60 disabled:cursor-not-allowed"
                         type="button"
-                        aria-label="More actions"
-                        title="More actions"
+                        aria-label="Refresh hierarchy tree"
+                        title="Refresh hierarchy tree"
+                        data-testid="hierarchy-refresh-btn"
+                        disabled={loading}
+                        onClick={fetchTree}
                     >
-                        ...
+                        Refresh
                     </button>
                 </div>
                 {/* Filter chips */}
