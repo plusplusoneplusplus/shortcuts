@@ -140,6 +140,13 @@ export function buildFinalCheckTaskPayload(input: BuildFinalCheckTaskInput) {
                         loopIndex,
                     },
                 },
+                taskGroup: {
+                    groupId: sessionId,
+                    groupType: 'ralph' as const,
+                    role: 'final-check',
+                    itemKey: `check-${checkIndex}`,
+                    workspaceId,
+                },
             },
         },
     };

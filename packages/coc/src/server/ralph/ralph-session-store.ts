@@ -33,6 +33,29 @@ export interface RalphSessionStoreOptions {
     dataDir: string;
 }
 
+/**
+ * Module-level session-change listeners, keyed by dataDir.
+ *
+ * RalphSessionStore instances are constructed ad hoc at every call site, so
+ * there is no single construction seam to inject a callback. The server
+ * registers one listener per dataDir at startup (task-group registry sync);
+ * every store instance for that dataDir notifies it after a successful
+ * session-record write. Listener errors are swallowed — registry sync must
+ * never break session persistence.
+ */
+const sessionChangeListeners = new Map<string, (record: RalphSessionRecord) => void>();
+
+export function registerRalphSessionChangeListener(
+    dataDir: string,
+    listener: (record: RalphSessionRecord) => void,
+): void {
+    sessionChangeListeners.set(dataDir, listener);
+}
+
+export function unregisterRalphSessionChangeListener(dataDir: string): void {
+    sessionChangeListeners.delete(dataDir);
+}
+
 export interface RalphSessionFile {
     name: string;
     content: string;
@@ -53,6 +76,14 @@ export interface AppendProgressInput {
 
 export class RalphSessionStore {
     constructor(private readonly options: RalphSessionStoreOptions) {}
+
+    private notifySessionChanged(record: RalphSessionRecord): void {
+        try {
+            sessionChangeListeners.get(this.options.dataDir)?.(record);
+        } catch {
+            // Registry sync must never break session persistence.
+        }
+    }
 
     getSessionDir(workspaceId: string, sessionId: string): string {
         return getRepoDataPath(
@@ -98,6 +129,7 @@ export class RalphSessionStore {
                 iterations: [],
             };
             await this.atomicWriteJson(recordPath, record);
+            this.notifySessionChanged(record);
         }
 
         if (!(await pathExists(progressPath))) {
@@ -162,6 +194,19 @@ export class RalphSessionStore {
         })));
     }
 
+    /** List all session IDs persisted for a workspace (directory names). */
+    async listSessionIds(workspaceId: string): Promise<string[]> {
+        const dir = getRepoDataPath(this.options.dataDir, workspaceId, SESSIONS_DIR);
+        let entries: fs.Dirent[];
+        try {
+            entries = await fs.promises.readdir(dir, { withFileTypes: true });
+        } catch (err: any) {
+            if (err?.code === 'ENOENT') return [];
+            throw err;
+        }
+        return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+    }
+
     async readSessionRecord(
         workspaceId: string,
         sessionId: string,
@@ -195,6 +240,7 @@ export class RalphSessionStore {
         const current = await this.readSessionRecord(workspaceId, sessionId);
         const next = mutator(current);
         await this.atomicWriteJson(this.getSessionRecordPath(workspaceId, sessionId), next);
+        this.notifySessionChanged(next);
         return next;
     }
 

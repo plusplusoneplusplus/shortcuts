@@ -6,77 +6,19 @@ import type {
     DreamCard,
     DreamSourceRange,
 } from './types';
-import { DREAM_CARD_CATEGORIES } from './types';
 import type { DreamConversationSelection } from './dream-source-selector';
 
 export const DEFAULT_DREAM_ANALYSIS_TIMEOUT_MS = 3_600_000;
 export const DEFAULT_DREAM_CONFIDENCE_THRESHOLD = 0.85;
 export const DEFAULT_DREAM_MAX_CANDIDATES = 8;
 
-const ANALYZER_SYSTEM_PROMPT = `\
-You are the CoC Dream analyzer.
-
-Your job is to inspect completed workspace conversations and propose only high-confidence improvement opportunities as dream card candidates.
-
-STRICT OUTPUT CONTRACT
-======================
-Respond with ONLY a valid JSON object. No prose, no markdown, no code fences.
-
-Schema:
-{
-  "candidates": [
-    {
-      "category": "skill-or-prompt-improvement" | "user-workflow-suggestion" | "product-improvement",
-      "sourceRanges": [
-        { "processId": "process-id", "startTurnIndex": 0, "endTurnIndex": 2 }
-      ],
-      "observedPattern": "Quote-free summary of the observed pattern.",
-      "whyItMatters": "Why this pattern matters.",
-      "recommendation": "Concrete recommendation.",
-      "expectedImpact": "Expected impact if acted on.",
-      "confidence": 0.0,
-      "notAlreadyCoveredRationale": "Why this is not already covered by obvious existing behavior."
-    }
-  ]
-}
-
-Rules:
-- Optimize for precision over recall. Return an empty candidates array when evidence is weak.
-- Use exactly these categories: ${DREAM_CARD_CATEGORIES.join(', ')}.
-- Source ranges must reference only process IDs and turn ranges supplied in the prompt.
-- Do not quote user or assistant text. Summarize observed patterns without direct quotes.
-- Do not recommend direct mutations. Dream cards are review prompts only.
-- Drop vague, speculative, duplicate, unactionable, or low-confidence ideas.
-`.trim();
-
-const CRITIC_SYSTEM_PROMPT = `\
-You are the CoC Dream critic and dedup validator.
-
-Your job is to validate candidate dream cards before they become visible.
-
-STRICT OUTPUT CONTRACT
-======================
-Respond with ONLY a valid JSON object. No prose, no markdown, no code fences.
-
-Schema:
-{
-  "decisions": [
-    {
-      "candidateIndex": 0,
-      "verdict": "accept" | "reject" | "duplicate",
-      "rationale": "Concrete reason for the decision.",
-      "dedupRationale": "Required when verdict is duplicate; optional otherwise.",
-      "duplicateOfCardId": "prior-card-id"
-    }
-  ]
-}
-
-Rules:
-- Accept only candidates with concrete source evidence, actionable recommendations, and high expected value.
-- Reject vague, speculative, low-evidence, low-impact, or already-covered candidates.
-- Mark as duplicate when the candidate is materially covered by prior dream cards, active work items, or skill-hardening records.
-- Prefer rejection over showing a questionable card.
-`.trim();
+/**
+ * Resolves the system prompt for a dream internal step from the bundled `dream`
+ * skill (`## Section: analyzer` / `## Section: critic`). The analyzer and critic
+ * system prompts are no longer inline TypeScript constants — the skill file is
+ * the single source of truth, resolved server-side and used verbatim.
+ */
+export type DreamSystemPromptResolver = (section: DreamInternalProcessPurpose) => string;
 
 type CriticVerdict = 'accept' | 'reject' | 'duplicate';
 
@@ -97,6 +39,7 @@ export interface DreamAnalysisPolicy {
 
 export interface DreamAnalyzerOptions extends DreamAnalysisPolicy {
     runInternalStep: DreamInternalStepRunner;
+    resolveSystemPrompt: DreamSystemPromptResolver;
     workspaceId: string;
     runId?: string;
     parentProcessId?: string;
@@ -547,7 +490,7 @@ export async function analyzeDreamConversations(options: DreamAnalyzerOptions): 
         workspaceId,
         runId: options.runId ?? 'dream-run',
         prompt: analysisPrompt,
-        systemPrompt: ANALYZER_SYSTEM_PROMPT,
+        systemPrompt: options.resolveSystemPrompt('analyzer'),
         timeoutMs,
         ...(options.parentProcessId ? { parentProcessId: options.parentProcessId } : {}),
         ...(options.provider ? { provider: options.provider } : {}),
@@ -589,7 +532,7 @@ export async function analyzeDreamConversations(options: DreamAnalyzerOptions): 
         runId: options.runId ?? 'dream-run',
         analyzerProcessId,
         prompt: criticPrompt,
-        systemPrompt: CRITIC_SYSTEM_PROMPT,
+        systemPrompt: options.resolveSystemPrompt('critic'),
         timeoutMs,
         ...(options.parentProcessId ? { parentProcessId: options.parentProcessId } : {}),
         ...(options.provider ? { provider: options.provider } : {}),

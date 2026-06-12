@@ -308,6 +308,16 @@ export {
 
 export { SqliteProcessStore, SqliteProcessStoreOptions } from './sqlite-process-store';
 export { SqliteQueueStore, SqliteQueueStoreOptions } from './sqlite-queue-store';
+export {
+    SqliteTaskGroupStore,
+    TaskGroupRecord,
+    TaskGroupSummaryRecord,
+    TaskGroupChildLink,
+    TaskGroupStatus,
+    ListTaskGroupsOptions,
+    TASK_GROUP_STATUSES,
+    isTaskGroupStatus,
+} from './task-group-store';
 export { Database, initializeDatabase, SCHEMA_VERSION, getSchemaVersion } from './sqlite-schema';
 
 // ============================================================================

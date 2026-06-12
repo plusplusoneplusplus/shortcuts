@@ -73,6 +73,7 @@ describe('DreamInternalProcessExecutor', () => {
                     mcpEnabled: false,
                     permissionPolicy: 'deny-all',
                     timeoutMs: 45_000,
+                    skill: { name: 'dream', section: 'analyzer' },
                     parentProcessId: 'queue_outer-dream-run',
                 },
             },
@@ -144,6 +145,7 @@ describe('DreamInternalProcessExecutor', () => {
                     readOnly: true,
                     toolsEnabled: false,
                     mcpEnabled: false,
+                    skill: { name: 'dream', section: 'critic' },
                 },
             },
         });

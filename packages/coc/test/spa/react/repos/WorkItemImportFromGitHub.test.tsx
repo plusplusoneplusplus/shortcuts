@@ -30,6 +30,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/WorkItemContext', () =
                 },
             },
             loading: {},
+            realtimeRevisionByRepo: {},
         },
         dispatch: mocks.dispatch,
     }),

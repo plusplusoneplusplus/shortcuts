@@ -184,6 +184,17 @@ describe('WorkItemDetail inline editing (render)', () => {
         expect(screen.queryByTestId('wi-edit-btn')).toBeNull();
     });
 
+    it('renders editable properties in the compact header row', async () => {
+        renderDetail();
+        await screen.findByTestId('wi-title-input');
+
+        const propertiesRow = screen.getByTestId('work-item-properties-row');
+        expect(propertiesRow.contains(screen.getByTestId('work-item-status-select'))).toBe(true);
+        expect(propertiesRow.contains(screen.getByTestId('wi-priority-select'))).toBe(true);
+        expect(propertiesRow.contains(screen.getByTestId('wi-tags-input'))).toBe(true);
+        expect(screen.getByTestId('work-item-detail-content').contains(propertiesRow)).toBe(false);
+    });
+
     it('AC-04: dirty indicator appears once a field changes', async () => {
         renderDetail();
         const title = await screen.findByTestId('wi-title-input');

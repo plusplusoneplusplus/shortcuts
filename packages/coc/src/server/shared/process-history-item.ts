@@ -6,7 +6,7 @@
  */
 
 import type { AIProcess } from '@plusplusoneplusplus/forge';
-import type { ForEachContext, MapReduceContext } from '../tasks/task-types';
+import { isTaskGroupRef, type ForEachContext, type MapReduceContext, type TaskGroupRef } from '../tasks/task-types';
 
 export interface ProcessHistoryItem {
     // Core identity
@@ -61,6 +61,8 @@ export interface ProcessHistoryItem {
     forEach?: ForEachContext;
     /** Map Reduce map/reduce child metadata forwarded from proc.metadata.mapReduce. */
     mapReduce?: MapReduceContext;
+    /** Generic task-group membership tag forwarded from proc.metadata.taskGroup. */
+    taskGroup?: TaskGroupRef;
 }
 
 export function toProcessHistoryItem(
@@ -107,5 +109,6 @@ export function toProcessHistoryItem(
         ralph: proc.metadata?.ralph as ProcessHistoryItem['ralph'],
         forEach: proc.metadata?.forEach as ProcessHistoryItem['forEach'],
         mapReduce: proc.metadata?.mapReduce as ProcessHistoryItem['mapReduce'],
+        taskGroup: isTaskGroupRef(proc.metadata?.taskGroup) ? proc.metadata?.taskGroup : undefined,
     };
 }

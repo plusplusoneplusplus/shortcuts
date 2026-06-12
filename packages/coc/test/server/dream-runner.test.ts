@@ -152,6 +152,8 @@ function createRunner(options: {
                     }],
                 }),
             ),
+            resolveSystemPrompt: section =>
+                section === 'analyzer' ? 'You are the CoC Dream analyzer.' : 'You are the CoC Dream critic.',
             getDreamsEnabled: options.getDreamsEnabled ?? (() => true),
             getWorkspaceDreamsEnabled: options.getWorkspaceDreamsEnabled ?? (() => true),
             listWorkspaceTasks: options.listWorkspaceTasks,

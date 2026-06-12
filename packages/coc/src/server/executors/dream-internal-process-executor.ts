@@ -12,7 +12,13 @@ import {
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
 import type { ChatProvider } from '../tasks/task-types';
-import type { DreamInternalProcessPurpose, DreamInternalStepRequest, DreamInternalStepResult } from '../dreams/dream-internal-process';
+import type {
+    DreamInternalProcessPurpose,
+    DreamInternalStepRequest,
+    DreamInternalStepResult,
+    DreamStepContext,
+} from '../dreams/dream-internal-process';
+import { DREAM_SKILL_NAME } from '../dreams/dream-prompt-resolver';
 import { ProcessLifecycleRunner } from './process-lifecycle-runner';
 
 export interface DreamInternalProcessExecutorOptions {
@@ -139,6 +145,20 @@ export class DreamInternalProcessExecutor {
         const current = await this.store.getProcess(processId, input.workspaceId);
         const provider = input.provider ?? this.defaultProvider;
         const model = resolveModelForProvider(provider, input.model).model;
+        const dreamStep: DreamStepContext = {
+            kind: input.purpose,
+            purpose: displayNameForPurpose(input.purpose),
+            workspaceId: input.workspaceId,
+            runId: input.runId,
+            readOnly: true,
+            toolsEnabled: false,
+            mcpEnabled: false,
+            permissionPolicy: 'deny-all',
+            timeoutMs: input.timeoutMs,
+            skill: { name: DREAM_SKILL_NAME, section: input.purpose },
+            ...(input.parentProcessId ? { parentProcessId: input.parentProcessId } : {}),
+            ...(input.analyzerProcessId ? { analyzerProcessId: input.analyzerProcessId } : {}),
+        };
         await this.store.updateProcess(processId, {
             ...(input.parentProcessId ? { parentProcessId: input.parentProcessId } : {}),
             title: displayNameForPurpose(input.purpose),
@@ -150,19 +170,7 @@ export class DreamInternalProcessExecutor {
                 ...(model ? { model } : {}),
                 ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
                 mode: 'ask',
-                dreamStep: {
-                    kind: input.purpose,
-                    purpose: displayNameForPurpose(input.purpose),
-                    workspaceId: input.workspaceId,
-                    runId: input.runId,
-                    readOnly: true,
-                    toolsEnabled: false,
-                    mcpEnabled: false,
-                    permissionPolicy: 'deny-all',
-                    timeoutMs: input.timeoutMs,
-                    ...(input.parentProcessId ? { parentProcessId: input.parentProcessId } : {}),
-                    ...(input.analyzerProcessId ? { analyzerProcessId: input.analyzerProcessId } : {}),
-                },
+                dreamStep,
             },
         });
     }

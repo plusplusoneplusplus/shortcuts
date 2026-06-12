@@ -607,6 +607,7 @@ export const DEFAULT_BUNDLED_SKILLS: readonly string[] = [
     'loop',
     'ultra-ralph',
     'classify-diff',
+    'dream',
 ];
 
 /** Default configuration values */

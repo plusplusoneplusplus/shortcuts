@@ -20,6 +20,7 @@ export { ServersClient } from './servers';
 export { SkillsClient } from './skills';
 export { StatsClient } from './stats';
 export { SuggestionsClient } from './suggestions';
+export { TaskGroupsClient } from './task-groups';
 export { TasksClient } from './tasks';
 export { TemplatesClient } from './templates';
 export { WorkItemsClient } from './work-items';

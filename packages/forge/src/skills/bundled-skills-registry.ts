@@ -45,11 +45,6 @@ export const BUNDLED_SKILLS_REGISTRY: readonly BundledSkill[] = [
         relativePath: 'kb-refresh',
     },
     {
-        name: 'update-work-item',
-        description: 'Interactively update an existing work item — patch common fields or create a new plan version, then reset status to planning',
-        relativePath: 'update-work-item',
-    },
-    {
         name: 'fresh-written',
         description: 'Rewrite documents, plans, and notes as if authored fresh each iteration — produce only the final intended state, never patch deltas on top of the previous version',
         relativePath: 'fresh-written',
@@ -93,5 +88,10 @@ export const BUNDLED_SKILLS_REGISTRY: readonly BundledSkill[] = [
         name: 'ultra-ralph',
         description: 'Core instruction sets for Ralph autonomous coding loop phases — grill (clarification), synthesis (goal extraction), execution (iteration), iteration (user prompt), and final-check (read-only validation)',
         relativePath: 'ultra-ralph',
+    },
+    {
+        name: 'dream',
+        description: 'System prompts for the CoC Dream analyzer and critic internal steps — proposes and validates high-confidence dream card candidates from completed workspace conversations',
+        relativePath: 'dream',
     },
 ];

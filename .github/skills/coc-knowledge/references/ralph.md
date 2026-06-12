@@ -56,6 +56,18 @@ The Ralph executor is the only writer. It must:
    `currentIteration`, append to `iterations[]`, and update `phase` for
    terminal signals.
 
+After every successful `session.json` write (`initSession` and
+`updateSessionRecord`), the store notifies a module-level, dataDir-keyed
+session-change listener (`registerRalphSessionChangeListener`). The server
+registers one listener at startup that projects the record into the generic
+task-group registry (`syncRalphSessionToTaskGroup`): groupId = sessionId,
+type `ralph`, children = iterations (role `iteration`) and final checks (role
+`final-check`). Iteration and final-check queue tasks also carry the generic
+`payload.context.taskGroup` tag alongside `context.ralph`.
+`listSessionIds(workspaceId)` enumerates persisted session directories (used
+by the registry backfill). Listener errors are swallowed — registry sync never
+breaks session persistence.
+
 Readers, including REST handlers and the SPA `useRalphSessionView` hook, treat
 `session.json` and `progress.md` as source of truth and never mutate them. The
 session read route also returns raw text for every direct file in the session

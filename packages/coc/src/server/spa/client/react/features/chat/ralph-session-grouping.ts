@@ -5,6 +5,7 @@
  */
 
 import { deriveRalphTitle } from './ralph-title';
+import { getTaskGroupIdForType, getTaskEndTimestamp, getTaskTimestamp } from './task-group-grouping';
 
 export interface RalphSession {
     kind: 'ralph-session';
@@ -39,7 +40,9 @@ export type RalphSessionPhase = 'grilling' | 'executing' | 'complete' | 'failed'
  * field forwarded by `toProcessHistoryItem()`.
  */
 export function getRalphSessionId(task: any): string | undefined {
-    return (task.payload?.context?.ralph?.sessionId ?? task.ralph?.sessionId) as string | undefined;
+    return (task.payload?.context?.ralph?.sessionId
+        ?? task.ralph?.sessionId
+        ?? getTaskGroupIdForType(task, 'ralph')) as string | undefined;
 }
 
 /** Extract ralph.originalGoal from a process/task.
@@ -121,10 +124,10 @@ function computeSessionPhase(
     if (iterations.length > 0 && iterations.every(t => t.status === 'completed')) {
         return 'complete';
     }
-    if (iterations.length > 0) return 'executing';
+    if (iterations.length > 0) {return 'executing';}
     if (grillingProcess) {
         const gPhase = getRalphPhase(grillingProcess);
-        if (gPhase === 'grilling') return 'grilling';
+        if (gPhase === 'grilling') {return 'grilling';}
     }
     return 'grilling';
 }
@@ -164,7 +167,7 @@ export function groupByRalphSession(
             .filter(t => t !== grillingProcess)
             .sort((a: any, b: any) => {
                 const iterDiff = getRalphIteration(a) - getRalphIteration(b);
-                if (iterDiff !== 0) return iterDiff;
+                if (iterDiff !== 0) {return iterDiff;}
                 // Timestamp tiebreak for items at the same iteration number
                 const tsA = a.createdAt ?? a.startedAt ?? a.startTime ?? 0;
                 const tsB = b.createdAt ?? b.startedAt ?? b.startTime ?? 0;
@@ -185,16 +188,10 @@ export function groupByRalphSession(
         // For sessions still running (grilling / executing) we keep
         // `lastActivityAt` first — that's the desired behavior: live
         // activity should float to the top.
-        function getTs(t: any): number {
-            const ts = t.lastActivityAt ?? t.endTime ?? t.completedAt ?? t.startedAt ?? t.startTime ?? t.createdAt ?? 0;
-            return typeof ts === 'number' ? ts : +new Date(ts);
-        }
-        function getEndTs(t: any): number {
-            const ts = t.endTime ?? t.completedAt ?? t.startedAt ?? t.startTime ?? t.createdAt ?? 0;
-            return typeof ts === 'number' ? ts : +new Date(ts);
-        }
         const sessionPhase = computeSessionPhase(grillingProcess, iterations);
-        const tsPicker = sessionPhase === 'complete' || sessionPhase === 'failed' ? getEndTs : getTs;
+        const tsPicker = sessionPhase === 'complete' || sessionPhase === 'failed'
+            ? getTaskEndTimestamp
+            : getTaskTimestamp;
         const latestTimestamp = Math.max(...sessionItems.map(tsPicker));
 
         const hasUnseen = unseenIds
@@ -225,14 +222,8 @@ export function groupByRalphSession(
     // we only restrict ralph *complete* sessions to end-time so they stop
     // floating after late server-side turn appends.
     entries.sort((a, b) => {
-        const tsA = a.kind === 'ralph-session' ? a.latestTimestamp : (() => {
-            const ts = a.lastActivityAt ?? a.endTime ?? a.completedAt ?? a.startedAt ?? a.startTime ?? a.createdAt ?? 0;
-            return typeof ts === 'number' ? ts : +new Date(ts);
-        })();
-        const tsB = b.kind === 'ralph-session' ? b.latestTimestamp : (() => {
-            const ts = b.lastActivityAt ?? b.endTime ?? b.completedAt ?? b.startedAt ?? b.startTime ?? b.createdAt ?? 0;
-            return typeof ts === 'number' ? ts : +new Date(ts);
-        })();
+        const tsA = a.kind === 'ralph-session' ? a.latestTimestamp : getTaskTimestamp(a);
+        const tsB = b.kind === 'ralph-session' ? b.latestTimestamp : getTaskTimestamp(b);
         return tsB - tsA;
     });
 

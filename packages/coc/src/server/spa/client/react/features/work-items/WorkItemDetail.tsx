@@ -1016,39 +1016,37 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                 className="border-b border-[#d0d7de] dark:border-[#474749] bg-white dark:bg-[#1e1e1e] grid gap-2 shrink-0"
                 style={{ padding: compactWorkflowLayout ? '10px 12px' : '12px 16px' }}
             >
-                {/* Breadcrumbs */}
-                <div className="flex items-center gap-1.5 text-[12px] text-[#656d76] dark:text-[#999] min-w-0" id="crumbs">
-                    {onBack && (
-                        <button onClick={guardedBack} className="text-[#656d76] hover:text-[#1f2328] dark:hover:text-[#ccc] shrink-0" data-testid="work-item-back-btn" aria-label="Back">
-                            ←
-                        </button>
-                    )}
-                    {item.workItemNumber != null && (
-                        <span className="font-mono text-[#656d76] dark:text-[#999]" data-testid="work-item-detail-number">
-                            {typePrefix}-{item.workItemNumber}
-                        </span>
-                    )}
-                    {isDirty && (
-                        <span className="inline-flex items-center rounded-full px-2 py-px text-[11px] leading-[1.4] border border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-400 whitespace-nowrap" data-testid="wi-dirty-indicator">
-                            unsaved
-                        </span>
-                    )}
-                </div>
-
-                {/* Title row with Save + Run */}
+                {/* Title row */}
                 <div
-                    className="grid gap-2 items-start"
+                    className="grid gap-2 items-center"
                     style={{ gridTemplateColumns: compactWorkflowLayout ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) auto auto' }}
                 >
-                    <input
-                        type="text"
-                        className="w-full border border-[#d0d7de] dark:border-[#555] rounded-md bg-white dark:bg-[#1e1e1e] text-[#1f2328] dark:text-[#cccccc] px-2 py-[5px] text-[18px] leading-[1.25] font-semibold tracking-[-0.01em] outline-none focus:border-[#0969da] focus:shadow-[0_0_0_3px_rgba(9,105,218,0.16)]"
-                        value={d.title}
-                        onChange={e => updateDraft('title', e.target.value)}
-                        disabled={saving}
-                        data-testid="wi-title-input"
-                        aria-label="Title"
-                    />
+                    <div className="flex items-center gap-2 min-w-0">
+                        {onBack && (
+                            <button onClick={guardedBack} className="text-[#656d76] hover:text-[#1f2328] dark:hover:text-[#ccc] shrink-0" data-testid="work-item-back-btn" aria-label="Back">
+                                ←
+                            </button>
+                        )}
+                        {item.workItemNumber != null && (
+                            <span className="font-mono text-[12px] text-[#656d76] dark:text-[#999] shrink-0" data-testid="work-item-detail-number">
+                                {typePrefix}-{item.workItemNumber}
+                            </span>
+                        )}
+                        <input
+                            type="text"
+                            className="min-w-0 flex-1 border border-[#d0d7de] dark:border-[#555] rounded-md bg-white dark:bg-[#1e1e1e] text-[#1f2328] dark:text-[#cccccc] px-2 py-[5px] text-[18px] leading-[1.25] font-semibold outline-none focus:border-[#0969da] focus:shadow-[0_0_0_3px_rgba(9,105,218,0.16)]"
+                            value={d.title}
+                            onChange={e => updateDraft('title', e.target.value)}
+                            disabled={saving}
+                            data-testid="wi-title-input"
+                            aria-label="Title"
+                        />
+                        {isDirty && (
+                            <span className="inline-flex items-center rounded-full px-2 py-px text-[11px] leading-[1.4] border border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-400 whitespace-nowrap" data-testid="wi-dirty-indicator">
+                                unsaved
+                            </span>
+                        )}
+                    </div>
                     <button
                         className={cn(
                             'inline-flex items-center justify-center gap-[5px] border border-[rgba(31,35,40,0.15)] rounded-md bg-[#1f883d] text-white px-2 text-[12px] font-semibold tracking-[0.02em] whitespace-nowrap hover:bg-[#1a7f37] disabled:opacity-50 dark:bg-[#238636] dark:hover:bg-[#2ea043]',
@@ -1065,8 +1063,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     {!compactWorkflowLayout && <span />}
                 </div>
 
-                {/* Meta grid + inline actions */}
-                <div className={cn('flex items-center gap-1.5 flex-wrap', compactWorkflowLayout && 'gap-2')}>
+                {/* Properties row + inline actions */}
+                <div className={cn('flex items-center gap-1.5 flex-wrap text-[11px] leading-[1.35]', compactWorkflowLayout && 'gap-2')} data-testid="work-item-properties-row">
                     <span className={cn('inline-flex items-center rounded-full text-[11px] leading-[1.25] px-[7px] py-px border whitespace-nowrap', typePillClass)}>
                         {TYPE_LABELS[effectiveType as WorkItemTypeLabel] ?? effectiveType}
                     </span>
@@ -1109,6 +1107,67 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     </select>
                     <span className="text-[11px] leading-[1.35] text-[#656d76] dark:text-[#999] truncate min-w-0 flex-1">
                         Updated {formatRelativeTime(item.updatedAt)}
+                    </span>
+                    {hierarchyEnabled && effectiveType !== 'epic' ? (
+                        <span className="flex items-center gap-1 shrink-0" data-testid="work-item-parent-edit">
+                            <strong className="text-[#1f2328] dark:text-[#cccccc]">Parent</strong>
+                            <span className="text-[#656d76] dark:text-[#999] flex items-center gap-1">
+                                {d.parentId
+                                    ? <span className="font-mono">{d.parentId.slice(0, 8)}...</span>
+                                    : <span className="italic">-</span>
+                                }
+                                <button className="text-[#0969da] hover:underline bg-transparent border-0 cursor-pointer p-0 text-[11px]" onClick={() => setShowParentPicker(true)} disabled={saving} data-testid="wi-edit-parent-btn" type="button">
+                                    {d.parentId ? 'Change' : 'Set'}
+                                </button>
+                            </span>
+                        </span>
+                    ) : item.parentId ? (
+                        <span className="flex items-center gap-1 shrink-0" data-testid="work-item-parent-info">
+                            <strong className="text-[#1f2328] dark:text-[#cccccc]">Parent</strong>
+                            <span className="text-[#656d76] dark:text-[#999] font-mono">{item.parentId.slice(0, 8)}...</span>
+                        </span>
+                    ) : null}
+                    <span className="flex items-center gap-1 min-w-[120px]">
+                        <strong className="text-[#1f2328] dark:text-[#cccccc] shrink-0">Tags</strong>
+                        <span className="flex gap-0.5 items-center flex-wrap min-w-0">
+                            {parseTags(d.tags).length > 0 ? (
+                                parseTags(d.tags).map(tag => (
+                                    <span key={tag} className="inline-flex items-center h-[18px] px-1.5 rounded-full border border-[#d0d7de] dark:border-[#555] bg-white dark:bg-transparent text-[10px] text-[#656d76] dark:text-[#999]">{tag}</span>
+                                ))
+                            ) : null}
+                            <input
+                                type="text"
+                                className="min-w-[60px] w-16 text-[11px] px-0.5 py-0 border-0 outline-none bg-transparent text-[#1f2328] dark:text-[#cccccc] placeholder-[#656d76]"
+                                value={d.tags}
+                                onChange={e => updateDraft('tags', e.target.value)}
+                                disabled={saving}
+                                placeholder="add tags"
+                                data-testid="wi-tags-input"
+                                aria-label="Tags"
+                            />
+                        </span>
+                    </span>
+                    {!isContainer && (
+                        <label className="flex items-center gap-1 cursor-pointer shrink-0" title="Auto-execute when status reaches Ready to Execute" data-testid="work-item-auto-execute-toggle">
+                            <input
+                                type="checkbox"
+                                checked={item.autoExecute ?? false}
+                                onChange={async (e) => {
+                                    try {
+                                        await getSpaCocClient().workItems.update(workspaceId, workItemId, { autoExecute: e.target.checked });
+                                        await fetchItem();
+                                    } catch (err: any) {
+                                        setError(err.message || 'Failed to update');
+                                    }
+                                }}
+                                className="rounded"
+                            />
+                            <strong className="text-[#1f2328] dark:text-[#cccccc]">Auto</strong>
+                        </label>
+                    )}
+                    <span className="flex items-center gap-1 text-[#656d76] dark:text-[#999] shrink-0">
+                        <strong className="text-[#1f2328] dark:text-[#cccccc]">Src</strong>
+                        {item.source === 'manual' ? 'Manual' : item.source === 'chat' ? 'Chat' : 'Schedule'}
                     </span>
                     {/* Inline action icons — compact, right-aligned */}
                     <div
@@ -1374,78 +1433,6 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                         </div>
                     </article>
                 )}
-
-                {/* Compact Metadata panel */}
-                <article className="border border-[#d0d7de] dark:border-[#474749] rounded-md overflow-hidden">
-                    <div className="px-[10px] py-[6px] bg-[#f6f8fa] dark:bg-[#252526] flex items-center gap-3 flex-wrap text-[11px] leading-[1.35]">
-                        {/* Parent */}
-                        {hierarchyEnabled && effectiveType !== 'epic' ? (
-                            <span className="flex items-center gap-1" data-testid="work-item-parent-edit">
-                                <strong className="text-[#1f2328] dark:text-[#cccccc]">Parent</strong>
-                                <span className="text-[#656d76] dark:text-[#999] flex items-center gap-1">
-                                    {d.parentId
-                                        ? <span className="font-mono">{d.parentId.slice(0, 8)}…</span>
-                                        : <span className="italic">—</span>
-                                    }
-                                    <button className="text-[#0969da] hover:underline bg-transparent border-0 cursor-pointer p-0 text-[11px]" onClick={() => setShowParentPicker(true)} disabled={saving} data-testid="wi-edit-parent-btn" type="button">
-                                        {d.parentId ? 'Change' : 'Set'}
-                                    </button>
-                                </span>
-                            </span>
-                        ) : item.parentId ? (
-                            <span className="flex items-center gap-1" data-testid="work-item-parent-info">
-                                <strong className="text-[#1f2328] dark:text-[#cccccc]">Parent</strong>
-                                <span className="text-[#656d76] dark:text-[#999] font-mono">{item.parentId.slice(0, 8)}…</span>
-                            </span>
-                        ) : null}
-                        {/* Tags */}
-                        <span className="flex items-center gap-1 min-w-0">
-                            <strong className="text-[#1f2328] dark:text-[#cccccc] shrink-0">Tags</strong>
-                            <span className="flex gap-0.5 items-center flex-wrap min-w-0">
-                                {parseTags(d.tags).length > 0 ? (
-                                    parseTags(d.tags).map(tag => (
-                                        <span key={tag} className="inline-flex items-center h-[18px] px-1.5 rounded-full border border-[#d0d7de] dark:border-[#555] bg-white dark:bg-transparent text-[10px] text-[#656d76] dark:text-[#999]">{tag}</span>
-                                    ))
-                                ) : null}
-                                <input
-                                    type="text"
-                                    className="min-w-[60px] w-16 text-[11px] px-0.5 py-0 border-0 outline-none bg-transparent text-[#1f2328] dark:text-[#cccccc] placeholder-[#656d76]"
-                                    value={d.tags}
-                                    onChange={e => updateDraft('tags', e.target.value)}
-                                    disabled={saving}
-                                    placeholder="add tags"
-                                    data-testid="wi-tags-input"
-                                    aria-label="Tags"
-                                />
-                            </span>
-                        </span>
-                        {/* Auto-execute (leaf items only) */}
-                        {!isContainer && (
-                            <label className="flex items-center gap-1 cursor-pointer shrink-0" title="Auto-execute when status reaches Ready to Execute" data-testid="work-item-auto-execute-toggle">
-                                <input
-                                    type="checkbox"
-                                    checked={item.autoExecute ?? false}
-                                    onChange={async (e) => {
-                                        try {
-                                            await getSpaCocClient().workItems.update(workspaceId, workItemId, { autoExecute: e.target.checked });
-                                            await fetchItem();
-                                        } catch (err: any) {
-                                            setError(err.message || 'Failed to update');
-                                        }
-                                    }}
-                                    className="rounded"
-                                />
-                                <strong className="text-[#1f2328] dark:text-[#cccccc]">Auto</strong>
-                            </label>
-                        )}
-                        {/* Source */}
-                        <span className="flex items-center gap-1 text-[#656d76] dark:text-[#999] shrink-0">
-                            <strong className="text-[#1f2328] dark:text-[#cccccc]">Src</strong>
-                            {item.source === 'manual' ? 'Manual' : item.source === 'chat' ? 'Chat' : 'Schedule'}
-                        </span>
-                    </div>
-                </article>
-
 
                 {/* Review section (aiDone only) */}
                 {isAiDone && (

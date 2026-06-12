@@ -32,6 +32,7 @@ export interface WorkItemContextState {
     loading: Record<string, boolean>;
     selectedWorkItemId: string | null;
     unseenByRepo: Record<string, string[]>;
+    realtimeRevisionByRepo: Record<string, number>;
     /** Per-status pagination: repo → status → pagination state */
     paginationByRepo: Record<string, Record<string, WorkItemPagination>>;
 }
@@ -54,6 +55,7 @@ const initialState: WorkItemContextState = {
     loading: {},
     selectedWorkItemId: null,
     unseenByRepo: {},
+    realtimeRevisionByRepo: {},
     paginationByRepo: {},
 };
 
@@ -135,10 +137,18 @@ function workItemReducer(state: WorkItemContextState, action: WorkItemAction): W
             return { ...state, selectedWorkItemId: action.id };
         case 'WORK_ITEM_ADDED': {
             const existing = state.workItemsByRepo[action.repoId] || [];
+            const exists = existing.some(item => item.id === action.item.id);
+            const items = exists
+                ? existing.map(item => item.id === action.item.id ? action.item : item)
+                : [...existing, action.item];
             return {
                 ...state,
-                workItemsByRepo: { ...state.workItemsByRepo, [action.repoId]: [...existing, action.item] },
+                workItemsByRepo: { ...state.workItemsByRepo, [action.repoId]: items },
                 unseenByRepo: addToUnseen(state.unseenByRepo, action.repoId, action.item.id),
+                realtimeRevisionByRepo: {
+                    ...state.realtimeRevisionByRepo,
+                    [action.repoId]: (state.realtimeRevisionByRepo[action.repoId] || 0) + 1,
+                },
             };
         }
         case 'WORK_ITEM_UPDATED': {
@@ -150,6 +160,10 @@ function workItemReducer(state: WorkItemContextState, action: WorkItemAction): W
                 ...state,
                 workItemsByRepo: { ...state.workItemsByRepo, [action.repoId]: updatedItems },
                 unseenByRepo: statusChanged ? addToUnseen(state.unseenByRepo, action.repoId, action.item.id) : state.unseenByRepo,
+                realtimeRevisionByRepo: {
+                    ...state.realtimeRevisionByRepo,
+                    [action.repoId]: (state.realtimeRevisionByRepo[action.repoId] || 0) + 1,
+                },
             };
         }
         case 'WORK_ITEM_REMOVED': {
@@ -159,6 +173,10 @@ function workItemReducer(state: WorkItemContextState, action: WorkItemAction): W
                 ...state,
                 workItemsByRepo: { ...state.workItemsByRepo, [action.repoId]: filtered },
                 unseenByRepo: { ...state.unseenByRepo, [action.repoId]: unseen },
+                realtimeRevisionByRepo: {
+                    ...state.realtimeRevisionByRepo,
+                    [action.repoId]: (state.realtimeRevisionByRepo[action.repoId] || 0) + 1,
+                },
             };
         }
         case 'LOAD_UNSEEN_WORK_ITEMS': {

@@ -27,6 +27,12 @@ import {
 
 export interface FileMapReduceRunStoreOptions {
     dataDir: string;
+    /**
+     * Invoked after every successful run write with the fresh run state.
+     * Used to keep the generic task-group registry in sync. Errors thrown
+     * by the hook are swallowed — registry sync must never break runs.
+     */
+    onRunChanged?: (run: MapReduceRun) => void;
 }
 
 const RUN_ID_PATTERN = /^[A-Za-z0-9._-]+$/;
@@ -149,10 +155,12 @@ function mapPhaseStatusAfterManualSkip(items: MapReduceItem[]): MapReduceRun['st
 
 export class FileMapReduceRunStore {
     private readonly dataDir: string;
+    private readonly onRunChanged?: (run: MapReduceRun) => void;
     private writeQueue: Promise<void> = Promise.resolve();
 
     constructor(options: FileMapReduceRunStoreOptions) {
         this.dataDir = options.dataDir;
+        this.onRunChanged = options.onRunChanged;
     }
 
     private runsDir(workspaceId: string): string {
@@ -198,6 +206,11 @@ export class FileMapReduceRunStore {
         await atomicWriteJSON(this.runPath(run.workspaceId, run.runId), metadata);
         await atomicWriteJSON(this.itemsPath(run.workspaceId, run.runId), items);
         await atomicWriteJSON(this.reduceStepPath(run.workspaceId, run.runId), reduceStep);
+        try {
+            this.onRunChanged?.(run);
+        } catch {
+            // Registry sync must never break run persistence.
+        }
     }
 
     async createDraftRun(input: CreateMapReduceRunInput): Promise<MapReduceRun> {

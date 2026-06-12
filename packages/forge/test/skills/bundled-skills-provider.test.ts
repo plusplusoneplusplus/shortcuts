@@ -33,26 +33,30 @@ describe('getBundledSkills', () => {
         fs.rmdirSync(tmpDir);
     });
 
-    it('does not bundle create-work-item or create-bug (superseded by the create_update_work_item tool)', () => {
-        // Regression guard: these two skills were removed from the bundle in favor of
+    it('does not bundle obsolete work-item skills (superseded by the create_update_work_item tool)', () => {
+        // Regression guard: these skills were removed from the bundle in favor of
         // the unified create_update_work_item LLM tool. They must not reappear in the
         // registry or as resolved bundled-skill payloads.
+        const removedSkills = ['create-work-item', 'create-bug', 'update-work-item'];
         const registryNames = getBundledSkillsRegistry().map(s => s.name);
-        expect(registryNames).not.toContain('create-work-item');
-        expect(registryNames).not.toContain('create-bug');
+        for (const removedSkill of removedSkills) {
+            expect(registryNames).not.toContain(removedSkill);
+        }
 
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'install-'));
         try {
             const names = getBundledSkills(tmpDir).map(s => s.name);
-            expect(names).not.toContain('create-work-item');
-            expect(names).not.toContain('create-bug');
+            for (const removedSkill of removedSkills) {
+                expect(names).not.toContain(removedSkill);
+            }
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
 
         const bundledPath = getBundledSkillsPath();
-        expect(fs.existsSync(path.join(bundledPath, 'create-work-item'))).toBe(false);
-        expect(fs.existsSync(path.join(bundledPath, 'create-bug'))).toBe(false);
+        for (const removedSkill of removedSkills) {
+            expect(fs.existsSync(path.join(bundledPath, removedSkill))).toBe(false);
+        }
     });
 
     it('marks skills as alreadyExists when they are installed', () => {

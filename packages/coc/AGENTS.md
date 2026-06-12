@@ -77,6 +77,18 @@ all have their own `references/*.md`.
   `DreamInternalProcessExecutor`/`ProcessLifecycleRunner` so analyzer and critic
   prompts/responses are persisted as read-only internal processes. Do not add
   direct `aiService.sendMessage(...)` calls under `src/server/dreams/`.
+- **Hierarchical parent/child task features** (For Each, Map Reduce, Ralph,
+  Dreams, and anything future that schedules sub-tasks) must use the task-group
+  framework instead of inventing new linkage: register/update the group through
+  `src/server/task-groups/` (feature stores fire change hooks projected by
+  `feature-sync.ts`), tag every child task with
+  `payload.context.taskGroup = { groupId, groupType, role, itemKey?, workspaceId }`
+  (mirrored to `metadata.taskGroup` by `ProcessLifecycleRunner`), and add a
+  chat-list descriptor in
+  `src/server/spa/client/react/features/chat/task-group-descriptors.ts`.
+  Group statuses are normalized (`draft|running|completed|failed|cancelled`)
+  with feature detail in `extra.detailStatus`; registry writes are best-effort
+  and must never break orchestration.
 - **Follow-up enqueue sites** must call `resolveFollowUpMode(...)` and set
   `payload.mode`. `FollowUpExecutor.executeFollowUp` fail-loud warns + defaults
   to `'ask'` if missing.
