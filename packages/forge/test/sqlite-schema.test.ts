@@ -65,6 +65,9 @@ describe('sqlite-schema', () => {
             'idx_pull_request_chat_bindings_workspace',
             'idx_work_item_chat_bindings_workspace',
             'idx_processes_ws_status_activity',
+            'idx_task_groups_workspace_type',
+            'idx_task_group_members_group',
+            'idx_task_group_members_process',
         ];
 
         for (const name of expected) {
@@ -99,7 +102,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(21);
+        expect(SCHEMA_VERSION).toBe(22);
     });
 
     it('creates context-window breakdown columns on processes', () => {
@@ -138,6 +141,8 @@ describe('sqlite-schema', () => {
         expect(tables).toContain('wikis');
         expect(tables).toContain('queue_tasks');
         expect(tables).toContain('queue_repo_state');
+        expect(tables).toContain('task_groups');
+        expect(tables).toContain('task_group_members');
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
     });
 

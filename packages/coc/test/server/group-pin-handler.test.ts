@@ -188,8 +188,21 @@ describe('Group Pin REST API', () => {
         expect(childAfterClear!.archived).toBe(true);
     });
 
+    it('accepts open pin types for registered task-group types', async () => {
+        const novelType = await patchJSON(groupPinsUrl(wsA, 'dream', 'dream-run-1'), { pinned: true });
+        expect(novelType.status).toBe(200);
+        expect(JSON.parse(novelType.body)).toMatchObject({
+            pin: { type: 'dream', groupId: 'dream-run-1', pinnedAt: expect.any(String) },
+        });
+
+        const list = await getJSON(groupPinsUrl(wsA));
+        expect(JSON.parse(list.body).pins).toEqual([
+            expect.objectContaining({ type: 'dream', groupId: 'dream-run-1' }),
+        ]);
+    });
+
     it('rejects invalid group pin inputs', async () => {
-        const badType = await patchJSON(groupPinsUrl(wsA, 'plan-file', 'group-1'), { pinned: true });
+        const badType = await patchJSON(groupPinsUrl(wsA, ' ', 'group-1'), { pinned: true });
         expect(badType.status).toBe(400);
         expect(JSON.parse(badType.body).error).toBe('Invalid group pin type');
 

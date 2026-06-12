@@ -84,7 +84,16 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | PATCH | `/api/processes/:id/turns/:idx/pin` | Pin a turn |
 | PATCH | `/api/processes/:id/turns/:idx/archive` | Archive a turn |
 | GET | `/api/workspaces/:id/group-pins` | List workspace-scoped parent-row group pins for Ralph session groups, For Each run groups, and Map Reduce run groups, sorted newest pin first |
-| PATCH | `/api/workspaces/:id/group-pins/:type/:groupId` | Pin/unpin a parent group row. `type` is `ralph-session`, `for-each-run`, or `map-reduce-run`; body `{ pinned: boolean }`. This updates only the group pin record and does not mutate child process pin/archive metadata |
+| PATCH | `/api/workspaces/:id/group-pins/:type/:groupId` | Pin/unpin a parent group row. `type` is an open string: legacy names `ralph-session`, `for-each-run`, `map-reduce-run` plus any registered task-group type; body `{ pinned: boolean }`. This updates only the group pin record and does not mutate child process pin/archive metadata |
+
+## Task Groups
+
+Generic parent/child task relationship registry shared by For Each, Map Reduce, Ralph, Dreams, and future hierarchical features. Always registered (no feature flag).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/workspaces/:id/task-groups` | List visible task-group summaries (group record + child links with roles). Query: `type=` filters by group type; `includeHidden=true` includes linkage-only groups (Dream runs) |
+| GET | `/api/workspaces/:id/task-groups/:groupId` | Get one task-group summary; 404 when unknown |
 
 ## Queue
 

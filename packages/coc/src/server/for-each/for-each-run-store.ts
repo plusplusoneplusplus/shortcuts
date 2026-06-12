@@ -18,6 +18,12 @@ import { assertDraftInitialStatuses, normalizeForEachItems } from './for-each-pl
 
 export interface FileForEachRunStoreOptions {
     dataDir: string;
+    /**
+     * Invoked after every successful run write with the fresh run state.
+     * Used to keep the generic task-group registry in sync. Errors thrown
+     * by the hook are swallowed — registry sync must never break runs.
+     */
+    onRunChanged?: (run: ForEachRun) => void;
 }
 
 const RUN_ID_PATTERN = /^[A-Za-z0-9._-]+$/;
@@ -88,10 +94,20 @@ function hasFailedItem(items: ForEachItem[]): boolean {
 
 export class FileForEachRunStore {
     private readonly dataDir: string;
+    private readonly onRunChanged?: (run: ForEachRun) => void;
     private writeQueue: Promise<void> = Promise.resolve();
 
     constructor(options: FileForEachRunStoreOptions) {
         this.dataDir = options.dataDir;
+        this.onRunChanged = options.onRunChanged;
+    }
+
+    private notifyRunChanged(run: ForEachRun): void {
+        try {
+            this.onRunChanged?.(run);
+        } catch {
+            // Registry sync must never break run persistence.
+        }
     }
 
     private runsDir(workspaceId: string): string {
@@ -130,6 +146,7 @@ export class FileForEachRunStore {
         const { items, ...metadata } = run;
         await atomicWriteJSON(this.runPath(run.workspaceId, run.runId), metadata);
         await atomicWriteJSON(this.itemsPath(run.workspaceId, run.runId), items);
+        this.notifyRunChanged(run);
     }
 
     async createDraftRun(input: CreateForEachRunInput): Promise<ForEachRun> {
@@ -156,9 +173,9 @@ export class FileForEachRunStore {
             if (input.generationProcessId) metadata.generationProcessId = input.generationProcessId;
             if (input.generationId) metadata.generationId = input.generationId;
 
-            await atomicWriteJSON(this.runPath(input.workspaceId, runId), metadata);
-            await atomicWriteJSON(this.itemsPath(input.workspaceId, runId), normalizedItems);
-            return { ...metadata, items: normalizedItems };
+            const run: ForEachRun = { ...metadata, items: normalizedItems };
+            await this.writeRun(run);
+            return run;
         });
     }
 
@@ -213,9 +230,9 @@ export class FileForEachRunStore {
                 ...(input.childMode !== undefined ? { childMode: input.childMode } : {}),
                 updatedAt: new Date().toISOString(),
             };
-            await atomicWriteJSON(this.runPath(workspaceId, runId), nextMetadata);
-            await atomicWriteJSON(this.itemsPath(workspaceId, runId), normalizedItems);
-            return { ...nextMetadata, items: normalizedItems };
+            const nextRun: ForEachRun = { ...nextMetadata, items: normalizedItems };
+            await this.writeRun(nextRun);
+            return nextRun;
         });
     }
 
@@ -238,8 +255,9 @@ export class FileForEachRunStore {
                 approvedAt: now,
                 updatedAt: now,
             };
-            await atomicWriteJSON(this.runPath(workspaceId, runId), nextMetadata);
-            return { ...nextMetadata, items };
+            const nextRun: ForEachRun = { ...nextMetadata, items };
+            await this.writeRun(nextRun);
+            return nextRun;
         });
     }
 

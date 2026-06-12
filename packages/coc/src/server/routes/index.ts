@@ -53,6 +53,11 @@ import { registerSeenStateRoutes } from '../processes/seen-state-handler';
 import { registerPromptSuggestionRoutes } from '../processes/prompt-suggestion-handler';
 import { registerPromptHistoryRoutes } from '../processes/prompt-history-handler';
 import { registerGroupPinRoutes } from '../processes/group-pin-handler';
+import { registerTaskGroupRoutes } from './task-group-routes';
+import { TaskGroupService } from '../task-groups/task-group-service';
+import { syncDreamRunToTaskGroup, syncForEachRunToTaskGroup, syncMapReduceRunToTaskGroup, syncRalphSessionToTaskGroup } from '../task-groups/feature-sync';
+import { registerRalphSessionChangeListener } from '../ralph/ralph-session-store';
+import { backfillTaskGroups } from '../task-groups/backfill';
 import { registerPinArchiveRoutes } from '../processes/pin-archive-handler';
 import { registerTurnActionRoutes } from '../processes/turn-actions-handler';
 import { registerProcessHistoryRoutes } from '../processes/process-history-handler';
@@ -451,6 +456,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerPromptSuggestionRoutes(routes, store as any, dataDir, resolvedAiService);
     registerPromptHistoryRoutes(routes, store as any);
     registerGroupPinRoutes(routes, store, dataDir);
+    const taskGroupService = TaskGroupService.fromProcessStore(store);
+    registerTaskGroupRoutes({ routes, store, taskGroupService });
+    registerRalphSessionChangeListener(dataDir, record => syncRalphSessionToTaskGroup(taskGroupService, record));
     registerPinArchiveRoutes(routes, store as any);
     registerTurnActionRoutes(routes, store as any, getWsServer);
     registerProcessHistoryRoutes(routes, store as any);
@@ -626,7 +634,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     // For Each routes: dedicated reviewed item-plan mode. Routes are registered
     // with a live feature guard so admin toggles take effect without restart.
-    const forEachRunStore = new FileForEachRunStore({ dataDir });
+    const forEachRunStore = new FileForEachRunStore({
+        dataDir,
+        onRunChanged: run => syncForEachRunToTaskGroup(taskGroupService, run),
+    });
     const forEachRunExecutor = new ForEachRunExecutor({
         store: forEachRunStore,
         enqueueChildTask: (task) => enqueueWithResolvedDefaults(task),
@@ -659,7 +670,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // Map Reduce routes: dedicated reviewed map-plan mode with parallel map
     // dispatch followed by a single reduce child chat. Live feature guard mirrors
     // For Each so admin toggles take effect without restart.
-    const mapReduceRunStore = new FileMapReduceRunStore({ dataDir });
+    const mapReduceRunStore = new FileMapReduceRunStore({
+        dataDir,
+        onRunChanged: run => syncMapReduceRunToTaskGroup(taskGroupService, run),
+    });
     const mapReduceRunExecutor = new MapReduceRunExecutor({
         store: mapReduceRunStore,
         enqueueChildTask: (task) => enqueueWithResolvedDefaults(task),
@@ -693,7 +707,21 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     // Dreams routes: reviewable, workspace-scoped cards plus manual run trigger.
     // Route registration is always present; the live config guard controls availability.
-    const dreamStore = new FileDreamStore({ dataDir });
+    const dreamStore = new FileDreamStore({
+        dataDir,
+        onRunChanged: run => syncDreamRunToTaskGroup(taskGroupService, run),
+    });
+
+    // Project pre-framework runs/sessions into the task-group registry.
+    // Idempotent and best-effort: failures only log.
+    void backfillTaskGroups({
+        processStore: store,
+        taskGroupService,
+        forEachRunStore,
+        mapReduceRunStore,
+        dreamStore,
+        dataDir,
+    }).catch(() => {});
     const getDreamsEnabled = opts.runtimeConfigService
         ? () => opts.runtimeConfigService!.config.dreams?.enabled ?? false
         : () => opts.resolvedConfig?.dreams?.enabled ?? false;

@@ -265,6 +265,14 @@ export interface ChatContext {
     forEach?: ForEachContext;
     /** Map Reduce generation or parent-run linkage. */
     mapReduce?: MapReduceContext;
+    /**
+     * Generic task-group membership tag (mirrored into
+     * AIProcess.metadata.taskGroup). Carried by every child task of a
+     * registered task group, alongside the feature-specific context above —
+     * the feature context carries execution inputs, this tag carries only
+     * the relationship.
+     */
+    taskGroup?: TaskGroupRef;
     /** Auto provider selection details captured before execution. */
     autoProviderRouting?: {
         requested?: boolean;
@@ -281,6 +289,28 @@ export interface ChatContext {
         prId: string;
         headSha: string;
     };
+}
+
+// ============================================================================
+// Task Group Tag (generic parent/child relationship)
+// ============================================================================
+
+/** Known task-group types. The registry is open — future types are plain strings. */
+export type TaskGroupType = 'for-each' | 'map-reduce' | 'ralph' | 'dream' | (string & {});
+
+/**
+ * Generic membership tag linking a child task to its task group.
+ * The canonical group record lives in the task-group registry; this tag is
+ * the child-side linkage that survives independently of the registry.
+ */
+export interface TaskGroupRef {
+    groupId: string;
+    groupType: TaskGroupType;
+    /** Child role within the group ('generation' | 'item' | 'reduce' | 'iteration' | 'grilling' | 'analyzer' | 'critic' | ...). */
+    role: string;
+    /** Stable per-item key (For Each/Map Reduce item ID, Ralph iteration index, ...). */
+    itemKey?: string;
+    workspaceId: string;
 }
 
 export type ForEachChildMode = 'ask' | 'autopilot';
@@ -685,6 +715,41 @@ export function getMapReduceContext(
     return null;
 }
 
+/**
+ * Resolves the generic task-group tag from any task-or-process shape, or null.
+ *
+ * Precedence:
+ *   1. `payload.context.taskGroup` (authoritative for live queue tasks)
+ *   2. `metadata.taskGroup`        (denormalized projection on AIProcess history)
+ *   3. `null`
+ */
+export function getTaskGroupRef(
+    source: { payload?: unknown; metadata?: unknown } | null | undefined,
+): TaskGroupRef | null {
+    if (!source) return null;
+    const payload = source.payload as { context?: { taskGroup?: unknown } } | undefined;
+    const fromPayload = payload?.context?.taskGroup;
+    if (isTaskGroupRef(fromPayload)) {
+        return fromPayload;
+    }
+    const metadata = source.metadata as { taskGroup?: unknown } | undefined;
+    const fromMetadata = metadata?.taskGroup;
+    if (isTaskGroupRef(fromMetadata)) {
+        return fromMetadata;
+    }
+    return null;
+}
+
+/** Structural validation for persisted/transported task-group tags. */
+export function isTaskGroupRef(value: unknown): value is TaskGroupRef {
+    if (!value || typeof value !== 'object') return false;
+    const candidate = value as Partial<TaskGroupRef>;
+    return typeof candidate.groupId === 'string' && candidate.groupId.trim().length > 0
+        && typeof candidate.groupType === 'string' && candidate.groupType.trim().length > 0
+        && typeof candidate.role === 'string' && candidate.role.trim().length > 0
+        && typeof candidate.workspaceId === 'string' && candidate.workspaceId.trim().length > 0;
+}
+
 export function isForEachGenerationContext(context: ForEachContext | null | undefined): context is ForEachGenerationContext {
     return context?.kind === 'generation';
 }
@@ -721,4 +786,11 @@ export function serializeMapReduceMetadata(payload: unknown): MapReduceContext |
     }
     const mapReduce = (payload as ChatPayload).context?.mapReduce;
     return mapReduce ?? undefined;
+}
+
+export function serializeTaskGroupMetadata(payload: unknown): TaskGroupRef | undefined {
+    if (!payload || typeof payload !== 'object') return undefined;
+    if (!isChatPayload(payload as Record<string, unknown>)) return undefined;
+    const taskGroup = (payload as ChatPayload).context?.taskGroup;
+    return isTaskGroupRef(taskGroup) ? taskGroup : undefined;
 }

@@ -40,6 +40,12 @@ interface StoredDreamRunsFile {
 
 export interface FileDreamStoreOptions {
     dataDir: string;
+    /**
+     * Invoked after every successful dream-run write with the fresh run record.
+     * Used to keep the generic task-group registry in sync. Errors thrown by
+     * the hook are swallowed — registry sync must never break dream runs.
+     */
+    onRunChanged?: (run: DreamRunRecord) => void;
 }
 
 interface NormalizedDreamCandidate extends Omit<CreateDreamCandidateInput, 'dedupFingerprint'> {
@@ -373,10 +379,20 @@ function dedupeSourceRanges(ranges: readonly DreamSourceRange[]): DreamSourceRan
 
 export class FileDreamStore {
     private readonly dataDir: string;
+    private readonly onRunChanged?: (run: DreamRunRecord) => void;
     private writeQueue: Promise<void> = Promise.resolve();
 
     constructor(options: FileDreamStoreOptions) {
         this.dataDir = options.dataDir;
+        this.onRunChanged = options.onRunChanged;
+    }
+
+    private notifyRunChanged(run: DreamRunRecord): void {
+        try {
+            this.onRunChanged?.(run);
+        } catch {
+            // Registry sync must never break dream-run persistence.
+        }
     }
 
     private dreamsDir(workspaceId: string): string {
@@ -477,6 +493,7 @@ export class FileDreamStore {
                 startedAt: now,
             };
             await this.writeRuns(workspaceId, [...runs, run]);
+            this.notifyRunChanged(run);
             return run;
         });
     }
@@ -775,6 +792,7 @@ export class FileDreamStore {
             const next = buildNext(current);
             runs[index] = next;
             await this.writeRuns(workspaceId, runs);
+            this.notifyRunChanged(next);
             return next;
         });
     }

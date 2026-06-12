@@ -20,7 +20,7 @@ describe('buildRalphIterationTask', () => {
         expect(task.payload.prompt).toContain('<goal>');
         expect(task.payload.prompt).toContain('Implement a feature and test it.');
         expect(task.payload.prompt).not.toContain('<work_intent>');
-        expect(Object.keys(task.payload.context)).toEqual(['ralph']);
+        expect(Object.keys(task.payload.context)).toEqual(['ralph', 'taskGroup']);
         expect(task.payload.context).not.toHaveProperty('skills');
         expect(task.payload.context.ralph).toMatchObject({
             phase: 'executing',
@@ -29,6 +29,23 @@ describe('buildRalphIterationTask', () => {
             currentIteration: 2,
             maxIterations: 5,
         });
+        expect(task.payload.context.taskGroup).toEqual({
+            groupId: 'sess-1',
+            groupType: 'ralph',
+            role: 'iteration',
+            itemKey: '2',
+            workspaceId: 'ws-1',
+        });
+    });
+
+    it('omits the task-group tag when workspaceId is unknown', () => {
+        const task = buildRalphIterationTask({
+            sessionId: 'sess-no-ws',
+            originalGoal: 'Goal',
+            iteration: 1,
+            maxIterations: 5,
+        });
+        expect(task.payload.context).not.toHaveProperty('taskGroup');
     });
 
     it('includes iteration counter in user prompt', () => {

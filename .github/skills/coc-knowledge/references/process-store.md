@@ -6,7 +6,7 @@ Location: `packages/forge/src/` (`process-store.ts`, `sqlite-process-store.ts`, 
 
 ## SqliteProcessStore
 
-Default backend. Single `processes.db` file at `~/.coc/processes.db`. Schema version 20.
+Default backend. Single `processes.db` file at `~/.coc/processes.db`. Schema version 22.
 
 ### Tables
 
@@ -20,6 +20,8 @@ Default backend. Single `processes.db` file at `~/.coc/processes.db`. Schema ver
 | `commit_chat_bindings` | commitHash → taskId mappings |
 | `pull_request_chat_bindings` | prId → taskId mappings (one persistent chat per PR per workspace) |
 | `work_item_chat_bindings` | workItemId → taskId mappings (one persistent chat per Work Item per workspace) |
+| `task_groups` | Generic parent/child task-group registry: one row per hierarchical run/session (type, title, normalized status, hidden flag, origin process, extra JSON) |
+| `task_group_members` | Child links per task group: role ('generation'/'item'/'reduce'/'iteration'/'final-check'/'analyzer'/'critic'), task/process IDs, itemKey, memberIndex |
 
 Commit, Pull Request, and Work Item binding routes also expose a workspace-scoped fresh-chat operation that archives the currently bound process and deletes only that target's binding. It does not fork the process, copy conversation turns, or create a new process record; the next lens send uses the normal target-specific creation flow to bind a fresh chat.
 
@@ -47,6 +49,10 @@ archiveProcesses(ids)
 unarchiveProcesses(ids)
 getPinnedProcesses()
 ```
+
+### Task Group Registry
+
+`SqliteTaskGroupStore` (forge) owns the `task_groups`/`task_group_members` tables over the shared database handle. The CoC server wraps it in `TaskGroupService` (`packages/coc/src/server/task-groups/`): feature stores fire change hooks (`onRunChanged` on the For Each/Map Reduce/Dream stores, a dataDir-keyed module listener on `RalphSessionStore`) that project run/session records into the registry via `feature-sync.ts`. Group statuses are normalized to `draft | running | completed | failed | cancelled`; feature states like `reducing`, `approved`, or `grilling` ride in `extra.detailStatus`. Child tasks additionally carry a generic `payload.context.taskGroup = { groupId, groupType, role, itemKey?, workspaceId }` tag mirrored into `AIProcess.metadata.taskGroup` and forwarded on history items. Dream groups are `hidden` (linkage-only). `backfillTaskGroups` idempotently projects pre-framework runs/sessions on server start. Registry writes are best-effort — failures log and never break feature orchestration. With the legacy file process-store backend the registry is in-memory only.
 
 ## FileProcessStore (Legacy)
 

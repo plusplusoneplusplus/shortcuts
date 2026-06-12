@@ -61,6 +61,7 @@ import {
     serializeForEachMetadata,
     serializeMapReduceMetadata,
     serializeRalphMetadata,
+    serializeTaskGroupMetadata,
 } from '../tasks/task-types';
 import { deriveScriptTitle } from './title-generator';
 import { BaseExecutor } from './base-executor';
@@ -478,6 +479,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 forEach: serializeForEachMetadata(task.payload),
                 mapReduce: serializeMapReduceMetadata(task.payload),
                 ralph: serializeRalphMetadata(task.payload),
+                taskGroup: serializeTaskGroupMetadata(task.payload),
                 dream: isDreamRunPayload(task.payload)
                     ? {
                         workspaceId: task.payload.workspaceId,
