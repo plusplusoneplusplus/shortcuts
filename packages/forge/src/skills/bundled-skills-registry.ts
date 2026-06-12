@@ -45,11 +45,6 @@ export const BUNDLED_SKILLS_REGISTRY: readonly BundledSkill[] = [
         relativePath: 'kb-refresh',
     },
     {
-        name: 'update-work-item',
-        description: 'Interactively update an existing work item — patch common fields or create a new plan version, then reset status to planning',
-        relativePath: 'update-work-item',
-    },
-    {
         name: 'fresh-written',
         description: 'Rewrite documents, plans, and notes as if authored fresh each iteration — produce only the final intended state, never patch deltas on top of the previous version',
         relativePath: 'fresh-written',
