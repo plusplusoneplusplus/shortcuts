@@ -12,6 +12,7 @@ import {
     type DreamAnalysisPolicy,
     type DreamAnalysisResult,
     type DreamRelatedRecord,
+    type DreamSystemPromptResolver,
 } from './dream-analyzer';
 import type { DreamInternalProcessPurpose, DreamInternalStepRunner } from './dream-internal-process';
 import { selectEligibleDreamConversations, type DreamConversationSelection } from './dream-source-selector';
@@ -30,6 +31,7 @@ export interface DreamRunExecutorOptions extends DreamRunPolicy {
     store: FileDreamStore;
     processStore: ProcessStore;
     runInternalStep: DreamInternalStepRunner;
+    resolveSystemPrompt: DreamSystemPromptResolver;
     getDreamsEnabled: () => boolean | Promise<boolean>;
     getWorkspaceDreamsEnabled: (workspaceId: string) => boolean | Promise<boolean>;
     listWorkspaceTasks?: (workspaceId: string) => readonly QueuedTask[] | Promise<readonly QueuedTask[]>;
@@ -204,6 +206,7 @@ export class DreamRunExecutor {
     private readonly store: FileDreamStore;
     private readonly processStore: ProcessStore;
     private readonly runInternalStep: DreamInternalStepRunner;
+    private readonly resolveSystemPrompt: DreamSystemPromptResolver;
     private readonly getDreamsEnabled: () => boolean | Promise<boolean>;
     private readonly getWorkspaceDreamsEnabled: (workspaceId: string) => boolean | Promise<boolean>;
     private readonly listWorkspaceTasks?: (workspaceId: string) => readonly QueuedTask[] | Promise<readonly QueuedTask[]>;
@@ -222,6 +225,7 @@ export class DreamRunExecutor {
         this.store = options.store;
         this.processStore = options.processStore;
         this.runInternalStep = options.runInternalStep;
+        this.resolveSystemPrompt = options.resolveSystemPrompt;
         this.getDreamsEnabled = options.getDreamsEnabled;
         this.getWorkspaceDreamsEnabled = options.getWorkspaceDreamsEnabled;
         this.listWorkspaceTasks = options.listWorkspaceTasks;
@@ -349,6 +353,7 @@ export class DreamRunExecutor {
             const relatedRecords = await this.getRelatedRecords?.(workspaceId) ?? [];
             analysis = await analyzeDreamConversations({
                 runInternalStep: this.runInternalStep,
+                resolveSystemPrompt: this.resolveSystemPrompt,
                 workspaceId,
                 runId: run.id,
                 ...(options.parentProcessId ? { parentProcessId: options.parentProcessId } : {}),

@@ -110,6 +110,7 @@ import { FileDreamStore } from '../dreams/dream-store';
 import { DreamRunExecutor, type DreamRunRequestOptions } from '../dreams/dream-runner';
 import { DreamIdleScheduler } from '../dreams/dream-idle-scheduler';
 import { DEFAULT_DREAM_ANALYSIS_TIMEOUT_MS } from '../dreams/dream-analyzer';
+import { resolveDreamSystemPrompt } from '../dreams/dream-prompt-resolver';
 import { DreamInternalProcessExecutor } from '../executors/dream-internal-process-executor';
 import { registerLoopRoutes } from '../loops/loop-handler';
 import type { LoopStore } from '../loops/loop-store';
@@ -708,6 +709,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         store: dreamStore,
         processStore: store,
         runInternalStep: request => dreamInternalProcessExecutor.runStep(request),
+        resolveSystemPrompt: section => resolveDreamSystemPrompt(section, { dataDir }),
         getDreamsEnabled,
         getWorkspaceDreamsEnabled: (workspaceId) => readRepoPreferences(dataDir, workspaceId).dreams?.enabled === true,
         listWorkspaceTasks: () => queueFacade.getAll(),

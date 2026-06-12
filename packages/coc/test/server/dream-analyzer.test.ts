@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { DreamConversationSelection } from '../../src/server/dreams/dream-source-selector';
-import type { DreamInternalStepRunner } from '../../src/server/dreams/dream-internal-process';
+import type { DreamInternalProcessPurpose, DreamInternalStepRunner } from '../../src/server/dreams/dream-internal-process';
 import type { DreamCard } from '../../src/server/dreams/types';
 import {
     DEFAULT_DREAM_ANALYSIS_TIMEOUT_MS,
@@ -80,6 +80,15 @@ function mockInternalStepRunner(...responses: string[]): DreamInternalStepRunner
         });
     });
     return runInternalStep;
+}
+
+// Stand-in resolver: the byte-identical parity to the bundled `dream` skill is
+// covered by dream-prompt-resolver.test.ts; here we only need the analyzer/critic
+// system prompts to be section-distinguishable.
+function resolveSystemPrompt(section: DreamInternalProcessPurpose): string {
+    return section === 'analyzer'
+        ? 'You are the CoC Dream analyzer.'
+        : 'You are the CoC Dream critic.';
 }
 
 describe('normalizeDreamAnalysisCandidates', () => {
@@ -175,6 +184,7 @@ describe('analyzeDreamConversations', () => {
 
         const result = await analyzeDreamConversations({
             runInternalStep,
+            resolveSystemPrompt,
             workspaceId: WORKSPACE_ID,
             runId: RUN_ID,
             parentProcessId: 'queue_dream-run-parent',
@@ -221,6 +231,7 @@ describe('analyzeDreamConversations', () => {
 
         await analyzeDreamConversations({
             runInternalStep,
+            resolveSystemPrompt,
             workspaceId: WORKSPACE_ID,
             runId: RUN_ID,
             selection: selection(),
@@ -249,6 +260,7 @@ describe('analyzeDreamConversations', () => {
 
         const result = await analyzeDreamConversations({
             runInternalStep,
+            resolveSystemPrompt,
             workspaceId: WORKSPACE_ID,
             runId: RUN_ID,
             selection: selection(),
@@ -276,6 +288,7 @@ describe('analyzeDreamConversations', () => {
 
         const result = await analyzeDreamConversations({
             runInternalStep,
+            resolveSystemPrompt,
             workspaceId: WORKSPACE_ID,
             selection: emptySelection,
         });

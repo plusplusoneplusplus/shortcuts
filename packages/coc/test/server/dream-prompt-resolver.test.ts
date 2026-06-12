@@ -14,9 +14,11 @@ import { describe, expect, it } from 'vitest';
 import { getBundledSkillsPath } from '@plusplusoneplusplus/forge';
 import {
     DREAM_CARD_CATEGORIES_PLACEHOLDER,
+    DREAM_SKILL_NAME,
     resolveDreamSystemPromptFromContent,
 } from '../../src/server/dreams/dream-prompt-resolver';
 import { DREAM_CARD_CATEGORIES } from '../../src/server/dreams/types';
+import { DEFAULT_BUNDLED_SKILLS } from '../../src/config';
 
 const fixture = JSON.parse(
     fs.readFileSync(path.join(__dirname, 'fixtures', 'dream-system-prompts.fixture.json'), 'utf-8'),
@@ -45,5 +47,11 @@ describe('dream system prompt parity', () => {
         const resolved = resolveDreamSystemPromptFromContent(skill, 'analyzer');
         expect(resolved).not.toContain(DREAM_CARD_CATEGORIES_PLACEHOLDER);
         expect(resolved).toContain(`Use exactly these categories: ${DREAM_CARD_CATEGORIES.join(', ')}.`);
+    });
+});
+
+describe('dream skill auto-install (AC-05)', () => {
+    it('includes the dream skill in DEFAULT_BUNDLED_SKILLS so it lands in ~/.coc/skills', () => {
+        expect(DEFAULT_BUNDLED_SKILLS).toContain(DREAM_SKILL_NAME);
     });
 });

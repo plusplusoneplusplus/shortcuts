@@ -24,3 +24,34 @@ export interface DreamInternalStepResult {
 }
 
 export type DreamInternalStepRunner = (request: DreamInternalStepRequest) => Promise<DreamInternalStepResult>;
+
+/**
+ * Provenance for the bundled skill section that supplied a dream step's system
+ * prompt. Persisted on `proc.metadata.dreamStep.skill` so history/audit can see
+ * that the analyzer/critic prompts are sourced from the `dream` skill rather
+ * than inline constants.
+ */
+export interface DreamStepSkillProvenance {
+    name: string;
+    section: DreamInternalProcessPurpose;
+}
+
+/**
+ * Groupable subset of a dream internal step's persisted metadata
+ * (`proc.metadata.dreamStep`). The posture flags are constant by construction:
+ * dream steps are always read-only, tool-less, MCP-less, deny-all.
+ */
+export interface DreamStepContext {
+    kind: DreamInternalProcessPurpose;
+    purpose: string;
+    workspaceId: string;
+    runId: string;
+    readOnly: true;
+    toolsEnabled: false;
+    mcpEnabled: false;
+    permissionPolicy: 'deny-all';
+    timeoutMs: number;
+    skill: DreamStepSkillProvenance;
+    parentProcessId?: string;
+    analyzerProcessId?: string;
+}
