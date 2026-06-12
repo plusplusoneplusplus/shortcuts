@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 21;
+export const SCHEMA_VERSION = 22;
 
 /**
  * Read the current schema version from the database.
@@ -354,6 +354,49 @@ export function initializeDatabase(db: Database.Database): void {
                 ON work_item_chat_bindings(workspace_id);
         `);
 
+        // ── task_groups (generic parent/child task relationship registry) ──
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS task_groups (
+                workspace_id       TEXT NOT NULL,
+                group_id           TEXT NOT NULL,
+                type               TEXT NOT NULL,
+                title              TEXT,
+                status             TEXT NOT NULL DEFAULT 'draft',
+                hidden             INTEGER DEFAULT 0,
+                origin_process_id  TEXT,
+                created_at         TEXT NOT NULL,
+                updated_at         TEXT NOT NULL,
+                completed_at       TEXT,
+                extra              TEXT,
+                PRIMARY KEY (workspace_id, group_id)
+            )
+        `);
+
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS task_group_members (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                workspace_id  TEXT NOT NULL,
+                group_id      TEXT NOT NULL,
+                role          TEXT NOT NULL,
+                task_id       TEXT,
+                process_id    TEXT,
+                item_key      TEXT,
+                member_index  INTEGER,
+                linked_at     TEXT NOT NULL
+            )
+        `);
+
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_task_groups_workspace_type
+                ON task_groups(workspace_id, type);
+
+            CREATE INDEX IF NOT EXISTS idx_task_group_members_group
+                ON task_group_members(workspace_id, group_id);
+
+            CREATE INDEX IF NOT EXISTS idx_task_group_members_process
+                ON task_group_members(process_id);
+        `);
+
         // ── incremental migrations for existing databases ───────────
         // Guards use only `versionBefore < N` (not `>= 1`) so that
         // databases at version 0 with pre-existing tables still get
@@ -415,6 +458,9 @@ export function initializeDatabase(db: Database.Database): void {
         }
         if (versionBefore < 21) {
             migrateV20toV21(db);
+        }
+        if (versionBefore < 22) {
+            migrateV21toV22(db);
         }
 
         // Stamp the schema version
@@ -696,6 +742,16 @@ function migrateV19toV20(db: Database.Database): void {
 function migrateV20toV21(db: Database.Database): void {
     ensureColumn(db, 'conversation_turns', 'interrupted', 'INTEGER DEFAULT 0');
     ensureColumn(db, 'conversation_turns', 'interruption_reason', 'TEXT');
+}
+
+/**
+ * V21 -> V22: add `task_groups` + `task_group_members` tables for the generic
+ * parent/child task relationship registry.
+ * The CREATE TABLE IF NOT EXISTS above handles fresh and existing databases;
+ * this migration keeps the version chain explicit.
+ */
+function migrateV21toV22(_db: Database.Database): void {
+    // Tables already created by the idempotent DDL above.
 }
 
 /**

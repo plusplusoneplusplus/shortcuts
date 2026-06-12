@@ -2,9 +2,10 @@ import * as fs from 'fs';
 import { atomicWriteJson } from '../shared/fs-utils';
 import { getRepoDataPath } from '../paths';
 
+/** Legacy pin type names. The pin store is open: any task-group type pins under its own type string. */
 export const GROUP_PIN_TYPES = ['ralph-session', 'for-each-run', 'map-reduce-run'] as const;
 
-export type GroupPinType = typeof GROUP_PIN_TYPES[number];
+export type GroupPinType = typeof GROUP_PIN_TYPES[number] | (string & {});
 
 export interface GroupPin {
     type: GroupPinType;
@@ -21,8 +22,18 @@ interface GroupPinState {
 
 const GROUP_PINS_FILE = 'group-pins.json';
 
+/**
+ * Any non-empty type string is a valid pin type — the legacy literal names
+ * and registered task-group types share the same open namespace.
+ */
+export function normalizeGroupPinType(value: unknown): GroupPinType | undefined {
+    if (typeof value !== 'string') return undefined;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+}
+
 export function isGroupPinType(value: unknown): value is GroupPinType {
-    return typeof value === 'string' && (GROUP_PIN_TYPES as readonly string[]).includes(value);
+    return normalizeGroupPinType(value) !== undefined;
 }
 
 export function normalizeGroupId(groupId: unknown): string | undefined {

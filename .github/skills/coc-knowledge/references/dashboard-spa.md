@@ -42,6 +42,21 @@ When `features.commitChatLens` is enabled from Admin -> Configure -> Features, r
 
 The Notes view inherits the same `features.commitChatLens` source of truth for its AI chat surface. `NotesView` uses `useReviewChatPresentation()` with a workspace-scoped `notes` target, preserving the legacy workspace-scoped notes chat open key while Lens is disabled and using the shared target-scoped Lens open/pin/minimize keys when Lens is enabled. The notes area shows no separate Lens indicator; no notes-specific Lens setting is stored or exposed. Note-producing SPA flows that originate from notes/chat UI (notes chat edits, AI note creation, and bulk chat summaries) attach `context.lensChat = { inherited: true, source: 'features.commitChatLens' }` only while the shared Lens flag is enabled, so the process metadata records inherited Lens routing without adding persistent notes-specific state.
 
+Chat-list hierarchy grouping is consolidated behind a shared engine:
+`features/chat/task-group-grouping.ts` owns the generic matching/aggregation
+logic (the `payload.context.taskGroup` tag reader, activity/end timestamp
+chains, seeded grouping used by For Each and Map Reduce, shared helpers used
+by Ralph), `features/chat/task-group-descriptors.ts` registers per-type
+presentation/behavior descriptors (label, badge, accent, pin type,
+`matchesTask`, `groupable` — Dreams is `groupable: false` so its internals
+stay ungrouped), and `features/chat/TaskGroupRunRow.tsx` is the shared
+parent-row chrome that `ForEachRunRow`/`MapReduceRunRow` configure as thin
+wrappers. The per-feature grouping modules (`for-each-run-grouping.ts`,
+`map-reduce-run-grouping.ts`, `ralph-session-grouping.ts`) are adapters over
+the engine that keep their legacy matching (feature contexts,
+`generationProcessId`) in addition to the generic tag, so historical chats
+group without data migration.
+
 `features/chat/ChatListPane.tsx` keeps grouped chat-history expansion state
 local to the mounted view. Ralph session groups, For Each run groups, Map
 Reduce run groups, and plan-file/history groups render collapsed by default on

@@ -203,7 +203,11 @@ export interface PinnedTurnsResponse {
   turns: ConversationTurn[];
 }
 
-export type ProcessGroupPinType = 'ralph-session' | 'for-each-run' | 'map-reduce-run';
+/**
+ * Group-pin type. Open union: the known literals are the legacy pin type
+ * names; any registered task-group type pins under its own type string.
+ */
+export type ProcessGroupPinType = 'ralph-session' | 'for-each-run' | 'map-reduce-run' | (string & {});
 
 export interface ProcessGroupPin {
   type: ProcessGroupPinType;

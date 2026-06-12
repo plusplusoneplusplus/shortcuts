@@ -64,6 +64,13 @@ function buildChildTask(run: ForEachRun, item: ForEachItem): CreateTaskInput {
                     itemId: item.id,
                     childMode: run.childMode,
                 },
+                taskGroup: {
+                    groupId: run.runId,
+                    groupType: 'for-each',
+                    role: 'item',
+                    itemKey: item.id,
+                    workspaceId: run.workspaceId,
+                },
             },
         },
         config: {

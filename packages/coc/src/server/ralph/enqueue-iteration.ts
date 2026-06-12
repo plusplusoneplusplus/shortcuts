@@ -94,6 +94,17 @@ export function buildRalphIterationTask(input: BuildRalphIterationTaskInput) {
                     currentIteration: input.iteration,
                     maxIterations: input.maxIterations,
                 },
+                ...(input.workspaceId
+                    ? {
+                        taskGroup: {
+                            groupId: input.sessionId,
+                            groupType: 'ralph' as const,
+                            role: 'iteration',
+                            itemKey: String(input.iteration),
+                            workspaceId: input.workspaceId,
+                        },
+                    }
+                    : {}),
             },
         },
     };
