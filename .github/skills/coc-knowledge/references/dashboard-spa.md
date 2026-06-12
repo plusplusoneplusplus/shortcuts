@@ -133,6 +133,11 @@ turning local Work Items and Goals into the command-center planning/execution
 surface. The SPA receives it as `workItemsWorkflowEnabled` from bootstrap config
 and `GET /api/config/runtime`; use `isWorkItemsWorkflowEnabled()` for UI gates so
 legacy Work Items and Chat behavior remains unchanged while the flag is off.
+Work Item detail renders the editable title in the top header row and keeps
+type, status, mirror, plan version, priority, updated time, parent, tags,
+auto-execute, source, and primary actions in the compact properties row directly
+below it; the scrollable body starts with description/plan content rather than a
+separate metadata card.
 When the flag is on, the local create dialog exposes a Work Item vs Goal type
 selector for title-first shell creation even when hierarchy mode is off; existing
 bug and hierarchy-type creation paths keep their prior behavior. Saved local-only
