@@ -123,6 +123,12 @@ all have their own `references/*.md`.
   per-trigger cap and low priority instead of adding client-side POST loops.
   The Team toolbar status UI should read batch status and route manual
   "Classify now" actions through the same bounded server helper.
+- **Native Copilot session reads** (`src/server/native-copilot-sessions/`)
+  must stay strictly read-only against `~/.copilot/session-store.db`: open with
+  short-lived `readonly` SQLite connections, keep every user-provided filter
+  parameterized (FTS terms literal-quoted), and return typed
+  `db-missing`/`db-invalid` states instead of throwing. Never route native
+  session IDs into CoC process/chat action handlers.
 - **Work-item create/update side effects** (hierarchy `parentId` validation,
   GitHub/Azure Boards provider sync, response-cache invalidation, dashboard
   broadcasts, auto-execute) live in the shared command service

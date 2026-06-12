@@ -23,6 +23,7 @@ spa/client/react/
 │   ├── chat/           # Chat UI: ChatDetail, ChatListPane, ConversationArea
 │   ├── dreams/         # Workspace Dreams review panel with feature/opt-in states, queue-backed run-now task summary, provider-attributed Activity/Admin AI Provider visibility, filters, plain-language card guidance, source evidence links, and card lifecycle actions
 │   ├── memory/         # Memory V2 route, facts/review/episodes tabs, repo memory settings section
+│   ├── native-copilot-sessions/  # Read-only Copilot Sessions tab over the native CLI session store (see Copilot Sessions Tab)
 │   ├── notes/          # Notes UI: NoteEditor, Mermaid zoom/pan, sidebar, multi-root dropdown with modifier/range root selection and bulk root removal (useNotesRoots)
 │   ├── pull-requests/  # PR dashboard: attention groups, provider-derived PR helpers, shared provider-id/displayName Team author matching, Team auto-classification triggers, real diff-stat queue badges/risk, deterministic review summary, BatchCommandPanel
 │   └── terminal/       # Terminal UI: TerminalView, pin/unpin
@@ -565,6 +566,10 @@ Ralph activity deep-links mount `RalphWorkflowPane`, which shows a unified task 
 ## Dreams Route
 
 The repo-scoped Dreams tab (`features/dreams/DreamsPanel.tsx`) is a dedicated review surface separate from Work Items. It is included in repo tab strips only when the global `dreams.enabled` feature flag is on, then requires the workspace `preferences.dreams.enabled` opt-in before calling Dreams routes. Once enabled, it lists visible cards by default, supports status filters for hidden lifecycle history, exposes a manual **Run dream now** action, shows run summaries/no-new-dreams states, links source process turn ranges back to the Activity conversation route, and offers card lifecycle actions: approve, dismiss, record conversion, and supersede. Approved cards also expose an explicit **Take next action** dialog: skill/prompt cards can queue an Ask-mode skill-hardening task, user-workflow cards can save to Notes or Memory V2, and product cards can create a new Work Item or append the recommendation to an existing Work Item. Each next action runs only after the dialog submit and then records the resulting artifact as a dream conversion.
+
+## Copilot Sessions Tab
+
+The repo-scoped `Copilot Sessions` tab (`features/native-copilot-sessions/NativeCopilotSessionsPanel.tsx`) is a read-only view of native GitHub Copilot CLI sessions for the active workspace, gated by `features.nativeCopilotSessions` / `nativeCopilotSessionsEnabled` (disabled by default; `useNativeCopilotSessionsEnabled()` tracks live runtime-config updates). It reads through `coc-client`'s `nativeCopilotSessions` domain, renders a two-pane layout on wide screens (searchable session table left, selected-session detail right) and stacked single-pane navigation on narrow screens, and supports text query (native `search_index` snippets), session-ID, branch, and date-range filters sorted newest `updated_at` first with pagination. Every list row and the detail header carry a `Native Copilot CLI session` label plus a read-only badge whose tooltip/helper explains the data comes from the local native store (`~/.copilot/session-store.db`) and cannot be modified from CoC. The panel renders distinct disabled/unavailable (`db-missing`/`db-invalid`)/loading/empty/error states, shows turns ordered by index with `No assistant response stored` for empty assistant turns and `Indexed (N chars)`/`Not indexed` search-index diagnostics, renders all stored text as plain pre-wrapped text (stored HTML/scripts never execute), and intentionally exposes no CoC chat actions (no follow-up, archive, pin, delete, resume, retry, or turn actions).
 
 ## Memory Route
 

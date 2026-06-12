@@ -175,6 +175,15 @@ All Map Reduce routes are workspace-scoped and gated by `mapReduce.enabled` (def
 | POST | `/api/workspaces/:id/map-reduce-runs/:runId/reduce/retry` | Retry a failed reduce step as a new child chat |
 | POST | `/api/workspaces/:id/map-reduce-runs/:runId/cancel` | Cancel remaining work, mark pending/running map items skipped, cancel a pending/running/failed reduce step, and cancel active child tasks when available |
 
+## Native Copilot Sessions
+
+Read-only, workspace-scoped views over the server user's native GitHub Copilot CLI session store (`~/.copilot/session-store.db`). Gated by the disabled-by-default `features.nativeCopilotSessions` flag with a live guard. CoC opens the native SQLite store read-only with short-lived per-request connections, never writes to it, and never imports native sessions into CoC process history. Disabled and unavailable states return HTTP 200 with typed payloads: `{ enabled: false, reason: 'feature-disabled' }` when the flag is off, and `{ enabled: true, available: false, reason: 'db-missing' | 'db-invalid' }` when the store is absent or unreadable. Workspace scoping matches native `sessions.cwd` against the registered workspace root (equal or descendant path) or native `sessions.repository` against the workspace's origin-remote `owner/repo` (case-insensitive). `@plusplusoneplusplus/coc-client` exposes these routes through `client.nativeCopilotSessions`.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/workspaces/:id/native-copilot-sessions` | List workspace-matching native sessions sorted by newest `updated_at`. Query: `q` (text search via the native `search_index` FTS table with match snippets; parameterized literal-quoted terms), `sessionId` (exact or partial), `branch`, `from`/`to` ISO bounds on updated time, `limit` (default 50, max 200), `offset`. Response includes `items` with summary preview and turn counts, `total`, `searchIndexAvailable` (false when the native FTS table is absent — text queries then return no hits non-fatally) |
+| GET | `/api/workspaces/:id/native-copilot-sessions/:sessionId` | Read one workspace-matching native session: metadata, full stored summary, and turns ordered by `turn_index` with per-turn char counts and search-index diagnostics (`searchIndexSourceId`/`searchIndexChars`, null when not indexed). Sessions outside the workspace or unknown IDs return 404 |
+
 ## Dreams
 
 All Dreams routes are workspace-scoped and gated by `dreams.enabled` (default `false`). Dream generation also requires the target workspace's `preferences.dreams.enabled` opt-in. Cards are review records only: approval records user intent, conversion records an explicit resulting artifact link, and no route mutates skills, prompts, notes, memory, work items, or code directly.

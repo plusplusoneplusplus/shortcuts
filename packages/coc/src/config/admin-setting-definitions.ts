@@ -691,6 +691,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     },
     bool({ key: 'features.autoAgentProviderRouting', default: false, runtime: 'restartRequired', runtimeFlag: 'autoAgentProviderRoutingEnabled' }),
     bool({
+        key: 'features.nativeCopilotSessions', default: false, runtime: 'live', runtimeFlag: 'nativeCopilotSessionsEnabled',
+        ui: {
+            group: 'dashboard', order: 60, label: 'Native Copilot CLI sessions', badge: 'experimental',
+            hint: 'Read-only Copilot Sessions tab that lists native GitHub Copilot CLI sessions (~/.copilot/session-store.db) for the active workspace. Disabled by default.',
+            testId: 'toggle-native-copilot-sessions-enabled',
+        },
+    }),
+    bool({
         key: 'features.ralphMultiAgentGrill', default: false, runtime: 'live', runtimeFlag: 'ralphMultiAgentGrillEnabled',
         ui: {
             group: 'aiModes', order: 15, label: 'Ralph Multi-Agent Grilling', badge: 'experimental',

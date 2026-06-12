@@ -133,7 +133,9 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isScratchpadEnabled: () => false,
     isWorkflowsEnabled: () => false,
     isPullRequestsEnabled: () => false,
+    isNativeCopilotSessionsEnabled: () => false,
     getScratchpadLayout: () => 'horizontal',
+    DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
 }));
 
 // Stub RepoChatTab — render a marker div that captures mode prop

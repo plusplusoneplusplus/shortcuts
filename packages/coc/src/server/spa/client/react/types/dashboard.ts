@@ -41,7 +41,7 @@ export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports' | 'stats' 
 export const REPO_SUB_TAB_VALUES = [
     'chats', 'work-items', 'settings', 'workflows', 'templates', 'tasks',
     'schedules', 'git', 'wiki', 'workflow', 'explorer', 'activity',
-    'pull-requests', 'terminal', 'notes', 'dreams',
+    'pull-requests', 'terminal', 'notes', 'dreams', 'copilot-sessions',
 ] as const;
 export type RepoSubTab = typeof REPO_SUB_TAB_VALUES[number];
 

@@ -249,6 +249,8 @@ export interface CLIConfig {
         autoAgentProviderRouting?: boolean;
         /** Multi-agent Ralph grilling experience. Disabled by default. */
         ralphMultiAgentGrill?: boolean;
+        /** Read-only native GitHub Copilot CLI sessions tab. Disabled by default. */
+        nativeCopilotSessions?: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion?: {
@@ -532,6 +534,8 @@ export interface ResolvedCLIConfig {
         autoAgentProviderRouting: boolean;
         /** Multi-agent Ralph grilling experience. Disabled by default. */
         ralphMultiAgentGrill: boolean;
+        /** Read-only native GitHub Copilot CLI sessions tab. Disabled by default. */
+        nativeCopilotSessions: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion: {
@@ -763,6 +767,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         commitChatLensDormantMode: 'ghost',
         autoAgentProviderRouting: false,
         ralphMultiAgentGrill: false,
+        nativeCopilotSessions: false,
     },
     memoryPromotion: {
         batchSize: 50,

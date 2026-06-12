@@ -111,6 +111,8 @@ import { registerMapReduceRoutes } from './map-reduce-routes';
 import { FileMapReduceRunStore } from '../map-reduce/map-reduce-run-store';
 import { createMapReducePlanGenerator } from '../map-reduce/map-reduce-plan-generator';
 import { MapReduceRunExecutor } from '../map-reduce/map-reduce-run-executor';
+import { registerNativeCopilotSessionRoutes } from './native-copilot-session-routes';
+import { NativeCopilotSessionService } from '../native-copilot-sessions/native-copilot-session-service';
 import { registerDreamRoutes } from '../dreams/dream-routes';
 import { FileDreamStore } from '../dreams/dream-store';
 import { DreamRunExecutor, type DreamRunRequestOptions } from '../dreams/dream-runner';
@@ -209,6 +211,8 @@ export interface RegisterRoutesOptions {
     hostname?: string;
     bindAddress?: string;
     syncEngines?: Map<string, SyncEngine>;
+    /** Native Copilot CLI session store path override (for tests). */
+    nativeCopilotSessionDbPath?: string;
 }
 
 export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; agentProvidersQuotaCache?: AgentProvidersQuotaCache; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler } {
@@ -709,6 +713,19 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         generatePlan: mapReducePlanGenerator.generatePlan,
         executor: mapReduceRunExecutor,
         resolveDefaultProvider,
+    });
+
+    // Native Copilot CLI session routes: read-only workspace-scoped views over
+    // the server user's native session store. Live feature guard mirrors
+    // For Each/Map Reduce so admin toggles take effect without restart.
+    const getNativeCopilotSessionsEnabled = opts.runtimeConfigService
+        ? () => opts.runtimeConfigService!.config.features?.nativeCopilotSessions ?? false
+        : () => opts.resolvedConfig?.features?.nativeCopilotSessions ?? false;
+    registerNativeCopilotSessionRoutes({
+        routes,
+        store,
+        getEnabled: getNativeCopilotSessionsEnabled,
+        service: new NativeCopilotSessionService({ dbPath: opts.nativeCopilotSessionDbPath }),
     });
 
     const workItemStore = new FileWorkItemStore({ dataDir });

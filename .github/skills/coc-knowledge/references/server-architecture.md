@@ -103,6 +103,7 @@ The `src/server/` tree is grouped by feature domain. Cross-cutting plumbing stay
 | `ralph/` | Iterative execution sessions and file-backed journal (see [ralph.md](ralph.md)) |
 | `for-each/` | Dedicated For Each run records, item-plan validation, file-backed repo-scoped draft/approval storage, and sequential child-chat orchestration |
 | `map-reduce/` | Dedicated Map Reduce plan generation, run records, map-plan validation, reduce-step state, per-run parallelism configuration, file-backed repo-scoped draft/approval/execution storage with parallel map claiming, and child-chat orchestration that auto-chains reduce after successful map completion |
+| `native-copilot-sessions/` | Read-only query service over the server user's native GitHub Copilot CLI session store (`~/.copilot/session-store.db`): short-lived read-only SQLite connections, workspace scoping by native `cwd`/`repository`, parameterized FTS text search, typed `db-missing`/`db-invalid` unavailable states. Gated by `features.nativeCopilotSessions` (default `false`); CoC never writes to the native store |
 | `models/` | Model registry endpoints |
 | `agent-providers/` | Agent-provider quota cache, provider status routes, SDK install helpers, and the pure Auto provider router that evaluates configured priority, availability, normal quota thresholds, weekly guards, fallback, and selection warnings before callers expand effort tiers. Queue/fresh-terminal defaults, explicit SPA Auto requests (`context.autoProviderRouting.requested`), direct Ralph, For Each, and work-item enqueue surfaces use the shared quota cache and refresh it only when missing or stale. |
 | `messaging/` | Teams bot integration: manager, command router, per-user state |
@@ -196,6 +197,7 @@ claude:
 features:
   autoAgentProviderRouting: false  # enables Auto for omitted-provider default paths
   ralphMultiAgentGrill: false      # gated multi-agent Ralph grilling setup and agent preflight
+  nativeCopilotSessions: false     # read-only Copilot Sessions dashboard tab over ~/.copilot/session-store.db
 
 agentProviderRouting:
   auto:
