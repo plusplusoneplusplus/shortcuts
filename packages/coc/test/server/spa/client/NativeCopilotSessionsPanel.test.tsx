@@ -74,9 +74,9 @@ function makeListItem(overrides: Partial<Record<string, unknown>> = {}) {
         updatedAt: '2026-06-11T17:56:22.081Z',
         turnCount: 3,
         matchSnippets: [],
-        provider: 'codex',
-        storePath: '/home/me/.codex/sessions',
-        searchIndexAvailable: false,
+        provider: 'copilot',
+        storePath: '/home/me/.copilot/session-store.db',
+        searchIndexAvailable: true,
         ...overrides,
     };
 }
@@ -157,9 +157,9 @@ function makeDetailResponse(overrides: Partial<Record<string, unknown>> = {}) {
                     ],
                 },
             ],
-            provider: 'codex',
-            storePath: '/home/me/.codex/sessions',
-            searchIndexAvailable: false,
+            provider: 'copilot',
+            storePath: '/home/me/.copilot/session-store.db',
+            searchIndexAvailable: true,
             ...overrides,
         },
     };
@@ -196,7 +196,7 @@ describe('NativeCopilotSessionsPanel', () => {
 
     it('renders a typed unavailable state when the native store is missing', async () => {
         mockList.mockResolvedValue({
-            enabled: true, available: false, reason: 'store-missing', provider: 'codex', items: [], total: 0, limit: 50, offset: 0,
+            enabled: true, available: false, reason: 'store-missing', provider: 'copilot', items: [], total: 0, limit: 50, offset: 0,
         });
         render(<NativeCopilotSessionsPanel workspaceId="ws-1" />);
         await waitFor(() => expect(screen.getByTestId('native-sessions-unavailable')).toBeTruthy());
@@ -234,7 +234,7 @@ describe('NativeCopilotSessionsPanel', () => {
 
         fireEvent.click(screen.getAllByTestId('native-session-row')[0]);
         await waitFor(() => expect(screen.getByTestId('native-session-detail')).toBeTruthy());
-        expect(mockGet).toHaveBeenCalledWith('ws-1', 'session-aaaa-bbbb', 'codex');
+        expect(mockGet).toHaveBeenCalledWith('ws-1', 'session-aaaa-bbbb', 'copilot');
 
         const detail = screen.getByTestId('native-session-detail');
         // Metadata header preserved.
@@ -257,7 +257,7 @@ describe('NativeCopilotSessionsPanel', () => {
 
         // Assistant turn carries the selected provider, model, tool-call card, and
         // reasoning folded into the content/timeline (no component fork).
-        expect(bubbles[1].getAttribute('data-provider')).toBe('codex');
+        expect(bubbles[1].getAttribute('data-provider')).toBe('copilot');
         expect(bubbles[1].getAttribute('data-model')).toBe('gpt-5.5');
         expect(bubbles[1].getAttribute('data-tool-calls')).toContain('shell');
         expect(bubbles[1].getAttribute('data-timeline-types')).toContain('tool-complete');
@@ -293,7 +293,7 @@ describe('NativeCopilotSessionsPanel', () => {
         fireEvent.click(screen.getByTestId('native-sessions-apply-filters'));
 
         await waitFor(() => {
-            expect(mockList).toHaveBeenLastCalledWith('ws-1', expect.objectContaining({ provider: 'codex', q: 'mermaid' }));
+            expect(mockList).toHaveBeenLastCalledWith('ws-1', expect.objectContaining({ provider: 'copilot', q: 'mermaid' }));
         });
         await waitFor(() => expect(screen.getByTestId('native-session-match-snippets')).toBeTruthy());
         expect(screen.getByTestId('native-session-match-snippets').textContent).toContain('matched mermaid snippet');
@@ -337,7 +337,7 @@ describe('NativeCopilotSessionsPanel', () => {
         await waitFor(() => expect(screen.getByTestId('native-sessions-table')).toBeTruthy());
 
         fireEvent.click(screen.getAllByTestId('native-session-row')[0]);
-        await waitFor(() => expect(window.location.hash).toBe('#repos/ws-1/cli-sessions/codex/session-aaaa-bbbb'));
+        await waitFor(() => expect(window.location.hash).toBe('#repos/ws-1/cli-sessions/copilot/session-aaaa-bbbb'));
         await waitFor(() => expect(screen.getByTestId('native-session-detail')).toBeTruthy());
     });
 
@@ -347,6 +347,20 @@ describe('NativeCopilotSessionsPanel', () => {
         render(<NativeCopilotSessionsPanel workspaceId="ws-1" />);
         await waitFor(() => expect(mockGet).toHaveBeenCalledWith('ws-1', 'session-aaaa-bbbb', 'codex'));
         await waitFor(() => expect(screen.getByTestId('native-session-detail')).toBeTruthy());
+    });
+
+    it('defaults to Copilot and switches providers through the tab selector', async () => {
+        mockList.mockResolvedValue(makeListResponse([makeListItem()]));
+        render(<NativeCopilotSessionsPanel workspaceId="ws-1" />);
+        await waitFor(() => expect(mockList).toHaveBeenLastCalledWith('ws-1', expect.objectContaining({ provider: 'copilot' })));
+        expect(screen.getByTestId('native-sessions-provider-copilot').getAttribute('aria-selected')).toBe('true');
+
+        fireEvent.click(screen.getByTestId('native-sessions-provider-claude'));
+
+        await waitFor(() => expect(mockList).toHaveBeenLastCalledWith('ws-1', expect.objectContaining({ provider: 'claude' })));
+        expect(window.location.hash).toBe('#repos/ws-1/cli-sessions/claude');
+        expect(screen.getByTestId('native-sessions-provider-claude').getAttribute('aria-selected')).toBe('true');
+        expect(screen.getByTestId('native-session-external-label').textContent).toContain('Native Claude Code session');
     });
 
     it('ignores a deep-link hash that targets a different workspace', async () => {

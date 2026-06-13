@@ -322,7 +322,7 @@ export function parseNativeCliSessionDeepLink(
     const cleaned = hash.replace(/^#/, '');
     const parts = cleaned.split('/');
     if (parts[0] === 'repos' && parts[1] && parts[2] === 'cli-sessions') {
-        const provider = parts[3] ? decodeURIComponent(parts[3]) : 'codex';
+        const provider = parts[3] ? decodeURIComponent(parts[3]) : 'copilot';
         if (provider !== 'copilot' && provider !== 'codex' && provider !== 'claude') return null;
         return {
             workspaceId: decodeURIComponent(parts[1]),

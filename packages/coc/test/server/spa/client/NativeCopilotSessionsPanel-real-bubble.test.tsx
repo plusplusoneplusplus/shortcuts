@@ -180,7 +180,9 @@ function makeRichDetailResponse() {
 async function openDetail() {
     mockList.mockResolvedValue(makeListResponse([makeListItem()]));
     mockGet.mockResolvedValue(makeRichDetailResponse());
+    window.location.hash = '#repos/ws-1/cli-sessions/codex';
     render(<NativeCopilotSessionsPanel workspaceId="ws-1" />);
+    await waitFor(() => expect(screen.getByTestId('native-sessions-provider-codex').getAttribute('aria-selected')).toBe('true'));
     await waitFor(() => expect(screen.getByTestId('native-sessions-table')).toBeTruthy());
     fireEvent.click(screen.getAllByTestId('native-session-row')[0]);
     const detail = await screen.findByTestId('native-session-detail');

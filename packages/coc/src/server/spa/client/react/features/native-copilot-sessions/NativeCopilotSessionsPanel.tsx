@@ -26,7 +26,7 @@ import { ConversationTurnBubble } from '../chat/conversation/ConversationTurnBub
 import { ProviderBadge } from '../chat/ProviderBadge';
 import { toClientConversationTurns } from './nativeConversationTurns';
 
-const PROVIDERS: NativeCliSessionProviderId[] = ['codex', 'claude', 'copilot'];
+const PROVIDERS: NativeCliSessionProviderId[] = ['copilot', 'codex', 'claude'];
 
 const PROVIDER_META: Record<NativeCliSessionProviderId, { label: string; externalLabel: string; store: string }> = {
     codex: {
@@ -111,7 +111,7 @@ function ExternalLabel({ provider, storePath }: { provider: NativeCliSessionProv
 
 export function NativeCliSessionsPanel({ workspaceId }: NativeCliSessionsPanelProps) {
     const enabled = useNativeCliSessionsEnabled();
-    const [provider, setProvider] = useState<NativeCliSessionProviderId>('codex');
+    const [provider, setProvider] = useState<NativeCliSessionProviderId>('copilot');
 
     const [filterDraft, setFilterDraft] = useState<ListFilters>(EMPTY_FILTERS);
     const [filters, setFilters] = useState<ListFilters>(EMPTY_FILTERS);

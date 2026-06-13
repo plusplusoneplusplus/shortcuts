@@ -14,6 +14,14 @@ describe('parseNativeCliSessionDeepLink', () => {
         expect(parseNativeCliSessionDeepLink('#repos')).toBeNull();
     });
 
+    it('defaults a bare CLI Sessions tab link to the Copilot provider', () => {
+        expect(parseNativeCliSessionDeepLink('#repos/ws-1/cli-sessions')).toEqual({
+            workspaceId: 'ws-1',
+            provider: 'copilot',
+            sessionId: null,
+        });
+    });
+
     it('parses the provider tab with a null sessionId', () => {
         expect(parseNativeCliSessionDeepLink('#repos/ws-1/cli-sessions/codex')).toEqual({
             workspaceId: 'ws-1',
