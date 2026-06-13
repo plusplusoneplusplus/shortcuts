@@ -29,7 +29,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
-// One coc client serves BOTH the panel (nativeCopilotSessions.list/get) and the
+// One coc client serves BOTH the panel (nativeCliSessions.list/get) and the
 // real bubble's image gallery (queue.images). Everything else — the `ui` barrel,
 // the chat bubble, ToolCallView, the mapper — is the REAL module.
 
@@ -39,6 +39,7 @@ const mockGet = vi.fn();
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         nativeCopilotSessions: { list: mockList, get: mockGet },
+        nativeCliSessions: { list: mockList, get: mockGet },
         queue: { images: vi.fn() },
     }),
 }));
@@ -62,7 +63,7 @@ function setFlag(enabled: boolean): void {
     (window as any).__DASHBOARD_CONFIG__ = {
         apiBasePath: '/api',
         wsPath: '/ws',
-        features: { nativeCopilotSessionsEnabled: enabled },
+        features: { nativeCliSessionsEnabled: enabled },
     };
 }
 
@@ -78,6 +79,9 @@ function makeListItem() {
         updatedAt: '2026-06-12T14:53:00.000Z',
         turnCount: 3,
         matchSnippets: [],
+        provider: 'codex',
+        storePath: '/home/me/.codex/sessions',
+        searchIndexAvailable: false,
     };
 }
 
@@ -113,6 +117,9 @@ function makeRichDetailResponse() {
             createdAt: '2026-06-12T14:51:00.000Z',
             updatedAt: '2026-06-12T14:53:00.000Z',
             turns: [],
+            provider: 'codex',
+            storePath: '/home/me/.codex/sessions',
+            searchIndexAvailable: false,
             conversation: [
                 {
                     role: 'user',
@@ -198,7 +205,7 @@ describe('NativeCopilotSessionsPanel — real ConversationTurnBubble integration
 
     it('renders the rich transcript through the panel fetch→mapper→real bubble path', async () => {
         const detail = await openDetail();
-        expect(mockGet).toHaveBeenCalledWith('ws-1', 'session-rich-1');
+        expect(mockGet).toHaveBeenCalledWith('ws-1', 'session-rich-1', 'codex');
 
         // Metadata header preserved alongside the transcript.
         expect(detail.textContent).toContain('Inspect the native session store and report its schema.');

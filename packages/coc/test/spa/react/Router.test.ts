@@ -144,12 +144,13 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('pull-requests')).toBe(true);
     });
 
-    it('includes "copilot-sessions"', () => {
+    it('includes "cli-sessions"', () => {
+        expect(VALID_REPO_SUB_TABS.has('cli-sessions')).toBe(true);
         expect(VALID_REPO_SUB_TABS.has('copilot-sessions')).toBe(true);
     });
 
-    it('has exactly 17 entries', () => {
-        expect(VALID_REPO_SUB_TABS.size).toBe(17);
+    it('has exactly 18 entries', () => {
+        expect(VALID_REPO_SUB_TABS.size).toBe(18);
     });
 });
 

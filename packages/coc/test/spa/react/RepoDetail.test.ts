@@ -34,13 +34,13 @@ describe('RepoDetail SUB_TABS', () => {
         expect(SUB_TABS[1].key).toBe('git');
     });
 
-    it('has exactly 13 entries', () => {
-        expect(SUB_TABS).toHaveLength(13);
+    it('has exactly 14 entries', () => {
+        expect(SUB_TABS).toHaveLength(14);
     });
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['chats', 'git', 'terminal', 'work-items', 'dreams', 'pull-requests', 'explorer', 'workflows', 'schedules', 'tasks', 'notes', 'settings', 'wiki']);
+        expect(keys).toEqual(['chats', 'git', 'terminal', 'work-items', 'dreams', 'cli-sessions', 'pull-requests', 'explorer', 'workflows', 'schedules', 'tasks', 'notes', 'settings', 'wiki']);
     });
 
     it('includes "wiki" entry without a shortcut', () => {
@@ -50,7 +50,7 @@ describe('RepoDetail SUB_TABS', () => {
     });
 
     it('has explorer as the seventh tab (after pull requests)', () => {
-        expect(SUB_TABS[6].key).toBe('explorer');
+        expect(SUB_TABS[7].key).toBe('explorer');
     });
 
     it('chats is the first entry', () => {
@@ -69,13 +69,13 @@ describe('RepoDetail VISIBLE_SUB_TABS', () => {
         expect(VISIBLE_SUB_TABS.find(t => t.key === 'wiki')).toBeUndefined();
     });
 
-    it('has 12 entries (all SUB_TABS minus wiki)', () => {
-        expect(VISIBLE_SUB_TABS).toHaveLength(12);
+    it('has 13 entries (all SUB_TABS minus wiki)', () => {
+        expect(VISIBLE_SUB_TABS).toHaveLength(13);
     });
 
     it('contains all non-wiki tabs in order', () => {
         const keys = VISIBLE_SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['chats', 'git', 'terminal', 'work-items', 'dreams', 'pull-requests', 'explorer', 'workflows', 'schedules', 'tasks', 'notes', 'settings']);
+        expect(keys).toEqual(['chats', 'git', 'terminal', 'work-items', 'dreams', 'cli-sessions', 'pull-requests', 'explorer', 'workflows', 'schedules', 'tasks', 'notes', 'settings']);
     });
 
     it('renders visibleSubTabs.map in the tab strip', () => {
@@ -101,7 +101,7 @@ describe('RepoDetail Dreams tab feature gating', () => {
     });
 
     it('visibleSubTabs depends on dreamsEnabled', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('[isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, uiLayoutMode]');
+        expect(REPO_DETAIL_SOURCE).toContain('[isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, uiLayoutMode]');
     });
 
     it('redirects away from dreams when the feature transitions to disabled', () => {
@@ -735,7 +735,7 @@ describe('RepoDetail dev-workflow tab relabeling and reorder', () => {
 
     it('dev-workflow branch defines the correct tab order', () => {
         expect(REPO_DETAIL_SOURCE).toContain(
-            "'chats', 'work-items', 'dreams', 'schedules', 'explorer',",
+            "'chats', 'work-items', 'dreams', 'cli-sessions', 'schedules', 'explorer',",
         );
         expect(REPO_DETAIL_SOURCE).toContain(
             "'workflows', 'git', 'terminal', 'pull-requests', 'tasks', 'settings',",

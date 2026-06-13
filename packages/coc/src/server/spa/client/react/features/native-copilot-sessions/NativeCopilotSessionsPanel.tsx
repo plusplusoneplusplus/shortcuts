@@ -1,9 +1,9 @@
 /**
- * NativeCopilotSessionsPanel — read-only dashboard view for native GitHub
- * Copilot CLI sessions scoped to the active workspace.
+ * NativeCliSessionsPanel — read-only dashboard view for native Copilot,
+ * Codex, and Claude Code CLI sessions scoped to the active workspace.
  *
  * Native sessions are external data read from the server user's
- * `~/.copilot/session-store.db`. This surface intentionally renders no CoC
+ * external CLI stores. This surface intentionally renders no CoC
  * chat actions (no follow-up, archive, pin, delete, resume, retry, or turn
  * actions) and labels every session as an external read-only record. All
  * stored text renders as plain pre-wrapped text so stored HTML/scripts never
@@ -12,21 +12,46 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type {
-    ListNativeCopilotSessionsResponse,
-    NativeCopilotSessionDetail,
-    NativeCopilotSessionListItem,
-    NativeCopilotSessionsUnavailableReason,
+    ListNativeCliSessionsResponse,
+    NativeCliSessionDetail,
+    NativeCliSessionListItem,
+    NativeCliSessionProviderId,
+    NativeCliSessionsUnavailableReason,
 } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient } from '../../api/cocClient';
 import { Button, Spinner, cn } from '../../ui';
-import { useNativeCopilotSessionsEnabled } from '../../hooks/feature-flags/useNativeCopilotSessionsEnabled';
-import { buildNativeCopilotSessionHash, parseNativeCopilotSessionDeepLink } from '../../layout/Router';
+import { useNativeCliSessionsEnabled } from '../../hooks/feature-flags/useNativeCliSessionsEnabled';
+import { buildNativeCliSessionHash, parseNativeCliSessionDeepLink } from '../../layout/Router';
 import { ConversationTurnBubble } from '../chat/conversation/ConversationTurnBubble';
+import { ProviderBadge } from '../chat/ProviderBadge';
 import { toClientConversationTurns } from './nativeConversationTurns';
 
-const READ_ONLY_TOOLTIP = 'This data is read from the local native Copilot CLI session store (~/.copilot/session-store.db) and cannot be modified from CoC.';
+const PROVIDERS: NativeCliSessionProviderId[] = ['codex', 'claude', 'copilot'];
 
-interface NativeCopilotSessionsPanelProps {
+const PROVIDER_META: Record<NativeCliSessionProviderId, { label: string; externalLabel: string; store: string }> = {
+    codex: {
+        label: 'Codex',
+        externalLabel: 'Native Codex CLI session',
+        store: '~/.codex/sessions',
+    },
+    claude: {
+        label: 'Claude',
+        externalLabel: 'Native Claude Code session',
+        store: '~/.claude/projects',
+    },
+    copilot: {
+        label: 'Copilot',
+        externalLabel: 'Native Copilot CLI session',
+        store: '~/.copilot/session-store.db',
+    },
+};
+
+function readOnlyTooltip(provider: NativeCliSessionProviderId, storePath?: string | null): string {
+    const path = storePath || PROVIDER_META[provider].store;
+    return `This data is read from the local ${PROVIDER_META[provider].label} CLI session store (${path}) and cannot be modified from CoC.`;
+}
+
+interface NativeCliSessionsPanelProps {
     workspaceId: string;
 }
 
@@ -47,24 +72,24 @@ function formatTimestamp(value: string | null): string {
     return new Date(parsed).toLocaleString();
 }
 
-function unavailableCopy(reason: NativeCopilotSessionsUnavailableReason | undefined): { title: string; body: string } {
-    if (reason === 'db-missing') {
+function unavailableCopy(provider: NativeCliSessionProviderId, reason: NativeCliSessionsUnavailableReason | undefined): { title: string; body: string } {
+    if (reason === 'store-missing') {
         return {
             title: 'Native session store not found',
-            body: 'No native Copilot CLI session store exists at ~/.copilot/session-store.db on the CoC server. Run the GitHub Copilot CLI at least once to create it.',
+            body: `No native ${PROVIDER_META[provider].label} CLI session store exists at ${PROVIDER_META[provider].store} on the CoC server. Run the CLI at least once to create it.`,
         };
     }
     return {
         title: 'Native session store unavailable',
-        body: 'The native Copilot CLI session store could not be read. It may be corrupt or use an unsupported schema.',
+        body: `The native ${PROVIDER_META[provider].label} CLI session store could not be read. It may be corrupt or use an unsupported schema.`,
     };
 }
 
-function ReadOnlyBadge() {
+function ReadOnlyBadge({ provider, storePath }: { provider: NativeCliSessionProviderId; storePath?: string | null }) {
     return (
         <span
             data-testid="native-session-readonly-badge"
-            title={READ_ONLY_TOOLTIP}
+            title={readOnlyTooltip(provider, storePath)}
             className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-1.5 py-px text-[10px] font-medium text-amber-800"
         >
             Read-only
@@ -72,39 +97,41 @@ function ReadOnlyBadge() {
     );
 }
 
-function ExternalLabel() {
+function ExternalLabel({ provider, storePath }: { provider: NativeCliSessionProviderId; storePath?: string | null }) {
     return (
         <span
             data-testid="native-session-external-label"
-            title={READ_ONLY_TOOLTIP}
+            title={readOnlyTooltip(provider, storePath)}
             className="inline-flex items-center rounded-full border border-[#d0d7de] bg-[#f6f8fa] px-1.5 py-px text-[10px] font-medium text-[#57606a]"
         >
-            Native Copilot CLI session
+            {PROVIDER_META[provider].externalLabel}
         </span>
     );
 }
 
-export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSessionsPanelProps) {
-    const enabled = useNativeCopilotSessionsEnabled();
+export function NativeCliSessionsPanel({ workspaceId }: NativeCliSessionsPanelProps) {
+    const enabled = useNativeCliSessionsEnabled();
+    const [provider, setProvider] = useState<NativeCliSessionProviderId>('codex');
 
     const [filterDraft, setFilterDraft] = useState<ListFilters>(EMPTY_FILTERS);
     const [filters, setFilters] = useState<ListFilters>(EMPTY_FILTERS);
     const [offset, setOffset] = useState(0);
     const [listLoading, setListLoading] = useState(false);
     const [listError, setListError] = useState<string | null>(null);
-    const [listResponse, setListResponse] = useState<ListNativeCopilotSessionsResponse | null>(null);
+    const [listResponse, setListResponse] = useState<ListNativeCliSessionsResponse | null>(null);
 
     const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
     const [detailLoading, setDetailLoading] = useState(false);
     const [detailError, setDetailError] = useState<string | null>(null);
-    const [detail, setDetail] = useState<NativeCopilotSessionDetail | null>(null);
+    const [detail, setDetail] = useState<NativeCliSessionDetail | null>(null);
 
     const loadList = useCallback(async () => {
         if (!enabled) return;
         setListLoading(true);
         setListError(null);
         try {
-            const response = await getSpaCocClient().nativeCopilotSessions.list(workspaceId, {
+            const response = await getSpaCocClient().nativeCliSessions.list(workspaceId, {
+                provider,
                 q: filters.q || undefined,
                 sessionId: filters.sessionId || undefined,
                 branch: filters.branch || undefined,
@@ -119,7 +146,7 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
         } finally {
             setListLoading(false);
         }
-    }, [enabled, workspaceId, filters, offset]);
+    }, [enabled, workspaceId, provider, filters, offset]);
 
     useEffect(() => { void loadList(); }, [loadList]);
 
@@ -130,16 +157,20 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
         setOffset(0);
         setFilterDraft(EMPTY_FILTERS);
         setFilters(EMPTY_FILTERS);
-    }, [workspaceId]);
+    }, [workspaceId, provider]);
 
     // Deep-link: keep the selected session in sync with the URL hash
     // (`#repos/{wsId}/copilot-sessions/{sessionId}`) so selections survive
     // refresh/back/forward and can be shared as links.
     useEffect(() => {
         const apply = () => {
-            const parsed = parseNativeCopilotSessionDeepLink(window.location.hash);
-            const next = parsed && parsed.workspaceId === workspaceId ? parsed.sessionId : null;
-            setSelectedSessionId(prev => (prev === next ? prev : next));
+            const parsed = parseNativeCliSessionDeepLink(window.location.hash);
+            if (parsed && parsed.workspaceId === workspaceId) {
+                setProvider(prev => (prev === parsed.provider ? prev : parsed.provider));
+                setSelectedSessionId(prev => (prev === parsed.sessionId ? prev : parsed.sessionId));
+                return;
+            }
+            setSelectedSessionId(prev => (prev === null ? prev : null));
         };
         apply();
         window.addEventListener('hashchange', apply);
@@ -150,7 +181,17 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
     // hashchange listener above then reconciles `selectedSessionId`.
     const selectSession = useCallback((sessionId: string | null) => {
         setSelectedSessionId(sessionId);
-        const next = buildNativeCopilotSessionHash(workspaceId, sessionId);
+        const next = buildNativeCliSessionHash(workspaceId, provider, sessionId);
+        if (window.location.hash !== next) {
+            window.location.hash = next;
+        }
+    }, [workspaceId, provider]);
+
+    const switchProvider = useCallback((nextProvider: NativeCliSessionProviderId) => {
+        setProvider(nextProvider);
+        setSelectedSessionId(null);
+        setOffset(0);
+        const next = buildNativeCliSessionHash(workspaceId, nextProvider, null);
         if (window.location.hash !== next) {
             window.location.hash = next;
         }
@@ -164,7 +205,7 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
         let cancelled = false;
         setDetailLoading(true);
         setDetailError(null);
-        getSpaCocClient().nativeCopilotSessions.get(workspaceId, selectedSessionId)
+        getSpaCocClient().nativeCliSessions.get(workspaceId, selectedSessionId, provider)
             .then(response => {
                 if (cancelled) return;
                 if (!response.enabled || response.available === false || !response.session) {
@@ -184,16 +225,16 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
             })
             .finally(() => { if (!cancelled) setDetailLoading(false); });
         return () => { cancelled = true; };
-    }, [enabled, workspaceId, selectedSessionId]);
+    }, [enabled, workspaceId, provider, selectedSessionId]);
 
     if (!enabled) {
         return (
             <div className="flex h-full items-center justify-center p-6" data-testid="native-sessions-disabled-by-flag">
                 <div className="max-w-md rounded-lg border border-[#d0d7de] bg-white p-5 text-center">
-                    <h2 className="text-base font-semibold">Copilot Sessions is disabled</h2>
+                    <h2 className="text-base font-semibold">CLI Sessions is disabled</h2>
                     <p className="mt-2 text-sm text-[#57606a]">
-                        Enable the <code>features.nativeCopilotSessions</code> flag in Admin to browse native
-                        GitHub Copilot CLI sessions for this workspace in read-only mode.
+                        Enable the <code>features.nativeCliSessions</code> flag in Admin to browse native
+                        Codex, Claude Code, and Copilot CLI sessions for this workspace in read-only mode.
                     </p>
                 </div>
             </div>
@@ -216,12 +257,33 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
         <div className="flex min-h-0 flex-1 flex-col lg:border-r lg:border-[#d0d7de]">
             <div className="border-b border-[#d0d7de] bg-white px-2.5 py-2">
                 <div className="flex flex-wrap items-center gap-1.5">
-                    <h2 className="text-[13px] font-semibold text-[#1f2328]">Copilot Sessions</h2>
-                    <ExternalLabel />
-                    <ReadOnlyBadge />
+                    <h2 className="text-[13px] font-semibold text-[#1f2328]">CLI Sessions</h2>
+                    <ProviderBadge provider={provider} />
+                    <ExternalLabel provider={provider} storePath={listResponse?.items[0]?.storePath} />
+                    <ReadOnlyBadge provider={provider} storePath={listResponse?.items[0]?.storePath} />
                     <span className="ml-auto inline-flex items-center rounded-full bg-[#f6f8fa] px-1.5 py-0.5 text-[11px] font-medium text-[#57606a]" data-testid="native-sessions-count">
                         {total.toLocaleString()} session{total === 1 ? '' : 's'}
                     </span>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-1" role="tablist" aria-label="CLI session provider" data-testid="native-sessions-provider-switcher">
+                    {PROVIDERS.map(candidate => (
+                        <button
+                            key={candidate}
+                            type="button"
+                            role="tab"
+                            aria-selected={candidate === provider}
+                            onClick={() => switchProvider(candidate)}
+                            className={cn(
+                                'rounded-md border px-2 py-1 text-[11px] font-medium',
+                                candidate === provider
+                                    ? 'border-[#0969da] bg-[#ddf4ff] text-[#0969da]'
+                                    : 'border-[#d0d7de] bg-white text-[#57606a] hover:bg-[#f6f8fa]',
+                            )}
+                            data-testid={`native-sessions-provider-${candidate}`}
+                        >
+                            {PROVIDER_META[candidate].label}
+                        </button>
+                    ))}
                 </div>
                 <form className="mt-2 flex flex-wrap items-end gap-1.5" onSubmit={applyFilters} data-testid="native-sessions-filters">
                     <div className="relative min-w-[140px] flex-1 basis-full">
@@ -232,7 +294,7 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
                             type="text"
                             value={filterDraft.q}
                             onChange={e => setFilterDraft(prev => ({ ...prev, q: e.target.value }))}
-                            placeholder="Search indexed content…"
+                            placeholder="Search transcript text…"
                             className="h-7 w-full rounded-md border border-[#d0d7de] pl-7 pr-2 text-[13px] focus:border-[#0969da] focus:outline-none focus:ring-1 focus:ring-[#0969da]"
                             data-testid="native-sessions-search-input"
                         />
@@ -275,7 +337,7 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
                 </form>
                 {listResponse?.available === true && listResponse.searchIndexAvailable === false && filters.q && (
                     <p className="mt-1 text-xs text-amber-700" data-testid="native-sessions-search-unavailable">
-                        Text search is unavailable: the native store has no search index. Metadata filters still apply.
+                        This provider has no native search index. CoC is using on-demand substring search for the current filter.
                     </p>
                 )}
                 {listResponse?.available === true && (listResponse.deduplicatedCount ?? 0) > 0 && (
@@ -301,15 +363,15 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
                 )}
                 {!listLoading && !listError && unavailable && (
                     <div className="m-3 rounded border border-[#d0d7de] bg-[#f6f8fa] p-4 text-sm" data-testid="native-sessions-unavailable">
-                        <h3 className="font-semibold">{unavailableCopy(listResponse?.reason).title}</h3>
-                        <p className="mt-1 text-[#57606a]">{unavailableCopy(listResponse?.reason).body}</p>
+                        <h3 className="font-semibold">{unavailableCopy(provider, listResponse?.reason).title}</h3>
+                        <p className="mt-1 text-[#57606a]">{unavailableCopy(provider, listResponse?.reason).body}</p>
                     </div>
                 )}
                 {!listLoading && !listError && !unavailable && items.length === 0 && (
                     <div className="m-3 rounded border border-[#d0d7de] bg-white p-4 text-center text-sm text-[#57606a]" data-testid="native-sessions-empty">
                         {hasFilters
-                            ? 'No native Copilot CLI sessions match the current filters.'
-                            : 'No native Copilot CLI sessions were found for this workspace.'}
+                            ? `No native ${PROVIDER_META[provider].label} CLI sessions match the current filters.`
+                            : `No native ${PROVIDER_META[provider].label} CLI sessions were found for this workspace.`}
                     </div>
                 )}
                 {!listLoading && !listError && !unavailable && items.length > 0 && (
@@ -366,7 +428,7 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
     // Wide screens render the searchable table beside the detail; narrow screens
     // stack panes and show one at a time based on selection.
     return (
-        <div className="flex h-full min-h-0 flex-col bg-white" data-testid="native-copilot-sessions-panel">
+        <div className="flex h-full min-h-0 flex-col bg-white" data-testid="native-cli-sessions-panel">
             <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
                 <div className={cn(
                     'min-h-0 flex-col lg:w-[42%] lg:min-w-[380px] lg:max-w-[600px] lg:shrink-0',
@@ -382,8 +444,11 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
     );
 }
 
+/** @deprecated Use NativeCliSessionsPanel. */
+export const NativeCopilotSessionsPanel = NativeCliSessionsPanel;
+
 function SessionRow({ item, selected, onSelect }: {
-    item: NativeCopilotSessionListItem;
+    item: NativeCliSessionListItem;
     selected: boolean;
     onSelect: () => void;
 }) {
@@ -438,7 +503,7 @@ function SessionRow({ item, selected, onSelect }: {
     );
 }
 
-function SessionDetailView({ detail, workspaceId, onBack }: { detail: NativeCopilotSessionDetail; workspaceId: string; onBack: () => void }) {
+function SessionDetailView({ detail, workspaceId, onBack }: { detail: NativeCliSessionDetail; workspaceId: string; onBack: () => void }) {
     // Reconstructed transcript (rich `events.jsonl` parse, else flat DB
     // fallback) mapped into the SPA chat shape so we can reuse the existing
     // read-only chat bubble — no input box, streaming, or resume actions.
@@ -455,12 +520,13 @@ function SessionDetailView({ detail, workspaceId, onBack }: { detail: NativeCopi
                     >
                         ← Back
                     </button>
-                    <ExternalLabel />
-                    <ReadOnlyBadge />
+                    <ProviderBadge provider={detail.provider} />
+                    <ExternalLabel provider={detail.provider} storePath={detail.storePath} />
+                    <ReadOnlyBadge provider={detail.provider} storePath={detail.storePath} />
                 </div>
                 <h2 className="mt-1.5 break-all font-mono text-[13px] font-semibold">{detail.id}</h2>
                 <p className="mt-0.5 text-[11px] text-[#57606a]" data-testid="native-session-readonly-helper">
-                    {READ_ONLY_TOOLTIP}
+                    {readOnlyTooltip(detail.provider, detail.storePath)}
                 </p>
                 <dl className="mt-2 grid grid-cols-1 gap-x-6 gap-y-0.5 text-[11px] sm:grid-cols-2">
                     <div className="flex gap-2"><dt className="font-medium text-[#57606a]">Repository</dt><dd className="break-all">{detail.repository || '—'}</dd></div>
@@ -481,7 +547,7 @@ function SessionDetailView({ detail, workspaceId, onBack }: { detail: NativeCopi
             <div className="rounded-lg border border-[#d0d7de] bg-white p-3" data-testid="native-session-conversation">
                 <h3 className="text-[13px] font-semibold">Conversation ({conversation.length})</h3>
                 <p className="mt-0.5 text-[11px] text-[#57606a]">
-                    Read-only reconstruction of the native Copilot CLI transcript. No follow-up, streaming, or resume.
+                    Read-only reconstruction of the native {PROVIDER_META[detail.provider].label} CLI transcript. No follow-up, streaming, or resume.
                 </p>
                 {conversation.length === 0 ? (
                     <p className="mt-1.5 text-[12px] text-[#57606a]" data-testid="native-session-no-turns">This native session has no stored turns.</p>
@@ -493,7 +559,7 @@ function SessionDetailView({ detail, workspaceId, onBack }: { detail: NativeCopi
                                 turn={turn}
                                 turnIndex={turn.turnIndex ?? index}
                                 wsId={workspaceId}
-                                provider="copilot"
+                                provider={detail.provider}
                             />
                         ))}
                     </div>
