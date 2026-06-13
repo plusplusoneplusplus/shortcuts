@@ -281,6 +281,70 @@ describe('NativeCopilotSessionService', () => {
         }
     });
 
+    it('hides background-job sessions (title summarization) and reports backgroundJobCount', () => {
+        const wsRoot = path.join(tmpDir, 'ws');
+        createFixtureDb(
+            dbPath,
+            [
+                { id: 'real', cwd: wsRoot, updatedAt: '2026-06-03T00:00:00.000Z' },
+                { id: 'title-job', cwd: wsRoot, updatedAt: '2026-06-02T00:00:00.000Z' },
+            ],
+            [
+                { sessionId: 'real', turnIndex: 0, userMessage: 'can you fix the bug in the parser?' },
+                { sessionId: 'title-job', turnIndex: 0, userMessage: 'Summarise the following conversation as a short title (max 8 words)\n\nhello' },
+            ],
+        );
+        const service = new NativeCopilotSessionService({ dbPath });
+        const result = service.listSessions({ rootPath: wsRoot });
+        expect(result.available).toBe(true);
+        if (result.available) {
+            expect(result.items.map(i => i.id)).toEqual(['real']);
+            expect(result.total).toBe(1);
+            expect(result.backgroundJobCount).toBe(1);
+        }
+    });
+
+    it('includes background-job sessions when includeBackgroundJobs is set', () => {
+        const wsRoot = path.join(tmpDir, 'ws');
+        createFixtureDb(
+            dbPath,
+            [
+                { id: 'real', cwd: wsRoot, updatedAt: '2026-06-03T00:00:00.000Z' },
+                { id: 'title-job', cwd: wsRoot, updatedAt: '2026-06-02T00:00:00.000Z' },
+            ],
+            [
+                { sessionId: 'real', turnIndex: 0, userMessage: 'normal prompt' },
+                { sessionId: 'title-job', turnIndex: 0, userMessage: 'Summarise the following conversation as a short title (max 8 words)' },
+            ],
+        );
+        const service = new NativeCopilotSessionService({ dbPath });
+        const result = service.listSessions({ rootPath: wsRoot }, { includeBackgroundJobs: true });
+        expect(result.available).toBe(true);
+        if (result.available) {
+            expect(result.items.map(i => i.id)).toEqual(['real', 'title-job']);
+            expect(result.backgroundJobCount).toBe(0);
+        }
+    });
+
+    it('only treats the first turn as a background-job signal', () => {
+        const wsRoot = path.join(tmpDir, 'ws');
+        createFixtureDb(
+            dbPath,
+            [{ id: 'real', cwd: wsRoot }],
+            [
+                { sessionId: 'real', turnIndex: 0, userMessage: 'real first prompt' },
+                { sessionId: 'real', turnIndex: 1, userMessage: 'Summarise the following conversation as a short title' },
+            ],
+        );
+        const service = new NativeCopilotSessionService({ dbPath });
+        const result = service.listSessions({ rootPath: wsRoot });
+        expect(result.available).toBe(true);
+        if (result.available) {
+            expect(result.items.map(i => i.id)).toEqual(['real']);
+            expect(result.backgroundJobCount).toBe(0);
+        }
+    });
+
     it('finds text hits through search_index with snippets, and supports combined filters', () => {
         const wsRoot = path.join(tmpDir, 'ws');
         createFixtureDb(
@@ -584,6 +648,27 @@ describe('Native Copilot session routes', () => {
         await startServer();
         const res = await request(`${server!.url}/api/workspaces/nope/native-copilot-sessions`);
         expect(res.status).toBe(404);
+    });
+
+    it('hides background-job sessions and reports backgroundJobCount over HTTP', async () => {
+        createFixtureDb(
+            dbPath,
+            [
+                { id: 'real', cwd: workspaceDir, updatedAt: '2026-06-03T00:00:00.000Z' },
+                { id: 'title-job', cwd: workspaceDir, updatedAt: '2026-06-02T00:00:00.000Z' },
+            ],
+            [
+                { sessionId: 'real', turnIndex: 0, userMessage: 'actual user request' },
+                { sessionId: 'title-job', turnIndex: 0, userMessage: 'Summarise the following conversation as a short title (max 8 words)' },
+            ],
+        );
+        await startServer();
+        const res = await request(listUrl());
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.items.map((i: { id: string }) => i.id)).toEqual(['real']);
+        expect(body.total).toBe(1);
+        expect(body.backgroundJobCount).toBe(1);
     });
 });
 

@@ -28,6 +28,18 @@ const MAX_NATIVE_SESSION_LIST_LIMIT = 200;
 const MAX_MATCH_SNIPPETS = 3;
 const SUMMARY_PREVIEW_MAX_CHARS = 200;
 
+/**
+ * First-turn user-prompt prefixes that mark a native session as an automated
+ * background job rather than a user-driven conversation. Matched
+ * case-insensitively against the trimmed `turns.turn_index = 0` user message.
+ * The Copilot CLI spawns these (e.g. to generate a conversation title), so they
+ * are hidden from the read-only session browser by default.
+ */
+const BACKGROUND_JOB_PROMPT_PREFIXES = [
+    'Summarise the following conversation as a short title',
+    'Summarize the following conversation as a short title',
+];
+
 /** Default native Copilot CLI session store location for the server user. */
 export function getDefaultNativeCopilotSessionDbPath(): string {
     return path.join(os.homedir(), '.copilot', 'session-store.db');
@@ -166,7 +178,7 @@ export class NativeCopilotSessionService {
                 textHits = searchIndexAvailable ? this.queryTextHits(db, matchExpression) : new Map();
             }
             if (textHits && textHits.size === 0) {
-                return { available: true, items: [], total: 0, searchIndexAvailable, deduplicatedCount: 0, limit, offset };
+                return { available: true, items: [], total: 0, searchIndexAvailable, deduplicatedCount: 0, backgroundJobCount: 0, limit, offset };
             }
 
             const rows = this.querySessionRows(db, options, textHits);
@@ -199,14 +211,31 @@ export class NativeCopilotSessionService {
                 return true;
             });
 
-            scoped.sort((a, b) => {
+            // Hide automated background-job sessions (e.g. title summarization)
+            // unless explicitly requested. Detected by the first-turn prompt.
+            let backgroundJobCount = 0;
+            let visible = scoped;
+            if (!options.includeBackgroundJobs) {
+                const backgroundJobIds = this.queryBackgroundJobSessionIds(db, scoped.map(row => row.id));
+                if (backgroundJobIds.size > 0) {
+                    visible = scoped.filter(row => {
+                        if (backgroundJobIds.has(row.id)) {
+                            backgroundJobCount += 1;
+                            return false;
+                        }
+                        return true;
+                    });
+                }
+            }
+
+            visible.sort((a, b) => {
                 const aTs = parseTimestamp(a.updated_at);
                 const bTs = parseTimestamp(b.updated_at);
                 return (Number.isNaN(bTs) ? 0 : bTs) - (Number.isNaN(aTs) ? 0 : aTs);
             });
 
-            const total = scoped.length;
-            const page = scoped.slice(offset, offset + limit);
+            const total = visible.length;
+            const page = visible.slice(offset, offset + limit);
             const turnCounts = this.queryTurnCounts(db, page.map(row => row.id));
 
             const items: NativeCopilotSessionListItem[] = page.map(row => ({
@@ -222,7 +251,7 @@ export class NativeCopilotSessionService {
                 matchSnippets: textHits?.get(row.id)?.slice(0, MAX_MATCH_SNIPPETS) ?? [],
             }));
 
-            return { available: true, items, total, searchIndexAvailable, deduplicatedCount, limit, offset };
+            return { available: true, items, total, searchIndexAvailable, deduplicatedCount, backgroundJobCount, limit, offset };
         } catch {
             return { available: false, reason: 'db-invalid', limit, offset };
         } finally {
@@ -392,6 +421,35 @@ export class NativeCopilotSessionService {
             counts.set(row.sessionId, row.turnCount);
         }
         return counts;
+    }
+
+    /**
+     * Return the subset of the given session ids whose first turn (turn_index 0)
+     * is an automated background-job prompt (e.g. conversation-title
+     * summarization). Chunked to stay within SQLite's bound-parameter limit.
+     */
+    private queryBackgroundJobSessionIds(db: Database, sessionIds: string[]): Set<string> {
+        const matches = new Set<string>();
+        if (sessionIds.length === 0 || BACKGROUND_JOB_PROMPT_PREFIXES.length === 0) {
+            return matches;
+        }
+        // Escape LIKE metacharacters in prefixes, then append the wildcard.
+        const likePatterns = BACKGROUND_JOB_PROMPT_PREFIXES.map(
+            prefix => `${prefix.replace(/([\\%_])/g, '\\$1')}%`,
+        );
+        const promptClause = `(${likePatterns.map(() => "user_message LIKE ? ESCAPE '\\'").join(' OR ')})`;
+        const CHUNK = 400;
+        for (let i = 0; i < sessionIds.length; i += CHUNK) {
+            const chunk = sessionIds.slice(i, i + CHUNK);
+            const rows = db.prepare(
+                `SELECT DISTINCT session_id AS sessionId FROM turns
+                 WHERE turn_index = 0 AND session_id IN (${chunk.map(() => '?').join(', ')}) AND ${promptClause}`,
+            ).all(...chunk, ...likePatterns) as { sessionId: string }[];
+            for (const row of rows) {
+                matches.add(row.sessionId);
+            }
+        }
+        return matches;
     }
 
     private querySearchIndexDiagnostics(db: Database, sessionId: string): Map<string, number> {

@@ -73,6 +73,8 @@ export interface ListNativeCopilotSessionsResponse {
   searchIndexAvailable?: boolean;
   /** Count of native sessions hidden because they are already tracked as CoC processes (Activity tab). */
   deduplicatedCount?: number;
+  /** Count of native sessions hidden because they are background jobs (e.g. title summarization). */
+  backgroundJobCount?: number;
   limit: number;
   offset: number;
 }

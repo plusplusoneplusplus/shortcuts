@@ -306,6 +306,36 @@ export function buildNoteHash(wsId: string, notePath: string): string {
     return '#repos/' + encodeURIComponent(wsId) + '/notes/' + encodedPath;
 }
 
+/**
+ * Parse a native Copilot Sessions deep-link:
+ *   `#repos/{wsId}/copilot-sessions`
+ *   `#repos/{wsId}/copilot-sessions/{sessionId}`
+ *
+ * Returns `{ workspaceId, sessionId }` (sessionId null when only the tab is
+ * addressed) when the hash targets the Copilot Sessions tab, `null` otherwise.
+ */
+export function parseNativeCopilotSessionDeepLink(
+    hash: string,
+): { workspaceId: string; sessionId: string | null } | null {
+    const cleaned = hash.replace(/^#/, '');
+    const parts = cleaned.split('/');
+    if (parts[0] === 'repos' && parts[1] && parts[2] === 'copilot-sessions') {
+        return {
+            workspaceId: decodeURIComponent(parts[1]),
+            sessionId: parts[3] ? decodeURIComponent(parts[3]) : null,
+        };
+    }
+    return null;
+}
+
+/**
+ * Build a Copilot Sessions hash. Omitting `sessionId` addresses the bare tab.
+ */
+export function buildNativeCopilotSessionHash(wsId: string, sessionId?: string | null): string {
+    const base = '#repos/' + encodeURIComponent(wsId) + '/copilot-sessions';
+    return sessionId ? base + '/' + encodeURIComponent(sessionId) : base;
+}
+
 export function buildRepoSubTabSuffix(
     tab: RepoSubTab,
     state: AppContextState,

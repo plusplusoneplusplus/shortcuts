@@ -131,8 +131,11 @@ all have their own `references/*.md`.
   session IDs into CoC process/chat action handlers. The list route dedups
   against CoC processes by excluding native `sessions.id` values that match a
   workspace's `ProcessStore.getSdkSessionIds(workspaceId)` (the Copilot SDK/CLI
-  session id equals the native store id); the hidden count is returned as
-  `deduplicatedCount`.
+  session id equals the native store id) and hides automated background-job
+  sessions whose first turn matches `BACKGROUND_JOB_PROMPT_PREFIXES` (e.g. title
+  summarization); the hidden counts are returned as `deduplicatedCount` and
+  `backgroundJobCount`. The panel deep-links the selected session via
+  `#repos/{wsId}/copilot-sessions/{sessionId}`.
 - **Work-item create/update side effects** (hierarchy `parentId` validation,
   GitHub/Azure Boards provider sync, response-cache invalidation, dashboard
   broadcasts, auto-execute) live in the shared command service

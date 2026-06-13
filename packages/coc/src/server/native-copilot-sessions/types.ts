@@ -75,6 +75,11 @@ export interface NativeCopilotSessionListOptions {
      * client-supplied query parameter.
      */
     excludeSessionIds?: ReadonlySet<string>;
+    /**
+     * When true, include background-job sessions (e.g. conversation-title
+     * summarization) that are otherwise hidden. Defaults to false (hide them).
+     */
+    includeBackgroundJobs?: boolean;
 }
 
 /** Workspace identity used to scope native sessions to the active CoC workspace. */
@@ -94,6 +99,8 @@ export type NativeCopilotSessionListResult =
         searchIndexAvailable: boolean;
         /** Count of workspace-scoped native sessions hidden because they are already tracked as CoC processes. */
         deduplicatedCount: number;
+        /** Count of workspace-scoped native sessions hidden because they are background jobs (e.g. title summarization). */
+        backgroundJobCount: number;
     }
     | {
         available: false;

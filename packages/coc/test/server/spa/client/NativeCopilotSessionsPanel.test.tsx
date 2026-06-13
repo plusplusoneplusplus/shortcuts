@@ -118,12 +118,14 @@ describe('NativeCopilotSessionsPanel', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         setFlag(true);
+        window.location.hash = '';
         mockList.mockResolvedValue(makeListResponse([]));
         mockGet.mockResolvedValue(makeDetailResponse());
     });
 
     afterEach(() => {
         cleanup();
+        window.location.hash = '';
         delete (window as any).__DASHBOARD_CONFIG__;
     });
 
@@ -244,5 +246,39 @@ describe('NativeCopilotSessionsPanel', () => {
         render(<NativeCopilotSessionsPanel workspaceId="ws-1" />);
         await waitFor(() => expect(screen.getByTestId('native-sessions-table')).toBeTruthy());
         expect(screen.queryByTestId('native-sessions-deduplicated')).toBeNull();
+    });
+
+    it('shows the background-hidden hint when background jobs are filtered', async () => {
+        mockList.mockResolvedValue(makeListResponse([makeListItem()], { backgroundJobCount: 5 }));
+        render(<NativeCopilotSessionsPanel workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('native-sessions-background-hidden')).toBeTruthy());
+        expect(screen.getByTestId('native-sessions-background-hidden').textContent).toContain('5 background jobs hidden');
+    });
+
+    it('writes the deep-link hash when a session is selected', async () => {
+        mockList.mockResolvedValue(makeListResponse([makeListItem()]));
+        render(<NativeCopilotSessionsPanel workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('native-sessions-table')).toBeTruthy());
+
+        fireEvent.click(screen.getAllByTestId('native-session-row')[0]);
+        await waitFor(() => expect(window.location.hash).toBe('#repos/ws-1/copilot-sessions/session-aaaa-bbbb'));
+        await waitFor(() => expect(screen.getByTestId('native-session-detail')).toBeTruthy());
+    });
+
+    it('restores the selected session from a deep-link hash on mount', async () => {
+        mockList.mockResolvedValue(makeListResponse([makeListItem()]));
+        window.location.hash = '#repos/ws-1/copilot-sessions/session-aaaa-bbbb';
+        render(<NativeCopilotSessionsPanel workspaceId="ws-1" />);
+        await waitFor(() => expect(mockGet).toHaveBeenCalledWith('ws-1', 'session-aaaa-bbbb'));
+        await waitFor(() => expect(screen.getByTestId('native-session-detail')).toBeTruthy());
+    });
+
+    it('ignores a deep-link hash that targets a different workspace', async () => {
+        mockList.mockResolvedValue(makeListResponse([makeListItem()]));
+        window.location.hash = '#repos/other-ws/copilot-sessions/session-aaaa-bbbb';
+        render(<NativeCopilotSessionsPanel workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('native-sessions-table')).toBeTruthy());
+        expect(mockGet).not.toHaveBeenCalled();
+        expect(screen.getByTestId('native-session-detail-empty')).toBeTruthy();
     });
 });

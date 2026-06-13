@@ -123,6 +123,7 @@ export function registerNativeCopilotSessionRoutes(ctx: NativeCopilotSessionRout
                 total: result.total,
                 searchIndexAvailable: result.searchIndexAvailable,
                 deduplicatedCount: result.deduplicatedCount,
+                backgroundJobCount: result.backgroundJobCount,
                 limit: result.limit,
                 offset: result.offset,
             });

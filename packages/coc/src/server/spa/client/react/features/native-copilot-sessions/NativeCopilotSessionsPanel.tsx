@@ -20,6 +20,7 @@ import type {
 import { getSpaCocClient } from '../../api/cocClient';
 import { Button, Spinner, cn } from '../../ui';
 import { useNativeCopilotSessionsEnabled } from '../../hooks/feature-flags/useNativeCopilotSessionsEnabled';
+import { buildNativeCopilotSessionHash, parseNativeCopilotSessionDeepLink } from '../../layout/Router';
 
 const READ_ONLY_TOOLTIP = 'This data is read from the local native Copilot CLI session store (~/.copilot/session-store.db) and cannot be modified from CoC.';
 
@@ -120,13 +121,37 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
 
     useEffect(() => { void loadList(); }, [loadList]);
 
-    // Reset selection and paging when the workspace changes.
+    // Reset paging/filters when the workspace changes. Selection is driven by
+    // the URL hash (see the deep-link sync effect below).
     useEffect(() => {
-        setSelectedSessionId(null);
         setDetail(null);
         setOffset(0);
         setFilterDraft(EMPTY_FILTERS);
         setFilters(EMPTY_FILTERS);
+    }, [workspaceId]);
+
+    // Deep-link: keep the selected session in sync with the URL hash
+    // (`#repos/{wsId}/copilot-sessions/{sessionId}`) so selections survive
+    // refresh/back/forward and can be shared as links.
+    useEffect(() => {
+        const apply = () => {
+            const parsed = parseNativeCopilotSessionDeepLink(window.location.hash);
+            const next = parsed && parsed.workspaceId === workspaceId ? parsed.sessionId : null;
+            setSelectedSessionId(prev => (prev === next ? prev : next));
+        };
+        apply();
+        window.addEventListener('hashchange', apply);
+        return () => window.removeEventListener('hashchange', apply);
+    }, [workspaceId]);
+
+    // Selecting (or clearing) a session writes the deep-link hash; the
+    // hashchange listener above then reconciles `selectedSessionId`.
+    const selectSession = useCallback((sessionId: string | null) => {
+        setSelectedSessionId(sessionId);
+        const next = buildNativeCopilotSessionHash(workspaceId, sessionId);
+        if (window.location.hash !== next) {
+            window.location.hash = next;
+        }
     }, [workspaceId]);
 
     useEffect(() => {
@@ -256,6 +281,11 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
                         {listResponse.deduplicatedCount} session{listResponse.deduplicatedCount === 1 ? '' : 's'} hidden — already tracked in CoC Activity.
                     </p>
                 )}
+                {listResponse?.available === true && (listResponse.backgroundJobCount ?? 0) > 0 && (
+                    <p className="mt-1 text-[11px] text-[#57606a]" data-testid="native-sessions-background-hidden">
+                        {listResponse.backgroundJobCount} background job{listResponse.backgroundJobCount === 1 ? '' : 's'} hidden (e.g. title generation).
+                    </p>
+                )}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
                 {listLoading && (
@@ -288,7 +318,7 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
                                     key={item.id}
                                     item={item}
                                     selected={item.id === selectedSessionId}
-                                    onSelect={() => setSelectedSessionId(item.id)}
+                                    onSelect={() => selectSession(item.id)}
                                 />
                             ))}
                         </tbody>
@@ -326,7 +356,7 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
                 </div>
             )}
             {selectedSessionId && !detailLoading && !detailError && detail && (
-                <SessionDetailView detail={detail} onBack={() => setSelectedSessionId(null)} />
+                <SessionDetailView detail={detail} onBack={() => selectSession(null)} />
             )}
         </div>
     );
