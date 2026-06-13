@@ -62,7 +62,7 @@ function ReadOnlyBadge() {
         <span
             data-testid="native-session-readonly-badge"
             title={READ_ONLY_TOOLTIP}
-            className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800"
+            className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-1.5 py-px text-[10px] font-medium text-amber-800"
         >
             Read-only
         </span>
@@ -74,7 +74,7 @@ function ExternalLabel() {
         <span
             data-testid="native-session-external-label"
             title={READ_ONLY_TOOLTIP}
-            className="inline-flex items-center rounded-full border border-[#d0d7de] bg-[#f6f8fa] px-2 py-0.5 text-[11px] font-medium text-[#57606a]"
+            className="inline-flex items-center rounded-full border border-[#d0d7de] bg-[#f6f8fa] px-1.5 py-px text-[10px] font-medium text-[#57606a]"
         >
             Native Copilot CLI session
         </span>
@@ -187,17 +187,17 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
 
     const listPane = (
         <div className="flex min-h-0 flex-1 flex-col lg:border-r lg:border-[#d0d7de]">
-            <div className="border-b border-[#d0d7de] bg-white px-3 py-3">
-                <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-sm font-semibold text-[#1f2328]">Copilot Sessions</h2>
+            <div className="border-b border-[#d0d7de] bg-white px-2.5 py-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                    <h2 className="text-[13px] font-semibold text-[#1f2328]">Copilot Sessions</h2>
                     <ExternalLabel />
                     <ReadOnlyBadge />
-                    <span className="ml-auto inline-flex items-center rounded-full bg-[#f6f8fa] px-2 py-0.5 text-xs font-medium text-[#57606a]" data-testid="native-sessions-count">
+                    <span className="ml-auto inline-flex items-center rounded-full bg-[#f6f8fa] px-1.5 py-0.5 text-[11px] font-medium text-[#57606a]" data-testid="native-sessions-count">
                         {total.toLocaleString()} session{total === 1 ? '' : 's'}
                     </span>
                 </div>
-                <form className="mt-3 flex flex-wrap items-end gap-2" onSubmit={applyFilters} data-testid="native-sessions-filters">
-                    <div className="relative min-w-[160px] flex-1 basis-full">
+                <form className="mt-2 flex flex-wrap items-end gap-1.5" onSubmit={applyFilters} data-testid="native-sessions-filters">
+                    <div className="relative min-w-[140px] flex-1 basis-full">
                         <svg className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8c959f]" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                             <path d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 1 1-1.06 1.06ZM11.5 7a4.5 4.5 0 1 0-9 0 4.5 4.5 0 0 0 9 0Z" />
                         </svg>
@@ -206,7 +206,7 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
                             value={filterDraft.q}
                             onChange={e => setFilterDraft(prev => ({ ...prev, q: e.target.value }))}
                             placeholder="Search indexed content…"
-                            className="h-8 w-full rounded-md border border-[#d0d7de] pl-7 pr-2 text-sm focus:border-[#0969da] focus:outline-none focus:ring-1 focus:ring-[#0969da]"
+                            className="h-7 w-full rounded-md border border-[#d0d7de] pl-7 pr-2 text-[13px] focus:border-[#0969da] focus:outline-none focus:ring-1 focus:ring-[#0969da]"
                             data-testid="native-sessions-search-input"
                         />
                     </div>
@@ -215,7 +215,7 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
                         value={filterDraft.sessionId}
                         onChange={e => setFilterDraft(prev => ({ ...prev, sessionId: e.target.value }))}
                         placeholder="Session ID"
-                        className="h-8 w-32 rounded-md border border-[#d0d7de] px-2 text-sm focus:border-[#0969da] focus:outline-none focus:ring-1 focus:ring-[#0969da]"
+                        className="h-7 w-28 rounded-md border border-[#d0d7de] px-2 text-[13px] focus:border-[#0969da] focus:outline-none focus:ring-1 focus:ring-[#0969da]"
                         data-testid="native-sessions-session-id-input"
                     />
                     <input
@@ -223,25 +223,25 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
                         value={filterDraft.branch}
                         onChange={e => setFilterDraft(prev => ({ ...prev, branch: e.target.value }))}
                         placeholder="Branch"
-                        className="h-8 w-28 rounded-md border border-[#d0d7de] px-2 text-sm focus:border-[#0969da] focus:outline-none focus:ring-1 focus:ring-[#0969da]"
+                        className="h-7 w-24 rounded-md border border-[#d0d7de] px-2 text-[13px] focus:border-[#0969da] focus:outline-none focus:ring-1 focus:ring-[#0969da]"
                         data-testid="native-sessions-branch-input"
                     />
-                    <label className="flex items-center gap-1 text-xs text-[#57606a]">
+                    <label className="flex items-center gap-1 text-[11px] text-[#57606a]">
                         From
                         <input
                             type="date"
                             value={filterDraft.from}
                             onChange={e => setFilterDraft(prev => ({ ...prev, from: e.target.value }))}
-                            className="h-8 rounded-md border border-[#d0d7de] px-2 text-sm focus:border-[#0969da] focus:outline-none focus:ring-1 focus:ring-[#0969da]"
+                            className="h-7 rounded-md border border-[#d0d7de] px-1.5 text-[13px] focus:border-[#0969da] focus:outline-none focus:ring-1 focus:ring-[#0969da]"
                         />
                     </label>
-                    <label className="flex items-center gap-1 text-xs text-[#57606a]">
+                    <label className="flex items-center gap-1 text-[11px] text-[#57606a]">
                         To
                         <input
                             type="date"
                             value={filterDraft.to}
                             onChange={e => setFilterDraft(prev => ({ ...prev, to: e.target.value }))}
-                            className="h-8 rounded-md border border-[#d0d7de] px-2 text-sm focus:border-[#0969da] focus:outline-none focus:ring-1 focus:ring-[#0969da]"
+                            className="h-7 rounded-md border border-[#d0d7de] px-1.5 text-[13px] focus:border-[#0969da] focus:outline-none focus:ring-1 focus:ring-[#0969da]"
                         />
                     </label>
                     <Button type="submit" size="sm" data-testid="native-sessions-apply-filters">Apply</Button>
@@ -360,36 +360,36 @@ function SessionRow({ item, selected, onSelect }: {
                 selected && 'bg-[#ddf4ff] hover:bg-[#ddf4ff]',
             )}
         >
-            <td className={cn('px-3 py-2.5', selected ? 'border-l-2 border-[#0969da]' : 'border-l-2 border-transparent')}>
-                <div className="flex items-start gap-3">
+            <td className={cn('px-2.5 py-1.5', selected ? 'border-l-2 border-[#0969da]' : 'border-l-2 border-transparent')}>
+                <div className="flex items-start gap-2">
                     <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                            <span className="rounded border border-[#d0d7de] bg-[#f6f8fa] px-1.5 py-0.5 font-mono text-[11px] text-[#57606a]">{item.id.slice(0, 8)}</span>
-                            <span className="text-[11px] text-[#8c959f]" title={`Created ${formatTimestamp(item.createdAt)}`}>{formatTimestamp(item.updatedAt)}</span>
+                        <div className="flex items-center gap-1.5">
+                            <span className="rounded border border-[#d0d7de] bg-[#f6f8fa] px-1 py-px font-mono text-[10px] text-[#57606a]">{item.id.slice(0, 8)}</span>
+                            <span className="text-[10px] text-[#8c959f]" title={`Created ${formatTimestamp(item.createdAt)}`}>{formatTimestamp(item.updatedAt)}</span>
                         </div>
-                        <div className="mt-1 line-clamp-2 whitespace-pre-wrap text-[13px] leading-snug text-[#1f2328]">{item.summaryPreview || <span className="text-[#8c959f]">No summary stored</span>}</div>
+                        <div className="mt-0.5 line-clamp-2 whitespace-pre-wrap text-[12px] leading-snug text-[#1f2328]">{item.summaryPreview || <span className="text-[#8c959f]">No summary stored</span>}</div>
                         {item.matchSnippets.length > 0 && (
-                            <div className="mt-1 space-y-0.5" data-testid="native-session-match-snippets">
+                            <div className="mt-0.5 space-y-0.5" data-testid="native-session-match-snippets">
                                 {item.matchSnippets.map((snippet, index) => (
-                                    <div key={index} className="truncate rounded bg-[#fff8c5] px-1 py-0.5 text-xs text-[#57606a]">{snippet}</div>
+                                    <div key={index} className="truncate rounded bg-[#fff8c5] px-1 py-px text-[11px] text-[#57606a]">{snippet}</div>
                                 ))}
                             </div>
                         )}
                         {location && (
-                            <div className="mt-1.5 flex items-center gap-1 text-[11px] text-[#8c959f]">
-                                <svg className="h-3 w-3 shrink-0" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                            <div className="mt-0.5 flex items-center gap-1 text-[10px] text-[#8c959f]">
+                                <svg className="h-2.5 w-2.5 shrink-0" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                                     <path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 10 4.25V1.5Z" />
                                 </svg>
                                 <span className="truncate">{location}</span>
                             </div>
                         )}
                     </div>
-                    <div className="flex shrink-0 flex-col items-end gap-1.5">
-                        <span className="inline-flex items-center rounded-full bg-[#f6f8fa] px-2 py-0.5 text-[11px] font-medium text-[#57606a]" title={`${item.turnCount} turn${item.turnCount === 1 ? '' : 's'}`}>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                        <span className="inline-flex items-center rounded-full bg-[#f6f8fa] px-1.5 py-px text-[10px] font-medium text-[#57606a]" title={`${item.turnCount} turn${item.turnCount === 1 ? '' : 's'}`}>
                             {item.turnCount} turn{item.turnCount === 1 ? '' : 's'}
                         </span>
-                        <span className="inline-flex max-w-[140px] items-center gap-1 truncate text-[11px] text-[#57606a]" title={item.branch || 'Unknown branch'}>
-                            <svg className="h-3 w-3 shrink-0 text-[#8c959f]" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                        <span className="inline-flex max-w-[120px] items-center gap-1 truncate text-[10px] text-[#57606a]" title={item.branch || 'Unknown branch'}>
+                            <svg className="h-2.5 w-2.5 shrink-0 text-[#8c959f]" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                                 <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z" />
                             </svg>
                             <span className="truncate">{item.branch || 'Unknown branch'}</span>
@@ -403,13 +403,13 @@ function SessionRow({ item, selected, onSelect }: {
 
 function SessionDetailView({ detail, onBack }: { detail: NativeCopilotSessionDetail; onBack: () => void }) {
     return (
-        <div className="flex flex-col gap-3 p-4" data-testid="native-session-detail">
-            <div className="rounded-lg border border-[#d0d7de] bg-white p-4">
-                <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col gap-2 p-2.5" data-testid="native-session-detail">
+            <div className="rounded-lg border border-[#d0d7de] bg-white p-3">
+                <div className="flex flex-wrap items-center gap-1.5">
                     <button
                         type="button"
                         onClick={onBack}
-                        className="rounded border border-[#d0d7de] px-2 py-0.5 text-xs lg:hidden"
+                        className="rounded border border-[#d0d7de] px-2 py-0.5 text-[11px] lg:hidden"
                         data-testid="native-session-detail-back"
                     >
                         ← Back
@@ -417,11 +417,11 @@ function SessionDetailView({ detail, onBack }: { detail: NativeCopilotSessionDet
                     <ExternalLabel />
                     <ReadOnlyBadge />
                 </div>
-                <h2 className="mt-2 break-all font-mono text-sm font-semibold">{detail.id}</h2>
-                <p className="mt-1 text-xs text-[#57606a]" data-testid="native-session-readonly-helper">
+                <h2 className="mt-1.5 break-all font-mono text-[13px] font-semibold">{detail.id}</h2>
+                <p className="mt-0.5 text-[11px] text-[#57606a]" data-testid="native-session-readonly-helper">
                     {READ_ONLY_TOOLTIP}
                 </p>
-                <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1 text-xs sm:grid-cols-2">
+                <dl className="mt-2 grid grid-cols-1 gap-x-6 gap-y-0.5 text-[11px] sm:grid-cols-2">
                     <div className="flex gap-2"><dt className="font-medium text-[#57606a]">Repository</dt><dd className="break-all">{detail.repository || '—'}</dd></div>
                     <div className="flex gap-2"><dt className="font-medium text-[#57606a]">Branch</dt><dd>{detail.branch || 'Unknown branch'}</dd></div>
                     <div className="flex gap-2"><dt className="font-medium text-[#57606a]">Working dir</dt><dd className="break-all">{detail.cwd || '—'}</dd></div>
@@ -430,22 +430,22 @@ function SessionDetailView({ detail, onBack }: { detail: NativeCopilotSessionDet
                     <div className="flex gap-2"><dt className="font-medium text-[#57606a]">Updated</dt><dd>{formatTimestamp(detail.updatedAt)}</dd></div>
                 </dl>
                 {detail.summary && (
-                    <div className="mt-3">
-                        <h3 className="text-xs font-semibold text-[#57606a]">Stored summary</h3>
-                        <pre className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded bg-[#f6f8fa] p-2 font-sans text-[13px]" data-testid="native-session-summary">{detail.summary}</pre>
+                    <div className="mt-2">
+                        <h3 className="text-[11px] font-semibold text-[#57606a]">Stored summary</h3>
+                        <pre className="mt-0.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded bg-[#f6f8fa] p-1.5 font-sans text-[12px]" data-testid="native-session-summary">{detail.summary}</pre>
                     </div>
                 )}
             </div>
 
-            <div className="rounded-lg border border-[#d0d7de] bg-white p-4">
-                <h3 className="text-sm font-semibold">Turns ({detail.turns.length})</h3>
+            <div className="rounded-lg border border-[#d0d7de] bg-white p-3">
+                <h3 className="text-[13px] font-semibold">Turns ({detail.turns.length})</h3>
                 {detail.turns.length === 0 && (
-                    <p className="mt-2 text-sm text-[#57606a]" data-testid="native-session-no-turns">This native session has no stored turns.</p>
+                    <p className="mt-1.5 text-[12px] text-[#57606a]" data-testid="native-session-no-turns">This native session has no stored turns.</p>
                 )}
-                <ol className="mt-2 space-y-3">
+                <ol className="mt-1.5 space-y-2">
                     {detail.turns.map(turn => (
-                        <li key={turn.id} className="rounded border border-[#eaeef2] p-3" data-testid="native-session-turn">
-                            <div className="flex flex-wrap items-center gap-2 text-xs text-[#57606a]">
+                        <li key={turn.id} className="rounded border border-[#eaeef2] p-2" data-testid="native-session-turn">
+                            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-[#57606a]">
                                 <span className="font-medium">Turn {turn.turnIndex}</span>
                                 <span>{formatTimestamp(turn.timestamp)}</span>
                                 <span>{turn.userChars} user chars · {turn.assistantChars} assistant chars</span>
@@ -455,15 +455,15 @@ function SessionDetailView({ detail, onBack }: { detail: NativeCopilotSessionDet
                                         : 'Not indexed'}
                                 </span>
                             </div>
-                            <div className="mt-2">
-                                <h4 className="text-xs font-semibold text-[#57606a]">User</h4>
-                                <pre className="mt-1 max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded bg-[#f6f8fa] p-2 font-sans text-[13px]" data-testid="native-session-turn-user">{turn.userMessage || '—'}</pre>
+                            <div className="mt-1.5">
+                                <h4 className="text-[11px] font-semibold text-[#57606a]">User</h4>
+                                <pre className="mt-0.5 max-h-56 overflow-y-auto whitespace-pre-wrap break-words rounded bg-[#f6f8fa] p-1.5 font-sans text-[12px]" data-testid="native-session-turn-user">{turn.userMessage || '—'}</pre>
                             </div>
-                            <div className="mt-2">
-                                <h4 className="text-xs font-semibold text-[#57606a]">Assistant</h4>
+                            <div className="mt-1.5">
+                                <h4 className="text-[11px] font-semibold text-[#57606a]">Assistant</h4>
                                 {turn.assistantResponse
-                                    ? <pre className="mt-1 max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded bg-[#f6f8fa] p-2 font-sans text-[13px]" data-testid="native-session-turn-assistant">{turn.assistantResponse}</pre>
-                                    : <p className="mt-1 text-[13px] italic text-[#8c959f]" data-testid="native-session-turn-no-assistant">No assistant response stored</p>}
+                                    ? <pre className="mt-0.5 max-h-56 overflow-y-auto whitespace-pre-wrap break-words rounded bg-[#f6f8fa] p-1.5 font-sans text-[12px]" data-testid="native-session-turn-assistant">{turn.assistantResponse}</pre>
+                                    : <p className="mt-0.5 text-[12px] italic text-[#8c959f]" data-testid="native-session-turn-no-assistant">No assistant response stored</p>}
                             </div>
                         </li>
                     ))}
