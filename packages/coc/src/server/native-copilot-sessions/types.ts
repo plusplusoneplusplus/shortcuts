@@ -175,3 +175,52 @@ export type NativeCopilotSessionListResult =
 export type NativeCopilotSessionDetailResult =
     | { available: true; session: NativeCopilotSessionDetail | null }
     | { available: false; reason: Exclude<NativeCopilotSessionsUnavailableReason, 'feature-disabled'> };
+
+export type NativeCliSessionProviderId = 'copilot' | 'codex' | 'claude';
+
+export type NativeCliSessionsUnavailableReason = 'feature-disabled' | 'store-missing' | 'store-invalid';
+
+export interface NativeCliSessionListItem extends NativeCopilotSessionListItem {
+    provider: NativeCliSessionProviderId;
+    storePath: string;
+    searchIndexAvailable: false;
+}
+
+export interface NativeCliSessionDetail extends NativeCopilotSessionDetail {
+    provider: NativeCliSessionProviderId;
+    storePath: string;
+    searchIndexAvailable: false;
+}
+
+export interface NativeCliSessionListOptions extends Omit<NativeCopilotSessionListOptions, 'includeBackgroundJobs'> {
+    provider?: NativeCliSessionProviderId;
+}
+
+export type NativeCliSessionListResult =
+    | {
+        available: true;
+        items: NativeCliSessionListItem[];
+        total: number;
+        searchIndexAvailable: false;
+        deduplicatedCount: number;
+        backgroundJobCount: 0;
+    }
+    | {
+        available: false;
+        reason: Exclude<NativeCliSessionsUnavailableReason, 'feature-disabled'>;
+    };
+
+export type NativeCliSessionDetailResult =
+    | { available: true; session: NativeCliSessionDetail | null }
+    | { available: false; reason: Exclude<NativeCliSessionsUnavailableReason, 'feature-disabled'> };
+
+export interface NativeSessionProvider {
+    readonly provider: NativeCliSessionProviderId;
+    readonly label: string;
+    readonly storePath: string;
+    listSessions(
+        scope: NativeSessionWorkspaceScope,
+        options?: NativeCliSessionListOptions,
+    ): NativeCliSessionListResult & { limit: number; offset: number };
+    getSession(scope: NativeSessionWorkspaceScope, id: string): NativeCliSessionDetailResult;
+}
