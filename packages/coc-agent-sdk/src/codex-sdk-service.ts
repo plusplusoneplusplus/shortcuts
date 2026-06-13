@@ -160,19 +160,47 @@ interface CodexItemEvent {
         text?: string;
         command?: string;
         aggregated_output?: string;
+        aggregatedOutput?: string | null;
         exit_code?: number;
+        exitCode?: number | null;
         status?: string;
         changes?: Array<{ path?: string; kind?: string }>;
         server?: string;
+        namespace?: string | null;
         tool?: string;
         arguments?: unknown;
         result?: unknown;
-        error?: { message?: string };
+        error?: { message?: string } | string | null;
         query?: string;
+        contentItems?: unknown[] | null;
+        content_items?: unknown[] | null;
+        success?: boolean | null;
+        senderThreadId?: string;
+        sender_thread_id?: string;
+        receiverThreadIds?: string[];
+        receiver_thread_ids?: string[];
+        receiverThreadId?: string;
+        receiver_thread_id?: string;
+        newThreadId?: string;
+        new_thread_id?: string;
+        prompt?: string | null;
+        model?: string | null;
+        reasoningEffort?: string | null;
+        reasoning_effort?: string | null;
+        agentsStates?: Record<string, { status?: string; message?: string | null } | undefined>;
+        agents_states?: Record<string, { status?: string; message?: string | null } | undefined>;
     };
 }
 
 type CodexThreadEvent = CodexThreadStartedEvent | CodexTurnCompletedEvent | CodexTurnFailedEvent | CodexErrorEvent | CodexItemEvent;
+type CodexToolPhase = 'started' | 'updated' | 'completed';
+interface NormalizedCodexToolItem {
+    id: string;
+    toolName: string;
+    parameters: Record<string, unknown>;
+    result?: string;
+    error?: string;
+}
 
 interface CodexFileChange {
     path?: string;
@@ -847,6 +875,7 @@ export class CodexSDKService implements ISDKService {
         let sessionCreatedNotified = false;
         const toolCalls = new Map<string, ToolCall>();
         const startedToolCalls = new Set<string>();
+        const completedToolCalls = new Set<string>();
         const fileChangeDiffTracker = new CodexFileChangeDiffTracker(options.workingDirectory);
         // Releases the per-invocation CoC LLM-tool MCP bridge (no-op when no tools).
         let mcpCleanup: () => void = () => {};
@@ -899,16 +928,20 @@ export class CodexSDKService implements ISDKService {
                     throw new Error(event.message ?? 'Codex stream error');
                 }
                 if (event.type === 'item.started') {
-                    await this.handleCodexToolItem(event.item, 'started', options, toolCalls, startedToolCalls, fileChangeDiffTracker);
+                    await this.handleCodexToolItem(event.item, 'started', options, toolCalls, startedToolCalls, completedToolCalls, fileChangeDiffTracker);
+                    continue;
+                }
+                if (event.type === 'item.updated') {
+                    await this.handleCodexToolItem(event.item, 'updated', options, toolCalls, startedToolCalls, completedToolCalls, fileChangeDiffTracker);
                     continue;
                 }
                 if (event.type === 'item.completed') {
-                    if (event.item?.type === 'agent_message' && event.item.text) {
+                    if ((event.item?.type === 'agent_message' || event.item?.type === 'agentMessage') && event.item.text) {
                         chunks.push(event.item.text);
                         options.onStreamingChunk?.(event.item.text);
                         continue;
                     }
-                    await this.handleCodexToolItem(event.item, 'completed', options, toolCalls, startedToolCalls, fileChangeDiffTracker);
+                    await this.handleCodexToolItem(event.item, 'completed', options, toolCalls, startedToolCalls, completedToolCalls, fileChangeDiffTracker);
                     continue;
                 }
             }
@@ -938,17 +971,25 @@ export class CodexSDKService implements ISDKService {
 
     private async handleCodexToolItem(
         item: CodexItemEvent['item'] | undefined,
-        phase: 'started' | 'completed',
+        phase: CodexToolPhase,
         options: SendMessageOptions,
         toolCalls: Map<string, ToolCall>,
         startedToolCalls: Set<string>,
+        completedToolCalls: Set<string>,
         fileChangeDiffTracker: CodexFileChangeDiffTracker,
     ): Promise<void> {
-        const normalized = await this.normalizeCodexToolItem(item, phase, fileChangeDiffTracker);
+        const effectivePhase = phase === 'updated' && this.isTerminalCodexToolItem(item) ? 'completed' : phase;
+        const normalized = await this.normalizeCodexToolItem(item, effectivePhase, fileChangeDiffTracker);
         if (!normalized) return;
 
-        if (phase === 'started') {
-            if (startedToolCalls.has(normalized.id)) return;
+        if (effectivePhase !== 'completed') {
+            if (startedToolCalls.has(normalized.id)) {
+                const existing = toolCalls.get(normalized.id);
+                if (existing) {
+                    existing.args = normalized.parameters;
+                }
+                return;
+            }
             startedToolCalls.add(normalized.id);
             const now = new Date();
             toolCalls.set(normalized.id, {
@@ -967,8 +1008,9 @@ export class CodexSDKService implements ISDKService {
             return;
         }
 
+        if (completedToolCalls.has(normalized.id)) return;
         if (!startedToolCalls.has(normalized.id)) {
-            await this.handleCodexToolItem(item, 'started', options, toolCalls, startedToolCalls, fileChangeDiffTracker);
+            await this.handleCodexToolItem(item, 'started', options, toolCalls, startedToolCalls, completedToolCalls, fileChangeDiffTracker);
         }
 
         const existing = toolCalls.get(normalized.id);
@@ -983,6 +1025,7 @@ export class CodexSDKService implements ISDKService {
                 existing.result = normalized.result;
             }
         }
+        completedToolCalls.add(normalized.id);
 
         this.emitToolEvent(options, normalized.error
             ? {
@@ -1011,31 +1054,26 @@ export class CodexSDKService implements ISDKService {
 
     private async normalizeCodexToolItem(
         item: CodexItemEvent['item'] | undefined,
-        phase: 'started' | 'completed',
+        phase: CodexToolPhase,
         fileChangeDiffTracker: CodexFileChangeDiffTracker,
-    ): Promise<{
-        id: string;
-        toolName: string;
-        parameters: Record<string, unknown>;
-        result?: string;
-        error?: string;
-    } | undefined> {
+    ): Promise<NormalizedCodexToolItem | undefined> {
         if (!item?.type || !item.id) return undefined;
-        switch (item.type) {
-            case 'command_execution': {
+        switch (this.normalizeCodexItemType(item.type)) {
+            case 'commandexecution': {
                 const command = typeof item.command === 'string' ? item.command : '';
-                const output = typeof item.aggregated_output === 'string' ? item.aggregated_output : '';
-                const failed = item.status === 'failed';
+                const output = this.getStringField(item, 'aggregated_output', 'aggregatedOutput') ?? '';
+                const exitCode = this.getNumberField(item, 'exit_code', 'exitCode');
+                const failed = this.isFailedStatus(item.status);
                 return {
                     id: item.id,
                     toolName: 'shell',
                     parameters: { command },
-                    ...(failed ? { error: output || `Command failed${typeof item.exit_code === 'number' ? ` with exit code ${item.exit_code}` : ''}` } : { result: output }),
+                    ...(failed ? { error: output || `Command failed${typeof exitCode === 'number' ? ` with exit code ${exitCode}` : ''}` } : { result: output }),
                 };
             }
-            case 'file_change': {
+            case 'filechange': {
                 const changes = Array.isArray(item.changes) ? item.changes : [];
-                const failed = item.status === 'failed';
+                const failed = this.isFailedStatus(item.status);
                 const parameters = phase === 'completed' && !failed
                     ? await fileChangeDiffTracker.enrichParameters(changes)
                     : { changes };
@@ -1046,10 +1084,10 @@ export class CodexSDKService implements ISDKService {
                     ...(failed ? { error: 'File change failed' } : { result: this.summarizeFileChanges(changes) }),
                 };
             }
-            case 'mcp_tool_call': {
+            case 'mcptoolcall': {
                 const tool = typeof item.tool === 'string' && item.tool ? item.tool : 'mcp_tool';
                 const server = typeof item.server === 'string' ? item.server : undefined;
-                const error = item.error?.message;
+                const error = this.getCodexErrorMessage(item.error) ?? (this.isFailedStatus(item.status) ? `${tool} failed` : undefined);
                 const toolArguments = (item.arguments && typeof item.arguments === 'object' && !Array.isArray(item.arguments))
                     ? item.arguments as Record<string, unknown>
                     : {};
@@ -1066,7 +1104,7 @@ export class CodexSDKService implements ISDKService {
                     ...(error ? { error } : { result: this.stringifyCodexResult(item.result) }),
                 };
             }
-            case 'web_search': {
+            case 'websearch': {
                 const query = typeof item.query === 'string' ? item.query : '';
                 return {
                     id: item.id,
@@ -1075,9 +1113,291 @@ export class CodexSDKService implements ISDKService {
                     result: query ? `Searched: ${query}` : 'Search completed',
                 };
             }
+            case 'dynamictoolcall':
+                return this.normalizeCodexDynamicToolCall(item);
+            case 'collabagenttoolcall':
+            case 'collabtoolcall':
+                return this.normalizeCodexCollabAgentToolCall(item);
             default:
                 return undefined;
         }
+    }
+
+    private normalizeCodexDynamicToolCall(item: NonNullable<CodexItemEvent['item']>): NormalizedCodexToolItem | undefined {
+        if (!item.id) return undefined;
+        const rawToolName = this.getStringField(item, 'tool') ?? 'dynamic_tool';
+        const toolKey = this.normalizeCodexItemType(rawToolName);
+        const namespace = this.getStringField(item, 'namespace');
+        const toolArguments = this.normalizeCodexArguments(item.arguments);
+        const failed = this.isFailedStatus(item.status) || item.success === false;
+        const output = this.stringifyDynamicContentItems(item.contentItems ?? item.content_items) ?? this.stringifyCodexResult(item.result);
+        const error = this.getCodexErrorMessage(item.error) ?? (failed ? output ?? `${rawToolName} failed` : undefined);
+
+        if (toolKey === 'spawnagent' || toolKey === 'task') {
+            const parameters = this.normalizeAgentParameters(toolArguments);
+            return {
+                id: item.id,
+                toolName: 'task',
+                parameters: {
+                    ...parameters,
+                    agent_type: typeof parameters.agent_type === 'string' ? parameters.agent_type : 'codex',
+                },
+                ...(error ? { error } : { result: output ?? this.summarizeDynamicAgentResult('spawnAgent', parameters) }),
+            };
+        }
+
+        if (toolKey === 'waitagent' || toolKey === 'readagent' || toolKey === 'wait') {
+            const parameters = this.normalizeAgentParameters(toolArguments);
+            return {
+                id: item.id,
+                toolName: 'read_agent',
+                parameters: {
+                    ...parameters,
+                    wait: parameters.wait ?? true,
+                },
+                ...(error ? { error } : { result: output ?? this.summarizeDynamicAgentResult('wait', parameters) }),
+            };
+        }
+
+        const parameters = namespace
+            ? { namespace, arguments: toolArguments }
+            : toolArguments;
+        return {
+            id: item.id,
+            toolName: rawToolName,
+            parameters,
+            ...(error ? { error } : { result: output }),
+        };
+    }
+
+    private normalizeCodexCollabAgentToolCall(item: NonNullable<CodexItemEvent['item']>): NormalizedCodexToolItem | undefined {
+        if (!item.id) return undefined;
+        const tool = this.getStringField(item, 'tool') ?? 'collabAgentToolCall';
+        const toolKey = this.normalizeCodexItemType(tool);
+        const receiverThreadIds = this.getReceiverThreadIds(item);
+        const agentStates = this.getAgentStates(item);
+        const prompt = this.getStringField(item, 'prompt');
+        const baseParameters = this.buildCollabAgentParameters(item, receiverThreadIds, agentStates);
+        const failed = this.isFailedStatus(item.status);
+        const result = this.summarizeCollabAgentResult(tool, receiverThreadIds, agentStates);
+        const error = this.getCodexErrorMessage(item.error) ?? (failed ? result ?? `${tool} failed` : undefined);
+
+        if (toolKey === 'spawnagent') {
+            return {
+                id: item.id,
+                toolName: 'task',
+                parameters: {
+                    agent_type: 'codex',
+                    ...(prompt ? { description: prompt, prompt } : {}),
+                    ...baseParameters,
+                },
+                ...(error ? { error } : { result: result ?? this.summarizeCollabAgentSpawn(receiverThreadIds) }),
+            };
+        }
+
+        if (toolKey === 'wait') {
+            return {
+                id: item.id,
+                toolName: 'read_agent',
+                parameters: {
+                    ...baseParameters,
+                    wait: true,
+                },
+                ...(error ? { error } : { result: result ?? 'Agent wait completed' }),
+            };
+        }
+
+        return {
+            id: item.id,
+            toolName: `codex_${this.toSnakeCase(tool)}`,
+            parameters: {
+                operation: tool,
+                ...(prompt ? { prompt } : {}),
+                ...baseParameters,
+            },
+            ...(error ? { error } : { result: result ?? `${tool} completed` }),
+        };
+    }
+
+    private isTerminalCodexToolItem(item: CodexItemEvent['item'] | undefined): boolean {
+        if (!item) return false;
+        if (this.isCompletedStatus(item.status) || this.isFailedStatus(item.status)) return true;
+        return typeof item.success === 'boolean';
+    }
+
+    private normalizeCodexItemType(type: string): string {
+        return type.replace(/[_-]/g, '').toLowerCase();
+    }
+
+    private isCompletedStatus(status: unknown): boolean {
+        return typeof status === 'string' && status.toLowerCase() === 'completed';
+    }
+
+    private isFailedStatus(status: unknown): boolean {
+        if (typeof status !== 'string') return false;
+        const normalized = status.toLowerCase();
+        return normalized === 'failed' || normalized === 'errored';
+    }
+
+    private getStringField(value: unknown, ...keys: string[]): string | undefined {
+        if (!this.isRecord(value)) return undefined;
+        for (const key of keys) {
+            const field = value[key];
+            if (typeof field === 'string' && field.length > 0) return field;
+        }
+        return undefined;
+    }
+
+    private getNumberField(value: unknown, ...keys: string[]): number | undefined {
+        if (!this.isRecord(value)) return undefined;
+        for (const key of keys) {
+            const field = value[key];
+            if (typeof field === 'number') return field;
+        }
+        return undefined;
+    }
+
+    private normalizeCodexArguments(value: unknown): Record<string, unknown> {
+        if (this.isRecord(value)) return { ...value };
+        return value === undefined ? {} : { arguments: value };
+    }
+
+    private normalizeAgentParameters(parameters: Record<string, unknown>): Record<string, unknown> {
+        const normalized = { ...parameters };
+        if (typeof normalized.agent_id !== 'string') {
+            for (const key of ['agentId', 'threadId', 'thread_id', 'receiverThreadId', 'receiver_thread_id']) {
+                if (typeof normalized[key] === 'string') {
+                    normalized.agent_id = normalized[key];
+                    break;
+                }
+            }
+        }
+        return normalized;
+    }
+
+    private getCodexErrorMessage(error: unknown): string | undefined {
+        if (typeof error === 'string' && error.length > 0) return error;
+        if (this.isRecord(error) && typeof error.message === 'string' && error.message.length > 0) {
+            return error.message;
+        }
+        return undefined;
+    }
+
+    private getReceiverThreadIds(item: NonNullable<CodexItemEvent['item']>): string[] {
+        const ids = this.getStringArrayField(item, 'receiverThreadIds', 'receiver_thread_ids');
+        for (const key of ['receiverThreadId', 'receiver_thread_id', 'newThreadId', 'new_thread_id']) {
+            const id = this.getStringField(item, key);
+            if (id && !ids.includes(id)) ids.push(id);
+        }
+        return ids;
+    }
+
+    private getStringArrayField(value: unknown, ...keys: string[]): string[] {
+        if (!this.isRecord(value)) return [];
+        for (const key of keys) {
+            const field = value[key];
+            if (Array.isArray(field)) {
+                return field.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0);
+            }
+        }
+        return [];
+    }
+
+    private getAgentStates(item: NonNullable<CodexItemEvent['item']>): Record<string, { status?: string; message?: string | null }> {
+        const raw = this.isRecord(item.agentsStates) ? item.agentsStates : item.agents_states;
+        if (!this.isRecord(raw)) return {};
+        const states: Record<string, { status?: string; message?: string | null }> = {};
+        for (const [id, state] of Object.entries(raw)) {
+            if (!this.isRecord(state)) continue;
+            states[id] = {
+                ...(typeof state.status === 'string' ? { status: state.status } : {}),
+                ...(typeof state.message === 'string' || state.message === null ? { message: state.message } : {}),
+            };
+        }
+        return states;
+    }
+
+    private buildCollabAgentParameters(
+        item: NonNullable<CodexItemEvent['item']>,
+        receiverThreadIds: string[],
+        agentStates: Record<string, { status?: string; message?: string | null }>,
+    ): Record<string, unknown> {
+        const firstAgentId = receiverThreadIds[0];
+        const firstAgentState = firstAgentId ? agentStates[firstAgentId] : undefined;
+        const senderThreadId = this.getStringField(item, 'senderThreadId', 'sender_thread_id');
+        const model = this.getStringField(item, 'model');
+        const reasoningEffort = this.getStringField(item, 'reasoningEffort', 'reasoning_effort');
+        return {
+            ...(firstAgentId ? { agent_id: firstAgentId } : {}),
+            ...(receiverThreadIds.length > 0 ? { agent_ids: receiverThreadIds } : {}),
+            ...(senderThreadId ? { sender_thread_id: senderThreadId } : {}),
+            ...(model ? { model } : {}),
+            ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+            ...(Object.keys(agentStates).length > 0 ? { agents_states: agentStates } : {}),
+            ...(firstAgentState?.status ? { agent_status: firstAgentState.status } : {}),
+            ...(firstAgentState?.message ? { agent_message: firstAgentState.message } : {}),
+        };
+    }
+
+    private summarizeCollabAgentSpawn(receiverThreadIds: string[]): string {
+        return receiverThreadIds.length > 0
+            ? `Agent started with agent_id: ${receiverThreadIds.join(', ')}`
+            : 'Agent started';
+    }
+
+    private summarizeCollabAgentResult(
+        tool: string,
+        receiverThreadIds: string[],
+        agentStates: Record<string, { status?: string; message?: string | null }>,
+    ): string | undefined {
+        const stateSummary = this.summarizeAgentStates(receiverThreadIds, agentStates);
+        if (stateSummary) return stateSummary;
+        if (this.normalizeCodexItemType(tool) === 'spawnagent') return this.summarizeCollabAgentSpawn(receiverThreadIds);
+        if (receiverThreadIds.length > 0) return `${tool} completed for ${receiverThreadIds.join(', ')}`;
+        return undefined;
+    }
+
+    private summarizeAgentStates(
+        receiverThreadIds: string[],
+        agentStates: Record<string, { status?: string; message?: string | null }>,
+    ): string | undefined {
+        const ids = receiverThreadIds.length > 0 ? receiverThreadIds : Object.keys(agentStates);
+        const lines = ids
+            .map(id => {
+                const state = agentStates[id];
+                if (!state) return undefined;
+                const status = state.status ?? 'unknown';
+                return `${id} ${status}${state.message ? `: ${state.message}` : ''}`;
+            })
+            .filter((line): line is string => !!line);
+        return lines.length > 0 ? lines.join('\n') : undefined;
+    }
+
+    private summarizeDynamicAgentResult(tool: 'spawnAgent' | 'wait', parameters: Record<string, unknown>): string {
+        const agentId = typeof parameters.agent_id === 'string' ? parameters.agent_id : undefined;
+        if (tool === 'spawnAgent') {
+            return agentId ? `Agent started with agent_id: ${agentId}` : 'Agent started';
+        }
+        return agentId ? `Agent ${agentId} completed` : 'Agent wait completed';
+    }
+
+    private stringifyDynamicContentItems(contentItems: unknown): string | undefined {
+        if (!Array.isArray(contentItems)) return undefined;
+        const parts = contentItems
+            .map(item => this.isRecord(item) && typeof item.text === 'string' ? item.text : undefined)
+            .filter((text): text is string => !!text);
+        return parts.length > 0 ? parts.join('\n') : undefined;
+    }
+
+    private toSnakeCase(value: string): string {
+        return value
+            .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+            .replace(/[-\s]+/g, '_')
+            .toLowerCase();
+    }
+
+    private isRecord(value: unknown): value is Record<string, unknown> {
+        return !!value && typeof value === 'object' && !Array.isArray(value);
     }
 
     private summarizeFileChanges(changes: Array<{ path?: string; kind?: string }>): string {
