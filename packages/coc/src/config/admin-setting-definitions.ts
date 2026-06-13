@@ -718,17 +718,9 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     },
     bool({ key: 'features.autoAgentProviderRouting', default: false, runtime: 'restartRequired', runtimeFlag: 'autoAgentProviderRoutingEnabled' }),
     bool({
-        key: 'features.nativeCopilotSessions', default: false, runtime: 'live', runtimeFlag: 'nativeCopilotSessionsEnabled',
-        ui: {
-            group: 'dashboard', order: 60, label: 'Native Copilot CLI sessions', badge: 'experimental',
-            hint: 'Read-only Copilot Sessions tab that lists native GitHub Copilot CLI sessions (~/.copilot/session-store.db) for the active workspace. Disabled by default.',
-            testId: 'toggle-native-copilot-sessions-enabled',
-        },
-    }),
-    bool({
         key: 'features.nativeCliSessions', default: false, runtime: 'live', runtimeFlag: 'nativeCliSessionsEnabled',
         ui: {
-            group: 'dashboard', order: 61, label: 'Native CLI sessions', badge: 'experimental',
+            group: 'dashboard', order: 60, label: 'Native CLI sessions', badge: 'experimental',
             hint: 'Read-only CLI Sessions tab that lists native Copilot, Codex, and Claude Code sessions for the active workspace. Disabled by default.',
             testId: 'toggle-native-cli-sessions-enabled',
         },

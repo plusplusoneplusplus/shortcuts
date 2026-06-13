@@ -66,8 +66,6 @@ interface DashboardConfig {
     gitCrossCloneCherryPickEnabled?: boolean;
     /** Whether the Effort Tiers selector (Low/Medium/High) is enabled in the composer. Disabled by default. */
     effortLevelsEnabled?: boolean;
-    /** Whether the read-only native Copilot CLI sessions tab is enabled (legacy feature flag). */
-    nativeCopilotSessionsEnabled?: boolean;
     /** Whether the read-only native CLI sessions tab is enabled (feature flag). */
     nativeCliSessionsEnabled?: boolean;
 }
@@ -298,10 +296,6 @@ export function isLoopsEnabled(): boolean {
 
 export function isDreamsEnabled(): boolean {
     return getConfig().dreamsEnabled === true;
-}
-
-export function isNativeCopilotSessionsEnabled(): boolean {
-    return getConfig().nativeCopilotSessionsEnabled === true;
 }
 
 export function isNativeCliSessionsEnabled(): boolean {

@@ -720,12 +720,13 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         resolveDefaultProvider,
     });
 
-    // Native Copilot CLI session routes: read-only workspace-scoped views over
-    // the server user's native session store. Live feature guard mirrors
-    // For Each/Map Reduce so admin toggles take effect without restart.
+    // Legacy Native Copilot CLI session routes: read-only compatibility aliases
+    // over the server user's native Copilot store. They share the unified
+    // `features.nativeCliSessions` live guard so there is one operational switch
+    // for the CLI Sessions surface.
     const getNativeCopilotSessionsEnabled = opts.runtimeConfigService
-        ? () => opts.runtimeConfigService!.config.features?.nativeCopilotSessions ?? false
-        : () => opts.resolvedConfig?.features?.nativeCopilotSessions ?? false;
+        ? () => opts.runtimeConfigService!.config.features?.nativeCliSessions ?? false
+        : () => opts.resolvedConfig?.features?.nativeCliSessions ?? false;
     const nativeCopilotSessionService = new NativeCopilotSessionService({
         dbPath: opts.nativeCopilotSessionDbPath,
         sessionStateDir: opts.nativeCopilotSessionStateDir,

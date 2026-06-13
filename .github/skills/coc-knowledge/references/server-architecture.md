@@ -197,7 +197,6 @@ claude:
 features:
   autoAgentProviderRouting: false  # enables Auto for omitted-provider default paths
   ralphMultiAgentGrill: false      # gated multi-agent Ralph grilling setup and agent preflight
-  nativeCopilotSessions: false     # read-only Copilot Sessions dashboard tab over ~/.copilot/session-store.db
   nativeCliSessions: false         # read-only CLI Sessions tab over native Copilot, Codex, and Claude stores
 
 agentProviderRouting:

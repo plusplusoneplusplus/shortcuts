@@ -705,7 +705,7 @@ describe('Native Copilot session routes', () => {
             host: 'localhost',
             store,
             dataDir,
-            fileConfig: { features: { nativeCopilotSessions: options.enabled ?? true } },
+            fileConfig: { features: { nativeCliSessions: options.enabled ?? true } },
             nativeCopilotSessionDbPath: dbPath,
             // Isolated, empty state dir so detail reads exercise the DB fallback
             // without touching the real ~/.copilot/session-state.
@@ -913,7 +913,7 @@ describe('Native Copilot session routes — dedup against CoC processes', () => 
             host: 'localhost',
             store,
             dataDir,
-            fileConfig: { features: { nativeCopilotSessions: true } },
+            fileConfig: { features: { nativeCliSessions: true } },
             nativeCopilotSessionDbPath: dbPath,
             queue: { autoStart: false },
         });

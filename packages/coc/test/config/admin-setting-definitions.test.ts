@@ -236,6 +236,13 @@ describe('runtime feature flags', () => {
         expect(flags.gitCommitLookupEnabled).toBe(false);
     });
 
+    it('exposes only the unified native CLI sessions runtime flag', () => {
+        const flags = buildRuntimeFeatures(DEFAULT_CONFIG) as Record<string, unknown>;
+        expect(flags.nativeCliSessionsEnabled).toBe(false);
+        expect(flags.nativeCopilotSessionsEnabled).toBeUndefined();
+        expect(ADMIN_SETTING_DEFINITIONS.some(def => def.key === 'features.nativeCopilotSessions')).toBe(false);
+    });
+
     it('falls back to absentFallback ?? default for partial configs', () => {
         const flags = buildRuntimeFeatureFlags({});
         for (const def of ADMIN_SETTING_DEFINITIONS) {

@@ -2,9 +2,9 @@
  * Native GitHub Copilot CLI session routes.
  *
  * Read-only, workspace-scoped views over the current server user's native
- * Copilot CLI session store. Gated by the disabled-by-default
- * `features.nativeCopilotSessions` flag with a live guard so admin toggles
- * take effect without restart. Disabled and unavailable states return
+ * Copilot CLI session store. These compatibility routes are gated by the
+ * disabled-by-default `features.nativeCliSessions` flag with a live guard so
+ * admin toggles take effect without restart. Disabled and unavailable states return
  * HTTP 200 with typed payloads so the dashboard renders non-fatal states.
  */
 

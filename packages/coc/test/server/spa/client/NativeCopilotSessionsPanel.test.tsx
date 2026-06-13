@@ -14,10 +14,6 @@ const mockGet = vi.fn();
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
-        nativeCopilotSessions: {
-            list: mockList,
-            get: mockGet,
-        },
         nativeCliSessions: {
             list: mockList,
             get: mockGet,
