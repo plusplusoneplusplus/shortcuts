@@ -143,6 +143,13 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         storageKey: 'activity-left-panel-width',
     });
     const [mobileShowDetail, setMobileShowDetail] = useState(false);
+    const [listCollapsed, setListCollapsed] = useState<boolean>(() => {
+        try { return localStorage.getItem('activity-list-collapsed') === 'true'; } catch { return false; }
+    });
+    const toggleListCollapsed = useCallback((collapsed: boolean) => {
+        setListCollapsed(collapsed);
+        try { localStorage.setItem('activity-list-collapsed', collapsed ? 'true' : 'false'); } catch { /* ignore */ }
+    }, []);
     const listContainerRef = useRef<HTMLDivElement | null>(null);
     const detailContainerRef = useRef<HTMLDivElement | null>(null);
     // Ref to signal that mobileShowDetail=true was set intentionally for the new-chat flow,
@@ -952,34 +959,73 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         <ChatPreferencesProvider workspaceId={workspaceId}>
             <ChatPrefsSync history={history} workspaceId={workspaceId} />
             <div className={cn('flex h-full overflow-hidden', isDragging && 'select-none')} data-testid="activity-split-panel">
-            {/* Left panel — task list */}
-            <div
-                ref={listContainerRef}
-                tabIndex={-1}
-                role="region"
-                aria-label="Chat list"
-                data-pane-focus={focusedPane === 'list' ? 'true' : undefined}
-                className={cn(
-                    'flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col overflow-hidden outline-none',
-                    focusedPane === 'list' && 'ring-1 ring-inset ring-[#0078d4]/30',
-                )}
-                style={{ width: leftPanelWidth }}
-                data-testid="activity-list-panel"
-            >
-                {listPane}
-            </div>
+            {listCollapsed ? (
+                /* Collapsed rail — a thin strip with an expand affordance */
+                <div
+                    className="w-9 flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col items-center pt-2"
+                    data-testid="activity-list-collapsed"
+                >
+                    <button
+                        type="button"
+                        className="w-7 h-7 flex items-center justify-center rounded text-[#848484] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
+                        onClick={() => toggleListCollapsed(false)}
+                        aria-label="Show chat list"
+                        title="Show chat list"
+                        data-testid="activity-list-expand"
+                    >
+                        »
+                    </button>
+                    <span
+                        className="mt-2 text-[10px] tracking-wide text-[#848484] select-none"
+                        style={{ writingMode: 'vertical-rl' }}
+                    >
+                        Chats
+                    </span>
+                </div>
+            ) : (
+                <>
+                {/* Left panel — task list */}
+                <div
+                    ref={listContainerRef}
+                    tabIndex={-1}
+                    role="region"
+                    aria-label="Chat list"
+                    data-pane-focus={focusedPane === 'list' ? 'true' : undefined}
+                    className={cn(
+                        'flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col overflow-hidden outline-none',
+                        focusedPane === 'list' && 'ring-1 ring-inset ring-[#0078d4]/30',
+                    )}
+                    style={{ width: leftPanelWidth }}
+                    data-testid="activity-list-panel"
+                >
+                    {listPane}
+                </div>
 
-            {/* Resize handle */}
-            <div
-                className="flex items-center justify-center w-1 cursor-col-resize hover:bg-[#007acc]/30 active:bg-[#007acc]/50 transition-colors flex-shrink-0"
-                onMouseDown={handleMouseDown}
-                onTouchStart={handleTouchStart}
-                data-testid="activity-resize-handle"
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Resize activity panel"
-                tabIndex={0}
-            />
+                {/* Resize handle + collapse affordance */}
+                <div className="relative flex items-stretch flex-shrink-0 group">
+                    <div
+                        className="flex items-center justify-center w-1 cursor-col-resize hover:bg-[#007acc]/30 active:bg-[#007acc]/50 transition-colors h-full"
+                        onMouseDown={handleMouseDown}
+                        onTouchStart={handleTouchStart}
+                        data-testid="activity-resize-handle"
+                        role="separator"
+                        aria-orientation="vertical"
+                        aria-label="Resize activity panel"
+                        tabIndex={0}
+                    />
+                    <button
+                        type="button"
+                        className="absolute top-1 -left-6 w-6 h-6 flex items-center justify-center rounded text-[#848484] bg-[#fafafa] dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c] opacity-0 group-hover:opacity-100 hover:text-[#333] dark:hover:text-[#ddd] transition-opacity"
+                        onClick={() => toggleListCollapsed(true)}
+                        aria-label="Hide chat list"
+                        title="Hide chat list"
+                        data-testid="activity-list-collapse"
+                    >
+                        «
+                    </button>
+                </div>
+                </>
+            )}
 
             {/* Right panel — workflow pane (Ralph session selected) or chat detail */}
             <div

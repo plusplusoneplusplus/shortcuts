@@ -845,13 +845,51 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     }, [workspaceId, processId, bareTaskId]);
 
     const canvasResize = useResizablePanel({
-        initialWidth: 380,
-        minWidth: 240,
-        maxWidth: 720,
+        initialWidth: 520,
+        minWidth: 280,
+        maxWidth: 1100,
         storageKey: workspaceId ? `coc.canvasPanel.width.${encodeURIComponent(workspaceId)}` : undefined,
         direction: 'right',
     });
     const showCanvasPanel = !!(activeCanvasId && workspaceId && !canvasPanelClosed && isCanvasEnabled());
+    // When the canvas goes fullscreen it renders as a fixed overlay, so collapse
+    // its in-flow column to reclaim the width for the conversation behind it.
+    const [canvasFullscreen, setCanvasFullscreen] = useState(false);
+
+    const canvasColumn = (showCanvasPanel && activeCanvasId && workspaceId) ? (
+        <>
+            {!canvasFullscreen && (
+                <div
+                    className="hidden lg:flex items-center justify-center w-1 cursor-col-resize shrink-0 hover:bg-[#d0d0d0] dark:hover:bg-[#3a3a3c]"
+                    onMouseDown={canvasResize.handleMouseDown}
+                    onTouchStart={canvasResize.handleTouchStart}
+                    role="separator"
+                    aria-label="Resize canvas panel"
+                    data-testid="canvas-panel-resize-handle"
+                />
+            )}
+            <div
+                style={{ width: canvasFullscreen ? 0 : canvasResize.width }}
+                className="hidden lg:block shrink-0 h-full border-l border-[#e0e0e0] dark:border-[#474749]"
+            >
+                <CanvasPanel
+                    workspaceId={workspaceId}
+                    canvasId={activeCanvasId}
+                    liveEvent={canvasLiveEvent}
+                    onClose={() => setCanvasPanelClosed(true)}
+                    onFullscreenChange={setCanvasFullscreen}
+                    onAskAi={(prompt) => {
+                        setFollowUpInput(prompt);
+                        richTextRef.current?.setValue(prompt, prompt.length);
+                        richTextRef.current?.focus();
+                    }}
+                    onSendToAi={async (message) => {
+                        await sendFollowUp(message, 'enqueue');
+                    }}
+                />
+            </div>
+        </>
+    ) : null;
 
     const { handlePopOut, handleFloat } = useChatWindowActions({ task, taskId, workspaceId });
 
@@ -1554,6 +1592,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 </div>
             )}
             <div className="relative flex-1 min-h-0 flex flex-row overflow-hidden min-w-0">
+            {/* Left stack: conversation + composer. The canvas (when open) is a
+                full-height sibling column to the right of this whole stack. */}
+            <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
             <div ref={scratchpadContainerRef}className={`relative flex-1 min-h-0 flex ${isVerticalScratchpad ? 'flex-row' : 'flex-col'} overflow-x-hidden min-w-0`}>
                 {/* Chat column: in vertical split, also contains the follow-up input */}
                 <div
@@ -1821,35 +1862,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     </>
                 )}
             </div>
-            {showCanvasPanel && activeCanvasId && workspaceId && (
-                <>
-                    <div
-                        className="hidden lg:flex items-center justify-center w-1 cursor-col-resize shrink-0 hover:bg-[#d0d0d0] dark:hover:bg-[#3a3a3c]"
-                        onMouseDown={canvasResize.handleMouseDown}
-                        onTouchStart={canvasResize.handleTouchStart}
-                        role="separator"
-                        aria-label="Resize canvas panel"
-                        data-testid="canvas-panel-resize-handle"
-                    />
-                    <div style={{ width: canvasResize.width }} className="hidden lg:block shrink-0 h-full border-l border-[#e0e0e0] dark:border-[#474749]">
-                        <CanvasPanel
-                            workspaceId={workspaceId}
-                            canvasId={activeCanvasId}
-                            liveEvent={canvasLiveEvent}
-                            onClose={() => setCanvasPanelClosed(true)}
-                            onAskAi={(prompt) => {
-                                setFollowUpInput(prompt);
-                                richTextRef.current?.setValue(prompt, prompt.length);
-                                richTextRef.current?.focus();
-                            }}
-                            onSendToAi={async (message) => {
-                                await sendFollowUp(message, 'enqueue');
-                            }}
-                        />
-                    </div>
-                </>
-            )}
-            </div>
             {/* Mobile tab bar — shown when isMobileScratchpad, positioned below follow-up input */}
             {!isVerticalScratchpad && !isPending && noSessionForFollowUp && !readOnly && (!isMobileScratchpad || scratchpad.activeMobileTab === 'chat') && (
                 noSessionNotice
@@ -1930,6 +1942,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     onClose={scratchpad.close}
                 />
             )}
+            </div>{/* /left stack */}
+            {canvasColumn}
+            </div>{/* /canvas split row */}
             <RenameDialog
                 open={renameOpen}
                 currentTitle={(task?.customTitle as string | undefined) || ''}

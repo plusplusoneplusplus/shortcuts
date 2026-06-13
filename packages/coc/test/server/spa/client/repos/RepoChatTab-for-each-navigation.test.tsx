@@ -254,3 +254,41 @@ describe('RepoChatTab For Each navigation', () => {
         expect(mocks.forEachGet).not.toHaveBeenCalled();
     });
 });
+
+describe('RepoChatTab chat list collapse', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mocks.isMobile = false;
+        window.location.hash = '';
+        try { localStorage.removeItem('activity-list-collapsed'); } catch { /* ignore */ }
+        mocks.queueList.mockResolvedValue({ running: [], queued: [], stats: { isPaused: false, isAutopilotPaused: false } });
+        mocks.history.mockResolvedValue({ history: [], hasMore: false });
+    });
+
+    it('collapses and expands the chat list, persisting the choice', async () => {
+        renderRepoChatTab();
+
+        await screen.findByTestId('activity-list-panel');
+        expect(screen.queryByTestId('activity-list-collapsed')).toBeNull();
+
+        fireEvent.click(screen.getByTestId('activity-list-collapse'));
+
+        await waitFor(() => expect(screen.getByTestId('activity-list-collapsed')).toBeTruthy());
+        expect(screen.queryByTestId('activity-list-panel')).toBeNull();
+        expect(localStorage.getItem('activity-list-collapsed')).toBe('true');
+
+        fireEvent.click(screen.getByTestId('activity-list-expand'));
+
+        await waitFor(() => expect(screen.getByTestId('activity-list-panel')).toBeTruthy());
+        expect(localStorage.getItem('activity-list-collapsed')).toBe('false');
+    });
+
+    it('starts collapsed when the persisted preference is set', async () => {
+        try { localStorage.setItem('activity-list-collapsed', 'true'); } catch { /* ignore */ }
+
+        renderRepoChatTab();
+
+        await waitFor(() => expect(screen.getByTestId('activity-list-collapsed')).toBeTruthy());
+        expect(screen.queryByTestId('activity-list-panel')).toBeNull();
+    });
+});

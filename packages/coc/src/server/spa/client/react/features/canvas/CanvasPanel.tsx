@@ -52,6 +52,8 @@ export interface CanvasPanelProps {
     onAskAi?: (prompt: string) => void;
     /** Sends a message to the AI through the normal follow-up path (turn-boundary delivery when busy). */
     onSendToAi?: (message: string) => Promise<void>;
+    /** Notifies the host when the panel enters/exits fullscreen (for layout adjustments). */
+    onFullscreenChange?: (fullscreen: boolean) => void;
 }
 
 function buildAskAiPrompt(canvas: Canvas, selection: string): string {
@@ -89,7 +91,7 @@ function fenceCode(content: string, language: string | undefined): string {
     return `\`\`\`\`${language ?? ''}\n${content}\n\`\`\`\``;
 }
 
-export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi, onSendToAi }: CanvasPanelProps) {
+export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi, onSendToAi, onFullscreenChange }: CanvasPanelProps) {
     const [canvas, setCanvas] = useState<Canvas | null>(null);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -108,6 +110,28 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
     const [sendingComments, setSendingComments] = useState(false);
     const [exportOpen, setExportOpen] = useState(false);
     const [exportStatus, setExportStatus] = useState<string | null>(null);
+    const [isFullscreen, setIsFullscreen] = useState(false);
+
+    const toggleFullscreen = useCallback(() => {
+        setIsFullscreen(prev => {
+            const next = !prev;
+            onFullscreenChange?.(next);
+            return next;
+        });
+    }, [onFullscreenChange]);
+
+    // Exit fullscreen on Escape
+    useEffect(() => {
+        if (!isFullscreen) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                setIsFullscreen(false);
+                onFullscreenChange?.(false);
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [isFullscreen, onFullscreenChange]);
 
     const previewRef = useRef<HTMLDivElement>(null);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -391,7 +415,13 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
         : dirty ? 'Unsaved edits' : '';
 
     return (
-        <div className="flex flex-col h-full min-h-0 bg-[#fafafa] dark:bg-[#1e1e1e]" data-testid="canvas-panel">
+        <div
+            className={isFullscreen
+                ? 'fixed inset-0 z-50 flex flex-col min-h-0 bg-[#fafafa] dark:bg-[#1e1e1e]'
+                : 'flex flex-col h-full min-h-0 bg-[#fafafa] dark:bg-[#1e1e1e]'}
+            data-testid="canvas-panel"
+            data-fullscreen={isFullscreen ? 'true' : 'false'}
+        >
             {/* Header */}
             <div className="flex items-center gap-2 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#474749] shrink-0">
                 <span className="text-xs font-semibold truncate flex-1" title={canvas?.title ?? ''} data-testid="canvas-panel-title">
@@ -491,11 +521,21 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                         )}
                     </div>
                 )}
+                <button
+                    type="button"
+                    className="text-[#848484] hover:text-[#333] dark:hover:text-[#ddd] px-1 shrink-0"
+                    onClick={toggleFullscreen}
+                    aria-label={isFullscreen ? 'Exit fullscreen' : 'Expand canvas to fullscreen'}
+                    title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}
+                    data-testid="canvas-panel-fullscreen"
+                >
+                    {isFullscreen ? '🗗' : '⤢'}
+                </button>
                 {onClose && (
                     <button
                         type="button"
                         className="text-[#848484] hover:text-[#333] dark:hover:text-[#ddd] px-1 shrink-0"
-                        onClick={onClose}
+                        onClick={() => { if (isFullscreen) { setIsFullscreen(false); onFullscreenChange?.(false); } onClose(); }}
                         aria-label="Close canvas panel"
                         data-testid="canvas-panel-close"
                     >

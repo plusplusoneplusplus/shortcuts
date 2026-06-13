@@ -381,6 +381,26 @@ describe('CanvasPanel', () => {
         expect(writeText).toHaveBeenCalledWith('# Plan body');
     });
 
+    it('toggles fullscreen and exits on Escape', async () => {
+        mocks.get.mockResolvedValue(makeCanvas());
+        const onFullscreenChange = vi.fn();
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} onFullscreenChange={onFullscreenChange} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-title').textContent).toBe('My Plan'));
+
+        const panel = screen.getByTestId('canvas-panel');
+        expect(panel.getAttribute('data-fullscreen')).toBe('false');
+
+        fireEvent.click(screen.getByTestId('canvas-panel-fullscreen'));
+        expect(panel.getAttribute('data-fullscreen')).toBe('true');
+        expect(panel.className).toContain('fixed');
+        expect(onFullscreenChange).toHaveBeenLastCalledWith(true);
+
+        act(() => { fireEvent.keyDown(window, { key: 'Escape' }); });
+        expect(screen.getByTestId('canvas-panel').getAttribute('data-fullscreen')).toBe('false');
+        expect(onFullscreenChange).toHaveBeenLastCalledWith(false);
+    });
+
     it('renders extension canvases through the sandboxed iframe view with an extension badge', async () => {
         mocks.get.mockResolvedValue(makeCanvas({ type: 'extension', content: '{"cards":[]}' }));
 

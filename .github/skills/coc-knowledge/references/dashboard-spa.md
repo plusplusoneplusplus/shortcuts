@@ -114,7 +114,13 @@ through `client.canvases.save(...)` carrying `expectedRevision`; an HTTP 409
 shows a conflict banner with a "Load latest" action, and a live AI update
 arriving over unsaved local edits shows a pending-update banner instead of
 clobbering the draft. The close button hides the panel for the current chat
-selection only (no persistent dismissal state). The header revision chip is a
+selection only (no persistent dismissal state). The canvas mounts as a
+full-height right column of a top-level split in `ChatDetail` (the
+conversation and follow-up composer share the left column), so the panel spans
+the whole detail pane height beside the composer. A header fullscreen toggle
+(`onFullscreenChange`) re-renders the panel as a `fixed inset-0 z-50` overlay
+covering the viewport (Esc exits); while fullscreen, `ChatDetail` collapses the
+in-flow canvas column width to 0 so the conversation reclaims the space. The header revision chip is a
 version stepper backed by the canvas versions API: stepping back shows an
 older snapshot read-only with a history banner whose **Restore as latest**
 action saves that snapshot's content as a new revision (disabled while local
@@ -489,6 +495,10 @@ Each tool's internal sub-tab/hash scheme (e.g. `#skills/installed`,
 - Scope segmented control: Chats / Loops (when `loops.enabled`) / Automations / All
 - Search box
 - Selection persists in `localStorage['coc-activity-scope']`
+- The desktop activity split (`RepoChatTab`) can collapse the left chat-list
+  panel to a thin rail; the choice persists in
+  `localStorage['activity-list-collapsed']` and the collapse affordance sits on
+  the list/detail resize handle.
 - For Each parent run group rows render in Activity Chats and All, but not in
   Activity Automations or Loops; loop-linked child chats can still appear in
   Loops independently of the hidden parent group row.
