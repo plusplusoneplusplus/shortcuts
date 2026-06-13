@@ -481,31 +481,11 @@ describe('AIProviderPage', () => {
         expect(within(codexRow).queryByText('Risk')).toBeNull();
     });
 
-    it('renders Dreams provider activity with provider, model, and timeout attribution', () => {
-        const onRefreshProviderActivity = vi.fn();
-        renderPage({
-            providerActivity: [{
-                id: 'dream-task-1',
-                provider: 'claude',
-                kind: 'dream-run',
-                trigger: 'manual',
-                status: 'running',
-                label: 'Dream Run: Manual',
-                model: 'claude-sonnet-4.6',
-                timeoutMs: 3_600_000,
-            }],
-            onRefreshProviderActivity,
-        });
-
-        const section = screen.getByTestId('provider-dream-activity');
-        expect(within(section).getByText('Dreams provider activity')).toBeDefined();
-        const row = within(section).getByTestId('provider-dream-activity-dream-task-1');
-        expect(row.textContent).toContain('Dream Run: Manual');
-        expect(row.textContent).toContain('Claude');
-        expect(row.textContent).toContain('claude-sonnet-4.6');
-        expect(row.textContent).toContain('1h timeout');
-        fireEvent.click(screen.getByTestId('provider-dream-activity-refresh'));
-        expect(onRefreshProviderActivity).toHaveBeenCalledOnce();
+    it('no longer renders the Dreams provider activity section (relocated to the Dreams tab)', () => {
+        renderPage();
+        // AC-05: the queue + history card moved out of the AI Provider page.
+        expect(screen.queryByTestId('provider-dream-activity')).toBeNull();
+        expect(screen.queryByText('Dreams provider activity')).toBeNull();
     });
 
     it('renders simultaneous Claude five-hour and weekly quota windows as separate rows', () => {

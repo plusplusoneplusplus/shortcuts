@@ -9,8 +9,24 @@
 //
 // The per-workspace dream-cards review panel (`DreamsPanel`) is a separate,
 // untouched surface under each repo's detail view.
+//
+// State, fetch, and refresh for the provider-activity section are owned by
+// `AdminPanel` and passed in as props.
 
-export function DreamsView() {
+import type { AgentProviderWorkActivity } from '../../shared/providerActivity';
+import { ProviderActivitySection } from './ProviderActivitySection';
+
+export interface DreamsViewProps {
+    providerActivity?: AgentProviderWorkActivity[];
+    providerActivityError?: string | null;
+    onRefreshProviderActivity?: () => void;
+}
+
+export function DreamsView({
+    providerActivity = [],
+    providerActivityError,
+    onRefreshProviderActivity,
+}: DreamsViewProps = {}) {
     return (
         <div className="aip-page" data-testid="dreams-admin-page">
             <div className="aip-page-head">
@@ -23,6 +39,12 @@ export function DreamsView() {
                 </div>
                 <span className="ar-badge ar-badge-accent"><span className="aip-dot" /> Restart-aware</span>
             </div>
+
+            <ProviderActivitySection
+                activity={providerActivity}
+                error={providerActivityError}
+                onRefresh={onRefreshProviderActivity}
+            />
         </div>
     );
 }

@@ -760,8 +760,16 @@ export function AdminPanel() {
             return;
         }
         void handleRefreshQuota();
+    }, [activeTab, handleRefreshQuota]);
+
+    // Dreams provider activity now lives in the admin Dreams tab; auto-load it
+    // whenever that tab becomes the active dashboard route.
+    useEffect(() => {
+        if (activeDashboardTab !== 'dreams-admin' || isContainerMode()) {
+            return;
+        }
         void refreshDreamProviderActivity();
-    }, [activeTab, handleRefreshQuota, refreshDreamProviderActivity]);
+    }, [activeDashboardTab, refreshDreamProviderActivity]);
 
     // ── Chat Experience card ──
     const handleSaveChat = useCallback(async () => {
@@ -1288,7 +1296,11 @@ export function AdminPanel() {
                                     }}
                                 />}
                                 {activeToolItem.tab === 'skills' && <SkillsView />}
-                                {activeToolItem.tab === 'dreams-admin' && <DreamsView />}
+                                {activeToolItem.tab === 'dreams-admin' && <DreamsView
+                                    providerActivity={dreamProviderActivity}
+                                    providerActivityError={dreamProviderActivityError}
+                                    onRefreshProviderActivity={refreshDreamProviderActivity}
+                                />}
                                 {activeToolItem.tab === 'logs' && <LogsView />}
                                 {activeToolItem.tab === 'stats' && <UsageStatsView />}
                                 {activeToolItem.tab === 'servers' && <ServersView />}
@@ -1988,9 +2000,6 @@ export function AdminPanel() {
                                     quotaLoading={quotaLoading}
                                     quotaError={quotaError}
                                     onRefreshQuota={handleRefreshQuota}
-                                    providerActivity={dreamProviderActivity}
-                                    providerActivityError={dreamProviderActivityError}
-                                    onRefreshProviderActivity={refreshDreamProviderActivity}
                                     sources={sources}
                                 />
                             )}
