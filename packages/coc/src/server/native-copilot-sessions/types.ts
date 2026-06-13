@@ -52,6 +52,13 @@ export interface NativeCopilotSessionDetail {
     createdAt: string | null;
     updatedAt: string | null;
     turns: NativeCopilotSessionTurn[];
+    /**
+     * Reconstructed chat transcript for rich dashboard rendering. Built from the
+     * rich `session-state/<id>/events.jsonl` log when it is available and
+     * parseable; otherwise mapped from the flat {@link NativeCopilotSessionTurn}s
+     * above as text-only user/assistant turns. Always present (possibly empty).
+     */
+    conversation: ReconstructedConversationTurn[];
 }
 
 /**

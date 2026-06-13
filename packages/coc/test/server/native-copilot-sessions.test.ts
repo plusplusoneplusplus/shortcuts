@@ -480,6 +480,112 @@ describe('NativeCopilotSessionService', () => {
         const result = service.getSession({ rootPath: wsRoot }, 'foreign');
         expect(result).toMatchObject({ available: true, session: null });
     });
+
+    it('uses the rich session-state transcript for conversation when the parser yields turns', () => {
+        const wsRoot = path.join(tmpDir, 'ws');
+        createFixtureDb(
+            dbPath,
+            [{ id: 'rich-1', cwd: wsRoot, summary: 'Rich session' }],
+            [{ sessionId: 'rich-1', turnIndex: 0, userMessage: 'flat user', assistantResponse: 'flat answer' }],
+        );
+        // Inject a deterministic rich transcript so the test asserts the service
+        // prefers parser output over the flat DB-turn mapping.
+        const richConversation = [
+            { role: 'user' as const, content: 'rich user', timeline: [], turnIndex: 0 },
+            {
+                role: 'assistant' as const,
+                content: 'rich answer',
+                turnIndex: 1,
+                model: 'gpt-5.5',
+                toolCalls: [{ id: 't1', toolName: 'bash', args: { cmd: 'ls' }, result: 'file.txt', status: 'completed' as const }],
+                timeline: [
+                    { type: 'content' as const, timestamp: '', content: 'rich answer' },
+                    { type: 'tool-complete' as const, timestamp: '', toolCall: { id: 't1', toolName: 'bash', args: { cmd: 'ls' }, result: 'file.txt', status: 'completed' as const } },
+                ],
+            },
+        ];
+        const service = new NativeCopilotSessionService({ dbPath, parseSessionState: () => richConversation });
+        const result = service.getSession({ rootPath: wsRoot }, 'rich-1');
+        expect(result.available).toBe(true);
+        if (!result.available || !result.session) throw new Error('expected session');
+        // Flat DB turns are still surfaced for diagnostics…
+        expect(result.session.turns).toHaveLength(1);
+        // …but the rich transcript drives the conversation render.
+        expect(result.session.conversation).toEqual(richConversation);
+        expect(result.session.conversation[1].toolCalls?.[0].toolName).toBe('bash');
+    });
+
+    it('falls back to text-only turns mapped from the DB when the rich log is absent', () => {
+        const wsRoot = path.join(tmpDir, 'ws');
+        createFixtureDb(
+            dbPath,
+            [{ id: 'fb-1', cwd: wsRoot, summary: 'Fallback session' }],
+            [
+                { sessionId: 'fb-1', turnIndex: 0, userMessage: 'first user', assistantResponse: 'first answer', timestamp: '2026-06-01T00:00:00.000Z' },
+                // Assistant-only turn (empty user) yields a single assistant turn.
+                { sessionId: 'fb-1', turnIndex: 1, userMessage: '', assistantResponse: 'second answer' },
+                // User-only turn (empty assistant) yields a single user turn.
+                { sessionId: 'fb-1', turnIndex: 2, userMessage: 'third user', assistantResponse: null },
+            ],
+        );
+        // parseSessionState returns null → service maps the flat DB turns.
+        const service = new NativeCopilotSessionService({ dbPath, parseSessionState: () => null });
+        const result = service.getSession({ rootPath: wsRoot }, 'fb-1');
+        expect(result.available).toBe(true);
+        if (!result.available || !result.session) throw new Error('expected session');
+        const conversation = result.session.conversation;
+        expect(conversation.map(t => t.role)).toEqual(['user', 'assistant', 'assistant', 'user']);
+        expect(conversation.map(t => t.content)).toEqual(['first user', 'first answer', 'second answer', 'third user']);
+        // Sequential turn index across the flattened transcript.
+        expect(conversation.map(t => t.turnIndex)).toEqual([0, 1, 2, 3]);
+        // User turns carry only content (empty timeline); assistant turns expose a content timeline item.
+        expect(conversation[0].timeline).toEqual([]);
+        expect(conversation[1].timeline).toEqual([{ type: 'content', timestamp: '2026-06-01T00:00:00.000Z', content: 'first answer' }]);
+        expect(conversation[3].timeline).toEqual([]);
+        expect(conversation[0].timestamp).toBe('2026-06-01T00:00:00.000Z');
+    });
+
+    it('returns an empty conversation when a session has no turns and no rich log', () => {
+        const wsRoot = path.join(tmpDir, 'ws');
+        createFixtureDb(dbPath, [{ id: 'empty-1', cwd: wsRoot }]);
+        const service = new NativeCopilotSessionService({ dbPath, parseSessionState: () => null });
+        const result = service.getSession({ rootPath: wsRoot }, 'empty-1');
+        expect(result.available).toBe(true);
+        if (!result.available || !result.session) throw new Error('expected session');
+        expect(result.session.conversation).toEqual([]);
+    });
+
+    it('reads the real events.jsonl via sessionStateDir, with structured tool calls', () => {
+        const wsRoot = path.join(tmpDir, 'ws');
+        createFixtureDb(
+            dbPath,
+            [{ id: 'e2e-1', cwd: wsRoot }],
+            [{ sessionId: 'e2e-1', turnIndex: 0, userMessage: 'flat', assistantResponse: 'flat answer' }],
+        );
+        // Write a synthetic session-state log so the default parser (not a stub)
+        // wires through sessionStateDir end-to-end.
+        const stateDir = path.join(tmpDir, 'session-state');
+        fs.mkdirSync(path.join(stateDir, 'e2e-1'), { recursive: true });
+        const events = [
+            { type: 'user.message', timestamp: '2026-06-01T00:00:00.000Z', data: { content: 'run ls' } },
+            { type: 'assistant.message', timestamp: '2026-06-01T00:00:01.000Z', data: { turnId: 'turn-1', content: 'on it', model: 'gpt-5.5' } },
+            { type: 'tool.execution_start', timestamp: '2026-06-01T00:00:02.000Z', data: { toolCallId: 'tc-1', toolName: 'bash', arguments: { command: 'ls' } } },
+            { type: 'tool.execution_complete', timestamp: '2026-06-01T00:00:03.000Z', data: { toolCallId: 'tc-1', success: true, result: { content: 'short', detailedContent: 'a.txt\nb.txt' } } },
+        ].map(e => JSON.stringify(e)).join('\n');
+        fs.writeFileSync(path.join(stateDir, 'e2e-1', 'events.jsonl'), events);
+
+        const service = new NativeCopilotSessionService({ dbPath, sessionStateDir: stateDir });
+        const result = service.getSession({ rootPath: wsRoot }, 'e2e-1');
+        expect(result.available).toBe(true);
+        if (!result.available || !result.session) throw new Error('expected session');
+        const conversation = result.session.conversation;
+        expect(conversation[0]).toMatchObject({ role: 'user', content: 'run ls' });
+        const assistant = conversation[1];
+        expect(assistant.role).toBe('assistant');
+        expect(assistant.model).toBe('gpt-5.5');
+        expect(assistant.toolCalls).toHaveLength(1);
+        expect(assistant.toolCalls?.[0]).toMatchObject({ toolName: 'bash', args: { command: 'ls' }, result: 'a.txt\nb.txt', status: 'completed' });
+    });
 });
 
 describe('native session matching helpers', () => {
@@ -536,6 +642,9 @@ describe('Native Copilot session routes', () => {
             dataDir,
             fileConfig: { features: { nativeCopilotSessions: options.enabled ?? true } },
             nativeCopilotSessionDbPath: dbPath,
+            // Isolated, empty state dir so detail reads exercise the DB fallback
+            // without touching the real ~/.copilot/session-state.
+            nativeCopilotSessionStateDir: path.join(fixtureDir, 'session-state'),
             queue: { autoStart: false },
         });
         const res = await postJSON(`${server.url}/api/workspaces`, {
@@ -635,6 +744,11 @@ describe('Native Copilot session routes', () => {
         expect(okBody.session.id).toBe('mine');
         expect(okBody.session.turns).toHaveLength(1);
         expect(okBody.session.turns[0].assistantResponse).toBe('');
+        // The reconstructed conversation flows over HTTP; with no rich log the
+        // fallback yields a single text-only user turn.
+        expect(okBody.session.conversation).toEqual([
+            { role: 'user', content: 'user text', timestamp: expect.any(String), turnIndex: 0, timeline: [] },
+        ]);
 
         const foreign = await request(`${listUrl()}/foreign`);
         expect(foreign.status).toBe(404);

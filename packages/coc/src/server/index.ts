@@ -533,6 +533,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         bindAddress: host,
         syncEngines,
         nativeCopilotSessionDbPath: options.nativeCopilotSessionDbPath,
+        nativeCopilotSessionStateDir: options.nativeCopilotSessionStateDir,
     });
     // Restore auto-commit timers for all workspaces that had it enabled
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });

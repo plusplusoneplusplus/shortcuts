@@ -137,7 +137,11 @@ all have their own `references/*.md`.
   `tool.execution_start`/`_complete` correlated by `toolCallId`,
   `skill.invoked`) into `ReconstructedConversationTurn[]` and returns `null`
   (never throws) on a missing/malformed/empty log so callers fall back to the
-  flat `session-store.db` turns. The parser never writes to `~/.copilot` and
+  flat `session-store.db` turns. `getSession` populates
+  `NativeCopilotSessionDetail.conversation` (always present) from the parser
+  when it yields turns, else maps the flat DB turns into text-only
+  user/assistant turns; the service accepts `sessionStateDir`/`parseSessionState`
+  overrides for hermetic tests. The parser never writes to `~/.copilot` and
   rejects unsafe session ids (path traversal). The list route dedups
   against CoC processes by excluding native `sessions.id` values that match a
   workspace's `ProcessStore.getSdkSessionIds(workspaceId)` (the Copilot SDK/CLI

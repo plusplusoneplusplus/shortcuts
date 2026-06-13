@@ -21,7 +21,9 @@ import type {
     NativeCopilotSessionListResult,
     NativeCopilotSessionTurn,
     NativeSessionWorkspaceScope,
+    ReconstructedConversationTurn,
 } from './types';
+import { parseNativeSessionState } from './session-state-parser';
 
 export const DEFAULT_NATIVE_SESSION_LIST_LIMIT = 50;
 const MAX_NATIVE_SESSION_LIST_LIMIT = 200;
@@ -140,16 +142,70 @@ function clampOffset(offset: number | undefined): number {
     return Math.max(Math.floor(offset), 0);
 }
 
+/**
+ * Map flat `session-store.db` turns into text-only reconstructed conversation
+ * turns — the fallback transcript used when the rich `events.jsonl` log is
+ * missing or unparseable. Each DB turn yields up to two turns (a user turn for a
+ * non-empty user message, then an assistant turn for a non-empty response), with
+ * a stable sequential `turnIndex`. Mirrors the parser's convention: user turns
+ * carry only `content`; assistant turns also expose a single `content` timeline
+ * item so the chat bubble renders them identically to a rich turn.
+ */
+function buildFallbackConversation(turnRows: TurnRow[]): ReconstructedConversationTurn[] {
+    const conversation: ReconstructedConversationTurn[] = [];
+    let index = 0;
+    for (const turn of turnRows) {
+        const userMessage = turn.user_message ?? '';
+        const assistantResponse = turn.assistant_response ?? '';
+        const timestamp = turn.timestamp ?? undefined;
+        if (userMessage) {
+            conversation.push({
+                role: 'user',
+                content: userMessage,
+                timestamp,
+                turnIndex: index++,
+                timeline: [],
+            });
+        }
+        if (assistantResponse) {
+            conversation.push({
+                role: 'assistant',
+                content: assistantResponse,
+                timestamp,
+                turnIndex: index++,
+                timeline: [{ type: 'content', timestamp: timestamp ?? '', content: assistantResponse }],
+            });
+        }
+    }
+    return conversation;
+}
+
 export interface NativeCopilotSessionServiceOptions {
     /** Override of the native session store path (tests use synthetic fixtures). */
     dbPath?: string;
+    /**
+     * Override of the native `session-state` base directory passed to the rich
+     * transcript parser (tests point this at synthetic fixtures). Defaults to
+     * `~/.copilot/session-state`.
+     */
+    sessionStateDir?: string;
+    /**
+     * Override of the rich-transcript parser. Defaults to
+     * {@link parseNativeSessionState} reading `session-state/<id>/events.jsonl`.
+     * Injected by tests to exercise the rich and DB-fallback paths without
+     * touching the filesystem.
+     */
+    parseSessionState?: (sessionId: string) => ReconstructedConversationTurn[] | null;
 }
 
 export class NativeCopilotSessionService {
     private readonly dbPath: string;
+    private readonly parseSessionState: (sessionId: string) => ReconstructedConversationTurn[] | null;
 
     constructor(options: NativeCopilotSessionServiceOptions = {}) {
         this.dbPath = options.dbPath ?? getDefaultNativeCopilotSessionDbPath();
+        this.parseSessionState = options.parseSessionState
+            ?? (sessionId => parseNativeSessionState(sessionId, { sessionStateDir: options.sessionStateDir }));
     }
 
     /** List native sessions scoped to one workspace, newest `updated_at` first. */
@@ -304,6 +360,12 @@ export class NativeCopilotSessionService {
                 };
             });
 
+            // Prefer the rich `session-state/<id>/events.jsonl` transcript;
+            // fall back to text-only turns mapped from the flat DB rows when the
+            // state log is missing or unparseable. Read-only either way.
+            const conversation = this.parseSessionState(sessionId)
+                ?? buildFallbackConversation(turnRows);
+
             const session: NativeCopilotSessionDetail = {
                 id: row.id,
                 repository: row.repository,
@@ -314,6 +376,7 @@ export class NativeCopilotSessionService {
                 createdAt: row.created_at,
                 updatedAt: row.updated_at,
                 turns,
+                conversation,
             };
             return { available: true, session };
         } catch {

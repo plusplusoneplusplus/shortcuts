@@ -88,6 +88,8 @@ export interface ExecutionServerOptions {
     tokenTtlMs?: number;
     /** Native Copilot CLI session store path override (for tests). Defaults to `~/.copilot/session-store.db`. */
     nativeCopilotSessionDbPath?: string;
+    /** Native Copilot CLI `session-state` base directory override (for tests). Defaults to `~/.copilot/session-state`. */
+    nativeCopilotSessionStateDir?: string;
     /** Queue-specific options. */
     queue?: {
         /** Policy for tasks that were running when the server last stopped (default: 'fail'). */

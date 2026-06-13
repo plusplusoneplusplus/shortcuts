@@ -213,6 +213,8 @@ export interface RegisterRoutesOptions {
     syncEngines?: Map<string, SyncEngine>;
     /** Native Copilot CLI session store path override (for tests). */
     nativeCopilotSessionDbPath?: string;
+    /** Native Copilot CLI `session-state` base directory override (for tests). */
+    nativeCopilotSessionStateDir?: string;
 }
 
 export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; agentProvidersQuotaCache?: AgentProvidersQuotaCache; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler } {
@@ -725,7 +727,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         routes,
         store,
         getEnabled: getNativeCopilotSessionsEnabled,
-        service: new NativeCopilotSessionService({ dbPath: opts.nativeCopilotSessionDbPath }),
+        service: new NativeCopilotSessionService({
+            dbPath: opts.nativeCopilotSessionDbPath,
+            sessionStateDir: opts.nativeCopilotSessionStateDir,
+        }),
     });
 
     const workItemStore = new FileWorkItemStore({ dataDir });
