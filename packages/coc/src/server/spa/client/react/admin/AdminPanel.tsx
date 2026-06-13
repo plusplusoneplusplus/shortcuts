@@ -50,6 +50,7 @@ const UsageStatsView = lazy(() => import('../features/stats/UsageStatsView').the
 const ServersView = lazy(() => import('../features/servers/ServersView').then(m => ({ default: m.ServersView })));
 const MemoryV2Panel = lazy(() => import('../features/memory/MemoryV2Panel').then(m => ({ default: m.MemoryV2Panel })));
 const ProviderModelsSection = lazy(() => import('../features/models/ProviderModelsSection').then(m => ({ default: m.ProviderModelsSection })));
+const DreamsView = lazy(() => import('../features/dreams/DreamsView').then(m => ({ default: m.DreamsView })));
 
 function formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
@@ -198,6 +199,7 @@ interface ToolNavItem {
 export const ALL_TOOL_NAV_ITEMS: ToolNavItem[] = [
     { id: 'memory-toggle', tab: 'memory', label: 'Memory', icon: '◈', description: 'View and manage global and workspace memory facts, reviews, and episodes.' },
     { id: 'skills-toggle', tab: 'skills', label: 'Skills', icon: '⚡', description: 'Install, configure, and inspect agent skills surfaced to the assistant.' },
+    { id: 'dreams-admin-toggle', tab: 'dreams-admin', label: 'Dreams', icon: '☾', description: 'Enable Dreams, tune the idle-reflection schedule and defaults, and watch provider activity.' },
     { id: 'logs-toggle', tab: 'logs', label: 'Logs', icon: '📋', description: 'Live and historical server logs streamed via SSE.' },
     { id: 'stats-toggle', tab: 'stats', label: 'Usage & Costs', icon: '📊', description: 'Aggregated usage statistics for chats, tokens, costs, and processes.' },
     { id: 'servers-toggle', tab: 'servers', label: 'Servers', icon: '🖥', description: 'Browse running CoC server instances and their health.' },
@@ -205,6 +207,7 @@ export const ALL_TOOL_NAV_ITEMS: ToolNavItem[] = [
 export const TOOL_TAB_GROUP_LABELS: Partial<Record<DashboardTab, string>> = {
     memory: 'Knowledge',
     skills: 'Knowledge',
+    'dreams-admin': 'Knowledge',
     servers: 'Configure',
     stats: 'Operations',
     logs: 'Operations',
@@ -1113,6 +1116,7 @@ export function AdminPanel() {
             items: [
                 toolNavItem('memory'),
                 toolNavItem('skills'),
+                toolNavItem('dreams-admin'),
             ],
         },
         {
@@ -1284,6 +1288,7 @@ export function AdminPanel() {
                                     }}
                                 />}
                                 {activeToolItem.tab === 'skills' && <SkillsView />}
+                                {activeToolItem.tab === 'dreams-admin' && <DreamsView />}
                                 {activeToolItem.tab === 'logs' && <LogsView />}
                                 {activeToolItem.tab === 'stats' && <UsageStatsView />}
                                 {activeToolItem.tab === 'servers' && <ServersView />}

@@ -36,7 +36,7 @@ export interface ClientTokenUsage {
     conversationTokens?: number;
 }
 
-export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports' | 'stats' | 'admin' | 'memory' | 'skills' | 'logs' | 'servers';
+export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports' | 'stats' | 'admin' | 'memory' | 'skills' | 'logs' | 'servers' | 'dreams-admin';
 
 export const REPO_SUB_TAB_VALUES = [
     'chats', 'work-items', 'settings', 'workflows', 'templates', 'tasks',

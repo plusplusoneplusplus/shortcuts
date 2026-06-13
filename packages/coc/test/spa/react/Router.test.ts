@@ -68,6 +68,10 @@ describe('tabFromHash', () => {
         expect(tabFromHash('#servers')).toBe('servers');
     });
 
+    it('returns "dreams-admin" for #dreams-admin', () => {
+        expect(tabFromHash('#dreams-admin')).toBe('dreams-admin');
+    });
+
     it('returns null for unknown hash', () => {
         expect(tabFromHash('#unknown')).toBeNull();
     });

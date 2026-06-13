@@ -45,10 +45,26 @@ describe('ALL_TOOL_NAV_ITEMS', () => {
         expect(ids).not.toContain('models-toggle');
     });
 
+    it('includes a dreams-admin entry (Dreams tab)', () => {
+        const item = ALL_TOOL_NAV_ITEMS.find(i => i.tab === 'dreams-admin');
+        expect(item).toBeDefined();
+        expect(item?.label).toBe('Dreams');
+        expect(item?.id).toBe('dreams-admin-toggle');
+    });
+
+    it('dreams-admin entry comes after skills entry (Knowledge group ordering)', () => {
+        const skillsIdx = ALL_TOOL_NAV_ITEMS.findIndex(i => i.tab === 'skills');
+        const dreamsIdx = ALL_TOOL_NAV_ITEMS.findIndex(i => i.tab === 'dreams-admin');
+        expect(skillsIdx).toBeGreaterThanOrEqual(0);
+        expect(dreamsIdx).toBeGreaterThanOrEqual(0);
+        expect(skillsIdx).toBeLessThan(dreamsIdx);
+    });
+
     it('includes all expected tool tabs', () => {
         const tabs = ALL_TOOL_NAV_ITEMS.map(i => i.tab);
         expect(tabs).toContain('memory');
         expect(tabs).toContain('skills');
+        expect(tabs).toContain('dreams-admin');
         expect(tabs).toContain('stats');
         expect(tabs).toContain('logs');
         expect(tabs).toContain('servers');
@@ -64,6 +80,10 @@ describe('TOOL_TAB_GROUP_LABELS', () => {
 
     it('places skills in the Knowledge group (AC-02)', () => {
         expect(TOOL_TAB_GROUP_LABELS['skills']).toBe('Knowledge');
+    });
+
+    it('places dreams-admin in the Knowledge group (Dreams tab)', () => {
+        expect(TOOL_TAB_GROUP_LABELS['dreams-admin']).toBe('Knowledge');
     });
 
     it('does not have a models group label (standalone Models page removed)', () => {

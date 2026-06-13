@@ -162,7 +162,7 @@ describe('AdminPanel — grouped sidebar navigation', () => {
 
         expect(groups).toEqual([
             { label: 'Configure', ids: ['servers-toggle'] },
-            { label: 'Knowledge', ids: ['memory-toggle', 'skills-toggle'] },
+            { label: 'Knowledge', ids: ['memory-toggle', 'skills-toggle', 'dreams-admin-toggle'] },
             { label: 'Operations', ids: ['stats-toggle', 'logs-toggle'] },
             { label: 'Developer / Internals', ids: [] },
         ]);
@@ -178,6 +178,7 @@ describe('AdminPanel — grouped sidebar navigation', () => {
         await waitFor(() => expect(document.getElementById('servers-toggle')).toBeTruthy());
         expect(document.getElementById('memory-toggle')!.getAttribute('data-tab')).toBe('memory');
         expect(document.getElementById('skills-toggle')!.getAttribute('data-tab')).toBe('skills');
+        expect(document.getElementById('dreams-admin-toggle')!.getAttribute('data-tab')).toBe('dreams-admin');
         expect(document.getElementById('logs-toggle')!.getAttribute('data-tab')).toBe('logs');
         expect(document.getElementById('stats-toggle')!.getAttribute('data-tab')).toBe('stats');
         expect(document.getElementById('servers-toggle')!.getAttribute('data-tab')).toBe('servers');
