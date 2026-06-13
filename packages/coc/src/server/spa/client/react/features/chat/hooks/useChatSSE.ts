@@ -83,6 +83,14 @@ export interface AskUserBatch {
     questions: AskUserQuestion[];
 }
 
+/** Live canvas create/update notification for the canvas side panel. */
+export interface CanvasUpdatedEvent {
+    canvasId: string;
+    title: string;
+    revision: number;
+    editor: 'ai' | 'user';
+}
+
 /** Data for an MCP OAuth prompt from the server. */
 export interface McpOAuthPromptData {
     requestId: string;
@@ -125,6 +133,8 @@ export interface UseChatSSEOptions {
     onMcpOAuthRequired?: (data: McpOAuthPromptData) => void;
     /** Called when MCP OAuth completes (for auto-dismiss of prompt). */
     onMcpOAuthCompleted?: (data: McpOAuthPromptData) => void;
+    /** Called when the AI creates or updates a canvas linked to this process. */
+    onCanvasUpdated?: (data: CanvasUpdatedEvent) => void;
 }
 
 /** Manages the SSE EventSource for a running process and drives all streaming state updates. */
@@ -150,6 +160,7 @@ export function useChatSSE({
     onAskUserBatch,
     onMcpOAuthRequired,
     onMcpOAuthCompleted,
+    onCanvasUpdated,
 }: UseChatSSEOptions): { stopStreaming: () => void } {
     const eventSourceRef = useRef<EventSource | null>(null);
     const askUserBatchesRef = useRef<Map<string, Map<number, AskUserQuestion>>>(new Map());
@@ -455,6 +466,20 @@ export function useChatSSE({
             try {
                 const data = JSON.parse((event as MessageEvent).data) as McpOAuthPromptData;
                 onMcpOAuthCompleted?.(data);
+            } catch { /* ignore */ }
+        });
+
+        es.addEventListener('canvas-updated', (event: Event) => {
+            try {
+                const data = JSON.parse((event as MessageEvent).data);
+                if (typeof data?.canvasId === 'string' && typeof data?.revision === 'number') {
+                    onCanvasUpdated?.({
+                        canvasId: data.canvasId,
+                        title: typeof data.title === 'string' ? data.title : '',
+                        revision: data.revision,
+                        editor: data.editor === 'user' ? 'user' : 'ai',
+                    });
+                }
             } catch { /* ignore */ }
         });
 

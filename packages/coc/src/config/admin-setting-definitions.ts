@@ -597,6 +597,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'canvas.enabled', default: false, runtime: 'live', runtimeFlag: 'canvasEnabled',
+        ui: {
+            group: 'review', order: 61, label: 'Canvas panel', badge: 'experimental',
+            hint: 'AI can maintain a markdown document in a side panel next to the chat, with live user co-editing. Disabled by default.',
+            testId: 'toggle-canvas-enabled',
+        },
+    }),
+    bool({
         key: 'mcpOauth.enabled', default: false, runtime: 'restartRequired', runtimeFlag: 'mcpOauthEnabled',
         ui: {
             group: 'infrastructure', order: 20, label: 'MCP OAuth', badge: 'restart',

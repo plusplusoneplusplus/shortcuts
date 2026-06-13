@@ -51,6 +51,8 @@ import {
 import type { ForEachGenerationContext, MapReduceGenerationContext } from '../tasks/task-types';
 import { createTavilyWebSearchTool } from '../llm-tools/tavily-web-search-tool';
 import { createExcalidrawTools } from '../llm-tools/excalidraw-tools';
+import { createCanvasTools } from '../llm-tools/canvas-tools';
+import { resolveConfig, CONFIG_FILE_NAME } from '../../config';
 import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';
 import { createScheduleWakeupTool, createCreateLoopTool, createCancelLoopTool, createListLoopsTool } from '../llm-tools/loop-tools';
 import type { LoopToolDeps } from '../llm-tools/loop-tools';
@@ -676,6 +678,44 @@ export function buildExcalidrawToolsAddon(
     const { createOrUpdate, read } = createExcalidrawTools({ dataDir, workspaceId });
 
     return { tools: [createOrUpdate, read], suffix: '' };
+}
+
+// ============================================================================
+// Canvas Tools (gated by the `canvas.enabled` config flag)
+// ============================================================================
+
+export function buildCanvasToolsAddon(
+    dataDir: string | undefined,
+    store: ProcessStore | undefined,
+    workspaceId: string | undefined,
+    processId: string | undefined,
+    opts?: { enabled?: boolean },
+): { tools: Tool<any>[]; suffix: string } {
+    if (!dataDir || !workspaceId) {
+        return { tools: [], suffix: '' };
+    }
+
+    const enabled = opts?.enabled
+        ?? resolveConfig(path.join(dataDir, CONFIG_FILE_NAME)).canvas.enabled;
+    if (!enabled) {
+        return { tools: [], suffix: '' };
+    }
+
+    const { write, read, extension } = createCanvasTools({
+        dataDir,
+        workspaceId,
+        processId,
+        processStore: store,
+    });
+
+    const suffix =
+        '\n\nCanvas tools (`write_canvas`, `read_canvas`, `extension_canvas`) maintain a live artifact in '
+        + 'a side panel beside this chat. Use one when the user wants a document, plan, spec, or code file '
+        + 'they will iterate on — not for short answers — and keep replies brief, referencing the canvas '
+        + 'rather than repeating it. For interactive artifacts (boards, checklists, dashboards) use '
+        + '`extension_canvas`.';
+
+    return { tools: [write, read, extension], suffix };
 }
 
 // ============================================================================

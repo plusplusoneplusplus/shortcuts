@@ -67,3 +67,10 @@ export {
     type ReadExcalidrawArgs,
     type ReadExcalidrawResult,
 } from './excalidraw-tools';
+export {
+    createCanvasTools,
+    type CanvasToolsDeps,
+    type WriteCanvasArgs,
+    type ReadCanvasArgs,
+    type ExtensionCanvasArgs,
+} from './canvas-tools';

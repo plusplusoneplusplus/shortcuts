@@ -19,6 +19,7 @@ spa/client/react/
 ├── hooks/              # 30+ custom hooks
 ├── layout/             # Layout (Router, TopBar, BottomNav, ThemeProvider)
 ├── features/
+│   ├── canvas/         # Canvas side panel: CanvasPanel + ExtensionCanvasView (sandboxed iframe) for AI co-edited documents, code, and custom extension canvases
 │   ├── chat/           # Chat UI: ChatDetail, ChatListPane, ConversationArea
 │   ├── dreams/         # Workspace Dreams review panel with feature/opt-in states, queue-backed run-now task summary, provider-attributed Activity/Admin AI Provider visibility, filters, plain-language card guidance, source evidence links, and card lifecycle actions
 │   ├── memory/         # Memory V2 route, facts/review/episodes tabs, repo memory settings section
@@ -98,6 +99,63 @@ transient
 `pendingAskUser` as one compact "Question planning" card plus grouped role
 sections and provenance chips; it does not create separate agent threads or
 separate answer submissions.
+
+`features/canvas/CanvasPanel.tsx` renders the chat canvas side panel, gated by
+the `canvas.enabled` runtime flag (`isCanvasEnabled()` in `utils/config.ts`,
+default off). When enabled, `ChatDetail` discovers canvases linked to the open
+process via `client.canvases.list(workspaceId, { processId })` and reacts to
+live `canvas-updated` SSE events (surfaced by `useChatSSE`'s `onCanvasUpdated`
+callback) to mount the panel as a desktop-only (`lg:`) resizable right column
+beside the conversation, with width persisted under
+`coc.canvasPanel.width.<workspaceId>` via `useResizablePanel`. The panel shows
+the canvas title, revision, and a Preview (shared `useMarkdownPreview`
+pipeline) / Edit (plain textarea) toggle. User edits autosave with a debounce
+through `client.canvases.save(...)` carrying `expectedRevision`; an HTTP 409
+shows a conflict banner with a "Load latest" action, and a live AI update
+arriving over unsaved local edits shows a pending-update banner instead of
+clobbering the draft. The close button hides the panel for the current chat
+selection only (no persistent dismissal state). The canvas mounts as a
+full-height right column of a top-level split in `ChatDetail` (the
+conversation and follow-up composer share the left column), so the panel spans
+the whole detail pane height beside the composer. A header fullscreen toggle
+(`onFullscreenChange`) re-renders the panel as a `fixed inset-0 z-50` overlay
+covering the viewport (Esc exits); while fullscreen, `ChatDetail` collapses the
+in-flow canvas column width to 0 so the conversation reclaims the space. The
+header also offers a pop-out button (`onPopOut`) that opens the canvas in a
+standalone window (`PopOutCanvasShell`, routed from `entry.tsx` on
+`#popout/canvas` with `?workspace=&canvasId=`); that window maps the global
+WebSocket `canvas-updated` event into the panel's `liveEvent` and bumps
+`reloadNonce` on focus to pick up AI tool edits that streamed over the chat SSE
+channel. Closing the canvas does not detach it: `ChatDetail` keeps a thin
+right-side reopen rail (mirroring the chat-list collapse rail) so a linked
+canvas stays reachable. Canvas header controls reuse the shared ICON_BTN style
+(matching `ChatHeader`). The header revision chip is a
+version stepper backed by the canvas versions API: stepping back shows an
+older snapshot read-only with a history banner whose **Restore as latest**
+action saves that snapshot's content as a new revision (disabled while local
+edits are unsaved). Selecting text in the preview or the edit textarea shows a
+selection action bar: **Ask AI** prefills the follow-up composer (via
+ChatDetail's `onAskAi`, which sets `followUpInput` and the `RichTextInput`
+ref) with a prompt quoting the selection plus the canvas id/revision, and
+**Comment** opens an inline compose box that stores an anchored comment. Open
+comments render in a footer list with a **Send N to AI** action that posts one
+batch message through ChatDetail's `onSendToAi` (`sendFollowUp(message,
+'enqueue')`, so a busy AI receives it at the next turn boundary) and then
+marks those comments `sent`. Code canvases (`type: 'code'`) show a language
+chip, render the preview as a fenced highlighted block, and use
+`MonacoFileEditor` (shared with the repo explorer) in Edit mode with the same
+debounced autosave; selection actions stay available in preview mode. The
+header Export menu offers Copy content, Download file (extension derived from
+the language), and — for markdown canvases — Save to Notes, which writes the
+content to `canvases/<slug>.md` in the workspace Notes tree via
+`notes.saveContent`. Extension canvases (`type: 'extension'`) render
+`ExtensionCanvasView` in preview mode: the extension's `ui.html` runs inside an
+`<iframe sandbox="allow-scripts">` whose injected `window.CanvasHost` bridge
+(`onState`/`invoke`/`setState`) talks to the host over `postMessage`. The host
+posts `canvas-state` on ready and on every live update, services
+`invoke-capability` through `canvases.invokeCapability` and `set-state` through
+the revision-checked `canvases.save`, so human UI actions and AI capability
+calls share one gate. Edit mode shows the raw JSON shared state.
 
 ## Key Contexts
 
@@ -446,6 +504,10 @@ Each tool's internal sub-tab/hash scheme (e.g. `#skills/installed`,
 - Scope segmented control: Chats / Loops (when `loops.enabled`) / Automations / All
 - Search box
 - Selection persists in `localStorage['coc-activity-scope']`
+- The desktop activity split (`RepoChatTab`) can collapse the left chat-list
+  panel to a thin rail; the choice persists in
+  `localStorage['activity-list-collapsed']` and the collapse affordance sits on
+  the list/detail resize handle.
 - For Each parent run group rows render in Activity Chats and All, but not in
   Activity Automations or Loops; loop-linked child chats can still appear in
   Loops independently of the hidden parent group row.

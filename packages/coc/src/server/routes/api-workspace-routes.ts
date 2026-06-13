@@ -734,8 +734,8 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
         handler: async (_req, res, match) => {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
-            const liveFlags = ctx.getLiveFeatureFlags?.() ?? { excalidrawEnabled: false };
-            const effectiveRegistry = getEffectiveLlmToolRegistry({ loopsEnabled: ctx.loopsEnabled, excalidrawEnabled: liveFlags.excalidrawEnabled });
+            const liveFlags = ctx.getLiveFeatureFlags?.() ?? { excalidrawEnabled: false, canvasEnabled: false };
+            const effectiveRegistry = getEffectiveLlmToolRegistry({ loopsEnabled: ctx.loopsEnabled, excalidrawEnabled: liveFlags.excalidrawEnabled, canvasEnabled: liveFlags.canvasEnabled });
             const conversationRetrievalAvailable = typeof ctx.store.searchConversations === 'function';
             if (!ctx.dataDir) {
                 sendJSON(res, 200, {
@@ -782,7 +782,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             writeRepoPreferences(ctx.dataDir, ws.id, merged);
             const globalPrefs = readGlobalPreferences(ctx.dataDir);
             sendJSON(res, 200, {
-                tools: getEffectiveLlmToolRegistry({ loopsEnabled: ctx.loopsEnabled, excalidrawEnabled: ctx.getLiveFeatureFlags?.()?.excalidrawEnabled ?? false }),
+                tools: getEffectiveLlmToolRegistry({ loopsEnabled: ctx.loopsEnabled, excalidrawEnabled: ctx.getLiveFeatureFlags?.()?.excalidrawEnabled ?? false, canvasEnabled: ctx.getLiveFeatureFlags?.()?.canvasEnabled ?? false }),
                 disabledLlmTools: merged.disabledLlmTools ?? getEffectiveDefaultDisabledTools(globalPrefs.uiLayoutMode),
                 conversationRetrievalAvailable: typeof ctx.store.searchConversations === 'function',
             });

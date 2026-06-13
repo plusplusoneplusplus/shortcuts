@@ -53,7 +53,8 @@ Everything runs in one Node.js process. LLM API calls are async network I/O (not
 ProcessStore
 ├── onProcessOutput(processId, event)   → per-process token/tool streaming
 │   Events: chunk, tool-start, tool-complete, tool-failed,
-│           permission-request, suggestions, ask-user, status, done
+│           permission-request, suggestions, ask-user, canvas-updated,
+│           status, done
 │
 └── onProcessChange(event)              → process lifecycle (global)
     Events: process-added, process-updated, process-removed
@@ -91,6 +92,7 @@ Full catalog:
 | `config-changed` | admin-handler |
 | `wiki-reload/rebuilding/error` | broadcastWikiEvent() |
 | `comment-added/updated/deleted` | diff-comments-handler |
+| `canvas-updated` | canvas-routes (user saves; AI edits use the per-process SSE channel instead) |
 
 ## Data Flow — Standalone Mode
 

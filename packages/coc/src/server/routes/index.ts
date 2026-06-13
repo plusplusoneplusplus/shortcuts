@@ -27,6 +27,7 @@ import { readRepoPreferences, registerPreferencesRoutes } from '../preferences-h
 import { registerAdminRoutes } from '../admin/admin-handler';
 import { registerTaskCommentsRoutes } from '../tasks/comments/task-comments-handler';
 import { registerDiffCommentsRoutes } from '../tasks/comments/diff-comments-handler';
+import { registerCanvasRoutes } from '../canvas/canvas-routes';
 import { registerWikiRoutes } from '../wiki';
 import { registerMemoryRoutes } from '../memory/memory-routes';
 import { registerMemoryV2Routes } from '../memory/memory-v2-routes';
@@ -338,8 +339,14 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // changes take effect without restart. loopsEnabled stays startup-captured
     // (restartRequired — loop executor infrastructure wires at startup).
     const getLiveFeatureFlags = opts.runtimeConfigService
-        ? () => ({ excalidrawEnabled: opts.runtimeConfigService!.config.excalidraw?.enabled ?? false })
-        : () => ({ excalidrawEnabled: opts.resolvedConfig?.excalidraw?.enabled ?? false });
+        ? () => ({
+            excalidrawEnabled: opts.runtimeConfigService!.config.excalidraw?.enabled ?? false,
+            canvasEnabled: opts.runtimeConfigService!.config.canvas?.enabled ?? false,
+        })
+        : () => ({
+            excalidrawEnabled: opts.resolvedConfig?.excalidraw?.enabled ?? false,
+            canvasEnabled: opts.resolvedConfig?.canvas?.enabled ?? false,
+        });
     const activeWorkspaceTracker = new ActiveWorkspaceTracker();
     registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.loops?.enabled ?? false, getLiveFeatureFlags, activeWorkspaceTracker);
     const repoTreeService = new RepoTreeService(dataDir, undefined, store);
@@ -465,6 +472,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerWorkspaceHistoryRoutes(routes, store, bridge);
     registerTaskCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
     registerDiffCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
+    registerCanvasRoutes(routes, dataDir, getWsServer, store);
     registerAdminRoutes(routes, {
         store,
         dataDir,

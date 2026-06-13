@@ -48,6 +48,14 @@ export interface PendingMessageAddedPayload {
     createdAt: string;
 }
 
+/** Fired when a canvas linked to this process is created or updated by the AI. */
+export interface CanvasUpdatedPayload {
+    canvasId: string;
+    title: string;
+    revision: number;
+    editor: 'ai' | 'user';
+}
+
 // ============================================================================
 // SSE Emitter Helpers
 // ============================================================================
@@ -85,6 +93,14 @@ export function emitPendingMessageAdded(store: ProcessStore, processId: string, 
     } as ProcessOutputEvent);
 }
 
+/** Emit a `canvas-updated` event on a process's SSE channel. */
+export function emitCanvasUpdated(store: ProcessStore, processId: string, payload: CanvasUpdatedPayload): void {
+    store.emitProcessEvent(processId, {
+        type: 'canvas-updated',
+        canvasUpdate: payload,
+    } as unknown as ProcessOutputEvent);
+}
+
 /**
  * Handle SSE streaming for a single process.
  *
@@ -103,6 +119,7 @@ export function emitPendingMessageAdded(store: ProcessStore, processId: string, 
  *   event: token-usage       → { turnIndex, tokenUsage, cumulativeTokenUsage?, conversationCostEstimate?, sessionTokenLimit?, sessionCurrentTokens?, sessionSystemTokens?, sessionToolTokens?, sessionConversationTokens? }
  *   event: background-tasks  → { backgroundAgents, backgroundShells, backgroundTotalActive, backgroundWaitingForDrain }
  *   event: ralph-grill-planning → { status, depth, agentCount, agents, message, warnings }
+ *   event: canvas-updated    → { canvasId, title, revision, editor }
  *   event: status             → { status, result?, error?, duration? }
  *   event: done               → { processId }
  *   event: heartbeat          → {}
@@ -276,6 +293,11 @@ export async function handleProcessStream(
             sendEvent(res, 'mcp-oauth-completed', event.mcpOAuth);
         } else if (eventType === 'ralph-grill-planning' && ralphGrillPlanning) {
             sendEvent(res, 'ralph-grill-planning', ralphGrillPlanning);
+        } else if (eventType === 'canvas-updated') {
+            const canvasUpdate = (event as { canvasUpdate?: CanvasUpdatedPayload }).canvasUpdate;
+            if (canvasUpdate) {
+                sendEvent(res, 'canvas-updated', canvasUpdate);
+            }
         } else if (event.type === 'complete') {
             sendEvent(res, 'status', {
                 status: event.status,

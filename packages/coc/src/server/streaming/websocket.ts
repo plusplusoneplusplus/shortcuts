@@ -133,6 +133,7 @@ export type ServerMessage =
     | { type: 'schedule-run-complete'; repoId: string; scheduleId: string; schedule?: unknown; run?: unknown }
     | { type: 'git-changed'; workspaceId: string; trigger: string; timestamp: number }
     | { type: 'diff-comment-updated'; workspaceId: string; action: 'added' | 'updated' | 'deleted'; storageKey: string; comment?: any; commentId?: string }
+    | { type: 'canvas-updated'; workspaceId: string; canvasId: string; processId?: string; title?: string; revision: number; editor: 'ai' | 'user'; timestamp: number }
     | { type: 'work-item-added'; workspaceId: string; item: any }
     | { type: 'work-item-updated'; workspaceId: string; item: any }
     | { type: 'work-item-removed'; workspaceId: string; itemId: string }

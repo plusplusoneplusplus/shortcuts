@@ -44,6 +44,7 @@ export type ResolvedConfigNamespaceValues = Pick<
     | 'dreams'
     | 'mcpOauth'
     | 'excalidraw'
+    | 'canvas'
     | 'containerDefaultAgent'
     | 'agentProviderRouting'
     | 'codex'

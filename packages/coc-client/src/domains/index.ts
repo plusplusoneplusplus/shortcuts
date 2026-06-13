@@ -1,6 +1,7 @@
 export { AdminClient } from './admin';
 export { AgentProvidersClient } from './agent-providers';
 export type { ProviderInstallStatusResponse, ProviderInstallResponse } from './agent-providers';
+export { CanvasesClient } from './canvases';
 export { DbBrowserClient } from './db-browser';
 export { DreamsClient } from './dreams';
 export { ExplorerClient } from './explorer';

@@ -13,6 +13,7 @@ import { App } from './react/App';
 import { PopOutChatShell } from './react/layout/PopOutChatShell';
 import { PopOutMarkdownShell } from './react/layout/PopOutMarkdownShell';
 import { PopOutGitReviewShell } from './react/layout/PopOutGitReviewShell';
+import { PopOutCanvasShell } from './react/layout/PopOutCanvasShell';
 import { DiagramViewerShell } from './react/features/diagrams';
 import { loadRuntimeConfig } from './react/utils/config';
 import './react/shared/file-path/file-path-preview';
@@ -37,6 +38,8 @@ if (window.location.pathname.startsWith('/diagram/')) {
     root.render(<PopOutMarkdownShell />);
 } else if (window.location.hash.startsWith('#popout/git-review')) {
     root.render(<PopOutGitReviewShell />);
+} else if (window.location.hash.startsWith('#popout/canvas')) {
+    root.render(<PopOutCanvasShell />);
 } else {
     // Load fresh feature flags from API before rendering the main app.
     // Non-fatal: falls back to bootstrap config embedded in HTML if API fails.
