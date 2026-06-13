@@ -5,6 +5,10 @@
  * here from the AI Provider page. These tests assert the section renders inside
  * the Dreams tab, attributes runs to provider/model/timeout, and that the
  * Refresh control is preserved.
+ *
+ * AC-03: the global `dreams.enabled` toggle now lives in this tab (removed from
+ * the general Settings → Features grid). These tests assert the toggle renders,
+ * reflects the passed config, and drives the change/save/cancel callbacks.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
@@ -25,8 +29,41 @@ describe('DreamsView', () => {
     it('renders the Dreams page shell with title and restart-aware badge', () => {
         render(<DreamsView />);
         expect(screen.getByTestId('dreams-admin-page')).toBeDefined();
-        expect(screen.getByText('Dreams')).toBeDefined();
+        expect(screen.getByRole('heading', { level: 2, name: 'Dreams' })).toBeDefined();
         expect(screen.getByText('Restart-aware')).toBeDefined();
+    });
+
+    // ── AC-03: global dreams.enabled toggle lives in the tab ──
+    it('renders the dreams.enabled toggle reflecting the passed config', () => {
+        const { rerender } = render(<DreamsView config={{ enabled: false }} />);
+        const toggle = screen.getByTestId('toggle-dreams-enabled') as HTMLInputElement;
+        expect(toggle.checked).toBe(false);
+        rerender(<DreamsView config={{ enabled: true }} />);
+        expect((screen.getByTestId('toggle-dreams-enabled') as HTMLInputElement).checked).toBe(true);
+    });
+
+    it('invokes onConfigChange with the new enabled value when toggled', () => {
+        const onConfigChange = vi.fn();
+        render(<DreamsView config={{ enabled: false }} onConfigChange={onConfigChange} />);
+        fireEvent.click(screen.getByTestId('toggle-dreams-enabled'));
+        expect(onConfigChange).toHaveBeenCalledWith({ enabled: true });
+    });
+
+    it('wires the settings card Save/Cancel footer to the config handlers when dirty', () => {
+        const onSaveConfig = vi.fn();
+        const onCancelConfig = vi.fn();
+        render(
+            <DreamsView
+                config={{ enabled: true }}
+                configDirty
+                onSaveConfig={onSaveConfig}
+                onCancelConfig={onCancelConfig}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('dreams-settings-save'));
+        expect(onSaveConfig).toHaveBeenCalledOnce();
+        fireEvent.click(screen.getByTestId('dreams-settings-cancel'));
+        expect(onCancelConfig).toHaveBeenCalledOnce();
     });
 
     it('renders the relocated Dreams provider activity section with provider/model/timeout attribution', () => {

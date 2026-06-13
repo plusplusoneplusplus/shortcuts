@@ -580,13 +580,11 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-loops-enabled',
         },
     }),
+    // `dreams.enabled` is rendered bespoke in the admin Dreams tab
+    // (Knowledge nav group), not on the general Settings → Features grid, so it
+    // intentionally omits a `ui` block. Runtime flag + PUT validation are unchanged.
     bool({
         key: 'dreams.enabled', default: false, runtime: 'live', runtimeFlag: 'dreamsEnabled',
-        ui: {
-            group: 'aiModes', order: 50, label: 'Dreams', badge: 'experimental',
-            hint: 'Enables workspace opt-in review cards from idle-time reflection. Disabled by default; workspaces must also opt in individually.',
-            testId: 'toggle-dreams-enabled',
-        },
     }),
     bool({
         key: 'excalidraw.enabled', default: false, runtime: 'live', runtimeFlag: 'excalidrawEnabled',

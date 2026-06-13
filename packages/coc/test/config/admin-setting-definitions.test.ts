@@ -315,4 +315,15 @@ describe('Features card UI metadata', () => {
             }
         }
     });
+
+    // AC-03: `dreams.enabled` is rendered bespoke in the admin Dreams tab, not on
+    // the general Features grid — it must stay a valid admin-editable definition
+    // (live runtime flag) while omitting its `ui` block.
+    it('keeps dreams.enabled admin-editable but off the Features card', () => {
+        const dreams = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'dreams.enabled');
+        expect(dreams, 'dreams.enabled must remain an admin setting').toBeDefined();
+        expect(dreams!.ui, 'dreams.enabled must not be on the Features card').toBeUndefined();
+        expect(dreams!.runtimeFlag).toBe('dreamsEnabled');
+        expect(dreams!.runtime).toBe('live');
+    });
 });

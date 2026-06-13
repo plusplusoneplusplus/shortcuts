@@ -10,19 +10,42 @@
 // The per-workspace dream-cards review panel (`DreamsPanel`) is a separate,
 // untouched surface under each repo's detail view.
 //
-// State, fetch, and refresh for the provider-activity section are owned by
-// `AdminPanel` and passed in as props.
+// Config (form + dirty/save) and the provider-activity feed are owned by
+// `AdminPanel` and passed in as props, so they load with the rest of the admin
+// config and reuse the shared toast + runtime-flag plumbing.
 
+import { SettingsCard } from '../../admin/SettingsCard';
+import { AdminRow, AdminToggle } from '../../admin/adminControls';
 import type { AgentProviderWorkActivity } from '../../shared/providerActivity';
 import { ProviderActivitySection } from './ProviderActivitySection';
 
+/** Editable global Dreams settings surfaced on the Dreams tab. */
+export interface DreamsConfigForm {
+    /** Global `dreams.enabled` flag — gates idle-time reflection everywhere. */
+    enabled: boolean;
+}
+
 export interface DreamsViewProps {
+    config?: DreamsConfigForm;
+    onConfigChange?: (patch: Partial<DreamsConfigForm>) => void;
+    configDirty?: boolean;
+    configSaving?: boolean;
+    onSaveConfig?: () => void;
+    onCancelConfig?: () => void;
     providerActivity?: AgentProviderWorkActivity[];
     providerActivityError?: string | null;
     onRefreshProviderActivity?: () => void;
 }
 
+const DEFAULT_CONFIG: DreamsConfigForm = { enabled: false };
+
 export function DreamsView({
+    config = DEFAULT_CONFIG,
+    onConfigChange,
+    configDirty,
+    configSaving,
+    onSaveConfig,
+    onCancelConfig,
     providerActivity = [],
     providerActivityError,
     onRefreshProviderActivity,
@@ -39,6 +62,27 @@ export function DreamsView({
                 </div>
                 <span className="ar-badge ar-badge-accent"><span className="aip-dot" /> Restart-aware</span>
             </div>
+
+            <SettingsCard
+                title="Dreams"
+                description="Idle-time reflection that surfaces opt-in review cards per workspace."
+                dirty={configDirty}
+                saving={configSaving}
+                onSave={onSaveConfig}
+                onCancel={onCancelConfig}
+                data-testid="dreams-settings"
+            >
+                <AdminRow
+                    name={<>Enable Dreams <span className="ar-badge ar-badge-accent">Experimental</span></>}
+                    hint="Enables workspace opt-in review cards from idle-time reflection. Disabled by default; workspaces must also opt in individually."
+                >
+                    <AdminToggle
+                        checked={config.enabled === true}
+                        onChange={enabled => onConfigChange?.({ enabled })}
+                        data-testid="toggle-dreams-enabled"
+                    />
+                </AdminRow>
+            </SettingsCard>
 
             <ProviderActivitySection
                 activity={providerActivity}
