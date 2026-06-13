@@ -326,4 +326,14 @@ describe('Features card UI metadata', () => {
         expect(dreams!.runtimeFlag).toBe('dreamsEnabled');
         expect(dreams!.runtime).toBe('live');
     });
+
+    // AC-02: the Dreams tab renders this bespoke in minutes, but the admin
+    // registry must keep the persisted millisecond field editable.
+    it('keeps dreams.idleCheckIntervalMs admin-editable but off the Features card', () => {
+        const interval = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'dreams.idleCheckIntervalMs');
+        expect(interval, 'dreams.idleCheckIntervalMs must be an admin setting').toBeDefined();
+        expect(interval!.ui, 'dreams.idleCheckIntervalMs must not be on the Features card').toBeUndefined();
+        expect(interval!.default).toBe(300_000);
+        expect(interval!.runtime).toBe('restartRequired');
+    });
 });

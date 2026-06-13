@@ -41,6 +41,7 @@ describe('ADMIN_EDITABLE_KEYS', () => {
             'scratchpad.enabled', 'scratchpad.layout',
             'workflows.enabled', 'pullRequests.enabled', 'pullRequests.autoClassifyTeam', 'servers.enabled',
             'ralph.enabled', 'forEach.enabled', 'vimNavigation.enabled', 'loops.enabled', 'dreams.enabled',
+            'dreams.idleCheckIntervalMs',
             'excalidraw.enabled',
             'mcpOauth.enabled', 'mcpOauth.autoRefresh.enabled',
             'codex.enabled', 'claude.enabled',
@@ -177,6 +178,18 @@ describe('validate()', () => {
         });
         it('rejects float', () => {
             expect(fieldFor('chat.followUpSuggestions.count').validate(2.5)).toMatch(/1 and 5/);
+        });
+    });
+
+    describe('dreams.idleCheckIntervalMs', () => {
+        it('accepts a positive integer millisecond interval', () => {
+            expect(fieldFor('dreams.idleCheckIntervalMs').validate(300_000)).toBeUndefined();
+        });
+        it('rejects zero', () => {
+            expect(fieldFor('dreams.idleCheckIntervalMs').validate(0)).toMatch(/positive integer/);
+        });
+        it('rejects non-integers', () => {
+            expect(fieldFor('dreams.idleCheckIntervalMs').validate(1.5)).toMatch(/positive integer/);
         });
     });
 
@@ -451,6 +464,14 @@ describe('apply()', () => {
             const cfg: CLIConfig = {};
             fieldFor('scratchpad.layout').apply(cfg, 'vertical');
             expect(cfg.scratchpad?.layout).toBe('vertical');
+        });
+    });
+
+    describe('dreams.idleCheckIntervalMs', () => {
+        it('sets the interval, initializing the dreams namespace', () => {
+            const cfg: CLIConfig = {};
+            fieldFor('dreams.idleCheckIntervalMs').apply(cfg, 600_000);
+            expect(cfg.dreams?.idleCheckIntervalMs).toBe(600_000);
         });
     });
 

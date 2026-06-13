@@ -586,6 +586,12 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'dreams.enabled', default: false, runtime: 'live', runtimeFlag: 'dreamsEnabled',
     }),
+    {
+        key: 'dreams.idleCheckIntervalMs',
+        value: { kind: 'number', integer: true, gt: 0, message: 'dreams.idleCheckIntervalMs must be a positive integer number of milliseconds' },
+        default: 5 * 60 * 1000,
+        runtime: 'restartRequired',
+    },
     bool({
         key: 'excalidraw.enabled', default: false, runtime: 'live', runtimeFlag: 'excalidrawEnabled',
         ui: {

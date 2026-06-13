@@ -9,6 +9,9 @@
  * AC-03: the global `dreams.enabled` toggle now lives in this tab (removed from
  * the general Settings → Features grid). These tests assert the toggle renders,
  * reflects the passed config, and drives the change/save/cancel callbacks.
+ *
+ * AC-02: `dreams.idleCheckIntervalMs` is edited here in minutes, while the
+ * owner component persists milliseconds through the global config API.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
@@ -35,18 +38,33 @@ describe('DreamsView', () => {
 
     // ── AC-03: global dreams.enabled toggle lives in the tab ──
     it('renders the dreams.enabled toggle reflecting the passed config', () => {
-        const { rerender } = render(<DreamsView config={{ enabled: false }} />);
+        const { rerender } = render(<DreamsView config={{ enabled: false, intervalMinutes: '5' }} />);
         const toggle = screen.getByTestId('toggle-dreams-enabled') as HTMLInputElement;
         expect(toggle.checked).toBe(false);
-        rerender(<DreamsView config={{ enabled: true }} />);
+        rerender(<DreamsView config={{ enabled: true, intervalMinutes: '5' }} />);
         expect((screen.getByTestId('toggle-dreams-enabled') as HTMLInputElement).checked).toBe(true);
     });
 
     it('invokes onConfigChange with the new enabled value when toggled', () => {
         const onConfigChange = vi.fn();
-        render(<DreamsView config={{ enabled: false }} onConfigChange={onConfigChange} />);
+        render(<DreamsView config={{ enabled: false, intervalMinutes: '5' }} onConfigChange={onConfigChange} />);
         fireEvent.click(screen.getByTestId('toggle-dreams-enabled'));
         expect(onConfigChange).toHaveBeenCalledWith({ enabled: true });
+    });
+
+    // ── AC-02: idle interval is edited in minutes ──
+    it('renders the idle check interval in minutes with a restart hint', () => {
+        render(<DreamsView config={{ enabled: false, intervalMinutes: '7' }} />);
+        const input = screen.getByTestId('dreams-idle-check-interval-minutes') as HTMLInputElement;
+        expect(input.value).toBe('7');
+        expect(screen.getByText(/restart the server for the scheduler cadence/i)).toBeDefined();
+    });
+
+    it('invokes onConfigChange with the new interval minute string when edited', () => {
+        const onConfigChange = vi.fn();
+        render(<DreamsView config={{ enabled: false, intervalMinutes: '5' }} onConfigChange={onConfigChange} />);
+        fireEvent.change(screen.getByTestId('dreams-idle-check-interval-minutes'), { target: { value: '12' } });
+        expect(onConfigChange).toHaveBeenCalledWith({ intervalMinutes: '12' });
     });
 
     it('wires the settings card Save/Cancel footer to the config handlers when dirty', () => {
@@ -54,7 +72,7 @@ describe('DreamsView', () => {
         const onCancelConfig = vi.fn();
         render(
             <DreamsView
-                config={{ enabled: true }}
+                config={{ enabled: true, intervalMinutes: '5' }}
                 configDirty
                 onSaveConfig={onSaveConfig}
                 onCancelConfig={onCancelConfig}

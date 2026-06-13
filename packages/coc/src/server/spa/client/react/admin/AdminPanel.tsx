@@ -415,8 +415,8 @@ export function AdminPanel() {
 
     // Dreams tab config (global). Owned here so it loads with the rest of the
     // admin config; edited + saved from the Dreams tab (Knowledge nav group).
-    const [dreamsForm, setDreamsForm] = useState<DreamsConfigForm>({ enabled: false });
-    const [dreamsSnapshot, setDreamsSnapshot] = useState<DreamsConfigForm>({ enabled: false });
+    const [dreamsForm, setDreamsForm] = useState<DreamsConfigForm>({ enabled: false, intervalMinutes: '5' });
+    const [dreamsSnapshot, setDreamsSnapshot] = useState<DreamsConfigForm>({ enabled: false, intervalMinutes: '5' });
     const [dreamsSaving, setDreamsSaving] = useState(false);
 
     // Snapshots for per-card dirty tracking (set when config/prefs loads)
@@ -521,7 +521,10 @@ export function AdminPanel() {
             const loadedFeatures = readFeatureValues(resolved);
             setFeatureValues(loadedFeatures);
             setFeaturesSnapshot(loadedFeatures);
-            const loadedDreams: DreamsConfigForm = { enabled: resolved.dreams?.enabled ?? false };
+            const loadedDreams: DreamsConfigForm = {
+                enabled: resolved.dreams?.enabled ?? false,
+                intervalMinutes: String(Math.round((resolved.dreams?.idleCheckIntervalMs ?? 5 * 60 * 1000) / 60_000)),
+            };
             setDreamsForm(loadedDreams);
             setDreamsSnapshot(loadedDreams);
             const aapre = resolved.features?.autoAgentProviderRouting ?? false;
@@ -635,7 +638,8 @@ export function AdminPanel() {
 
     const featuresDirty = FEATURES_CARD_SETTINGS.some(def => featureValues[def.key] !== featuresSnapshot[def.key]);
 
-    const dreamsDirty = dreamsForm.enabled !== dreamsSnapshot.enabled;
+    const dreamsDirty = dreamsForm.enabled !== dreamsSnapshot.enabled ||
+        dreamsForm.intervalMinutes !== dreamsSnapshot.intervalMinutes;
 
     // ── AI & Execution card ──
     const handleSaveAiExec = useCallback(async () => {
@@ -901,9 +905,17 @@ export function AdminPanel() {
 
     // ── Dreams tab config card ──
     const handleSaveDreams = useCallback(async () => {
+        const intervalMinutes = Number(dreamsForm.intervalMinutes);
+        if (!Number.isInteger(intervalMinutes) || intervalMinutes < 1) {
+            addToast('Dreams idle check interval must be a positive whole number of minutes', 'error');
+            return;
+        }
         setDreamsSaving(true);
         try {
-            await getSpaCocClient().admin.updateConfig({ 'dreams.enabled': dreamsForm.enabled });
+            await getSpaCocClient().admin.updateConfig({
+                'dreams.enabled': dreamsForm.enabled,
+                'dreams.idleCheckIntervalMs': intervalMinutes * 60_000,
+            });
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
             applyRuntimeConfigPatch({ dreamsEnabled: dreamsForm.enabled });
@@ -2068,4 +2080,3 @@ function resolveNestedValue(obj: Record<string, unknown>, key: string): unknown 
     }
     return current;
 }
-

@@ -7,6 +7,14 @@ import { AdminPanel } from '../../../../src/server/spa/client/react/admin/AdminP
 // component reaches its idle state quickly.
 const mockFetch = vi.fn();
 
+function jsonResponse(body: unknown) {
+    return {
+        ok: true,
+        json: () => Promise.resolve(body),
+        headers: new Headers(),
+    } as Response;
+}
+
 // LogsView opens an SSE stream on mount. jsdom does not implement
 // EventSource — supply a minimal stub so the component does not throw
 // when it is rendered inside the embedded view tests.
@@ -26,11 +34,7 @@ class FakeEventSource {
 beforeEach(() => {
     vi.restoreAllMocks();
     mockFetch.mockReset();
-    mockFetch.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({}),
-        headers: new Headers(),
-    });
+    mockFetch.mockResolvedValue(jsonResponse({}));
     global.fetch = mockFetch;
     (globalThis as any).EventSource = FakeEventSource;
     if (typeof window !== 'undefined') {
@@ -331,5 +335,55 @@ describe('AdminPanel — embedded tools render in the right panel', () => {
         await waitFor(() => expect(document.querySelector('[data-testid="settings-chat"]')).toBeTruthy());
         // Chat tab is now marked active.
         expect(document.querySelector<HTMLButtonElement>('[data-testid="settings-subtab-chat"]')!.className).toContain('is-active');
+    });
+
+    it('saves the Dreams idle check interval in milliseconds after editing minutes', async () => {
+        mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            if (url.includes('/api/admin/config') && init?.method === 'PUT') {
+                return Promise.resolve(jsonResponse({ success: true }));
+            }
+            if (url.includes('/api/admin/config')) {
+                return Promise.resolve(jsonResponse({
+                    resolved: {
+                        dreams: {
+                            enabled: false,
+                            idleCheckIntervalMs: 300_000,
+                        },
+                    },
+                }));
+            }
+            if (url.includes('/api/admin/dream-provider-activity')) {
+                return Promise.resolve(jsonResponse({ items: [] }));
+            }
+            return Promise.resolve(jsonResponse({}));
+        });
+
+        await act(async () => { renderAdmin(); });
+        await waitFor(() => expect(document.getElementById('dreams-admin-toggle')).toBeTruthy());
+
+        await act(async () => {
+            fireEvent.click(document.getElementById('dreams-admin-toggle')!);
+        });
+
+        await waitFor(() => expect(document.querySelector('[data-testid="dreams-admin-page"]')).toBeTruthy());
+        const intervalInput = document.querySelector<HTMLInputElement>('[data-testid="dreams-idle-check-interval-minutes"]')!;
+        expect(intervalInput.value).toBe('5');
+
+        await act(async () => {
+            fireEvent.change(intervalInput, { target: { value: '12' } });
+        });
+        await act(async () => {
+            fireEvent.click(document.querySelector<HTMLButtonElement>('[data-testid="dreams-settings-save"]')!);
+        });
+
+        const saveCall = mockFetch.mock.calls.find(([input, init]: [RequestInfo | URL, RequestInit | undefined]) =>
+            String(input).includes('/api/admin/config') && init?.method === 'PUT'
+        );
+        expect(saveCall).toBeTruthy();
+        expect(JSON.parse(String(saveCall![1]!.body))).toMatchObject({
+            'dreams.enabled': false,
+            'dreams.idleCheckIntervalMs': 720_000,
+        });
     });
 });

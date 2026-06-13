@@ -15,7 +15,7 @@
 // config and reuse the shared toast + runtime-flag plumbing.
 
 import { SettingsCard } from '../../admin/SettingsCard';
-import { AdminRow, AdminToggle } from '../../admin/adminControls';
+import { AdminInputSuffix, AdminRow, AdminToggle } from '../../admin/adminControls';
 import type { AgentProviderWorkActivity } from '../../shared/providerActivity';
 import { ProviderActivitySection } from './ProviderActivitySection';
 
@@ -23,6 +23,8 @@ import { ProviderActivitySection } from './ProviderActivitySection';
 export interface DreamsConfigForm {
     /** Global `dreams.enabled` flag — gates idle-time reflection everywhere. */
     enabled: boolean;
+    /** Automatic idle-check cadence, edited in minutes and persisted as milliseconds. */
+    intervalMinutes: string;
 }
 
 export interface DreamsViewProps {
@@ -37,7 +39,7 @@ export interface DreamsViewProps {
     onRefreshProviderActivity?: () => void;
 }
 
-const DEFAULT_CONFIG: DreamsConfigForm = { enabled: false };
+const DEFAULT_CONFIG: DreamsConfigForm = { enabled: false, intervalMinutes: '5' };
 
 export function DreamsView({
     config = DEFAULT_CONFIG,
@@ -81,6 +83,24 @@ export function DreamsView({
                         onChange={enabled => onConfigChange?.({ enabled })}
                         data-testid="toggle-dreams-enabled"
                     />
+                </AdminRow>
+                <AdminRow
+                    name={<>Idle check interval <span className="ar-badge">Restart</span></>}
+                    hint="How often the server checks for idle workspaces that are ready for automatic Dream runs. Saved immediately; restart the server for the scheduler cadence to use the new value."
+                >
+                    <AdminInputSuffix suffix="min">
+                        <input
+                            id="dreams-idle-check-interval-minutes"
+                            className="ar-input ar-input-sm"
+                            type="number"
+                            min={1}
+                            step={1}
+                            inputMode="numeric"
+                            value={config.intervalMinutes}
+                            onChange={event => onConfigChange?.({ intervalMinutes: event.target.value })}
+                            data-testid="dreams-idle-check-interval-minutes"
+                        />
+                    </AdminInputSuffix>
                 </AdminRow>
             </SettingsCard>
 
