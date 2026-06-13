@@ -29,6 +29,27 @@ vi.mock('../../../../src/server/spa/client/react/ui', () => ({
     cn: (...parts: unknown[]) => parts.filter(Boolean).join(' '),
 }));
 
+// Stub the reused chat bubble so the panel test stays focused on the panel's
+// mapping/integration (the bubble is exercised by its own suite). The stub
+// surfaces the mapped turn's shape via data-attributes + renders content as a
+// React text node (so any stored HTML stays inert, mirroring the real bubble).
+vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble', () => ({
+    ConversationTurnBubble: ({ turn, wsId, provider }: any) => (
+        <div
+            data-testid="conversation-turn-bubble"
+            data-role={turn.role}
+            data-ws-id={wsId}
+            data-provider={provider}
+            data-tool-calls={(turn.toolCalls ?? []).map((t: any) => t.toolName).join(',')}
+            data-images={String((turn.images ?? []).length)}
+            data-timeline-types={(turn.timeline ?? []).map((i: any) => i.type).join(',')}
+            data-model={turn.model ?? ''}
+        >
+            {turn.content}
+        </div>
+    ),
+}));
+
 import { NativeCopilotSessionsPanel } from '../../../../src/server/spa/client/react/features/native-copilot-sessions/NativeCopilotSessionsPanel';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -107,6 +128,32 @@ function makeDetailResponse(overrides: Partial<Record<string, unknown>> = {}) {
                     searchIndexChars: null,
                 },
             ],
+            conversation: [
+                {
+                    role: 'user',
+                    content: '<script>alert("xss")</script> stored user text',
+                    timestamp: '2026-06-11T17:56:35.601Z',
+                    turnIndex: 0,
+                    timeline: [],
+                    images: ['data:image/png;base64,AAAA'],
+                },
+                {
+                    role: 'assistant',
+                    content: 'Here is the **answer**.',
+                    timestamp: '2026-06-11T17:57:35.601Z',
+                    turnIndex: 1,
+                    model: 'gpt-5.5',
+                    thinking: 'Let me reason about this.',
+                    toolCalls: [
+                        { id: 't1', toolName: 'shell', args: { command: 'ls' }, result: 'file.txt', status: 'completed' },
+                    ],
+                    timeline: [
+                        { type: 'content', timestamp: '2026-06-11T17:57:35.601Z', content: 'Here is the **answer**.' },
+                        { type: 'tool-start', timestamp: '2026-06-11T17:57:36.000Z', toolCall: { id: 't1', toolName: 'shell', args: { command: 'ls' }, status: 'running' } },
+                        { type: 'tool-complete', timestamp: '2026-06-11T17:57:37.000Z', toolCall: { id: 't1', toolName: 'shell', args: { command: 'ls' }, result: 'file.txt', status: 'completed' } },
+                    ],
+                },
+            ],
             ...overrides,
         },
     };
@@ -174,7 +221,7 @@ describe('NativeCopilotSessionsPanel', () => {
         expect(rows[1].textContent).toContain('No summary stored');
     });
 
-    it('opens read-only detail with ordered turns, explicit empty assistant copy, and no CoC chat actions', async () => {
+    it('opens read-only detail rendering the reconstructed transcript via the reused chat bubble, with no CoC chat actions', async () => {
         mockList.mockResolvedValue(makeListResponse([makeListItem()]));
         render(<NativeCopilotSessionsPanel workspaceId="ws-1" />);
         await waitFor(() => expect(screen.getByTestId('native-sessions-table')).toBeTruthy());
@@ -184,28 +231,51 @@ describe('NativeCopilotSessionsPanel', () => {
         expect(mockGet).toHaveBeenCalledWith('ws-1', 'session-aaaa-bbbb');
 
         const detail = screen.getByTestId('native-session-detail');
+        // Metadata header preserved.
         expect(detail.textContent).toContain('Full stored summary');
+        expect(screen.getByTestId('native-session-conversation').textContent).toContain('Conversation (2)');
 
-        const turns = screen.getAllByTestId('native-session-turn');
-        expect(turns).toHaveLength(2);
-        expect(turns[0].textContent).toContain('Turn 0');
-        expect(turns[1].textContent).toContain('Turn 1');
-        expect(screen.getByTestId('native-session-turn-no-assistant').textContent).toContain('No assistant response stored');
+        // Transcript renders one reused chat bubble per conversation turn, in order.
+        const bubbles = screen.getAllByTestId('conversation-turn-bubble');
+        expect(bubbles).toHaveLength(2);
+        expect(bubbles[0].getAttribute('data-role')).toBe('user');
+        expect(bubbles[1].getAttribute('data-role')).toBe('assistant');
 
-        // Stored script text renders as inert text, never as an executable element.
-        expect(turns[0].textContent).toContain('<script>alert("xss")</script>');
+        // Stored script text passes through as inert React text, never an executable element.
+        expect(bubbles[0].textContent).toContain('<script>alert("xss")</script>');
         expect(detail.querySelector('script')).toBeNull();
 
-        // Index diagnostics: indexed turn shows char count, unindexed shows Not indexed.
-        const diagnostics = screen.getAllByTestId('native-session-turn-index-diagnostics');
-        expect(diagnostics[0].textContent).toContain('Indexed');
-        expect(diagnostics[1].textContent).toContain('Not indexed');
+        // User images and the workspace id thread through to the bubble.
+        expect(bubbles[0].getAttribute('data-images')).toBe('1');
+        expect(bubbles[0].getAttribute('data-ws-id')).toBe('ws-1');
+
+        // Assistant turn carries the Copilot provider, model, tool-call card, and
+        // reasoning folded into the content/timeline (no component fork).
+        expect(bubbles[1].getAttribute('data-provider')).toBe('copilot');
+        expect(bubbles[1].getAttribute('data-model')).toBe('gpt-5.5');
+        expect(bubbles[1].getAttribute('data-tool-calls')).toContain('shell');
+        expect(bubbles[1].getAttribute('data-timeline-types')).toContain('tool-complete');
+        expect(bubbles[1].textContent).toContain('Reasoning');
 
         // Read-only separation: no CoC chat action controls exist anywhere in the panel.
         for (const action of ['follow-up', 'follow up', 'archive', 'pin', 'delete', 'resume', 'retry conversation']) {
             const pattern = new RegExp(`^${action}$`, 'i');
             expect(screen.queryByRole('button', { name: pattern })).toBeNull();
         }
+    });
+
+    it('renders the empty-conversation state when the reconstruction has no turns', async () => {
+        mockList.mockResolvedValue(makeListResponse([makeListItem()]));
+        mockGet.mockResolvedValue(makeDetailResponse({ conversation: [] }));
+        render(<NativeCopilotSessionsPanel workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('native-sessions-table')).toBeTruthy());
+
+        fireEvent.click(screen.getAllByTestId('native-session-row')[0]);
+        await waitFor(() => expect(screen.getByTestId('native-session-detail')).toBeTruthy());
+
+        expect(screen.getByTestId('native-session-conversation').textContent).toContain('Conversation (0)');
+        expect(screen.getByTestId('native-session-no-turns')).toBeTruthy();
+        expect(screen.queryByTestId('conversation-turn-bubble')).toBeNull();
     });
 
     it('applies search filters through the typed client and surfaces match snippets', async () => {

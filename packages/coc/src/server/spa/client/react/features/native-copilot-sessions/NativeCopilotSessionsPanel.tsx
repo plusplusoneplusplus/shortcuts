@@ -21,6 +21,8 @@ import { getSpaCocClient } from '../../api/cocClient';
 import { Button, Spinner, cn } from '../../ui';
 import { useNativeCopilotSessionsEnabled } from '../../hooks/feature-flags/useNativeCopilotSessionsEnabled';
 import { buildNativeCopilotSessionHash, parseNativeCopilotSessionDeepLink } from '../../layout/Router';
+import { ConversationTurnBubble } from '../chat/conversation/ConversationTurnBubble';
+import { toClientConversationTurns } from './nativeConversationTurns';
 
 const READ_ONLY_TOOLTIP = 'This data is read from the local native Copilot CLI session store (~/.copilot/session-store.db) and cannot be modified from CoC.';
 
@@ -356,7 +358,7 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
                 </div>
             )}
             {selectedSessionId && !detailLoading && !detailError && detail && (
-                <SessionDetailView detail={detail} onBack={() => selectSession(null)} />
+                <SessionDetailView detail={detail} workspaceId={workspaceId} onBack={() => selectSession(null)} />
             )}
         </div>
     );
@@ -436,7 +438,11 @@ function SessionRow({ item, selected, onSelect }: {
     );
 }
 
-function SessionDetailView({ detail, onBack }: { detail: NativeCopilotSessionDetail; onBack: () => void }) {
+function SessionDetailView({ detail, workspaceId, onBack }: { detail: NativeCopilotSessionDetail; workspaceId: string; onBack: () => void }) {
+    // Reconstructed transcript (rich `events.jsonl` parse, else flat DB
+    // fallback) mapped into the SPA chat shape so we can reuse the existing
+    // read-only chat bubble — no input box, streaming, or resume actions.
+    const conversation = toClientConversationTurns(detail.conversation);
     return (
         <div className="flex flex-col gap-2 p-2.5" data-testid="native-session-detail">
             <div className="rounded-lg border border-[#d0d7de] bg-white p-3">
@@ -472,37 +478,26 @@ function SessionDetailView({ detail, onBack }: { detail: NativeCopilotSessionDet
                 )}
             </div>
 
-            <div className="rounded-lg border border-[#d0d7de] bg-white p-3">
-                <h3 className="text-[13px] font-semibold">Turns ({detail.turns.length})</h3>
-                {detail.turns.length === 0 && (
+            <div className="rounded-lg border border-[#d0d7de] bg-white p-3" data-testid="native-session-conversation">
+                <h3 className="text-[13px] font-semibold">Conversation ({conversation.length})</h3>
+                <p className="mt-0.5 text-[11px] text-[#57606a]">
+                    Read-only reconstruction of the native Copilot CLI transcript. No follow-up, streaming, or resume.
+                </p>
+                {conversation.length === 0 ? (
                     <p className="mt-1.5 text-[12px] text-[#57606a]" data-testid="native-session-no-turns">This native session has no stored turns.</p>
+                ) : (
+                    <div className="mt-1.5 space-y-1" data-testid="native-session-conversation-turns">
+                        {conversation.map((turn, index) => (
+                            <ConversationTurnBubble
+                                key={turn.turnIndex ?? index}
+                                turn={turn}
+                                turnIndex={turn.turnIndex ?? index}
+                                wsId={workspaceId}
+                                provider="copilot"
+                            />
+                        ))}
+                    </div>
                 )}
-                <ol className="mt-1.5 space-y-2">
-                    {detail.turns.map(turn => (
-                        <li key={turn.id} className="rounded border border-[#eaeef2] p-2" data-testid="native-session-turn">
-                            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-[#57606a]">
-                                <span className="font-medium">Turn {turn.turnIndex}</span>
-                                <span>{formatTimestamp(turn.timestamp)}</span>
-                                <span>{turn.userChars} user chars · {turn.assistantChars} assistant chars</span>
-                                <span data-testid="native-session-turn-index-diagnostics">
-                                    {turn.searchIndexSourceId
-                                        ? `Indexed (${turn.searchIndexChars ?? 0} chars)`
-                                        : 'Not indexed'}
-                                </span>
-                            </div>
-                            <div className="mt-1.5">
-                                <h4 className="text-[11px] font-semibold text-[#57606a]">User</h4>
-                                <pre className="mt-0.5 max-h-56 overflow-y-auto whitespace-pre-wrap break-words rounded bg-[#f6f8fa] p-1.5 font-sans text-[12px]" data-testid="native-session-turn-user">{turn.userMessage || '—'}</pre>
-                            </div>
-                            <div className="mt-1.5">
-                                <h4 className="text-[11px] font-semibold text-[#57606a]">Assistant</h4>
-                                {turn.assistantResponse
-                                    ? <pre className="mt-0.5 max-h-56 overflow-y-auto whitespace-pre-wrap break-words rounded bg-[#f6f8fa] p-1.5 font-sans text-[12px]" data-testid="native-session-turn-assistant">{turn.assistantResponse}</pre>
-                                    : <p className="mt-0.5 text-[12px] italic text-[#8c959f]" data-testid="native-session-turn-no-assistant">No assistant response stored</p>}
-                            </div>
-                        </li>
-                    ))}
-                </ol>
             </div>
         </div>
     );

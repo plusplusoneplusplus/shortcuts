@@ -149,7 +149,14 @@ all have their own `references/*.md`.
   sessions whose first turn matches `BACKGROUND_JOB_PROMPT_PREFIXES` (e.g. title
   summarization); the hidden counts are returned as `deduplicatedCount` and
   `backgroundJobCount`. The panel deep-links the selected session via
-  `#repos/{wsId}/copilot-sessions/{sessionId}`.
+  `#repos/{wsId}/copilot-sessions/{sessionId}`. The read-only detail pane
+  renders `NativeCopilotSessionDetail.conversation` as a rich transcript by
+  reusing the existing chat `ConversationTurnBubble` (no fork): the SPA-local
+  `nativeConversationTurns.ts` maps `ReconstructedConversationTurn[]` →
+  `ClientConversationTurn[]`, folding assistant `thinking` into the content
+  timeline as a markdown blockquote (the chat turn shape has no reasoning
+  field). The metadata header is preserved and no follow-up/streaming/resume or
+  per-turn (pin/archive/delete) actions are wired.
 - **Work-item create/update side effects** (hierarchy `parentId` validation,
   GitHub/Azure Boards provider sync, response-cache invalidation, dashboard
   broadcasts, auto-execute) live in the shared command service
