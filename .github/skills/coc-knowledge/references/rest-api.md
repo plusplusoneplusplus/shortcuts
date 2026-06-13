@@ -54,6 +54,12 @@ Chat canvas side panel (gated by `canvas.enabled`, default off). Markdown artifa
 | GET | `/api/workspaces/:id/canvases` | List canvas descriptors (no content), newest first; `?processId=` filters to canvases linked to one chat process |
 | GET | `/api/workspaces/:id/canvases/:canvasId` | Full canvas record (descriptor + markdown content) |
 | PUT | `/api/workspaces/:id/canvases/:canvasId` | User save. Body `{ content?, edits?, expectedRevision?, title? }`; a stale `expectedRevision` returns 409 with `{ error: 'revision-conflict', currentRevision, canvas }`. Successful saves broadcast a `canvas-updated` WebSocket event |
+| GET | `/api/workspaces/:id/canvases/:canvasId/versions` | Version snapshot metadata (revision, editor, updatedAt), newest first; snapshots are written on every persisted revision and capped at the 50 most recent |
+| GET | `/api/workspaces/:id/canvases/:canvasId/versions/:rev` | One full version snapshot (metadata + content) |
+| GET | `/api/workspaces/:id/canvases/:canvasId/comments` | Anchored comments; `?status=open\|sent\|resolved` filters |
+| POST | `/api/workspaces/:id/canvases/:canvasId/comments` | Add a comment. Body `{ anchorText, body }` (anchor capped at 500 chars, body at 4000) |
+| PATCH | `/api/workspaces/:id/canvases/:canvasId/comments/:cid` | Set comment status (`open`/`sent`/`resolved`) |
+| DELETE | `/api/workspaces/:id/canvases/:canvasId/comments/:cid` | Delete a comment |
 
 ## Filesystem
 

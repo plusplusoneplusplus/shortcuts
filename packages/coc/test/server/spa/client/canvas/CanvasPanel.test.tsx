@@ -8,6 +8,12 @@ import { CocApiError } from '@plusplusoneplusplus/coc-client';
 const mocks = vi.hoisted(() => ({
     get: vi.fn(),
     save: vi.fn(),
+    listVersions: vi.fn(),
+    getVersion: vi.fn(),
+    listComments: vi.fn(),
+    addComment: vi.fn(),
+    setCommentStatus: vi.fn(),
+    deleteComment: vi.fn(),
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -15,6 +21,12 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
         canvases: {
             get: mocks.get,
             save: mocks.save,
+            listVersions: mocks.listVersions,
+            getVersion: mocks.getVersion,
+            listComments: mocks.listComments,
+            addComment: mocks.addComment,
+            setCommentStatus: mocks.setCommentStatus,
+            deleteComment: mocks.deleteComment,
         },
     }),
 }));
@@ -55,6 +67,12 @@ describe('CanvasPanel', () => {
     beforeEach(() => {
         mocks.get.mockReset();
         mocks.save.mockReset();
+        mocks.listVersions.mockReset().mockResolvedValue([]);
+        mocks.getVersion.mockReset();
+        mocks.listComments.mockReset().mockResolvedValue([]);
+        mocks.addComment.mockReset();
+        mocks.setCommentStatus.mockReset();
+        mocks.deleteComment.mockReset();
     });
 
     it('loads and renders the canvas title, revision, and preview', async () => {
@@ -166,5 +184,127 @@ describe('CanvasPanel', () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+
+    it('steps to an older version read-only and restores it as a new revision', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ revision: 2, content: 'v2' }));
+        mocks.listVersions.mockResolvedValue([
+            { revision: 2, title: 'My Plan', editor: 'ai', updatedAt: '2026-06-12T00:01:00.000Z' },
+            { revision: 1, title: 'My Plan', editor: 'ai', updatedAt: '2026-06-12T00:00:00.000Z' },
+        ]);
+        mocks.getVersion.mockResolvedValue({
+            revision: 1, title: 'My Plan', editor: 'ai', updatedAt: '2026-06-12T00:00:00.000Z', content: 'v1',
+        });
+        mocks.save.mockResolvedValue(makeCanvas({ revision: 3, content: 'v1', lastEditor: 'user' }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-revision').textContent).toBe('rev 2'));
+
+        fireEvent.click(screen.getByTestId('canvas-panel-version-older'));
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-history-banner')).toBeTruthy());
+        expect(mocks.getVersion).toHaveBeenCalledWith('ws-1', 'doc-abc123', 1);
+        expect(screen.getByTestId('canvas-panel-revision').textContent).toBe('rev 1');
+        expect(screen.getByTestId('canvas-panel-preview').innerHTML).toContain('v1');
+        // Read-only: no edit mode toggle while viewing history
+        expect(screen.queryByTestId('canvas-panel-mode-edit')).toBeNull();
+
+        fireEvent.click(screen.getByTestId('canvas-panel-restore'));
+        await waitFor(() => expect(mocks.save).toHaveBeenCalledWith('ws-1', 'doc-abc123', {
+            content: 'v1',
+            expectedRevision: 2,
+        }));
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-revision').textContent).toBe('rev 3'));
+        expect(screen.queryByTestId('canvas-panel-history-banner')).toBeNull();
+    });
+
+    it('returns from history to the latest revision without restoring', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ revision: 2, content: 'v2' }));
+        mocks.listVersions.mockResolvedValue([
+            { revision: 2, title: 'My Plan', editor: 'ai', updatedAt: '2026-06-12T00:01:00.000Z' },
+            { revision: 1, title: 'My Plan', editor: 'ai', updatedAt: '2026-06-12T00:00:00.000Z' },
+        ]);
+        mocks.getVersion.mockResolvedValue({
+            revision: 1, title: 'My Plan', editor: 'ai', updatedAt: '2026-06-12T00:00:00.000Z', content: 'v1',
+        });
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-revision').textContent).toBe('rev 2'));
+
+        fireEvent.click(screen.getByTestId('canvas-panel-version-older'));
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-revision').textContent).toBe('rev 1'));
+
+        fireEvent.click(screen.getByTestId('canvas-panel-back-to-latest'));
+        expect(screen.getByTestId('canvas-panel-revision').textContent).toBe('rev 2');
+        expect(mocks.save).not.toHaveBeenCalled();
+    });
+
+    it('offers Ask AI for a textarea selection and prefills the composer prompt', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ content: 'alpha beta gamma' }));
+        const onAskAi = vi.fn();
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} onAskAi={onAskAi} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-title').textContent).toBe('My Plan'));
+
+        fireEvent.click(screen.getByTestId('canvas-panel-mode-edit'));
+        const editor = screen.getByTestId('canvas-panel-editor') as HTMLTextAreaElement;
+        editor.setSelectionRange(6, 10); // "beta"
+        fireEvent.select(editor);
+
+        fireEvent.click(screen.getByTestId('canvas-panel-ask-ai'));
+        expect(onAskAi).toHaveBeenCalledTimes(1);
+        const prompt = onAskAi.mock.calls[0][0] as string;
+        expect(prompt).toContain('beta');
+        expect(prompt).toContain('canvasId: doc-abc123');
+        expect(prompt).toContain('revision 1');
+        expect(screen.queryByTestId('canvas-panel-selection-bar')).toBeNull();
+    });
+
+    it('adds an anchored comment from a selection', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ content: 'alpha beta gamma' }));
+        mocks.addComment.mockResolvedValue({
+            id: 'c1', anchorText: 'beta', body: 'tighten this', status: 'open',
+            createdAt: '2026-06-12T00:00:00.000Z', updatedAt: '2026-06-12T00:00:00.000Z',
+        });
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-title').textContent).toBe('My Plan'));
+
+        fireEvent.click(screen.getByTestId('canvas-panel-mode-edit'));
+        const editor = screen.getByTestId('canvas-panel-editor') as HTMLTextAreaElement;
+        editor.setSelectionRange(6, 10);
+        fireEvent.select(editor);
+
+        fireEvent.click(screen.getByTestId('canvas-panel-add-comment'));
+        fireEvent.change(screen.getByTestId('canvas-panel-comment-input'), { target: { value: 'tighten this' } });
+        fireEvent.click(screen.getByTestId('canvas-panel-comment-submit'));
+
+        await waitFor(() => expect(screen.getByTestId('canvas-comment-c1')).toBeTruthy());
+        expect(mocks.addComment).toHaveBeenCalledWith('ws-1', 'doc-abc123', {
+            anchorText: 'beta',
+            body: 'tighten this',
+        });
+    });
+
+    it('sends open comments to the AI and marks them sent', async () => {
+        mocks.get.mockResolvedValue(makeCanvas());
+        const openComment = {
+            id: 'c1', anchorText: 'Plan body', body: 'expand step 2', status: 'open',
+            createdAt: '2026-06-12T00:00:00.000Z', updatedAt: '2026-06-12T00:00:00.000Z',
+        };
+        mocks.listComments.mockResolvedValue([openComment]);
+        mocks.setCommentStatus.mockResolvedValue({ ...openComment, status: 'sent' });
+        const onSendToAi = vi.fn().mockResolvedValue(undefined);
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} onSendToAi={onSendToAi} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-send-comments')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('canvas-panel-send-comments'));
+
+        await waitFor(() => expect(mocks.setCommentStatus).toHaveBeenCalledWith('ws-1', 'doc-abc123', 'c1', 'sent'));
+        const message = onSendToAi.mock.calls[0][0] as string;
+        expect(message).toContain('expand step 2');
+        expect(message).toContain('update_canvas');
+        await waitFor(() => expect(screen.queryByTestId('canvas-panel-send-comments')).toBeNull());
+        expect(screen.getByTestId('canvas-comment-c1').textContent).toContain('sent');
     });
 });

@@ -114,7 +114,19 @@ through `client.canvases.save(...)` carrying `expectedRevision`; an HTTP 409
 shows a conflict banner with a "Load latest" action, and a live AI update
 arriving over unsaved local edits shows a pending-update banner instead of
 clobbering the draft. The close button hides the panel for the current chat
-selection only (no persistent dismissal state).
+selection only (no persistent dismissal state). The header revision chip is a
+version stepper backed by the canvas versions API: stepping back shows an
+older snapshot read-only with a history banner whose **Restore as latest**
+action saves that snapshot's content as a new revision (disabled while local
+edits are unsaved). Selecting text in the preview or the edit textarea shows a
+selection action bar: **Ask AI** prefills the follow-up composer (via
+ChatDetail's `onAskAi`, which sets `followUpInput` and the `RichTextInput`
+ref) with a prompt quoting the selection plus the canvas id/revision, and
+**Comment** opens an inline compose box that stores an anchored comment. Open
+comments render in a footer list with a **Send N to AI** action that posts one
+batch message through ChatDetail's `onSendToAi` (`sendFollowUp(message,
+'enqueue')`, so a busy AI receives it at the next turn boundary) and then
+marks those comments `sent`.
 
 ## Key Contexts
 

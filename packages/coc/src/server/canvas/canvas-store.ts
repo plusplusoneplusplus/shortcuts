@@ -5,13 +5,17 @@
  * the user co-edit in a side panel next to a conversation.
  *
  * Each canvas lives under `~/.coc/repos/<workspaceId>/canvases/<canvasId>/`:
- *   - `canvas.json`  — descriptor (title, revision, linked process, timestamps)
- *   - `artifact.md`  — the markdown content
+ *   - `canvas.json`            — descriptor (title, revision, linked process, timestamps)
+ *   - `artifact.md`            — the markdown content
+ *   - `versions/<rev>.json`    — per-revision snapshots (capped, newest kept)
+ *   - `comments.json`          — anchored user comments (open | sent | resolved)
  *
  * Updates are revision-checked: callers pass `expectedRevision` and receive a
  * conflict result when the canvas changed underneath them. Edits can be
  * expressed as exact-match string replacements (each `oldText` must appear
- * exactly once) or as a full content replacement.
+ * exactly once) or as a full content replacement. Every persisted revision
+ * also writes a version snapshot so the dashboard can step through history
+ * and restore an older state as a new revision.
  *
  * No VS Code dependencies — uses only Node.js built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -78,6 +82,29 @@ export type CanvasUpdateResult =
     | { ok: false; reason: 'revision-conflict'; currentRevision: number }
     | { ok: false; reason: 'edit-mismatch'; error: string };
 
+export interface CanvasVersionMeta {
+    revision: number;
+    title: string;
+    editor: CanvasEditor;
+    updatedAt: string;
+}
+
+export interface CanvasVersion extends CanvasVersionMeta {
+    content: string;
+}
+
+export type CanvasCommentStatus = 'open' | 'sent' | 'resolved';
+
+export interface CanvasComment {
+    id: string;
+    /** Excerpt of the canvas text the comment is anchored to. */
+    anchorText: string;
+    body: string;
+    status: CanvasCommentStatus;
+    createdAt: string;
+    updatedAt: string;
+}
+
 // ============================================================================
 // Constants & helpers
 // ============================================================================
@@ -85,6 +112,14 @@ export type CanvasUpdateResult =
 const CANVASES_DIR_NAME = 'canvases';
 const DESCRIPTOR_FILE = 'canvas.json';
 const ARTIFACT_FILE = 'artifact.md';
+const VERSIONS_DIR = 'versions';
+const COMMENTS_FILE = 'comments.json';
+
+/** Number of most recent version snapshots kept per canvas. */
+export const MAX_CANVAS_VERSIONS = 50;
+
+const MAX_COMMENT_ANCHOR_LENGTH = 500;
+const MAX_COMMENT_BODY_LENGTH = 4000;
 
 const CANVAS_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,127}$/;
 
@@ -231,12 +266,156 @@ export class CanvasStore {
         return { ok: true, canvas: updated };
     }
 
+    // ------------------------------------------------------------------
+    // Version snapshots
+    // ------------------------------------------------------------------
+
+    /** List version snapshot metadata (no content), newest first. */
+    listVersions(workspaceId: string, canvasId: string): CanvasVersionMeta[] {
+        if (!isValidCanvasId(canvasId)) return [];
+        const versionsDir = path.join(this.getCanvasDir(workspaceId, canvasId), VERSIONS_DIR);
+        let entries: string[];
+        try {
+            entries = fs.readdirSync(versionsDir);
+        } catch {
+            return [];
+        }
+
+        const versions: CanvasVersionMeta[] = [];
+        for (const entry of entries) {
+            if (!/^\d+\.json$/.test(entry)) continue;
+            try {
+                const raw = JSON.parse(fs.readFileSync(path.join(versionsDir, entry), 'utf-8')) as CanvasVersion;
+                versions.push({
+                    revision: raw.revision,
+                    title: raw.title,
+                    editor: raw.editor,
+                    updatedAt: raw.updatedAt,
+                });
+            } catch {
+                // Skip unreadable snapshots
+            }
+        }
+
+        versions.sort((a, b) => b.revision - a.revision);
+        return versions;
+    }
+
+    /** Read one full version snapshot, or null when it does not exist. */
+    getVersion(workspaceId: string, canvasId: string, revision: number): CanvasVersion | null {
+        if (!isValidCanvasId(canvasId) || !Number.isInteger(revision) || revision < 1) return null;
+        const versionPath = path.join(this.getCanvasDir(workspaceId, canvasId), VERSIONS_DIR, `${revision}.json`);
+        try {
+            return JSON.parse(fs.readFileSync(versionPath, 'utf-8')) as CanvasVersion;
+        } catch {
+            return null;
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Comments
+    // ------------------------------------------------------------------
+
+    listComments(workspaceId: string, canvasId: string, filter?: { status?: CanvasCommentStatus }): CanvasComment[] {
+        const comments = this.readComments(workspaceId, canvasId);
+        return filter?.status ? comments.filter(c => c.status === filter.status) : comments;
+    }
+
+    addComment(workspaceId: string, canvasId: string, input: { anchorText: string; body: string }): CanvasComment | null {
+        if (!this.getCanvas(workspaceId, canvasId)) return null;
+        const now = new Date().toISOString();
+        const comment: CanvasComment = {
+            id: crypto.randomBytes(6).toString('hex'),
+            anchorText: input.anchorText.slice(0, MAX_COMMENT_ANCHOR_LENGTH),
+            body: input.body.slice(0, MAX_COMMENT_BODY_LENGTH),
+            status: 'open',
+            createdAt: now,
+            updatedAt: now,
+        };
+        const comments = this.readComments(workspaceId, canvasId);
+        comments.push(comment);
+        this.writeComments(workspaceId, canvasId, comments);
+        return comment;
+    }
+
+    setCommentStatus(workspaceId: string, canvasId: string, commentId: string, status: CanvasCommentStatus): CanvasComment | null {
+        const comments = this.readComments(workspaceId, canvasId);
+        const comment = comments.find(c => c.id === commentId);
+        if (!comment) return null;
+        comment.status = status;
+        comment.updatedAt = new Date().toISOString();
+        this.writeComments(workspaceId, canvasId, comments);
+        return comment;
+    }
+
+    deleteComment(workspaceId: string, canvasId: string, commentId: string): boolean {
+        const comments = this.readComments(workspaceId, canvasId);
+        const remaining = comments.filter(c => c.id !== commentId);
+        if (remaining.length === comments.length) return false;
+        this.writeComments(workspaceId, canvasId, remaining);
+        return true;
+    }
+
+    private readComments(workspaceId: string, canvasId: string): CanvasComment[] {
+        if (!isValidCanvasId(canvasId)) return [];
+        const commentsPath = path.join(this.getCanvasDir(workspaceId, canvasId), COMMENTS_FILE);
+        try {
+            const parsed = JSON.parse(fs.readFileSync(commentsPath, 'utf-8'));
+            return Array.isArray(parsed) ? parsed as CanvasComment[] : [];
+        } catch {
+            return [];
+        }
+    }
+
+    private writeComments(workspaceId: string, canvasId: string, comments: CanvasComment[]): void {
+        const dir = this.getCanvasDir(workspaceId, canvasId);
+        fs.mkdirSync(dir, { recursive: true });
+        writeFileAtomic(path.join(dir, COMMENTS_FILE), JSON.stringify(comments, null, 2));
+    }
+
+    // ------------------------------------------------------------------
+    // Persistence
+    // ------------------------------------------------------------------
+
     private persist(record: CanvasRecord): void {
         const dir = this.getCanvasDir(record.workspaceId, record.id);
         fs.mkdirSync(dir, { recursive: true });
         const { content, ...descriptor } = record;
         writeFileAtomic(path.join(dir, DESCRIPTOR_FILE), JSON.stringify(descriptor, null, 2));
         writeFileAtomic(path.join(dir, ARTIFACT_FILE), content);
+        this.snapshotVersion(dir, record);
+    }
+
+    private snapshotVersion(canvasDir: string, record: CanvasRecord): void {
+        const versionsDir = path.join(canvasDir, VERSIONS_DIR);
+        fs.mkdirSync(versionsDir, { recursive: true });
+        const snapshot: CanvasVersion = {
+            revision: record.revision,
+            title: record.title,
+            editor: record.lastEditor,
+            updatedAt: record.updatedAt,
+            content: record.content,
+        };
+        writeFileAtomic(path.join(versionsDir, `${record.revision}.json`), JSON.stringify(snapshot, null, 2));
+
+        // Prune snapshots beyond the retention cap (best-effort)
+        const cutoff = record.revision - MAX_CANVAS_VERSIONS;
+        if (cutoff < 1) return;
+        let entries: string[];
+        try {
+            entries = fs.readdirSync(versionsDir);
+        } catch {
+            return;
+        }
+        for (const entry of entries) {
+            const match = /^(\d+)\.json$/.exec(entry);
+            if (!match) continue;
+            if (Number(match[1]) <= cutoff) {
+                try {
+                    fs.unlinkSync(path.join(versionsDir, entry));
+                } catch { /* best-effort */ }
+            }
+        }
     }
 }
 

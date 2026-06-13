@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { CanvasStore, generateCanvasId, isValidCanvasId } from '../../../src/server/canvas/canvas-store';
+import { CanvasStore, MAX_CANVAS_VERSIONS, generateCanvasId, isValidCanvasId } from '../../../src/server/canvas/canvas-store';
 
 const WS = 'test-workspace';
 
@@ -165,6 +165,118 @@ describe('CanvasStore', () => {
             const result = store.updateCanvas(WS, c.id, { editor: 'user' });
             expect(result.ok).toBe(false);
         });
+    });
+});
+
+describe('version snapshots', () => {
+    let dataDir: string;
+    let store: CanvasStore;
+
+    beforeEach(() => {
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-canvas-versions-'));
+        store = new CanvasStore(dataDir);
+    });
+
+    afterEach(() => {
+        fs.rmSync(dataDir, { recursive: true, force: true });
+    });
+
+    it('snapshots every revision and lists them newest first', () => {
+        const c = store.createCanvas({ workspaceId: WS, title: 'Doc', content: 'v1' });
+        store.updateCanvas(WS, c.id, { content: 'v2', editor: 'user' });
+        store.updateCanvas(WS, c.id, { content: 'v3', editor: 'ai' });
+
+        const versions = store.listVersions(WS, c.id);
+        expect(versions.map(v => v.revision)).toEqual([3, 2, 1]);
+        expect(versions[0].editor).toBe('ai');
+        expect((versions[0] as Record<string, unknown>).content).toBeUndefined();
+    });
+
+    it('returns full historical content via getVersion', () => {
+        const c = store.createCanvas({ workspaceId: WS, title: 'Doc', content: 'v1' });
+        store.updateCanvas(WS, c.id, { content: 'v2', editor: 'user' });
+
+        expect(store.getVersion(WS, c.id, 1)?.content).toBe('v1');
+        expect(store.getVersion(WS, c.id, 2)?.content).toBe('v2');
+        expect(store.getVersion(WS, c.id, 99)).toBeNull();
+        expect(store.getVersion(WS, c.id, 0)).toBeNull();
+    });
+
+    it('prunes snapshots beyond the retention cap', () => {
+        const c = store.createCanvas({ workspaceId: WS, title: 'Doc', content: 'v1' });
+        for (let i = 2; i <= MAX_CANVAS_VERSIONS + 3; i++) {
+            store.updateCanvas(WS, c.id, { content: `v${i}`, editor: 'ai' });
+        }
+
+        const versions = store.listVersions(WS, c.id);
+        expect(versions).toHaveLength(MAX_CANVAS_VERSIONS);
+        expect(versions[0].revision).toBe(MAX_CANVAS_VERSIONS + 3);
+        expect(store.getVersion(WS, c.id, 1)).toBeNull();
+        expect(store.getVersion(WS, c.id, 3)).toBeNull();
+        expect(store.getVersion(WS, c.id, 4)).not.toBeNull();
+    });
+
+    it('returns empty version list for unknown canvases', () => {
+        expect(store.listVersions(WS, 'missing-000000')).toEqual([]);
+        expect(store.listVersions(WS, '../escape')).toEqual([]);
+    });
+});
+
+describe('comments', () => {
+    let dataDir: string;
+    let store: CanvasStore;
+
+    beforeEach(() => {
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-canvas-comments-'));
+        store = new CanvasStore(dataDir);
+    });
+
+    afterEach(() => {
+        fs.rmSync(dataDir, { recursive: true, force: true });
+    });
+
+    it('adds and lists open comments anchored to text', () => {
+        const c = store.createCanvas({ workspaceId: WS, title: 'Doc', content: 'alpha beta' });
+        const comment = store.addComment(WS, c.id, { anchorText: 'alpha', body: 'rename this' });
+
+        expect(comment).not.toBeNull();
+        expect(comment!.status).toBe('open');
+
+        const listed = store.listComments(WS, c.id);
+        expect(listed).toHaveLength(1);
+        expect(listed[0]).toEqual(comment);
+    });
+
+    it('refuses comments on unknown canvases', () => {
+        expect(store.addComment(WS, 'missing-000000', { anchorText: 'a', body: 'b' })).toBeNull();
+    });
+
+    it('filters by status and transitions open -> sent -> resolved', () => {
+        const c = store.createCanvas({ workspaceId: WS, title: 'Doc', content: 'text' });
+        const comment = store.addComment(WS, c.id, { anchorText: 'text', body: 'fix' })!;
+
+        expect(store.setCommentStatus(WS, c.id, comment.id, 'sent')?.status).toBe('sent');
+        expect(store.listComments(WS, c.id, { status: 'open' })).toHaveLength(0);
+        expect(store.listComments(WS, c.id, { status: 'sent' })).toHaveLength(1);
+
+        expect(store.setCommentStatus(WS, c.id, comment.id, 'resolved')?.status).toBe('resolved');
+        expect(store.setCommentStatus(WS, c.id, 'missing', 'sent')).toBeNull();
+    });
+
+    it('deletes comments', () => {
+        const c = store.createCanvas({ workspaceId: WS, title: 'Doc', content: 'text' });
+        const comment = store.addComment(WS, c.id, { anchorText: 'text', body: 'fix' })!;
+
+        expect(store.deleteComment(WS, c.id, comment.id)).toBe(true);
+        expect(store.deleteComment(WS, c.id, comment.id)).toBe(false);
+        expect(store.listComments(WS, c.id)).toHaveLength(0);
+    });
+
+    it('truncates oversized anchors and bodies', () => {
+        const c = store.createCanvas({ workspaceId: WS, title: 'Doc', content: 'text' });
+        const comment = store.addComment(WS, c.id, { anchorText: 'x'.repeat(2000), body: 'y'.repeat(10000) })!;
+        expect(comment.anchorText.length).toBe(500);
+        expect(comment.body.length).toBe(4000);
     });
 });
 

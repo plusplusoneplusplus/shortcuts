@@ -1837,6 +1837,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             canvasId={activeCanvasId}
                             liveEvent={canvasLiveEvent}
                             onClose={() => setCanvasPanelClosed(true)}
+                            onAskAi={(prompt) => {
+                                setFollowUpInput(prompt);
+                                richTextRef.current?.setValue(prompt, prompt.length);
+                                richTextRef.current?.focus();
+                            }}
+                            onSendToAi={async (message) => {
+                                await sendFollowUp(message, 'enqueue');
+                            }}
                         />
                     </div>
                 </>

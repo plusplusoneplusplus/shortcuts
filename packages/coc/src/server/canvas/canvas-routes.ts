@@ -2,9 +2,15 @@
  * Canvas REST Routes
  *
  * Workspace-scoped canvas API consumed by the dashboard canvas side panel:
- *   GET  /api/workspaces/:wsId/canvases?processId=...  — list descriptors
- *   GET  /api/workspaces/:wsId/canvases/:canvasId      — full record
- *   PUT  /api/workspaces/:wsId/canvases/:canvasId      — user save (revision-checked)
+ *   GET    /api/workspaces/:wsId/canvases?processId=...           — list descriptors
+ *   GET    /api/workspaces/:wsId/canvases/:canvasId               — full record
+ *   PUT    /api/workspaces/:wsId/canvases/:canvasId               — user save (revision-checked)
+ *   GET    /api/workspaces/:wsId/canvases/:canvasId/versions      — version snapshot metadata
+ *   GET    /api/workspaces/:wsId/canvases/:canvasId/versions/:rev — one full version snapshot
+ *   GET    /api/workspaces/:wsId/canvases/:canvasId/comments      — anchored comments (?status= filter)
+ *   POST   /api/workspaces/:wsId/canvases/:canvasId/comments      — add a comment
+ *   PATCH  /api/workspaces/:wsId/canvases/:canvasId/comments/:cid — set comment status
+ *   DELETE /api/workspaces/:wsId/canvases/:canvasId/comments/:cid — delete a comment
  *
  * User saves broadcast a `canvas-updated` WebSocket event so other dashboard
  * tabs can refresh. Revision conflicts return 409 with the current record so
@@ -15,10 +21,16 @@ import { sendJSON, sendError, parseBody } from '../core/api-handler';
 import type { Route } from '../types';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { CanvasStore, isValidCanvasId } from './canvas-store';
-import type { CanvasEdit } from './canvas-store';
+import type { CanvasEdit, CanvasCommentStatus } from './canvas-store';
 
 const listPattern = /^\/api\/workspaces\/([^/]+)\/canvases$/;
 const detailPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)$/;
+const versionsPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/versions$/;
+const versionDetailPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/versions\/(\d+)$/;
+const commentsPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/comments$/;
+const commentDetailPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/comments\/([^/]+)$/;
+
+const COMMENT_STATUSES: readonly CanvasCommentStatus[] = ['open', 'sent', 'resolved'];
 
 interface SaveCanvasBody {
     content?: string;
@@ -120,6 +132,128 @@ export function registerCanvasRoutes(
             });
 
             sendJSON(res, 200, { canvas: result.canvas });
+        },
+    });
+
+    routes.push({
+        method: 'GET',
+        pattern: versionsPattern,
+        handler: async (_req, res, match) => {
+            const wsId = decodeURIComponent(match![1]);
+            const canvasId = decodeURIComponent(match![2]);
+            if (!isValidCanvasId(canvasId)) {
+                return sendError(res, 400, 'Invalid canvas ID');
+            }
+            sendJSON(res, 200, { versions: store.listVersions(wsId, canvasId) });
+        },
+    });
+
+    routes.push({
+        method: 'GET',
+        pattern: versionDetailPattern,
+        handler: async (_req, res, match) => {
+            const wsId = decodeURIComponent(match![1]);
+            const canvasId = decodeURIComponent(match![2]);
+            const revision = Number(match![3]);
+            if (!isValidCanvasId(canvasId)) {
+                return sendError(res, 400, 'Invalid canvas ID');
+            }
+            const version = store.getVersion(wsId, canvasId, revision);
+            if (!version) {
+                return sendError(res, 404, 'Canvas version not found');
+            }
+            sendJSON(res, 200, { version });
+        },
+    });
+
+    routes.push({
+        method: 'GET',
+        pattern: commentsPattern,
+        handler: async (req, res, match) => {
+            const wsId = decodeURIComponent(match![1]);
+            const canvasId = decodeURIComponent(match![2]);
+            if (!isValidCanvasId(canvasId)) {
+                return sendError(res, 400, 'Invalid canvas ID');
+            }
+            const status = new URL(req.url!, 'http://x').searchParams.get('status');
+            if (status && !COMMENT_STATUSES.includes(status as CanvasCommentStatus)) {
+                return sendError(res, 400, 'Invalid comment status filter');
+            }
+            const comments = store.listComments(wsId, canvasId, status ? { status: status as CanvasCommentStatus } : undefined);
+            sendJSON(res, 200, { comments });
+        },
+    });
+
+    routes.push({
+        method: 'POST',
+        pattern: commentsPattern,
+        handler: async (req, res, match) => {
+            const wsId = decodeURIComponent(match![1]);
+            const canvasId = decodeURIComponent(match![2]);
+            if (!isValidCanvasId(canvasId)) {
+                return sendError(res, 400, 'Invalid canvas ID');
+            }
+            let body: { anchorText?: string; body?: string };
+            try {
+                body = await parseBody(req) as { anchorText?: string; body?: string };
+            } catch {
+                return sendError(res, 400, 'Invalid JSON body');
+            }
+            if (typeof body.anchorText !== 'string' || !body.anchorText.trim()) {
+                return sendError(res, 400, 'anchorText is required');
+            }
+            if (typeof body.body !== 'string' || !body.body.trim()) {
+                return sendError(res, 400, 'body is required');
+            }
+            const comment = store.addComment(wsId, canvasId, { anchorText: body.anchorText, body: body.body });
+            if (!comment) {
+                return sendError(res, 404, 'Canvas not found');
+            }
+            sendJSON(res, 201, { comment });
+        },
+    });
+
+    routes.push({
+        method: 'PATCH',
+        pattern: commentDetailPattern,
+        handler: async (req, res, match) => {
+            const wsId = decodeURIComponent(match![1]);
+            const canvasId = decodeURIComponent(match![2]);
+            const commentId = decodeURIComponent(match![3]);
+            if (!isValidCanvasId(canvasId)) {
+                return sendError(res, 400, 'Invalid canvas ID');
+            }
+            let body: { status?: string };
+            try {
+                body = await parseBody(req) as { status?: string };
+            } catch {
+                return sendError(res, 400, 'Invalid JSON body');
+            }
+            if (!body.status || !COMMENT_STATUSES.includes(body.status as CanvasCommentStatus)) {
+                return sendError(res, 400, 'status must be one of: open, sent, resolved');
+            }
+            const comment = store.setCommentStatus(wsId, canvasId, commentId, body.status as CanvasCommentStatus);
+            if (!comment) {
+                return sendError(res, 404, 'Comment not found');
+            }
+            sendJSON(res, 200, { comment });
+        },
+    });
+
+    routes.push({
+        method: 'DELETE',
+        pattern: commentDetailPattern,
+        handler: async (_req, res, match) => {
+            const wsId = decodeURIComponent(match![1]);
+            const canvasId = decodeURIComponent(match![2]);
+            const commentId = decodeURIComponent(match![3]);
+            if (!isValidCanvasId(canvasId)) {
+                return sendError(res, 400, 'Invalid canvas ID');
+            }
+            if (!store.deleteComment(wsId, canvasId, commentId)) {
+                return sendError(res, 404, 'Comment not found');
+            }
+            sendJSON(res, 200, { deleted: true });
         },
     });
 }

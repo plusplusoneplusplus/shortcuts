@@ -135,6 +135,69 @@ describe('canvas routes', () => {
         expect(broadcastProcessEvent).not.toHaveBeenCalled();
     });
 
+    it('lists version snapshots and serves a single version', async () => {
+        const c = store.createCanvas({ workspaceId: WS, title: 'Doc', content: 'v1' });
+        store.updateCanvas(WS, c.id, { content: 'v2', editor: 'ai' });
+
+        const list = await request(handler, 'GET', `/api/workspaces/${WS}/canvases/${c.id}/versions`);
+        expect(list.status).toBe(200);
+        expect(list.body.versions.map((v: any) => v.revision)).toEqual([2, 1]);
+        expect(list.body.versions[0].content).toBeUndefined();
+
+        const v1 = await request(handler, 'GET', `/api/workspaces/${WS}/canvases/${c.id}/versions/1`);
+        expect(v1.status).toBe(200);
+        expect(v1.body.version.content).toBe('v1');
+
+        const missing = await request(handler, 'GET', `/api/workspaces/${WS}/canvases/${c.id}/versions/9`);
+        expect(missing.status).toBe(404);
+    });
+
+    it('adds, lists, patches, and deletes comments', async () => {
+        const c = store.createCanvas({ workspaceId: WS, title: 'Doc', content: 'alpha beta' });
+
+        const created = await request(handler, 'POST', `/api/workspaces/${WS}/canvases/${c.id}/comments`, {
+            anchorText: 'alpha',
+            body: 'rename this',
+        });
+        expect(created.status).toBe(201);
+        const commentId = created.body.comment.id;
+        expect(created.body.comment.status).toBe('open');
+
+        const listed = await request(handler, 'GET', `/api/workspaces/${WS}/canvases/${c.id}/comments?status=open`);
+        expect(listed.status).toBe(200);
+        expect(listed.body.comments).toHaveLength(1);
+
+        const patched = await request(handler, 'PATCH', `/api/workspaces/${WS}/canvases/${c.id}/comments/${commentId}`, {
+            status: 'sent',
+        });
+        expect(patched.status).toBe(200);
+        expect(patched.body.comment.status).toBe('sent');
+
+        const openAfter = await request(handler, 'GET', `/api/workspaces/${WS}/canvases/${c.id}/comments?status=open`);
+        expect(openAfter.body.comments).toHaveLength(0);
+
+        const deleted = await request(handler, 'DELETE', `/api/workspaces/${WS}/canvases/${c.id}/comments/${commentId}`);
+        expect(deleted.status).toBe(200);
+        const afterDelete = await request(handler, 'GET', `/api/workspaces/${WS}/canvases/${c.id}/comments`);
+        expect(afterDelete.body.comments).toHaveLength(0);
+    });
+
+    it('validates comment payloads and unknown targets', async () => {
+        const c = store.createCanvas({ workspaceId: WS, title: 'Doc', content: 'text' });
+
+        const noBody = await request(handler, 'POST', `/api/workspaces/${WS}/canvases/${c.id}/comments`, { anchorText: 'text' });
+        expect(noBody.status).toBe(400);
+
+        const badStatus = await request(handler, 'PATCH', `/api/workspaces/${WS}/canvases/${c.id}/comments/whatever`, { status: 'bogus' });
+        expect(badStatus.status).toBe(400);
+
+        const missingCanvas = await request(handler, 'POST', `/api/workspaces/${WS}/canvases/missing-000000/comments`, { anchorText: 'a', body: 'b' });
+        expect(missingCanvas.status).toBe(404);
+
+        const missingComment = await request(handler, 'PATCH', `/api/workspaces/${WS}/canvases/${c.id}/comments/nope`, { status: 'sent' });
+        expect(missingComment.status).toBe(404);
+    });
+
     it('rejects an empty save body', async () => {
         const c = store.createCanvas({ workspaceId: WS, title: 'Doc', content: 'v1' });
         const res = await request(handler, 'PUT', `/api/workspaces/${WS}/canvases/${c.id}`, {});

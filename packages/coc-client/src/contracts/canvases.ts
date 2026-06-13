@@ -43,3 +43,47 @@ export interface CanvasConflictResponse {
   currentRevision: number;
   canvas: Canvas | null;
 }
+
+export interface CanvasVersionMeta {
+  revision: number;
+  title: string;
+  editor: CanvasEditor;
+  updatedAt: string;
+}
+
+export interface CanvasVersion extends CanvasVersionMeta {
+  content: string;
+}
+
+export interface ListCanvasVersionsResponse {
+  versions: CanvasVersionMeta[];
+}
+
+export interface CanvasVersionResponse {
+  version: CanvasVersion;
+}
+
+export type CanvasCommentStatus = 'open' | 'sent' | 'resolved';
+
+export interface CanvasComment {
+  id: string;
+  /** Excerpt of the canvas text the comment is anchored to. */
+  anchorText: string;
+  body: string;
+  status: CanvasCommentStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ListCanvasCommentsResponse {
+  comments: CanvasComment[];
+}
+
+export interface CanvasCommentResponse {
+  comment: CanvasComment;
+}
+
+export interface AddCanvasCommentRequest {
+  anchorText: string;
+  body: string;
+}

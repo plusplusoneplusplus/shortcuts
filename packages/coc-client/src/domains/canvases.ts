@@ -1,8 +1,17 @@
 import type {
+  AddCanvasCommentRequest,
   Canvas,
+  CanvasComment,
+  CanvasCommentResponse,
+  CanvasCommentStatus,
   CanvasResponse,
   CanvasSummary,
+  CanvasVersion,
+  CanvasVersionMeta,
+  CanvasVersionResponse,
+  ListCanvasCommentsResponse,
   ListCanvasesResponse,
+  ListCanvasVersionsResponse,
   SaveCanvasRequest,
 } from '../contracts';
 import type { RequestAdapter } from '../types';
@@ -38,5 +47,52 @@ export class CanvasesClient {
       { method: 'PUT', body: request },
     );
     return response.canvas;
+  }
+
+  async listVersions(workspaceId: string, canvasId: string): Promise<CanvasVersionMeta[]> {
+    const response = await this.transport.request<ListCanvasVersionsResponse>(
+      canvasesPath(workspaceId, `/${encodePathSegment(canvasId)}/versions`),
+    );
+    return response.versions ?? [];
+  }
+
+  async getVersion(workspaceId: string, canvasId: string, revision: number): Promise<CanvasVersion> {
+    const response = await this.transport.request<CanvasVersionResponse>(
+      canvasesPath(workspaceId, `/${encodePathSegment(canvasId)}/versions/${revision}`),
+    );
+    return response.version;
+  }
+
+  async listComments(workspaceId: string, canvasId: string, query?: { status?: CanvasCommentStatus }): Promise<CanvasComment[]> {
+    const params = new URLSearchParams();
+    if (query?.status) params.set('status', query.status);
+    const queryString = params.toString();
+    const response = await this.transport.request<ListCanvasCommentsResponse>(
+      canvasesPath(workspaceId, `/${encodePathSegment(canvasId)}/comments${queryString ? `?${queryString}` : ''}`),
+    );
+    return response.comments ?? [];
+  }
+
+  async addComment(workspaceId: string, canvasId: string, request: AddCanvasCommentRequest): Promise<CanvasComment> {
+    const response = await this.transport.request<CanvasCommentResponse>(
+      canvasesPath(workspaceId, `/${encodePathSegment(canvasId)}/comments`),
+      { method: 'POST', body: request },
+    );
+    return response.comment;
+  }
+
+  async setCommentStatus(workspaceId: string, canvasId: string, commentId: string, status: CanvasCommentStatus): Promise<CanvasComment> {
+    const response = await this.transport.request<CanvasCommentResponse>(
+      canvasesPath(workspaceId, `/${encodePathSegment(canvasId)}/comments/${encodePathSegment(commentId)}`),
+      { method: 'PATCH', body: { status } },
+    );
+    return response.comment;
+  }
+
+  async deleteComment(workspaceId: string, canvasId: string, commentId: string): Promise<void> {
+    await this.transport.request(
+      canvasesPath(workspaceId, `/${encodePathSegment(canvasId)}/comments/${encodePathSegment(commentId)}`),
+      { method: 'DELETE' },
+    );
   }
 }
