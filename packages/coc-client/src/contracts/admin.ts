@@ -119,6 +119,7 @@ export interface AdminResolvedConfig {
     autoAgentProviderRouting?: boolean;
     ralphMultiAgentGrill?: boolean;
     nativeCopilotSessions?: boolean;
+    nativeCliSessions?: boolean;
   };
   workItems?: { hierarchy?: { enabled?: boolean }; sync?: { enabled?: boolean }; aiAuthoring?: { enabled?: boolean }; workflow?: { enabled?: boolean } };
   effortLevels?: { enabled?: boolean };
@@ -199,6 +200,7 @@ export interface AdminConfigUpdate {
   'features.commitChatLensDormantMode'?: 'ghost' | 'pill';
   'features.autoAgentProviderRouting'?: boolean;
   'features.nativeCopilotSessions'?: boolean;
+  'features.nativeCliSessions'?: boolean;
   'effortLevels.enabled'?: boolean;
   [key: string]: unknown;
 }
@@ -248,6 +250,7 @@ export interface RuntimeDashboardConfig {
     commitChatLensDormantMode: 'ghost' | 'pill';
     effortLevelsEnabled: boolean;
     nativeCopilotSessionsEnabled: boolean;
+    nativeCliSessionsEnabled: boolean;
   };
   hostname?: string;
   bindAddress?: string;

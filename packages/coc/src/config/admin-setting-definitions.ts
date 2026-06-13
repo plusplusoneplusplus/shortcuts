@@ -726,6 +726,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.nativeCliSessions', default: false, runtime: 'live', runtimeFlag: 'nativeCliSessionsEnabled',
+        ui: {
+            group: 'dashboard', order: 61, label: 'Native CLI sessions', badge: 'experimental',
+            hint: 'Read-only CLI Sessions tab that lists native Copilot, Codex, and Claude Code sessions for the active workspace. Disabled by default.',
+            testId: 'toggle-native-cli-sessions-enabled',
+        },
+    }),
+    bool({
         key: 'features.ralphMultiAgentGrill', default: false, runtime: 'live', runtimeFlag: 'ralphMultiAgentGrillEnabled',
         ui: {
             group: 'aiModes', order: 15, label: 'Ralph Multi-Agent Grilling', badge: 'experimental',

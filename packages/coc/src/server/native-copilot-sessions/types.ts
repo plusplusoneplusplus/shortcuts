@@ -183,13 +183,13 @@ export type NativeCliSessionsUnavailableReason = 'feature-disabled' | 'store-mis
 export interface NativeCliSessionListItem extends NativeCopilotSessionListItem {
     provider: NativeCliSessionProviderId;
     storePath: string;
-    searchIndexAvailable: false;
+    searchIndexAvailable: boolean;
 }
 
 export interface NativeCliSessionDetail extends NativeCopilotSessionDetail {
     provider: NativeCliSessionProviderId;
     storePath: string;
-    searchIndexAvailable: false;
+    searchIndexAvailable: boolean;
 }
 
 export interface NativeCliSessionListOptions extends Omit<NativeCopilotSessionListOptions, 'includeBackgroundJobs'> {
@@ -201,9 +201,9 @@ export type NativeCliSessionListResult =
         available: true;
         items: NativeCliSessionListItem[];
         total: number;
-        searchIndexAvailable: false;
+        searchIndexAvailable: boolean;
         deduplicatedCount: number;
-        backgroundJobCount: 0;
+        backgroundJobCount: number;
     }
     | {
         available: false;

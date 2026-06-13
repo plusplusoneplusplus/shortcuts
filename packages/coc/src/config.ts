@@ -255,6 +255,8 @@ export interface CLIConfig {
         ralphMultiAgentGrill?: boolean;
         /** Read-only native GitHub Copilot CLI sessions tab. Disabled by default. */
         nativeCopilotSessions?: boolean;
+        /** Read-only native Copilot/Codex/Claude CLI sessions tab. Disabled by default. */
+        nativeCliSessions?: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion?: {
@@ -542,6 +544,8 @@ export interface ResolvedCLIConfig {
         ralphMultiAgentGrill: boolean;
         /** Read-only native GitHub Copilot CLI sessions tab. Disabled by default. */
         nativeCopilotSessions: boolean;
+        /** Read-only native Copilot/Codex/Claude CLI sessions tab. Disabled by default. */
+        nativeCliSessions: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion: {
@@ -776,6 +780,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         autoAgentProviderRouting: false,
         ralphMultiAgentGrill: false,
         nativeCopilotSessions: false,
+        nativeCliSessions: false,
     },
     memoryPromotion: {
         batchSize: 50,

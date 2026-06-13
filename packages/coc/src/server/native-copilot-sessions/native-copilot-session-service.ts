@@ -209,6 +209,10 @@ export class NativeCopilotSessionService {
             ?? (sessionId => parseNativeSessionState(sessionId, { sessionStateDir: options.sessionStateDir }));
     }
 
+    getStorePath(): string {
+        return this.dbPath;
+    }
+
     /** List native sessions scoped to one workspace, newest `updated_at` first. */
     listSessions(
         scope: NativeSessionWorkspaceScope,

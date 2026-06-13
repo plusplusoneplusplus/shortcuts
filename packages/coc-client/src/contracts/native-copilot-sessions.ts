@@ -148,3 +148,44 @@ export interface NativeCopilotSessionDetailResponse {
   reason?: NativeCopilotSessionsUnavailableReason;
   session?: NativeCopilotSessionDetail;
 }
+
+export type NativeCliSessionProviderId = 'copilot' | 'codex' | 'claude';
+export type NativeCliSessionsUnavailableReason = 'feature-disabled' | 'store-missing' | 'store-invalid';
+
+export interface NativeCliSessionListItem extends NativeCopilotSessionListItem {
+  provider: NativeCliSessionProviderId;
+  storePath: string;
+  searchIndexAvailable: boolean;
+}
+
+export interface NativeCliSessionDetail extends NativeCopilotSessionDetail {
+  provider: NativeCliSessionProviderId;
+  storePath: string;
+  searchIndexAvailable: boolean;
+}
+
+export interface ListNativeCliSessionsOptions extends ListNativeCopilotSessionsOptions {
+  provider: NativeCliSessionProviderId;
+}
+
+export interface ListNativeCliSessionsResponse {
+  enabled: boolean;
+  available?: boolean;
+  reason?: NativeCliSessionsUnavailableReason;
+  provider?: NativeCliSessionProviderId;
+  items: NativeCliSessionListItem[];
+  total: number;
+  searchIndexAvailable?: boolean;
+  deduplicatedCount?: number;
+  backgroundJobCount?: number;
+  limit: number;
+  offset: number;
+}
+
+export interface NativeCliSessionDetailResponse {
+  enabled: boolean;
+  available?: boolean;
+  reason?: NativeCliSessionsUnavailableReason;
+  provider?: NativeCliSessionProviderId;
+  session?: NativeCliSessionDetail;
+}

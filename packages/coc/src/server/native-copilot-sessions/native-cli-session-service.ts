@@ -15,6 +15,7 @@ import {
     DEFAULT_NATIVE_SESSION_LIST_LIMIT,
     sessionMatchesWorkspace,
 } from './native-copilot-session-service';
+import type { NativeCopilotSessionService } from './native-copilot-session-service';
 import type {
     NativeCliSessionDetail,
     NativeCliSessionDetailResult,
@@ -26,6 +27,10 @@ import type {
     NativeSessionWorkspaceScope,
     ReconstructedConversationTurn,
 } from './types';
+
+function mapCopilotUnavailableReason(reason: 'db-missing' | 'db-invalid'): 'store-missing' | 'store-invalid' {
+    return reason === 'db-missing' ? 'store-missing' : 'store-invalid';
+}
 
 const MAX_NATIVE_SESSION_LIST_LIMIT = 200;
 const SUMMARY_PREVIEW_MAX_CHARS = 200;
@@ -419,6 +424,64 @@ export class CodexNativeSessionProvider extends JsonlFileNativeSessionProvider {
 
     protected parseConversation(raw: string): ReconstructedConversationTurn[] | null {
         return parseCodexRollout(raw);
+    }
+}
+
+export class CopilotNativeSessionProvider implements NativeSessionProvider {
+    readonly provider = 'copilot' as const;
+    readonly label = 'GitHub Copilot';
+    readonly storePath: string;
+
+    constructor(private readonly service: NativeCopilotSessionService) {
+        this.storePath = service.getStorePath();
+    }
+
+    listSessions(
+        scope: NativeSessionWorkspaceScope,
+        options: NativeCliSessionListOptions = {},
+    ): NativeCliSessionListResult & { limit: number; offset: number } {
+        const result = this.service.listSessions(scope, options);
+        if (!result.available) {
+            return {
+                available: false,
+                reason: mapCopilotUnavailableReason(result.reason),
+                limit: result.limit,
+                offset: result.offset,
+            };
+        }
+        return {
+            available: true,
+            items: result.items.map(item => ({
+                ...item,
+                provider: this.provider,
+                storePath: this.storePath,
+                searchIndexAvailable: result.searchIndexAvailable,
+            })),
+            total: result.total,
+            searchIndexAvailable: result.searchIndexAvailable,
+            deduplicatedCount: result.deduplicatedCount,
+            backgroundJobCount: result.backgroundJobCount,
+            limit: result.limit,
+            offset: result.offset,
+        };
+    }
+
+    getSession(scope: NativeSessionWorkspaceScope, id: string): NativeCliSessionDetailResult {
+        const result = this.service.getSession(scope, id);
+        if (!result.available) {
+            return { available: false, reason: mapCopilotUnavailableReason(result.reason) };
+        }
+        return {
+            available: true,
+            session: result.session
+                ? {
+                    ...result.session,
+                    provider: this.provider,
+                    storePath: this.storePath,
+                    searchIndexAvailable: true,
+                }
+                : null,
+        };
     }
 }
 
