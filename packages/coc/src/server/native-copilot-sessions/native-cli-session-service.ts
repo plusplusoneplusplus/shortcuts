@@ -128,6 +128,15 @@ function parseTimestamp(value: string | null | undefined): number {
     return value ? Date.parse(value) : Number.NaN;
 }
 
+function compareMetadataUpdatedDesc(
+    a: NativeCliSessionMetadata,
+    b: NativeCliSessionMetadata,
+): number {
+    const aTs = parseTimestamp(a.updatedAt);
+    const bTs = parseTimestamp(b.updatedAt);
+    return (Number.isNaN(bTs) ? 0 : bTs) - (Number.isNaN(aTs) ? 0 : aTs);
+}
+
 function summaryPreview(summary: string | null): string {
     if (!summary) {
         return '';
@@ -243,7 +252,7 @@ abstract class JsonlFileNativeSessionProvider implements NativeSessionProvider {
         const fromTs = options.from ? parseTimestamp(options.from) : undefined;
         const toTs = options.to ? parseTimestamp(options.to) : undefined;
         const q = options.q?.trim();
-        let deduplicatedCount = 0;
+        const deduplicatedSessionIds = new Set<string>();
         const rows: Array<{ metadata: NativeCliSessionMetadata; snippets: string[] }> = [];
 
         for (const filePath of files) {
@@ -270,7 +279,7 @@ abstract class JsonlFileNativeSessionProvider implements NativeSessionProvider {
                 }
             }
             if (options.excludeSessionIds?.has(metadata.id)) {
-                deduplicatedCount += 1;
+                deduplicatedSessionIds.add(metadata.id);
                 continue;
             }
             const raw = q ? readUtf8(filePath) : null;
@@ -281,20 +290,25 @@ abstract class JsonlFileNativeSessionProvider implements NativeSessionProvider {
             rows.push({ metadata, snippets });
         }
 
-        rows.sort((a, b) => {
-            const aTs = parseTimestamp(a.metadata.updatedAt);
-            const bTs = parseTimestamp(b.metadata.updatedAt);
-            return (Number.isNaN(bTs) ? 0 : bTs) - (Number.isNaN(aTs) ? 0 : aTs);
-        });
+        const uniqueRowsById = new Map<string, { metadata: NativeCliSessionMetadata; snippets: string[] }>();
+        for (const row of rows) {
+            const existing = uniqueRowsById.get(row.metadata.id);
+            if (!existing || compareMetadataUpdatedDesc(row.metadata, existing.metadata) < 0) {
+                uniqueRowsById.set(row.metadata.id, row);
+            }
+        }
 
-        const total = rows.length;
-        const page = rows.slice(offset, offset + limit);
+        const uniqueRows = [...uniqueRowsById.values()];
+        uniqueRows.sort((a, b) => compareMetadataUpdatedDesc(a.metadata, b.metadata));
+
+        const total = uniqueRows.length;
+        const page = uniqueRows.slice(offset, offset + limit);
         return {
             available: true,
             items: page.map(row => toListItem(row.metadata, row.snippets)),
             total,
             searchIndexAvailable: false,
-            deduplicatedCount,
+            deduplicatedCount: deduplicatedSessionIds.size,
             backgroundJobCount: 0,
             limit,
             offset,
@@ -312,17 +326,23 @@ abstract class JsonlFileNativeSessionProvider implements NativeSessionProvider {
         } catch {
             return { available: false, reason: 'store-invalid' };
         }
+        const matches: Array<{ metadata: NativeCliSessionMetadata; filePath: string }> = [];
         for (const filePath of files) {
             const metadata = this.getMetadata(filePath);
             if (!metadata || metadata.id !== id || !this.metadataMatchesWorkspace(metadata, scope)) {
                 continue;
             }
-            const raw = readUtf8(filePath);
+            matches.push({ metadata, filePath });
+        }
+        matches.sort((a, b) => compareMetadataUpdatedDesc(a.metadata, b.metadata));
+        const match = matches[0];
+        if (match) {
+            const raw = readUtf8(match.filePath);
             if (raw === null) {
                 return { available: false, reason: 'store-invalid' };
             }
             const conversation = this.parseConversation(raw) ?? [];
-            return { available: true, session: toDetail(metadata, conversation) };
+            return { available: true, session: toDetail(match.metadata, conversation) };
         }
         return { available: true, session: null };
     }

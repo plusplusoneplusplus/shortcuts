@@ -159,6 +159,46 @@ describe('ClaudeNativeSessionProvider', () => {
         expect(result.items[0].matchSnippets[0]).toContain('transcript');
     });
 
+    it('collapses duplicate transcript files with the same session id to the newest record', () => {
+        const workspaceRoot = path.join(tmpDir, 'repo');
+        const storePath = path.join(tmpDir, 'claude', 'projects');
+        const encodedFolder = path.join(storePath, dashEncode(workspaceRoot));
+        writeJsonl(path.join(encodedFolder, 'older.jsonl'), [
+            { type: 'user', sessionId: 'claude-dup', cwd: workspaceRoot, gitBranch: 'main', timestamp: '2026-06-13T08:00:00.000Z', message: { role: 'user', content: [{ type: 'text', text: 'Older duplicate transcript' }] } },
+            { type: 'assistant', sessionId: 'claude-dup', cwd: workspaceRoot, timestamp: '2026-06-13T08:00:01.000Z', message: { role: 'assistant', content: [{ type: 'text', text: 'Old answer' }] } },
+        ]);
+        writeJsonl(path.join(encodedFolder, 'newer.jsonl'), [
+            { type: 'user', sessionId: 'claude-dup', cwd: workspaceRoot, gitBranch: 'main', timestamp: '2026-06-13T09:00:00.000Z', message: { role: 'user', content: [{ type: 'text', text: 'Newer duplicate transcript' }] } },
+            { type: 'assistant', sessionId: 'claude-dup', cwd: workspaceRoot, timestamp: '2026-06-13T09:00:01.000Z', message: { role: 'assistant', content: [{ type: 'text', text: 'New answer' }] } },
+        ]);
+
+        const provider = new ClaudeNativeSessionProvider({ storePath });
+        const listed = provider.listSessions({ rootPath: workspaceRoot });
+
+        expect(listed.available).toBe(true);
+        if (!listed.available) return;
+        expect(listed.total).toBe(1);
+        expect(listed.items).toHaveLength(1);
+        expect(listed.items[0]).toMatchObject({
+            id: 'claude-dup',
+            summaryPreview: 'Newer duplicate transcript',
+            updatedAt: '2026-06-13T09:00:01.000Z',
+        });
+
+        const detail = provider.getSession({ rootPath: workspaceRoot }, 'claude-dup');
+        expect(detail.available).toBe(true);
+        if (!detail.available) return;
+        expect(detail.session?.conversation[0].content).toBe('Newer duplicate transcript');
+
+        const deduped = provider.listSessions({ rootPath: workspaceRoot }, {
+            excludeSessionIds: new Set(['claude-dup']),
+        });
+        expect(deduped.available).toBe(true);
+        if (!deduped.available) return;
+        expect(deduped.total).toBe(0);
+        expect(deduped.deduplicatedCount).toBe(1);
+    });
+
     it('returns reconstructed Claude detail with tool results', () => {
         const workspaceRoot = path.join(tmpDir, 'repo');
         const storePath = path.join(tmpDir, 'claude', 'projects');
