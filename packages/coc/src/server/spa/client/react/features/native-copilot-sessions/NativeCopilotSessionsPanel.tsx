@@ -186,29 +186,36 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
     };
 
     const listPane = (
-        <div className="flex min-h-0 flex-1 flex-col lg:max-w-[46%] lg:border-r lg:border-[#d0d7de]">
-            <div className="border-b border-[#d0d7de] bg-white p-3">
+        <div className="flex min-h-0 flex-1 flex-col lg:border-r lg:border-[#d0d7de]">
+            <div className="border-b border-[#d0d7de] bg-white px-3 py-3">
                 <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-sm font-semibold">Copilot Sessions</h2>
+                    <h2 className="text-sm font-semibold text-[#1f2328]">Copilot Sessions</h2>
                     <ExternalLabel />
                     <ReadOnlyBadge />
-                    <span className="ml-auto text-xs text-[#57606a]">{total} session{total === 1 ? '' : 's'}</span>
+                    <span className="ml-auto inline-flex items-center rounded-full bg-[#f6f8fa] px-2 py-0.5 text-xs font-medium text-[#57606a]" data-testid="native-sessions-count">
+                        {total.toLocaleString()} session{total === 1 ? '' : 's'}
+                    </span>
                 </div>
-                <form className="mt-2 flex flex-wrap items-end gap-2" onSubmit={applyFilters} data-testid="native-sessions-filters">
-                    <input
-                        type="text"
-                        value={filterDraft.q}
-                        onChange={e => setFilterDraft(prev => ({ ...prev, q: e.target.value }))}
-                        placeholder="Search indexed content…"
-                        className="h-8 min-w-[160px] flex-1 rounded border border-[#d0d7de] px-2 text-sm"
-                        data-testid="native-sessions-search-input"
-                    />
+                <form className="mt-3 flex flex-wrap items-end gap-2" onSubmit={applyFilters} data-testid="native-sessions-filters">
+                    <div className="relative min-w-[160px] flex-1 basis-full">
+                        <svg className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8c959f]" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                            <path d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 1 1-1.06 1.06ZM11.5 7a4.5 4.5 0 1 0-9 0 4.5 4.5 0 0 0 9 0Z" />
+                        </svg>
+                        <input
+                            type="text"
+                            value={filterDraft.q}
+                            onChange={e => setFilterDraft(prev => ({ ...prev, q: e.target.value }))}
+                            placeholder="Search indexed content…"
+                            className="h-8 w-full rounded-md border border-[#d0d7de] pl-7 pr-2 text-sm focus:border-[#0969da] focus:outline-none focus:ring-1 focus:ring-[#0969da]"
+                            data-testid="native-sessions-search-input"
+                        />
+                    </div>
                     <input
                         type="text"
                         value={filterDraft.sessionId}
                         onChange={e => setFilterDraft(prev => ({ ...prev, sessionId: e.target.value }))}
                         placeholder="Session ID"
-                        className="h-8 w-32 rounded border border-[#d0d7de] px-2 text-sm"
+                        className="h-8 w-32 rounded-md border border-[#d0d7de] px-2 text-sm focus:border-[#0969da] focus:outline-none focus:ring-1 focus:ring-[#0969da]"
                         data-testid="native-sessions-session-id-input"
                     />
                     <input
@@ -216,7 +223,7 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
                         value={filterDraft.branch}
                         onChange={e => setFilterDraft(prev => ({ ...prev, branch: e.target.value }))}
                         placeholder="Branch"
-                        className="h-8 w-28 rounded border border-[#d0d7de] px-2 text-sm"
+                        className="h-8 w-28 rounded-md border border-[#d0d7de] px-2 text-sm focus:border-[#0969da] focus:outline-none focus:ring-1 focus:ring-[#0969da]"
                         data-testid="native-sessions-branch-input"
                     />
                     <label className="flex items-center gap-1 text-xs text-[#57606a]">
@@ -225,7 +232,7 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
                             type="date"
                             value={filterDraft.from}
                             onChange={e => setFilterDraft(prev => ({ ...prev, from: e.target.value }))}
-                            className="h-8 rounded border border-[#d0d7de] px-2 text-sm"
+                            className="h-8 rounded-md border border-[#d0d7de] px-2 text-sm focus:border-[#0969da] focus:outline-none focus:ring-1 focus:ring-[#0969da]"
                         />
                     </label>
                     <label className="flex items-center gap-1 text-xs text-[#57606a]">
@@ -234,7 +241,7 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
                             type="date"
                             value={filterDraft.to}
                             onChange={e => setFilterDraft(prev => ({ ...prev, to: e.target.value }))}
-                            className="h-8 rounded border border-[#d0d7de] px-2 text-sm"
+                            className="h-8 rounded-md border border-[#d0d7de] px-2 text-sm focus:border-[#0969da] focus:outline-none focus:ring-1 focus:ring-[#0969da]"
                         />
                     </label>
                     <Button type="submit" size="sm" data-testid="native-sessions-apply-filters">Apply</Button>
@@ -270,14 +277,6 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
                 )}
                 {!listLoading && !listError && !unavailable && items.length > 0 && (
                     <table className="w-full border-collapse text-sm" data-testid="native-sessions-table">
-                        <thead>
-                            <tr className="border-b border-[#d0d7de] text-left text-xs text-[#57606a]">
-                                <th className="px-3 py-2 font-medium">Session</th>
-                                <th className="px-3 py-2 font-medium">Branch</th>
-                                <th className="hidden px-3 py-2 font-medium md:table-cell">Updated</th>
-                                <th className="px-3 py-2 text-right font-medium">Turns</th>
-                            </tr>
-                        </thead>
                         <tbody>
                             {items.map(item => (
                                 <SessionRow
@@ -304,8 +303,13 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
     const detailPane = (
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-[#f6f8fa]" data-testid="native-session-detail-pane">
             {!selectedSessionId && (
-                <div className="flex flex-1 items-center justify-center p-6 text-sm text-[#57606a]">
-                    Select a native session to view its summary and turns.
+                <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-[#57606a]" data-testid="native-session-detail-empty">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#eaeef2]">
+                        <svg className="h-6 w-6 text-[#8c959f]" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                            <path d="M1.75 1h8.5c.966 0 1.75.784 1.75 1.75v5.5A1.75 1.75 0 0 1 10.25 10H7.061l-2.574 2.573A1.458 1.458 0 0 1 2 11.543V10h-.25A1.75 1.75 0 0 1 0 8.25v-5.5C0 1.784.784 1 1.75 1ZM1.5 2.75v5.5c0 .138.112.25.25.25h1a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h3.5a.25.25 0 0 0 .25-.25v-5.5a.25.25 0 0 0-.25-.25h-8.5a.25.25 0 0 0-.25.25Zm13 2a.25.25 0 0 0-.25-.25h-.5a.75.75 0 0 1 0-1.5h.5c.966 0 1.75.784 1.75 1.75v5.5A1.75 1.75 0 0 1 14.25 12H14v1.543a1.458 1.458 0 0 1-2.487 1.03L9.22 12.28a.749.749 0 0 1 .326-1.275.749.749 0 0 1 .734.215l2.22 2.22v-2.19a.75.75 0 0 1 .75-.75h1a.25.25 0 0 0 .25-.25Z" />
+                        </svg>
+                    </div>
+                    <p className="max-w-xs">Select a native session to view its summary and turns.</p>
                 </div>
             )}
             {selectedSessionId && detailLoading && (
@@ -327,7 +331,10 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
     return (
         <div className="flex h-full min-h-0 flex-col bg-white" data-testid="native-copilot-sessions-panel">
             <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-                <div className={cn('flex min-h-0 flex-1 flex-col lg:flex', selectedSessionId ? 'hidden lg:flex' : 'flex')}>
+                <div className={cn(
+                    'min-h-0 flex-col lg:w-[42%] lg:min-w-[380px] lg:max-w-[600px] lg:shrink-0',
+                    selectedSessionId ? 'hidden lg:flex' : 'flex flex-1',
+                )}>
                     {listPane}
                 </div>
                 <div className={cn('min-h-0 flex-1 flex-col lg:flex', selectedSessionId ? 'flex' : 'hidden lg:flex')}>
@@ -343,33 +350,53 @@ function SessionRow({ item, selected, onSelect }: {
     selected: boolean;
     onSelect: () => void;
 }) {
+    const location = item.repository || item.cwd || '';
     return (
         <tr
             data-testid="native-session-row"
             onClick={onSelect}
             className={cn(
-                'cursor-pointer border-b border-[#eaeef2] align-top hover:bg-[#f6f8fa]',
+                'group cursor-pointer border-b border-[#eaeef2] align-top transition-colors hover:bg-[#f6f8fa]',
                 selected && 'bg-[#ddf4ff] hover:bg-[#ddf4ff]',
             )}
         >
-            <td className="px-3 py-2">
-                <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs text-[#57606a]">{item.id.slice(0, 8)}</span>
-                    <ExternalLabel />
-                </div>
-                <div className="mt-0.5 line-clamp-2 whitespace-pre-wrap text-[13px]">{item.summaryPreview || <span className="text-[#8c959f]">No summary stored</span>}</div>
-                {item.matchSnippets.length > 0 && (
-                    <div className="mt-1 space-y-0.5" data-testid="native-session-match-snippets">
-                        {item.matchSnippets.map((snippet, index) => (
-                            <div key={index} className="truncate rounded bg-[#fff8c5] px-1 py-0.5 text-xs text-[#57606a]">{snippet}</div>
-                        ))}
+            <td className={cn('px-3 py-2.5', selected ? 'border-l-2 border-[#0969da]' : 'border-l-2 border-transparent')}>
+                <div className="flex items-start gap-3">
+                    <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                            <span className="rounded border border-[#d0d7de] bg-[#f6f8fa] px-1.5 py-0.5 font-mono text-[11px] text-[#57606a]">{item.id.slice(0, 8)}</span>
+                            <span className="text-[11px] text-[#8c959f]" title={`Created ${formatTimestamp(item.createdAt)}`}>{formatTimestamp(item.updatedAt)}</span>
+                        </div>
+                        <div className="mt-1 line-clamp-2 whitespace-pre-wrap text-[13px] leading-snug text-[#1f2328]">{item.summaryPreview || <span className="text-[#8c959f]">No summary stored</span>}</div>
+                        {item.matchSnippets.length > 0 && (
+                            <div className="mt-1 space-y-0.5" data-testid="native-session-match-snippets">
+                                {item.matchSnippets.map((snippet, index) => (
+                                    <div key={index} className="truncate rounded bg-[#fff8c5] px-1 py-0.5 text-xs text-[#57606a]">{snippet}</div>
+                                ))}
+                            </div>
+                        )}
+                        {location && (
+                            <div className="mt-1.5 flex items-center gap-1 text-[11px] text-[#8c959f]">
+                                <svg className="h-3 w-3 shrink-0" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                                    <path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 10 4.25V1.5Z" />
+                                </svg>
+                                <span className="truncate">{location}</span>
+                            </div>
+                        )}
                     </div>
-                )}
-                <div className="mt-0.5 truncate text-xs text-[#8c959f]">{item.repository || item.cwd || ''}</div>
+                    <div className="flex shrink-0 flex-col items-end gap-1.5">
+                        <span className="inline-flex items-center rounded-full bg-[#f6f8fa] px-2 py-0.5 text-[11px] font-medium text-[#57606a]" title={`${item.turnCount} turn${item.turnCount === 1 ? '' : 's'}`}>
+                            {item.turnCount} turn{item.turnCount === 1 ? '' : 's'}
+                        </span>
+                        <span className="inline-flex max-w-[140px] items-center gap-1 truncate text-[11px] text-[#57606a]" title={item.branch || 'Unknown branch'}>
+                            <svg className="h-3 w-3 shrink-0 text-[#8c959f]" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                                <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z" />
+                            </svg>
+                            <span className="truncate">{item.branch || 'Unknown branch'}</span>
+                        </span>
+                    </div>
+                </div>
             </td>
-            <td className="px-3 py-2 text-xs">{item.branch || 'Unknown branch'}</td>
-            <td className="hidden px-3 py-2 text-xs md:table-cell" title={`Created ${formatTimestamp(item.createdAt)}`}>{formatTimestamp(item.updatedAt)}</td>
-            <td className="px-3 py-2 text-right text-xs">{item.turnCount}</td>
         </tr>
     );
 }
