@@ -104,22 +104,23 @@ function CanvasNode({ entry, selected, onSelect, now }: {
 export function AgentCanvas({ root, selectedId, onSelect }: AgentCanvasProps) {
     const layout = useMemo(() => buildLayout(root), [root]);
 
-    const { containerRef, state, zoomIn, zoomOut, fitToView, zoomLabel } = useZoomPan({
+    const { containerRef, state, zoomIn, zoomOut, fitToView, centerContent, zoomLabel } = useZoomPan({
         contentWidth: layout.worldW,
         contentHeight: layout.worldH,
         minZoom: 0.25,
         maxZoom: 2.2,
     });
 
-    // Auto-fit on mount and whenever the tree resizes — until the user takes
-    // over the view (wheel/drag/zoom). The Fit button re-arms auto-fit.
+    // Default view: 100% zoom, content centered in the viewport. Re-centers on
+    // mount, tree growth, and container resize — until the user takes over
+    // (wheel/drag/zoom or the Fit button).
     const interactedRef = useRef(false);
 
     useLayoutEffect(() => {
         if (!interactedRef.current) {
-            fitToView();
+            centerContent(1);
         }
-    }, [layout.worldW, layout.worldH, fitToView]);
+    }, [layout.worldW, layout.worldH, centerContent]);
 
     useEffect(() => {
         const el = containerRef.current;
@@ -131,7 +132,7 @@ export function AgentCanvas({ root, selectedId, onSelect }: AgentCanvasProps) {
         el.addEventListener('pointerdown', markInteracted);
         const ro = new ResizeObserver(() => {
             if (!interactedRef.current) {
-                fitToView();
+                centerContent(1);
             }
         });
         ro.observe(el);
@@ -140,7 +141,7 @@ export function AgentCanvas({ root, selectedId, onSelect }: AgentCanvasProps) {
             el.removeEventListener('pointerdown', markInteracted);
             ro.disconnect();
         };
-    }, [containerRef, fitToView]);
+    }, [containerRef, centerContent]);
 
     // Live clock so running nodes' elapsed time ticks; idle when nothing runs.
     const hasRunning = useMemo(() => anyRunning(root), [root]);
@@ -211,7 +212,7 @@ export function AgentCanvas({ root, selectedId, onSelect }: AgentCanvasProps) {
                 <span className="cz-sep" />
                 <button
                     type="button"
-                    onClick={() => { interactedRef.current = false; fitToView(); }}
+                    onClick={() => { interactedRef.current = true; fitToView(); }}
                     title="Fit to screen"
                 >
                     <AcIcons.Replay size={14} />Fit

@@ -45,6 +45,8 @@ export interface UseZoomPanReturn {
     reset: () => void;
     /** Auto-fit: calculate scale so all content fits the container. */
     fitToView: () => void;
+    /** Center the content in the container at a fixed scale (default 1 = 100%). */
+    centerContent: (scale?: number) => void;
     /** Formatted zoom percentage string, e.g. `"125%"`. */
     zoomLabel: string;
 }
@@ -196,5 +198,18 @@ export function useZoomPan(options: UseZoomPanOptions): UseZoomPanReturn {
         setState({ scale: fitScale, translateX: tx, translateY: ty, isDragging: false });
     }, [contentWidth, contentHeight, clampScale]);
 
-    return { containerRef, state, svgTransform, zoomIn, zoomOut, reset, fitToView, zoomLabel };
+    const centerContent = useCallback((targetScale = 1) => {
+        const el = containerRef.current;
+        if (!el || contentWidth <= 0 || contentHeight <= 0) return;
+        const rect = el.getBoundingClientRect();
+        const s = clampScale(targetScale);
+        setState({
+            scale: s,
+            translateX: (rect.width - contentWidth * s) / 2,
+            translateY: (rect.height - contentHeight * s) / 2,
+            isDragging: false,
+        });
+    }, [contentWidth, contentHeight, clampScale]);
+
+    return { containerRef, state, svgTransform, zoomIn, zoomOut, reset, fitToView, centerContent, zoomLabel };
 }
