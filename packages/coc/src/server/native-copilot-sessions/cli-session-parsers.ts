@@ -95,6 +95,36 @@ function dataUrlFromImageBlock(block: Record<string, unknown>): string | undefin
     return data.startsWith('data:') ? data : `data:${mediaType};base64,${data}`;
 }
 
+function isDataImageUrl(value: string): boolean {
+    return /^data:image\/[^;]+;base64,/i.test(value.trim());
+}
+
+function extractCodexEventImages(payload: Record<string, unknown>): { images: string[]; localImages: string[] } {
+    const images: string[] = [];
+    const rawImages = payload.images;
+    if (Array.isArray(rawImages)) {
+        for (const value of rawImages) {
+            if (typeof value === 'string') {
+                if (isDataImageUrl(value)) {
+                    images.push(value);
+                }
+                continue;
+            }
+            const block = asRecord(value);
+            const image = block ? dataUrlFromImageBlock(block) : undefined;
+            if (image) {
+                images.push(image);
+            }
+        }
+    }
+
+    const localImages = Array.isArray(payload.local_images)
+        ? payload.local_images.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+        : [];
+
+    return { images, localImages };
+}
+
 function extractTextFromBlocks(blocks: unknown): { text: string[]; thinking: string[]; images: string[] } {
     const text: string[] = [];
     const thinking: string[] = [];
@@ -324,6 +354,37 @@ export function parseCodexRollout(rawJsonl: string): ReconstructedConversationTu
 
         if (envelopeType === 'turn_context') {
             currentModel = asString(payload.model) ?? currentModel;
+            continue;
+        }
+        if (envelopeType === 'event_msg' && asString(payload.type) === 'user_message') {
+            const message = asString(payload.message);
+            const { images, localImages } = extractCodexEventImages(payload);
+            if (!message && images.length === 0 && localImages.length === 0) {
+                continue;
+            }
+
+            const previous = turns[turns.length - 1];
+            const turn = previous?.role === 'user' && (!message || previous.content === message)
+                ? previous
+                : newTurn('user', timestamp);
+
+            if (turn !== previous) {
+                if (message) {
+                    appendText(turn, message, timestamp);
+                }
+                turns.push(turn);
+            }
+            if (images.length > 0) {
+                turn.images = [...(turn.images ?? []), ...images];
+            }
+            if (localImages.length > 0) {
+                appendText(
+                    turn,
+                    localImages.map(imagePath => `Attached local image: \`${imagePath}\``).join('\n'),
+                    timestamp,
+                );
+            }
+            currentAssistant = null;
             continue;
         }
         if (envelopeType !== 'response_item') {

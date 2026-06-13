@@ -213,6 +213,39 @@ describe('parseCodexRollout', () => {
         expect(turns![0].images).toEqual(['data:image/jpeg;base64,xyz']);
     });
 
+    it('captures Codex user_message event image metadata without duplicating the user turn', () => {
+        const raw = [
+            line({
+                timestamp: '2026-06-13T11:00:02.000Z',
+                type: 'response_item',
+                payload: {
+                    type: 'message',
+                    role: 'user',
+                    content: [{ type: 'input_text', text: 'inspect this screenshot' }],
+                },
+            }),
+            line({
+                timestamp: '2026-06-13T11:00:02.100Z',
+                type: 'event_msg',
+                payload: {
+                    type: 'user_message',
+                    message: 'inspect this screenshot',
+                    images: ['data:image/png;base64,abc'],
+                    local_images: ['/tmp/codex-attach/image.png'],
+                    text_elements: [],
+                },
+            }),
+        ].join('\n');
+
+        const turns = parseCodexRollout(raw);
+
+        expect(turns).not.toBeNull();
+        expect(turns).toHaveLength(1);
+        expect(turns![0].images).toEqual(['data:image/png;base64,abc']);
+        expect(turns![0].content).toContain('inspect this screenshot');
+        expect(turns![0].content).toContain('Attached local image: `/tmp/codex-attach/image.png`');
+    });
+
     it('marks failed function_call_output records as failed', () => {
         const raw = [
             line({
