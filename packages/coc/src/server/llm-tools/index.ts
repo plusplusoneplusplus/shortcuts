@@ -44,7 +44,9 @@ export {
     isLlmToolEnabled,
     filterDisabledLlmTools,
     type LlmToolMeta,
+    type LlmToolParam,
 } from './llm-tool-registry';
+export { summarizeToolParameters, compactParamType } from './llm-tool-parameters';
 export {
     createCreateLoopTool,
     createCancelLoopTool,
