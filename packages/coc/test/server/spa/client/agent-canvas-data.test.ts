@@ -80,6 +80,27 @@ describe('buildAgentRunTreeFromTurns', () => {
         expect(buildAgentRunTreeFromTurns(turns).children).toEqual([]);
     });
 
+    it('detects persisted Task calls that use `name` instead of `toolName`', () => {
+        // forge's persisted ToolCall read model carries `name`, not `toolName`,
+        // so sub-agents must still be found after the chat completes + refreshes.
+        const persisted = {
+            id: 't1', name: 'Task', status: 'completed', result: 'done',
+            args: { agent_type: 'Explore', description: 'map data model' },
+        } as unknown as ClientToolCall;
+        const root = buildAgentRunTreeFromTurns([assistantTurn([persisted])]);
+        expect(root.children).toHaveLength(1);
+        expect(root.children[0]).toMatchObject({ id: 't1', name: 'map data model', role: 'Explore', status: 'done' });
+    });
+
+    it('reads sub-agent args from `parameters` when `args` is absent', () => {
+        const persisted = {
+            id: 't1', name: 'Task', status: 'running',
+            parameters: { agent_type: 'general-purpose', description: 'research' },
+        } as unknown as ClientToolCall;
+        const root = buildAgentRunTreeFromTurns([assistantTurn([persisted])]);
+        expect(root.children[0]).toMatchObject({ id: 't1', name: 'research', role: 'general-purpose', status: 'running' });
+    });
+
     it('dedupes a tool call seen in both toolCalls and the timeline, preferring terminal state', () => {
         const turns = [assistantTurn(
             [tc({ id: 't1', args: { description: 'x' }, status: 'running' })],

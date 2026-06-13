@@ -119,9 +119,20 @@ function asRecord(v: unknown): Record<string, unknown> {
     return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
+// Live (SSE) tool calls carry `toolName` + `args`; persisted ones (forge's
+// ToolCall read model) carry `name` + `args`/`parameters`. Read both so a
+// sub-agent is detected the same way mid-run and after the chat completes.
+function rawToolName(tc: ClientToolCall): string | undefined {
+    return tc.toolName ?? (tc as { name?: string }).name;
+}
+
+function rawArgs(tc: ClientToolCall): unknown {
+    return tc.args ?? (tc as { parameters?: unknown }).parameters;
+}
+
 /** Build a sub-agent node from a normalized `Task` tool call. */
 function nodeFromTaskCall(tc: ClientToolCall): AgentRunNode {
-    const args = asRecord(tc.args);
+    const args = asRecord(rawArgs(tc));
     const agentType = typeof args.agent_type === 'string' ? args.agent_type
         : typeof args.subagent_type === 'string' ? args.subagent_type
             : '';
@@ -155,7 +166,7 @@ export function buildAgentRunTreeFromTurns(
     root?: AgentRunRootMeta,
 ): AgentRunNode {
     const taskCalls = collectToolCalls(turns || [])
-        .filter((tc) => normalizeToolName(tc.toolName) === 'task');
+        .filter((tc) => normalizeToolName(rawToolName(tc)) === 'task');
 
     const children = taskCalls.map(nodeFromTaskCall);
     children.sort(byStartedAt);
