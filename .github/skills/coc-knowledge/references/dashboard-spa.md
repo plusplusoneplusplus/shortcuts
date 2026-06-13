@@ -126,7 +126,14 @@ ref) with a prompt quoting the selection plus the canvas id/revision, and
 comments render in a footer list with a **Send N to AI** action that posts one
 batch message through ChatDetail's `onSendToAi` (`sendFollowUp(message,
 'enqueue')`, so a busy AI receives it at the next turn boundary) and then
-marks those comments `sent`.
+marks those comments `sent`. Code canvases (`type: 'code'`) show a language
+chip, render the preview as a fenced highlighted block, and use
+`MonacoFileEditor` (shared with the repo explorer) in Edit mode with the same
+debounced autosave; selection actions stay available in preview mode. The
+header Export menu offers Copy content, Download file (extension derived from
+the language), and — for markdown canvases — Save to Notes, which writes the
+content to `canvases/<slug>.md` in the workspace Notes tree via
+`notes.saveContent`.
 
 ## Key Contexts
 

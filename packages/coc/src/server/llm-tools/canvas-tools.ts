@@ -22,7 +22,7 @@ import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { CanvasStore } from '../canvas/canvas-store';
-import type { CanvasEdit } from '../canvas/canvas-store';
+import type { CanvasEdit, CanvasType } from '../canvas/canvas-store';
 import { emitCanvasUpdated } from '../streaming/sse-handler';
 
 // ============================================================================
@@ -43,6 +43,8 @@ export interface CanvasToolsDeps {
 export interface CreateCanvasArgs {
     title: string;
     content: string;
+    type?: CanvasType;
+    language?: string;
 }
 
 export interface UpdateCanvasArgs {
@@ -81,9 +83,10 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
 
     const create = defineTool<CreateCanvasArgs>('create_canvas', {
         description:
-            'Create a markdown canvas — a live document shown in a side panel next to this chat that ' +
-            'you and the user co-edit. Use it when the user asks for a document, plan, spec, or other ' +
-            'long-form text they will iterate on. Returns the canvasId and revision needed for updates. ' +
+            'Create a canvas — a live artifact shown in a side panel next to this chat that you and ' +
+            'the user co-edit. Use type "markdown" (default) for documents, plans, and specs — Mermaid ' +
+            'code blocks render as diagrams/charts there. Use type "code" with a language for a single ' +
+            'code file the user will iterate on. Returns the canvasId and revision needed for updates. ' +
             'After creating, keep chat replies short and reference the canvas instead of repeating its content.',
         parameters: {
             type: 'object',
@@ -94,7 +97,16 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                 },
                 content: {
                     type: 'string',
-                    description: 'Initial markdown content of the canvas.',
+                    description: 'Initial content of the canvas (markdown, or raw code for type "code").',
+                },
+                type: {
+                    type: 'string',
+                    enum: ['markdown', 'code'],
+                    description: 'Canvas type. Defaults to "markdown".',
+                },
+                language: {
+                    type: 'string',
+                    description: 'Language for type "code" (e.g. "typescript", "python"). Ignored for markdown.',
                 },
             },
             required: ['title', 'content'],
@@ -106,16 +118,21 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
             if (typeof args?.content !== 'string') {
                 return { success: false, error: 'content is required' };
             }
+            if (args.type !== undefined && args.type !== 'markdown' && args.type !== 'code') {
+                return { success: false, error: 'type must be "markdown" or "code"' };
+            }
             try {
                 const canvas = store.createCanvas({
                     workspaceId: deps.workspaceId,
                     title: args.title.trim(),
                     content: args.content,
+                    type: args.type,
+                    language: args.language,
                     processId: deps.processId,
                     editor: 'ai',
                 });
                 emitUpdate(canvas.id, canvas.title, canvas.revision);
-                return { success: true, canvasId: canvas.id, title: canvas.title, revision: canvas.revision };
+                return { success: true, canvasId: canvas.id, title: canvas.title, type: canvas.type, ...(canvas.language ? { language: canvas.language } : {}), revision: canvas.revision };
             } catch (err) {
                 return { success: false, error: err instanceof Error ? err.message : String(err) };
             }

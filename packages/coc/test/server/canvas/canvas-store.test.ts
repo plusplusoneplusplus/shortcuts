@@ -44,6 +44,31 @@ describe('CanvasStore', () => {
             const canvas = store.createCanvas({ workspaceId: WS, title: 'Hello World!', content: 'x' });
             expect(canvas.id).toMatch(/^hello-world-[0-9a-f]{6}$/);
         });
+
+        it('creates code canvases with a normalized language', () => {
+            const canvas = store.createCanvas({
+                workspaceId: WS,
+                title: 'Parser',
+                content: 'def parse(): pass',
+                type: 'code',
+                language: ' Python ',
+            });
+            expect(canvas.type).toBe('code');
+            expect(canvas.language).toBe('python');
+
+            const reloaded = store.getCanvas(WS, canvas.id);
+            expect(reloaded?.type).toBe('code');
+            expect(reloaded?.language).toBe('python');
+        });
+
+        it('drops unusable language hints and ignores language for markdown', () => {
+            const code = store.createCanvas({ workspaceId: WS, title: 'X', content: 'x', type: 'code', language: 'not a language!!' });
+            expect(code.language).toBeUndefined();
+
+            const md = store.createCanvas({ workspaceId: WS, title: 'Y', content: 'y', language: 'python' });
+            expect(md.type).toBe('markdown');
+            expect(md.language).toBeUndefined();
+        });
     });
 
     describe('getCanvas', () => {

@@ -6,11 +6,15 @@
 
 export type CanvasEditor = 'ai' | 'user';
 
+export type CanvasType = 'markdown' | 'code';
+
 export interface CanvasSummary {
   id: string;
   workspaceId: string;
   title: string;
-  type: 'markdown';
+  type: CanvasType;
+  /** Language hint for code canvases (e.g. "typescript", "python"). */
+  language?: string;
   revision: number;
   createdAt: string;
   updatedAt: string;

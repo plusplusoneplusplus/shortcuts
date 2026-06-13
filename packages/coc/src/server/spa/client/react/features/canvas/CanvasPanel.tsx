@@ -15,6 +15,12 @@
  *  - Comments: anchored open comments can be sent to the AI in one batch via
  *    `onSendToAi`; delivery uses the normal follow-up path, so a busy AI
  *    receives them at the next turn boundary.
+ *
+ * Phase 3 surfaces:
+ *  - Code canvases (`type: 'code'` + language): Monaco editing, syntax-
+ *    highlighted preview rendered as a fenced block.
+ *  - Export menu: copy content, download as a file, save markdown canvases
+ *    into the workspace Notes tree under `canvases/`.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -22,6 +28,7 @@ import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import type { Canvas, CanvasComment, CanvasVersion, CanvasVersionMeta } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient } from '../../api/cocClient';
 import { useMarkdownPreview } from '../../hooks/ui/useMarkdownPreview';
+import { MonacoFileEditor, getMonacoLanguage } from '../repo-detail/explorer/MonacoFileEditor';
 import type { CanvasUpdatedEvent } from '../chat/hooks/useChatSSE';
 
 const AUTOSAVE_DELAY_MS = 800;
@@ -50,6 +57,31 @@ function buildCommentsMessage(canvas: Canvas, comments: CanvasComment[]): string
     return `Please address these comments on canvas "${canvas.title}" (canvasId: ${canvas.id}, revision ${canvas.revision}):\n\n${lines.join('\n')}\n\nApply the requested changes with update_canvas (use read_canvas first if you need the current content).`;
 }
 
+/** Resolve a Monaco language id from a stored canvas language hint. */
+function monacoLanguageFor(language: string | undefined): string {
+    if (!language) return 'plaintext';
+    const viaExtension = getMonacoLanguage(`canvas.${language}`);
+    return viaExtension !== 'plaintext' ? viaExtension : language;
+}
+
+const LANGUAGE_TO_FILE_EXT: Record<string, string> = {
+    typescript: 'ts', javascript: 'js', python: 'py', shell: 'sh', bash: 'sh',
+    csharp: 'cs', cpp: 'cpp', ruby: 'rb', rust: 'rs', go: 'go', java: 'java',
+    kotlin: 'kt', php: 'php', powershell: 'ps1', markdown: 'md',
+};
+
+function downloadFilenameFor(canvas: Canvas): string {
+    const slug = canvas.id.replace(/-[0-9a-f]{6}$/, '') || 'canvas';
+    if (canvas.type !== 'code') return `${slug}.md`;
+    const language = canvas.language ?? '';
+    return `${slug}.${LANGUAGE_TO_FILE_EXT[language] ?? (language || 'txt')}`;
+}
+
+/** Wrap raw code in a fenced block so the markdown pipeline highlights it. */
+function fenceCode(content: string, language: string | undefined): string {
+    return `\`\`\`\`${language ?? ''}\n${content}\n\`\`\`\``;
+}
+
 export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi, onSendToAi }: CanvasPanelProps) {
     const [canvas, setCanvas] = useState<Canvas | null>(null);
     const [loading, setLoading] = useState(true);
@@ -67,6 +99,8 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
     const [commentDraft, setCommentDraft] = useState('');
     const [comments, setComments] = useState<CanvasComment[]>([]);
     const [sendingComments, setSendingComments] = useState(false);
+    const [exportOpen, setExportOpen] = useState(false);
+    const [exportStatus, setExportStatus] = useState<string | null>(null);
 
     const previewRef = useRef<HTMLDivElement>(null);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -267,12 +301,65 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
     }, [workspaceId, canvasId, onSendToAi, openComments, sendingComments]);
 
     // ------------------------------------------------------------------
+    // Export
+    // ------------------------------------------------------------------
+
+    const flashExportStatus = useCallback((status: string) => {
+        setExportOpen(false);
+        setExportStatus(status);
+        setTimeout(() => setExportStatus(null), 2500);
+    }, []);
+
+    const handleCopy = useCallback(async () => {
+        const current = canvasRef.current;
+        if (!current) return;
+        try {
+            await navigator.clipboard.writeText(current.content);
+            flashExportStatus('Copied');
+        } catch {
+            flashExportStatus('Copy failed');
+        }
+    }, [flashExportStatus]);
+
+    const handleDownload = useCallback(() => {
+        const current = canvasRef.current;
+        if (!current) return;
+        try {
+            const blob = new Blob([current.content], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = downloadFilenameFor(current);
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            URL.revokeObjectURL(url);
+            flashExportStatus('Downloaded');
+        } catch {
+            flashExportStatus('Download failed');
+        }
+    }, [flashExportStatus]);
+
+    const handleSaveToNotes = useCallback(async () => {
+        const current = canvasRef.current;
+        if (!current || current.type !== 'markdown') return;
+        try {
+            const slug = current.id.replace(/-[0-9a-f]{6}$/, '') || current.id;
+            await getSpaCocClient().notes.saveContent(workspaceId, `canvases/${slug}.md`, current.content);
+            flashExportStatus('Saved to Notes');
+        } catch {
+            flashExportStatus('Save to Notes failed');
+        }
+    }, [workspaceId, flashExportStatus]);
+
+    // ------------------------------------------------------------------
     // Rendering
     // ------------------------------------------------------------------
 
     const displayedContent = viewingVersion ? viewingVersion.content : (canvas?.content ?? '');
+    const isCodeCanvas = canvas?.type === 'code';
     const { html } = useMarkdownPreview({
-        content: displayedContent,
+        content: isCodeCanvas ? fenceCode(displayedContent, canvas?.language) : displayedContent,
         containerRef: previewRef,
         loading: loading || (!viewingVersion && mode !== 'preview'),
     });
@@ -290,6 +377,11 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                 <span className="text-xs font-semibold truncate flex-1" title={canvas?.title ?? ''} data-testid="canvas-panel-title">
                     {canvas?.title || 'Canvas'}
                 </span>
+                {isCodeCanvas && (
+                    <span className="text-[9px] uppercase px-1 py-0.5 rounded border border-[#e0e0e0] dark:border-[#474749] text-[#848484] shrink-0" data-testid="canvas-panel-language">
+                        {canvas?.language ?? 'code'}
+                    </span>
+                )}
                 {canvas && (
                     <span className="flex items-center gap-0.5 text-[10px] text-[#848484] shrink-0">
                         <button
@@ -341,6 +433,37 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                         >
                             Edit
                         </button>
+                    </div>
+                )}
+                {canvas && (
+                    <div className="relative shrink-0">
+                        {exportStatus ? (
+                            <span className="text-[10px] text-[#848484]" data-testid="canvas-panel-export-status">{exportStatus}</span>
+                        ) : (
+                            <button
+                                type="button"
+                                className="text-[10px] text-[#848484] hover:text-[#333] dark:hover:text-[#ddd] underline"
+                                onClick={() => setExportOpen(open => !open)}
+                                data-testid="canvas-panel-export"
+                            >
+                                Export
+                            </button>
+                        )}
+                        {exportOpen && (
+                            <div className="absolute right-0 top-5 z-20 min-w-[150px] rounded border border-[#e0e0e0] dark:border-[#474749] bg-white dark:bg-[#28282a] shadow-md py-1" data-testid="canvas-panel-export-menu">
+                                <button type="button" className="block w-full text-left px-3 py-1 text-[11px] hover:bg-[#f0f0f0] dark:hover:bg-[#3a3a3c]" onClick={() => void handleCopy()} data-testid="canvas-panel-export-copy">
+                                    Copy content
+                                </button>
+                                <button type="button" className="block w-full text-left px-3 py-1 text-[11px] hover:bg-[#f0f0f0] dark:hover:bg-[#3a3a3c]" onClick={handleDownload} data-testid="canvas-panel-export-download">
+                                    Download file
+                                </button>
+                                {canvas.type === 'markdown' && (
+                                    <button type="button" className="block w-full text-left px-3 py-1 text-[11px] hover:bg-[#f0f0f0] dark:hover:bg-[#3a3a3c]" onClick={() => void handleSaveToNotes()} data-testid="canvas-panel-export-notes">
+                                        Save to Notes
+                                    </button>
+                                )}
+                            </div>
+                        )}
                     </div>
                 )}
                 {onClose && (
@@ -451,6 +574,18 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                     <div className="text-xs text-[#848484] py-6 text-center">Loading canvas…</div>
                 ) : loadError ? (
                     <div className="text-xs text-red-500 py-6 text-center" data-testid="canvas-panel-error">{loadError}</div>
+                ) : !viewingVersion && mode === 'edit' && isCodeCanvas ? (
+                    <div className="h-full min-h-[200px]" data-testid="canvas-panel-code-editor">
+                        <MonacoFileEditor
+                            value={draft}
+                            language={monacoLanguageFor(canvas?.language)}
+                            onChange={(next) => {
+                                setDraft(next);
+                                setDirty(true);
+                                setSaveState('idle');
+                            }}
+                        />
+                    </div>
                 ) : !viewingVersion && mode === 'edit' ? (
                     <textarea
                         className="w-full h-full min-h-[200px] text-xs p-3 bg-transparent resize-none font-mono outline-none"

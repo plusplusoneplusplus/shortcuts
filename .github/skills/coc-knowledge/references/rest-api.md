@@ -47,7 +47,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 
 ## Canvases
 
-Chat canvas side panel (gated by `canvas.enabled`, default off). Markdown artifacts the AI and the user co-edit; AI edits go through the canvas LLM tools, these routes serve the dashboard panel.
+Chat canvas side panel (gated by `canvas.enabled`, default off). Markdown or code artifacts (`type` + optional `language` on the descriptor) the AI and the user co-edit; AI edits go through the canvas LLM tools, these routes serve the dashboard panel.
 
 | Method | Path | Description |
 |--------|------|-------------|

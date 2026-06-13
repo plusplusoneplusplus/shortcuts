@@ -32,12 +32,18 @@ import { getRepoDataPath } from '../paths';
 
 export type CanvasEditor = 'ai' | 'user';
 
+export type CanvasType = 'markdown' | 'code';
+
+export const CANVAS_TYPES: readonly CanvasType[] = ['markdown', 'code'];
+
 export interface CanvasDescriptor {
     id: string;
     workspaceId: string;
     title: string;
-    /** Artifact type. Phase 1 supports markdown documents only. */
-    type: 'markdown';
+    /** Artifact type: a markdown document or a single code file. */
+    type: CanvasType;
+    /** Language hint for code canvases (e.g. "typescript", "python"). */
+    language?: string;
     /** Monotonic revision counter, incremented on every content/title change. */
     revision: number;
     createdAt: string;
@@ -61,6 +67,8 @@ export interface CreateCanvasInput {
     workspaceId: string;
     title: string;
     content: string;
+    type?: CanvasType;
+    language?: string;
     processId?: string;
     editor?: CanvasEditor;
 }
@@ -120,6 +128,14 @@ export const MAX_CANVAS_VERSIONS = 50;
 
 const MAX_COMMENT_ANCHOR_LENGTH = 500;
 const MAX_COMMENT_BODY_LENGTH = 4000;
+const LANGUAGE_PATTERN = /^[a-z0-9+#.-]{1,32}$/;
+
+/** Normalize a language hint; returns undefined when missing or unusable. */
+export function normalizeCanvasLanguage(raw: string | undefined): string | undefined {
+    if (typeof raw !== 'string') return undefined;
+    const language = raw.trim().toLowerCase();
+    return LANGUAGE_PATTERN.test(language) ? language : undefined;
+}
 
 const CANVAS_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,127}$/;
 
@@ -162,11 +178,14 @@ export class CanvasStore {
     createCanvas(input: CreateCanvasInput): CanvasRecord {
         const id = generateCanvasId(input.title);
         const now = new Date().toISOString();
+        const type: CanvasType = input.type === 'code' ? 'code' : 'markdown';
+        const language = type === 'code' ? normalizeCanvasLanguage(input.language) : undefined;
         const record: CanvasRecord = {
             id,
             workspaceId: input.workspaceId,
             title: input.title,
-            type: 'markdown',
+            type,
+            ...(language ? { language } : {}),
             revision: 1,
             createdAt: now,
             updatedAt: now,

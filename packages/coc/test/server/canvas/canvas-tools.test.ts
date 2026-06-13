@@ -66,6 +66,28 @@ describe('canvas LLM tools', () => {
             expect(((await create.handler({ content: 'x' } as any)) as any).success).toBe(false);
             expect(((await create.handler({ title: 't' } as any)) as any).success).toBe(false);
         });
+
+        it('creates a code canvas with a language', async () => {
+            const { create } = buildTools();
+            const result = await create.handler({
+                title: 'Parser',
+                content: 'def parse(): pass',
+                type: 'code',
+                language: 'python',
+            }) as any;
+
+            expect(result.success).toBe(true);
+            expect(result.type).toBe('code');
+            expect(result.language).toBe('python');
+            expect(store.getCanvas(WS, result.canvasId)?.language).toBe('python');
+        });
+
+        it('rejects an unknown canvas type', async () => {
+            const { create } = buildTools();
+            const result = await create.handler({ title: 'X', content: 'x', type: 'webview' } as any) as any;
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('type');
+        });
     });
 
     describe('update_canvas', () => {

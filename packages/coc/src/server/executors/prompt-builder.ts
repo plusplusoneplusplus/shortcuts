@@ -709,12 +709,14 @@ export function buildCanvasToolsAddon(
     });
 
     const suffix =
-        '\n\nCanvas tools (`create_canvas`, `update_canvas`, `read_canvas`) maintain a live markdown ' +
-        'document in a side panel next to this chat. Create a canvas when the user asks for a document, ' +
-        'plan, spec, or other long-form text they will iterate on — not for short answers. Prefer ' +
-        'targeted `update_canvas` edits over full rewrites, always pass `expectedRevision`, and call ' +
-        '`read_canvas` after a revision conflict (the user edited the canvas). Once content lives in a ' +
-        'canvas, keep chat replies brief and reference the canvas instead of repeating it.';
+        '\n\nCanvas tools (`create_canvas`, `update_canvas`, `read_canvas`) maintain a live artifact ' +
+        'in a side panel next to this chat. Create a canvas when the user asks for a document, plan, ' +
+        'spec, code file, or other long-form content they will iterate on — not for short answers. ' +
+        'Markdown canvases render Mermaid code blocks as diagrams/charts; use type "code" with a ' +
+        'language for a single code file. Prefer targeted `update_canvas` edits over full rewrites, ' +
+        'always pass `expectedRevision`, and call `read_canvas` after a revision conflict (the user ' +
+        'edited the canvas). Once content lives in a canvas, keep chat replies brief and reference ' +
+        'the canvas instead of repeating it.';
 
     return { tools: [create, update, read], suffix };
 }

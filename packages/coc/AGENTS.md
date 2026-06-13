@@ -89,8 +89,9 @@ all have their own `references/*.md`.
   Group statuses are normalized (`draft|running|completed|failed|cancelled`)
   with feature detail in `extra.detailStatus`; registry writes are best-effort
   and must never break orchestration.
-- **Chat canvas** (`canvas.enabled`, default off) persists markdown artifacts
-  under `~/.coc/repos/<wsId>/canvases/<canvasId>/` through
+- **Chat canvas** (`canvas.enabled`, default off) persists markdown or code
+  artifacts (descriptor `type` + normalized `language`) under
+  `~/.coc/repos/<wsId>/canvases/<canvasId>/` through
   `src/server/canvas/canvas-store.ts` with revision-checked updates. AI edits
   go through the `create_canvas`/`update_canvas`/`read_canvas` LLM tools
   (which emit `canvas-updated` SSE events on the linked process); user saves

@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
     addComment: vi.fn(),
     setCommentStatus: vi.fn(),
     deleteComment: vi.fn(),
+    notesSaveContent: vi.fn(),
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -28,7 +29,18 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
             setCommentStatus: mocks.setCommentStatus,
             deleteComment: mocks.deleteComment,
         },
+        notes: {
+            saveContent: mocks.notesSaveContent,
+        },
     }),
+}));
+
+// Monaco pulls a real editor bundle — substitute a plain textarea.
+vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor', () => ({
+    getMonacoLanguage: (fileName: string) => fileName.endsWith('.ts') ? 'typescript' : 'plaintext',
+    MonacoFileEditor: ({ value, onChange, language }: { value: string; onChange: (v: string) => void; language: string | null }) => (
+        <textarea data-testid="mock-monaco" data-language={language ?? ''} value={value} onChange={e => onChange(e.target.value)} />
+    ),
 }));
 
 // The markdown pipeline pulls hljs/mermaid — render plain content instead.
@@ -73,6 +85,7 @@ describe('CanvasPanel', () => {
         mocks.addComment.mockReset();
         mocks.setCommentStatus.mockReset();
         mocks.deleteComment.mockReset();
+        mocks.notesSaveContent.mockReset();
     });
 
     it('loads and renders the canvas title, revision, and preview', async () => {
@@ -306,5 +319,82 @@ describe('CanvasPanel', () => {
         expect(message).toContain('update_canvas');
         await waitFor(() => expect(screen.queryByTestId('canvas-panel-send-comments')).toBeNull());
         expect(screen.getByTestId('canvas-comment-c1').textContent).toContain('sent');
+    });
+
+    it('renders code canvases with a language chip, fenced preview, and Monaco editing', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ type: 'code', language: 'typescript', content: 'const x = 1;' }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-language').textContent).toBe('typescript'));
+
+        // Preview content is wrapped in a fenced block for highlighting
+        const preview = screen.getByTestId('canvas-panel-preview');
+        expect(preview.innerHTML).toContain('````typescript');
+        expect(preview.innerHTML).toContain('const x = 1;');
+
+        fireEvent.click(screen.getByTestId('canvas-panel-mode-edit'));
+        const monaco = screen.getByTestId('mock-monaco') as HTMLTextAreaElement;
+        expect(monaco.value).toBe('const x = 1;');
+        expect(screen.queryByTestId('canvas-panel-editor')).toBeNull();
+    });
+
+    it('autosaves Monaco edits on code canvases', async () => {
+        vi.useFakeTimers();
+        try {
+            mocks.get.mockResolvedValue(makeCanvas({ type: 'code', language: 'typescript', content: 'const x = 1;' }));
+            mocks.save.mockResolvedValue(makeCanvas({ type: 'code', language: 'typescript', revision: 2, content: 'const x = 2;' }));
+
+            render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+            await act(async () => { await vi.runOnlyPendingTimersAsync(); });
+
+            fireEvent.click(screen.getByTestId('canvas-panel-mode-edit'));
+            fireEvent.change(screen.getByTestId('mock-monaco'), { target: { value: 'const x = 2;' } });
+            await act(async () => { await vi.advanceTimersByTimeAsync(900); });
+
+            expect(mocks.save).toHaveBeenCalledWith('ws-1', 'doc-abc123', {
+                content: 'const x = 2;',
+                expectedRevision: 1,
+            });
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('copies canvas content from the export menu', async () => {
+        mocks.get.mockResolvedValue(makeCanvas());
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        Object.assign(navigator, { clipboard: { writeText } });
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-export')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('canvas-panel-export'));
+        fireEvent.click(screen.getByTestId('canvas-panel-export-copy'));
+
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-export-status').textContent).toBe('Copied'));
+        expect(writeText).toHaveBeenCalledWith('# Plan body');
+    });
+
+    it('saves markdown canvases to Notes and hides the option for code canvases', async () => {
+        mocks.get.mockResolvedValue(makeCanvas());
+        mocks.notesSaveContent.mockResolvedValue({});
+
+        const { unmount } = render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-export')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('canvas-panel-export'));
+        fireEvent.click(screen.getByTestId('canvas-panel-export-notes'));
+
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-export-status').textContent).toBe('Saved to Notes'));
+        expect(mocks.notesSaveContent).toHaveBeenCalledWith('ws-1', 'canvases/doc.md', '# Plan body');
+
+        unmount();
+        mocks.get.mockResolvedValue(makeCanvas({ type: 'code', language: 'typescript', content: 'const x = 1;' }));
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-export')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('canvas-panel-export'));
+        expect(screen.queryByTestId('canvas-panel-export-notes')).toBeNull();
+        expect(screen.getByTestId('canvas-panel-export-download')).toBeTruthy();
     });
 });
