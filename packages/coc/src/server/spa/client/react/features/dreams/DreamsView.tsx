@@ -15,7 +15,7 @@
 // config and reuse the shared toast + runtime-flag plumbing.
 
 import { SettingsCard } from '../../admin/SettingsCard';
-import { AdminInputSuffix, AdminRow, AdminToggle } from '../../admin/adminControls';
+import { AdminInputSuffix, AdminRow, AdminSeg, AdminToggle } from '../../admin/adminControls';
 import type { AgentProviderWorkActivity } from '../../shared/providerActivity';
 import { ProviderActivitySection } from './ProviderActivitySection';
 
@@ -23,6 +23,12 @@ import { ProviderActivitySection } from './ProviderActivitySection';
 export interface DreamsConfigForm {
     /** Global `dreams.enabled` flag — gates idle-time reflection everywhere. */
     enabled: boolean;
+    /** Default provider for idle-triggered Dream runs; blank uses the global default provider. */
+    provider: '' | 'copilot' | 'codex' | 'claude';
+    /** Optional default model for idle-triggered Dream runs. */
+    model: string;
+    /** Default Dream AI request timeout, edited in minutes and persisted as milliseconds. */
+    timeoutMinutes: string;
     /** Automatic idle-check cadence, edited in minutes and persisted as milliseconds. */
     intervalMinutes: string;
 }
@@ -39,7 +45,7 @@ export interface DreamsViewProps {
     onRefreshProviderActivity?: () => void;
 }
 
-const DEFAULT_CONFIG: DreamsConfigForm = { enabled: false, intervalMinutes: '5' };
+const DEFAULT_CONFIG: DreamsConfigForm = { enabled: false, provider: '', model: '', timeoutMinutes: '60', intervalMinutes: '5' };
 
 export function DreamsView({
     config = DEFAULT_CONFIG,
@@ -99,6 +105,54 @@ export function DreamsView({
                             value={config.intervalMinutes}
                             onChange={event => onConfigChange?.({ intervalMinutes: event.target.value })}
                             data-testid="dreams-idle-check-interval-minutes"
+                        />
+                    </AdminInputSuffix>
+                </AdminRow>
+                <AdminRow
+                    name="Default provider"
+                    hint="Provider used by automatic idle Dream runs. Use global default keeps Dreams aligned with the server-wide provider fallback."
+                >
+                    <AdminSeg
+                        value={config.provider}
+                        onChange={provider => onConfigChange?.({ provider })}
+                        aria-label="Dreams default provider"
+                        options={[
+                            { value: '', label: 'Global', testId: 'dreams-provider-global' },
+                            { value: 'copilot', label: 'Copilot', testId: 'dreams-provider-copilot' },
+                            { value: 'codex', label: 'Codex', testId: 'dreams-provider-codex' },
+                            { value: 'claude', label: 'Claude', testId: 'dreams-provider-claude' },
+                        ]}
+                    />
+                </AdminRow>
+                <AdminRow
+                    name="Default model"
+                    hint="Optional model override for idle Dream runs. Leave blank to use the selected provider's default model."
+                >
+                    <input
+                        id="dreams-default-model"
+                        className="ar-input ar-input-sm"
+                        type="text"
+                        value={config.model}
+                        onChange={event => onConfigChange?.({ model: event.target.value })}
+                        placeholder="Provider default"
+                        data-testid="dreams-default-model"
+                    />
+                </AdminRow>
+                <AdminRow
+                    name="Run timeout"
+                    hint="Timeout for each read-only analyzer and critic request in a Dream run."
+                >
+                    <AdminInputSuffix suffix="min">
+                        <input
+                            id="dreams-timeout-minutes"
+                            className="ar-input ar-input-sm"
+                            type="number"
+                            min={1}
+                            step={1}
+                            inputMode="numeric"
+                            value={config.timeoutMinutes}
+                            onChange={event => onConfigChange?.({ timeoutMinutes: event.target.value })}
+                            data-testid="dreams-timeout-minutes"
                         />
                     </AdminInputSuffix>
                 </AdminRow>

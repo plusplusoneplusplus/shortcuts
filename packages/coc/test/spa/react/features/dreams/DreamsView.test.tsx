@@ -12,6 +12,9 @@
  *
  * AC-02: `dreams.idleCheckIntervalMs` is edited here in minutes, while the
  * owner component persists milliseconds through the global config API.
+ *
+ * AC-04: provider, model, and timeout defaults for idle-triggered Dream runs are
+ * edited from this tab.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
@@ -25,6 +28,16 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
 
 const { DreamsView } = await import('../../../../../src/server/spa/client/react/features/dreams/DreamsView');
 import type { AgentProviderWorkActivity } from '../../../../../src/server/spa/client/react/shared/providerActivity';
+import type { DreamsConfigForm } from '../../../../../src/server/spa/client/react/features/dreams/DreamsView';
+
+const dreamsConfig = (overrides: Partial<DreamsConfigForm> = {}): DreamsConfigForm => ({
+    enabled: false,
+    provider: '',
+    model: '',
+    timeoutMinutes: '60',
+    intervalMinutes: '5',
+    ...overrides,
+});
 
 describe('DreamsView', () => {
     beforeEach(() => { vi.clearAllMocks(); });
@@ -38,23 +51,23 @@ describe('DreamsView', () => {
 
     // ── AC-03: global dreams.enabled toggle lives in the tab ──
     it('renders the dreams.enabled toggle reflecting the passed config', () => {
-        const { rerender } = render(<DreamsView config={{ enabled: false, intervalMinutes: '5' }} />);
+        const { rerender } = render(<DreamsView config={dreamsConfig({ enabled: false })} />);
         const toggle = screen.getByTestId('toggle-dreams-enabled') as HTMLInputElement;
         expect(toggle.checked).toBe(false);
-        rerender(<DreamsView config={{ enabled: true, intervalMinutes: '5' }} />);
+        rerender(<DreamsView config={dreamsConfig({ enabled: true })} />);
         expect((screen.getByTestId('toggle-dreams-enabled') as HTMLInputElement).checked).toBe(true);
     });
 
     it('invokes onConfigChange with the new enabled value when toggled', () => {
         const onConfigChange = vi.fn();
-        render(<DreamsView config={{ enabled: false, intervalMinutes: '5' }} onConfigChange={onConfigChange} />);
+        render(<DreamsView config={dreamsConfig({ enabled: false })} onConfigChange={onConfigChange} />);
         fireEvent.click(screen.getByTestId('toggle-dreams-enabled'));
         expect(onConfigChange).toHaveBeenCalledWith({ enabled: true });
     });
 
     // ── AC-02: idle interval is edited in minutes ──
     it('renders the idle check interval in minutes with a restart hint', () => {
-        render(<DreamsView config={{ enabled: false, intervalMinutes: '7' }} />);
+        render(<DreamsView config={dreamsConfig({ intervalMinutes: '7' })} />);
         const input = screen.getByTestId('dreams-idle-check-interval-minutes') as HTMLInputElement;
         expect(input.value).toBe('7');
         expect(screen.getByText(/restart the server for the scheduler cadence/i)).toBeDefined();
@@ -62,9 +75,30 @@ describe('DreamsView', () => {
 
     it('invokes onConfigChange with the new interval minute string when edited', () => {
         const onConfigChange = vi.fn();
-        render(<DreamsView config={{ enabled: false, intervalMinutes: '5' }} onConfigChange={onConfigChange} />);
+        render(<DreamsView config={dreamsConfig()} onConfigChange={onConfigChange} />);
         fireEvent.change(screen.getByTestId('dreams-idle-check-interval-minutes'), { target: { value: '12' } });
         expect(onConfigChange).toHaveBeenCalledWith({ intervalMinutes: '12' });
+    });
+
+    // ── AC-04: provider/model/timeout defaults live in the Dreams tab ──
+    it('renders default provider, model, and timeout controls from config', () => {
+        render(<DreamsView config={dreamsConfig({ provider: 'claude', model: 'claude-sonnet-4.6', timeoutMinutes: '45' })} />);
+        expect(screen.getByTestId('dreams-provider-claude').getAttribute('aria-pressed')).toBe('true');
+        expect((screen.getByTestId('dreams-default-model') as HTMLInputElement).value).toBe('claude-sonnet-4.6');
+        expect((screen.getByTestId('dreams-timeout-minutes') as HTMLInputElement).value).toBe('45');
+    });
+
+    it('invokes onConfigChange when provider, model, and timeout defaults change', () => {
+        const onConfigChange = vi.fn();
+        render(<DreamsView config={dreamsConfig()} onConfigChange={onConfigChange} />);
+
+        fireEvent.click(screen.getByTestId('dreams-provider-codex'));
+        fireEvent.change(screen.getByTestId('dreams-default-model'), { target: { value: 'gpt-5-codex' } });
+        fireEvent.change(screen.getByTestId('dreams-timeout-minutes'), { target: { value: '30' } });
+
+        expect(onConfigChange).toHaveBeenCalledWith({ provider: 'codex' });
+        expect(onConfigChange).toHaveBeenCalledWith({ model: 'gpt-5-codex' });
+        expect(onConfigChange).toHaveBeenCalledWith({ timeoutMinutes: '30' });
     });
 
     it('wires the settings card Save/Cancel footer to the config handlers when dirty', () => {
@@ -72,7 +106,7 @@ describe('DreamsView', () => {
         const onCancelConfig = vi.fn();
         render(
             <DreamsView
-                config={{ enabled: true, intervalMinutes: '5' }}
+                config={dreamsConfig({ enabled: true })}
                 configDirty
                 onSaveConfig={onSaveConfig}
                 onCancelConfig={onCancelConfig}

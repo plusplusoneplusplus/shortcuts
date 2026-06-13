@@ -56,6 +56,8 @@ export type AdminSettingValueSpec =
     | {
         kind: 'enum';
         values: readonly string[];
+        /** Accept null/undefined; applying null clears the stored value. */
+        nullable?: boolean;
         /** Validation error message override. */
         message?: string;
     }
@@ -226,8 +228,10 @@ export function validateAdminSettingValue(def: AdminSettingDefinition, value: un
             return ok ? undefined : numberMessage(def.key, spec);
         }
         case 'enum': {
+            if (spec.nullable && (value === null || value === undefined)) return undefined;
             const ok = typeof value === 'string' && spec.values.includes(value);
-            return ok ? undefined : (spec.message ?? `${def.key} must be one of: ${spec.values.join(', ')}`);
+            const base = spec.message ?? `${def.key} must be one of: ${spec.values.join(', ')}`;
+            return ok ? undefined : (spec.nullable ? `${base}, or null to clear` : base);
         }
         case 'custom':
             return spec.validate(value);
@@ -241,6 +245,7 @@ function clearsStoredValue(def: AdminSettingDefinition, value: unknown): boolean
     if (spec.kind === 'string' && spec.nullable) {
         return value === null || (spec.clearOnEmpty === true && value === '');
     }
+    if (spec.kind === 'enum' && spec.nullable) return value === null;
     return false;
 }
 
@@ -587,10 +592,28 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         key: 'dreams.enabled', default: false, runtime: 'live', runtimeFlag: 'dreamsEnabled',
     }),
     {
+        key: 'dreams.provider',
+        value: { kind: 'enum', values: ['copilot', 'codex', 'claude'], nullable: true, message: 'dreams.provider must be "copilot", "codex", or "claude"' },
+        default: undefined,
+        runtime: 'live',
+    },
+    {
+        key: 'dreams.model',
+        value: { kind: 'string', nullable: true, clearOnEmpty: true },
+        default: undefined,
+        runtime: 'live',
+    },
+    {
         key: 'dreams.idleCheckIntervalMs',
         value: { kind: 'number', integer: true, gt: 0, message: 'dreams.idleCheckIntervalMs must be a positive integer number of milliseconds' },
         default: 5 * 60 * 1000,
         runtime: 'restartRequired',
+    },
+    {
+        key: 'dreams.timeoutMs',
+        value: { kind: 'number', integer: true, gt: 0, message: 'dreams.timeoutMs must be a positive integer number of milliseconds' },
+        default: 3_600_000,
+        runtime: 'live',
     },
     bool({
         key: 'excalidraw.enabled', default: false, runtime: 'live', runtimeFlag: 'excalidrawEnabled',

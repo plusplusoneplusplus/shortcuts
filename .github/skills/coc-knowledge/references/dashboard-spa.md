@@ -527,10 +527,11 @@ Servers is shown only when `isServersEnabled()` is true. The Knowledge group's
 **Dreams** row (`dreams-admin-toggle`, route `#dreams-admin`) renders
 `features/dreams/DreamsView.tsx` and is the admin home for global Dreams config:
 the live `dreams.enabled` toggle, `dreams.idleCheckIntervalMs` edited in minutes
-with a restart hint, and the relocated **Dreams provider activity** queue +
-history section (`features/dreams/ProviderActivitySection.tsx`); that section no
-longer lives on the AI Provider page. It is distinct from the per-workspace
-`DreamsPanel`.
+with a restart hint, idle-run defaults for provider, model, and timeout
+(`dreams.provider`, `dreams.model`, `dreams.timeoutMs`), and the relocated
+**Dreams provider activity** queue + history section
+(`features/dreams/ProviderActivitySection.tsx`); that section no longer lives on
+the AI Provider page. It is distinct from the per-workspace `DreamsPanel`.
 
 Clicking an embedded tool row dispatches `SET_ACTIVE_TAB` and updates
 `location.hash` to the corresponding top-level route (`#memory`, `#skills`,

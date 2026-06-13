@@ -415,8 +415,8 @@ export function AdminPanel() {
 
     // Dreams tab config (global). Owned here so it loads with the rest of the
     // admin config; edited + saved from the Dreams tab (Knowledge nav group).
-    const [dreamsForm, setDreamsForm] = useState<DreamsConfigForm>({ enabled: false, intervalMinutes: '5' });
-    const [dreamsSnapshot, setDreamsSnapshot] = useState<DreamsConfigForm>({ enabled: false, intervalMinutes: '5' });
+    const [dreamsForm, setDreamsForm] = useState<DreamsConfigForm>({ enabled: false, provider: '', model: '', timeoutMinutes: '60', intervalMinutes: '5' });
+    const [dreamsSnapshot, setDreamsSnapshot] = useState<DreamsConfigForm>({ enabled: false, provider: '', model: '', timeoutMinutes: '60', intervalMinutes: '5' });
     const [dreamsSaving, setDreamsSaving] = useState(false);
 
     // Snapshots for per-card dirty tracking (set when config/prefs loads)
@@ -523,6 +523,11 @@ export function AdminPanel() {
             setFeaturesSnapshot(loadedFeatures);
             const loadedDreams: DreamsConfigForm = {
                 enabled: resolved.dreams?.enabled ?? false,
+                provider: resolved.dreams?.provider === 'codex' || resolved.dreams?.provider === 'claude' || resolved.dreams?.provider === 'copilot'
+                    ? resolved.dreams.provider
+                    : '',
+                model: resolved.dreams?.model ?? '',
+                timeoutMinutes: String(Math.round((resolved.dreams?.timeoutMs ?? 3_600_000) / 60_000)),
                 intervalMinutes: String(Math.round((resolved.dreams?.idleCheckIntervalMs ?? 5 * 60 * 1000) / 60_000)),
             };
             setDreamsForm(loadedDreams);
@@ -910,11 +915,19 @@ export function AdminPanel() {
             addToast('Dreams idle check interval must be a positive whole number of minutes', 'error');
             return;
         }
+        const timeoutMinutes = Number(dreamsForm.timeoutMinutes);
+        if (!Number.isInteger(timeoutMinutes) || timeoutMinutes < 1) {
+            addToast('Dreams run timeout must be a positive whole number of minutes', 'error');
+            return;
+        }
         setDreamsSaving(true);
         try {
             await getSpaCocClient().admin.updateConfig({
                 'dreams.enabled': dreamsForm.enabled,
+                'dreams.provider': dreamsForm.provider || null,
+                'dreams.model': dreamsForm.model.trim() || null,
                 'dreams.idleCheckIntervalMs': intervalMinutes * 60_000,
+                'dreams.timeoutMs': timeoutMinutes * 60_000,
             });
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();

@@ -1381,6 +1381,8 @@ timeout: 300
                   "dreams.idleCheckIntervalMs": "default",
                   "dreams.maxCandidates": "default",
                   "dreams.minIdleMs": "default",
+                  "dreams.model": "default",
+                  "dreams.provider": "default",
                   "dreams.timeoutMs": "default",
                   "effortLevels.enabled": "default",
                   "excalidraw.enabled": "default",
@@ -1490,6 +1492,8 @@ timeout: 300
             expect(defaults['excalidraw.enabled']).toBe(DEFAULT_CONFIG.excalidraw.enabled);
             expect(defaults['loops.enabled']).toBe(DEFAULT_CONFIG.loops.enabled);
             expect(defaults['dreams.enabled']).toBe(DEFAULT_CONFIG.dreams.enabled);
+            expect(defaults['dreams.provider']).toBe(DEFAULT_CONFIG.dreams.provider);
+            expect(defaults['dreams.model']).toBe(DEFAULT_CONFIG.dreams.model);
             expect(defaults['dreams.minIdleMs']).toBe(DEFAULT_CONFIG.dreams.minIdleMs);
             expect(defaults['dreams.confidenceThreshold']).toBe(DEFAULT_CONFIG.dreams.confidenceThreshold);
             expect(defaults['dreams.timeoutMs']).toBe(DEFAULT_CONFIG.dreams.timeoutMs);

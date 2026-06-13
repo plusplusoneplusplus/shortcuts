@@ -348,6 +348,9 @@ describe('AdminPanel — embedded tools render in the right panel', () => {
                     resolved: {
                         dreams: {
                             enabled: false,
+                            provider: 'claude',
+                            model: 'claude-sonnet-4.6',
+                            timeoutMs: 3_600_000,
                             idleCheckIntervalMs: 300_000,
                         },
                     },
@@ -369,9 +372,15 @@ describe('AdminPanel — embedded tools render in the right panel', () => {
         await waitFor(() => expect(document.querySelector('[data-testid="dreams-admin-page"]')).toBeTruthy());
         const intervalInput = document.querySelector<HTMLInputElement>('[data-testid="dreams-idle-check-interval-minutes"]')!;
         expect(intervalInput.value).toBe('5');
+        expect(document.querySelector<HTMLButtonElement>('[data-testid="dreams-provider-claude"]')?.getAttribute('aria-pressed')).toBe('true');
+        expect(document.querySelector<HTMLInputElement>('[data-testid="dreams-default-model"]')!.value).toBe('claude-sonnet-4.6');
+        expect(document.querySelector<HTMLInputElement>('[data-testid="dreams-timeout-minutes"]')!.value).toBe('60');
 
         await act(async () => {
             fireEvent.change(intervalInput, { target: { value: '12' } });
+            fireEvent.click(document.querySelector<HTMLButtonElement>('[data-testid="dreams-provider-codex"]')!);
+            fireEvent.change(document.querySelector<HTMLInputElement>('[data-testid="dreams-default-model"]')!, { target: { value: 'gpt-5-codex' } });
+            fireEvent.change(document.querySelector<HTMLInputElement>('[data-testid="dreams-timeout-minutes"]')!, { target: { value: '30' } });
         });
         await act(async () => {
             fireEvent.click(document.querySelector<HTMLButtonElement>('[data-testid="dreams-settings-save"]')!);
@@ -383,7 +392,10 @@ describe('AdminPanel — embedded tools render in the right panel', () => {
         expect(saveCall).toBeTruthy();
         expect(JSON.parse(String(saveCall![1]!.body))).toMatchObject({
             'dreams.enabled': false,
+            'dreams.provider': 'codex',
+            'dreams.model': 'gpt-5-codex',
             'dreams.idleCheckIntervalMs': 720_000,
+            'dreams.timeoutMs': 1_800_000,
         });
     });
 });

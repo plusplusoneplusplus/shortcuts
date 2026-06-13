@@ -86,6 +86,8 @@ export interface AdminResolvedConfig {
   mapReduce?: { enabled?: boolean };
   dreams?: {
     enabled?: boolean;
+    provider?: AdminDefaultProvider;
+    model?: string;
     idleCheckIntervalMs?: number;
     minIdleMs?: number;
     confidenceThreshold?: number;
@@ -175,6 +177,10 @@ export interface AdminConfigUpdate {
   'forEach.enabled'?: boolean;
   'mapReduce.enabled'?: boolean;
   'dreams.enabled'?: boolean;
+  'dreams.provider'?: AdminDefaultProvider | null;
+  'dreams.model'?: string | null;
+  'dreams.idleCheckIntervalMs'?: number;
+  'dreams.timeoutMs'?: number;
   'excalidraw.enabled'?: boolean;
   'mcpOauth.enabled'?: boolean;
   'mcpOauth.autoRefresh.enabled'?: boolean;

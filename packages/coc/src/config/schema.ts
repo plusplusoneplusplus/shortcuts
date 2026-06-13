@@ -77,7 +77,9 @@ function zodLeafForSpec(key: string, spec: AdminSettingValueSpec): z.ZodTypeAny 
         case 'string':
             return z.string();
         case 'enum':
-            return z.enum(spec.values as [string, ...string[]]);
+            return spec.nullable
+                ? z.enum(spec.values as [string, ...string[]]).nullish()
+                : z.enum(spec.values as [string, ...string[]]);
         case 'number': {
             let leaf = z.number();
             if (spec.integer) leaf = leaf.int();

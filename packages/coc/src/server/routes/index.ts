@@ -792,6 +792,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const getDefaultDreamRunOptions = (): DreamRunRequestOptions => {
         const dreams = (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.dreams;
         return {
+            provider: dreams?.provider,
+            model: dreams?.model,
             minIdleMs: dreams?.minIdleMs,
             confidenceThreshold: dreams?.confidenceThreshold,
             maxCandidates: dreams?.maxCandidates,
