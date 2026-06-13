@@ -44,7 +44,7 @@ import { buildEffortOptionsForModel } from './EffortPillSelector';
 import type { EffortLevel } from './EffortPillSelector';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { ConversationMiniMap } from './conversation/ConversationMiniMap';
-import { AgentCanvas, ChatViewToggle, buildAgentRunTreeFromTurns, findTurnIndexForRun } from './agent-canvas';
+import { AgentCanvas, ChatViewToggle, buildAgentRunTreeFromTurns, findTurnIndexForRun, readChatViewFromHash, applyChatViewToHash } from './agent-canvas';
 import type { AgentRunNode, ChatView } from './agent-canvas';
 import { useConversationSelection } from './hooks/useConversationSelection';
 import { snapshotConversation } from '../../utils/snapshot-copy-utils';
@@ -181,8 +181,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [activeCanvasId, setActiveCanvasId] = useState<string | null>(null);
     const [canvasLiveEvent, setCanvasLiveEvent] = useState<CanvasUpdatedEvent | null>(null);
     const [canvasPanelClosed, setCanvasPanelClosed] = useState(false);
-    // Thread vs. Agents (spatial sub-agent run tree) view.
-    const [view, setView] = useState<ChatView>('thread');
+    // Thread vs. Agents (spatial sub-agent run tree) view. In the main inline
+    // context the view is deep-linked via a `?view=agents` hash param, so a
+    // shared/bookmarked URL reopens straight into the canvas.
+    const hashViewSync = variant === 'inline' && !standalone;
+    const [view, setView] = useState<ChatView>(() => (hashViewSync ? (readChatViewFromHash(window.location.hash) ?? 'thread') : 'thread'));
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
     const [pendingScrollTurn, setPendingScrollTurn] = useState<number | null>(null);
     const [noteEdits, setNoteEdits] = useState<Array<{
@@ -463,10 +466,31 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         modelOverrideMountedRef.current = false;
         setEffortOverride(null);
         setInvalidScratchpadPaths(new Set());
-        setView('thread');
+    }, [taskId]);
+
+    // Reset the Agents view when switching chats, but honor a deep-linked view
+    // on first mount (the useState initializer already read it from the hash).
+    const viewResetMountRef = useRef(true);
+    useEffect(() => {
+        if (viewResetMountRef.current) {
+            viewResetMountRef.current = false;
+            return;
+        }
+        setView(hashViewSync ? (readChatViewFromHash(window.location.hash) ?? 'thread') : 'thread');
         setSelectedAgentId(null);
         setPendingScrollTurn(null);
-    }, [taskId]);
+    }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Mirror the active view into the chat hash (`?view=agents`) so it can be
+    // shared/bookmarked. replaceState avoids history spam and doesn't refire
+    // the router's hashchange handler.
+    useEffect(() => {
+        if (!hashViewSync || !window.location.hash) return;
+        const next = applyChatViewToHash(window.location.hash, view);
+        if (next !== window.location.hash) {
+            window.history.replaceState(null, '', next);
+        }
+    }, [view, hashViewSync]);
 
     // ── Resolve existing implementation runs from task metadata ─────────
     const rawImplementations: ImplementationRecord[] = useMemo(() => {

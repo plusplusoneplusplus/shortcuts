@@ -180,7 +180,8 @@ export function parsePrDetailTab(hash: string): PrDetailTab {
 }
 
 export function parseActivityDeepLink(hash: string): string | null {
-    const cleaned = hash.replace(/^#/, '');
+    // Strip any `?query` (e.g. `?view=agents`) so it never bleeds into the taskId.
+    const cleaned = hash.replace(/^#/, '').split('?')[0];
     const parts = cleaned.split('/');
     if (parts[0] === 'repos' && parts[1] && (parts[2] === 'chats' || parts[2] === 'activity') && parts[3]) {
         if (parts[3] === 'ralph' || parts[3] === 'for-each' || parts[3] === 'map-reduce') return null;

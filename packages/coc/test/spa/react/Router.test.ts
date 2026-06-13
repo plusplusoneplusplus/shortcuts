@@ -781,6 +781,11 @@ describe('parseActivityDeepLink', () => {
         expect(parseActivityDeepLink('#repos/my-repo/activity/task%2F1')).toBe('task/1');
     });
 
+    it('strips a trailing ?query (e.g. ?view=agents) from the task ID', () => {
+        expect(parseActivityDeepLink('#repos/my-repo/activity/task-1?view=agents')).toBe('task-1');
+        expect(parseActivityDeepLink('#repos/my-repo/chats/task-1?view=thread')).toBe('task-1');
+    });
+
     it('returns null when task ID is missing', () => {
         expect(parseActivityDeepLink('#repos/my-repo/activity')).toBeNull();
     });
