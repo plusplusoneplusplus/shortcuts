@@ -159,4 +159,25 @@ describe('useZoomPan', () => {
         });
         expect(result.current.state.scale).toBe(2);
     });
+
+    it('zoomTo zooms about the viewport center, keeping that point fixed', () => {
+        const { result } = renderHook(() => useZoomPan(defaultOptions));
+        act(() => {
+            (result.current.containerRef as { current: unknown }).current = {
+                getBoundingClientRect: () => ({ width: 800, height: 600 }),
+            };
+            result.current.zoomTo(2);
+        });
+        expect(result.current.state.scale).toBe(2);
+        // center (400,300) under world point (400,300); tx = 400 - 400*2, ty = 300 - 300*2
+        expect(result.current.state.translateX).toBe(-400);
+        expect(result.current.state.translateY).toBe(-300);
+    });
+
+    it('zoomTo clamps the scale and works without a container', () => {
+        const { result } = renderHook(() => useZoomPan({ ...defaultOptions, maxZoom: 2 }));
+        act(() => result.current.zoomTo(5));
+        expect(result.current.state.scale).toBe(2);
+        expect(result.current.state.translateX).toBe(0);
+    });
 });

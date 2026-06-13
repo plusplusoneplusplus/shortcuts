@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { AgentCanvas } from '../../../src/server/spa/client/react/features/chat/agent-canvas/AgentCanvas';
 import type { AgentRunNode } from '../../../src/server/spa/client/react/features/chat/agent-canvas/types';
 
@@ -60,5 +60,22 @@ describe('AgentCanvas', () => {
     it('flags running children edges/nodes via data-status', () => {
         render(<AgentCanvas root={tree([sub('busy', { status: 'running' })])} />);
         expect(screen.getByTestId('agent-canvas-node-busy').getAttribute('data-status')).toBe('running');
+    });
+
+    it('opens a zoom preset menu from the % label', () => {
+        render(<AgentCanvas root={tree([sub('a')])} />);
+        expect(screen.queryByTestId('agent-canvas-zoom-menu')).toBeNull();
+        fireEvent.click(screen.getByTestId('agent-canvas-zoom-label'));
+        const menu = screen.getByTestId('agent-canvas-zoom-menu');
+        expect(within(menu).getByText('50%')).toBeTruthy();
+        expect(within(menu).getByText('200%')).toBeTruthy();
+        expect(within(menu).getByText('Fit to screen')).toBeTruthy();
+    });
+
+    it('closes the zoom menu after picking a preset', () => {
+        render(<AgentCanvas root={tree([sub('a')])} />);
+        fireEvent.click(screen.getByTestId('agent-canvas-zoom-label'));
+        fireEvent.click(within(screen.getByTestId('agent-canvas-zoom-menu')).getByText('50%'));
+        expect(screen.queryByTestId('agent-canvas-zoom-menu')).toBeNull();
     });
 });

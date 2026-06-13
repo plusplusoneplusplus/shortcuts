@@ -47,6 +47,8 @@ export interface UseZoomPanReturn {
     fitToView: () => void;
     /** Center the content in the container at a fixed scale (default 1 = 100%). */
     centerContent: (scale?: number) => void;
+    /** Zoom to a specific scale, keeping the viewport center fixed. */
+    zoomTo: (scale: number) => void;
     /** Formatted zoom percentage string, e.g. `"125%"`. */
     zoomLabel: string;
 }
@@ -211,5 +213,20 @@ export function useZoomPan(options: UseZoomPanOptions): UseZoomPanReturn {
         });
     }, [contentWidth, contentHeight, clampScale]);
 
-    return { containerRef, state, svgTransform, zoomIn, zoomOut, reset, fitToView, centerContent, zoomLabel };
+    const zoomTo = useCallback((targetScale: number) => {
+        const s = clampScale(targetScale);
+        setState(prev => {
+            const el = containerRef.current;
+            if (!el) return { ...prev, scale: s };
+            const rect = el.getBoundingClientRect();
+            const cx = rect.width / 2;
+            const cy = rect.height / 2;
+            // Keep the world point under the viewport center fixed while scaling.
+            const px = (cx - prev.translateX) / prev.scale;
+            const py = (cy - prev.translateY) / prev.scale;
+            return { ...prev, scale: s, translateX: cx - px * s, translateY: cy - py * s };
+        });
+    }, [clampScale]);
+
+    return { containerRef, state, svgTransform, zoomIn, zoomOut, reset, fitToView, centerContent, zoomTo, zoomLabel };
 }

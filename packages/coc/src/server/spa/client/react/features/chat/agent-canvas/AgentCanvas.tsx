@@ -23,6 +23,9 @@ export interface AgentCanvasProps {
     onSelect?: (node: AgentRunNode) => void;
 }
 
+// Preset zoom levels offered by the % menu (within useZoomPan's 25%–220% range).
+const ZOOM_PRESETS = [25, 50, 75, 100, 150, 200];
+
 function fmtDuration(ms: number): string {
     const s = Math.max(0, Math.round(ms / 1000));
     const m = Math.floor(s / 60);
@@ -104,12 +107,27 @@ function CanvasNode({ entry, selected, onSelect, now }: {
 export function AgentCanvas({ root, selectedId, onSelect }: AgentCanvasProps) {
     const layout = useMemo(() => buildLayout(root), [root]);
 
-    const { containerRef, state, zoomIn, zoomOut, fitToView, centerContent, zoomLabel } = useZoomPan({
+    const { containerRef, state, zoomIn, zoomOut, fitToView, centerContent, zoomTo, zoomLabel } = useZoomPan({
         contentWidth: layout.worldW,
         contentHeight: layout.worldH,
         minZoom: 0.25,
         maxZoom: 2.2,
     });
+
+    const [zoomMenuOpen, setZoomMenuOpen] = useState(false);
+    useEffect(() => {
+        if (!zoomMenuOpen) {
+            return;
+        }
+        const close = (e: MouseEvent) => {
+            if (!(e.target as HTMLElement).closest('.cz-wrap')) {
+                setZoomMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', close);
+        return () => document.removeEventListener('mousedown', close);
+    }, [zoomMenuOpen]);
+    const currentPct = Math.round(state.scale * 100);
 
     // Default view: 100% zoom, content centered in the viewport. Re-centers on
     // mount, tree growth, and container resize — until the user takes over
@@ -207,7 +225,43 @@ export function AgentCanvas({ root, selectedId, onSelect }: AgentCanvasProps) {
 
             <div className="canvas-toolbar" data-no-drag>
                 <button type="button" onClick={zoomOut} title="Zoom out"><AcIcons.Collapse size={14} /></button>
-                <span className="cz">{zoomLabel}</span>
+                <span className="cz-wrap">
+                    <button
+                        type="button"
+                        className="cz"
+                        aria-haspopup="menu"
+                        aria-expanded={zoomMenuOpen}
+                        onClick={() => setZoomMenuOpen((o) => !o)}
+                        title="Set zoom level"
+                        data-testid="agent-canvas-zoom-label"
+                    >
+                        {zoomLabel}
+                    </button>
+                    {zoomMenuOpen && (
+                        <div className="canvas-zoom-menu" role="menu" data-testid="agent-canvas-zoom-menu">
+                            {ZOOM_PRESETS.map((p) => (
+                                <button
+                                    key={p}
+                                    type="button"
+                                    role="menuitemradio"
+                                    aria-checked={currentPct === p}
+                                    className={currentPct === p ? 'on' : ''}
+                                    onClick={() => { interactedRef.current = true; zoomTo(p / 100); setZoomMenuOpen(false); }}
+                                >
+                                    {p}%
+                                </button>
+                            ))}
+                            <span className="czm-sep" />
+                            <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => { interactedRef.current = true; fitToView(); setZoomMenuOpen(false); }}
+                            >
+                                Fit to screen
+                            </button>
+                        </div>
+                    )}
+                </span>
                 <button type="button" onClick={zoomIn} title="Zoom in"><AcIcons.Expand size={14} /></button>
                 <span className="cz-sep" />
                 <button
