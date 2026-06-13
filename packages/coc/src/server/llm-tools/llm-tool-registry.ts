@@ -99,33 +99,21 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         enabledByDefault: true,
     },
     {
-        name: 'create_canvas',
-        label: 'Create Canvas',
-        description: 'Creates a markdown canvas document in a side panel next to the chat.',
-        enabledByDefault: true,
-    },
-    {
-        name: 'update_canvas',
-        label: 'Update Canvas',
-        description: 'Applies revision-checked edits to an existing canvas.',
+        name: 'write_canvas',
+        label: 'Write Canvas',
+        description: 'Creates or updates a markdown/code canvas in a side panel next to the chat.',
         enabledByDefault: true,
     },
     {
         name: 'read_canvas',
         label: 'Read Canvas',
-        description: 'Reads the current content and revision of a canvas.',
+        description: 'Reads a canvas\'s content and revision (and manifest for extension canvases).',
         enabledByDefault: true,
     },
     {
-        name: 'create_or_update_extension_canvas',
-        label: 'Create/Update Extension Canvas',
-        description: 'Authors a custom interactive canvas (UI + capabilities over JSON shared state).',
-        enabledByDefault: true,
-    },
-    {
-        name: 'invoke_canvas_capability',
-        label: 'Invoke Canvas Capability',
-        description: 'Runs a declared capability on an extension canvas.',
+        name: 'extension_canvas',
+        label: 'Extension Canvas',
+        description: 'Builds or runs a custom interactive canvas (UI + capabilities over JSON shared state).',
         enabledByDefault: true,
     },
     {
@@ -137,7 +125,7 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
 ] as const;
 
 /** Tool names belonging to the canvas feature (gated by `canvas.enabled`). */
-export const CANVAS_LLM_TOOL_NAMES = ['create_canvas', 'update_canvas', 'read_canvas', 'create_or_update_extension_canvas', 'invoke_canvas_capability'] as const;
+export const CANVAS_LLM_TOOL_NAMES = ['write_canvas', 'read_canvas', 'extension_canvas'] as const;
 
 /**
  * Returns the effective LLM tool registry given runtime feature flags.

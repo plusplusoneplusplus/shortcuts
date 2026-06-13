@@ -93,7 +93,7 @@ all have their own `references/*.md`.
   extension artifacts (descriptor `type` + normalized `language`) under
   `~/.coc/repos/<wsId>/canvases/<canvasId>/` through
   `src/server/canvas/canvas-store.ts` with revision-checked updates. AI edits
-  go through the `create_canvas`/`update_canvas`/`read_canvas` LLM tools
+  go through the `write_canvas`/`read_canvas`/`extension_canvas` LLM tools
   (which emit `canvas-updated` SSE events on the linked process); user saves
   go through the workspace canvases REST routes (409 + current record on a
   stale revision, `canvas-updated` WebSocket broadcast). Every persisted
@@ -102,7 +102,7 @@ all have their own `references/*.md`.
   (`comments.json`, open|sent|resolved) are delivered to the AI through the
   normal follow-up enqueue path — not a custom channel. Extension canvases
   store `extension/{manifest.json,ui.html,capabilities.js}`; both the AI
-  (`invoke_canvas_capability`) and the panel's sandboxed iframe (capability
+  (`extension_canvas` RUN mode) and the panel's sandboxed iframe (capability
   REST route) mutate shared state only through capabilities run as pure
   `(state, params) => nextState` transforms in `canvas-capability-runner.ts`
   (`node:vm`, no require/process, 1s timeout, 1 MB cap) — never execute

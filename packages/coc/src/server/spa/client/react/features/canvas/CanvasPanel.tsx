@@ -106,7 +106,7 @@ function buildAskAiPrompt(canvas: Canvas, selection: string): string {
 
 function buildCommentsMessage(canvas: Canvas, comments: CanvasComment[]): string {
     const lines = comments.map((c, i) => `${i + 1}. On "${c.anchorText}": ${c.body}`);
-    return `Please address these comments on canvas "${canvas.title}" (canvasId: ${canvas.id}, revision ${canvas.revision}):\n\n${lines.join('\n')}\n\nApply the requested changes with update_canvas (use read_canvas first if you need the current content).`;
+    return `Please address these comments on canvas "${canvas.title}" (canvasId: ${canvas.id}, revision ${canvas.revision}):\n\n${lines.join('\n')}\n\nApply the requested changes with write_canvas (use read_canvas first if you need the current content).`;
 }
 
 /** Resolve a Monaco language id from a stored canvas language hint. */

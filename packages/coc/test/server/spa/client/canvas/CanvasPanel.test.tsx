@@ -322,7 +322,7 @@ describe('CanvasPanel', () => {
         await waitFor(() => expect(mocks.setCommentStatus).toHaveBeenCalledWith('ws-1', 'doc-abc123', 'c1', 'sent'));
         const message = onSendToAi.mock.calls[0][0] as string;
         expect(message).toContain('expand step 2');
-        expect(message).toContain('update_canvas');
+        expect(message).toContain('write_canvas');
         await waitFor(() => expect(screen.queryByTestId('canvas-panel-send-comments')).toBeNull());
         expect(screen.getByTestId('canvas-comment-c1').textContent).toContain('sent');
     });

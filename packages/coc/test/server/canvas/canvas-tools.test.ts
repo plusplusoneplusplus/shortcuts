@@ -36,19 +36,20 @@ describe('canvas LLM tools', () => {
         });
     }
 
-    it('registers the three canvas tool names', () => {
-        const { create, update, read } = buildTools();
-        expect(create.name).toBe('create_canvas');
-        expect(update.name).toBe('update_canvas');
+    it('registers three consolidated canvas tool names', () => {
+        const { write, read, extension } = buildTools();
+        expect(write.name).toBe('write_canvas');
         expect(read.name).toBe('read_canvas');
+        expect(extension.name).toBe('extension_canvas');
     });
 
-    describe('create_canvas', () => {
+    describe('write_canvas — create', () => {
         it('creates a canvas linked to the process and emits an SSE event', async () => {
-            const { create } = buildTools();
-            const result = await create.handler({ title: 'Spec', content: '# Spec' }) as any;
+            const { write } = buildTools();
+            const result = await write.handler({ title: 'Spec', content: '# Spec' }) as any;
 
             expect(result.success).toBe(true);
+            expect(result.created).toBe(true);
             expect(result.revision).toBe(1);
 
             const persisted = store.getCanvas(WS, result.canvasId);
@@ -61,15 +62,15 @@ describe('canvas LLM tools', () => {
             }));
         });
 
-        it('rejects missing title or content', async () => {
-            const { create } = buildTools();
-            expect(((await create.handler({ content: 'x' } as any)) as any).success).toBe(false);
-            expect(((await create.handler({ title: 't' } as any)) as any).success).toBe(false);
+        it('rejects create without title or content', async () => {
+            const { write } = buildTools();
+            expect(((await write.handler({ content: 'x' } as any)) as any).success).toBe(false);
+            expect(((await write.handler({ title: 't' } as any)) as any).success).toBe(false);
         });
 
         it('creates a code canvas with a language', async () => {
-            const { create } = buildTools();
-            const result = await create.handler({
+            const { write } = buildTools();
+            const result = await write.handler({
                 title: 'Parser',
                 content: 'def parse(): pass',
                 type: 'code',
@@ -83,20 +84,20 @@ describe('canvas LLM tools', () => {
         });
 
         it('rejects an unknown canvas type', async () => {
-            const { create } = buildTools();
-            const result = await create.handler({ title: 'X', content: 'x', type: 'webview' } as any) as any;
+            const { write } = buildTools();
+            const result = await write.handler({ title: 'X', content: 'x', type: 'webview' } as any) as any;
             expect(result.success).toBe(false);
             expect(result.error).toContain('type');
         });
     });
 
-    describe('update_canvas', () => {
+    describe('write_canvas — update', () => {
         it('applies targeted edits with the expected revision and emits an SSE event', async () => {
-            const { create, update } = buildTools();
-            const created = await create.handler({ title: 'Doc', content: 'alpha beta' }) as any;
+            const { write } = buildTools();
+            const created = await write.handler({ title: 'Doc', content: 'alpha beta' }) as any;
             emitProcessEvent.mockClear();
 
-            const result = await update.handler({
+            const result = await write.handler({
                 canvasId: created.canvasId,
                 edits: [{ oldText: 'beta', newText: 'gamma' }],
                 expectedRevision: 1,
@@ -109,13 +110,13 @@ describe('canvas LLM tools', () => {
         });
 
         it('reports a revision conflict and tells the model to re-read', async () => {
-            const { create, update } = buildTools();
-            const created = await create.handler({ title: 'Doc', content: 'v1' }) as any;
+            const { write } = buildTools();
+            const created = await write.handler({ title: 'Doc', content: 'v1' }) as any;
             // Simulate a user edit bumping the revision
             store.updateCanvas(WS, created.canvasId, { content: 'v2 (user)', editor: 'user' });
             emitProcessEvent.mockClear();
 
-            const result = await update.handler({
+            const result = await write.handler({
                 canvasId: created.canvasId,
                 content: 'v2 (ai)',
                 expectedRevision: 1,
@@ -128,18 +129,25 @@ describe('canvas LLM tools', () => {
             expect(emitProcessEvent).not.toHaveBeenCalled();
         });
 
-        it('returns an error for an unknown canvas', async () => {
-            const { update } = buildTools();
-            const result = await update.handler({ canvasId: 'missing-000000', content: 'x' }) as any;
+        it('returns an error updating an unknown canvas', async () => {
+            const { write } = buildTools();
+            const result = await write.handler({ canvasId: 'missing-000000', content: 'x' }) as any;
             expect(result.success).toBe(false);
             expect(result.error).toContain('not found');
+        });
+
+        it('rejects an update with no edits, content, or title', async () => {
+            const { write } = buildTools();
+            const created = await write.handler({ title: 'Doc', content: 'v1' }) as any;
+            const result = await write.handler({ canvasId: created.canvasId } as any) as any;
+            expect(result.success).toBe(false);
         });
     });
 
     describe('read_canvas', () => {
         it('returns content and revision', async () => {
-            const { create, read } = buildTools();
-            const created = await create.handler({ title: 'Doc', content: 'hello' }) as any;
+            const { write, read } = buildTools();
+            const created = await write.handler({ title: 'Doc', content: 'hello' }) as any;
 
             const result = await read.handler({ canvasId: created.canvasId }) as any;
             expect(result).toMatchObject({
@@ -158,8 +166,8 @@ describe('canvas LLM tools', () => {
         });
     });
 
-    describe('extension canvases', () => {
-        const EXT_ARGS = {
+    describe('extension_canvas', () => {
+        const BUILD_ARGS = {
             title: 'Kanban',
             description: 'A simple board',
             capabilities: [{ name: 'add_card', description: 'Add a card' }],
@@ -168,9 +176,9 @@ describe('canvas LLM tools', () => {
             initialState: { cards: [] },
         };
 
-        it('creates an extension canvas with documents and links it to the process', async () => {
-            const { createOrUpdateExtension } = buildTools();
-            const result = await createOrUpdateExtension.handler(EXT_ARGS as any) as any;
+        it('builds an extension canvas with documents and links it to the process', async () => {
+            const { extension } = buildTools();
+            const result = await extension.handler(BUILD_ARGS as any) as any;
 
             expect(result.success).toBe(true);
             expect(result.created).toBe(true);
@@ -184,11 +192,11 @@ describe('canvas LLM tools', () => {
         });
 
         it('updates extension documents without resetting state', async () => {
-            const { createOrUpdateExtension, invokeCapability } = buildTools();
-            const created = await createOrUpdateExtension.handler(EXT_ARGS as any) as any;
-            await invokeCapability.handler({ canvasId: created.canvasId, capability: 'add_card', params: { id: 'c1', title: 'A' } } as any);
+            const { extension } = buildTools();
+            const created = await extension.handler(BUILD_ARGS as any) as any;
+            await extension.handler({ canvasId: created.canvasId, capability: 'add_card', params: { id: 'c1', title: 'A' } } as any);
 
-            const updated = await createOrUpdateExtension.handler({
+            const updated = await extension.handler({
                 canvasId: created.canvasId,
                 description: 'Updated board',
                 capabilities: [{ name: 'add_card', description: 'Add a card' }, { name: 'clear', description: 'Clear' }],
@@ -203,21 +211,21 @@ describe('canvas LLM tools', () => {
             expect(store.getExtension(WS, created.canvasId)?.uiHtml).toBe('<div id="board2"></div>');
         });
 
-        it('rejects malformed extension input', async () => {
-            const { createOrUpdateExtension } = buildTools();
-            const noCapName = await createOrUpdateExtension.handler({ ...EXT_ARGS, capabilities: [{ name: 'Bad Name', description: 'x' }] } as any) as any;
+        it('rejects malformed build input', async () => {
+            const { extension } = buildTools();
+            const noCapName = await extension.handler({ ...BUILD_ARGS, capabilities: [{ name: 'Bad Name', description: 'x' }] } as any) as any;
             expect(noCapName.success).toBe(false);
 
-            const noUi = await createOrUpdateExtension.handler({ ...EXT_ARGS, uiHtml: '' } as any) as any;
+            const noUi = await extension.handler({ ...BUILD_ARGS, uiHtml: '' } as any) as any;
             expect(noUi.success).toBe(false);
         });
 
-        it('invokes a capability and returns the new state', async () => {
-            const { createOrUpdateExtension, invokeCapability } = buildTools();
-            const created = await createOrUpdateExtension.handler(EXT_ARGS as any) as any;
+        it('runs a capability and returns the new state', async () => {
+            const { extension } = buildTools();
+            const created = await extension.handler(BUILD_ARGS as any) as any;
             emitProcessEvent.mockClear();
 
-            const result = await invokeCapability.handler({
+            const result = await extension.handler({
                 canvasId: created.canvasId,
                 capability: 'add_card',
                 params: { id: 'c1', title: 'First' },
@@ -228,20 +236,27 @@ describe('canvas LLM tools', () => {
             expect(emitProcessEvent).toHaveBeenCalledTimes(1);
         });
 
-        it('surfaces capability errors and an unknown extension canvas', async () => {
-            const { createOrUpdateExtension, invokeCapability } = buildTools();
-            const created = await createOrUpdateExtension.handler(EXT_ARGS as any) as any;
+        it('requires a canvasId to run a capability', async () => {
+            const { extension } = buildTools();
+            const result = await extension.handler({ capability: 'add_card' } as any) as any;
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('canvasId');
+        });
 
-            const badCap = await invokeCapability.handler({ canvasId: created.canvasId, capability: 'nope' } as any) as any;
+        it('surfaces capability errors and an unknown extension canvas', async () => {
+            const { extension } = buildTools();
+            const created = await extension.handler(BUILD_ARGS as any) as any;
+
+            const badCap = await extension.handler({ canvasId: created.canvasId, capability: 'nope' } as any) as any;
             expect(badCap.success).toBe(false);
 
-            const missing = await invokeCapability.handler({ canvasId: 'missing-000000', capability: 'add_card' } as any) as any;
+            const missing = await extension.handler({ canvasId: 'missing-000000', capability: 'add_card' } as any) as any;
             expect(missing.success).toBe(false);
         });
 
         it('read_canvas returns the manifest for extension canvases', async () => {
-            const { createOrUpdateExtension, read } = buildTools();
-            const created = await createOrUpdateExtension.handler(EXT_ARGS as any) as any;
+            const { extension, read } = buildTools();
+            const created = await extension.handler(BUILD_ARGS as any) as any;
 
             const result = await read.handler({ canvasId: created.canvasId } as any) as any;
             expect(result.success).toBe(true);
@@ -251,8 +266,8 @@ describe('canvas LLM tools', () => {
     });
 
     it('does not emit SSE events when process context is missing', async () => {
-        const { create } = createCanvasTools({ dataDir, workspaceId: WS, canvasStore: store });
-        const result = await create.handler({ title: 'Doc', content: 'x' }) as any;
+        const { write } = createCanvasTools({ dataDir, workspaceId: WS, canvasStore: store });
+        const result = await write.handler({ title: 'Doc', content: 'x' }) as any;
         expect(result.success).toBe(true);
         expect(emitProcessEvent).not.toHaveBeenCalled();
     });

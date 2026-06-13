@@ -56,7 +56,7 @@ export function runCanvasCapability(
     try {
         state = stateJson.trim() ? JSON.parse(stateJson) : {};
     } catch {
-        return { ok: false, error: 'Canvas state is not valid JSON — fix it with update_canvas first' };
+        return { ok: false, error: 'Canvas state is not valid JSON — fix it with write_canvas first' };
     }
 
     const context = vm.createContext({}, { codeGeneration: { strings: false, wasm: false } });

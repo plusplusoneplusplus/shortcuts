@@ -70,7 +70,7 @@ export {
 export {
     createCanvasTools,
     type CanvasToolsDeps,
-    type CreateCanvasArgs,
-    type UpdateCanvasArgs,
+    type WriteCanvasArgs,
     type ReadCanvasArgs,
+    type ExtensionCanvasArgs,
 } from './canvas-tools';
