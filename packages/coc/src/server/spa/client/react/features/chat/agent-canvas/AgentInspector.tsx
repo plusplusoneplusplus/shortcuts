@@ -80,6 +80,14 @@ export function AgentInspector({ node, now, onClose, onSelectChild, onOpenInThre
                 {kids.length > 0 && <span className="ai-stat"><AcIcons.Spawn size={12} />{kids.length} spawned</span>}
             </div>
 
+            {(node.model || node.mode || node.description) && (
+                <dl className="ai-fields">
+                    {node.model && (<><dt>Model</dt><dd>{node.model}</dd></>)}
+                    {node.mode && (<><dt>Mode</dt><dd>{node.mode}</dd></>)}
+                    {node.description && (<><dt>Summary</dt><dd>{node.description}</dd></>)}
+                </dl>
+            )}
+
             {node.prompt && (
                 <section className="ai-section">
                     <h4>Task</h4>

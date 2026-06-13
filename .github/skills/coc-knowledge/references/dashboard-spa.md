@@ -314,8 +314,11 @@ strips the `?query` so the param never corrupts the taskId. `view` resets to
 
 `buildAgentRunTreeFromTurns(turns, root)` derives the tree with no extra fetch:
 the orchestrator (this process) is the root and each `Task` tool call becomes a
-sub-agent child (name/role from args, status/timing from the call), deduped
-across `toolCalls`+timeline and ordered by start time. Tool name/args are read
+sub-agent child. From the call's args it captures the agent name (`args.name`,
+falling back to `description`/`prompt`), type (`agent_type`/`subagent_type`),
+`model`, `mode`, `description`, and `prompt`; status/timing come from the call.
+Children are deduped across `toolCalls`+timeline and ordered by start time.
+Tool name/args are read
 via `toolName ?? name` and `args ?? parameters` so sub-agents are detected in
 both the live (SSE) shape and the persisted forge read model — they stay on the
 canvas after the chat completes and turns refresh. The `AgentRunNode` tree
@@ -328,13 +331,13 @@ takes over. The toolbar's % is a dropdown of preset levels
 It renders curved SVG edges + node cards (role glyph, name, live elapsed,
 spawn-count pill, status dot, progress bar) and a live 1s clock for running
 nodes. Clicking a sub-agent node opens `AgentInspector` — a right-side panel
-with the run's role/status/elapsed, the task prompt, its result, and its
-children (clickable to drill in); clicking the orchestrator root closes it.
+with the run's name/type/status/elapsed, a details list (model, mode, summary),
+the task prompt, its result, and its children (clickable to drill in); clicking
+the orchestrator root closes it.
 `AgentCanvas` owns the selection; the inspector's "Open in thread" button calls
 `onOpenInThread`, which `ChatDetail` maps back to the issuing turn via
 `findTurnIndexForRun`, switching to the thread and scrolling there.
-`buildAgentRunTreeFromTurns` also captures each run's `prompt` and `result` for
-the inspector. Styles live in scoped `agent-canvas.css` (`.agent-canvas`,
+Styles live in scoped `agent-canvas.css` (`.agent-canvas`,
 light/dark via `.dark`); there is no clock scrubber (the prototype's replay
 control is dropped — the real view is
 live). Distinct from the co-edited `CanvasPanel` side panel.

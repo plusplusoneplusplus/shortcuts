@@ -13,8 +13,14 @@ export interface AgentRunNode {
     id: string;
     /** Display name: the sub-agent's description (or a truncated prompt). */
     name: string;
-    /** Role label: the sub-agent type (e.g. 'Explore'), or 'orchestrator' for the root. */
+    /** Role label: the sub-agent type (e.g. 'explore'), or 'orchestrator' for the root. */
     role: string;
+    /** Short description of the run's task, when distinct from the name. */
+    description?: string;
+    /** Model the sub-agent runs on (e.g. 'claude-sonnet-4.6'), if specified. */
+    model?: string;
+    /** Execution mode (e.g. 'background'), if specified. */
+    mode?: string;
     status: AgentRunStatus;
     /** True only for the synthetic orchestrator root. */
     isRoot?: boolean;

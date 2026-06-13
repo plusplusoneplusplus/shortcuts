@@ -72,6 +72,41 @@ describe('buildAgentRunTreeFromTurns', () => {
         expect(buildAgentRunTreeFromTurns(turns).children[0].role).toBe('rust-code-reviewer');
     });
 
+    it('captures name, type, model, mode and description from Task args', () => {
+        const turns = [assistantTurn([tc({
+            id: 't1',
+            status: 'running',
+            args: {
+                agent_type: 'explore',
+                name: 'time-agent-1',
+                description: 'Query current time',
+                model: 'claude-sonnet-4.6',
+                mode: 'background',
+                prompt: 'Query the current date and time.',
+            },
+        })])];
+        expect(buildAgentRunTreeFromTurns(turns).children[0]).toMatchObject({
+            id: 't1',
+            name: 'time-agent-1',
+            role: 'explore',
+            description: 'Query current time',
+            model: 'claude-sonnet-4.6',
+            mode: 'background',
+            prompt: 'Query the current date and time.',
+        });
+    });
+
+    it('uses the agent name as the title and drops a redundant description', () => {
+        // No explicit name → title falls back to description, which is then cleared
+        // so the inspector does not show it twice.
+        const child = buildAgentRunTreeFromTurns([
+            assistantTurn([tc({ id: 't1', args: { agent_type: 'explore', description: 'map data' } })]),
+        ]).children[0];
+        expect(child.name).toBe('map data');
+        expect(child.description).toBeUndefined();
+        expect(child.model).toBeUndefined();
+    });
+
     it('ignores non-Task tool calls', () => {
         const turns = [assistantTurn([
             tc({ id: 'r1', toolName: 'Read', args: { file_path: '/a.ts' } }),

@@ -130,15 +130,23 @@ function rawArgs(tc: ClientToolCall): unknown {
     return tc.args ?? (tc as { parameters?: unknown }).parameters;
 }
 
+function asString(v: unknown): string {
+    return typeof v === 'string' ? v.trim() : '';
+}
+
 /** Build a sub-agent node from a normalized `Task` tool call. */
 function nodeFromTaskCall(tc: ClientToolCall): AgentRunNode {
     const args = asRecord(rawArgs(tc));
-    const agentType = typeof args.agent_type === 'string' ? args.agent_type
-        : typeof args.subagent_type === 'string' ? args.subagent_type
-            : '';
-    const description = typeof args.description === 'string' ? args.description.trim() : '';
-    const prompt = typeof args.prompt === 'string' ? args.prompt.trim() : '';
-    const name = description
+    const agentType = asString(args.agent_type) || asString(args.subagent_type);
+    const agentName = asString(args.name);
+    const description = asString(args.description);
+    const prompt = asString(args.prompt);
+    const model = asString(args.model);
+    const mode = asString(args.mode);
+    // Prefer the explicit agent name; fall back to the description, then a
+    // truncated prompt.
+    const name = agentName
+        || description
         || (prompt ? (prompt.length > 48 ? `${prompt.slice(0, 45).trimEnd()}…` : prompt) : '')
         || 'sub-agent';
     const result = typeof tc.result === 'string' && tc.result.trim() ? tc.result.trim() : undefined;
@@ -146,6 +154,10 @@ function nodeFromTaskCall(tc: ClientToolCall): AgentRunNode {
         id: tc.id,
         name,
         role: agentType || 'agent',
+        // Keep the description only when it adds something beyond the name.
+        description: description && description !== name ? description : undefined,
+        model: model || undefined,
+        mode: mode || undefined,
         status: mapToolStatus(tc.status),
         startedAt: parseTime(tc.startTime),
         completedAt: parseTime(tc.endTime),

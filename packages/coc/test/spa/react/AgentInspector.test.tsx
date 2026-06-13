@@ -19,6 +19,19 @@ describe('AgentInspector', () => {
         expect(screen.getByText('did it')).toBeTruthy();
     });
 
+    it('shows the agent type, model, mode and summary', () => {
+        render(<AgentInspector
+            node={node({ name: 'time-agent-1', role: 'explore', model: 'claude-sonnet-4.6', mode: 'background', description: 'Query current time' })}
+            now={0}
+            onClose={vi.fn()}
+        />);
+        expect(screen.getByText('time-agent-1')).toBeTruthy();
+        expect(screen.getByText('explore')).toBeTruthy(); // type, shown as the role in the head
+        expect(screen.getByText('claude-sonnet-4.6')).toBeTruthy();
+        expect(screen.getByText('background')).toBeTruthy();
+        expect(screen.getByText('Query current time')).toBeTruthy();
+    });
+
     it('shows a running placeholder when there is no result yet', () => {
         render(<AgentInspector node={node({ status: 'running', startedAt: 1000 })} now={1000} onClose={vi.fn()} />);
         expect(screen.getByText('Running…')).toBeTruthy();
