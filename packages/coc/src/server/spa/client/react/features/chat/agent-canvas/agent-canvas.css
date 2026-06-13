@@ -1,0 +1,361 @@
+/* =========================================================
+   Agents canvas — spatial tree map of a chat's sub-agent runs.
+   Ported from the coc-chat design (coc-chat-styles.css). Every rule is
+   namespaced under `.agent-canvas`, and the design's theme tokens are
+   scoped there too (light by default, dark under `.dark`), so nothing
+   leaks into the surrounding app.
+   ========================================================= */
+
+.agent-canvas {
+    /* theme tokens (light) */
+    --bg: #f6f6f6;
+    --bg-2: #efefef;
+    --panel: #ffffff;
+    --text: #1f1f1f;
+    --muted: #6b6b6b;
+    --faint: #8c8c8c;
+    --border: #e2e2e2;
+    --border-strong: #c6c6c6;
+    --hover: #f0f0f0;
+    --accent: oklch(0.55 0.18 252);
+    --success: oklch(0.60 0.13 155);
+    --danger: oklch(0.58 0.19 24);
+    --radius: 10px;
+    --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    /* spine defaults; per-node values come from inline style (spineVars). */
+    --spine: var(--accent);
+    --spine-soft: oklch(0.96 0.04 252);
+
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    cursor: grab;
+    background-color: var(--bg);
+    background-image: radial-gradient(circle, color-mix(in oklab, var(--border-strong) 60%, transparent) 1px, transparent 1.4px);
+    background-size: 22px 22px;
+    user-select: none;
+}
+
+.dark .agent-canvas {
+    --bg: #1e1e1e;
+    --bg-2: #2a2a2b;
+    --panel: #252526;
+    --text: #cccccc;
+    --muted: #9d9d9d;
+    --faint: #6e6e6e;
+    --border: #3a3a3c;
+    --border-strong: #565659;
+    --hover: #2a2d2e;
+    --accent: oklch(0.68 0.16 252);
+    --success: oklch(0.72 0.16 152);
+    --danger: oklch(0.68 0.19 22);
+    --spine-soft: oklch(0.32 0.07 252);
+}
+
+.agent-canvas .world {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
+    will-change: transform;
+}
+
+.agent-canvas .canvas-edges {
+    position: absolute;
+    top: 0;
+    left: 0;
+    overflow: visible;
+    pointer-events: none;
+}
+
+.agent-canvas .edge-active {
+    animation: ac-edgeflow 0.7s linear infinite;
+}
+
+@keyframes ac-edgeflow {
+    to { stroke-dashoffset: -11; }
+}
+
+.agent-canvas .cnode {
+    position: absolute;
+    width: 202px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 0 11px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--panel);
+    box-shadow: 0 1px 2px rgb(20 30 60 / 0.06);
+    cursor: pointer;
+    text-align: left;
+    color: var(--text);
+    transition: box-shadow 0.14s, border-color 0.14s, transform 0.14s;
+    animation: ac-nodeIn 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes ac-nodeIn {
+    from { transform: scale(0.9); }
+    to { transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .agent-canvas .cnode { animation: none; }
+}
+
+.agent-canvas .cnode:hover {
+    border-color: var(--border-strong);
+    box-shadow: 0 3px 10px rgb(20 30 60 / 0.12);
+    transform: translateY(-1px);
+}
+
+.agent-canvas .cnode.sel {
+    border-color: var(--spine);
+    box-shadow: 0 0 0 3px var(--spine-soft), 0 3px 10px rgb(20 30 60 / 0.12);
+}
+
+.agent-canvas .cnode.root {
+    background: linear-gradient(180deg, var(--panel), var(--bg-2));
+    border-color: var(--border-strong);
+}
+
+.agent-canvas .cnode[data-status="running"] {
+    border-color: color-mix(in oklab, var(--spine) 45%, var(--border));
+}
+
+.agent-canvas .cnode[data-status="queued"] {
+    border-style: dashed;
+    opacity: 0.72;
+}
+
+.agent-canvas .cn-badge {
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--spine-soft);
+    color: var(--spine);
+}
+
+.agent-canvas .cn-body {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.agent-canvas .cn-name {
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.agent-canvas .cn-sub {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--faint);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.agent-canvas .cn-sub .cn-role {
+    color: var(--spine);
+    font-weight: 500;
+}
+
+.agent-canvas .cn-spawn {
+    position: absolute;
+    top: -8px;
+    right: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 9.5px;
+    font-family: var(--font-mono);
+    color: var(--muted);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 1px 6px;
+}
+
+.agent-canvas .cn-spawn svg {
+    width: 10px;
+    height: 10px;
+    opacity: 0.8;
+}
+
+.agent-canvas .cn-state {
+    position: absolute;
+    top: 9px;
+    right: 10px;
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    flex-shrink: 0;
+}
+
+.agent-canvas .cn-state[data-status="running"] {
+    background: var(--spine);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--spine) 22%, transparent);
+    animation: ac-nodepulse 1.6s infinite;
+}
+
+.agent-canvas .cn-state[data-status="done"] { background: var(--success); }
+.agent-canvas .cn-state[data-status="failed"] { background: var(--danger); }
+.agent-canvas .cn-state[data-status="queued"] { background: var(--faint); }
+
+@keyframes ac-nodepulse {
+    0%, 100% { box-shadow: 0 0 0 3px color-mix(in oklab, var(--spine) 22%, transparent); }
+    50% { box-shadow: 0 0 0 6px color-mix(in oklab, var(--spine) 6%, transparent); }
+}
+
+.agent-canvas .cn-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 3px;
+    border-radius: 0 0 var(--radius) var(--radius);
+    background: var(--hover);
+    overflow: hidden;
+}
+
+.agent-canvas .cn-bar > i {
+    display: block;
+    height: 100%;
+    background: var(--spine);
+    transition: width 0.4s ease;
+}
+
+.agent-canvas .cnode[data-status="running"] .cn-bar > i {
+    animation: ac-barpulse 1.6s ease-in-out infinite;
+}
+
+.agent-canvas .cnode[data-status="done"] .cn-bar > i { background: var(--success); }
+
+@keyframes ac-barpulse {
+    0%, 100% { opacity: 0.65; }
+    50% { opacity: 1; }
+}
+
+.agent-canvas .canvas-toolbar {
+    position: absolute;
+    left: 16px;
+    bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 4px;
+    box-shadow: 0 2px 8px rgb(20 30 60 / 0.10);
+}
+
+.agent-canvas .canvas-toolbar button {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 28px;
+    padding: 0 9px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.agent-canvas .canvas-toolbar button:hover {
+    background: var(--hover);
+    color: var(--text);
+}
+
+.agent-canvas .canvas-toolbar .cz {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+    width: 40px;
+    text-align: center;
+}
+
+.agent-canvas .canvas-toolbar .cz-sep {
+    width: 1px;
+    height: 18px;
+    background: var(--border);
+    margin: 0 3px;
+}
+
+.agent-canvas .canvas-legend {
+    position: absolute;
+    right: 16px;
+    top: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: color-mix(in oklab, var(--panel) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 7px 12px;
+    font-size: 11px;
+    color: var(--muted);
+}
+
+.agent-canvas .canvas-legend .cl-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.agent-canvas .canvas-legend .cl-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+}
+
+.agent-canvas .canvas-legend .cl-dot[data-status="running"] { background: var(--accent); }
+.agent-canvas .canvas-legend .cl-dot[data-status="done"] { background: var(--success); }
+.agent-canvas .canvas-legend .cl-dot[data-status="queued"] {
+    background: var(--faint);
+    border: 1px dashed var(--border-strong);
+}
+
+.agent-canvas .canvas-legend .cl-hint {
+    color: var(--faint);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    border-left: 1px solid var(--border);
+    padding-left: 12px;
+}
+
+/* Empty state — no sub-agents in this conversation. */
+.agent-canvas .canvas-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    color: var(--faint);
+    font-size: 13px;
+    pointer-events: none;
+}
+
+.agent-canvas .canvas-empty .ce-title {
+    color: var(--muted);
+    font-weight: 600;
+}
