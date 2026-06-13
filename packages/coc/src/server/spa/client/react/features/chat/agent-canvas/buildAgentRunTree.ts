@@ -141,9 +141,7 @@ function nodeFromTaskCall(tc: ClientToolCall): AgentRunNode {
     const name = description
         || (prompt ? (prompt.length > 48 ? `${prompt.slice(0, 45).trimEnd()}…` : prompt) : '')
         || 'sub-agent';
-    const summary = typeof tc.result === 'string' && tc.result.trim()
-        ? firstLine(tc.result)
-        : undefined;
+    const result = typeof tc.result === 'string' && tc.result.trim() ? tc.result.trim() : undefined;
     return {
         id: tc.id,
         name,
@@ -151,7 +149,9 @@ function nodeFromTaskCall(tc: ClientToolCall): AgentRunNode {
         status: mapToolStatus(tc.status),
         startedAt: parseTime(tc.startTime),
         completedAt: parseTime(tc.endTime),
-        summary,
+        summary: result ? firstLine(result) : undefined,
+        prompt: prompt || undefined,
+        result,
         children: [],
     };
 }

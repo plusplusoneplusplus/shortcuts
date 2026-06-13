@@ -423,3 +423,233 @@
     color: var(--muted);
     font-weight: 600;
 }
+
+/* Inspector — right-side detail panel for a selected run. */
+.agent-canvas .agent-inspector {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 340px;
+    max-width: 86%;
+    display: flex;
+    flex-direction: column;
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    box-shadow: -8px 0 24px rgb(20 30 60 / 0.10);
+    overflow-y: auto;
+    z-index: 6;
+    cursor: default;
+}
+
+.agent-canvas .agent-inspector .ai-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 14px 12px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--panel);
+}
+
+.agent-canvas .agent-inspector .ai-badge {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--spine-soft);
+    color: var(--accent);
+}
+
+.agent-canvas .agent-inspector .ai-title {
+    min-width: 0;
+    flex: 1;
+}
+
+.agent-canvas .agent-inspector .ai-name {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.agent-canvas .agent-inspector .ai-role {
+    font-size: 10.5px;
+    font-family: var(--font-mono);
+    color: var(--accent);
+    margin-top: 1px;
+}
+
+.agent-canvas .agent-inspector .ai-close {
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.agent-canvas .agent-inspector .ai-close:hover {
+    background: var(--hover);
+    color: var(--text);
+}
+
+.agent-canvas .agent-inspector .ai-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 14px;
+}
+
+.agent-canvas .agent-inspector .ai-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: var(--hover);
+    color: var(--muted);
+}
+
+.agent-canvas .agent-inspector .ai-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+}
+
+.agent-canvas .agent-inspector .ai-dot[data-status="running"] { background: var(--accent); }
+.agent-canvas .agent-inspector .ai-dot[data-status="done"] { background: var(--success); }
+.agent-canvas .agent-inspector .ai-dot[data-status="failed"] { background: var(--danger); }
+.agent-canvas .agent-inspector .ai-dot[data-status="queued"] { background: var(--faint); }
+
+.agent-canvas .agent-inspector .ai-stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--muted);
+}
+
+.agent-canvas .agent-inspector .ai-stat svg { opacity: 0.8; }
+
+.agent-canvas .agent-inspector .ai-section {
+    padding: 2px 14px 14px;
+    border-top: 1px solid var(--border);
+}
+
+.agent-canvas .agent-inspector .ai-section h4 {
+    margin: 12px 0 6px;
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--faint);
+}
+
+.agent-canvas .agent-inspector .ai-text {
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+}
+
+.agent-canvas .agent-inspector .ai-children {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.agent-canvas .agent-inspector .ai-children button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    border-radius: 8px;
+    padding: 7px 9px;
+    cursor: pointer;
+}
+
+.agent-canvas .agent-inspector .ai-children button:hover {
+    background: var(--hover);
+    border-color: var(--border-strong);
+}
+
+.agent-canvas .agent-inspector .ai-cbadge {
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--spine-soft);
+    color: var(--accent);
+}
+
+.agent-canvas .agent-inspector .ai-cname {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.agent-canvas .agent-inspector .ai-cstate {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    flex-shrink: 0;
+}
+
+.agent-canvas .agent-inspector .ai-cstate[data-status="running"] { background: var(--accent); }
+.agent-canvas .agent-inspector .ai-cstate[data-status="done"] { background: var(--success); }
+.agent-canvas .agent-inspector .ai-cstate[data-status="failed"] { background: var(--danger); }
+.agent-canvas .agent-inspector .ai-cstate[data-status="queued"] { background: var(--faint); }
+
+.agent-canvas .agent-inspector .ai-open-thread {
+    margin: 4px 14px 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 9px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.agent-canvas .agent-inspector .ai-open-thread:hover {
+    background: var(--hover);
+    border-color: var(--border-strong);
+}

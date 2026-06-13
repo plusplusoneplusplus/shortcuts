@@ -24,6 +24,10 @@ export interface AgentRunNode {
     completedAt?: number;
     /** One-line summary / conclusion, if available. */
     summary?: string;
+    /** Full task/instruction handed to this sub-agent (the Task tool's prompt). */
+    prompt?: string;
+    /** Full result/output the run produced, if available. */
+    result?: string;
     /** Recursively spawned child runs. */
     children: AgentRunNode[];
 }

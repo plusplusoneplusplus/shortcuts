@@ -322,13 +322,21 @@ canvas after the chat completes and turns refresh. The `AgentRunNode` tree
 supports arbitrary depth, so deeper recursion can be layered on later.
 `AgentCanvas` reuses the shared `useZoomPan` hook — it opens at 100% zoom,
 centered (`centerContent`), re-centering on mount/growth/resize until the user
-takes over; the Fit button zooms to fit the whole tree. It renders curved SVG
-edges + node cards (role glyph, name, live elapsed, spawn-count pill, status
-dot, progress bar) and a live 1s clock for running nodes. Clicking a node calls
-`onSelect`; `ChatDetail` maps it back to the issuing turn via
-`findTurnIndexForRun`, switches to the thread, and scrolls there. Styles live in
-scoped `agent-canvas.css` (`.agent-canvas`, light/dark via `.dark`); there is no
-clock scrubber (the prototype's replay control is dropped — the real view is
+takes over. The toolbar's % is a dropdown of preset levels
+(25/50/75/100/150/200% + Fit) backed by `useZoomPan`'s `zoomTo(scale)`
+(zooms about the viewport center); the Fit button zooms to fit the whole tree.
+It renders curved SVG edges + node cards (role glyph, name, live elapsed,
+spawn-count pill, status dot, progress bar) and a live 1s clock for running
+nodes. Clicking a sub-agent node opens `AgentInspector` — a right-side panel
+with the run's role/status/elapsed, the task prompt, its result, and its
+children (clickable to drill in); clicking the orchestrator root closes it.
+`AgentCanvas` owns the selection; the inspector's "Open in thread" button calls
+`onOpenInThread`, which `ChatDetail` maps back to the issuing turn via
+`findTurnIndexForRun`, switching to the thread and scrolling there.
+`buildAgentRunTreeFromTurns` also captures each run's `prompt` and `result` for
+the inspector. Styles live in scoped `agent-canvas.css` (`.agent-canvas`,
+light/dark via `.dark`); there is no clock scrubber (the prototype's replay
+control is dropped — the real view is
 live). Distinct from the co-edited `CanvasPanel` side panel.
 
 ## Tool Call Rendering

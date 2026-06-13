@@ -1,26 +1,39 @@
 // AgentCanvas — a pannable / zoomable spatial map of a chat's recursive
 // sub-agent runs. The orchestrator root branches left→right into its
-// sub-agents, recursively. Driven by live run status; clicking a node calls
-// onSelect (the host scrolls the thread to the matching turn).
+// sub-agents, recursively. Driven by live run status; clicking a node opens an
+// inspector with that run's details (clicking the root closes it).
 //
 // Ported from the coc-chat design (agent-canvas.jsx), with pan/zoom delegated
 // to the repo's shared useZoomPan hook and the prototype's clock scrubber
 // dropped (the real app is live-streaming, not replayable).
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useZoomPan } from '../../../hooks/ui/useZoomPan';
 import { buildLayout, edgePath, spineVars, PAD, type PositionedNode } from './layout';
 import type { AgentRunNode } from './types';
 import { AcIcons, roleIcon } from './icons';
+import { AgentInspector } from './AgentInspector';
 import './agent-canvas.css';
 
 export interface AgentCanvasProps {
     /** The orchestrator root whose subtree is the agent run tree. */
     root: AgentRunNode;
-    /** Currently selected run id (highlighted), or null. */
-    selectedId?: string | null;
-    /** Called when a node is clicked. */
-    onSelect?: (node: AgentRunNode) => void;
+    /** Jump to a run's turn in the linear thread (the inspector's "Open in thread"). */
+    onOpenInThread?: (node: AgentRunNode) => void;
+}
+
+/** Depth-first lookup of a node by id within the run tree. */
+function findNode(node: AgentRunNode, id: string): AgentRunNode | null {
+    if (node.id === id) {
+        return node;
+    }
+    for (const child of node.children || []) {
+        const found = findNode(child, id);
+        if (found) {
+            return found;
+        }
+    }
+    return null;
 }
 
 // Preset zoom levels offered by the % menu (within useZoomPan's 25%–220% range).
@@ -49,9 +62,9 @@ function nodeTimeText(node: AgentRunNode, now: number): string {
     }
     switch (node.status) {
         case 'running':
-            return node.startedAt ? fmtDuration((now || node.startedAt) - node.startedAt) : 'running';
+            return node.startedAt !== undefined ? fmtDuration((now || node.startedAt) - node.startedAt) : 'running';
         case 'done':
-            return node.startedAt && node.completedAt ? fmtDuration(node.completedAt - node.startedAt) : 'done';
+            return node.startedAt !== undefined && node.completedAt !== undefined ? fmtDuration(node.completedAt - node.startedAt) : 'done';
         case 'failed':
             return 'failed';
         case 'queued':
@@ -104,8 +117,17 @@ function CanvasNode({ entry, selected, onSelect, now }: {
     );
 }
 
-export function AgentCanvas({ root, selectedId, onSelect }: AgentCanvasProps) {
+export function AgentCanvas({ root, onOpenInThread }: AgentCanvasProps) {
     const layout = useMemo(() => buildLayout(root), [root]);
+
+    // Selected run drives the inspector. Resolve from the live tree so a node
+    // that disappears (e.g. tree changes) simply closes the panel.
+    const [selectedId, setSelectedId] = useState<string | null>(null);
+    const selectedNode = useMemo(() => (selectedId ? findNode(root, selectedId) : null), [root, selectedId]);
+    const handleNodeClick = useCallback((node: AgentRunNode) => {
+        // The root (orchestrator) closes the inspector; a sub-agent opens it.
+        setSelectedId(node.isRoot ? null : node.id);
+    }, []);
 
     const { containerRef, state, zoomIn, zoomOut, fitToView, centerContent, zoomTo, zoomLabel } = useZoomPan({
         contentWidth: layout.worldW,
@@ -211,7 +233,7 @@ export function AgentCanvas({ root, selectedId, onSelect }: AgentCanvasProps) {
                         entry={layout.pos[id]}
                         now={now}
                         selected={selectedId === id}
-                        onSelect={onSelect}
+                        onSelect={handleNodeClick}
                     />
                 ))}
             </div>
@@ -221,6 +243,16 @@ export function AgentCanvas({ root, selectedId, onSelect }: AgentCanvasProps) {
                     <span className="ce-title">No sub-agent runs</span>
                     <span>Agents this chat spawns will appear here as a tree.</span>
                 </div>
+            )}
+
+            {selectedNode && (
+                <AgentInspector
+                    node={selectedNode}
+                    now={now}
+                    onClose={() => setSelectedId(null)}
+                    onSelectChild={(child) => setSelectedId(child.id)}
+                    onOpenInThread={onOpenInThread}
+                />
             )}
 
             <div className="canvas-toolbar" data-no-drag>
@@ -273,12 +305,14 @@ export function AgentCanvas({ root, selectedId, onSelect }: AgentCanvasProps) {
                 </button>
             </div>
 
-            <div className="canvas-legend" data-no-drag>
-                <span className="cl-item"><span className="cl-dot" data-status="running" />running</span>
-                <span className="cl-item"><span className="cl-dot" data-status="done" />done</span>
-                <span className="cl-item"><span className="cl-dot" data-status="queued" />queued</span>
-                <span className="cl-hint">drag to pan · scroll to zoom</span>
-            </div>
+            {!selectedNode && (
+                <div className="canvas-legend" data-no-drag>
+                    <span className="cl-item"><span className="cl-dot" data-status="running" />running</span>
+                    <span className="cl-item"><span className="cl-dot" data-status="done" />done</span>
+                    <span className="cl-item"><span className="cl-dot" data-status="queued" />queued</span>
+                    <span className="cl-hint">drag to pan · scroll to zoom</span>
+                </div>
+            )}
         </div>
     );
 }

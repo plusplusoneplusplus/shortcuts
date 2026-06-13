@@ -186,7 +186,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // shared/bookmarked URL reopens straight into the canvas.
     const hashViewSync = variant === 'inline' && !standalone;
     const [view, setView] = useState<ChatView>(() => (hashViewSync ? (readChatViewFromHash(window.location.hash) ?? 'thread') : 'thread'));
-    const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
     const [pendingScrollTurn, setPendingScrollTurn] = useState<number | null>(null);
     const [noteEdits, setNoteEdits] = useState<Array<{
         editId: string; notePath: string; preEditContent: string;
@@ -319,9 +318,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         status: effectiveStatus,
     }), [turns, task?.customTitle, task?.title, task?.displayName, title, effectiveStatus]);
 
-    // Clicking a canvas node jumps to the matching turn in the thread.
-    const handleAgentSelect = useCallback((node: AgentRunNode) => {
-        setSelectedAgentId(node.id);
+    // The inspector's "Open in thread" action: switch to the thread and scroll
+    // to the run's turn.
+    const openAgentInThread = useCallback((node: AgentRunNode) => {
         const idx = node.isRoot
             ? (turnsRef.current[0]?.turnIndex ?? 0)
             : findTurnIndexForRun(turnsRef.current, node.id);
@@ -477,7 +476,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             return;
         }
         setView(hashViewSync ? (readChatViewFromHash(window.location.hash) ?? 'thread') : 'thread');
-        setSelectedAgentId(null);
         setPendingScrollTurn(null);
     }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1704,7 +1702,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     {/* Inner row: ConversationArea + MiniMap, or the Agents canvas */}
                     <div className="relative flex flex-1 min-h-0 overflow-hidden min-w-0">
                     {view === 'agents' ? (
-                    <AgentCanvas root={agentRoot} selectedId={selectedAgentId} onSelect={handleAgentSelect} />
+                    <AgentCanvas root={agentRoot} onOpenInThread={openAgentInThread} />
                     ) : (
                     <>
                     <ConversationArea
