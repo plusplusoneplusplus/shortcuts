@@ -124,11 +124,21 @@ all have their own `references/*.md`.
   The Team toolbar status UI should read batch status and route manual
   "Classify now" actions through the same bounded server helper.
 - **Native Copilot session reads** (`src/server/native-copilot-sessions/`)
-  must stay strictly read-only against `~/.copilot/session-store.db`: open with
-  short-lived `readonly` SQLite connections, keep every user-provided filter
-  parameterized (FTS terms literal-quoted), and return typed
-  `db-missing`/`db-invalid` states instead of throwing. Never route native
-  session IDs into CoC process/chat action handlers. The list route dedups
+  must stay strictly read-only against the native store: open
+  `~/.copilot/session-store.db` with short-lived `readonly` SQLite connections,
+  keep every user-provided filter parameterized (FTS terms literal-quoted), and
+  return typed `db-missing`/`db-invalid` states instead of throwing. Never route
+  native session IDs into CoC process/chat action handlers. Rich detail
+  reconstruction reads the per-session log
+  `~/.copilot/session-state/<id>/events.jsonl` via `session-state-parser.ts`
+  (`parseNativeSessionState`), which maps the newline-delimited
+  `{type,id,parentId,timestamp,data}` events (`user.message`,
+  `assistant.message` with `content`/`reasoningText`/`model`,
+  `tool.execution_start`/`_complete` correlated by `toolCallId`,
+  `skill.invoked`) into `ReconstructedConversationTurn[]` and returns `null`
+  (never throws) on a missing/malformed/empty log so callers fall back to the
+  flat `session-store.db` turns. The parser never writes to `~/.copilot` and
+  rejects unsafe session ids (path traversal). The list route dedups
   against CoC processes by excluding native `sessions.id` values that match a
   workspace's `ProcessStore.getSdkSessionIds(workspaceId)` (the Copilot SDK/CLI
   session id equals the native store id) and hides automated background-job

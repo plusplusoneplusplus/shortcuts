@@ -54,6 +54,64 @@ export interface NativeCopilotSessionDetail {
     turns: NativeCopilotSessionTurn[];
 }
 
+/**
+ * One reconstructed tool call inside a {@link ReconstructedConversationTurn}.
+ *
+ * Mirrors the SPA-side `ClientToolCall` so the dashboard chat components
+ * (`ConversationArea` / `ConversationTurnBubble`) can render it without a fork.
+ */
+export interface ReconstructedToolCall {
+    id: string;
+    toolName: string;
+    /** Raw tool arguments object as recorded by the native CLI. */
+    args: unknown;
+    /** Tool result text (full `detailedContent`, else short `content`) when it succeeded. */
+    result?: string;
+    /** Error message when the tool call failed. */
+    error?: string;
+    status: 'pending' | 'running' | 'completed' | 'failed';
+    startTime?: string;
+    endTime?: string;
+}
+
+/**
+ * One timeline event inside a {@link ReconstructedConversationTurn}, mirroring
+ * the SPA-side `ClientTimelineItem` so the chat bubble can interleave assistant
+ * text and tool cards in chronological order.
+ */
+export interface ReconstructedTimelineItem {
+    type: 'content' | 'tool-start' | 'tool-complete' | 'tool-failed';
+    timestamp: string;
+    content?: string;
+    toolCall?: ReconstructedToolCall;
+}
+
+/**
+ * A single reconstructed conversation turn, mirroring the subset of the
+ * SPA-side `ClientConversationTurn` that the read-only native-session detail
+ * view populates. Built either from the rich `session-state/<id>/events.jsonl`
+ * log or, as a fallback, from the flat `session-store.db` turns.
+ */
+export interface ReconstructedConversationTurn {
+    role: 'user' | 'assistant';
+    /** Primary markdown content of the turn. */
+    content: string;
+    timestamp?: string;
+    turnIndex?: number;
+    toolCalls?: ReconstructedToolCall[];
+    timeline: ReconstructedTimelineItem[];
+    /** Base64 data-URL strings for images attached to or produced in this turn. */
+    images?: string[];
+    /** Readable model reasoning/thinking for an assistant turn (events.jsonl `reasoningText`). */
+    thinking?: string;
+    /** Skills invoked during this turn. */
+    skillNames?: string[];
+    /** Model that produced an assistant turn (e.g. `gpt-5.5`, `claude-opus-4.8`). */
+    model?: string;
+    /** True when an assistant turn ended in an error. */
+    isError?: boolean;
+}
+
 /** Filters accepted by the native session list query. */
 export interface NativeCopilotSessionListOptions {
     /** Free-text query against natively indexed content (search_index FTS). */
