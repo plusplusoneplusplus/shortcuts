@@ -61,11 +61,11 @@ interface RepoDetailProps {
 
 export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] = [
     { key: 'chats', label: 'Chats', shortcut: 'Alt+A' },
+    { key: 'cli-sessions', label: 'CLI Sessions' },
     { key: 'git', label: 'Git', shortcut: 'Alt+G' },
     { key: 'terminal', label: 'Terminal' },
     { key: 'work-items', label: 'Work Items', shortcut: 'Alt+I' },
     { key: 'dreams', label: 'Dreams', shortcut: 'Alt+D' },
-    { key: 'cli-sessions', label: 'CLI Sessions' },
     { key: 'pull-requests', label: 'Pull Requests', shortcut: 'Alt+R' },
     { key: 'explorer', label: 'Explorer', shortcut: 'Alt+E' },
     { key: 'workflows', label: 'Workflows', shortcut: 'Alt+W' },
@@ -87,8 +87,8 @@ export const VISIBLE_SUB_TABS = SHOW_WIKI_TAB
  * Group identity is purely visual and does not affect functionality.
  */
 const TAB_GROUP_INDEX: Record<string, number> = {
-    'chats': 1, 'activity': 1, 'git': 1, 'terminal': 1,
-    'work-items': 2, 'dreams': 2, 'cli-sessions': 2, 'copilot-sessions': 2, 'pull-requests': 2, 'tasks': 2,
+    'chats': 1, 'activity': 1, 'cli-sessions': 1, 'copilot-sessions': 1, 'git': 1, 'terminal': 1,
+    'work-items': 2, 'dreams': 2, 'pull-requests': 2, 'tasks': 2,
     'explorer': 3, 'workflows': 3, 'schedules': 3,
     'notes': 4, 'settings': 4, 'wiki': 4,
 };
@@ -190,7 +190,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 'pull-requests': 'Full Requests',
             };
             const devWorkflowOrder: RepoSubTab[] = [
-                'chats', 'work-items', 'dreams', 'cli-sessions', 'schedules', 'explorer',
+                'chats', 'cli-sessions', 'work-items', 'dreams', 'schedules', 'explorer',
                 'workflows', 'git', 'terminal', 'pull-requests', 'tasks', 'settings',
             ];
             const tabMap = new Map(tabs.map(t => [t.key, t]));

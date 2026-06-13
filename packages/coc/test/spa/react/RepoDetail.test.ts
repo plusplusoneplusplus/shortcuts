@@ -24,14 +24,18 @@ describe('RepoDetail SUB_TABS', () => {
         expect(SUB_TABS.find(t => t.key === 'queue')).toBeUndefined();
     });
 
-    it('"chats" is followed by "git" entry', () => {
+    it('"chats" is followed by "cli-sessions" entry', () => {
         const chatsIdx = SUB_TABS.findIndex(t => t.key === 'chats');
-        const gitIdx = SUB_TABS.findIndex(t => t.key === 'git');
-        expect(gitIdx).toBe(chatsIdx + 1);
+        const cliSessionsIdx = SUB_TABS.findIndex(t => t.key === 'cli-sessions');
+        expect(cliSessionsIdx).toBe(chatsIdx + 1);
     });
 
-    it('"git" is the second entry', () => {
-        expect(SUB_TABS[1].key).toBe('git');
+    it('"cli-sessions" is the second entry (between chats/activity and git)', () => {
+        expect(SUB_TABS[1].key).toBe('cli-sessions');
+    });
+
+    it('"git" is the third entry, immediately after cli-sessions', () => {
+        expect(SUB_TABS[2].key).toBe('git');
     });
 
     it('has exactly 14 entries', () => {
@@ -40,7 +44,7 @@ describe('RepoDetail SUB_TABS', () => {
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['chats', 'git', 'terminal', 'work-items', 'dreams', 'cli-sessions', 'pull-requests', 'explorer', 'workflows', 'schedules', 'tasks', 'notes', 'settings', 'wiki']);
+        expect(keys).toEqual(['chats', 'cli-sessions', 'git', 'terminal', 'work-items', 'dreams', 'pull-requests', 'explorer', 'workflows', 'schedules', 'tasks', 'notes', 'settings', 'wiki']);
     });
 
     it('includes "wiki" entry without a shortcut', () => {
@@ -64,6 +68,47 @@ describe('RepoDetail SUB_TABS', () => {
     });
 });
 
+describe('RepoDetail CLI Sessions placement (between Activity and Git)', () => {
+    it('cli-sessions sits immediately after chats and immediately before git in SUB_TABS', () => {
+        const chatsIdx = SUB_TABS.findIndex(t => t.key === 'chats');
+        const cliSessionsIdx = SUB_TABS.findIndex(t => t.key === 'cli-sessions');
+        const gitIdx = SUB_TABS.findIndex(t => t.key === 'git');
+        expect(cliSessionsIdx).toBe(chatsIdx + 1);
+        expect(gitIdx).toBe(cliSessionsIdx + 1);
+    });
+
+    it('keeps the same placement in VISIBLE_SUB_TABS', () => {
+        const chatsIdx = VISIBLE_SUB_TABS.findIndex(t => t.key === 'chats');
+        const cliSessionsIdx = VISIBLE_SUB_TABS.findIndex(t => t.key === 'cli-sessions');
+        const gitIdx = VISIBLE_SUB_TABS.findIndex(t => t.key === 'git');
+        expect(cliSessionsIdx).toBe(chatsIdx + 1);
+        expect(gitIdx).toBe(cliSessionsIdx + 1);
+    });
+
+    it('groups cli-sessions with the activity/git/terminal divider group (group 1)', () => {
+        // TAB_GROUP_INDEX is not exported; assert via source so cli-sessions does
+        // not render as a divider-flanked island between Activity and Git.
+        expect(REPO_DETAIL_SOURCE).toContain(
+            "'chats': 1, 'activity': 1, 'cli-sessions': 1, 'copilot-sessions': 1, 'git': 1, 'terminal': 1,",
+        );
+        // cli-sessions / copilot-sessions must no longer be in the work-items group.
+        const workItemsGroupLine = REPO_DETAIL_SOURCE
+            .split('\n')
+            .find(l => l.includes("'work-items': 2"));
+        expect(workItemsGroupLine).toBeDefined();
+        expect(workItemsGroupLine).not.toContain("'cli-sessions'");
+        expect(workItemsGroupLine).not.toContain("'copilot-sessions'");
+    });
+
+    it('dev-workflow order places cli-sessions immediately after chats', () => {
+        const devOrderMatch = REPO_DETAIL_SOURCE.match(/devWorkflowOrder.*?=\s*\[([\s\S]*?)\]/);
+        expect(devOrderMatch).toBeTruthy();
+        const keys = devOrderMatch![1].match(/'([^']+)'/g)!.map(k => k.replace(/'/g, ''));
+        expect(keys[0]).toBe('chats');
+        expect(keys[1]).toBe('cli-sessions');
+    });
+});
+
 describe('RepoDetail VISIBLE_SUB_TABS', () => {
     it('excludes wiki when SHOW_WIKI_TAB is false', () => {
         expect(VISIBLE_SUB_TABS.find(t => t.key === 'wiki')).toBeUndefined();
@@ -75,7 +120,7 @@ describe('RepoDetail VISIBLE_SUB_TABS', () => {
 
     it('contains all non-wiki tabs in order', () => {
         const keys = VISIBLE_SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['chats', 'git', 'terminal', 'work-items', 'dreams', 'cli-sessions', 'pull-requests', 'explorer', 'workflows', 'schedules', 'tasks', 'notes', 'settings']);
+        expect(keys).toEqual(['chats', 'cli-sessions', 'git', 'terminal', 'work-items', 'dreams', 'pull-requests', 'explorer', 'workflows', 'schedules', 'tasks', 'notes', 'settings']);
     });
 
     it('renders visibleSubTabs.map in the tab strip', () => {
@@ -735,7 +780,7 @@ describe('RepoDetail dev-workflow tab relabeling and reorder', () => {
 
     it('dev-workflow branch defines the correct tab order', () => {
         expect(REPO_DETAIL_SOURCE).toContain(
-            "'chats', 'work-items', 'dreams', 'cli-sessions', 'schedules', 'explorer',",
+            "'chats', 'cli-sessions', 'work-items', 'dreams', 'schedules', 'explorer',",
         );
         expect(REPO_DETAIL_SOURCE).toContain(
             "'workflows', 'git', 'terminal', 'pull-requests', 'tasks', 'settings',",
