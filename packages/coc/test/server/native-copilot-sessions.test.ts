@@ -304,6 +304,31 @@ describe('NativeCopilotSessionService', () => {
         }
     });
 
+    it('hides background-job sessions detected from summary when no flat turns exist', () => {
+        const wsRoot = path.join(tmpDir, 'ws');
+        createFixtureDb(
+            dbPath,
+            [
+                { id: 'real', cwd: wsRoot, updatedAt: '2026-06-03T00:00:00.000Z' },
+                {
+                    id: 'summary-only-title-job',
+                    cwd: wsRoot,
+                    summary: 'Summarise the following conversation as a short title (max 8 words, no punctuation).\nFocus on what was actually done.',
+                    updatedAt: '2026-06-02T00:00:00.000Z',
+                },
+            ],
+            [{ sessionId: 'real', turnIndex: 0, userMessage: 'normal user request' }],
+        );
+        const service = new NativeCopilotSessionService({ dbPath });
+        const result = service.listSessions({ rootPath: wsRoot });
+        expect(result.available).toBe(true);
+        if (result.available) {
+            expect(result.items.map(i => i.id)).toEqual(['real']);
+            expect(result.total).toBe(1);
+            expect(result.backgroundJobCount).toBe(1);
+        }
+    });
+
     it('includes background-job sessions when includeBackgroundJobs is set', () => {
         const wsRoot = path.join(tmpDir, 'ws');
         createFixtureDb(
@@ -326,6 +351,26 @@ describe('NativeCopilotSessionService', () => {
         }
     });
 
+    it('includes summary-only background-job sessions when includeBackgroundJobs is set', () => {
+        const wsRoot = path.join(tmpDir, 'ws');
+        createFixtureDb(dbPath, [
+            { id: 'real', cwd: wsRoot, updatedAt: '2026-06-03T00:00:00.000Z' },
+            {
+                id: 'summary-only-title-job',
+                cwd: wsRoot,
+                summary: 'Summarize the following conversation as a short title (max 8 words)',
+                updatedAt: '2026-06-02T00:00:00.000Z',
+            },
+        ]);
+        const service = new NativeCopilotSessionService({ dbPath });
+        const result = service.listSessions({ rootPath: wsRoot }, { includeBackgroundJobs: true });
+        expect(result.available).toBe(true);
+        if (result.available) {
+            expect(result.items.map(i => i.id)).toEqual(['real', 'summary-only-title-job']);
+            expect(result.backgroundJobCount).toBe(0);
+        }
+    });
+
     it('only treats the first turn as a background-job signal', () => {
         const wsRoot = path.join(tmpDir, 'ws');
         createFixtureDb(
@@ -335,6 +380,26 @@ describe('NativeCopilotSessionService', () => {
                 { sessionId: 'real', turnIndex: 0, userMessage: 'real first prompt' },
                 { sessionId: 'real', turnIndex: 1, userMessage: 'Summarise the following conversation as a short title' },
             ],
+        );
+        const service = new NativeCopilotSessionService({ dbPath });
+        const result = service.listSessions({ rootPath: wsRoot });
+        expect(result.available).toBe(true);
+        if (result.available) {
+            expect(result.items.map(i => i.id)).toEqual(['real']);
+            expect(result.backgroundJobCount).toBe(0);
+        }
+    });
+
+    it('does not use the summary fallback when a real first flat turn exists', () => {
+        const wsRoot = path.join(tmpDir, 'ws');
+        createFixtureDb(
+            dbPath,
+            [{
+                id: 'real',
+                cwd: wsRoot,
+                summary: 'Summarise the following conversation as a short title (max 8 words)',
+            }],
+            [{ sessionId: 'real', turnIndex: 0, userMessage: 'actual first prompt' }],
         );
         const service = new NativeCopilotSessionService({ dbPath });
         const result = service.listSessions({ rootPath: wsRoot });
@@ -770,6 +835,12 @@ describe('Native Copilot session routes', () => {
             [
                 { id: 'real', cwd: workspaceDir, updatedAt: '2026-06-03T00:00:00.000Z' },
                 { id: 'title-job', cwd: workspaceDir, updatedAt: '2026-06-02T00:00:00.000Z' },
+                {
+                    id: 'summary-only-title-job',
+                    cwd: workspaceDir,
+                    summary: 'Summarise the following conversation as a short title (max 8 words, no punctuation).\nFocus on what was actually done.',
+                    updatedAt: '2026-06-01T00:00:00.000Z',
+                },
             ],
             [
                 { sessionId: 'real', turnIndex: 0, userMessage: 'actual user request' },
@@ -782,7 +853,7 @@ describe('Native Copilot session routes', () => {
         const body = JSON.parse(res.body);
         expect(body.items.map((i: { id: string }) => i.id)).toEqual(['real']);
         expect(body.total).toBe(1);
-        expect(body.backgroundJobCount).toBe(1);
+        expect(body.backgroundJobCount).toBe(2);
     });
 });
 

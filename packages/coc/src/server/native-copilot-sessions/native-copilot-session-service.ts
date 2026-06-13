@@ -31,11 +31,12 @@ const MAX_MATCH_SNIPPETS = 3;
 const SUMMARY_PREVIEW_MAX_CHARS = 200;
 
 /**
- * First-turn user-prompt prefixes that mark a native session as an automated
- * background job rather than a user-driven conversation. Matched
- * case-insensitively against the trimmed `turns.turn_index = 0` user message.
- * The Copilot CLI spawns these (e.g. to generate a conversation title), so they
- * are hidden from the read-only session browser by default.
+ * Prompt prefixes that mark a native session as an automated background job
+ * rather than a user-driven conversation. Matched case-insensitively against
+ * the first flat turn user message and, for native records that have no flat
+ * turns, the stored session summary. The Copilot CLI spawns these (e.g. to
+ * generate a conversation title), so they are hidden from the read-only session
+ * browser by default.
  */
 const BACKGROUND_JOB_PROMPT_PREFIXES = [
     'Summarise the following conversation as a short title',
@@ -500,15 +501,28 @@ export class NativeCopilotSessionService {
         const likePatterns = BACKGROUND_JOB_PROMPT_PREFIXES.map(
             prefix => `${prefix.replace(/([\\%_])/g, '\\$1')}%`,
         );
-        const promptClause = `(${likePatterns.map(() => "user_message LIKE ? ESCAPE '\\'").join(' OR ')})`;
+        const turnPromptClause = `(${likePatterns.map(() => "user_message LIKE ? ESCAPE '\\'").join(' OR ')})`;
+        const summaryPromptClause = `(${likePatterns.map(() => "summary LIKE ? ESCAPE '\\'").join(' OR ')})`;
         const CHUNK = 400;
         for (let i = 0; i < sessionIds.length; i += CHUNK) {
             const chunk = sessionIds.slice(i, i + CHUNK);
-            const rows = db.prepare(
+            const turnRows = db.prepare(
                 `SELECT DISTINCT session_id AS sessionId FROM turns
-                 WHERE turn_index = 0 AND session_id IN (${chunk.map(() => '?').join(', ')}) AND ${promptClause}`,
+                 WHERE turn_index = 0 AND session_id IN (${chunk.map(() => '?').join(', ')}) AND ${turnPromptClause}`,
             ).all(...chunk, ...likePatterns) as { sessionId: string }[];
-            for (const row of rows) {
+            for (const row of turnRows) {
+                matches.add(row.sessionId);
+            }
+            const summaryRows = db.prepare(
+                `SELECT DISTINCT id AS sessionId FROM sessions
+                 WHERE id IN (${chunk.map(() => '?').join(', ')})
+                   AND NOT EXISTS (
+                       SELECT 1 FROM turns
+                       WHERE turns.session_id = sessions.id AND turns.turn_index = 0
+                   )
+                   AND ${summaryPromptClause}`,
+            ).all(...chunk, ...likePatterns) as { sessionId: string }[];
+            for (const row of summaryRows) {
                 matches.add(row.sessionId);
             }
         }

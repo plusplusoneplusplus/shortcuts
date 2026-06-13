@@ -146,9 +146,10 @@ all have their own `references/*.md`.
   against CoC processes by excluding native `sessions.id` values that match a
   workspace's `ProcessStore.getSdkSessionIds(workspaceId)` (the Copilot SDK/CLI
   session id equals the native store id) and hides automated background-job
-  sessions whose first turn matches `BACKGROUND_JOB_PROMPT_PREFIXES` (e.g. title
-  summarization); the hidden counts are returned as `deduplicatedCount` and
-  `backgroundJobCount`. The panel deep-links the selected session via
+  sessions whose first flat turn or stored summary matches
+  `BACKGROUND_JOB_PROMPT_PREFIXES` (e.g. title summarization); the hidden counts
+  are returned as `deduplicatedCount` and `backgroundJobCount`. The panel
+  deep-links the selected session via
   `#repos/{wsId}/copilot-sessions/{sessionId}`. The read-only detail pane
   renders `NativeCopilotSessionDetail.conversation` as a rich transcript by
   reusing the existing chat `ConversationTurnBubble` (no fork): the SPA-local
