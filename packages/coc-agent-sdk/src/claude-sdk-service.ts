@@ -91,6 +91,7 @@ interface ClaudeAssistantMessage {
     message: {
         content: ClaudeContentBlock[];
     };
+    parent_tool_use_id?: string | null;
     session_id?: string;
 }
 
@@ -161,6 +162,8 @@ interface ClaudeUserMessage {
     parent_tool_use_id?: string | null;
     tool_use_result?: unknown;
     session_id?: string;
+    subagent_type?: string;
+    task_description?: string;
 }
 
 interface ClaudeStreamingUserMessage {
@@ -693,7 +696,7 @@ export class ClaudeSDKService implements ISDKService {
                             chunks.push(block.text);
                             options.onStreamingChunk?.(block.text);
                         } else if (this.isClaudeToolUseBlock(block)) {
-                            this.handleClaudeToolUse(block, options, toolCalls, startedToolCalls);
+                            this.handleClaudeToolUse(block, options, toolCalls, startedToolCalls, msg.parent_tool_use_id ?? undefined);
                         }
                     }
                 } else if (this.isUserMessage(msg)) {
@@ -961,12 +964,11 @@ export class ClaudeSDKService implements ISDKService {
         options: SendMessageOptions,
         toolCalls: Map<string, ToolCall>,
         startedToolCalls: Set<string>,
+        parentToolCallId?: string,
     ): void {
         const id = block.id ?? crypto.randomUUID();
-        const toolName = normalizeBridgedToolName(block.name ?? 'unknown_tool');
-        const parameters = (typeof block.input === 'object' && block.input !== null)
-            ? (block.input as Record<string, unknown>)
-            : {};
+        const toolName = normalizeClaudeToolName(block.name ?? 'unknown_tool');
+        const parameters = this.normalizeClaudeToolInput(toolName, block.input);
 
         if (!startedToolCalls.has(id)) {
             startedToolCalls.add(id);
@@ -977,12 +979,14 @@ export class ClaudeSDKService implements ISDKService {
                 status: 'running',
                 startTime: now,
                 args: parameters,
+                ...(parentToolCallId ? { parentToolCallId } : {}),
             });
             this.emitToolEvent(options, {
                 type: 'tool-start',
                 toolCallId: id,
                 toolName,
                 parameters,
+                ...(parentToolCallId ? { parentToolCallId } : {}),
             });
         }
     }
@@ -1026,12 +1030,17 @@ export class ClaudeSDKService implements ISDKService {
     ): void {
         const existing = toolCalls.get(toolCallId);
         const toolName = existing?.name ?? 'unknown_tool';
+        const parentToolCallId = existing?.parentToolCallId;
         const result = this.stringifyClaudeToolResult(content);
+        const resultMetadata = this.extractClaudeToolResultMetadata(toolName, content, result);
         const now = new Date();
 
         if (existing) {
             existing.status = isError ? 'failed' : 'completed';
             existing.endTime = now;
+            if (resultMetadata.parameters) {
+                existing.args = { ...existing.args, ...resultMetadata.parameters };
+            }
             if (isError) {
                 existing.error = result || 'Claude tool failed';
             } else {
@@ -1044,24 +1053,130 @@ export class ClaudeSDKService implements ISDKService {
                 status: isError ? 'failed' : 'completed',
                 startTime: now,
                 endTime: now,
-                args: {},
+                args: resultMetadata.parameters ?? {},
                 ...(isError ? { error: result || 'Claude tool failed' } : { result }),
             });
         }
 
+        const completedParameters = toolCalls.get(toolCallId)?.args;
         this.emitToolEvent(options, isError
             ? {
                 type: 'tool-failed',
                 toolCallId,
                 toolName,
+                ...(parentToolCallId ? { parentToolCallId } : {}),
                 error: result || 'Claude tool failed',
             }
             : {
                 type: 'tool-complete',
                 toolCallId,
                 toolName,
+                ...(parentToolCallId ? { parentToolCallId } : {}),
+                ...(completedParameters ? { parameters: completedParameters } : {}),
                 result,
             });
+    }
+
+    private normalizeClaudeToolInput(toolName: string, input: unknown): Record<string, unknown> {
+        const parameters = (typeof input === 'object' && input !== null && !Array.isArray(input))
+            ? { ...(input as Record<string, unknown>) }
+            : {};
+
+        if (toolName === 'task') {
+            const agentType = typeof parameters.subagent_type === 'string'
+                ? parameters.subagent_type
+                : typeof parameters.agent_type === 'string'
+                    ? parameters.agent_type
+                    : 'claude';
+            return {
+                ...parameters,
+                agent_type: agentType,
+            };
+        }
+
+        if (toolName === 'read_agent') {
+            if (typeof parameters.agent_id !== 'string' && typeof parameters.task_id === 'string') {
+                parameters.agent_id = parameters.task_id;
+            }
+            if (typeof parameters.block === 'boolean' && parameters.wait == null) {
+                parameters.wait = parameters.block;
+            }
+            if (typeof parameters.timeout === 'number') {
+                parameters.timeout_ms = parameters.timeout;
+                parameters.timeout = Math.ceil(parameters.timeout / 1000);
+            }
+        }
+
+        return parameters;
+    }
+
+    private extractClaudeToolResultMetadata(
+        toolName: string,
+        content: unknown,
+        result: string,
+    ): { parameters?: Record<string, unknown> } {
+        if (toolName === 'task') {
+            const parameters: Record<string, unknown> = {};
+            if (typeof content === 'object' && content !== null && !Array.isArray(content)) {
+                const record = content as Record<string, unknown>;
+                const agentId = typeof record.agentId === 'string' ? record.agentId : undefined;
+                const agentType = typeof record.agentType === 'string' ? record.agentType : undefined;
+                if (agentId) {
+                    parameters.agent_id = agentId;
+                    parameters.agent_ids = [agentId];
+                }
+                if (agentType) {
+                    parameters.agent_type = agentType;
+                }
+                if (typeof record.status === 'string') {
+                    parameters.agent_status = record.status;
+                }
+                if (typeof record.outputFile === 'string') {
+                    parameters.output_file = record.outputFile;
+                }
+                if (typeof record.description === 'string') {
+                    parameters.description = record.description;
+                }
+                if (typeof record.prompt === 'string') {
+                    parameters.prompt = record.prompt;
+                }
+            }
+
+            const textAgentId = this.extractClaudeAgentId(result);
+            if (textAgentId && typeof parameters.agent_id !== 'string') {
+                parameters.agent_id = textAgentId;
+                parameters.agent_ids = [textAgentId];
+            }
+
+            return Object.keys(parameters).length > 0 ? { parameters } : {};
+        }
+
+        if (toolName === 'read_agent') {
+            const parameters: Record<string, unknown> = {};
+            if (typeof content === 'object' && content !== null && !Array.isArray(content)) {
+                const record = content as Record<string, unknown>;
+                const agentId = typeof record.agentId === 'string'
+                    ? record.agentId
+                    : typeof record.task_id === 'string'
+                        ? record.task_id
+                        : undefined;
+                if (agentId) parameters.agent_id = agentId;
+                if (typeof record.status === 'string') parameters.agent_status = record.status;
+            }
+            const textAgentId = this.extractClaudeAgentId(result);
+            if (textAgentId && typeof parameters.agent_id !== 'string') {
+                parameters.agent_id = textAgentId;
+            }
+            return Object.keys(parameters).length > 0 ? { parameters } : {};
+        }
+
+        return {};
+    }
+
+    private extractClaudeAgentId(text: string): string | undefined {
+        const match = /\bagentId:\s*([A-Za-z0-9._:-]+)/.exec(text)
+            ?? /\bagent_id:\s*([A-Za-z0-9._:-]+)/.exec(text);
+        return match?.[1];
     }
 
     private stringifyClaudeToolResult(content: unknown): string {
@@ -1076,6 +1191,16 @@ export class ClaudeSDKService implements ISDKService {
         if (typeof content === 'object') {
             const record = content as Record<string, unknown>;
             if (record.type === 'text' && typeof record.text === 'string') return record.text;
+            if (Array.isArray(record.content)) {
+                const parts = record.content
+                    .map(item => this.stringifyClaudeToolResult(item))
+                    .filter(text => text.length > 0);
+                if (parts.length > 0) return parts.join('\n');
+            }
+            if (record.status === 'async_launched' && typeof record.agentId === 'string') {
+                const description = typeof record.description === 'string' ? `: ${record.description}` : '';
+                return `Agent started with agent_id: ${record.agentId}${description}`;
+            }
             const stdout = typeof record.stdout === 'string' ? record.stdout : '';
             const stderr = typeof record.stderr === 'string' ? record.stderr : '';
             if (stdout || stderr) return [stdout, stderr].filter(Boolean).join('\n');
@@ -1304,6 +1429,19 @@ export function registerClaudeSDKService(): ClaudeSDKService {
 function normalizeBridgedToolName(name: string): string {
     const prefix = `mcp__${COC_LLM_TOOLS_MCP_SERVER_NAME}__`;
     return name.startsWith(prefix) ? name.slice(prefix.length) : name;
+}
+
+function normalizeClaudeToolName(name: string): string {
+    const normalized = normalizeBridgedToolName(name);
+    switch (normalized) {
+        case 'Agent':
+        case 'Task':
+            return 'task';
+        case 'TaskOutput':
+            return 'read_agent';
+        default:
+            return normalized;
+    }
 }
 
 /**

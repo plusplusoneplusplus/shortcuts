@@ -999,6 +999,252 @@ describe('ClaudeSDKService.sendMessage', () => {
         });
     });
 
+    it('normalizes Claude Agent tool calls to task and preserves subagent child nesting', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'assistant',
+                parent_tool_use_id: null,
+                message: {
+                    content: [
+                        {
+                            type: 'tool_use',
+                            id: 'agent-tool',
+                            name: 'Agent',
+                            input: {
+                                description: 'Get time',
+                                prompt: 'Run date -u',
+                                subagent_type: 'general-purpose',
+                            },
+                        },
+                    ],
+                },
+            },
+            {
+                type: 'assistant',
+                parent_tool_use_id: 'agent-tool',
+                message: {
+                    content: [
+                        {
+                            type: 'tool_use',
+                            id: 'bash-child',
+                            name: 'Bash',
+                            input: { command: 'date -u' },
+                        },
+                    ],
+                },
+            },
+            {
+                type: 'user',
+                message: {
+                    content: [
+                        {
+                            type: 'tool_result',
+                            tool_use_id: 'bash-child',
+                            content: 'Sat Jun 13 23:35:39 UTC 2026',
+                        },
+                    ],
+                },
+            },
+            {
+                type: 'user',
+                message: {
+                    content: [
+                        {
+                            type: 'tool_result',
+                            tool_use_id: 'agent-tool',
+                            content: 'done\nagentId: af43d1cb10a1f5b7d',
+                        },
+                    ],
+                },
+            },
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        const toolEvents: object[] = [];
+        const result = await svc.sendMessage({
+            prompt: 'ask a subagent',
+            onToolEvent: (e) => toolEvents.push(e),
+        });
+
+        expect(result.toolCalls).toHaveLength(2);
+        expect(result.toolCalls?.[0]).toMatchObject({
+            id: 'agent-tool',
+            name: 'task',
+            status: 'completed',
+            args: {
+                description: 'Get time',
+                prompt: 'Run date -u',
+                subagent_type: 'general-purpose',
+                agent_type: 'general-purpose',
+                agent_id: 'af43d1cb10a1f5b7d',
+                agent_ids: ['af43d1cb10a1f5b7d'],
+            },
+            result: 'done\nagentId: af43d1cb10a1f5b7d',
+        });
+        expect(result.toolCalls?.[1]).toMatchObject({
+            id: 'bash-child',
+            name: 'Bash',
+            status: 'completed',
+            parentToolCallId: 'agent-tool',
+            args: { command: 'date -u' },
+            result: 'Sat Jun 13 23:35:39 UTC 2026',
+        });
+        expect(toolEvents).toEqual([
+            expect.objectContaining({
+                type: 'tool-start',
+                toolCallId: 'agent-tool',
+                toolName: 'task',
+                parameters: expect.objectContaining({
+                    agent_type: 'general-purpose',
+                    description: 'Get time',
+                }),
+            }),
+            expect.objectContaining({
+                type: 'tool-start',
+                toolCallId: 'bash-child',
+                toolName: 'Bash',
+                parentToolCallId: 'agent-tool',
+            }),
+            expect.objectContaining({
+                type: 'tool-complete',
+                toolCallId: 'bash-child',
+                parentToolCallId: 'agent-tool',
+                result: 'Sat Jun 13 23:35:39 UTC 2026',
+            }),
+            expect.objectContaining({
+                type: 'tool-complete',
+                toolCallId: 'agent-tool',
+                toolName: 'task',
+                parameters: expect.objectContaining({
+                    agent_id: 'af43d1cb10a1f5b7d',
+                    agent_ids: ['af43d1cb10a1f5b7d'],
+                }),
+                result: 'done\nagentId: af43d1cb10a1f5b7d',
+            }),
+        ]);
+    });
+
+    it('captures structured Claude Agent output metadata on task tool calls', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'assistant',
+                message: {
+                    content: [
+                        {
+                            type: 'tool_use',
+                            id: 'agent-structured',
+                            name: 'Agent',
+                            input: {
+                                description: 'Review patch',
+                                prompt: 'Review the diff',
+                            },
+                        },
+                    ],
+                },
+            },
+            {
+                type: 'user',
+                message: {
+                    content: [
+                        {
+                            type: 'tool_result',
+                            tool_use_id: 'agent-structured',
+                            content: {
+                                status: 'completed',
+                                agentId: 'agent-42',
+                                agentType: 'reviewer',
+                                content: [{ type: 'text', text: 'all done' }],
+                                totalToolUseCount: 1,
+                                totalDurationMs: 12,
+                                totalTokens: 34,
+                                usage: {
+                                    input_tokens: 10,
+                                    output_tokens: 24,
+                                    cache_creation_input_tokens: null,
+                                    cache_read_input_tokens: null,
+                                    server_tool_use: null,
+                                    service_tier: null,
+                                    cache_creation: null,
+                                },
+                                prompt: 'Review the diff',
+                            },
+                        },
+                    ],
+                },
+            },
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        const result = await svc.sendMessage({ prompt: 'review with subagent' });
+
+        expect(result.toolCalls?.[0]).toMatchObject({
+            id: 'agent-structured',
+            name: 'task',
+            status: 'completed',
+            args: {
+                description: 'Review patch',
+                prompt: 'Review the diff',
+                agent_type: 'reviewer',
+                agent_id: 'agent-42',
+                agent_ids: ['agent-42'],
+                agent_status: 'completed',
+            },
+            result: 'all done',
+        });
+    });
+
+    it('normalizes Claude TaskOutput calls to read_agent with wait metadata', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'assistant',
+                message: {
+                    content: [
+                        {
+                            type: 'tool_use',
+                            id: 'task-output',
+                            name: 'TaskOutput',
+                            input: {
+                                task_id: 'agent-bg',
+                                block: true,
+                                timeout: 120000,
+                            },
+                        },
+                    ],
+                },
+            },
+            {
+                type: 'user',
+                message: {
+                    content: [
+                        {
+                            type: 'tool_result',
+                            tool_use_id: 'task-output',
+                            content: 'background done',
+                        },
+                    ],
+                },
+            },
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        const result = await svc.sendMessage({ prompt: 'wait for background agent' });
+
+        expect(result.toolCalls?.[0]).toMatchObject({
+            id: 'task-output',
+            name: 'read_agent',
+            status: 'completed',
+            args: {
+                task_id: 'agent-bg',
+                agent_id: 'agent-bg',
+                block: true,
+                wait: true,
+                timeout: 120,
+                timeout_ms: 120000,
+            },
+            result: 'background done',
+        });
+    });
+
     it('marks Claude tool_result blocks with is_error as failed', async () => {
         queryFn.mockReturnValueOnce(makeMessages([
             {
