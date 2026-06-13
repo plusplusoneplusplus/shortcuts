@@ -381,6 +381,34 @@ describe('CanvasPanel', () => {
         expect(writeText).toHaveBeenCalledWith('# Plan body');
     });
 
+    it('shows a pop-out button only when onPopOut is provided and invokes it', async () => {
+        mocks.get.mockResolvedValue(makeCanvas());
+        const onPopOut = vi.fn();
+
+        const { rerender, unmount } = render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-title').textContent).toBe('My Plan'));
+        expect(screen.queryByTestId('canvas-panel-popout')).toBeNull();
+
+        rerender(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} onPopOut={onPopOut} />);
+        fireEvent.click(screen.getByTestId('canvas-panel-popout'));
+        expect(onPopOut).toHaveBeenCalledTimes(1);
+        unmount();
+    });
+
+    it('reloads from the server when reloadNonce changes', async () => {
+        mocks.get.mockResolvedValue(makeCanvas());
+
+        const { rerender } = render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} reloadNonce={0} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-revision').textContent).toBe('rev 1'));
+        expect(mocks.get).toHaveBeenCalledTimes(1);
+
+        mocks.get.mockResolvedValue(makeCanvas({ revision: 4, content: 'refetched' }));
+        rerender(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} reloadNonce={1} />);
+
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-revision').textContent).toBe('rev 4'));
+        expect(mocks.get).toHaveBeenCalledTimes(2);
+    });
+
     it('toggles fullscreen and exits on Escape', async () => {
         mocks.get.mockResolvedValue(makeCanvas());
         const onFullscreenChange = vi.fn();

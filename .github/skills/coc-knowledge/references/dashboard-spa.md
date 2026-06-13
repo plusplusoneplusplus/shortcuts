@@ -120,7 +120,16 @@ conversation and follow-up composer share the left column), so the panel spans
 the whole detail pane height beside the composer. A header fullscreen toggle
 (`onFullscreenChange`) re-renders the panel as a `fixed inset-0 z-50` overlay
 covering the viewport (Esc exits); while fullscreen, `ChatDetail` collapses the
-in-flow canvas column width to 0 so the conversation reclaims the space. The header revision chip is a
+in-flow canvas column width to 0 so the conversation reclaims the space. The
+header also offers a pop-out button (`onPopOut`) that opens the canvas in a
+standalone window (`PopOutCanvasShell`, routed from `entry.tsx` on
+`#popout/canvas` with `?workspace=&canvasId=`); that window maps the global
+WebSocket `canvas-updated` event into the panel's `liveEvent` and bumps
+`reloadNonce` on focus to pick up AI tool edits that streamed over the chat SSE
+channel. Closing the canvas does not detach it: `ChatDetail` keeps a thin
+right-side reopen rail (mirroring the chat-list collapse rail) so a linked
+canvas stays reachable. Canvas header controls reuse the shared ICON_BTN style
+(matching `ChatHeader`). The header revision chip is a
 version stepper backed by the canvas versions API: stepping back shows an
 older snapshot read-only with a history banner whose **Restore as latest**
 action saves that snapshot's content as a new revision (disabled while local

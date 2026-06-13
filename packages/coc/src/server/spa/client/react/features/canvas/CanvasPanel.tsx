@@ -54,6 +54,50 @@ export interface CanvasPanelProps {
     onSendToAi?: (message: string) => Promise<void>;
     /** Notifies the host when the panel enters/exits fullscreen (for layout adjustments). */
     onFullscreenChange?: (fullscreen: boolean) => void;
+    /** Opens the canvas in a standalone pop-out window. Hidden when omitted (e.g. inside the pop-out itself). */
+    onPopOut?: () => void;
+    /** Bumping this value forces a reload from the server (used by the pop-out window on focus). */
+    reloadNonce?: number;
+}
+
+/** Shared icon-button style — matches ChatHeader's ICON_BTN_CLASS for visual consistency. */
+const ICON_BTN_CLASS =
+    'inline-flex items-center justify-center w-[26px] h-[26px] rounded text-[#848484] '
+    + 'hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] '
+    + 'disabled:opacity-40 disabled:cursor-not-allowed shrink-0';
+
+function PopOutIcon() {
+    return (
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M7 3H3a1 1 0 00-1 1v9a1 1 0 001 1h9a1 1 0 001-1V9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M10 2h4v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M14 2L8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+    );
+}
+
+function ExpandIcon() {
+    return (
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+    );
+}
+
+function CollapseIcon() {
+    return (
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M2 6h4V2M14 6h-4V2M2 10h4v4M14 10h-4v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+    );
+}
+
+function CloseIcon() {
+    return (
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+    );
 }
 
 function buildAskAiPrompt(canvas: Canvas, selection: string): string {
@@ -91,7 +135,7 @@ function fenceCode(content: string, language: string | undefined): string {
     return `\`\`\`\`${language ?? ''}\n${content}\n\`\`\`\``;
 }
 
-export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi, onSendToAi, onFullscreenChange }: CanvasPanelProps) {
+export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi, onSendToAi, onFullscreenChange, onPopOut, reloadNonce }: CanvasPanelProps) {
     const [canvas, setCanvas] = useState<Canvas | null>(null);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -178,6 +222,14 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
         setVersions([]);
         void loadCanvas();
     }, [loadCanvas]);
+
+    // Forced reload (pop-out window on focus). Skips the initial mount.
+    const reloadNonceRef = useRef(reloadNonce);
+    useEffect(() => {
+        if (reloadNonce === undefined || reloadNonce === reloadNonceRef.current) return;
+        reloadNonceRef.current = reloadNonce;
+        if (!dirtyRef.current) void loadCanvas();
+    }, [reloadNonce, loadCanvas]);
 
     // Live AI updates: refresh in place, or flag a pending update when the
     // user has unsaved local edits so their draft is not clobbered.
@@ -441,7 +493,7 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                     <span className="flex items-center gap-0.5 text-[10px] text-[#848484] shrink-0">
                         <button
                             type="button"
-                            className="px-1 disabled:opacity-30"
+                            className="px-1 rounded disabled:opacity-30 enabled:hover:bg-[#e8e8e8] dark:enabled:hover:bg-[#2d2d2d]"
                             disabled={!olderMeta}
                             onClick={() => olderMeta && openVersion(olderMeta)}
                             aria-label="View older version"
@@ -452,7 +504,7 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                         <span data-testid="canvas-panel-revision">rev {viewingRevision}</span>
                         <button
                             type="button"
-                            className="px-1 disabled:opacity-30"
+                            className="px-1 rounded disabled:opacity-30 enabled:hover:bg-[#e8e8e8] dark:enabled:hover:bg-[#2d2d2d]"
                             disabled={!viewingVersion}
                             onClick={() => newerMeta ? openVersion(newerMeta) : setViewingVersion(null)}
                             aria-label="View newer version"
@@ -471,10 +523,10 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                     </span>
                 )}
                 {!viewingVersion && (
-                    <div className="flex rounded border border-[#e0e0e0] dark:border-[#474749] overflow-hidden shrink-0">
+                    <div className="flex rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] overflow-hidden shrink-0">
                         <button
                             type="button"
-                            className={`px-2 py-0.5 text-[10px] ${mode === 'preview' ? 'bg-[#e8e8e8] dark:bg-[#3a3a3c] font-semibold' : ''}`}
+                            className={`px-2 py-0.5 text-[11px] transition-colors ${mode === 'preview' ? 'bg-[#0078d4] text-white font-medium' : 'text-[#616161] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]'}`}
                             onClick={() => setMode('preview')}
                             data-testid="canvas-panel-mode-preview"
                         >
@@ -482,7 +534,7 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                         </button>
                         <button
                             type="button"
-                            className={`px-2 py-0.5 text-[10px] ${mode === 'edit' ? 'bg-[#e8e8e8] dark:bg-[#3a3a3c] font-semibold' : ''}`}
+                            className={`px-2 py-0.5 text-[11px] transition-colors ${mode === 'edit' ? 'bg-[#0078d4] text-white font-medium' : 'text-[#616161] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]'}`}
                             onClick={() => setMode('edit')}
                             data-testid="canvas-panel-mode-edit"
                         >
@@ -493,11 +545,11 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                 {canvas && (
                     <div className="relative shrink-0">
                         {exportStatus ? (
-                            <span className="text-[10px] text-[#848484]" data-testid="canvas-panel-export-status">{exportStatus}</span>
+                            <span className="text-[10px] text-[#848484] px-1" data-testid="canvas-panel-export-status">{exportStatus}</span>
                         ) : (
                             <button
                                 type="button"
-                                className="text-[10px] text-[#848484] hover:text-[#333] dark:hover:text-[#ddd] underline"
+                                className="px-2 py-0.5 text-[11px] rounded text-[#616161] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors"
                                 onClick={() => setExportOpen(open => !open)}
                                 data-testid="canvas-panel-export"
                             >
@@ -505,15 +557,15 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                             </button>
                         )}
                         {exportOpen && (
-                            <div className="absolute right-0 top-5 z-20 min-w-[150px] rounded border border-[#e0e0e0] dark:border-[#474749] bg-white dark:bg-[#28282a] shadow-md py-1" data-testid="canvas-panel-export-menu">
-                                <button type="button" className="block w-full text-left px-3 py-1 text-[11px] hover:bg-[#f0f0f0] dark:hover:bg-[#3a3a3c]" onClick={() => void handleCopy()} data-testid="canvas-panel-export-copy">
+                            <div className="absolute right-0 top-6 z-20 min-w-[150px] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] shadow-md py-1" data-testid="canvas-panel-export-menu">
+                                <button type="button" className="block w-full text-left px-3 py-1.5 text-[12px] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]" onClick={() => void handleCopy()} data-testid="canvas-panel-export-copy">
                                     Copy content
                                 </button>
-                                <button type="button" className="block w-full text-left px-3 py-1 text-[11px] hover:bg-[#f0f0f0] dark:hover:bg-[#3a3a3c]" onClick={handleDownload} data-testid="canvas-panel-export-download">
+                                <button type="button" className="block w-full text-left px-3 py-1.5 text-[12px] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]" onClick={handleDownload} data-testid="canvas-panel-export-download">
                                     Download file
                                 </button>
                                 {canvas.type === 'markdown' && (
-                                    <button type="button" className="block w-full text-left px-3 py-1 text-[11px] hover:bg-[#f0f0f0] dark:hover:bg-[#3a3a3c]" onClick={() => void handleSaveToNotes()} data-testid="canvas-panel-export-notes">
+                                    <button type="button" className="block w-full text-left px-3 py-1.5 text-[12px] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]" onClick={() => void handleSaveToNotes()} data-testid="canvas-panel-export-notes">
                                         Save to Notes
                                     </button>
                                 )}
@@ -521,25 +573,38 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                         )}
                     </div>
                 )}
+                {onPopOut && !isFullscreen && (
+                    <button
+                        type="button"
+                        className={ICON_BTN_CLASS}
+                        onClick={onPopOut}
+                        aria-label="Open canvas in a new window"
+                        title="Pop out to new window"
+                        data-testid="canvas-panel-popout"
+                    >
+                        <PopOutIcon />
+                    </button>
+                )}
                 <button
                     type="button"
-                    className="text-[#848484] hover:text-[#333] dark:hover:text-[#ddd] px-1 shrink-0"
+                    className={ICON_BTN_CLASS}
                     onClick={toggleFullscreen}
                     aria-label={isFullscreen ? 'Exit fullscreen' : 'Expand canvas to fullscreen'}
                     title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}
                     data-testid="canvas-panel-fullscreen"
                 >
-                    {isFullscreen ? '🗗' : '⤢'}
+                    {isFullscreen ? <CollapseIcon /> : <ExpandIcon />}
                 </button>
                 {onClose && (
                     <button
                         type="button"
-                        className="text-[#848484] hover:text-[#333] dark:hover:text-[#ddd] px-1 shrink-0"
+                        className={ICON_BTN_CLASS}
                         onClick={() => { if (isFullscreen) { setIsFullscreen(false); onFullscreenChange?.(false); } onClose(); }}
                         aria-label="Close canvas panel"
+                        title="Close"
                         data-testid="canvas-panel-close"
                     >
-                        ✕
+                        <CloseIcon />
                     </button>
                 )}
             </div>

@@ -851,12 +851,41 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         storageKey: workspaceId ? `coc.canvasPanel.width.${encodeURIComponent(workspaceId)}` : undefined,
         direction: 'right',
     });
-    const showCanvasPanel = !!(activeCanvasId && workspaceId && !canvasPanelClosed && isCanvasEnabled());
+    const canvasAvailable = !!(activeCanvasId && workspaceId && isCanvasEnabled());
+    const showCanvasPanel = canvasAvailable && !canvasPanelClosed;
     // When the canvas goes fullscreen it renders as a fixed overlay, so collapse
     // its in-flow column to reclaim the width for the conversation behind it.
     const [canvasFullscreen, setCanvasFullscreen] = useState(false);
 
-    const canvasColumn = (showCanvasPanel && activeCanvasId && workspaceId) ? (
+    const handleCanvasPopOut = useCallback(() => {
+        if (!activeCanvasId || !workspaceId) return;
+        const base = window.location.origin + window.location.pathname;
+        const url = `${base}?workspace=${encodeURIComponent(workspaceId)}&canvasId=${encodeURIComponent(activeCanvasId)}#popout/canvas`;
+        window.open(url, `coc-canvas-${activeCanvasId}`, 'width=900,height=900');
+    }, [activeCanvasId, workspaceId]);
+
+    const canvasColumn = (canvasAvailable && activeCanvasId && workspaceId) ? (
+        canvasPanelClosed ? (
+            /* Collapsed rail — reopen affordance so a closed canvas stays reachable */
+            <div
+                className="hidden lg:flex w-9 flex-shrink-0 border-l border-[#e0e0e0] dark:border-[#474749] flex-col items-center pt-2"
+                data-testid="canvas-collapsed-rail"
+            >
+                <button
+                    type="button"
+                    className="inline-flex items-center justify-center w-7 h-7 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
+                    onClick={() => setCanvasPanelClosed(false)}
+                    aria-label="Open canvas"
+                    title="Open canvas"
+                    data-testid="canvas-reopen"
+                >
+                    «
+                </button>
+                <span className="mt-2 text-[10px] tracking-wide text-[#848484] select-none" style={{ writingMode: 'vertical-rl' }}>
+                    Canvas
+                </span>
+            </div>
+        ) : (
         <>
             {!canvasFullscreen && (
                 <div
@@ -878,6 +907,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     liveEvent={canvasLiveEvent}
                     onClose={() => setCanvasPanelClosed(true)}
                     onFullscreenChange={setCanvasFullscreen}
+                    onPopOut={handleCanvasPopOut}
                     onAskAi={(prompt) => {
                         setFollowUpInput(prompt);
                         richTextRef.current?.setValue(prompt, prompt.length);
@@ -889,6 +919,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 />
             </div>
         </>
+        )
     ) : null;
 
     const { handlePopOut, handleFloat } = useChatWindowActions({ task, taskId, workspaceId });
