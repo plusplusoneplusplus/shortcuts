@@ -60,6 +60,8 @@ Chat canvas side panel (gated by `canvas.enabled`, default off). Markdown or cod
 | POST | `/api/workspaces/:id/canvases/:canvasId/comments` | Add a comment. Body `{ anchorText, body }` (anchor capped at 500 chars, body at 4000) |
 | PATCH | `/api/workspaces/:id/canvases/:canvasId/comments/:cid` | Set comment status (`open`/`sent`/`resolved`) |
 | DELETE | `/api/workspaces/:id/canvases/:canvasId/comments/:cid` | Delete a comment |
+| GET | `/api/workspaces/:id/canvases/:canvasId/extension` | Extension documents (`manifest`, `uiHtml`, `capabilitiesJs`) for an `extension`-type canvas |
+| POST | `/api/workspaces/:id/canvases/:canvasId/capabilities/:name` | Invoke a declared capability against the canvas JSON state (vm-sandboxed pure transform); revision-checked write, `canvas-updated` broadcast. 422 on capability error, 409 on concurrent edit |
 
 ## Filesystem
 

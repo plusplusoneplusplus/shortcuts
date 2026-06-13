@@ -19,7 +19,7 @@ spa/client/react/
 ├── hooks/              # 30+ custom hooks
 ├── layout/             # Layout (Router, TopBar, BottomNav, ThemeProvider)
 ├── features/
-│   ├── canvas/         # Canvas side panel (CanvasPanel) for AI co-edited markdown documents
+│   ├── canvas/         # Canvas side panel: CanvasPanel + ExtensionCanvasView (sandboxed iframe) for AI co-edited documents, code, and custom extension canvases
 │   ├── chat/           # Chat UI: ChatDetail, ChatListPane, ConversationArea
 │   ├── dreams/         # Workspace Dreams review panel with feature/opt-in states, queue-backed run-now task summary, provider-attributed Activity/Admin AI Provider visibility, filters, plain-language card guidance, source evidence links, and card lifecycle actions
 │   ├── memory/         # Memory V2 route, facts/review/episodes tabs, repo memory settings section
@@ -133,7 +133,14 @@ debounced autosave; selection actions stay available in preview mode. The
 header Export menu offers Copy content, Download file (extension derived from
 the language), and — for markdown canvases — Save to Notes, which writes the
 content to `canvases/<slug>.md` in the workspace Notes tree via
-`notes.saveContent`.
+`notes.saveContent`. Extension canvases (`type: 'extension'`) render
+`ExtensionCanvasView` in preview mode: the extension's `ui.html` runs inside an
+`<iframe sandbox="allow-scripts">` whose injected `window.CanvasHost` bridge
+(`onState`/`invoke`/`setState`) talks to the host over `postMessage`. The host
+posts `canvas-state` on ready and on every live update, services
+`invoke-capability` through `canvases.invokeCapability` and `set-state` through
+the revision-checked `canvases.save`, so human UI actions and AI capability
+calls share one gate. Edit mode shows the raw JSON shared state.
 
 ## Key Contexts
 

@@ -158,6 +158,98 @@ describe('canvas LLM tools', () => {
         });
     });
 
+    describe('extension canvases', () => {
+        const EXT_ARGS = {
+            title: 'Kanban',
+            description: 'A simple board',
+            capabilities: [{ name: 'add_card', description: 'Add a card' }],
+            capabilitiesJs: 'capabilities = { add_card: function (s, p) { var c = (s.cards||[]).slice(); c.push({ id: p.id, title: p.title }); return { cards: c }; } };',
+            uiHtml: '<div id="board"></div>',
+            initialState: { cards: [] },
+        };
+
+        it('creates an extension canvas with documents and links it to the process', async () => {
+            const { createOrUpdateExtension } = buildTools();
+            const result = await createOrUpdateExtension.handler(EXT_ARGS as any) as any;
+
+            expect(result.success).toBe(true);
+            expect(result.created).toBe(true);
+
+            const canvas = store.getCanvas(WS, result.canvasId);
+            expect(canvas?.type).toBe('extension');
+            expect(canvas?.processId).toBe(PROCESS_ID);
+            const ext = store.getExtension(WS, result.canvasId);
+            expect(ext?.manifest.capabilities[0].name).toBe('add_card');
+            expect(emitProcessEvent).toHaveBeenCalled();
+        });
+
+        it('updates extension documents without resetting state', async () => {
+            const { createOrUpdateExtension, invokeCapability } = buildTools();
+            const created = await createOrUpdateExtension.handler(EXT_ARGS as any) as any;
+            await invokeCapability.handler({ canvasId: created.canvasId, capability: 'add_card', params: { id: 'c1', title: 'A' } } as any);
+
+            const updated = await createOrUpdateExtension.handler({
+                canvasId: created.canvasId,
+                description: 'Updated board',
+                capabilities: [{ name: 'add_card', description: 'Add a card' }, { name: 'clear', description: 'Clear' }],
+                capabilitiesJs: 'capabilities = { add_card: function (s) { return s; }, clear: function () { return { cards: [] }; } };',
+                uiHtml: '<div id="board2"></div>',
+            } as any) as any;
+
+            expect(updated.success).toBe(true);
+            expect(updated.updated).toBe(true);
+            // State preserved across the extension-document update
+            expect(JSON.parse(store.getCanvas(WS, created.canvasId)!.content).cards).toHaveLength(1);
+            expect(store.getExtension(WS, created.canvasId)?.uiHtml).toBe('<div id="board2"></div>');
+        });
+
+        it('rejects malformed extension input', async () => {
+            const { createOrUpdateExtension } = buildTools();
+            const noCapName = await createOrUpdateExtension.handler({ ...EXT_ARGS, capabilities: [{ name: 'Bad Name', description: 'x' }] } as any) as any;
+            expect(noCapName.success).toBe(false);
+
+            const noUi = await createOrUpdateExtension.handler({ ...EXT_ARGS, uiHtml: '' } as any) as any;
+            expect(noUi.success).toBe(false);
+        });
+
+        it('invokes a capability and returns the new state', async () => {
+            const { createOrUpdateExtension, invokeCapability } = buildTools();
+            const created = await createOrUpdateExtension.handler(EXT_ARGS as any) as any;
+            emitProcessEvent.mockClear();
+
+            const result = await invokeCapability.handler({
+                canvasId: created.canvasId,
+                capability: 'add_card',
+                params: { id: 'c1', title: 'First' },
+            } as any) as any;
+
+            expect(result.success).toBe(true);
+            expect(JSON.parse(result.state).cards).toEqual([{ id: 'c1', title: 'First' }]);
+            expect(emitProcessEvent).toHaveBeenCalledTimes(1);
+        });
+
+        it('surfaces capability errors and an unknown extension canvas', async () => {
+            const { createOrUpdateExtension, invokeCapability } = buildTools();
+            const created = await createOrUpdateExtension.handler(EXT_ARGS as any) as any;
+
+            const badCap = await invokeCapability.handler({ canvasId: created.canvasId, capability: 'nope' } as any) as any;
+            expect(badCap.success).toBe(false);
+
+            const missing = await invokeCapability.handler({ canvasId: 'missing-000000', capability: 'add_card' } as any) as any;
+            expect(missing.success).toBe(false);
+        });
+
+        it('read_canvas returns the manifest for extension canvases', async () => {
+            const { createOrUpdateExtension, read } = buildTools();
+            const created = await createOrUpdateExtension.handler(EXT_ARGS as any) as any;
+
+            const result = await read.handler({ canvasId: created.canvasId } as any) as any;
+            expect(result.success).toBe(true);
+            expect(result.type).toBe('extension');
+            expect(result.extensionManifest.capabilities[0].name).toBe('add_card');
+        });
+    });
+
     it('does not emit SSE events when process context is missing', async () => {
         const { create } = createCanvasTools({ dataDir, workspaceId: WS, canvasStore: store });
         const result = await create.handler({ title: 'Doc', content: 'x' }) as any;

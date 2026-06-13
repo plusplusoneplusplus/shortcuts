@@ -472,7 +472,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerWorkspaceHistoryRoutes(routes, store, bridge);
     registerTaskCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
     registerDiffCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
-    registerCanvasRoutes(routes, dataDir, getWsServer);
+    registerCanvasRoutes(routes, dataDir, getWsServer, store);
     registerAdminRoutes(routes, {
         store,
         dataDir,

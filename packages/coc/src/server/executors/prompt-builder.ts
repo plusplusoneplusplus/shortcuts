@@ -701,7 +701,7 @@ export function buildCanvasToolsAddon(
         return { tools: [], suffix: '' };
     }
 
-    const { create, update, read } = createCanvasTools({
+    const { create, update, read, createOrUpdateExtension, invokeCapability } = createCanvasTools({
         dataDir,
         workspaceId,
         processId,
@@ -716,9 +716,11 @@ export function buildCanvasToolsAddon(
         'language for a single code file. Prefer targeted `update_canvas` edits over full rewrites, ' +
         'always pass `expectedRevision`, and call `read_canvas` after a revision conflict (the user ' +
         'edited the canvas). Once content lives in a canvas, keep chat replies brief and reference ' +
-        'the canvas instead of repeating it.';
+        'the canvas instead of repeating it. For interactive artifacts (kanban boards, checklists, ' +
+        'dashboards), build a custom extension canvas with `create_or_update_extension_canvas` and ' +
+        'drive it with `invoke_canvas_capability`.';
 
-    return { tools: [create, update, read], suffix };
+    return { tools: [create, update, read, createOrUpdateExtension, invokeCapability], suffix };
 }
 
 // ============================================================================

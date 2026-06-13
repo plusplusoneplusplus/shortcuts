@@ -1,6 +1,8 @@
 import type {
   AddCanvasCommentRequest,
   Canvas,
+  CanvasExtension,
+  CanvasExtensionResponse,
   CanvasComment,
   CanvasCommentResponse,
   CanvasCommentStatus,
@@ -94,5 +96,20 @@ export class CanvasesClient {
       canvasesPath(workspaceId, `/${encodePathSegment(canvasId)}/comments/${encodePathSegment(commentId)}`),
       { method: 'DELETE' },
     );
+  }
+
+  async getExtension(workspaceId: string, canvasId: string): Promise<CanvasExtension> {
+    const response = await this.transport.request<CanvasExtensionResponse>(
+      canvasesPath(workspaceId, `/${encodePathSegment(canvasId)}/extension`),
+    );
+    return response.extension;
+  }
+
+  async invokeCapability(workspaceId: string, canvasId: string, capability: string, params?: Record<string, unknown>): Promise<Canvas> {
+    const response = await this.transport.request<CanvasResponse>(
+      canvasesPath(workspaceId, `/${encodePathSegment(canvasId)}/capabilities/${encodePathSegment(capability)}`),
+      { method: 'POST', body: { params: params ?? {} } },
+    );
+    return response.canvas;
   }
 }

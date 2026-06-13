@@ -11,6 +11,8 @@
  *   POST   /api/workspaces/:wsId/canvases/:canvasId/comments      — add a comment
  *   PATCH  /api/workspaces/:wsId/canvases/:canvasId/comments/:cid — set comment status
  *   DELETE /api/workspaces/:wsId/canvases/:canvasId/comments/:cid — delete a comment
+ *   GET    /api/workspaces/:wsId/canvases/:canvasId/extension     — extension documents (manifest + ui + capabilities)
+ *   POST   /api/workspaces/:wsId/canvases/:canvasId/capabilities/:name — invoke a capability against the shared state
  *
  * User saves broadcast a `canvas-updated` WebSocket event so other dashboard
  * tabs can refresh. Revision conflicts return 409 with the current record so
@@ -19,9 +21,12 @@
 
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
 import type { Route } from '../types';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
+import { emitCanvasUpdated } from '../streaming/sse-handler';
 import { CanvasStore, isValidCanvasId } from './canvas-store';
-import type { CanvasEdit, CanvasCommentStatus } from './canvas-store';
+import type { CanvasEdit, CanvasCommentStatus, CanvasRecord } from './canvas-store';
+import { runCanvasCapability, isValidCapabilityName } from './canvas-capability-runner';
 
 const listPattern = /^\/api\/workspaces\/([^/]+)\/canvases$/;
 const detailPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)$/;
@@ -29,6 +34,8 @@ const versionsPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/version
 const versionDetailPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/versions\/(\d+)$/;
 const commentsPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/comments$/;
 const commentDetailPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/comments\/([^/]+)$/;
+const extensionPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/extension$/;
+const capabilityPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/capabilities\/([^/]+)$/;
 
 const COMMENT_STATUSES: readonly CanvasCommentStatus[] = ['open', 'sent', 'resolved'];
 
@@ -43,8 +50,30 @@ export function registerCanvasRoutes(
     routes: Route[],
     dataDir: string,
     getWsServer?: () => ProcessWebSocketServer | undefined,
+    processStore?: ProcessStore,
 ): void {
     const store = new CanvasStore(dataDir);
+
+    const broadcastCanvasUpdated = (wsId: string, canvas: CanvasRecord, editor: 'ai' | 'user'): void => {
+        getWsServer?.()?.broadcastProcessEvent({
+            type: 'canvas-updated',
+            workspaceId: wsId,
+            canvasId: canvas.id,
+            processId: canvas.processId,
+            title: canvas.title,
+            revision: canvas.revision,
+            editor,
+            timestamp: Date.now(),
+        });
+        if (processStore && canvas.processId) {
+            emitCanvasUpdated(processStore, canvas.processId, {
+                canvasId: canvas.id,
+                title: canvas.title,
+                revision: canvas.revision,
+                editor,
+            });
+        }
+    };
 
     routes.push({
         method: 'GET',
@@ -254,6 +283,73 @@ export function registerCanvasRoutes(
                 return sendError(res, 404, 'Comment not found');
             }
             sendJSON(res, 200, { deleted: true });
+        },
+    });
+
+    routes.push({
+        method: 'GET',
+        pattern: extensionPattern,
+        handler: async (_req, res, match) => {
+            const wsId = decodeURIComponent(match![1]);
+            const canvasId = decodeURIComponent(match![2]);
+            if (!isValidCanvasId(canvasId)) {
+                return sendError(res, 400, 'Invalid canvas ID');
+            }
+            const extension = store.getExtension(wsId, canvasId);
+            if (!extension) {
+                return sendError(res, 404, 'Canvas extension not found');
+            }
+            sendJSON(res, 200, { extension });
+        },
+    });
+
+    routes.push({
+        method: 'POST',
+        pattern: capabilityPattern,
+        handler: async (req, res, match) => {
+            const wsId = decodeURIComponent(match![1]);
+            const canvasId = decodeURIComponent(match![2]);
+            const capability = decodeURIComponent(match![3]);
+            if (!isValidCanvasId(canvasId)) {
+                return sendError(res, 400, 'Invalid canvas ID');
+            }
+            if (!isValidCapabilityName(capability)) {
+                return sendError(res, 400, 'Invalid capability name');
+            }
+
+            let body: { params?: unknown };
+            try {
+                body = await parseBody(req) as { params?: unknown };
+            } catch {
+                return sendError(res, 400, 'Invalid JSON body');
+            }
+
+            const canvas = store.getCanvas(wsId, canvasId);
+            if (!canvas || canvas.type !== 'extension') {
+                return sendError(res, 404, 'Extension canvas not found');
+            }
+            const extension = store.getExtension(wsId, canvasId);
+            if (!extension) {
+                return sendError(res, 404, 'Canvas extension not found');
+            }
+
+            const run = runCanvasCapability(extension.capabilitiesJs, capability, canvas.content, body.params);
+            if (!run.ok) {
+                return sendError(res, 422, run.error);
+            }
+
+            const result = store.updateCanvas(wsId, canvasId, {
+                content: run.state,
+                expectedRevision: canvas.revision,
+                editor: 'user',
+            });
+            if (!result.ok) {
+                // Concurrent edit between read and write — caller retries with fresh state
+                return sendJSON(res, 409, { error: 'revision-conflict', canvas: store.getCanvas(wsId, canvasId) });
+            }
+
+            broadcastCanvasUpdated(wsId, result.canvas, 'user');
+            sendJSON(res, 200, { canvas: result.canvas });
         },
     });
 }

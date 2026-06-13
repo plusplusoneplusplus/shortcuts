@@ -32,15 +32,15 @@ import { getRepoDataPath } from '../paths';
 
 export type CanvasEditor = 'ai' | 'user';
 
-export type CanvasType = 'markdown' | 'code';
+export type CanvasType = 'markdown' | 'code' | 'extension';
 
-export const CANVAS_TYPES: readonly CanvasType[] = ['markdown', 'code'];
+export const CANVAS_TYPES: readonly CanvasType[] = ['markdown', 'code', 'extension'];
 
 export interface CanvasDescriptor {
     id: string;
     workspaceId: string;
     title: string;
-    /** Artifact type: a markdown document or a single code file. */
+    /** Artifact type: markdown document, single code file, or custom extension (JSON shared state). */
     type: CanvasType;
     /** Language hint for code canvases (e.g. "typescript", "python"). */
     language?: string;
@@ -101,6 +101,27 @@ export interface CanvasVersion extends CanvasVersionMeta {
     content: string;
 }
 
+export interface CanvasCapabilityMeta {
+    name: string;
+    description: string;
+    /** Free-form description of the params object the capability expects. */
+    paramsDescription?: string;
+}
+
+export interface CanvasExtensionManifest {
+    /** Human-readable description of what this extension canvas does. */
+    description: string;
+    capabilities: CanvasCapabilityMeta[];
+}
+
+export interface CanvasExtension {
+    manifest: CanvasExtensionManifest;
+    /** Self-contained HTML+JS rendered in the panel's sandboxed iframe. */
+    uiHtml: string;
+    /** Script assigning a top-level `capabilities` object of (state, params) => nextState functions. */
+    capabilitiesJs: string;
+}
+
 export type CanvasCommentStatus = 'open' | 'sent' | 'resolved';
 
 export interface CanvasComment {
@@ -122,6 +143,14 @@ const DESCRIPTOR_FILE = 'canvas.json';
 const ARTIFACT_FILE = 'artifact.md';
 const VERSIONS_DIR = 'versions';
 const COMMENTS_FILE = 'comments.json';
+const EXTENSION_DIR = 'extension';
+const EXTENSION_MANIFEST_FILE = 'manifest.json';
+const EXTENSION_UI_FILE = 'ui.html';
+const EXTENSION_CAPABILITIES_FILE = 'capabilities.js';
+
+/** Size caps for extension documents. */
+export const MAX_EXTENSION_UI_BYTES = 512 * 1024;
+export const MAX_EXTENSION_CAPABILITIES_BYTES = 256 * 1024;
 
 /** Number of most recent version snapshots kept per canvas. */
 export const MAX_CANVAS_VERSIONS = 50;
@@ -178,7 +207,7 @@ export class CanvasStore {
     createCanvas(input: CreateCanvasInput): CanvasRecord {
         const id = generateCanvasId(input.title);
         const now = new Date().toISOString();
-        const type: CanvasType = input.type === 'code' ? 'code' : 'markdown';
+        const type: CanvasType = input.type === 'code' || input.type === 'extension' ? input.type : 'markdown';
         const language = type === 'code' ? normalizeCanvasLanguage(input.language) : undefined;
         const record: CanvasRecord = {
             id,
@@ -329,6 +358,48 @@ export class CanvasStore {
         } catch {
             return null;
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Extension documents (type 'extension' canvases)
+    // ------------------------------------------------------------------
+
+    getExtension(workspaceId: string, canvasId: string): CanvasExtension | null {
+        if (!isValidCanvasId(canvasId)) return null;
+        const dir = path.join(this.getCanvasDir(workspaceId, canvasId), EXTENSION_DIR);
+        try {
+            const manifest = JSON.parse(fs.readFileSync(path.join(dir, EXTENSION_MANIFEST_FILE), 'utf-8')) as CanvasExtensionManifest;
+            const uiHtml = fs.readFileSync(path.join(dir, EXTENSION_UI_FILE), 'utf-8');
+            const capabilitiesJs = fs.readFileSync(path.join(dir, EXTENSION_CAPABILITIES_FILE), 'utf-8');
+            return { manifest, uiHtml, capabilitiesJs };
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Write the extension documents for an extension canvas and bump the
+     * revision so open panels reload the UI. Returns the updated record,
+     * or null when the canvas does not exist or is not an extension canvas.
+     */
+    saveExtension(workspaceId: string, canvasId: string, extension: CanvasExtension, editor: CanvasEditor): CanvasRecord | null {
+        const existing = this.getCanvas(workspaceId, canvasId);
+        if (!existing || existing.type !== 'extension') return null;
+
+        const dir = path.join(this.getCanvasDir(workspaceId, canvasId), EXTENSION_DIR);
+        fs.mkdirSync(dir, { recursive: true });
+        writeFileAtomic(path.join(dir, EXTENSION_MANIFEST_FILE), JSON.stringify(extension.manifest, null, 2));
+        writeFileAtomic(path.join(dir, EXTENSION_UI_FILE), extension.uiHtml);
+        writeFileAtomic(path.join(dir, EXTENSION_CAPABILITIES_FILE), extension.capabilitiesJs);
+
+        const updated: CanvasRecord = {
+            ...existing,
+            revision: existing.revision + 1,
+            updatedAt: new Date().toISOString(),
+            lastEditor: editor,
+        };
+        this.persist(updated);
+        return updated;
     }
 
     // ------------------------------------------------------------------

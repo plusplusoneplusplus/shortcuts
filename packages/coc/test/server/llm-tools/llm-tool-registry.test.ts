@@ -221,8 +221,8 @@ describe('getEffectiveLlmToolRegistry', () => {
 
     it('returns registry minus feature-gated entries when all off', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
-        // scheduleWakeup + 2 excalidraw tools + 3 canvas tools = 6 filtered
-        expect(getEffectiveLlmToolRegistry({ loopsEnabled: false, excalidrawEnabled: false, canvasEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 6);
+        // scheduleWakeup + 2 excalidraw tools + 5 canvas tools = 8 filtered
+        expect(getEffectiveLlmToolRegistry({ loopsEnabled: false, excalidrawEnabled: false, canvasEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 8);
     });
 
     it('filters out canvas tools when canvasEnabled is false', async () => {

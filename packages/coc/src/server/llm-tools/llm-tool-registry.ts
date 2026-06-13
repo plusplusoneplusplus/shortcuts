@@ -117,6 +117,18 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         enabledByDefault: true,
     },
     {
+        name: 'create_or_update_extension_canvas',
+        label: 'Create/Update Extension Canvas',
+        description: 'Authors a custom interactive canvas (UI + capabilities over JSON shared state).',
+        enabledByDefault: true,
+    },
+    {
+        name: 'invoke_canvas_capability',
+        label: 'Invoke Canvas Capability',
+        description: 'Runs a declared capability on an extension canvas.',
+        enabledByDefault: true,
+    },
+    {
         name: 'tavily_web_search',
         label: 'Tavily Web Search',
         description: 'Searches the live web via Tavily API for current information.',
@@ -125,7 +137,7 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
 ] as const;
 
 /** Tool names belonging to the canvas feature (gated by `canvas.enabled`). */
-export const CANVAS_LLM_TOOL_NAMES = ['create_canvas', 'update_canvas', 'read_canvas'] as const;
+export const CANVAS_LLM_TOOL_NAMES = ['create_canvas', 'update_canvas', 'read_canvas', 'create_or_update_extension_canvas', 'invoke_canvas_capability'] as const;
 
 /**
  * Returns the effective LLM tool registry given runtime feature flags.

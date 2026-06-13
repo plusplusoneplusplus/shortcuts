@@ -43,6 +43,12 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
     ),
 }));
 
+vi.mock('../../../../../src/server/spa/client/react/features/canvas/ExtensionCanvasView', () => ({
+    ExtensionCanvasView: ({ canvas }: { canvas: { id: string } }) => (
+        <div data-testid="mock-extension-view" data-canvas-id={canvas.id}>extension</div>
+    ),
+}));
+
 // The markdown pipeline pulls hljs/mermaid — render plain content instead.
 vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useMarkdownPreview', () => ({
     useMarkdownPreview: ({ content }: { content: string }) => ({ html: content }),
@@ -373,6 +379,17 @@ describe('CanvasPanel', () => {
 
         await waitFor(() => expect(screen.getByTestId('canvas-panel-export-status').textContent).toBe('Copied'));
         expect(writeText).toHaveBeenCalledWith('# Plan body');
+    });
+
+    it('renders extension canvases through the sandboxed iframe view with an extension badge', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ type: 'extension', content: '{"cards":[]}' }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-extension-badge')).toBeTruthy());
+        expect(screen.getByTestId('mock-extension-view')).toBeTruthy();
+        // Extension canvases do not show the markdown preview pane
+        expect(screen.queryByTestId('canvas-panel-preview')).toBeNull();
     });
 
     it('saves markdown canvases to Notes and hides the option for code canvases', async () => {

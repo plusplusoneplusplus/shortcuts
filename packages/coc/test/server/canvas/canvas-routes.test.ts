@@ -198,6 +198,51 @@ describe('canvas routes', () => {
         expect(missingComment.status).toBe(404);
     });
 
+    it('serves extension documents and invokes a capability over shared state', async () => {
+        const canvas = store.createCanvas({ workspaceId: WS, title: 'Board', content: '{"cards":[]}', type: 'extension', processId: 'p1' });
+        store.saveExtension(WS, canvas.id, {
+            manifest: { description: 'Kanban', capabilities: [{ name: 'add_card', description: 'Add a card' }] },
+            uiHtml: '<div>board</div>',
+            capabilitiesJs: 'capabilities = { add_card: function (s, p) { var c = (s.cards||[]).slice(); c.push({ id: p.id }); return { cards: c }; } };',
+        }, 'ai');
+
+        const ext = await request(handler, 'GET', `/api/workspaces/${WS}/canvases/${canvas.id}/extension`);
+        expect(ext.status).toBe(200);
+        expect(ext.body.extension.manifest.capabilities[0].name).toBe('add_card');
+
+        const invoke = await request(handler, 'POST', `/api/workspaces/${WS}/canvases/${canvas.id}/capabilities/add_card`, { params: { id: 'c1' } });
+        expect(invoke.status).toBe(200);
+        expect(JSON.parse(invoke.body.canvas.content).cards).toEqual([{ id: 'c1' }]);
+        expect(invoke.body.canvas.revision).toBe(3); // create(1) + saveExtension(2) + capability(3)
+
+        expect(broadcastProcessEvent).toHaveBeenCalledWith(expect.objectContaining({
+            type: 'canvas-updated',
+            canvasId: canvas.id,
+            editor: 'user',
+        }));
+    });
+
+    it('returns 422 when a capability is unknown or errors', async () => {
+        const canvas = store.createCanvas({ workspaceId: WS, title: 'Board', content: '{}', type: 'extension' });
+        store.saveExtension(WS, canvas.id, {
+            manifest: { description: 'x', capabilities: [{ name: 'noop', description: 'noop' }] },
+            uiHtml: '<div></div>',
+            capabilitiesJs: 'capabilities = { noop: function (s) { return s; } };',
+        }, 'ai');
+
+        const bad = await request(handler, 'POST', `/api/workspaces/${WS}/canvases/${canvas.id}/capabilities/missing_cap`, { params: {} });
+        expect(bad.status).toBe(422);
+    });
+
+    it('404s extension routes for a non-extension canvas', async () => {
+        const md = store.createCanvas({ workspaceId: WS, title: 'Doc', content: 'hi' });
+        const ext = await request(handler, 'GET', `/api/workspaces/${WS}/canvases/${md.id}/extension`);
+        expect(ext.status).toBe(404);
+
+        const cap = await request(handler, 'POST', `/api/workspaces/${WS}/canvases/${md.id}/capabilities/x`, { params: {} });
+        expect(cap.status).toBe(404);
+    });
+
     it('rejects an empty save body', async () => {
         const c = store.createCanvas({ workspaceId: WS, title: 'Doc', content: 'v1' });
         const res = await request(handler, 'PUT', `/api/workspaces/${WS}/canvases/${c.id}`, {});

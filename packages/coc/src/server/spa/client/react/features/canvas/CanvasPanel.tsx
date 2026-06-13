@@ -21,6 +21,11 @@
  *    highlighted preview rendered as a fenced block.
  *  - Export menu: copy content, download as a file, save markdown canvases
  *    into the workspace Notes tree under `canvases/`.
+ *
+ * Phase 4 surfaces:
+ *  - Extension canvases (`type: 'extension'`): the preview is the extension's
+ *    sandboxed-iframe UI (ExtensionCanvasView) over JSON shared state; Edit
+ *    mode exposes the raw state JSON with the normal autosave.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -29,6 +34,7 @@ import type { Canvas, CanvasComment, CanvasVersion, CanvasVersionMeta } from '@p
 import { getSpaCocClient } from '../../api/cocClient';
 import { useMarkdownPreview } from '../../hooks/ui/useMarkdownPreview';
 import { MonacoFileEditor, getMonacoLanguage } from '../repo-detail/explorer/MonacoFileEditor';
+import { ExtensionCanvasView } from './ExtensionCanvasView';
 import type { CanvasUpdatedEvent } from '../chat/hooks/useChatSSE';
 
 const AUTOSAVE_DELAY_MS = 800;
@@ -72,6 +78,7 @@ const LANGUAGE_TO_FILE_EXT: Record<string, string> = {
 
 function downloadFilenameFor(canvas: Canvas): string {
     const slug = canvas.id.replace(/-[0-9a-f]{6}$/, '') || 'canvas';
+    if (canvas.type === 'extension') return `${slug}.json`;
     if (canvas.type !== 'code') return `${slug}.md`;
     const language = canvas.language ?? '';
     return `${slug}.${LANGUAGE_TO_FILE_EXT[language] ?? (language || 'txt')}`;
@@ -358,11 +365,24 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
 
     const displayedContent = viewingVersion ? viewingVersion.content : (canvas?.content ?? '');
     const isCodeCanvas = canvas?.type === 'code';
+    const isExtensionCanvas = canvas?.type === 'extension';
+    // Extension canvases render their own iframe UI; the markdown pipeline is
+    // only used for history views of their JSON state.
+    const previewMarkdown = isExtensionCanvas
+        ? (viewingVersion ? fenceCode(displayedContent, 'json') : '')
+        : isCodeCanvas ? fenceCode(displayedContent, canvas?.language) : displayedContent;
     const { html } = useMarkdownPreview({
-        content: isCodeCanvas ? fenceCode(displayedContent, canvas?.language) : displayedContent,
+        content: previewMarkdown,
         containerRef: previewRef,
-        loading: loading || (!viewingVersion && mode !== 'preview'),
+        loading: loading || (isExtensionCanvas && !viewingVersion) || (!viewingVersion && mode !== 'preview'),
     });
+
+    const handleExtensionCanvasSaved = useCallback((saved: Canvas) => {
+        setCanvas(saved);
+        setDraft(saved.content);
+        setDirty(false);
+        setSaveState('saved');
+    }, []);
 
     const statusLabel = saveState === 'saving' ? 'Saving…'
         : saveState === 'saved' ? 'Saved'
@@ -380,6 +400,11 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                 {isCodeCanvas && (
                     <span className="text-[9px] uppercase px-1 py-0.5 rounded border border-[#e0e0e0] dark:border-[#474749] text-[#848484] shrink-0" data-testid="canvas-panel-language">
                         {canvas?.language ?? 'code'}
+                    </span>
+                )}
+                {isExtensionCanvas && (
+                    <span className="text-[9px] uppercase px-1 py-0.5 rounded border border-violet-300 dark:border-violet-700 text-violet-600 dark:text-violet-300 shrink-0" data-testid="canvas-panel-extension-badge">
+                        extension
                     </span>
                 )}
                 {canvas && (
@@ -574,6 +599,12 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                     <div className="text-xs text-[#848484] py-6 text-center">Loading canvas…</div>
                 ) : loadError ? (
                     <div className="text-xs text-red-500 py-6 text-center" data-testid="canvas-panel-error">{loadError}</div>
+                ) : !viewingVersion && mode === 'preview' && isExtensionCanvas && canvas ? (
+                    <ExtensionCanvasView
+                        workspaceId={workspaceId}
+                        canvas={canvas}
+                        onCanvasSaved={handleExtensionCanvasSaved}
+                    />
                 ) : !viewingVersion && mode === 'edit' && isCodeCanvas ? (
                     <div className="h-full min-h-[200px]" data-testid="canvas-panel-code-editor">
                         <MonacoFileEditor

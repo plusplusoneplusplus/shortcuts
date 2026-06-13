@@ -305,6 +305,49 @@ describe('comments', () => {
     });
 });
 
+describe('extension canvases', () => {
+    let dataDir: string;
+    let store: CanvasStore;
+
+    beforeEach(() => {
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-canvas-ext-'));
+        store = new CanvasStore(dataDir);
+    });
+
+    afterEach(() => {
+        fs.rmSync(dataDir, { recursive: true, force: true });
+    });
+
+    const EXTENSION = {
+        manifest: { description: 'Kanban', capabilities: [{ name: 'add_card', description: 'Add a card' }] },
+        uiHtml: '<div>board</div>',
+        capabilitiesJs: 'capabilities = { add_card: function (s) { return s; } };',
+    };
+
+    it('creates an extension canvas and round-trips its documents', () => {
+        const canvas = store.createCanvas({ workspaceId: WS, title: 'Board', content: '{}', type: 'extension' });
+        expect(canvas.type).toBe('extension');
+
+        const updated = store.saveExtension(WS, canvas.id, EXTENSION, 'ai');
+        expect(updated).not.toBeNull();
+        expect(updated!.revision).toBe(2);
+
+        const loaded = store.getExtension(WS, canvas.id);
+        expect(loaded).toEqual(EXTENSION);
+    });
+
+    it('refuses saveExtension on a non-extension canvas', () => {
+        const md = store.createCanvas({ workspaceId: WS, title: 'Doc', content: 'hi' });
+        expect(store.saveExtension(WS, md.id, EXTENSION, 'ai')).toBeNull();
+    });
+
+    it('returns null extension documents before they are written', () => {
+        const canvas = store.createCanvas({ workspaceId: WS, title: 'Board', content: '{}', type: 'extension' });
+        expect(store.getExtension(WS, canvas.id)).toBeNull();
+        expect(store.getExtension(WS, 'missing-000000')).toBeNull();
+    });
+});
+
 describe('canvas id helpers', () => {
     it('generateCanvasId produces valid filesystem-safe ids', () => {
         expect(isValidCanvasId(generateCanvasId('Hello World'))).toBe(true);

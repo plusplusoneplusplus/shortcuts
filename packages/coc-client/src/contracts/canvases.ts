@@ -6,7 +6,7 @@
 
 export type CanvasEditor = 'ai' | 'user';
 
-export type CanvasType = 'markdown' | 'code';
+export type CanvasType = 'markdown' | 'code' | 'extension';
 
 export interface CanvasSummary {
   id: string;
@@ -90,4 +90,27 @@ export interface CanvasCommentResponse {
 export interface AddCanvasCommentRequest {
   anchorText: string;
   body: string;
+}
+
+export interface CanvasCapabilityMeta {
+  name: string;
+  description: string;
+  paramsDescription?: string;
+}
+
+export interface CanvasExtensionManifest {
+  description: string;
+  capabilities: CanvasCapabilityMeta[];
+}
+
+export interface CanvasExtension {
+  manifest: CanvasExtensionManifest;
+  /** Self-contained HTML+JS rendered in the panel's sandboxed iframe. */
+  uiHtml: string;
+  /** Script assigning a top-level `capabilities` object of (state, params) => nextState functions. */
+  capabilitiesJs: string;
+}
+
+export interface CanvasExtensionResponse {
+  extension: CanvasExtension;
 }

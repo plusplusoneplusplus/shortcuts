@@ -89,8 +89,8 @@ all have their own `references/*.md`.
   Group statuses are normalized (`draft|running|completed|failed|cancelled`)
   with feature detail in `extra.detailStatus`; registry writes are best-effort
   and must never break orchestration.
-- **Chat canvas** (`canvas.enabled`, default off) persists markdown or code
-  artifacts (descriptor `type` + normalized `language`) under
+- **Chat canvas** (`canvas.enabled`, default off) persists markdown, code, or
+  extension artifacts (descriptor `type` + normalized `language`) under
   `~/.coc/repos/<wsId>/canvases/<canvasId>/` through
   `src/server/canvas/canvas-store.ts` with revision-checked updates. AI edits
   go through the `create_canvas`/`update_canvas`/`read_canvas` LLM tools
@@ -100,8 +100,14 @@ all have their own `references/*.md`.
   revision also writes a version snapshot (capped at 50) used by the panel's
   history stepper and restore-as-new-revision flow, and anchored comments
   (`comments.json`, open|sent|resolved) are delivered to the AI through the
-  normal follow-up enqueue path — not a custom channel. Do not write canvas
-  files directly from other features.
+  normal follow-up enqueue path — not a custom channel. Extension canvases
+  store `extension/{manifest.json,ui.html,capabilities.js}`; both the AI
+  (`invoke_canvas_capability`) and the panel's sandboxed iframe (capability
+  REST route) mutate shared state only through capabilities run as pure
+  `(state, params) => nextState` transforms in `canvas-capability-runner.ts`
+  (`node:vm`, no require/process, 1s timeout, 1 MB cap) — never execute
+  extension scripts outside that runner. Do not write canvas files directly
+  from other features.
 - **Follow-up enqueue sites** must call `resolveFollowUpMode(...)` and set
   `payload.mode`. `FollowUpExecutor.executeFollowUp` fail-loud warns + defaults
   to `'ask'` if missing.
