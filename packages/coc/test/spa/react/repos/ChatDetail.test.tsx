@@ -58,6 +58,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getActiveProvider: () => 'copilot' as const,
     isEffortLevelsEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => false,
+    isCanvasEnabled: () => false,
 }));
 
 // Display settings

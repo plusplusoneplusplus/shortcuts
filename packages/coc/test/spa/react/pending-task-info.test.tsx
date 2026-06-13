@@ -40,6 +40,7 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     getDefaultProvider: () => 'copilot' as const,
     getActiveProvider: () => 'copilot' as const,
     isSessionContextAttachmentsEnabled: () => false,
+    isCanvasEnabled: () => false,
 }));
 
 // Mock useDisplaySettings
