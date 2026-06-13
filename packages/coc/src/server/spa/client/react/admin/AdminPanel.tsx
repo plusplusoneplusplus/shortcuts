@@ -644,6 +644,9 @@ export function AdminPanel() {
     const featuresDirty = FEATURES_CARD_SETTINGS.some(def => featureValues[def.key] !== featuresSnapshot[def.key]);
 
     const dreamsDirty = dreamsForm.enabled !== dreamsSnapshot.enabled ||
+        dreamsForm.provider !== dreamsSnapshot.provider ||
+        dreamsForm.model !== dreamsSnapshot.model ||
+        dreamsForm.timeoutMinutes !== dreamsSnapshot.timeoutMinutes ||
         dreamsForm.intervalMinutes !== dreamsSnapshot.intervalMinutes;
 
     // ── AI & Execution card ──

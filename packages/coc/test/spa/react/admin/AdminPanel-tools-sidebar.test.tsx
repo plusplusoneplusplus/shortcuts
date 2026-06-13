@@ -57,6 +57,55 @@ function renderAdmin() {
     );
 }
 
+function mockDreamsAdminConfig() {
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes('/api/admin/config') && init?.method === 'PUT') {
+            return Promise.resolve(jsonResponse({ success: true }));
+        }
+        if (url.includes('/api/admin/config')) {
+            return Promise.resolve(jsonResponse({
+                resolved: {
+                    dreams: {
+                        enabled: false,
+                        provider: 'claude',
+                        model: 'claude-sonnet-4.6',
+                        timeoutMs: 3_600_000,
+                        idleCheckIntervalMs: 300_000,
+                    },
+                },
+            }));
+        }
+        if (url.includes('/api/admin/dream-provider-activity')) {
+            return Promise.resolve(jsonResponse({ items: [] }));
+        }
+        return Promise.resolve(jsonResponse({}));
+    });
+}
+
+async function openDreamsAdminSettings() {
+    await act(async () => { renderAdmin(); });
+    await waitFor(() => expect(document.getElementById('dreams-admin-toggle')).toBeTruthy());
+
+    await act(async () => {
+        fireEvent.click(document.getElementById('dreams-admin-toggle')!);
+    });
+
+    await waitFor(() => expect(document.querySelector('[data-testid="dreams-admin-page"]')).toBeTruthy());
+}
+
+function getDreamsSaveButton() {
+    return document.querySelector<HTMLButtonElement>('[data-testid="dreams-settings-save"]')!;
+}
+
+function getAdminConfigSavePayload() {
+    const saveCall = mockFetch.mock.calls.find(([input, init]: [RequestInfo | URL, RequestInit | undefined]) =>
+        String(input).includes('/api/admin/config') && init?.method === 'PUT'
+    );
+    expect(saveCall).toBeTruthy();
+    return JSON.parse(String(saveCall![1]!.body)) as Record<string, unknown>;
+}
+
 // ── AdminPanel grouped sidebar navigation ─────────────────────
 
 describe('AdminPanel — sidebar layout zones', () => {
@@ -338,38 +387,9 @@ describe('AdminPanel — embedded tools render in the right panel', () => {
     });
 
     it('saves the Dreams idle check interval in milliseconds after editing minutes', async () => {
-        mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
-            const url = String(input);
-            if (url.includes('/api/admin/config') && init?.method === 'PUT') {
-                return Promise.resolve(jsonResponse({ success: true }));
-            }
-            if (url.includes('/api/admin/config')) {
-                return Promise.resolve(jsonResponse({
-                    resolved: {
-                        dreams: {
-                            enabled: false,
-                            provider: 'claude',
-                            model: 'claude-sonnet-4.6',
-                            timeoutMs: 3_600_000,
-                            idleCheckIntervalMs: 300_000,
-                        },
-                    },
-                }));
-            }
-            if (url.includes('/api/admin/dream-provider-activity')) {
-                return Promise.resolve(jsonResponse({ items: [] }));
-            }
-            return Promise.resolve(jsonResponse({}));
-        });
+        mockDreamsAdminConfig();
+        await openDreamsAdminSettings();
 
-        await act(async () => { renderAdmin(); });
-        await waitFor(() => expect(document.getElementById('dreams-admin-toggle')).toBeTruthy());
-
-        await act(async () => {
-            fireEvent.click(document.getElementById('dreams-admin-toggle')!);
-        });
-
-        await waitFor(() => expect(document.querySelector('[data-testid="dreams-admin-page"]')).toBeTruthy());
         const intervalInput = document.querySelector<HTMLInputElement>('[data-testid="dreams-idle-check-interval-minutes"]')!;
         expect(intervalInput.value).toBe('5');
         expect(document.querySelector<HTMLButtonElement>('[data-testid="dreams-provider-claude"]')?.getAttribute('aria-pressed')).toBe('true');
@@ -386,16 +406,51 @@ describe('AdminPanel — embedded tools render in the right panel', () => {
             fireEvent.click(document.querySelector<HTMLButtonElement>('[data-testid="dreams-settings-save"]')!);
         });
 
-        const saveCall = mockFetch.mock.calls.find(([input, init]: [RequestInfo | URL, RequestInit | undefined]) =>
-            String(input).includes('/api/admin/config') && init?.method === 'PUT'
-        );
-        expect(saveCall).toBeTruthy();
-        expect(JSON.parse(String(saveCall![1]!.body))).toMatchObject({
+        expect(getAdminConfigSavePayload()).toMatchObject({
             'dreams.enabled': false,
             'dreams.provider': 'codex',
             'dreams.model': 'gpt-5-codex',
             'dreams.idleCheckIntervalMs': 720_000,
             'dreams.timeoutMs': 1_800_000,
+        });
+    });
+
+    it.each([
+        {
+            field: 'provider',
+            edit: () => fireEvent.click(document.querySelector<HTMLButtonElement>('[data-testid="dreams-provider-codex"]')!),
+            expected: { 'dreams.provider': 'codex', 'dreams.model': 'claude-sonnet-4.6', 'dreams.timeoutMs': 3_600_000 },
+        },
+        {
+            field: 'model',
+            edit: () => fireEvent.change(document.querySelector<HTMLInputElement>('[data-testid="dreams-default-model"]')!, { target: { value: 'claude-opus-4.1' } }),
+            expected: { 'dreams.provider': 'claude', 'dreams.model': 'claude-opus-4.1', 'dreams.timeoutMs': 3_600_000 },
+        },
+        {
+            field: 'timeout',
+            edit: () => fireEvent.change(document.querySelector<HTMLInputElement>('[data-testid="dreams-timeout-minutes"]')!, { target: { value: '45' } }),
+            expected: { 'dreams.provider': 'claude', 'dreams.model': 'claude-sonnet-4.6', 'dreams.timeoutMs': 2_700_000 },
+        },
+    ])('enables Save and persists Dreams $field-only edits', async ({ edit, expected }) => {
+        mockDreamsAdminConfig();
+        await openDreamsAdminSettings();
+
+        expect(getDreamsSaveButton().disabled).toBe(true);
+
+        await act(async () => {
+            edit();
+        });
+
+        await waitFor(() => expect(getDreamsSaveButton().disabled).toBe(false));
+
+        await act(async () => {
+            fireEvent.click(getDreamsSaveButton());
+        });
+
+        expect(getAdminConfigSavePayload()).toMatchObject({
+            'dreams.enabled': false,
+            'dreams.idleCheckIntervalMs': 300_000,
+            ...expected,
         });
     });
 });
