@@ -251,6 +251,11 @@ export function NativeCopilotSessionsPanel({ workspaceId }: NativeCopilotSession
                         Text search is unavailable: the native store has no search index. Metadata filters still apply.
                     </p>
                 )}
+                {listResponse?.available === true && (listResponse.deduplicatedCount ?? 0) > 0 && (
+                    <p className="mt-1 text-[11px] text-[#57606a]" data-testid="native-sessions-deduplicated">
+                        {listResponse.deduplicatedCount} session{listResponse.deduplicatedCount === 1 ? '' : 's'} hidden — already tracked in CoC Activity.
+                    </p>
+                )}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
                 {listLoading && (

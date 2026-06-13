@@ -11,7 +11,8 @@ import * as os from 'os';
 import * as path from 'path';
 import DatabaseConstructor from 'better-sqlite3';
 import { createExecutionServer } from '../../src/server/index';
-import { FileProcessStore } from '@plusplusoneplusplus/forge';
+import { FileProcessStore, SqliteProcessStore } from '@plusplusoneplusplus/forge';
+import type { AIProcess, AIProcessStatus } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '../../src/server/types';
 import {
     NativeCopilotSessionService,
@@ -246,6 +247,37 @@ describe('NativeCopilotSessionService', () => {
             expect(page.items.map(i => i.id)).toEqual(['s-2', 's-3']);
             expect(page.limit).toBe(2);
             expect(page.offset).toBe(2);
+        }
+    });
+
+    it('excludes sessions tracked as CoC processes and reports deduplicatedCount', () => {
+        const wsRoot = path.join(tmpDir, 'ws');
+        createFixtureDb(dbPath, [
+            { id: 'native-only-a', cwd: wsRoot, updatedAt: '2026-06-04T00:00:00.000Z' },
+            { id: 'tracked-in-coc', cwd: wsRoot, updatedAt: '2026-06-03T00:00:00.000Z' },
+            { id: 'native-only-b', cwd: wsRoot, updatedAt: '2026-06-02T00:00:00.000Z' },
+        ]);
+        const service = new NativeCopilotSessionService({ dbPath });
+        const result = service.listSessions(
+            { rootPath: wsRoot },
+            { excludeSessionIds: new Set(['tracked-in-coc', 'unrelated-id']) },
+        );
+        expect(result.available).toBe(true);
+        if (result.available) {
+            expect(result.items.map(i => i.id)).toEqual(['native-only-a', 'native-only-b']);
+            expect(result.total).toBe(2);
+            expect(result.deduplicatedCount).toBe(1);
+        }
+    });
+
+    it('reports deduplicatedCount of zero when no exclusion set is provided', () => {
+        const wsRoot = path.join(tmpDir, 'ws');
+        createFixtureDb(dbPath, [{ id: 'only', cwd: wsRoot }]);
+        const service = new NativeCopilotSessionService({ dbPath });
+        const result = service.listSessions({ rootPath: wsRoot });
+        expect(result.available).toBe(true);
+        if (result.available) {
+            expect(result.deduplicatedCount).toBe(0);
         }
     });
 
@@ -552,5 +584,84 @@ describe('Native Copilot session routes', () => {
         await startServer();
         const res = await request(`${server!.url}/api/workspaces/nope/native-copilot-sessions`);
         expect(res.status).toBe(404);
+    });
+});
+
+describe('Native Copilot session routes — dedup against CoC processes', () => {
+    let server: ExecutionServer | undefined;
+    let store: SqliteProcessStore | undefined;
+    let dataDir: string;
+    let workspaceDir: string;
+    let fixtureDir: string;
+    let dbPath: string;
+    const wsId = 'native-dedup-ws';
+
+    beforeEach(() => {
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'native-dedup-data-'));
+        workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'native-dedup-repo-'));
+        fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'native-dedup-db-'));
+        dbPath = path.join(fixtureDir, 'session-store.db');
+    });
+
+    afterEach(async () => {
+        if (server) {
+            await server.close();
+            server = undefined;
+        }
+        store?.close();
+        store = undefined;
+        for (const dir of [dataDir, workspaceDir, fixtureDir]) {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    function listUrl(query = ''): string {
+        return `${server!.url}/api/workspaces/${encodeURIComponent(wsId)}/native-copilot-sessions${query}`;
+    }
+
+    function makeProcess(id: string, sdkSessionId: string): AIProcess {
+        return {
+            id,
+            type: 'ai',
+            promptPreview: 'tracked prompt',
+            fullPrompt: 'tracked full prompt',
+            status: 'completed' as AIProcessStatus,
+            startTime: new Date(),
+            metadata: { type: 'ai', workspaceId: wsId },
+            sdkSessionId,
+        };
+    }
+
+    it('hides native sessions already tracked as CoC processes and reports the count', async () => {
+        createFixtureDb(dbPath, [
+            { id: 'native-only', cwd: workspaceDir, updatedAt: '2026-06-05T00:00:00.000Z' },
+            { id: 'tracked', cwd: workspaceDir, updatedAt: '2026-06-04T00:00:00.000Z' },
+        ]);
+        store = new SqliteProcessStore({ dbPath: path.join(dataDir, 'processes.db') });
+        server = await createExecutionServer({
+            port: 0,
+            host: 'localhost',
+            store,
+            dataDir,
+            fileConfig: { features: { nativeCopilotSessions: true } },
+            nativeCopilotSessionDbPath: dbPath,
+            queue: { autoStart: false },
+        });
+        const reg = await postJSON(`${server.url}/api/workspaces`, {
+            id: wsId,
+            name: 'Native Dedup Workspace',
+            rootPath: workspaceDir,
+        });
+        expect(reg.status).toBe(201);
+        // The native session id equals the CoC process sdk_session_id.
+        await store.addProcess(makeProcess('coc-proc-1', 'tracked'));
+
+        const res = await request(listUrl());
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.available).toBe(true);
+        expect(body.items.map((i: { id: string }) => i.id)).toEqual(['native-only']);
+        expect(body.total).toBe(1);
+        expect(body.deduplicatedCount).toBe(1);
     });
 });

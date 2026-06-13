@@ -68,6 +68,13 @@ export interface NativeCopilotSessionListOptions {
     to?: string;
     limit?: number;
     offset?: number;
+    /**
+     * Native `sessions.id` values to exclude from results. Used to deduplicate
+     * against native sessions already tracked as CoC processes (the Copilot
+     * SDK/CLI session id equals the native store id). Server-internal — not a
+     * client-supplied query parameter.
+     */
+    excludeSessionIds?: ReadonlySet<string>;
 }
 
 /** Workspace identity used to scope native sessions to the active CoC workspace. */
@@ -85,6 +92,8 @@ export type NativeCopilotSessionListResult =
         total: number;
         /** False when metadata tables exist but the native search_index is absent. */
         searchIndexAvailable: boolean;
+        /** Count of workspace-scoped native sessions hidden because they are already tracked as CoC processes. */
+        deduplicatedCount: number;
     }
     | {
         available: false;

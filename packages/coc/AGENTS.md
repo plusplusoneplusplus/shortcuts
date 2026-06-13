@@ -128,7 +128,11 @@ all have their own `references/*.md`.
   short-lived `readonly` SQLite connections, keep every user-provided filter
   parameterized (FTS terms literal-quoted), and return typed
   `db-missing`/`db-invalid` states instead of throwing. Never route native
-  session IDs into CoC process/chat action handlers.
+  session IDs into CoC process/chat action handlers. The list route dedups
+  against CoC processes by excluding native `sessions.id` values that match a
+  workspace's `ProcessStore.getSdkSessionIds(workspaceId)` (the Copilot SDK/CLI
+  session id equals the native store id); the hidden count is returned as
+  `deduplicatedCount`.
 - **Work-item create/update side effects** (hierarchy `parentId` validation,
   GitHub/Azure Boards provider sync, response-cache invalidation, dashboard
   broadcasts, auto-execute) live in the shared command service

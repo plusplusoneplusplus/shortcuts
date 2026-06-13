@@ -166,13 +166,15 @@ export class NativeCopilotSessionService {
                 textHits = searchIndexAvailable ? this.queryTextHits(db, matchExpression) : new Map();
             }
             if (textHits && textHits.size === 0) {
-                return { available: true, items: [], total: 0, searchIndexAvailable, limit, offset };
+                return { available: true, items: [], total: 0, searchIndexAvailable, deduplicatedCount: 0, limit, offset };
             }
 
             const rows = this.querySessionRows(db, options, textHits);
 
             const fromTs = options.from ? parseTimestamp(options.from) : undefined;
             const toTs = options.to ? parseTimestamp(options.to) : undefined;
+            const excludeSessionIds = options.excludeSessionIds;
+            let deduplicatedCount = 0;
             const scoped = rows.filter(row => {
                 if (!sessionMatchesWorkspace(row, scope)) {
                     return false;
@@ -188,6 +190,11 @@ export class NativeCopilotSessionService {
                     if (toTs !== undefined && !Number.isNaN(toTs) && updated > toTs) {
                         return false;
                     }
+                }
+                // Hide native sessions already tracked as CoC processes (dedup).
+                if (excludeSessionIds && excludeSessionIds.has(row.id)) {
+                    deduplicatedCount += 1;
+                    return false;
                 }
                 return true;
             });
@@ -215,7 +222,7 @@ export class NativeCopilotSessionService {
                 matchSnippets: textHits?.get(row.id)?.slice(0, MAX_MATCH_SNIPPETS) ?? [],
             }));
 
-            return { available: true, items, total, searchIndexAvailable, limit, offset };
+            return { available: true, items, total, searchIndexAvailable, deduplicatedCount, limit, offset };
         } catch {
             return { available: false, reason: 'db-invalid', limit, offset };
         } finally {

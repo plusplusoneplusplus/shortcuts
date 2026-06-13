@@ -231,4 +231,18 @@ describe('NativeCopilotSessionsPanel', () => {
 
         await waitFor(() => expect(screen.getByTestId('native-sessions-search-unavailable')).toBeTruthy());
     });
+
+    it('shows the dedup hint when sessions are already tracked in CoC Activity', async () => {
+        mockList.mockResolvedValue(makeListResponse([makeListItem()], { deduplicatedCount: 3 }));
+        render(<NativeCopilotSessionsPanel workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('native-sessions-deduplicated')).toBeTruthy());
+        expect(screen.getByTestId('native-sessions-deduplicated').textContent).toContain('3 sessions hidden');
+    });
+
+    it('omits the dedup hint when no sessions are deduplicated', async () => {
+        mockList.mockResolvedValue(makeListResponse([makeListItem()]));
+        render(<NativeCopilotSessionsPanel workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('native-sessions-table')).toBeTruthy());
+        expect(screen.queryByTestId('native-sessions-deduplicated')).toBeNull();
+    });
 });

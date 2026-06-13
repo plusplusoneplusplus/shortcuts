@@ -71,6 +71,8 @@ export interface ListNativeCopilotSessionsResponse {
   total: number;
   /** False when metadata tables exist but the native search index is absent. */
   searchIndexAvailable?: boolean;
+  /** Count of native sessions hidden because they are already tracked as CoC processes (Activity tab). */
+  deduplicatedCount?: number;
   limit: number;
   offset: number;
 }

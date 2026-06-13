@@ -88,6 +88,11 @@ export function registerNativeCopilotSessionRoutes(ctx: NativeCopilotSessionRout
             const workspace = await resolveWorkspaceOrFail(store, match!, res);
             if (!workspace) { return; }
 
+            // Dedup: hide native sessions already tracked as CoC processes for
+            // this workspace. The Copilot SDK/CLI session id equals the native
+            // store id, so a single indexed query yields the exclusion set.
+            const excludeSessionIds = store.getSdkSessionIds?.(workspace.id);
+
             const result = service.listSessions(buildScope(workspace), {
                 q: queryString(query.q),
                 sessionId: queryString(query.sessionId),
@@ -96,6 +101,7 @@ export function registerNativeCopilotSessionRoutes(ctx: NativeCopilotSessionRout
                 to: queryString(query.to),
                 limit: queryNumber(query.limit),
                 offset: queryNumber(query.offset),
+                excludeSessionIds,
             });
 
             if (!result.available) {
@@ -116,6 +122,7 @@ export function registerNativeCopilotSessionRoutes(ctx: NativeCopilotSessionRout
                 items: result.items,
                 total: result.total,
                 searchIndexAvailable: result.searchIndexAvailable,
+                deduplicatedCount: result.deduplicatedCount,
                 limit: result.limit,
                 offset: result.offset,
             });

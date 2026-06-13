@@ -347,6 +347,15 @@ export interface ProcessStore {
      */
     getProcessIds(filter?: ProcessFilter): Promise<string[]>;
 
+    /**
+     * Optional: return the distinct set of native SDK session IDs recorded for a
+     * workspace's processes. The Copilot SDK/CLI shares one session id per
+     * conversation, so these ids match native `sessions.id` rows and are used to
+     * deduplicate the read-only native Copilot CLI session view against sessions
+     * already tracked as CoC processes. Only the SQLite store implements this.
+     */
+    getSdkSessionIds?(workspaceId: string): Set<string>;
+
     /** Return all known workspaces. */
     getWorkspaces(): Promise<WorkspaceInfo[]>;
     /** Register (or update) a workspace identity. */
