@@ -25,6 +25,7 @@ import {
     validatePerRepoPreferences,
 } from '../preferences-handler';
 import { getEffectiveDefaultDisabledTools, getEffectiveLlmToolRegistry } from '../llm-tools/llm-tool-registry';
+import { withToolParameterMetadata } from '../llm-tools/llm-tool-parameter-schemas';
 import { detectEnDevEligibility } from '../endev/endev-detector';
 import { skillCache } from '../skills/skill-handler';
 import {
@@ -735,7 +736,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
             const liveFlags = ctx.getLiveFeatureFlags?.() ?? { excalidrawEnabled: false, canvasEnabled: false };
-            const effectiveRegistry = getEffectiveLlmToolRegistry({ loopsEnabled: ctx.loopsEnabled, excalidrawEnabled: liveFlags.excalidrawEnabled, canvasEnabled: liveFlags.canvasEnabled });
+            const effectiveRegistry = withToolParameterMetadata(getEffectiveLlmToolRegistry({ loopsEnabled: ctx.loopsEnabled, excalidrawEnabled: liveFlags.excalidrawEnabled, canvasEnabled: liveFlags.canvasEnabled }));
             const conversationRetrievalAvailable = typeof ctx.store.searchConversations === 'function';
             if (!ctx.dataDir) {
                 sendJSON(res, 200, {
@@ -782,7 +783,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             writeRepoPreferences(ctx.dataDir, ws.id, merged);
             const globalPrefs = readGlobalPreferences(ctx.dataDir);
             sendJSON(res, 200, {
-                tools: getEffectiveLlmToolRegistry({ loopsEnabled: ctx.loopsEnabled, excalidrawEnabled: ctx.getLiveFeatureFlags?.()?.excalidrawEnabled ?? false, canvasEnabled: ctx.getLiveFeatureFlags?.()?.canvasEnabled ?? false }),
+                tools: withToolParameterMetadata(getEffectiveLlmToolRegistry({ loopsEnabled: ctx.loopsEnabled, excalidrawEnabled: ctx.getLiveFeatureFlags?.()?.excalidrawEnabled ?? false, canvasEnabled: ctx.getLiveFeatureFlags?.()?.canvasEnabled ?? false })),
                 disabledLlmTools: merged.disabledLlmTools ?? getEffectiveDefaultDisabledTools(globalPrefs.uiLayoutMode),
                 conversationRetrievalAvailable: typeof ctx.store.searchConversations === 'function',
             });

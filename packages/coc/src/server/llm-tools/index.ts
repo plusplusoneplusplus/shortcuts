@@ -47,6 +47,7 @@ export {
     type LlmToolParam,
 } from './llm-tool-registry';
 export { summarizeToolParameters, compactParamType } from './llm-tool-parameters';
+export { LLM_TOOL_PARAMETER_SCHEMAS, withToolParameterMetadata } from './llm-tool-parameter-schemas';
 export {
     createCreateLoopTool,
     createCancelLoopTool,
