@@ -140,6 +140,10 @@ describe('ClaudeNativeSessionProvider', () => {
         writeJsonl(path.join(encodedFolder, 'claude-wrong-cwd.jsonl'), [
             { type: 'user', sessionId: 'claude-wrong-cwd', cwd: path.join(tmpDir, 'other'), timestamp: '2026-06-13T09:00:00.000Z', message: { role: 'user', content: [{ type: 'text', text: 'wrong cwd' }] } },
         ]);
+        writeJsonl(path.join(encodedFolder, 'claude-mixed-cwd.jsonl'), [
+            { type: 'user', sessionId: 'claude-mixed-cwd', cwd: workspaceRoot, gitBranch: 'feature/native-cli', timestamp: '2026-06-13T09:00:00.000Z', message: { role: 'user', content: [{ type: 'text', text: 'mixed cwd transcript' }] } },
+            { type: 'assistant', sessionId: 'claude-mixed-cwd', cwd: path.join(tmpDir, 'other'), timestamp: '2026-06-13T09:00:01.000Z', message: { role: 'assistant', content: [{ type: 'text', text: 'escaped cwd' }] } },
+        ]);
 
         const provider = new ClaudeNativeSessionProvider({ storePath });
         const result = provider.listSessions({ rootPath: workspaceRoot }, { q: 'transcript', branch: 'feature/native-cli' });
@@ -157,6 +161,8 @@ describe('ClaudeNativeSessionProvider', () => {
             turnCount: 2,
         });
         expect(result.items[0].matchSnippets[0]).toContain('transcript');
+        const mixedDetail = provider.getSession({ rootPath: workspaceRoot }, 'claude-mixed-cwd');
+        expect(mixedDetail).toEqual({ available: true, session: null });
     });
 
     it('collapses duplicate transcript files with the same session id to the newest record', () => {

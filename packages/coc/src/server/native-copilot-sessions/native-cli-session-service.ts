@@ -52,6 +52,7 @@ interface NativeCliSessionMetadata {
     createdAt: string | null;
     updatedAt: string | null;
     turnCount: number;
+    recordedCwds?: string[];
 }
 
 interface CachedMetadata {
@@ -524,15 +525,16 @@ export class ClaudeNativeSessionProvider extends JsonlFileNativeSessionProvider 
     }
 
     protected metadataMatchesWorkspace(metadata: NativeCliSessionMetadata, scope: NativeSessionWorkspaceScope): boolean {
-        return pathMatchesWorkspace(metadata.cwd, scope.rootPath);
+        const cwdValues = metadata.recordedCwds?.length ? metadata.recordedCwds : (metadata.cwd ? [metadata.cwd] : []);
+        return cwdValues.length > 0 && cwdValues.every(cwd => pathMatchesWorkspace(cwd, scope.rootPath));
     }
 
     protected parseMetadata(filePath: string, raw: string, stat: fs.Stats): NativeCliSessionMetadata | null {
         const records = parseJsonlLines(raw).map(line => line.record);
         const firstWithSession = records.find(record => asString(record.sessionId));
-        const firstWithCwd = records.find(record => asString(record.cwd));
+        const recordedCwds = Array.from(new Set(records.map(record => asString(record.cwd)).filter((cwd): cwd is string => Boolean(cwd))));
         const id = asString(firstWithSession?.sessionId) ?? path.basename(filePath, '.jsonl');
-        const cwd = asString(firstWithCwd?.cwd) ?? null;
+        const cwd = recordedCwds[0] ?? null;
         if (!id || !cwd) {
             return null;
         }
@@ -553,6 +555,7 @@ export class ClaudeNativeSessionProvider extends JsonlFileNativeSessionProvider 
             createdAt: firstTimestamp,
             updatedAt: lastTimestamp ?? new Date(stat.mtimeMs).toISOString(),
             turnCount: conversation?.length ?? 0,
+            recordedCwds,
         };
     }
 
