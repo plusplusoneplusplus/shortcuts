@@ -178,3 +178,26 @@ export function buildAgentRunTreeFromTurns(
 export function countRuns(node: AgentRunNode): number {
     return 1 + (node.children || []).reduce((sum, c) => sum + countRuns(c), 0);
 }
+
+/**
+ * Find the `data-turn-index` of the turn that issued a given run (its `Task`
+ * tool-call id), so a canvas node click can scroll the thread to that turn.
+ * Mirrors ConversationArea's `turn.turnIndex ?? arrayIndex`.
+ */
+export function findTurnIndexForRun(
+    turns: ClientConversationTurn[] | undefined,
+    runId: string,
+): number | null {
+    if (!turns) {
+        return null;
+    }
+    for (let i = 0; i < turns.length; i++) {
+        const turn = turns[i];
+        const inToolCalls = Array.isArray(turn.toolCalls) && turn.toolCalls.some((tc) => tc.id === runId);
+        const inTimeline = (turn.timeline || []).some((item) => item.toolCall?.id === runId);
+        if (inToolCalls || inTimeline) {
+            return turn.turnIndex ?? i;
+        }
+    }
+    return null;
+}

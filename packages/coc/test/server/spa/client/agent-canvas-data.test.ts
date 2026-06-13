@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
     buildAgentRunTreeFromTurns,
     countRuns,
+    findTurnIndexForRun,
 } from '../../../../src/server/spa/client/react/features/chat/agent-canvas/buildAgentRunTree';
 import type { AgentRunNode } from '../../../../src/server/spa/client/react/features/chat/agent-canvas/types';
 import type { ClientConversationTurn, ClientToolCall } from '../../../../src/server/spa/client/react/types/dashboard';
@@ -116,6 +117,38 @@ describe('buildAgentRunTreeFromTurns', () => {
         ])];
         const ids = buildAgentRunTreeFromTurns(turns).children.map((c) => c.id);
         expect(ids).toEqual(['early', 'late', 'unknown']);
+    });
+});
+
+describe('findTurnIndexForRun', () => {
+    it('returns the data-turn-index of the turn that issued the run', () => {
+        const turns = [
+            { role: 'user' as const, content: 'go', timeline: [], turnIndex: 0 },
+            assistantTurn([tc({ id: 't1', args: { description: 'x' } })], []),
+        ];
+        // second turn has no explicit turnIndex → falls back to array index 1
+        expect(findTurnIndexForRun(turns, 't1')).toBe(1);
+    });
+
+    it('prefers an explicit turn.turnIndex over the array index', () => {
+        const turns = [
+            { ...assistantTurn([tc({ id: 't1', args: { description: 'x' } })]), turnIndex: 7 },
+        ];
+        expect(findTurnIndexForRun(turns, 't1')).toBe(7);
+    });
+
+    it('matches a run found only in the timeline', () => {
+        const turns = [assistantTurn([], [{
+            type: 'tool-complete',
+            timestamp: '2026-06-13T10:00:00.000Z',
+            toolCall: tc({ id: 't9', args: {}, status: 'completed' }),
+        }])];
+        expect(findTurnIndexForRun(turns, 't9')).toBe(0);
+    });
+
+    it('returns null when the run is not present', () => {
+        expect(findTurnIndexForRun([assistantTurn([tc({ id: 't1', args: {} })])], 'missing')).toBeNull();
+        expect(findTurnIndexForRun(undefined, 't1')).toBeNull();
     });
 });
 

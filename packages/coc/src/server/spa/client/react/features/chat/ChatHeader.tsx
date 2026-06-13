@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ReferencesDropdown, ReferenceList, deduplicateReferenceFiles } from '../../ui/ReferencesDropdown';
 import { BottomSheet } from '../../ui/BottomSheet';
 import { ConversationMetadataPopover } from './conversation/ConversationMetadataPopover';
@@ -103,6 +103,8 @@ export interface ChatHeaderProps {
     onStartFreshSameContext?: () => Promise<boolean> | boolean | void;
     /** True while the lens chat fresh-context operation is in progress. */
     startingFreshSameContext?: boolean;
+    /** Optional control rendered at the start of the right-side action area (e.g. the Thread/Agents view toggle). */
+    viewToggle?: ReactNode;
 }
 
 /** Build overflow menu items based on what's hidden at the current container tier */
@@ -346,6 +348,7 @@ export function ChatHeader({
     onRenameTitle,
     onStartFreshSameContext,
     startingFreshSameContext = false,
+    viewToggle,
 }: ChatHeaderProps) {
     const { isMobile } = useBreakpoint();
     const { isFloating } = useFloatingChats();
@@ -494,6 +497,8 @@ export function ChatHeader({
 
             {/* Right side */}
             <div className="flex items-center flex-shrink-0">
+                {/* View toggle (Thread / Agents), when provided by the host. */}
+                {viewToggle}
                 {/*
                   Vertical divider visually separates the identity/status area
                   from the action group, matching the redesign mockup's

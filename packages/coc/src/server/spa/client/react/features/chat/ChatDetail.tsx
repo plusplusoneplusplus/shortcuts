@@ -44,6 +44,8 @@ import { buildEffortOptionsForModel } from './EffortPillSelector';
 import type { EffortLevel } from './EffortPillSelector';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { ConversationMiniMap } from './conversation/ConversationMiniMap';
+import { AgentCanvas, ChatViewToggle, buildAgentRunTreeFromTurns, findTurnIndexForRun } from './agent-canvas';
+import type { AgentRunNode, ChatView } from './agent-canvas';
 import { useConversationSelection } from './hooks/useConversationSelection';
 import { snapshotConversation } from '../../utils/snapshot-copy-utils';
 import { copyHtmlToClipboard } from '../../utils/format';
@@ -179,6 +181,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [activeCanvasId, setActiveCanvasId] = useState<string | null>(null);
     const [canvasLiveEvent, setCanvasLiveEvent] = useState<CanvasUpdatedEvent | null>(null);
     const [canvasPanelClosed, setCanvasPanelClosed] = useState(false);
+    // Thread vs. Agents (spatial sub-agent run tree) view.
+    const [view, setView] = useState<ChatView>('thread');
+    const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+    const [pendingScrollTurn, setPendingScrollTurn] = useState<number | null>(null);
     const [noteEdits, setNoteEdits] = useState<Array<{
         editId: string; notePath: string; preEditContent: string;
         postEditContent?: string; timestamp: string; turnIndex: number; tooLarge?: boolean;
@@ -302,6 +308,36 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const noSessionForFollowUp = isTerminal && processDetails !== null && !resumeSessionId;
 
     const createdFiles = useMemo(() => scanTurnsForCreatedFiles(turns), [turns]);
+
+    // ── Agents view: spatial tree of this chat's recursive sub-agent runs ──
+    const agentRoot = useMemo<AgentRunNode>(() => buildAgentRunTreeFromTurns(turns, {
+        id: 'root',
+        title: (task?.customTitle as string | undefined) || title || task?.title || task?.displayName,
+        status: effectiveStatus,
+    }), [turns, task?.customTitle, task?.title, task?.displayName, title, effectiveStatus]);
+
+    // Clicking a canvas node jumps to the matching turn in the thread.
+    const handleAgentSelect = useCallback((node: AgentRunNode) => {
+        setSelectedAgentId(node.id);
+        const idx = node.isRoot
+            ? (turnsRef.current[0]?.turnIndex ?? 0)
+            : findTurnIndexForRun(turnsRef.current, node.id);
+        if (idx != null) {
+            setView('thread');
+            setPendingScrollTurn(idx);
+        }
+    }, []);
+
+    // After switching to the thread, scroll to the turn a canvas node pointed at.
+    useEffect(() => {
+        if (pendingScrollTurn == null || view !== 'thread') return;
+        const container = conversationContainerRef.current;
+        const target = container?.querySelector<HTMLElement>(`[data-turn-index="${pendingScrollTurn}"]`);
+        if (target) {
+            target.scrollIntoView({ block: 'start', behavior: 'smooth' });
+            setPendingScrollTurn(null);
+        }
+    }, [pendingScrollTurn, view, turns]);
 
     // Compute the follow-up mode pill set, optionally appending Ralph when
     // the chat is eligible for in-place promotion. Eligibility:
@@ -427,6 +463,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         modelOverrideMountedRef.current = false;
         setEffortOverride(null);
         setInvalidScratchpadPaths(new Set());
+        setView('thread');
+        setSelectedAgentId(null);
+        setPendingScrollTurn(null);
     }, [taskId]);
 
     // ── Resolve existing implementation runs from task metadata ─────────
@@ -1609,6 +1648,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 onRenameTitle={processId ? () => setRenameOpen(true) : undefined}
                 onStartFreshSameContext={onStartFreshSameContext}
                 startingFreshSameContext={startingFreshSameContext}
+                viewToggle={!loading && !isPending && variant !== 'floating'
+                    ? <ChatViewToggle view={view} onChange={setView} />
+                    : undefined}
             />
             {loopPanelOpen && isLoopsEnabled() && (
                 <div className="relative">
@@ -1635,8 +1677,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         : { flex: '1 1 auto', minHeight: 0 }
                     }
                 >
-                    {/* Inner row: ConversationArea + MiniMap side by side */}
+                    {/* Inner row: ConversationArea + MiniMap, or the Agents canvas */}
                     <div className="relative flex flex-1 min-h-0 overflow-hidden min-w-0">
+                    {view === 'agents' ? (
+                    <AgentCanvas root={agentRoot} selectedId={selectedAgentId} onSelect={handleAgentSelect} />
+                    ) : (
+                    <>
                     <ConversationArea
                         loading={loading}
                         error={error}
@@ -1689,9 +1735,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             isStreaming={task?.status === 'running'}
                         />
                     )}
+                    </>
+                    )}
                     </div>
-                    {/* Ralph grilling complete — show Start Ralph panel */}
-                    {(() => {
+                    {/* Ralph grilling complete — show Start Ralph panel (thread view only) */}
+                    {view === 'thread' && (() => {
                         const ralphCtx = getRalphContext(task);
                         const goalPath = detectedGoalFile || (task?.metadata?.goalFilePath as string | undefined) || '';
                         // Path 1: traditional grilling-phase → start
@@ -1733,8 +1781,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         }
                         return null;
                     })()}
-                    {/* Plan file complete — offer one-click handoff to autopilot */}
-                    {isTerminal && !planChatBusy && resolveLoadedTaskMode(task) === 'ask' && effectivePlanPath && (
+                    {/* Plan file complete — offer one-click handoff to autopilot (thread view only) */}
+                    {view === 'thread' && isTerminal && !planChatBusy && resolveLoadedTaskMode(task) === 'ask' && effectivePlanPath && (
                         <ImplementPlanCard
                             planFilePath={effectivePlanPath}
                             workspaceId={workspaceId}
