@@ -79,9 +79,14 @@ function collectToolCalls(turns: ClientConversationTurn[]): ClientToolCall[] {
         const keepNew = (STATUS_RANK[tc.status] ?? 0) >= (STATUS_RANK[existing.status] ?? 0);
         const better = keepNew ? tc : existing;
         const worse = keepNew ? existing : tc;
+        // The terminal snapshot (e.g. a timeline `tool-complete`) often carries
+        // EMPTY args while an earlier snapshot has the full invocation args —
+        // keep whichever args are non-empty so name/model/type survive.
+        const mergedArgs = nonEmptyArgs(better) ?? nonEmptyArgs(worse);
         byId.set(tc.id, {
             ...worse,
             ...better,
+            ...(mergedArgs ? { args: mergedArgs } : {}),
             startTime: better.startTime ?? worse.startTime,
             endTime: better.endTime ?? worse.endTime,
             result: better.result ?? worse.result,
@@ -128,6 +133,14 @@ function rawToolName(tc: ClientToolCall): string | undefined {
 
 function rawArgs(tc: ClientToolCall): unknown {
     return tc.args ?? (tc as { parameters?: unknown }).parameters;
+}
+
+/** The tool call's args (or parameters) only when it's a non-empty object. */
+function nonEmptyArgs(tc: ClientToolCall): Record<string, unknown> | undefined {
+    const a = rawArgs(tc);
+    return a && typeof a === 'object' && !Array.isArray(a) && Object.keys(a).length > 0
+        ? (a as Record<string, unknown>)
+        : undefined;
 }
 
 function asString(v: unknown): string {

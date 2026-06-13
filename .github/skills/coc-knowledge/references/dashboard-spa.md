@@ -317,7 +317,9 @@ the orchestrator (this process) is the root and each `Task` tool call becomes a
 sub-agent child. From the call's args it captures the agent name (`args.name`,
 falling back to `description`/`prompt`), type (`agent_type`/`subagent_type`),
 `model`, `mode`, `description`, and `prompt`; status/timing come from the call.
-Children are deduped across `toolCalls`+timeline and ordered by start time.
+Children are deduped across `toolCalls`+timeline — keeping the snapshot with
+non-empty args, since a terminal `tool-complete` often carries empty args while
+an earlier snapshot holds the full invocation — and ordered by start time.
 Tool name/args are read
 via `toolName ?? name` and `args ?? parameters` so sub-agents are detected in
 both the live (SSE) shape and the persisted forge read model — they stay on the

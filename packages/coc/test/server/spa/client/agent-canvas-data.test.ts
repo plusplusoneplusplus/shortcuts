@@ -151,6 +151,27 @@ describe('buildAgentRunTreeFromTurns', () => {
         expect(root.children[0].summary).toBe('all green');
     });
 
+    it('keeps full args when a later tool-complete snapshot has empty args', () => {
+        // Real shape: toolCalls + timeline tool-start carry full args, but the
+        // timeline tool-complete (same id, same terminal status) has empty args.
+        const fullArgs = {
+            agent_type: 'explore', name: 'time-agent-1',
+            model: 'claude-sonnet-4.6', mode: 'background', description: 'Query current time',
+        };
+        const turns = [assistantTurn(
+            [tc({ id: 't1', args: fullArgs, status: 'completed', result: 'ok' })],
+            [
+                { type: 'tool-start', timestamp: '2026-06-13T21:18:04.000Z', toolCall: tc({ id: 't1', args: fullArgs, status: 'running' }) },
+                { type: 'tool-complete', timestamp: '2026-06-13T21:18:09.000Z', toolCall: tc({ id: 't1', args: {}, status: 'completed', result: 'ok' }) },
+            ],
+        )];
+        const child = buildAgentRunTreeFromTurns(turns).children[0];
+        expect(child).toMatchObject({
+            id: 't1', name: 'time-agent-1', role: 'explore',
+            model: 'claude-sonnet-4.6', mode: 'background', status: 'done',
+        });
+    });
+
     it('derives root status from children when no explicit status is given', () => {
         const running = [assistantTurn([tc({ id: 't1', args: { description: 'x' }, status: 'running' })])];
         expect(buildAgentRunTreeFromTurns(running).status).toBe('running');
