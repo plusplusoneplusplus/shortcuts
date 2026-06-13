@@ -130,7 +130,7 @@ function makeRichDetailResponse() {
                 },
                 {
                     role: 'assistant',
-                    content: '## Database overview\n\nThe `session-store.db` file is a SQLite database.',
+                    content: '## Database overview\n\nThe `session-store.db` file is a SQLite database.\n\n<script>alert("native")</script>\n<img src=x onerror="alert(\'native\')">',
                     timestamp: '2026-06-12T14:52:10.000Z',
                     turnIndex: 1,
                     model: 'gpt-5.5',
@@ -147,7 +147,7 @@ function makeRichDetailResponse() {
                         },
                     ],
                     timeline: [
-                        { type: 'content', timestamp: '2026-06-12T14:52:10.000Z', content: '## Database overview\n\nThe `session-store.db` file is a SQLite database.' },
+                        { type: 'content', timestamp: '2026-06-12T14:52:10.000Z', content: '## Database overview\n\nThe `session-store.db` file is a SQLite database.\n\n<script>alert("native")</script>\n<img src=x onerror="alert(\'native\')">' },
                         { type: 'tool-start', timestamp: '2026-06-12T14:52:11.000Z', toolCall: { id: 'tc-bash-1', toolName: 'bash', args: { command: 'sqlite3 session-store.db .tables' }, status: 'running' } },
                         { type: 'tool-complete', timestamp: '2026-06-12T14:52:12.000Z', toolCall: { id: 'tc-bash-1', toolName: 'bash', args: { command: 'sqlite3 session-store.db .tables' }, result: 'sessions  turns  forge_trajectory_events  checkpoints', status: 'completed' } },
                     ],
@@ -236,6 +236,13 @@ describe('NativeCopilotSessionsPanel — real ConversationTurnBubble integration
         // dedicated thinking slot — the mapper prepends a blockquote).
         expect(md).toContain('Reasoning');
         expect(md).toContain('inspect the schema');
+    });
+
+    it('escapes stored HTML and script payloads through the real bubble path', async () => {
+        const detail = await openDetail();
+        expect(detail.textContent).toContain('<script>alert("native")</script>');
+        expect(detail.querySelector('script')).toBeNull();
+        expect(detail.querySelector('img[onerror*="native"]')).toBeNull();
     });
 
     it('renders the user image gallery for the attached image', async () => {
