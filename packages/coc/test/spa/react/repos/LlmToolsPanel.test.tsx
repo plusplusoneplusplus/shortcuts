@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -170,6 +171,55 @@ describe('LlmToolsPanel', () => {
 
         expect(checkbox.checked).toBe(true);
         expect(mocks.preferences.updateLlmToolsConfig).not.toHaveBeenCalled();
+    });
+
+    it('exposes the parameter affordance as a focusable native button activated by Enter and Space', async () => {
+        const user = userEvent.setup();
+        render(<LlmToolsPanel workspaceId="repo-a" />);
+        await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
+
+        const toggle = screen.getByTestId('llm-tool-params-toggle-create_update_work_item') as HTMLButtonElement;
+        // Native <button> => platform-provided keyboard operability, reachable in the
+        // tab order, with an accessible label/state and no hover-only dependency.
+        expect(toggle.tagName).toBe('BUTTON');
+        expect(toggle.disabled).toBe(false);
+        expect(toggle.getAttribute('aria-hidden')).toBeNull();
+        expect(toggle.getAttribute('tabindex')).not.toBe('-1');
+        expect(toggle.getAttribute('aria-label')).toBe('Create/Update Work Item: 3 parameters');
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+
+        // Reachable via keyboard focus.
+        toggle.focus();
+        expect(document.activeElement).toBe(toggle);
+
+        // Enter expands the summary without any pointer interaction.
+        await user.keyboard('{Enter}');
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        expect(screen.getByTestId('llm-tool-params-create_update_work_item')).toBeTruthy();
+
+        // Space collapses it again (button keeps focus across the re-render).
+        expect(document.activeElement).toBe(toggle);
+        await user.keyboard(' ');
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('llm-tool-params-create_update_work_item')).toBeNull();
+    });
+
+    it('lays out for narrow screens: single-column grid, wrapping params, and a fit-width affordance', async () => {
+        render(<LlmToolsPanel workspaceId="repo-a" />);
+        await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
+
+        // Single column by default (narrow screens), two columns only from the `sm` breakpoint up.
+        const list = screen.getByTestId('llm-tools-list');
+        expect(list.className).toContain('grid-cols-1');
+        expect(list.className).toContain('sm:grid-cols-2');
+
+        // The affordance hugs its content rather than stretching, and is not hover-only.
+        const toggle = screen.getByTestId('llm-tool-params-toggle-create_update_work_item');
+        expect(toggle.className).toContain('w-fit');
+
+        // Expanded parameter tokens wrap instead of overflowing on narrow widths.
+        await act(async () => { fireEvent.click(toggle); });
+        expect(screen.getByTestId('llm-tool-params-create_update_work_item').className).toContain('flex-wrap');
     });
 
     it('renders a compact empty-state for tools with no parameters', async () => {
