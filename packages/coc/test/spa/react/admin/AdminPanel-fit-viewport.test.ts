@@ -22,6 +22,14 @@ const routerSource = readFileSync(
     resolve(__dirname, '../../../../src/server/spa/client/react/layout/Router.tsx'),
     'utf-8',
 );
+const adminPanelSource = readFileSync(
+    resolve(__dirname, '../../../../src/server/spa/client/react/admin/AdminPanel.tsx'),
+    'utf-8',
+);
+const dreamsViewSource = readFileSync(
+    resolve(__dirname, '../../../../src/server/spa/client/react/features/dreams/DreamsView.tsx'),
+    'utf-8',
+);
 
 function block(selector: string): string {
     const re = new RegExp(`\\.admin-redesign\\s+${selector.replace(/\./g, '\\.')}\\s*\\{([^}]*)\\}`);
@@ -97,5 +105,30 @@ describe('AdminPanel — fit-to-viewport layout invariants', () => {
         // works inside any overflow container, so this is still the right tool.
         expect(topbar).toMatch(/position:\s*sticky/);
         expect(topbar).toMatch(/top:\s*0/);
+    });
+
+    // An embedded tool view (`.ar-tool-embed`) suppresses the outer `.ar-main`
+    // scroller, so each embed must own its scroll. Skills/Memory roots do this
+    // via an inner scroll region; the Dreams admin reuses the `.aip-page` grid,
+    // which has none — so without an explicit rule its content (the
+    // provider-activity queue) overflows unreachably and the panel can't scroll.
+    describe('embedded Dreams admin scroll region', () => {
+        it('.ar-main--embed suppresses the outer scroller for embedded views', () => {
+            expect(block('.ar-main--embed')).toMatch(/overflow:\s*hidden/);
+        });
+
+        it('Dreams renders inside `.ar-tool-embed` using the `.aip-page` shell', () => {
+            // The CSS scroll fix is keyed on this exact markup, so lock it in.
+            expect(adminPanelSource).toMatch(/className="ar-tool-embed"/);
+            expect(adminPanelSource).toMatch(/activeToolItem\.tab === 'dreams-admin' && <DreamsView/);
+            expect(dreamsViewSource).toMatch(/className="aip-page"/);
+        });
+
+        it('embedded `.aip-page` owns its own scroll region so the panel scrolls', () => {
+            const embeddedPage = block('.ar-tool-embed > .aip-page');
+            expect(embeddedPage).toMatch(/overflow-y:\s*auto/);
+            // Page padding so content is not flush against the embed edges.
+            expect(embeddedPage).toMatch(/padding:/);
+        });
     });
 });
