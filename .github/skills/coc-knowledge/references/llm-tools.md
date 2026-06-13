@@ -12,6 +12,8 @@ AI tool factories injected into chat executor sessions. Each factory follows a p
 
 Exports: `DEFAULT_DISABLED_LLM_TOOLS`, `isLlmToolEnabled()`, `filterDisabledLlmTools()`.
 
+**Feature-gated registry entries:** `getEffectiveLlmToolRegistry({ loopsEnabled, excalidrawEnabled, canvasEnabled })` filters `scheduleWakeup`, the excalidraw tools, and the canvas tools (`create_canvas`/`update_canvas`/`read_canvas`) out of the settings list when their flags are off.
+
 **Mode-aware defaults:** `getEffectiveDefaultDisabledTools(uiLayoutMode)` disables `tavily_web_search` at registry level, and also disables the work-item tool family (`get_work_item` and `create_update_work_item`) in classic mode.
 
 **Per-repo overrides:** `PerRepoPreferences.disabledLlmTools` explicitly overrides defaults (empty array = enable all). API: `GET/PUT /api/workspaces/:id/llm-tools-config`.
@@ -31,6 +33,7 @@ preferences are rewritten.
 | `resolve-comment-tool.ts` | `resolve_comment` | Marks inline comments as resolved. Tracks resolved IDs in per-invocation Map. |
 | `save-classification-tool.ts` | `saveClassification` | Persists complete per-hunk diff classifications for PR/commit/branch-range review. Valid categories are `logic`, `mechanical`, `test`, `simple`, and `generated`; newly saved `test` hunks require `testFidelityComment`, `logic` hunks require `summaryComment`, and critical metadata is validated instead of dropped. |
 | `search-conversations-tool.ts` | `search_conversations` | FTS5 full-text search over past conversation history. Requires SQLite-backed `ProcessStore`. |
+| `canvas-tools.ts` | `create_canvas`, `update_canvas`, `read_canvas` | Chat canvas side-panel documents. Gated by the `canvas.enabled` config flag (`buildCanvasToolsAddon` reads it from `<dataDir>/config.yaml`, with an injectable override for tests). Persists via `CanvasStore` (`~/.coc/repos/<wsId>/canvases/`), links the canvas to the creating process, applies revision-checked exact-match edits, and emits `canvas-updated` SSE events on the process channel. |
 | `get-conversation-tool.ts` | `get_conversation` | Full transcript by processId, compacted to token budget. 5-level progressive compaction. Supports `fromTurn`/`toTurn` paging. |
 | `suggest-follow-ups-tool.ts` | `suggest_follow_ups` | Emits follow-up action suggestions after AI response. |
 | `tavily-web-search-tool.ts` | `tavily_web_search` | Live web search via Tavily API. Key from `~/.coc/providers.json`. Disabled by default. |

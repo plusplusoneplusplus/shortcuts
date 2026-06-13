@@ -89,6 +89,14 @@ all have their own `references/*.md`.
   Group statuses are normalized (`draft|running|completed|failed|cancelled`)
   with feature detail in `extra.detailStatus`; registry writes are best-effort
   and must never break orchestration.
+- **Chat canvas** (`canvas.enabled`, default off) persists markdown artifacts
+  under `~/.coc/repos/<wsId>/canvases/<canvasId>/` through
+  `src/server/canvas/canvas-store.ts` with revision-checked updates. AI edits
+  go through the `create_canvas`/`update_canvas`/`read_canvas` LLM tools
+  (which emit `canvas-updated` SSE events on the linked process); user saves
+  go through the workspace canvases REST routes (409 + current record on a
+  stale revision, `canvas-updated` WebSocket broadcast). Do not write canvas
+  files directly from other features.
 - **Follow-up enqueue sites** must call `resolveFollowUpMode(...)` and set
   `payload.mode`. `FollowUpExecutor.executeFollowUp` fail-loud warns + defaults
   to `'ask'` if missing.

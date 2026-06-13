@@ -634,6 +634,16 @@ timeout: 300
             expect(result.excalidraw.enabled).toBe(true);
         });
 
+        it('should default canvas.enabled to false', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, {});
+            expect(result.canvas.enabled).toBe(false);
+        });
+
+        it('should override canvas.enabled from file', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { canvas: { enabled: true } });
+            expect(result.canvas.enabled).toBe(true);
+        });
+
         it('should preserve auto provider routing defaults when not overridden', () => {
             const result = mergeConfig(DEFAULT_CONFIG, {});
             expect(result.features.autoAgentProviderRouting).toBe(false);
@@ -966,6 +976,8 @@ timeout: 300
                 '    enabled: true',
                 'excalidraw:',
                 '  enabled: true',
+                'canvas:',
+                '  enabled: true',
                 'containerDefaultAgent:',
                 '  enabled: true',
                 'agentProviderRouting:',
@@ -1171,6 +1183,9 @@ timeout: 300
                     },
                   },
                   "approvePermissions": true,
+                  "canvas": {
+                    "enabled": false,
+                  },
                   "chat": {
                     "askUser": {
                       "enabled": true,
@@ -1352,6 +1367,7 @@ timeout: 300
                 "sources": {
                   "agentProviderRouting.auto": "default",
                   "approvePermissions": "file",
+                  "canvas.enabled": "default",
                   "chat.askUser.enabled": "file",
                   "chat.followUpSuggestions.count": "file",
                   "chat.followUpSuggestions.enabled": "file",

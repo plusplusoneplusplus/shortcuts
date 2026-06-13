@@ -51,6 +51,8 @@ import {
 import type { ForEachGenerationContext, MapReduceGenerationContext } from '../tasks/task-types';
 import { createTavilyWebSearchTool } from '../llm-tools/tavily-web-search-tool';
 import { createExcalidrawTools } from '../llm-tools/excalidraw-tools';
+import { createCanvasTools } from '../llm-tools/canvas-tools';
+import { resolveConfig, CONFIG_FILE_NAME } from '../../config';
 import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';
 import { createScheduleWakeupTool, createCreateLoopTool, createCancelLoopTool, createListLoopsTool } from '../llm-tools/loop-tools';
 import type { LoopToolDeps } from '../llm-tools/loop-tools';
@@ -676,6 +678,45 @@ export function buildExcalidrawToolsAddon(
     const { createOrUpdate, read } = createExcalidrawTools({ dataDir, workspaceId });
 
     return { tools: [createOrUpdate, read], suffix: '' };
+}
+
+// ============================================================================
+// Canvas Tools (gated by the `canvas.enabled` config flag)
+// ============================================================================
+
+export function buildCanvasToolsAddon(
+    dataDir: string | undefined,
+    store: ProcessStore | undefined,
+    workspaceId: string | undefined,
+    processId: string | undefined,
+    opts?: { enabled?: boolean },
+): { tools: Tool<any>[]; suffix: string } {
+    if (!dataDir || !workspaceId) {
+        return { tools: [], suffix: '' };
+    }
+
+    const enabled = opts?.enabled
+        ?? resolveConfig(path.join(dataDir, CONFIG_FILE_NAME)).canvas.enabled;
+    if (!enabled) {
+        return { tools: [], suffix: '' };
+    }
+
+    const { create, update, read } = createCanvasTools({
+        dataDir,
+        workspaceId,
+        processId,
+        processStore: store,
+    });
+
+    const suffix =
+        '\n\nCanvas tools (`create_canvas`, `update_canvas`, `read_canvas`) maintain a live markdown ' +
+        'document in a side panel next to this chat. Create a canvas when the user asks for a document, ' +
+        'plan, spec, or other long-form text they will iterate on — not for short answers. Prefer ' +
+        'targeted `update_canvas` edits over full rewrites, always pass `expectedRevision`, and call ' +
+        '`read_canvas` after a revision conflict (the user edited the canvas). Once content lives in a ' +
+        'canvas, keep chat replies brief and reference the canvas instead of repeating it.';
+
+    return { tools: [create, update, read], suffix };
 }
 
 // ============================================================================

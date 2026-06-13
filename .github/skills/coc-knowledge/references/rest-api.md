@@ -45,6 +45,16 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | GET | `/api/workspaces/:id/endev/status` | Cached EnDev xDPU eligibility status; `?refresh=true` revalidates |
 | POST | `/api/workspaces/:id/endev/revalidate` | Force EnDev xDPU eligibility revalidation |
 
+## Canvases
+
+Chat canvas side panel (gated by `canvas.enabled`, default off). Markdown artifacts the AI and the user co-edit; AI edits go through the canvas LLM tools, these routes serve the dashboard panel.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/workspaces/:id/canvases` | List canvas descriptors (no content), newest first; `?processId=` filters to canvases linked to one chat process |
+| GET | `/api/workspaces/:id/canvases/:canvasId` | Full canvas record (descriptor + markdown content) |
+| PUT | `/api/workspaces/:id/canvases/:canvasId` | User save. Body `{ content?, edits?, expectedRevision?, title? }`; a stale `expectedRevision` returns 409 with `{ error: 'revision-conflict', currentRevision, canvas }`. Successful saves broadcast a `canvas-updated` WebSocket event |
+
 ## Filesystem
 
 | Method | Path | Description |

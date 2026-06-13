@@ -19,6 +19,7 @@ spa/client/react/
 ├── hooks/              # 30+ custom hooks
 ├── layout/             # Layout (Router, TopBar, BottomNav, ThemeProvider)
 ├── features/
+│   ├── canvas/         # Canvas side panel (CanvasPanel) for AI co-edited markdown documents
 │   ├── chat/           # Chat UI: ChatDetail, ChatListPane, ConversationArea
 │   ├── dreams/         # Workspace Dreams review panel with feature/opt-in states, queue-backed run-now task summary, provider-attributed Activity/Admin AI Provider visibility, filters, plain-language card guidance, source evidence links, and card lifecycle actions
 │   ├── memory/         # Memory V2 route, facts/review/episodes tabs, repo memory settings section
@@ -98,6 +99,22 @@ transient
 `pendingAskUser` as one compact "Question planning" card plus grouped role
 sections and provenance chips; it does not create separate agent threads or
 separate answer submissions.
+
+`features/canvas/CanvasPanel.tsx` renders the chat canvas side panel, gated by
+the `canvas.enabled` runtime flag (`isCanvasEnabled()` in `utils/config.ts`,
+default off). When enabled, `ChatDetail` discovers canvases linked to the open
+process via `client.canvases.list(workspaceId, { processId })` and reacts to
+live `canvas-updated` SSE events (surfaced by `useChatSSE`'s `onCanvasUpdated`
+callback) to mount the panel as a desktop-only (`lg:`) resizable right column
+beside the conversation, with width persisted under
+`coc.canvasPanel.width.<workspaceId>` via `useResizablePanel`. The panel shows
+the canvas title, revision, and a Preview (shared `useMarkdownPreview`
+pipeline) / Edit (plain textarea) toggle. User edits autosave with a debounce
+through `client.canvases.save(...)` carrying `expectedRevision`; an HTTP 409
+shows a conflict banner with a "Load latest" action, and a live AI update
+arriving over unsaved local edits shows a pending-update banner instead of
+clobbering the draft. The close button hides the panel for the current chat
+selection only (no persistent dismissal state).
 
 ## Key Contexts
 

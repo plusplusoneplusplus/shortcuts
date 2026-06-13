@@ -9,6 +9,7 @@ import type { MemoryV2Addon } from './memory-v2-addon';
 import {
     applyLlmToolPreferences,
     buildAskUserAddon,
+    buildCanvasToolsAddon,
     buildCreateWorkItemAddon,
     buildExcalidrawToolsAddon,
     buildFollowUpSuggestionsAddon,
@@ -42,6 +43,9 @@ export interface ChatToolBundleOptions {
     includeTavilyWebSearch?: boolean;
     includeScheduleWakeup?: boolean;
     includeExcalidrawTools?: boolean;
+    includeCanvasTools?: boolean;
+    /** Overrides the `canvas.enabled` config flag (used by tests). */
+    canvasToolsEnabled?: boolean;
     excludeTools?: string[];
 }
 
@@ -115,6 +119,16 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
 
     if (options.includeExcalidrawTools !== false) {
         addons.push(buildExcalidrawToolsAddon(options.dataDir, options.workspaceId));
+    }
+
+    if (options.includeCanvasTools !== false) {
+        addons.push(buildCanvasToolsAddon(
+            options.dataDir,
+            options.store,
+            options.workspaceId,
+            options.processId,
+            options.canvasToolsEnabled !== undefined ? { enabled: options.canvasToolsEnabled } : undefined,
+        ));
     }
 
     if (options.memoryV2) {

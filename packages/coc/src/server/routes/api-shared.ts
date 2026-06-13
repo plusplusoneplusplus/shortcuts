@@ -38,7 +38,7 @@ export interface ApiRouteContext {
      * config changes without a server restart. Falls back to startup
      * values when runtimeConfigService is not available.
      */
-    getLiveFeatureFlags?: () => { excalidrawEnabled: boolean };
+    getLiveFeatureFlags?: () => { excalidrawEnabled: boolean; canvasEnabled: boolean };
 }
 
 /** Maximum git output buffer size (50 MB) — matches forge DEFAULT_MAX_BUFFER. */

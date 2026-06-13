@@ -37,6 +37,7 @@ interface DashboardConfig {
     loopsEnabled?: boolean;
     dreamsEnabled?: boolean;
     excalidrawEnabled?: boolean;
+    canvasEnabled?: boolean;
     mcpOauthEnabled?: boolean;
     focusedDiffEnabled?: boolean;
     sessionContextAttachmentsEnabled?: boolean;
@@ -297,6 +298,11 @@ export function isDreamsEnabled(): boolean {
 
 export function isExcalidrawEnabled(): boolean {
     return getConfig().excalidrawEnabled === true;
+}
+
+/** Returns true when the chat canvas side panel is enabled. */
+export function isCanvasEnabled(): boolean {
+    return getConfig().canvasEnabled === true;
 }
 
 export function isMcpOauthEnabled(): boolean {

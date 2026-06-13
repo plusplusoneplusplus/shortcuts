@@ -28,7 +28,9 @@ import { clearAskUserDraftsForProcess } from './hooks/useAskUserDraftStore';
 import { buildMetadataProcess } from '../../utils/chatUtils';
 import type { QueuedMessage } from '../../utils/chatUtils';
 import { useChatSSE } from './hooks/useChatSSE';
-import type { RalphGrillPlanningProgress } from './hooks/useChatSSE';
+import type { RalphGrillPlanningProgress, CanvasUpdatedEvent } from './hooks/useChatSSE';
+import { CanvasPanel } from '../canvas/CanvasPanel';
+import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { hydrateAskUserBatch } from './hooks/hydrateAskUserBatch';
 import { useSendMessage } from './hooks/useSendMessage';
 import { useQueuedTaskPoll } from '../../queue/hooks/useQueuedTaskPoll';
@@ -54,7 +56,7 @@ import { MobileScratchpadTabBar } from './scratchpad/MobileScratchpadTabBar';
 import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
 import { resolveLoadedTaskMode } from './chatMode';
 import { normalizeChatMode } from '../../repos/modeConfig';
-import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isLoopsEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
+import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isLoopsEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, isCanvasEnabled } from '../../utils/config';
 import type { ChatMode } from '../../repos/modeConfig';
 import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
@@ -174,6 +176,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [ralphGrillPlanningProgress, setRalphGrillPlanningProgress] = useState<RalphGrillPlanningProgress | null>(null);
     const [pendingAskUserBatch, setPendingAskUserBatch] = useState<import('./hooks/useChatSSE').AskUserBatch | null>(null);
     const [mcpOAuthPrompts, setMcpOAuthPrompts] = useState<import('./hooks/useChatSSE').McpOAuthPromptData[]>([]);
+    const [activeCanvasId, setActiveCanvasId] = useState<string | null>(null);
+    const [canvasLiveEvent, setCanvasLiveEvent] = useState<CanvasUpdatedEvent | null>(null);
+    const [canvasPanelClosed, setCanvasPanelClosed] = useState(false);
     const [noteEdits, setNoteEdits] = useState<Array<{
         editId: string; notePath: string; preEditContent: string;
         postEditContent?: string; timestamp: string; turnIndex: number; tooLarge?: boolean;
@@ -803,6 +808,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         onMcpOAuthCompleted: (data) => {
             setMcpOAuthPrompts(prev => prev.filter(p => p.requestId !== data.requestId));
         },
+        onCanvasUpdated: (data) => {
+            setActiveCanvasId(data.canvasId);
+            setCanvasLiveEvent(data);
+            setCanvasPanelClosed(false);
+        },
     });
 
     useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, setTurnsAndRef });
@@ -810,6 +820,38 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     useEffect(() => {
         setRalphGrillPlanningProgress(null);
     }, [taskId]);
+
+    // Canvas side panel: reset on chat switch, then discover canvases linked
+    // to this process (live `canvas-updated` SSE events take over from there).
+    useEffect(() => {
+        setActiveCanvasId(null);
+        setCanvasLiveEvent(null);
+        setCanvasPanelClosed(false);
+    }, [taskId]);
+
+    useEffect(() => {
+        if (!isCanvasEnabled() || !workspaceId) return;
+        const pid = processId ?? bareTaskId;
+        if (!pid) return;
+        let cancelled = false;
+        getSpaCocClient().canvases.list(workspaceId, { processId: pid })
+            .then(canvases => {
+                if (!cancelled && canvases.length > 0) {
+                    setActiveCanvasId(prev => prev ?? canvases[0].id);
+                }
+            })
+            .catch(() => { /* canvas discovery is best-effort */ });
+        return () => { cancelled = true; };
+    }, [workspaceId, processId, bareTaskId]);
+
+    const canvasResize = useResizablePanel({
+        initialWidth: 380,
+        minWidth: 240,
+        maxWidth: 720,
+        storageKey: workspaceId ? `coc.canvasPanel.width.${encodeURIComponent(workspaceId)}` : undefined,
+        direction: 'right',
+    });
+    const showCanvasPanel = !!(activeCanvasId && workspaceId && !canvasPanelClosed && isCanvasEnabled());
 
     const { handlePopOut, handleFloat } = useChatWindowActions({ task, taskId, workspaceId });
 
@@ -1511,6 +1553,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     />
                 </div>
             )}
+            <div className="relative flex-1 min-h-0 flex flex-row overflow-hidden min-w-0">
             <div ref={scratchpadContainerRef}className={`relative flex-1 min-h-0 flex ${isVerticalScratchpad ? 'flex-row' : 'flex-col'} overflow-x-hidden min-w-0`}>
                 {/* Chat column: in vertical split, also contains the follow-up input */}
                 <div
@@ -1777,6 +1820,27 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         </div>
                     </>
                 )}
+            </div>
+            {showCanvasPanel && activeCanvasId && workspaceId && (
+                <>
+                    <div
+                        className="hidden lg:flex items-center justify-center w-1 cursor-col-resize shrink-0 hover:bg-[#d0d0d0] dark:hover:bg-[#3a3a3c]"
+                        onMouseDown={canvasResize.handleMouseDown}
+                        onTouchStart={canvasResize.handleTouchStart}
+                        role="separator"
+                        aria-label="Resize canvas panel"
+                        data-testid="canvas-panel-resize-handle"
+                    />
+                    <div style={{ width: canvasResize.width }} className="hidden lg:block shrink-0 h-full border-l border-[#e0e0e0] dark:border-[#474749]">
+                        <CanvasPanel
+                            workspaceId={workspaceId}
+                            canvasId={activeCanvasId}
+                            liveEvent={canvasLiveEvent}
+                            onClose={() => setCanvasPanelClosed(true)}
+                        />
+                    </div>
+                </>
+            )}
             </div>
             {/* Mobile tab bar — shown when isMobileScratchpad, positioned below follow-up input */}
             {!isVerticalScratchpad && !isPending && noSessionForFollowUp && !readOnly && (!isMobileScratchpad || scratchpad.activeMobileTab === 'chat') && (

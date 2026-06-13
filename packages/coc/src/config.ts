@@ -208,6 +208,10 @@ export interface CLIConfig {
     excalidraw?: {
         enabled?: boolean;
     };
+    /** Chat canvas side panel (AI co-edited markdown documents). Disabled by default. */
+    canvas?: {
+        enabled?: boolean;
+    };
     /** Container default agent — smart routing session. Disabled by default. */
     containerDefaultAgent?: {
         enabled?: boolean;
@@ -474,6 +478,10 @@ export interface ResolvedCLIConfig {
     excalidraw: {
         enabled: boolean;
     };
+    /** Chat canvas side panel (AI co-edited markdown documents). */
+    canvas: {
+        enabled: boolean;
+    };
     /** Container default agent — smart routing session. */
     containerDefaultAgent: {
         enabled: boolean;
@@ -696,6 +704,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
     },
     excalidraw: {
+        enabled: false,
+    },
+    canvas: {
         enabled: false,
     },
     containerDefaultAgent: {

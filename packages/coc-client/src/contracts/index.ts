@@ -1,4 +1,5 @@
 export * from './admin';
+export * from './canvases';
 export * from './common';
 export * from './db-browser';
 export * from './dreams';
