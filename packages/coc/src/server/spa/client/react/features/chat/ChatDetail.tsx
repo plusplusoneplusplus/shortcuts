@@ -31,6 +31,8 @@ import type { QueuedMessage } from '../../utils/chatUtils';
 import { useChatSSE } from './hooks/useChatSSE';
 import type { RalphGrillPlanningProgress, CanvasUpdatedEvent } from './hooks/useChatSSE';
 import { CanvasPanel } from '../canvas/CanvasPanel';
+import { SourceCanvasPanel, useSourceCanvasState } from './source-canvas';
+import { BottomSheet } from '../../ui/BottomSheet';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { hydrateAskUserBatch } from './hooks/hydrateAskUserBatch';
 import { useSendMessage } from './hooks/useSendMessage';
@@ -290,6 +292,25 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     }, [appState.workspaces, workspaceId]);
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(workspaceId, sessionContextAttachmentsEnabled);
+
+    // ── Docked source-file canvas (right panel) ─────────────────────────────
+    // Mutually exclusive with the scratchpad and the agent canvas: opening it
+    // closes those, and opening either of those closes it (one right panel at
+    // a time). Declared before useChatSSE so the canvas-updated handler below
+    // can close it when a live agent canvas opens.
+    const sourceCanvas = useSourceCanvasState({
+        onOpen: () => {
+            scratchpad.close();
+            setCanvasPanelClosed(true);
+        },
+    });
+    const sourceCanvasResize = useResizablePanel({
+        initialWidth: 560,
+        minWidth: 320,
+        maxWidth: 1100,
+        storageKey: `coc.sourceCanvasPanel.width${workspaceId ? `.${encodeURIComponent(workspaceId)}` : ''}`,
+        direction: 'right',
+    });
 
     // Keep refs in sync with state for stale-closure-safe draft saves
     followUpInputRef.current = followUpInput;
@@ -925,6 +946,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             setActiveCanvasId(data.canvasId);
             setCanvasLiveEvent(data);
             setCanvasPanelClosed(false);
+            sourceCanvas.close();
         },
     });
 
@@ -940,7 +962,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         setActiveCanvasId(null);
         setCanvasLiveEvent(null);
         setCanvasPanelClosed(false);
-    }, [taskId]);
+        sourceCanvas.close();
+    }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         if (!isCanvasEnabled() || !workspaceId) return;
@@ -987,7 +1010,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 <button
                     type="button"
                     className="inline-flex items-center justify-center w-7 h-7 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
-                    onClick={() => setCanvasPanelClosed(false)}
+                    onClick={() => { sourceCanvas.close(); setCanvasPanelClosed(false); }}
                     aria-label="Open canvas"
                     title="Open canvas"
                     data-testid="canvas-reopen"
@@ -1032,6 +1055,50 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 />
             </div>
         </>
+        )
+    ) : null;
+
+    // Docked source-file canvas: a full-height sibling column on desktop, a
+    // full-height BottomSheet on mobile. Mutually exclusive with the agent
+    // canvas above (only one of these columns is ever non-null at a time).
+    const sourceCanvasFileRef = sourceCanvas.fileRef;
+    const sourceCanvasWsId = sourceCanvasFileRef?.wsId ?? workspaceId ?? null;
+    const sourceCanvasColumn = (sourceCanvas.isOpen && sourceCanvasFileRef) ? (
+        isMobile ? (
+            <BottomSheet
+                isOpen
+                onClose={sourceCanvas.close}
+                title={(sourceCanvasFileRef.displayPath || sourceCanvasFileRef.fullPath).replace(/\\/g, '/').split('/').pop() || 'Source'}
+                height={90}
+            >
+                <SourceCanvasPanel
+                    fileRef={sourceCanvasFileRef}
+                    wsId={sourceCanvasWsId}
+                    onClose={sourceCanvas.close}
+                />
+            </BottomSheet>
+        ) : (
+            <>
+                <div
+                    className="hidden lg:flex items-center justify-center w-1 cursor-col-resize shrink-0 hover:bg-[#d0d0d0] dark:hover:bg-[#3a3a3c]"
+                    onMouseDown={sourceCanvasResize.handleMouseDown}
+                    onTouchStart={sourceCanvasResize.handleTouchStart}
+                    role="separator"
+                    aria-label="Resize source canvas panel"
+                    data-testid="source-canvas-resize-handle"
+                />
+                <div
+                    style={{ width: sourceCanvasResize.width }}
+                    className="hidden lg:block shrink-0 h-full border-l border-[#e0e0e0] dark:border-[#474749]"
+                    data-testid="source-canvas-column"
+                >
+                    <SourceCanvasPanel
+                        fileRef={sourceCanvasFileRef}
+                        wsId={sourceCanvasWsId}
+                        onClose={sourceCanvas.close}
+                    />
+                </div>
+            </>
         )
     ) : null;
 
@@ -1597,8 +1664,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         && scratchpadCandidates.length > 0;
 
     const handleOpenScratchpad = useCallback(() => {
+        sourceCanvas.close();
         scratchpad.open(scratchpadCandidates[0]);
-    }, [scratchpad, scratchpadCandidates]);
+    }, [sourceCanvas, scratchpad, scratchpadCandidates]);
 
     const handleScratchpadNotFound = useCallback(() => {
         const missingPath = scratchpad.linkedNotePath;
@@ -2121,6 +2189,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             )}
             </div>{/* /left stack */}
             {canvasColumn}
+            {sourceCanvasColumn}
             </div>{/* /canvas split row */}
             <RenameDialog
                 open={renameOpen}
