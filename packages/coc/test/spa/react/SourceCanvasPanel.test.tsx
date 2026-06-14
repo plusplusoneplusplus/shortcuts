@@ -130,7 +130,7 @@ describe('SourceCanvasPanel', () => {
         expect(queryByTestId('source-canvas-source')).toBeNull();
     });
 
-    it('renders the loaded source content on success', () => {
+    it('renders the loaded source content on success (AC-04 line-gutter view)', () => {
         const { getByTestId, queryByTestId } = render(
             <SourceCanvasPanel
                 fileRef={fileRef}
@@ -145,7 +145,11 @@ describe('SourceCanvasPanel', () => {
                 onClose={() => {}}
             />,
         );
-        expect(getByTestId('source-canvas-source').textContent).toBe('const x = 1;\n');
+        const source = getByTestId('source-canvas-source');
+        // .ts → syntax-highlighted source with a line-number gutter (one row).
+        expect(source.textContent).toContain('const x = 1;');
+        expect(source.querySelectorAll('.source-canvas-line')).toHaveLength(1);
+        expect(source.querySelector('.source-canvas-line-number')?.textContent).toBe('1');
         expect(queryByTestId('source-canvas-loading')).toBeNull();
         expect(queryByTestId('source-canvas-error')).toBeNull();
     });

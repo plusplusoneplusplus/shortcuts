@@ -12,6 +12,7 @@
 import { useCallback, useState } from 'react';
 import { getSpaCocClient } from '../../../api/cocClient';
 import { Spinner } from '../../../ui/Spinner';
+import { SourceCanvasBody } from './SourceCanvasBody';
 import type { SourceCanvasFileRef } from './types';
 import type { SourceCanvasContentState } from './useSourceCanvasContent';
 
@@ -132,8 +133,8 @@ export function SourceCanvasPanel({ fileRef, wsId, content, onClose }: SourceCan
                 </div>
             </div>
             <div className="flex-1 min-h-0 overflow-auto" data-testid="source-canvas-body">
-                {/* AC-06: loading / error / success. AC-04 will replace the
-                    success branch with markdown / syntax-highlighted rendering. */}
+                {/* AC-06 loading / error states; AC-04 success rendering
+                    (formatted markdown vs syntax-highlighted source). */}
                 {(!content || content.status === 'loading') && (
                     <div
                         className="flex items-center gap-2 p-4 text-xs text-[#848484]"
@@ -156,12 +157,11 @@ export function SourceCanvasPanel({ fileRef, wsId, content, onClose }: SourceCan
                     </div>
                 )}
                 {content && content.status === 'success' && (
-                    <pre
-                        className="p-4 m-0 text-xs whitespace-pre-wrap break-words font-mono text-[#1e1e1e] dark:text-[#cccccc]"
-                        data-testid="source-canvas-source"
-                    >
-                        {content.content}
-                    </pre>
+                    <SourceCanvasBody
+                        fileName={fileName}
+                        content={content.content}
+                        language={content.language}
+                    />
                 )}
             </div>
         </div>
