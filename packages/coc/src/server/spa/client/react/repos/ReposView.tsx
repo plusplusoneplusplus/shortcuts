@@ -13,6 +13,8 @@ import { useMyWorkEnabled } from '../hooks/feature-flags/useMyWorkEnabled';
 import { useMyLifeEnabled } from '../hooks/feature-flags/useMyLifeEnabled';
 import { ReposGrid } from './ReposGrid';
 import { RepoDetail } from '../features/repo-detail/RepoDetail';
+import { RemoteSubBar } from '../features/remote-shell/RemoteSubBar';
+import { useRemoteShell } from '../hooks/preferences/useRemoteShell';
 import { ContainerSessionView, CONTAINER_DEFAULT_REPO_ID } from '../features/container-session/ContainerSessionView';
 import { MyWorkView, MY_WORK_WORKSPACE_ID } from './MyWorkView';
 import { MyLifeView, MY_LIFE_WORKSPACE_ID } from './MyLifeView';
@@ -24,6 +26,7 @@ export function ReposView() {
     const { breakpoint } = useBreakpoint();
     const myWorkEnabled = useMyWorkEnabled();
     const myLifeEnabled = useMyLifeEnabled();
+    const [remoteShell] = useRemoteShell();
     const isMobile = breakpoint === 'mobile';
     const hasSelection = state.selectedRepoId !== null;
     const heightClass = isMobile
@@ -107,7 +110,17 @@ export function ReposView() {
                 // ── Tablet / Desktop: full-width content, repo selected via top-bar tabs ──
                 <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden">
                     {selectedRepo ? (
-                        <RepoDetail key={`${selectedRepo.workspace.id}-${state.currentAgentId ?? ''}`} repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
+                        remoteShell ? (
+                            // Remote-first shell: RemoteSubBar (row 2) above a chromeless RepoDetail body.
+                            <>
+                                <RemoteSubBar repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
+                                <div className="flex-1 min-h-0 min-w-0 flex flex-col">
+                                    <RepoDetail chromeless key={`${selectedRepo.workspace.id}-${state.currentAgentId ?? ''}`} repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
+                                </div>
+                            </>
+                        ) : (
+                            <RepoDetail key={`${selectedRepo.workspace.id}-${state.currentAgentId ?? ''}`} repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
+                        )
                     ) : (
                         <div id="repo-detail-empty" data-testid="repo-detail-empty" className="flex-1 flex items-center justify-center text-sm text-[#848484]">
                             Select a repository to view details

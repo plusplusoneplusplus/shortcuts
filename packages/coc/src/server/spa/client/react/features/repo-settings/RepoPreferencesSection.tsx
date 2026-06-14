@@ -8,6 +8,7 @@ import { usePreferences, type SkillMode, type ModelMode } from '../../hooks/pref
 import { useModels, type ModelInfo } from '../../hooks/useModels';
 import { useFilesViewMode } from '../git/hooks/useFilesViewMode';
 import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
+import { useRemoteShell } from '../../hooks/preferences/useRemoteShell';
 import { useGlobalToast } from '../../contexts/ToastContext';
 import { useRepos } from '../../contexts/ReposContext';
 import { SkillPicker, type SkillOption } from '../../queue/SkillPicker';
@@ -37,6 +38,7 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
     const { models: availableModels, loading: modelsLoading } = useModels();
     const { mode: filesViewMode, setMode: setFilesViewMode } = useFilesViewMode(workspaceId);
     const [uiLayoutMode, setUiLayoutMode] = useUiLayoutMode();
+    const [remoteShell, setRemoteShell] = useRemoteShell();
     const { repos } = useRepos();
 
     // Available skills
@@ -297,6 +299,18 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
                     >
                         <option value="dev-workflow">Dev Workflow (Chats + Work Items + Tasks)</option>
                         <option value="classic">Classic (Activity)</option>
+                    </select>
+                </div>
+                <div className="flex flex-col md:flex-row items-start md:items-center gap-1 md:gap-2">
+                    <label className={labelClass}>Remote Shell</label>
+                    <select
+                        className={selectClass}
+                        value={remoteShell ? 'on' : 'off'}
+                        onChange={e => setRemoteShell(e.target.value === 'on')}
+                        data-testid="pref-remote-shell"
+                    >
+                        <option value="off">Off (classic repo tabs)</option>
+                        <option value="on">On (remote-first 2-row shell)</option>
                     </select>
                 </div>
                 <RalphMaxIterationsRow

@@ -25,6 +25,13 @@ const REPO_DETAIL_SOURCE = fs.readFileSync(
     'utf-8',
 );
 
+// Sub-tab visibility filtering lives in repoSubTabs.ts (shared with the
+// remote-first shell); source assertions about the filters read from here.
+const REPO_SUB_TABS_SOURCE = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'repoSubTabs.ts'),
+    'utf-8',
+);
+
 // ── Router: VALID_REPO_SUB_TABS ─────────────────────────────────────────────
 
 describe('Router terminal integration', () => {
@@ -84,7 +91,7 @@ describe('RepoDetail terminal visibility gating', () => {
     });
 
     it('filters terminal tab from visibleSubTabs when disabled', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("t.key !== 'terminal'");
+        expect(REPO_SUB_TABS_SOURCE).toContain("t.key !== 'terminal'");
     });
 
     it('visibleSubTabs depends on terminalEnabled', () => {

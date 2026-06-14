@@ -580,6 +580,36 @@ unmounts the embed, and renders the standard admin card content.
 Each tool's internal sub-tab/hash scheme (e.g. `#skills/installed`,
 `#logs?sessionId=…`) is unchanged.
 
+### Remote-first shell (experimental)
+
+An optional two-row navigation mode gated by `useRemoteShell()`
+(`hooks/preferences/useRemoteShell.ts`), a localStorage-backed
+(`coc-remote-shell-enabled`) module-store flag toggled from the **Remote Shell**
+select in `RepoPreferencesSection` (`pref-remote-shell`). Disabled by default;
+desktop-only.
+
+When on, the desktop top nav switches from per-clone repo tabs to a remote-first
+model built on `features/remote-shell/`:
+- **Row 1 `RemoteTopBar`** replaces `RepoTabStrip` inside `TopBar`. It renders one
+  tab per remote (origin) via `groupReposByRemote`, with a color dot, clone-count
+  chip, aggregate running pulse, and summed unseen badge. Selecting a remote picks
+  its last-used clone (else the first). Aggregation comes from `summarizeRemote` /
+  `computeCloneStatusMap` in `shellModel.ts`.
+- **Row 2 `RemoteSubBar`** renders above a `chromeless` `RepoDetail` in `ReposView`
+  and replaces RepoDetail's own header. It splits tabs by scope using
+  `partitionShellTabs`: remote-scoped (Work Items, Pull Requests) on the left, then
+  a clone-switcher popover (lists the remote's clones; footer opens
+  `CloneRepoDialog`), the primary clone tabs (Activity/Chats, CLI Sessions, Git,
+  Terminal), a `…` overflow for the rest (Explorer, Schedules, …), and compact
+  Ask/Queue buttons targeting the active clone.
+
+The sub-tab taxonomy and feature-flag/git/layout gating live in
+`features/repo-detail/repoSubTabs.ts` (`SUB_TABS`, `VISIBLE_SUB_TABS`,
+`TAB_GROUP_INDEX`, `computeVisibleSubTabs`), shared by both `RepoDetail` and the
+shell so the two stay behaviorally identical. Selection/routing reuse
+`buildRepoSubTabSuffix` via `useShellNavigation`. `SHOW_WIKI_TAB` / `SHOW_MEMORY_TAB`
+are defined in `featureFlags.ts` and re-exported from `TopBar` for back-compat.
+
 ## Onboarding
 
 - `WelcomeTour`: 5-step full-screen modal (Welcome/Modes/Queue/Multi-repo/Servers)

@@ -12,6 +12,14 @@ const REPO_DETAIL_SOURCE = fs.readFileSync(
     'utf-8',
 );
 
+// The sub-tab taxonomy and visibility logic were extracted into repoSubTabs.ts
+// (shared with the remote-first shell). Source-level assertions about that logic
+// read from this file.
+const REPO_SUB_TABS_SOURCE = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'repoSubTabs.ts'),
+    'utf-8',
+);
+
 describe('RepoDetail SUB_TABS', () => {
     it('includes a "chats" entry', () => {
         const chatsTab = SUB_TABS.find(t => t.key === 'chats');
@@ -88,11 +96,11 @@ describe('RepoDetail CLI Sessions placement (between Activity and Git)', () => {
     it('groups cli-sessions with the activity/git/terminal divider group (group 1)', () => {
         // TAB_GROUP_INDEX is not exported; assert via source so cli-sessions does
         // not render as a divider-flanked island between Activity and Git.
-        expect(REPO_DETAIL_SOURCE).toContain(
+        expect(REPO_SUB_TABS_SOURCE).toContain(
             "'chats': 1, 'activity': 1, 'cli-sessions': 1, 'copilot-sessions': 1, 'git': 1, 'terminal': 1,",
         );
         // cli-sessions / copilot-sessions must no longer be in the work-items group.
-        const workItemsGroupLine = REPO_DETAIL_SOURCE
+        const workItemsGroupLine = REPO_SUB_TABS_SOURCE
             .split('\n')
             .find(l => l.includes("'work-items': 2"));
         expect(workItemsGroupLine).toBeDefined();
@@ -101,7 +109,7 @@ describe('RepoDetail CLI Sessions placement (between Activity and Git)', () => {
     });
 
     it('dev-workflow order places cli-sessions immediately after chats', () => {
-        const devOrderMatch = REPO_DETAIL_SOURCE.match(/devWorkflowOrder.*?=\s*\[([\s\S]*?)\]/);
+        const devOrderMatch = REPO_SUB_TABS_SOURCE.match(/devWorkflowOrder.*?=\s*\[([\s\S]*?)\]/);
         expect(devOrderMatch).toBeTruthy();
         const keys = devOrderMatch![1].match(/'([^']+)'/g)!.map(k => k.replace(/'/g, ''));
         expect(keys[0]).toBe('chats');
@@ -142,7 +150,7 @@ describe('RepoDetail Dreams tab feature gating', () => {
     });
 
     it('filters dreams tab from visibleSubTabs when disabled', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("t.key !== 'dreams'");
+        expect(REPO_SUB_TABS_SOURCE).toContain("t.key !== 'dreams'");
     });
 
     it('visibleSubTabs depends on dreamsEnabled', () => {
@@ -771,38 +779,38 @@ describe('RepoDetail PullRequestsTab always-mounted', () => {
 
 describe('RepoDetail dev-workflow tab relabeling and reorder', () => {
     it('dev-workflow branch relabels schedules to "Jobs"', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("'schedules': 'Jobs'");
+        expect(REPO_SUB_TABS_SOURCE).toContain("'schedules': 'Jobs'");
     });
 
     it('dev-workflow branch relabels pull-requests to "Full Requests"', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("'pull-requests': 'Full Requests'");
+        expect(REPO_SUB_TABS_SOURCE).toContain("'pull-requests': 'Full Requests'");
     });
 
     it('dev-workflow branch defines the correct tab order', () => {
-        expect(REPO_DETAIL_SOURCE).toContain(
+        expect(REPO_SUB_TABS_SOURCE).toContain(
             "'chats', 'cli-sessions', 'work-items', 'dreams', 'schedules', 'explorer',",
         );
-        expect(REPO_DETAIL_SOURCE).toContain(
+        expect(REPO_SUB_TABS_SOURCE).toContain(
             "'workflows', 'git', 'terminal', 'pull-requests', 'tasks', 'settings',",
         );
     });
 
     it('classic branch does NOT apply dev-workflow relabels', () => {
         // Classic branch relabels Tasks as Plans, not Jobs/Full Requests
-        const classicBlock = REPO_DETAIL_SOURCE.split("if (uiLayoutMode === 'classic')")[1]?.split('} else {')[0] ?? '';
+        const classicBlock = REPO_SUB_TABS_SOURCE.split("if (uiLayoutMode === 'classic')")[1]?.split('} else {')[0] ?? '';
         expect(classicBlock).not.toContain("'Jobs'");
         expect(classicBlock).not.toContain("'Full Requests'");
     });
 
     it('dev-workflow appends dynamic tabs after the fixed order', () => {
         // The else branch must iterate tabMap leftovers (notes, wiki) after the ordered array
-        expect(REPO_DETAIL_SOURCE).toContain("// Append dynamic tabs");
-        expect(REPO_DETAIL_SOURCE).toContain("for (const [, tab] of tabMap)");
+        expect(REPO_SUB_TABS_SOURCE).toContain("// Append dynamic tabs");
+        expect(REPO_SUB_TABS_SOURCE).toContain("for (const [, tab] of tabMap)");
     });
 
     it('tab keys are unchanged — only labels differ', () => {
         // devWorkflowOrder uses the same keys as SUB_TABS
-        const devOrderMatch = REPO_DETAIL_SOURCE.match(/devWorkflowOrder.*?=\s*\[([\s\S]*?)\]/);
+        const devOrderMatch = REPO_SUB_TABS_SOURCE.match(/devWorkflowOrder.*?=\s*\[([\s\S]*?)\]/);
         expect(devOrderMatch).toBeTruthy();
         const keys = devOrderMatch![1].match(/'([^']+)'/g)!.map(k => k.replace(/'/g, ''));
         for (const key of keys) {

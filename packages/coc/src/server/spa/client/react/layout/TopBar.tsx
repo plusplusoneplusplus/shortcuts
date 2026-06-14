@@ -18,6 +18,8 @@ import { buildNoteHash, buildRepoSubTabSuffix } from './Router';
 import { NotificationBell } from '../shared/NotificationBell';
 import { agentProviderQuotaIndicator as AgentProviderQuotaIndicator } from '../shared/AgentProviderQuotaIndicator';
 import { RepoTabStrip } from '../features/repo-detail/RepoTabStrip';
+import { RemoteTopBar } from '../features/remote-shell/RemoteTopBar';
+import { useRemoteShell } from '../hooks/preferences/useRemoteShell';
 import { MY_WORK_WORKSPACE_ID } from '../repos/MyWorkView';
 import { MY_LIFE_WORKSPACE_ID } from '../repos/MyLifeView';
 import { useMyWorkEnabled } from '../hooks/feature-flags/useMyWorkEnabled';
@@ -25,13 +27,13 @@ import { useMyLifeEnabled } from '../hooks/feature-flags/useMyLifeEnabled';
 import { RepoManagementPopover } from '../repos/RepoManagementPopover';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { getHostname } from '../utils/config';
+import { SHOW_WIKI_TAB, SHOW_MEMORY_TAB } from '../featureFlags';
 import type { DashboardTab } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 
-/** Set to `true` to re-enable the top-level Wiki tab in navigation. */
-export const SHOW_WIKI_TAB = false;
-/** Set to `true` to re-enable the topbar Memory icon. */
-export const SHOW_MEMORY_TAB = false;
+// Nav flags live in featureFlags.ts; re-exported here for modules that import
+// them from TopBar (BottomNav, Router).
+export { SHOW_WIKI_TAB, SHOW_MEMORY_TAB };
 
 export const ALL_TABS: { label: string; tab: DashboardTab }[] = [
     { label: 'Wiki', tab: 'wiki' },
@@ -66,6 +68,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     const { theme, toggleTheme } = useTheme();
     const { breakpoint } = useBreakpoint();
     const isMobile = breakpoint === 'mobile';
+    const [remoteShell] = useRemoteShell();
     const [popoverOpen, setPopoverOpen] = useState(false);
     const hostname = getHostname();
     const brandLabel = hostname ? `CoC @ ${hostname}` : 'CoC';
@@ -188,7 +191,9 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                         🏠
                     </button>
                 )}
-                {!isMobile && (
+                {!isMobile && (remoteShell ? (
+                    <RemoteTopBar />
+                ) : (
                     <RepoTabStrip
                         repos={repos}
                         selectedRepoId={state.selectedRepoId}
@@ -196,7 +201,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                         unseenCounts={unseenCounts}
                         onRefresh={fetchRepos}
                     />
-                )}
+                ))}
                 {TABS.length > 0 && (
                     <nav className="hidden md:flex items-center gap-1 min-w-0 flex-shrink-0" id="tab-bar">
                         {TABS.map(({ label, tab }) => (

@@ -6,6 +6,12 @@
 /** Enable the welcome modal, first-steps card, and feature tips. */
 export const SHOW_WELCOME_TUTORIAL = true;
 
+/** Set to `true` to re-enable the top-level Wiki tab in navigation. */
+export const SHOW_WIKI_TAB = false;
+
+/** Set to `true` to re-enable the topbar Memory icon. */
+export const SHOW_MEMORY_TAB = false;
+
 /** Enable the focused-diff classification UI on the PR Files Changed tab. */
 export const SHOW_FOCUSED_DIFF = true;
 

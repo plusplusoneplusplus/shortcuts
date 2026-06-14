@@ -20,6 +20,13 @@ const REPO_DETAIL_SOURCE = fs.readFileSync(
     'utf-8',
 );
 
+// Sub-tab visibility filtering lives in repoSubTabs.ts (shared with the
+// remote-first shell); source assertions about the filters read from here.
+const REPO_SUB_TABS_SOURCE = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'repoSubTabs.ts'),
+    'utf-8',
+);
+
 // ── 1. Git tab present in static BASE_VISIBLE_SUB_TABS (for git repos) ──────
 
 describe('Git tab visible for git repos', () => {
@@ -40,13 +47,13 @@ describe('Git tab hidden for non-git repos', () => {
     });
 
     it('computes visibleSubTabs by filtering git when !isGitRepo', () => {
-        // The useMemo should filter VISIBLE_SUB_TABS based on isGitRepo
-        expect(REPO_DETAIL_SOURCE).toContain('VISIBLE_SUB_TABS');
-        expect(REPO_DETAIL_SOURCE).toContain("t.key !== 'git'");
+        // The shared helper filters VISIBLE_SUB_TABS based on isGitRepo
+        expect(REPO_SUB_TABS_SOURCE).toContain('VISIBLE_SUB_TABS');
+        expect(REPO_SUB_TABS_SOURCE).toContain("t.key !== 'git'");
     });
 
     it('filters out pull-requests tab for non-git repos', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("t.key !== 'pull-requests'");
+        expect(REPO_SUB_TABS_SOURCE).toContain("t.key !== 'pull-requests'");
     });
 
     it('uses visibleSubTabs (not VISIBLE_SUB_TABS) in the tab strip map', () => {
