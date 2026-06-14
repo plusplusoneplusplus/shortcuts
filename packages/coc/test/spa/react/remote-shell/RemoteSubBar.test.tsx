@@ -62,12 +62,22 @@ beforeEach(() => {
 });
 
 describe('RemoteSubBar', () => {
-    it('splits tabs into remote scope (Work Items, Pull Requests) and clone scope', () => {
+    it('keeps Work Items + Pull Requests in the remote scope', () => {
         renderBar();
         const remoteTabs = screen.getAllByTestId('remote-scope-tab').map(el => el.getAttribute('data-subtab'));
         expect(remoteTabs).toEqual(['work-items', 'pull-requests']);
+    });
+
+    it('shows every non-remote tab in the clone scope, inline, when width is unconstrained', () => {
+        renderBar();
         const cloneTabs = screen.getAllByTestId('clone-scope-tab').map(el => el.getAttribute('data-subtab'));
-        expect(cloneTabs).toEqual(['chats', 'cli-sessions', 'git', 'terminal']);
+        // jsdom reports no layout width → nothing overflows → all clone tabs render inline.
+        expect(cloneTabs).toEqual(['chats', 'cli-sessions', 'dreams', 'schedules', 'explorer', 'workflows', 'git', 'terminal', 'tasks', 'settings', 'notes']);
+        // No remote-scope tabs leak into the clone scope.
+        expect(cloneTabs).not.toContain('work-items');
+        expect(cloneTabs).not.toContain('pull-requests');
+        // Nothing is forced into an overflow when everything fits.
+        expect(screen.queryByTestId('subbar-overflow-toggle')).toBeNull();
     });
 
     it('switches sub-tab when a clone tab is clicked', () => {
@@ -87,23 +97,6 @@ describe('RemoteSubBar', () => {
         expect(items).toHaveLength(2);
         fireEvent.click(items[1]);
         expect(mockSelectClone).toHaveBeenCalledWith('b');
-    });
-
-    it('collapses less-used tabs under the overflow and routes clicks through it', () => {
-        renderBar();
-        const toggle = screen.getByTestId('subbar-overflow-toggle');
-        expect(toggle.getAttribute('data-active')).toBe('false');
-        fireEvent.click(toggle);
-        const explorer = screen.getAllByTestId('overflow-menu-item').find(el => el.getAttribute('data-subtab') === 'explorer')!;
-        expect(explorer).toBeTruthy();
-        fireEvent.click(explorer);
-        expect(mockSwitchSubTab).toHaveBeenCalledWith('explorer');
-    });
-
-    it('marks the overflow toggle active when a hidden tab is the active tab', () => {
-        mockAppState = { activeRepoSubTab: 'explorer' };
-        renderBar();
-        expect(screen.getByTestId('subbar-overflow-toggle').getAttribute('data-active')).toBe('true');
     });
 
     it('queues and asks against the active clone', () => {

@@ -5,14 +5,15 @@
  *   • Remote scope (shared across clones): Work Items, Pull Requests — shown once
  *     and unchanged when you switch clones.
  *   • Clone scope (follows the active checkout): a clone-switcher popover + the
- *     primary clone tabs (Activity, CLI Sessions, Git, Terminal). Less-used tabs
- *     (Explorer, Schedules, …) collapse under a ⋯ overflow.
+ *     clone tabs (Activity, CLI Sessions, Git, Terminal, Explorer, Schedules, …).
+ *     As many clone tabs as fit are shown inline; the rest collapse into a ⋯
+ *     overflow that is measured responsively against the available width.
  *
  * Compact Ask / Queue actions sit at the right edge, targeting the active clone.
  * Rendered above a chromeless RepoDetail in ReposView when the shell is on.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
 import { useWorkItems } from '../../contexts/WorkItemContext';
@@ -29,7 +30,7 @@ import { computeVisibleSubTabs, type SubTabDef } from '../repo-detail/repoSubTab
 import { groupReposByRemote, truncatePath } from '../../repos/repoGrouping';
 import { CloneRepoDialog } from '../../repos/CloneRepoDialog';
 import {
-    partitionShellTabs, computeCloneStatusMap, cloneStatusColor, summarizeRemote,
+    partitionShellTabs, computeCloneStatusMap, cloneStatusColor, summarizeRemote, computeVisibleTabKeys,
 } from './shellModel';
 import { useShellNavigation } from './useShellNavigation';
 import type { RepoData } from '../../repos/repoGrouping';
@@ -77,8 +78,7 @@ export function RemoteSubBar({ repo, repos, onRefresh }: RemoteSubBarProps) {
         isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
         pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, uiLayoutMode,
     }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, uiLayoutMode]);
-    const { remote: remoteTabs, clone: cloneTabs, overflow: overflowTabs } = useMemo(() => partitionShellTabs(tabs), [tabs]);
-    const overflowActive = overflowTabs.some(t => t.key === activeTab);
+    const { remote: remoteTabs, clone: cloneTabs } = useMemo(() => partitionShellTabs(tabs), [tabs]);
 
     const group = useMemo(() => {
         const groups = groupReposByRemote(repos, {});
@@ -96,8 +96,12 @@ export function RemoteSubBar({ repo, repos, onRefresh }: RemoteSubBarProps) {
     const [cloneOpen, setCloneOpen] = useState(false);
     const [ovOpen, setOvOpen] = useState(false);
     const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
+    // Which clone-tab keys fit inline; null means "show all" (no overflow / no layout yet).
+    const [visibleKeys, setVisibleKeys] = useState<Set<string> | null>(null);
     const cloneRef = useRef<HTMLDivElement>(null);
     const ovRef = useRef<HTMLDivElement>(null);
+    const cloneRegionRef = useRef<HTMLDivElement>(null);
+    const measureRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (!cloneOpen && !ovOpen) return;
@@ -116,21 +120,53 @@ export function RemoteSubBar({ repo, repos, onRefresh }: RemoteSubBarProps) {
         };
     }, [cloneOpen, ovOpen]);
 
+    // ── Responsive overflow: show as many clone tabs as fit; collapse the rest ──
+    const recomputeOverflow = useCallback(() => {
+        const region = cloneRegionRef.current;
+        const measure = measureRef.current;
+        if (!region || !measure) return;
+        const containerWidth = region.clientWidth;
+        const els = Array.from(measure.querySelectorAll<HTMLElement>('[data-measure-key]'));
+        const measured = els.map(el => ({ key: el.getAttribute('data-measure-key') || '', width: el.offsetWidth }));
+        const next = computeVisibleTabKeys(measured, containerWidth, activeTab);
+        setVisibleKeys(prev => {
+            if (next === null) return prev === null ? prev : null;
+            if (prev !== null && prev.size === next.size && [...next].every(k => prev.has(k))) return prev;
+            return next;
+        });
+    }, [activeTab]);
+
+    useEffect(() => {
+        const region = cloneRegionRef.current;
+        if (!region) return;
+        recomputeOverflow();
+        if (typeof ResizeObserver === 'undefined') return;
+        const ro = new ResizeObserver(recomputeOverflow);
+        ro.observe(region);
+        return () => ro.disconnect();
+    }, [recomputeOverflow, cloneTabs]);
+
+    const visibleCloneTabs = cloneTabs.filter(t => !visibleKeys || visibleKeys.has(t.key));
+    const hiddenCloneTabs = visibleKeys ? cloneTabs.filter(t => !visibleKeys.has(t.key)) : [];
+    const hasOverflow = hiddenCloneTabs.length > 0;
+    const overflowActive = hiddenCloneTabs.some(t => t.key === activeTab);
+
     const onTab = (key: RepoSubTab) => {
         if (key === 'work-items') workItemDispatch({ type: 'MARK_WORK_ITEMS_SEEN', repoId: cloneId });
         switchSubTab(key);
         setOvOpen(false);
     };
 
-    const badge = (key: RepoSubTab) => {
+    const badge = (key: RepoSubTab, forMeasure = false) => {
+        const tid = (id: string) => (forMeasure ? {} : { 'data-testid': id });
         if ((key === 'activity' || key === 'chats') && runningCount > 0) {
-            return <span className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[17px] text-[10px] font-mono bg-[#16825d] text-white px-1 rounded-full" data-testid="subbar-running-badge">{runningCount}</span>;
+            return <span {...tid('subbar-running-badge')} className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[17px] text-[10px] font-mono bg-[#16825d] text-white px-1 rounded-full">{runningCount}</span>;
         }
         if ((key === 'activity' || key === 'chats') && queuedCount > 0) {
-            return <span className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[17px] text-[10px] font-mono bg-[#0078d4] text-white px-1 rounded-full" data-testid="subbar-queued-badge">{queuedCount}</span>;
+            return <span {...tid('subbar-queued-badge')} className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[17px] text-[10px] font-mono bg-[#0078d4] text-white px-1 rounded-full">{queuedCount}</span>;
         }
         if (key === 'work-items' && unseenWorkItemCount > 0) {
-            return <span className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[17px] text-[10px] font-mono bg-[#0078d4] text-white px-1 rounded-full" data-testid="subbar-work-items-badge">{unseenWorkItemCount}</span>;
+            return <span {...tid('subbar-work-items-badge')} className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[17px] text-[10px] font-mono bg-[#0078d4] text-white px-1 rounded-full">{unseenWorkItemCount}</span>;
         }
         if (key === 'git' && (gitAhead > 0 || gitBehind > 0)) {
             return (
@@ -169,9 +205,23 @@ export function RemoteSubBar({ repo, repos, onRefresh }: RemoteSubBarProps) {
 
     return (
         <div
-            className="flex items-center gap-0.5 h-[42px] flex-shrink-0 px-3 border-b border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] overflow-x-auto scrollbar-hide"
+            className="relative flex items-center gap-0.5 h-[42px] flex-shrink-0 px-3 border-b border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e]"
             data-testid="remote-sub-bar"
         >
+            {/* Hidden width-measurement mirror of every clone tab (drives overflow). */}
+            <div ref={measureRef} aria-hidden className="absolute invisible h-0 overflow-hidden flex items-center gap-0.5 pointer-events-none">
+                {cloneTabs.map(t => (
+                    <span
+                        key={t.key}
+                        data-measure-key={t.key}
+                        className={'inline-flex items-center gap-1.5 h-[30px] px-2.5 text-[13px] whitespace-nowrap ' + (activeTab === t.key ? 'font-bold' : 'font-semibold')}
+                    >
+                        {t.label}
+                        {badge(t.key, true)}
+                    </span>
+                ))}
+            </div>
+
             {/* ── Remote scope ── */}
             {remoteTabs.length > 0 && <span className={scopeLabelClass} data-testid="scope-label-remote">Remote</span>}
             {remoteTabs.map(t => renderTab(t, 'remote-scope-tab'))}
@@ -249,10 +299,14 @@ export function RemoteSubBar({ repo, repos, onRefresh }: RemoteSubBarProps) {
                     </div>
                 )}
             </div>
-            {cloneTabs.map(t => renderTab(t, 'clone-scope-tab'))}
 
-            {/* overflow ⋯ */}
-            {overflowTabs.length > 0 && (
+            {/* Clone tabs — fill the available space; the tail overflows into ⋯. */}
+            <div ref={cloneRegionRef} className="flex items-center gap-0.5 flex-1 min-w-0 overflow-hidden" data-testid="clone-tab-region">
+                {visibleCloneTabs.map(t => renderTab(t, 'clone-scope-tab'))}
+            </div>
+
+            {/* overflow ⋯ (only when some clone tabs don't fit) */}
+            {hasOverflow && (
                 <div className="relative flex-shrink-0" ref={ovRef}>
                     <button
                         data-testid="subbar-overflow-toggle"
@@ -273,12 +327,12 @@ export function RemoteSubBar({ repo, repos, onRefresh }: RemoteSubBarProps) {
                     </button>
                     {ovOpen && (
                         <div
-                            className="absolute z-50 top-full left-0 mt-1 min-w-[190px] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg p-1.5"
+                            className="absolute z-50 top-full right-0 mt-1 min-w-[190px] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg p-1.5"
                             role="menu"
                             data-testid="subbar-overflow-menu"
                         >
                             <div className="px-2 pt-1 pb-2 text-[10px] font-bold uppercase tracking-[0.07em] text-[#848484] dark:text-[#777]">More · this clone</div>
-                            {overflowTabs.map(t => {
+                            {hiddenCloneTabs.map(t => {
                                 const isActive = activeTab === t.key;
                                 return (
                                     <button
@@ -304,12 +358,11 @@ export function RemoteSubBar({ repo, repos, onRefresh }: RemoteSubBarProps) {
             )}
 
             {/* ── Clone-scoped actions ── */}
-            <span className="flex-1" />
             <button
                 data-testid="subbar-ask"
                 title={`Ask AI about ${ws.name} (read-only)`}
                 onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: cloneId, mode: 'ask' })}
-                className="inline-flex items-center gap-1 h-[28px] px-2.5 rounded-md text-[12px] font-semibold bg-yellow-500 hover:bg-yellow-600 dark:bg-yellow-400 dark:hover:bg-yellow-300 text-[#1e1e1e] transition-colors flex-shrink-0"
+                className="inline-flex items-center gap-1 h-[28px] px-2.5 rounded-md text-[12px] font-semibold bg-yellow-500 hover:bg-yellow-600 dark:bg-yellow-400 dark:hover:bg-yellow-300 text-[#1e1e1e] transition-colors flex-shrink-0 ml-1"
             >
                 Ask
             </button>

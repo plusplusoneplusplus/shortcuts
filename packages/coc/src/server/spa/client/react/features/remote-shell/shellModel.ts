@@ -19,33 +19,63 @@ import type { SubTabDef } from '../repo-detail/repoSubTabs';
 /** Sub-tabs that belong to the REMOTE (shared across all clones of an origin). */
 export const REMOTE_SCOPE_KEYS: ReadonlyArray<RepoSubTab> = ['work-items', 'pull-requests'];
 
-/** Primary clone-scoped tabs shown inline; everything else collapses to the ⋯ overflow. */
-export const PRIMARY_CLONE_KEYS: ReadonlyArray<RepoSubTab> = ['chats', 'activity', 'cli-sessions', 'git', 'terminal'];
-
-// Fixed display order within each scope (only present tabs are emitted).
+// Fixed display order for the remote scope (only present tabs are emitted).
 const REMOTE_ORDER: RepoSubTab[] = ['work-items', 'pull-requests'];
-const CLONE_ORDER: RepoSubTab[] = ['chats', 'activity', 'cli-sessions', 'git', 'terminal'];
 
 export interface PartitionedShellTabs {
-    /** Remote-scoped tabs (Work Items, Pull Requests) — left of the divider. */
+    /** Remote-scoped tabs (Work Items, Pull Requests) — left of the divider, always shown. */
     remote: SubTabDef[];
-    /** Primary clone-scoped tabs shown inline. */
+    /** Clone-scoped tabs in display order. Shown inline until they run out of
+     *  horizontal room, after which the tail collapses into the ⋯ overflow. */
     clone: SubTabDef[];
-    /** Less-used clone-scoped tabs tucked under the ⋯ overflow. */
-    overflow: SubTabDef[];
 }
 
 /**
- * Split the visible sub-tabs into remote / clone / overflow buckets, preserving a
- * stable display order for the named buckets and source order for the overflow.
+ * Split the visible sub-tabs into the two scopes. Remote-scoped tabs come first
+ * in a stable order; every other tab is clone-scoped and kept in source order.
  */
 export function partitionShellTabs(tabs: SubTabDef[]): PartitionedShellTabs {
     const byKey = new Map<RepoSubTab, SubTabDef>(tabs.map(t => [t.key, t]));
     const remote = REMOTE_ORDER.map(k => byKey.get(k)).filter((t): t is SubTabDef => !!t);
-    const clone = CLONE_ORDER.map(k => byKey.get(k)).filter((t): t is SubTabDef => !!t);
-    const taken = new Set<RepoSubTab>([...remote, ...clone].map(t => t.key));
-    const overflow = tabs.filter(t => !taken.has(t.key));
-    return { remote, clone, overflow };
+    const taken = new Set<RepoSubTab>(remote.map(t => t.key));
+    const clone = tabs.filter(t => !taken.has(t.key));
+    return { remote, clone };
+}
+
+/**
+ * Given each clone tab's natural pixel width (in display order) and the
+ * available container width, return the set of tab keys that fit. The active tab
+ * is always kept visible (swapped in for the last fitting tab if needed).
+ *
+ * Returns `null` to mean "show everything" — either there is no layout
+ * information yet (containerWidth <= 0, e.g. jsdom) or every tab fits.
+ */
+export function computeVisibleTabKeys(
+    measured: { key: string; width: number }[],
+    containerWidth: number,
+    activeKey: string | null,
+    gap = 2,
+): Set<string> | null {
+    if (containerWidth <= 0) return null;
+    const visible = new Set<string>();
+    let used = 0;
+    let lastVisible: string | null = null;
+    for (const m of measured) {
+        const w = m.width + gap;
+        if (used + w <= containerWidth) {
+            visible.add(m.key);
+            used += w;
+            lastVisible = m.key;
+        } else {
+            break;
+        }
+    }
+    if (visible.size >= measured.length) return null;
+    if (activeKey && !visible.has(activeKey)) {
+        if (lastVisible && visible.size > 0) visible.delete(lastVisible);
+        visible.add(activeKey);
+    }
+    return visible;
 }
 
 // ── Clone status ─────────────────────────────────────────────────────────────

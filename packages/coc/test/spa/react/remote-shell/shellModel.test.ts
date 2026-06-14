@@ -4,11 +4,11 @@
 import { describe, it, expect } from 'vitest';
 import {
     partitionShellTabs,
+    computeVisibleTabKeys,
     computeCloneStatusMap,
     cloneStatusColor,
     summarizeRemote,
     REMOTE_SCOPE_KEYS,
-    PRIMARY_CLONE_KEYS,
 } from '../../../../src/server/spa/client/react/features/remote-shell/shellModel';
 import type { SubTabDef } from '../../../../src/server/spa/client/react/features/repo-detail/repoSubTabs';
 import type { RepoData, RepoGroup } from '../../../../src/server/spa/client/react/repos/repoGrouping';
@@ -22,39 +22,58 @@ describe('scope key sets', () => {
     it('declares Work Items + Pull Requests as remote-scoped', () => {
         expect([...REMOTE_SCOPE_KEYS]).toEqual(['work-items', 'pull-requests']);
     });
-    it('declares the primary clone tabs', () => {
-        expect([...PRIMARY_CLONE_KEYS]).toEqual(['chats', 'activity', 'cli-sessions', 'git', 'terminal']);
-    });
 });
 
 describe('partitionShellTabs', () => {
-    it('splits into remote / clone / overflow with stable order', () => {
+    it('splits remote-scope (stable order) from all other clone tabs (source order)', () => {
         const tabs = [
             tab('activity'), tab('cli-sessions'), tab('git'), tab('terminal'),
             tab('work-items'), tab('pull-requests'),
             tab('explorer'), tab('schedules'), tab('settings'),
         ];
-        const { remote, clone, overflow } = partitionShellTabs(tabs);
+        const { remote, clone } = partitionShellTabs(tabs);
         expect(remote.map(t => t.key)).toEqual(['work-items', 'pull-requests']);
-        expect(clone.map(t => t.key)).toEqual(['activity', 'cli-sessions', 'git', 'terminal']);
-        expect(overflow.map(t => t.key)).toEqual(['explorer', 'schedules', 'settings']);
+        // Every non-remote tab is clone-scoped, in source order (no fixed overflow).
+        expect(clone.map(t => t.key)).toEqual(['activity', 'cli-sessions', 'git', 'terminal', 'explorer', 'schedules', 'settings']);
     });
 
-    it('uses chats as the clone-scope chat tab when activity is absent', () => {
-        const { clone } = partitionShellTabs([tab('chats'), tab('git')]);
-        expect(clone.map(t => t.key)).toEqual(['chats', 'git']);
-    });
-
-    it('omits scoped tabs that are not present (e.g. non-git repo)', () => {
-        const { remote, clone, overflow } = partitionShellTabs([tab('activity'), tab('work-items'), tab('explorer')]);
+    it('omits remote tabs that are not present (e.g. non-git repo)', () => {
+        const { remote, clone } = partitionShellTabs([tab('activity'), tab('work-items'), tab('explorer')]);
         expect(remote.map(t => t.key)).toEqual(['work-items']);
-        expect(clone.map(t => t.key)).toEqual(['activity']);
-        expect(overflow.map(t => t.key)).toEqual(['explorer']);
+        expect(clone.map(t => t.key)).toEqual(['activity', 'explorer']);
     });
 
-    it('preserves relabeled tab definitions in the right bucket', () => {
+    it('preserves relabeled tab definitions in the remote bucket', () => {
         const { remote } = partitionShellTabs([tab('work-items', 'Work Items'), tab('pull-requests', 'Full Requests')]);
         expect(remote.map(t => t.label)).toEqual(['Work Items', 'Full Requests']);
+    });
+});
+
+describe('computeVisibleTabKeys', () => {
+    const m = (key: string, width: number) => ({ key, width });
+
+    it('returns null (show all) when there is no layout width', () => {
+        expect(computeVisibleTabKeys([m('a', 50)], 0, 'a')).toBeNull();
+    });
+
+    it('returns null (show all) when everything fits', () => {
+        expect(computeVisibleTabKeys([m('a', 40), m('b', 40)], 500, null, 0)).toBeNull();
+    });
+
+    it('keeps only the tabs that fit, in order', () => {
+        const v = computeVisibleTabKeys([m('a', 40), m('b', 40), m('c', 40)], 90, null, 0);
+        expect(v && [...v]).toEqual(['a', 'b']); // 40 + 40 = 80 ≤ 90; third would be 120
+    });
+
+    it('always keeps the active tab visible, swapping out the last fitting tab', () => {
+        const v = computeVisibleTabKeys([m('a', 40), m('b', 40), m('c', 40)], 90, 'c', 0);
+        expect(v && [...v].sort()).toEqual(['a', 'c']);
+    });
+
+    it('accounts for the inter-tab gap', () => {
+        // 40+gap(10) twice = 100 > 95 → only the first fits
+        const v = computeVisibleTabKeys([m('a', 40), m('b', 40)], 95, null, 10);
+        expect(v && [...v]).toEqual(['a']);
     });
 });
 
