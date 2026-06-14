@@ -508,7 +508,10 @@ export function Router() {
     // blank-page flash when navigating directly to a deep-link (e.g. on refresh).
     useLayoutEffect(() => {
         const handleHash = () => {
-            const hash = location.hash.replace(/^#/, '');
+            // Strip any `?query` (e.g. `?view=agents`) before parsing the path —
+            // it's metadata for components (which read it from location.hash
+            // directly), never part of the routed path or a task id.
+            const hash = location.hash.replace(/^#/, '').split('?')[0];
             const tab = tabFromHash('#' + hash);
             if (tab) {
                 dispatch({ type: 'SET_ACTIVE_TAB', tab });
