@@ -27,6 +27,12 @@ vi.mock('../../../../src/server/spa/client/react/features/remote-shell/useShellN
 vi.mock('../../../../src/server/spa/client/react/repos/CloneRepoDialog', () => ({
     CloneRepoDialog: ({ open }: { open: boolean }) => (open ? <div data-testid="clone-repo-dialog" /> : null),
 }));
+vi.mock('../../../../src/server/spa/client/react/repos/AddFolderDialog', () => ({
+    AddFolderDialog: ({ open }: { open: boolean }) => (open ? <div data-testid="add-folder-dialog" /> : null),
+}));
+vi.mock('../../../../src/server/spa/client/react/repos/AddRepoDialog', () => ({
+    AddRepoDialog: ({ open }: { open: boolean }) => (open ? <div data-testid="add-repo-dialog" /> : null),
+}));
 
 import { RemoteTopBar } from '../../../../src/server/spa/client/react/features/remote-shell/RemoteTopBar';
 
@@ -94,11 +100,29 @@ describe('RemoteTopBar', () => {
         expect(active!.getAttribute('data-remote-key')).toContain('forge');
     });
 
-    it('opens the clone dialog from the top-level add button (not per-origin)', () => {
+    it('exposes a top-level add menu with folder / repo / clone options', () => {
         mockRepos = [repo('a', 'shortcuts', SHORTCUTS)];
         render(<RemoteTopBar />);
-        expect(screen.queryByTestId('clone-repo-dialog')).toBeNull();
-        fireEvent.click(screen.getByTestId('remote-add-clone'));
+        expect(screen.queryByTestId('remote-add-menu')).toBeNull();
+        fireEvent.click(screen.getByTestId('remote-add-btn'));
+        expect(screen.getByTestId('remote-add-folder-option')).toBeTruthy();
+        expect(screen.getByTestId('remote-add-repo-option')).toBeTruthy();
+        expect(screen.getByTestId('remote-clone-repo-option')).toBeTruthy();
+    });
+
+    it('adds an existing folder from the top-level menu', () => {
+        mockRepos = [repo('a', 'shortcuts', SHORTCUTS)];
+        render(<RemoteTopBar />);
+        fireEvent.click(screen.getByTestId('remote-add-btn'));
+        fireEvent.click(screen.getByTestId('remote-add-folder-option'));
+        expect(screen.getByTestId('add-folder-dialog')).toBeTruthy();
+    });
+
+    it('clones a repository from the top-level menu', () => {
+        mockRepos = [repo('a', 'shortcuts', SHORTCUTS)];
+        render(<RemoteTopBar />);
+        fireEvent.click(screen.getByTestId('remote-add-btn'));
+        fireEvent.click(screen.getByTestId('remote-clone-repo-option'));
         expect(screen.getByTestId('clone-repo-dialog')).toBeTruthy();
     });
 });

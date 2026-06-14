@@ -17,6 +17,8 @@ import { groupReposByRemote, groupKey } from '../../repos/repoGrouping';
 import type { RepoGroup } from '../../repos/repoGrouping';
 import { isHidden as isHiddenTask } from '../../queue/hooks/useRepoQueueStats';
 import { CloneRepoDialog } from '../../repos/CloneRepoDialog';
+import { AddRepoDialog } from '../../repos/AddRepoDialog';
+import { AddFolderDialog } from '../../repos/AddFolderDialog';
 import { computeCloneStatusMap, summarizeRemote } from './shellModel';
 import { useShellNavigation } from './useShellNavigation';
 
@@ -34,7 +36,11 @@ export function RemoteTopBar() {
     const { state: queueState } = useQueue();
     const { repos, unseenCounts, fetchRepos } = useRepos();
     const { selectClone } = useShellNavigation();
-    const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
+    const [addMenuOpen, setAddMenuOpen] = useState(false);
+    const [addFolderOpen, setAddFolderOpen] = useState(false);
+    const [addRepoOpen, setAddRepoOpen] = useState(false);
+    const [cloneOpen, setCloneOpen] = useState(false);
+    const addMenuRef = useRef<HTMLDivElement>(null);
 
     // Remember the last-selected clone per remote so re-selecting a remote
     // returns to the checkout you were last on rather than always the first.
@@ -60,6 +66,20 @@ export function RemoteTopBar() {
         if (g) lastCloneByRemote.current[groupKey(g)] = selectedId;
     }, [groups, selectedId]);
 
+    useEffect(() => {
+        if (!addMenuOpen) return;
+        const onDown = (e: MouseEvent) => {
+            if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) setAddMenuOpen(false);
+        };
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setAddMenuOpen(false); };
+        document.addEventListener('mousedown', onDown);
+        document.addEventListener('keydown', onKey);
+        return () => {
+            document.removeEventListener('mousedown', onDown);
+            document.removeEventListener('keydown', onKey);
+        };
+    }, [addMenuOpen]);
+
     const pickRemote = (g: RepoGroup) => {
         const key = groupKey(g);
         const remembered = lastCloneByRemote.current[key];
@@ -70,6 +90,7 @@ export function RemoteTopBar() {
     };
 
     return (
+        <div className="flex items-center flex-1 min-w-0">
         <div
             className="flex items-center gap-0.5 flex-1 min-w-0 px-1 overflow-x-auto scrollbar-hide"
             data-testid="remote-top-bar"
@@ -131,20 +152,69 @@ export function RemoteTopBar() {
                     </button>
                 );
             })}
+        </div>
+        {/* Top-level add menu — outside the scroll container so the dropdown isn't clipped. */}
+        <div ref={addMenuRef} className="relative flex-shrink-0 px-1">
             <button
-                data-testid="remote-add-clone"
-                title="Clone a repository…"
-                aria-label="Clone a repository"
-                onClick={() => setCloneDialogOpen(true)}
-                className="inline-flex items-center justify-center h-7 w-7 flex-shrink-0 rounded text-[#616161] dark:text-[#999] hover:bg-black/[0.05] dark:hover:bg-white/[0.08] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors"
+                data-testid="remote-add-btn"
+                title="Add a repository"
+                aria-label="Add a repository"
+                aria-haspopup="menu"
+                aria-expanded={addMenuOpen}
+                onClick={() => setAddMenuOpen(o => !o)}
+                className="inline-flex items-center justify-center h-7 w-7 rounded text-[#616161] dark:text-[#999] hover:bg-black/[0.05] dark:hover:bg-white/[0.08] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors"
             >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
             </button>
-            <CloneRepoDialog
-                open={cloneDialogOpen}
-                onClose={() => setCloneDialogOpen(false)}
-                onSuccess={() => { setCloneDialogOpen(false); fetchRepos(); }}
-            />
+            {addMenuOpen && (
+                <div
+                    data-testid="remote-add-menu"
+                    role="menu"
+                    className="absolute right-0 top-full mt-1 z-50 min-w-[210px] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] shadow-lg py-1"
+                >
+                    <button
+                        data-testid="remote-add-folder-option"
+                        role="menuitem"
+                        className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10"
+                        onClick={() => { setAddMenuOpen(false); setAddFolderOpen(true); }}
+                    >
+                        📁 Add workspace folder
+                    </button>
+                    <button
+                        data-testid="remote-add-repo-option"
+                        role="menuitem"
+                        className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10"
+                        onClick={() => { setAddMenuOpen(false); setAddRepoOpen(true); }}
+                    >
+                        ＋ Add specific repository
+                    </button>
+                    <button
+                        data-testid="remote-clone-repo-option"
+                        role="menuitem"
+                        className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10"
+                        onClick={() => { setAddMenuOpen(false); setCloneOpen(true); }}
+                    >
+                        ⎘ Clone repository
+                    </button>
+                </div>
+            )}
+        </div>
+        <AddFolderDialog
+            open={addFolderOpen}
+            onClose={() => setAddFolderOpen(false)}
+            onAdded={() => { setAddFolderOpen(false); fetchRepos(); }}
+        />
+        <AddRepoDialog
+            open={addRepoOpen}
+            onClose={() => setAddRepoOpen(false)}
+            repos={repos}
+            onSuccess={() => { setAddRepoOpen(false); fetchRepos(); }}
+        />
+        <CloneRepoDialog
+            open={cloneOpen}
+            onClose={() => setCloneOpen(false)}
+            onSuccess={() => { setCloneOpen(false); fetchRepos(); }}
+        />
         </div>
     );
 }

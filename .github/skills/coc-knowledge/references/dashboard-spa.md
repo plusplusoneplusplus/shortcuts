@@ -597,8 +597,9 @@ model built on `features/remote-shell/`:
   chip, aggregate running pulse, and summed unseen badge. Selecting a remote picks
   its last-used clone (else the first). Aggregation comes from `summarizeRemote` /
   `computeCloneStatusMap` in `shellModel.ts`. A trailing `+` button
-  (`remote-add-clone`) opens `CloneRepoDialog` — the single top-level "add clone"
-  action (it is not duplicated per-origin).
+  (`remote-add-btn`) opens an add menu — Add workspace folder (`AddFolderDialog`),
+  Add specific repository (`AddRepoDialog`), Clone repository (`CloneRepoDialog`) —
+  the single top-level add action (not duplicated per-origin).
 - **Row 2 `RemoteSubBar`** renders above a `chromeless` `RepoDetail` in `ReposView`
   and replaces RepoDetail's own header. `partitionShellTabs` splits tabs into
   remote-scoped (Work Items, Pull Requests — always shown left) and clone-scoped
