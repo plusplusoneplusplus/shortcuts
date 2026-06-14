@@ -66,13 +66,14 @@ vi.mock('../../../../src/server/spa/client/react/ui/BottomSheet', () => ({
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationMetadataPopover', () => ({
-    ConversationMetadataPopover: ({ resumeSessionId, onLaunchInteractiveResume, onStartFreshSameContext, startingFreshSameContext }: any) => (
+    ConversationMetadataPopover: ({ resumeSessionId, onLaunchInteractiveResume, onStartFreshSameContext, startingFreshSameContext, extraRows }: any) => (
         <span
             data-testid="metadata-popover"
             data-resume-session-id={resumeSessionId ?? ''}
             data-has-resume-handler={onLaunchInteractiveResume ? 'true' : 'false'}
             data-has-fresh-handler={onStartFreshSameContext ? 'true' : 'false'}
             data-starting-fresh={startingFreshSameContext ? 'true' : 'false'}
+            data-extra-row-labels={(extraRows ?? []).map((r: any) => r.label).join('|')}
         >
             i
             {onStartFreshSameContext && (
@@ -663,6 +664,36 @@ describe('ChatHeader', () => {
             render(<ChatHeader {...defaultProps()} />);
 
             expect(screen.getByTestId('overflow-menu').getAttribute('data-keys')?.split(',')).not.toContain('new-chat-same-context');
+        });
+    });
+
+    describe('metadata extra rows pass-through', () => {
+        const EXTRA_ROWS = [
+            { label: 'Repository', value: 'owner/repo' },
+            { label: 'Branch', value: 'main' },
+        ];
+
+        it('forwards metadataExtraRows to the inline popover in wide tier', () => {
+            setTier('wide');
+            render(<ChatHeader {...defaultProps({ metadataExtraRows: EXTRA_ROWS })} />);
+            const popover = screen.getByTestId('metadata-popover');
+            expect(popover.getAttribute('data-extra-row-labels')).toBe('Repository|Branch');
+        });
+
+        it('keeps the metadata item (which carries extra rows) in the overflow at medium tier', () => {
+            setTier('medium');
+            render(<ChatHeader {...defaultProps({ metadataExtraRows: EXTRA_ROWS })} />);
+            // At medium tier the metadata popover moves into the overflow menu; its
+            // render closure forwards metadataExtraRows. The mock lists item keys.
+            const menu = screen.getByTestId('overflow-menu');
+            expect(menu.getAttribute('data-keys')?.split(',')).toContain('metadata');
+        });
+
+        it('passes no extra rows to the popover when metadataExtraRows is omitted (chat default unchanged)', () => {
+            setTier('wide');
+            render(<ChatHeader {...defaultProps()} />);
+            const popover = screen.getByTestId('metadata-popover');
+            expect(popover.getAttribute('data-extra-row-labels')).toBe('');
         });
     });
 
