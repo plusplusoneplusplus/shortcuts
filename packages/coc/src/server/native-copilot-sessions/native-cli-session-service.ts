@@ -506,11 +506,18 @@ export class CopilotNativeSessionProvider implements NativeSessionProvider {
     }
 }
 
-function dashEncodeWorkspaceRoot(rootPath: string | undefined): string | undefined {
+/**
+ * Encode an absolute workspace root into Claude Code's `~/.claude/projects/`
+ * directory name. Claude replaces path separators AND the Windows drive-letter
+ * colon with dashes (a literal `:` is not a valid path segment on Windows), so
+ * `C:\Users\me\repo` becomes `C--Users-me-repo`. Exported for cross-platform
+ * regression coverage of the colon encoding.
+ */
+export function dashEncodeWorkspaceRoot(rootPath: string | undefined): string | undefined {
     if (!rootPath) {
         return undefined;
     }
-    return path.resolve(rootPath).replace(/\\/g, '/').replace(/\//g, '-');
+    return path.resolve(rootPath).replace(/\\/g, '/').replace(/[/:]/g, '-');
 }
 
 export class ClaudeNativeSessionProvider extends JsonlFileNativeSessionProvider {

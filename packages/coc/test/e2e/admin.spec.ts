@@ -73,7 +73,7 @@ test.describe('Admin Panel (008)', () => {
             'AI Provider',
             'Servers',
         ]);
-        expect(byLabel.Knowledge).toEqual(['Memory', 'Skills']);
+        expect(byLabel.Knowledge).toEqual(['Memory', 'Skills', 'Dreams']);
         expect(byLabel.Operations).toEqual(['Usage & Costs', 'Logs', 'Server', 'Backup & Reset']);
         expect(byLabel['Developer / Internals']).toEqual(['System Prompts', 'Database Browser', 'Advanced']);
 

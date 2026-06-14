@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
     ClaudeNativeSessionProvider,
     CodexNativeSessionProvider,
+    dashEncodeWorkspaceRoot,
 } from '../../src/server/native-copilot-sessions/native-cli-session-service';
 
 let tmpDir: string;
@@ -19,7 +20,7 @@ function writeJsonl(filePath: string, records: unknown[]): void {
 }
 
 function dashEncode(rootPath: string): string {
-    return path.resolve(rootPath).replace(/\\/g, '/').replace(/\//g, '-');
+    return path.resolve(rootPath).replace(/\\/g, '/').replace(/[/:]/g, '-');
 }
 
 beforeEach(() => {
@@ -28,6 +29,25 @@ beforeEach(() => {
 
 afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
+});
+
+describe('dashEncodeWorkspaceRoot', () => {
+    it('returns undefined when no root is provided', () => {
+        expect(dashEncodeWorkspaceRoot(undefined)).toBeUndefined();
+        expect(dashEncodeWorkspaceRoot('')).toBeUndefined();
+    });
+
+    it('encodes to a single path segment with no separators or colons', () => {
+        // Regression: Windows drive-letter roots (C:\...) previously kept their
+        // colon, yielding an invalid path segment that broke directory reads.
+        const encoded = dashEncodeWorkspaceRoot(path.join(tmpDir, 'repo'));
+        expect(encoded).toBeDefined();
+        expect(encoded!).not.toMatch(/[:/\\]/);
+    });
+
+    it('strips the drive-letter colon from the encoded folder name', () => {
+        expect(dashEncodeWorkspaceRoot('/home/runner/C:fakepath')).not.toContain(':');
+    });
 });
 
 describe('CodexNativeSessionProvider', () => {

@@ -35,6 +35,8 @@ export { NotificationBell } from './NotificationBell';
 export { agentProviderQuotaIndicator } from './AgentProviderQuotaIndicator';
 export { collectDreamProviderActivity, getTaskProvider, loadDreamProviderActivity } from './providerActivity';
 export type { AgentProviderWorkActivity } from './providerActivity';
+export { PROVIDER_LABELS, PROVIDER_ICONS, ProviderAvatar } from './providerVisuals';
+export type { Provider } from './providerVisuals';
 export { DASHBOARD_AI_COMMANDS } from './ai-commands';
 export type { DashboardAICommand } from './ai-commands';
 export { shortenFilePath, linkifyFilePaths, FILE_PATH_RE } from './file-path-utils';

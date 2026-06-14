@@ -143,6 +143,62 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
         },
         required: ['filename'],
     },
+    write_canvas: {
+        type: 'object',
+        properties: {
+            canvasId: { type: 'string' },
+            title: { type: 'string' },
+            content: { type: 'string' },
+            edits: {
+                type: 'array',
+                items: {
+                    type: 'object',
+                    properties: {
+                        oldText: { type: 'string' },
+                        newText: { type: 'string' },
+                    },
+                    required: ['oldText', 'newText'],
+                },
+            },
+            type: { type: 'string' },
+            language: { type: 'string' },
+            expectedRevision: { type: 'number' },
+        },
+        required: [],
+    },
+    read_canvas: {
+        type: 'object',
+        properties: {
+            canvasId: { type: 'string' },
+        },
+        required: ['canvasId'],
+    },
+    extension_canvas: {
+        type: 'object',
+        properties: {
+            canvasId: { type: 'string' },
+            capability: { type: 'string' },
+            params: { type: 'object' },
+            title: { type: 'string' },
+            description: { type: 'string' },
+            capabilities: {
+                type: 'array',
+                items: {
+                    type: 'object',
+                    properties: {
+                        name: { type: 'string' },
+                        description: { type: 'string' },
+                        paramsDescription: { type: 'string' },
+                    },
+                    required: ['name', 'description'],
+                },
+            },
+            capabilitiesJs: { type: 'string' },
+            uiHtml: { type: 'string' },
+            initialState: { type: 'object' },
+        },
+        required: [],
+    },
     tavily_web_search: {
         type: 'object',
         properties: {
