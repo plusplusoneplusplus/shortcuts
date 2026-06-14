@@ -11,7 +11,9 @@
  */
 import { useCallback, useState } from 'react';
 import { getSpaCocClient } from '../../../api/cocClient';
+import { Spinner } from '../../../ui/Spinner';
 import type { SourceCanvasFileRef } from './types';
+import type { SourceCanvasContentState } from './useSourceCanvasContent';
 
 function basename(p: string): string {
     const normalized = p.replace(/\\/g, '/');
@@ -47,11 +49,13 @@ export interface SourceCanvasPanelProps {
     fileRef: SourceCanvasFileRef;
     /** Resolved workspace id, used for reveal-in-explorer. */
     wsId?: string | null;
+    /** Loaded content + load/error state (AC-06). Loading when omitted. */
+    content?: SourceCanvasContentState;
     /** Close the canvas (X button). */
     onClose: () => void;
 }
 
-export function SourceCanvasPanel({ fileRef, wsId, onClose }: SourceCanvasPanelProps) {
+export function SourceCanvasPanel({ fileRef, wsId, content, onClose }: SourceCanvasPanelProps) {
     const { fullPath, displayPath } = fileRef;
     const path = displayPath || fullPath;
     const fileName = basename(path);
@@ -128,10 +132,37 @@ export function SourceCanvasPanel({ fileRef, wsId, onClose }: SourceCanvasPanelP
                 </div>
             </div>
             <div className="flex-1 min-h-0 overflow-auto" data-testid="source-canvas-body">
-                {/* Filled by later slices: AC-04 (render), AC-05 (highlight), AC-06 (load/error). */}
-                <div className="p-4 text-xs text-[#848484]" data-testid="source-canvas-placeholder">
-                    Loading {fileName}…
-                </div>
+                {/* AC-06: loading / error / success. AC-04 will replace the
+                    success branch with markdown / syntax-highlighted rendering. */}
+                {(!content || content.status === 'loading') && (
+                    <div
+                        className="flex items-center gap-2 p-4 text-xs text-[#848484]"
+                        data-testid="source-canvas-loading"
+                    >
+                        <Spinner size="sm" /> Loading {fileName}…
+                    </div>
+                )}
+                {content && content.status === 'error' && (
+                    <div className="p-4 text-xs" data-testid="source-canvas-error">
+                        <div
+                            className="font-medium text-[#cc4444] dark:text-[#f48771]"
+                            data-testid="source-canvas-error-msg"
+                        >
+                            {`Couldn't load ${content.resolvedPath || path}`}
+                        </div>
+                        {content.error && (
+                            <div className="mt-1 text-[#848484]">{content.error}</div>
+                        )}
+                    </div>
+                )}
+                {content && content.status === 'success' && (
+                    <pre
+                        className="p-4 m-0 text-xs whitespace-pre-wrap break-words font-mono text-[#1e1e1e] dark:text-[#cccccc]"
+                        data-testid="source-canvas-source"
+                    >
+                        {content.content}
+                    </pre>
+                )}
             </div>
         </div>
     );

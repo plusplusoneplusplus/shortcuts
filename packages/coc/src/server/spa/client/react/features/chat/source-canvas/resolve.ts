@@ -1,0 +1,85 @@
+/**
+ * Pure path + workspace resolution for the docked source-file canvas (AC-06).
+ *
+ * Given a clicked file reference and the known workspaces, decide which
+ * workspace to fetch from and which path to fetch:
+ *  - relative paths are resolved against the directory of `sourceFilePath`;
+ *  - the workspace is chosen by longest-prefix `rootPath` match (mirroring
+ *    `FilePreview` and the App-level md-link handler), honoring an explicit
+ *    `wsId` hint when present and falling back to the first workspace.
+ *
+ * Returns either a resolvable `{ wsId, path }` target or an error carrying the
+ * path we attempted — so the canvas can still open with a clear
+ * "couldn't load <path>" message when nothing resolves.
+ */
+import { isAbsolutePath, resolveRelativePath } from '../../../utils/path-resolution';
+import type { SourceCanvasFileRef } from './types';
+
+export interface SourceCanvasWorkspace {
+    id: string;
+    rootPath?: string | null;
+}
+
+export interface SourceCanvasTarget {
+    /** Workspace id to fetch from. */
+    wsId: string;
+    /** Path to fetch (absolute, or workspace-relative for the preview API). */
+    path: string;
+}
+
+export interface SourceCanvasResolveError {
+    /** Human-readable reason resolution failed. */
+    error: string;
+    /** The path we attempted to resolve — shown in the canvas error state. */
+    attemptedPath: string;
+}
+
+function normalize(p: string): string {
+    return p.replace(/\\/g, '/');
+}
+
+/** Directory portion of a (possibly Windows) path, normalized to `/`. */
+function dirOf(p: string): string {
+    const n = normalize(p);
+    const idx = n.lastIndexOf('/');
+    return idx >= 0 ? n.slice(0, idx) : '';
+}
+
+/** Type guard: the resolution failed (no resolvable workspace). */
+export function isSourceCanvasResolveError(
+    r: SourceCanvasTarget | SourceCanvasResolveError,
+): r is SourceCanvasResolveError {
+    return (r as SourceCanvasResolveError).error !== undefined;
+}
+
+export function resolveSourceCanvasTarget(
+    fileRef: SourceCanvasFileRef,
+    workspaces: ReadonlyArray<SourceCanvasWorkspace>,
+): SourceCanvasTarget | SourceCanvasResolveError {
+    // 1. Resolve relative refs against the directory of the source file.
+    let path = fileRef.fullPath;
+    if (!isAbsolutePath(path) && fileRef.sourceFilePath) {
+        path = resolveRelativePath(dirOf(fileRef.sourceFilePath), path);
+    }
+
+    // 2. Pick a workspace: explicit hint → longest rootPath prefix → first.
+    let wsId = fileRef.wsId;
+    if (!wsId) {
+        const normalizedFile = normalize(path);
+        let best: { id: string; len: number } | null = null;
+        for (const ws of workspaces) {
+            const root = ws.rootPath ? normalize(ws.rootPath) : '';
+            if (root && normalizedFile.startsWith(root)) {
+                if (!best || root.length > best.len) {
+                    best = { id: ws.id, len: root.length };
+                }
+            }
+        }
+        wsId = best?.id ?? workspaces[0]?.id;
+    }
+
+    if (!wsId) {
+        return { error: 'No workspace available', attemptedPath: path };
+    }
+    return { wsId, path };
+}

@@ -31,7 +31,7 @@ import type { QueuedMessage } from '../../utils/chatUtils';
 import { useChatSSE } from './hooks/useChatSSE';
 import type { RalphGrillPlanningProgress, CanvasUpdatedEvent } from './hooks/useChatSSE';
 import { CanvasPanel } from '../canvas/CanvasPanel';
-import { SourceCanvasPanel, useSourceCanvasState } from './source-canvas';
+import { SourceCanvasPanel, useSourceCanvasState, useSourceCanvasContent } from './source-canvas';
 import { BottomSheet } from '../../ui/BottomSheet';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { hydrateAskUserBatch } from './hooks/hydrateAskUserBatch';
@@ -1063,6 +1063,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // canvas above (only one of these columns is ever non-null at a time).
     const sourceCanvasFileRef = sourceCanvas.fileRef;
     const sourceCanvasWsId = sourceCanvasFileRef?.wsId ?? workspaceId ?? null;
+    const sourceCanvasContent = useSourceCanvasContent(sourceCanvasFileRef);
     const sourceCanvasColumn = (sourceCanvas.isOpen && sourceCanvasFileRef) ? (
         isMobile ? (
             <BottomSheet
@@ -1074,6 +1075,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 <SourceCanvasPanel
                     fileRef={sourceCanvasFileRef}
                     wsId={sourceCanvasWsId}
+                    content={sourceCanvasContent}
                     onClose={sourceCanvas.close}
                 />
             </BottomSheet>
@@ -1095,6 +1097,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     <SourceCanvasPanel
                         fileRef={sourceCanvasFileRef}
                         wsId={sourceCanvasWsId}
+                        content={sourceCanvasContent}
                         onClose={sourceCanvas.close}
                     />
                 </div>
