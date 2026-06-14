@@ -166,11 +166,25 @@
     display: flex;
     align-items: center;
     gap: 4px;
+    /* Keep the role · time line on a single row inside the fixed-height card —
+       a long role (e.g. "general-purpose") must ellipsis, never wrap/overflow. */
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
 }
 
 .agent-canvas .cn-sub .cn-role {
     color: var(--spine);
     font-weight: 500;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* The separator and elapsed time stay intact; only the role truncates. */
+.agent-canvas .cn-sub .cn-dot,
+.agent-canvas .cn-sub .cn-t {
+    flex-shrink: 0;
 }
 
 .agent-canvas .cn-spawn {

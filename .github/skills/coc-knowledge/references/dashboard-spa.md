@@ -320,7 +320,10 @@ strips the `?query` so the param never corrupts the taskId. `view` resets to
 
 `buildAgentRunTreeFromTurns(turns, root)` derives the tree with no extra fetch:
 the orchestrator (this process) is the root and each `Task` tool call becomes a
-sub-agent child. From the call's args it captures the agent name (`args.name`,
+sub-agent node, nested under the sub-agent that spawned it (via
+`parentToolCallId`) so the tree has real depth (L0 → L1 → L2 → …); a Task whose
+parent isn't another captured Task — or whose parent chain is cyclic — attaches
+to the orchestrator. From the call's args it captures the agent name (`args.name`,
 falling back to `description`/`prompt`), type (`agent_type`/`subagent_type`),
 `model`, `mode`, `description`, and `prompt`; status/timing come from the call.
 Children are deduped across `toolCalls`+timeline — keeping the snapshot with
@@ -329,8 +332,8 @@ an earlier snapshot holds the full invocation — and ordered by start time.
 Tool name/args are read
 via `toolName ?? name` and `args ?? parameters` so sub-agents are detected in
 both the live (SSE) shape and the persisted forge read model — they stay on the
-canvas after the chat completes and turns refresh. The `AgentRunNode` tree
-supports arbitrary depth, so deeper recursion can be layered on later.
+canvas after the chat completes and turns refresh. (These tool-call readers live
+in `agentToolCalls.ts`, shared with the sub-agent reconstructor below.)
 `AgentCanvas` reuses the shared `useZoomPan` hook — it opens at 100% zoom,
 centered (`centerContent`), re-centering on mount/growth/resize until the user
 takes over. The toolbar's % is a dropdown of preset levels
@@ -348,6 +351,27 @@ the orchestrator root closes it.
 `AgentCanvas` owns the selection; the inspector's "Open in thread" button calls
 `onOpenInThread`, which `ChatDetail` maps back to the issuing turn via
 `findTurnIndexForRun`, switching to the thread and scrolling there.
+
+**Cascading dropdown + in-place sub-agent detail.** Beside the toggle,
+`AgentCascadeMenu` lists the tree's depth levels (`flattenAgentLevels` → L0…Ln,
+only existing levels) in a left pane and that level's agents on the right;
+picking an agent opens its conversation **in-place, read-only**
+(`SubAgentDetailView`), picking the orchestrator (L0) returns to the
+thread/canvas. The selected sub-agent rides the hash as `?agent=<id>` alongside
+`?view=agents` (`chatAgentHash.ts`), composed into one `replaceState`; a
+stale/invalid id clears itself and resets on chat switch (parity with
+`effectiveView`). `buildSubAgentTurns(turns, id)` reconstructs the sub-agent's
+conversation as `[userTurn(prompt), assistantTurn(steps + result)]` by collecting
+its full descendant subtree via `parentToolCallId`, then renders it through the
+**same** `ConversationArea` / `ConversationTurnBubble` as the main thread —
+identical tool-call rendering. The filtered steps keep their `parentToolCallId`:
+the sub-agent's own Task id is absent from the synthetic turn, so the renderer
+leaves its direct steps at top level and nests deeper descendants under their
+parents (nested sub-agents render as Task cards), re-rooting the subtree. There
+is no follow-up input in detail mode, and the sub-agent's status (not the
+orchestrator's) drives the streaming tail. Limitation: `content`-type timeline
+items carry no parent linkage, so a sub-agent's prose isn't attributed — its
+Task `result` shows as the closing content instead.
 Styles live in scoped `agent-canvas.css` (`.agent-canvas`,
 light/dark via `.dark`); there is no clock scrubber (the prototype's replay
 control is dropped — the real view is

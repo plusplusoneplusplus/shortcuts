@@ -12,6 +12,7 @@ import { useZoomPan } from '../../../hooks/ui/useZoomPan';
 import { buildLayout, edgePath, spineVars, PAD, type PositionedNode } from './layout';
 import type { AgentRunNode } from './types';
 import { AcIcons, roleIcon } from './icons';
+import { formatRunDuration } from './format';
 import { AgentInspector } from './AgentInspector';
 import './agent-canvas.css';
 
@@ -39,11 +40,6 @@ function findNode(node: AgentRunNode, id: string): AgentRunNode | null {
 // Preset zoom levels offered by the % menu (within useZoomPan's 25%–220% range).
 const ZOOM_PRESETS = [25, 50, 75, 100, 150, 200];
 
-function fmtDuration(ms: number): string {
-    const s = Math.max(0, Math.round(ms / 1000));
-    const m = Math.floor(s / 60);
-    return `${m}:${String(s % 60).padStart(2, '0')}`;
-}
 
 function anyRunning(node: AgentRunNode): boolean {
     if (node.status === 'running') {
@@ -62,9 +58,9 @@ function nodeTimeText(node: AgentRunNode, now: number): string {
     }
     switch (node.status) {
         case 'running':
-            return node.startedAt !== undefined ? fmtDuration((now || node.startedAt) - node.startedAt) : 'running';
+            return node.startedAt !== undefined ? formatRunDuration((now || node.startedAt) - node.startedAt) : 'running';
         case 'done':
-            return node.startedAt !== undefined && node.completedAt !== undefined ? fmtDuration(node.completedAt - node.startedAt) : 'done';
+            return node.startedAt !== undefined && node.completedAt !== undefined ? formatRunDuration(node.completedAt - node.startedAt) : 'done';
         case 'failed':
             return 'failed';
         case 'queued':

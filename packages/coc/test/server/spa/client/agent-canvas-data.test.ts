@@ -195,6 +195,70 @@ describe('buildAgentRunTreeFromTurns', () => {
         const ids = buildAgentRunTreeFromTurns(turns).children.map((c) => c.id);
         expect(ids).toEqual(['early', 'late', 'unknown']);
     });
+
+    it('nests a sub-agent under the sub-agent that spawned it (parentToolCallId)', () => {
+        const turns = [assistantTurn([
+            tc({ id: 'l1', args: { name: 'parent', agent_type: 'general-purpose' } }),
+            tc({ id: 'l2', parentToolCallId: 'l1', args: { name: 'child', agent_type: 'task' } }),
+        ])];
+        const root = buildAgentRunTreeFromTurns(turns);
+        // Only the L1 agent attaches to the orchestrator; L2 nests beneath it.
+        expect(root.children.map((c) => c.id)).toEqual(['l1']);
+        expect(root.children[0].children.map((c) => c.id)).toEqual(['l2']);
+        expect(countRuns(root)).toBe(3); // root + l1 + l2
+    });
+
+    it('nests to arbitrary depth (L0 → L1 → L2 → L3)', () => {
+        const turns = [assistantTurn([
+            tc({ id: 'l1', args: { name: 'a' } }),
+            tc({ id: 'l2', parentToolCallId: 'l1', args: { name: 'b' } }),
+            tc({ id: 'l3', parentToolCallId: 'l2', args: { name: 'c' } }),
+        ])];
+        const root = buildAgentRunTreeFromTurns(turns);
+        expect(root.children[0].id).toBe('l1');
+        expect(root.children[0].children[0].id).toBe('l2');
+        expect(root.children[0].children[0].children[0].id).toBe('l3');
+        expect(countRuns(root)).toBe(4);
+    });
+
+    it('attaches a Task with an unknown parentToolCallId at the root level', () => {
+        // parent id references a non-Task / missing tool call → don't drop it.
+        const turns = [assistantTurn([
+            tc({ id: 'orphan', parentToolCallId: 'does-not-exist', args: { name: 'orphan' } }),
+        ])];
+        const root = buildAgentRunTreeFromTurns(turns);
+        expect(root.children.map((c) => c.id)).toEqual(['orphan']);
+    });
+
+    it('breaks parentToolCallId cycles without infinite recursion', () => {
+        const turns = [assistantTurn([
+            tc({ id: 'a', parentToolCallId: 'b', args: { name: 'a' } }),
+            tc({ id: 'b', parentToolCallId: 'a', args: { name: 'b' } }),
+        ])];
+        const root = buildAgentRunTreeFromTurns(turns);
+        // Neither can nest under the other; both fall back to root level.
+        expect(root.children.map((c) => c.id).sort()).toEqual(['a', 'b']);
+        expect(countRuns(root)).toBe(3);
+    });
+
+    it('derives root status from a deeply-nested running descendant', () => {
+        const turns = [assistantTurn([
+            tc({ id: 'l1', status: 'completed', args: { name: 'a' } }),
+            tc({ id: 'l2', parentToolCallId: 'l1', status: 'running', args: { name: 'b' } }),
+        ])];
+        // No explicit root status → a running L2 keeps the orchestrator "running".
+        expect(buildAgentRunTreeFromTurns(turns).status).toBe('running');
+    });
+
+    it('orders nested children by start time too', () => {
+        const turns = [assistantTurn([
+            tc({ id: 'p', args: { name: 'p' } }),
+            tc({ id: 'late', parentToolCallId: 'p', args: { name: 'late' }, startTime: '2026-06-13T10:05:00.000Z' }),
+            tc({ id: 'early', parentToolCallId: 'p', args: { name: 'early' }, startTime: '2026-06-13T10:01:00.000Z' }),
+        ])];
+        const parent = buildAgentRunTreeFromTurns(turns).children[0];
+        expect(parent.children.map((c) => c.id)).toEqual(['early', 'late']);
+    });
 });
 
 describe('findTurnIndexForRun', () => {
