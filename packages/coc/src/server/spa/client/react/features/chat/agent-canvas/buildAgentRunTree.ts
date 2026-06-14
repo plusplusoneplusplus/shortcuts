@@ -1,14 +1,24 @@
 // Adapts the dashboard's real conversation data into the recursive
 // AgentRunNode tree the canvas renders. The orchestrator (this conversation)
-// is the root; each `Task` tool call it issued becomes a sub-agent child.
+// is the root; each `Task` tool call becomes a sub-agent node, nested under the
+// sub-agent that spawned it via `parentToolCallId` so the tree has real depth
+// (L0 orchestrator → L1 → L2 → …).
 //
-// Sub-agent `Task` calls are the faithful, already-loaded source for the agent
-// tree — no extra fetch. The tree shape supports arbitrary depth, so deeper
-// recursion (a sub-agent's own children) can be layered on later without
-// touching the canvas.
+// Every tool call — across all nesting levels — is captured flat in the main
+// conversation and linked by `parentToolCallId`, so the whole hierarchy is the
+// already-loaded, faithful source for the tree: no extra fetch.
 
 import type { ClientConversationTurn, ClientToolCall } from '../../../types/dashboard';
 import { normalizeToolName } from '../conversation/tool-calls/toolNormalization';
+import {
+    asRecord,
+    asString,
+    collectToolCalls,
+    firstLine,
+    parseTime,
+    rawArgs,
+    rawToolName,
+} from './agentToolCalls';
 import type { AgentRunNode, AgentRunStatus } from './types';
 
 export interface AgentRunRootMeta {
@@ -18,17 +28,6 @@ export interface AgentRunRootMeta {
     title?: string;
     /** Overall conversation/process status — drives the root node's status. */
     status?: string;
-}
-
-function parseTime(v: unknown): number | undefined {
-    if (typeof v === 'number') {
-        return Number.isFinite(v) ? v : undefined;
-    }
-    if (typeof v === 'string') {
-        const ms = Date.parse(v);
-        return Number.isFinite(ms) ? ms : undefined;
-    }
-    return undefined;
 }
 
 /** Tool-call status → run status. */
@@ -55,57 +54,6 @@ function mapRootStatus(status: string | undefined): AgentRunStatus {
     }
 }
 
-function firstLine(text: string): string {
-    const line = text.split('\n').map((l) => l.trim()).find(Boolean) || '';
-    return line.length > 120 ? `${line.slice(0, 117).trimEnd()}…` : line;
-}
-
-// How "advanced" a status is — used to keep the best snapshot when the same
-// tool-call id appears in both `turn.toolCalls` and the timeline.
-const STATUS_RANK: Record<string, number> = { pending: 0, running: 1, completed: 2, failed: 2 };
-
-/** Collect every tool call across turns, deduped by id, preferring terminal state. */
-function collectToolCalls(turns: ClientConversationTurn[]): ClientToolCall[] {
-    const byId = new Map<string, ClientToolCall>();
-    const consider = (tc: ClientToolCall | undefined): void => {
-        if (!tc || !tc.id) {
-            return;
-        }
-        const existing = byId.get(tc.id);
-        if (!existing) {
-            byId.set(tc.id, tc);
-            return;
-        }
-        const keepNew = (STATUS_RANK[tc.status] ?? 0) >= (STATUS_RANK[existing.status] ?? 0);
-        const better = keepNew ? tc : existing;
-        const worse = keepNew ? existing : tc;
-        // The terminal snapshot (e.g. a timeline `tool-complete`) often carries
-        // EMPTY args while an earlier snapshot has the full invocation args —
-        // keep whichever args are non-empty so name/model/type survive.
-        const mergedArgs = nonEmptyArgs(better) ?? nonEmptyArgs(worse);
-        byId.set(tc.id, {
-            ...worse,
-            ...better,
-            ...(mergedArgs ? { args: mergedArgs } : {}),
-            startTime: better.startTime ?? worse.startTime,
-            endTime: better.endTime ?? worse.endTime,
-            result: better.result ?? worse.result,
-            error: better.error ?? worse.error,
-        });
-    };
-    for (const turn of turns) {
-        if (Array.isArray(turn.toolCalls)) {
-            for (const tc of turn.toolCalls) {
-                consider(tc);
-            }
-        }
-        for (const item of turn.timeline || []) {
-            consider(item.toolCall);
-        }
-    }
-    return Array.from(byId.values());
-}
-
 /** Stable sort by start time; runs with no known start time keep their order, last. */
 function byStartedAt(a: AgentRunNode, b: AgentRunNode): number {
     if (a.startedAt === undefined && b.startedAt === undefined) {
@@ -118,33 +66,6 @@ function byStartedAt(a: AgentRunNode, b: AgentRunNode): number {
         return -1;
     }
     return a.startedAt - b.startedAt;
-}
-
-function asRecord(v: unknown): Record<string, unknown> {
-    return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
-}
-
-// Live (SSE) tool calls carry `toolName` + `args`; persisted ones (forge's
-// ToolCall read model) carry `name` + `args`/`parameters`. Read both so a
-// sub-agent is detected the same way mid-run and after the chat completes.
-function rawToolName(tc: ClientToolCall): string | undefined {
-    return tc.toolName ?? (tc as { name?: string }).name;
-}
-
-function rawArgs(tc: ClientToolCall): unknown {
-    return tc.args ?? (tc as { parameters?: unknown }).parameters;
-}
-
-/** The tool call's args (or parameters) only when it's a non-empty object. */
-function nonEmptyArgs(tc: ClientToolCall): Record<string, unknown> | undefined {
-    const a = rawArgs(tc);
-    return a && typeof a === 'object' && !Array.isArray(a) && Object.keys(a).length > 0
-        ? (a as Record<string, unknown>)
-        : undefined;
-}
-
-function asString(v: unknown): string {
-    return typeof v === 'string' ? v.trim() : '';
 }
 
 /** Build a sub-agent node from a normalized `Task` tool call. */
@@ -182,9 +103,34 @@ function nodeFromTaskCall(tc: ClientToolCall): AgentRunNode {
 }
 
 /**
- * Build the agent-run tree from a conversation's turns. The root represents the
- * orchestrator; its children are the `Task` sub-agents it spawned, ordered by
- * start time. Returns a root with no children when the conversation issued none.
+ * True when nesting `childId` under `parentId` would form a cycle — i.e.
+ * `childId` is already an ancestor of `parentId` (A↔B), or the ancestor chain
+ * itself loops. Such pairs fall back to root level instead of nesting, so a
+ * malformed `parentToolCallId` chain can never produce infinite recursion.
+ */
+function wouldCreateCycle(
+    parentIdById: Map<string, string | undefined>,
+    childId: string,
+    parentId: string,
+): boolean {
+    let cursor: string | undefined = parentId;
+    const seen = new Set<string>();
+    while (cursor) {
+        if (cursor === childId || seen.has(cursor)) {
+            return true;
+        }
+        seen.add(cursor);
+        cursor = parentIdById.get(cursor);
+    }
+    return false;
+}
+
+/**
+ * Build the agent-run tree from a conversation's turns. The root is the
+ * orchestrator; every `Task` tool call becomes a sub-agent node nested under the
+ * sub-agent that spawned it (via `parentToolCallId`), giving the tree real depth.
+ * A Task whose parent isn't another captured Task (or is missing/cyclic) attaches
+ * directly to the orchestrator. Children at every level are ordered by start time.
  */
 export function buildAgentRunTreeFromTurns(
     turns: ClientConversationTurn[] | undefined,
@@ -193,12 +139,40 @@ export function buildAgentRunTreeFromTurns(
     const taskCalls = collectToolCalls(turns || [])
         .filter((tc) => normalizeToolName(rawToolName(tc)) === 'task');
 
-    const children = taskCalls.map(nodeFromTaskCall);
-    children.sort(byStartedAt);
+    const nodeById = new Map<string, AgentRunNode>();
+    const parentIdById = new Map<string, string | undefined>();
+    for (const tc of taskCalls) {
+        nodeById.set(tc.id, nodeFromTaskCall(tc));
+        parentIdById.set(tc.id, tc.parentToolCallId);
+    }
 
+    const rootChildren: AgentRunNode[] = [];
+    for (const tc of taskCalls) {
+        const node = nodeById.get(tc.id)!;
+        const parentId = tc.parentToolCallId;
+        // Nest under the spawning sub-agent only when its Task call was captured
+        // too and nesting wouldn't form a cycle; otherwise attach to the root.
+        if (parentId && parentId !== tc.id && nodeById.has(parentId)
+            && !wouldCreateCycle(parentIdById, tc.id, parentId)) {
+            nodeById.get(parentId)!.children.push(node);
+        } else {
+            rootChildren.push(node);
+        }
+    }
+
+    // Order siblings at every level by start time.
+    for (const node of nodeById.values()) {
+        node.children.sort(byStartedAt);
+    }
+    rootChildren.sort(byStartedAt);
+
+    // Root status reflects the whole subtree: any descendant still running/queued
+    // keeps the orchestrator "live" when no explicit process status is given.
+    const anyActive = Array.from(nodeById.values())
+        .some((n) => n.status === 'running' || n.status === 'queued');
     const rootStatus: AgentRunStatus = root?.status
         ? mapRootStatus(root.status)
-        : (children.some((c) => c.status === 'running' || c.status === 'queued') ? 'running' : 'done');
+        : (anyActive ? 'running' : 'done');
 
     return {
         id: root?.id || 'root',
@@ -206,11 +180,11 @@ export function buildAgentRunTreeFromTurns(
         role: 'orchestrator',
         status: rootStatus,
         isRoot: true,
-        children,
+        children: rootChildren,
     };
 }
 
-/** Count every run in the tree, including the root. */
+/** Count every run in the tree, including the root (all nesting levels). */
 export function countRuns(node: AgentRunNode): number {
     return 1 + (node.children || []).reduce((sum, c) => sum + countRuns(c), 0);
 }
