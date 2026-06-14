@@ -66,6 +66,7 @@ import type { MemoryV2Addon } from './memory-v2-addon';
 import { resolveAutoFolderContext } from './auto-folder-utils';
 import { systemMessageBuilder } from './system-message-builder';
 import { buildChatTurnContext } from './chat-turn-context-builder';
+import { resolveChatMcpServersForWorkspace } from './mcp-tool-enforcement';
 import { attachRalphGrillMetadataToAskUserPayloads, buildRalphGrillPlanningCompletedProgress, buildRalphGrillPlanningStartedProgress, buildRalphGrillProcessStateFromPlan, buildRalphMultiAgentGrillDirective, formatRalphGrillQuestionPlanForPrompt, planRalphGrillCandidateQuestions } from '../ralph/grill-planning';
 import type { RalphGrillPlanningProgress, RalphGrillQuestionPlanningResult, RalphGrillSetup } from '../ralph/grill-planning';
 // ============================================================================
@@ -743,6 +744,18 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             // The SDK's native onUserInputRequest must NOT be set at the same time.
             assertNoAskUserConflict({ tools: sendTools });
 
+            // AC-04 — Apply the per-repo MCP allow-lists (server-level
+            // `enabledMcpServers` + per-tool `enabledMcpTools`) to the
+            // dashboard chat/session path. When resolved, the explicit map is
+            // sent with `loadDefaultMcpConfig: false` so disabled tools/servers
+            // never reach the agent. `undefined` preserves the SDK default load.
+            const resolvedMcpServers = await resolveChatMcpServersForWorkspace({
+                store: this.store,
+                dataDir: this.dataDir,
+                workspaceId: payload.workspaceId,
+                workingDirectory,
+            });
+
             const sendOptions = {
                 prompt: effectivePrompt,
                 mode: agentMode,
@@ -758,6 +771,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 skillDirectories,
                 disabledSkills,
                 ...(excludedTools && excludedTools.length > 0 ? { excludedTools } : {}),
+                ...(resolvedMcpServers ? { mcpServers: resolvedMcpServers, loadDefaultMcpConfig: false } : {}),
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
                 onSessionCreated: (sessionId: string) => {
                     this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch(() => {
