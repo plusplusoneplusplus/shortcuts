@@ -872,3 +872,81 @@
   color: var(--mcp-fg-muted);
   font-size: 13px;
 }
+
+/* ---- Tools tab (live discovery + per-tool toggles) ---- */
+.mcp-servers-redesign .mcp-tools-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.mcp-servers-redesign .mcp-tools-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.mcp-servers-redesign .mcp-tools-toolbar .mcp-search-wrap {
+  flex: 1 1 180px;
+  min-width: 140px;
+}
+.mcp-servers-redesign .mcp-tool-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--mcp-border-subtle);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.mcp-servers-redesign .mcp-tool-row {
+  padding: 10px 12px;
+  border-top: 1px solid var(--mcp-border-subtle);
+}
+.mcp-servers-redesign .mcp-tool-row:first-child {
+  border-top: 0;
+}
+.mcp-servers-redesign .mcp-tool-row.off {
+  opacity: 0.6;
+}
+.mcp-servers-redesign .mcp-tool-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.mcp-servers-redesign .mcp-tool-name {
+  font-family: var(--mcp-font-mono);
+  font-size: 12px;
+  color: var(--mcp-fg);
+  font-weight: 500;
+}
+.mcp-servers-redesign .mcp-tool-desc {
+  color: var(--mcp-fg-muted);
+  font-size: 12px;
+  margin: 4px 0 0;
+  line-height: 1.4;
+}
+.mcp-servers-redesign .mcp-tool-schema {
+  margin-top: 6px;
+}
+.mcp-servers-redesign .mcp-tool-schema-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: var(--mcp-accent, #0078d4);
+  font-size: 11px;
+  font: inherit;
+  font-size: 11px;
+}
+.mcp-servers-redesign .mcp-tool-schema-chev {
+  display: inline-flex;
+  transition: transform 0.12s ease;
+}
+.mcp-servers-redesign .mcp-tool-schema-chev.open {
+  transform: rotate(90deg);
+}
+.mcp-servers-redesign .mcp-tool-schema-pre {
+  margin-top: 6px;
+}

@@ -36,6 +36,7 @@ import type {
   WorkspaceInstructionResponse,
   WorkspaceInstructionsResponse,
   WorkspaceMcpConfigResponse,
+  WorkspaceMcpToolsResponse,
   WorkspaceSummaryOptions,
   WorkspaceSummaryResponse,
   WorkspacesResponse,
@@ -144,10 +145,23 @@ export class WorkspacesClient {
   }
 
   updateMcpConfig(workspaceId: string, request: UpdateWorkspaceMcpConfigRequest): Promise<{ workspace: WorkspaceInfo }> {
+    const body: Record<string, unknown> = {
+      enabledMcpServers: request.enabledMcpServers === null ? null : [...request.enabledMcpServers],
+    };
+    if (Object.prototype.hasOwnProperty.call(request, 'enabledMcpTools')) {
+      body.enabledMcpTools = request.enabledMcpTools ?? null;
+    }
     return this.transport.request<{ workspace: WorkspaceInfo }>(`/workspaces/${encodePathSegment(workspaceId)}/mcp-config`, {
       method: 'PUT',
-      body: { enabledMcpServers: request.enabledMcpServers === null ? null : [...request.enabledMcpServers] },
+      body,
     });
+  }
+
+  discoverMcpTools(workspaceId: string, options?: { forceReload?: boolean }): Promise<WorkspaceMcpToolsResponse> {
+    return this.transport.request<WorkspaceMcpToolsResponse>(
+      `/workspaces/${encodePathSegment(workspaceId)}/mcp-config/tools`,
+      { query: options?.forceReload ? { forceReload: true } : undefined },
+    );
   }
 
   getMcpServerDetail(workspaceId: string, serverName: string): Promise<McpServerDetail> {

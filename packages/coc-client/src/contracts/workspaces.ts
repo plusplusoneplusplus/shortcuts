@@ -99,10 +99,45 @@ export interface WorkspaceMcpConfigResponse {
   availableServers: WorkspaceMcpServerEntry[];
   enabledMcpServers: string[] | null;
   sources: WorkspaceMcpSources;
+  /**
+   * Per-repo allow-list of enabled tools, keyed by server name. Allow-list
+   * semantics: a server with no entry has all tools enabled; an entry lists the
+   * tool names that remain enabled (any tool not listed — including newly
+   * discovered ones — is disabled). `null`/absent means no allow-list at all.
+   */
+  enabledMcpTools?: Record<string, string[]> | null;
 }
 
 export interface UpdateWorkspaceMcpConfigRequest {
   enabledMcpServers: string[] | null;
+  /**
+   * Optional per-repo enabled-tools allow-list. Omit to leave unchanged; pass
+   * `null` to clear it; pass a `Record<server, toolNames[]>` to replace it.
+   */
+  enabledMcpTools?: Record<string, string[]> | null;
+}
+
+/** A single tool reported by an MCP server's live `tools/list`. */
+export interface McpDiscoveredTool {
+  name: string;
+  description?: string;
+  /** JSON Schema describing the tool's input (display-only). */
+  inputSchema?: unknown;
+}
+
+/** Per-server result of live MCP tool discovery. */
+export interface McpServerToolsResult {
+  status: 'ok' | 'error';
+  tools: McpDiscoveredTool[];
+  /** Present when `status === 'error'`. */
+  error?: string;
+  /** Server's self-reported name, when known. */
+  serverName?: string;
+}
+
+/** Response of `GET /workspaces/:id/mcp-config/tools`. */
+export interface WorkspaceMcpToolsResponse {
+  servers: Record<string, McpServerToolsResult>;
 }
 
 export type WorkspaceInstructionMode = 'base' | 'ask' | 'autopilot';

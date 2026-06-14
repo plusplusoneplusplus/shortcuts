@@ -39,6 +39,7 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
     const [availableServers, setAvailableServers] = useState<McpServerEntry[]>([]);
     const [mcpSources, setMcpSources] = useState<McpServerSources | undefined>(undefined);
     const [enabledMcpServers, setEnabledMcpServers] = useState<string[] | null>(null);
+    const [enabledMcpTools, setEnabledMcpTools] = useState<Record<string, string[]> | null>(null);
 
     useEffect(() => {
         setLoading(true);
@@ -49,6 +50,7 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
                 setAvailableServers(data.availableServers ?? []);
                 setMcpSources(data.sources);
                 setEnabledMcpServers(data.enabledMcpServers ?? null);
+                setEnabledMcpTools(data.enabledMcpTools ?? null);
             })
             .catch((e: unknown) => setError(getSpaCocClientErrorMessage(e, 'Failed to load MCP config')))
             .finally(() => setLoading(false));
@@ -62,6 +64,7 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
                 setAvailableServers(data.availableServers ?? []);
                 setMcpSources(data.sources);
                 setEnabledMcpServers(data.enabledMcpServers ?? null);
+                setEnabledMcpTools(data.enabledMcpTools ?? null);
             })
             .catch((e: unknown) => setError(getSpaCocClientErrorMessage(e, 'Failed to load MCP config')))
             .finally(() => setLoading(false));
@@ -319,6 +322,8 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
                         saving={saving}
                         availableServers={availableServers}
                         sources={mcpSources}
+                        enabledMcpServers={enabledMcpServers}
+                        enabledMcpTools={enabledMcpTools}
                         isEnabled={isEnabled}
                         onToggle={handleToggle}
                         onRefresh={handleRefreshMcp}

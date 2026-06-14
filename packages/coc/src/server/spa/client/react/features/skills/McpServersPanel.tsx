@@ -2,7 +2,23 @@ import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import './mcp-servers-redesign.css';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { getApiBase } from '../../utils/config';
-import type { McpServerDetail as ClientMcpServerDetail, McpConfigScope, McpServerAuthStatus } from '@plusplusoneplusplus/coc-client';
+import type {
+    McpServerDetail as ClientMcpServerDetail,
+    McpConfigScope,
+    McpServerAuthStatus,
+    McpServerToolsResult,
+    McpDiscoveredTool,
+} from '@plusplusoneplusplus/coc-client';
+import {
+    isMcpToolEnabled,
+    applyMcpToolToggle,
+    enableAllMcpTools,
+    disableAllMcpTools,
+    normalizeEnabledMcpTools,
+    type EnabledMcpToolsMap,
+} from './mcpToolsAllowList';
+
+type DiscoveryState = 'idle' | 'loading' | 'loaded' | 'error';
 
 export type McpServerSource = 'global' | 'workspace';
 export type McpServerEntry = {
@@ -43,6 +59,13 @@ interface McpServersPanelProps {
     saving: boolean;
     availableServers: McpServerEntry[];
     sources?: McpServerSources;
+    /**
+     * Raw enabled-server allow-list. Needed so per-tool toggles can be persisted
+     * through the same `PUT /mcp-config` call without clobbering the server list.
+     */
+    enabledMcpServers?: string[] | null;
+    /** Initial per-repo enabled-tools allow-list (server → enabled tool names). */
+    enabledMcpTools?: Record<string, string[]> | null;
     isEnabled: (name: string) => boolean;
     onToggle: (serverName: string, checked: boolean) => void;
     onRefresh?: () => void;
@@ -251,10 +274,181 @@ function InspectorOverviewPane({ server, detail }: { server: McpServerEntry; det
     );
 }
 
-function InspectorToolsPane() {
+/** Collapsible JSON view of a tool's input schema (display-only). */
+function ToolSchema({ schema }: { schema: unknown }) {
+    const [open, setOpen] = useState(false);
+    if (schema === undefined || schema === null) return null;
+    let json: string;
+    try {
+        json = JSON.stringify(schema, null, 2);
+    } catch {
+        json = String(schema);
+    }
     return (
-        <div className="mcp-empty-state" style={{ padding: '32px 0' }}>
-            Connect to view tools
+        <div className="mcp-tool-schema">
+            <button
+                type="button"
+                className="mcp-tool-schema-toggle"
+                onClick={() => setOpen(o => !o)}
+                aria-expanded={open}
+            >
+                <span className={`mcp-tool-schema-chev${open ? ' open' : ''}`}><ChevronIcon /></span>
+                {open ? 'Hide input schema' : 'Show input schema'}
+            </button>
+            {open && <pre className="mcp-source-pre mcp-tool-schema-pre">{json}</pre>}
+        </div>
+    );
+}
+
+function ToolRow({ tool, enabled, disabled, onToggle }: {
+    tool: McpDiscoveredTool;
+    enabled: boolean;
+    disabled: boolean;
+    onToggle: (enabled: boolean) => void;
+}) {
+    return (
+        <div className={`mcp-tool-row${enabled ? '' : ' off'}`} data-tool={tool.name}>
+            <div className="mcp-tool-head">
+                <code className="mcp-tool-name">{tool.name}</code>
+                <ToggleSwitch
+                    checked={enabled}
+                    disabled={disabled}
+                    onChange={onToggle}
+                    testId={`mcp-tool-toggle-${tool.name}`}
+                />
+            </div>
+            {tool.description && <p className="mcp-tool-desc">{tool.description}</p>}
+            <ToolSchema schema={tool.inputSchema} />
+        </div>
+    );
+}
+
+function InspectorToolsPane({
+    enabled,
+    result,
+    discoveryState,
+    discoveryError,
+    allowEntry,
+    saving,
+    onToggleTool,
+    onEnableAll,
+    onDisableAll,
+    onRefresh,
+}: {
+    enabled: boolean;
+    result: McpServerToolsResult | undefined;
+    discoveryState: DiscoveryState;
+    discoveryError: string | null;
+    allowEntry: string[] | undefined;
+    saving: boolean;
+    onToggleTool: (toolName: string, enabled: boolean) => void;
+    onEnableAll: () => void;
+    onDisableAll: () => void;
+    onRefresh: () => void;
+}) {
+    const [query, setQuery] = useState('');
+
+    if (!enabled) {
+        return (
+            <div className="mcp-empty-state" style={{ padding: '32px 0' }} data-testid="mcp-tools-disabled">
+                Enable this server to discover its tools.
+            </div>
+        );
+    }
+
+    const loading = (discoveryState === 'loading' || discoveryState === 'idle') && !result;
+    if (loading) {
+        return (
+            <div className="mcp-empty-state" style={{ padding: '32px 0' }} data-testid="mcp-tools-loading">
+                Discovering tools…
+            </div>
+        );
+    }
+
+    const errorMsg = result?.status === 'error'
+        ? (result.error || 'Connection failed')
+        : (!result && discoveryState === 'error' ? (discoveryError || 'Discovery failed') : undefined);
+    if (errorMsg) {
+        return (
+            <div className="mcp-tools-pane" data-testid="mcp-tools-error">
+                <div className="mcp-empty-state" style={{ color: 'var(--mcp-danger)', padding: '20px 0' }}>
+                    Couldn’t connect: {errorMsg}
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                    <button className="mcp-btn sm" type="button" onClick={onRefresh}>
+                        <RefreshIcon14 /> Retry
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    const tools = result?.status === 'ok' ? result.tools : [];
+    const q = query.trim().toLowerCase();
+    const filtered = q
+        ? tools.filter(t => t.name.toLowerCase().includes(q) || (t.description ?? '').toLowerCase().includes(q))
+        : tools;
+    const enabledCount = tools.filter(t => isMcpToolEnabled(allowEntry, t.name)).length;
+
+    return (
+        <div className="mcp-tools-pane" data-testid="mcp-tools-pane">
+            <div className="mcp-tools-toolbar">
+                <div className="mcp-search-wrap">
+                    <SearchIcon14 />
+                    <input
+                        className="mcp-input"
+                        type="text"
+                        placeholder="Filter tools"
+                        value={query}
+                        onChange={e => setQuery(e.target.value)}
+                        data-testid="mcp-tools-search"
+                    />
+                </div>
+                <span className="mcp-small" data-testid="mcp-tools-enabled-count">{enabledCount}/{tools.length} enabled</span>
+                <div className="mcp-spacer" />
+                <button
+                    className="mcp-btn sm"
+                    type="button"
+                    disabled={saving || tools.length === 0}
+                    onClick={onEnableAll}
+                    data-testid="mcp-tools-enable-all"
+                >
+                    Enable all
+                </button>
+                <button
+                    className="mcp-btn sm"
+                    type="button"
+                    disabled={saving || tools.length === 0}
+                    onClick={onDisableAll}
+                    data-testid="mcp-tools-disable-all"
+                >
+                    Disable all
+                </button>
+                <button className="mcp-btn sm" type="button" onClick={onRefresh} title="Re-discover tools" aria-label="Re-discover tools">
+                    <RefreshIcon14 />
+                </button>
+            </div>
+            {tools.length === 0 ? (
+                <div className="mcp-empty-state" style={{ padding: '24px 0' }} data-testid="mcp-tools-empty">
+                    This server exposes no tools.
+                </div>
+            ) : filtered.length === 0 ? (
+                <div className="mcp-empty-state" style={{ padding: '24px 0' }}>
+                    No tools matching “{query}”.
+                </div>
+            ) : (
+                <div className="mcp-tool-list" data-testid="mcp-tool-list">
+                    {filtered.map(tool => (
+                        <ToolRow
+                            key={tool.name}
+                            tool={tool}
+                            enabled={isMcpToolEnabled(allowEntry, tool.name)}
+                            disabled={saving}
+                            onToggle={(on) => onToggleTool(tool.name, on)}
+                        />
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
@@ -587,7 +781,7 @@ function InspectorActivityPane() {
     );
 }
 
-function ServerInspector({ server, activeTab, onTabChange, detail, workspaceId, onSaved, onDeleted }: {
+function ServerInspector({ server, activeTab, onTabChange, detail, workspaceId, onSaved, onDeleted, tools }: {
     server: McpServerEntry;
     activeTab: InspectorTab;
     onTabChange: (tab: InspectorTab) => void;
@@ -595,6 +789,18 @@ function ServerInspector({ server, activeTab, onTabChange, detail, workspaceId, 
     workspaceId: string;
     onSaved: () => void;
     onDeleted: () => void;
+    tools: {
+        enabled: boolean;
+        result: McpServerToolsResult | undefined;
+        discoveryState: DiscoveryState;
+        discoveryError: string | null;
+        allowEntry: string[] | undefined;
+        saving: boolean;
+        onToggleTool: (toolName: string, enabled: boolean) => void;
+        onEnableAll: () => void;
+        onDisableAll: () => void;
+        onRefresh: () => void;
+    };
 }) {
     const tabs: { id: InspectorTab; label: string }[] = [
         { id: 'overview', label: 'Overview' },
@@ -620,7 +826,20 @@ function ServerInspector({ server, activeTab, onTabChange, detail, workspaceId, 
             </div>
             <div className="mcp-inspector-body">
                 {activeTab === 'overview' && <InspectorOverviewPane server={server} detail={detail} />}
-                {activeTab === 'tools' && <InspectorToolsPane />}
+                {activeTab === 'tools' && (
+                    <InspectorToolsPane
+                        enabled={tools.enabled}
+                        result={tools.result}
+                        discoveryState={tools.discoveryState}
+                        discoveryError={tools.discoveryError}
+                        allowEntry={tools.allowEntry}
+                        saving={tools.saving}
+                        onToggleTool={tools.onToggleTool}
+                        onEnableAll={tools.onEnableAll}
+                        onDisableAll={tools.onDisableAll}
+                        onRefresh={tools.onRefresh}
+                    />
+                )}
                 {activeTab === 'configuration' && (
                     <InspectorConfigPane
                         server={server}
@@ -969,6 +1188,8 @@ export function McpServersPanel({
     saving,
     availableServers,
     sources,
+    enabledMcpServers,
+    enabledMcpTools,
     isEnabled,
     onToggle,
     onRefresh,
@@ -979,6 +1200,91 @@ export function McpServersPanel({
     const [expandedServer, setExpandedServer] = useState<string | null>(null);
     const [inspectorTab, setInspectorTab] = useState<InspectorTab>('overview');
     const [detailCache, setDetailCache] = useState<Record<string, ClientMcpServerDetail | null | 'loading'>>({});
+
+    // ── Live tool discovery (AC-02) ──────────────────────────────────────────
+    const [discovery, setDiscovery] = useState<Record<string, McpServerToolsResult>>({});
+    const [discoveryState, setDiscoveryState] = useState<DiscoveryState>('idle');
+    const [discoveryError, setDiscoveryError] = useState<string | null>(null);
+
+    // ── Per-tool allow-list (AC-03) ──────────────────────────────────────────
+    const [toolsAllowList, setToolsAllowList] = useState<EnabledMcpToolsMap>(() => ({ ...(enabledMcpTools ?? {}) }));
+    const [toolsSaving, setToolsSaving] = useState(false);
+    // Keep local allow-list in sync when the parent reloads the config.
+    useEffect(() => {
+        setToolsAllowList({ ...(enabledMcpTools ?? {}) });
+    }, [enabledMcpTools]);
+
+    const fetchTools = useCallback(async (forceReload = false) => {
+        if (!workspaceId) return;
+        setDiscoveryState('loading');
+        setDiscoveryError(null);
+        try {
+            const resp = await getSpaCocClient().workspaces.discoverMcpTools(
+                workspaceId,
+                forceReload ? { forceReload: true } : undefined,
+            );
+            setDiscovery(resp.servers ?? {});
+            setDiscoveryState('loaded');
+        } catch (e) {
+            setDiscoveryError(getSpaCocClientErrorMessage(e, 'Failed to discover tools'));
+            setDiscoveryState('error');
+        }
+    }, [workspaceId]);
+
+    // Eager discovery on mount / workspace change.
+    useEffect(() => { void fetchTools(); }, [fetchTools]);
+
+    const persistToolsAllowList = useCallback(async (nextMap: EnabledMcpToolsMap) => {
+        if (!workspaceId) return;
+        let prev: EnabledMcpToolsMap = {};
+        setToolsAllowList(curr => { prev = curr; return nextMap; }); // optimistic
+        setToolsSaving(true);
+        try {
+            await getSpaCocClient().workspaces.updateMcpConfig(workspaceId, {
+                enabledMcpServers: enabledMcpServers ?? null,
+                enabledMcpTools: normalizeEnabledMcpTools(nextMap),
+            });
+        } catch (e) {
+            setToolsAllowList(prev); // revert
+            setDiscoveryError(getSpaCocClientErrorMessage(e, 'Failed to save tool settings'));
+        } finally {
+            setToolsSaving(false);
+        }
+    }, [workspaceId, enabledMcpServers]);
+
+    const discoveredToolNames = useCallback((serverName: string): string[] => {
+        const r = discovery[serverName];
+        return r && r.status === 'ok' ? r.tools.map(t => t.name) : [];
+    }, [discovery]);
+
+    const handleToolToggle = useCallback((serverName: string, toolName: string, on: boolean) => {
+        void persistToolsAllowList(
+            applyMcpToolToggle(toolsAllowList, serverName, discoveredToolNames(serverName), toolName, on),
+        );
+    }, [persistToolsAllowList, toolsAllowList, discoveredToolNames]);
+
+    const handleEnableAllTools = useCallback((serverName: string) => {
+        void persistToolsAllowList(enableAllMcpTools(toolsAllowList, serverName));
+    }, [persistToolsAllowList, toolsAllowList]);
+
+    const handleDisableAllTools = useCallback((serverName: string) => {
+        void persistToolsAllowList(disableAllMcpTools(toolsAllowList, serverName));
+    }, [persistToolsAllowList, toolsAllowList]);
+
+    /** Row-level tool count label, e.g. "12", "8/12", "…", "!", or "—". */
+    const toolCountFor = useCallback((server: McpServerEntry): { text: string; title?: string } => {
+        if (!isEnabled(server.name) || server.effective === false) return { text: '—' };
+        const r = discovery[server.name];
+        if (!r) {
+            return discoveryState === 'loading' || discoveryState === 'idle'
+                ? { text: '…' }
+                : { text: '—' };
+        }
+        if (r.status === 'error') return { text: '!', title: r.error };
+        const total = r.tools.length;
+        const enabledCount = r.tools.filter(t => isMcpToolEnabled(toolsAllowList[server.name], t.name)).length;
+        return { text: enabledCount === total ? String(total) : `${enabledCount}/${total}`, title: `${enabledCount} of ${total} tools enabled` };
+    }, [discovery, discoveryState, isEnabled, toolsAllowList]);
     /** Per-server OAuth flow state — drives the Authenticate button label and spinner. */
     const [authFlow, setAuthFlow] = useState<Record<string, McpAuthFlowState>>({});
     const authPollersRef = useRef<Record<string, ReturnType<typeof setInterval>>>({});
@@ -1232,7 +1538,12 @@ export function McpServersPanel({
                 </div>
                 <div className="mcp-spacer" />
                 {onRefresh && (
-                    <button className="mcp-btn" onClick={onRefresh} disabled={loading} type="button">
+                    <button
+                        className="mcp-btn"
+                        onClick={() => { onRefresh(); void fetchTools(true); }}
+                        disabled={loading}
+                        type="button"
+                    >
                         <RefreshIcon14 /> Refresh status
                     </button>
                 )}
@@ -1258,6 +1569,7 @@ export function McpServersPanel({
                         const isExpanded = expandedServer === server.name;
                         const flow = authFlow[server.name];
                         const showAuthBtn = isRemote(server) && enabled && (needsAuth(server) || (flow && flow.phase !== 'completed'));
+                        const toolCount = toolCountFor(server);
 
                         return (
                             <React.Fragment key={server.name}>
@@ -1290,7 +1602,7 @@ export function McpServersPanel({
                                     </div>
                                     <div className="mcp-meta"><span className={`mcp-pill ${transportCls}`}>{server.type}</span></div>
                                     <div className="mcp-meta"><span className={`mcp-pill ${sourcePill.cls}`}>{sourcePill.label}</span></div>
-                                    <div className="mcp-tools-count">—</div>
+                                    <div className="mcp-tools-count" title={toolCount.title} data-testid={`mcp-tools-count-${server.name}`}>{toolCount.text}</div>
                                     <ToggleSwitch
                                         checked={!isOverridden && enabled}
                                         disabled={saving || isOverridden}
@@ -1307,6 +1619,18 @@ export function McpServersPanel({
                                         workspaceId={workspaceId}
                                         onSaved={() => handleDetailSaved(server.name)}
                                         onDeleted={handleServerDeleted}
+                                        tools={{
+                                            enabled: enabled && !isOverridden,
+                                            result: discovery[server.name],
+                                            discoveryState,
+                                            discoveryError,
+                                            allowEntry: toolsAllowList[server.name],
+                                            saving: toolsSaving,
+                                            onToggleTool: (toolName, on) => handleToolToggle(server.name, toolName, on),
+                                            onEnableAll: () => handleEnableAllTools(server.name),
+                                            onDisableAll: () => handleDisableAllTools(server.name),
+                                            onRefresh: () => void fetchTools(true),
+                                        }}
                                     />
                                 )}
                             </React.Fragment>

@@ -433,7 +433,12 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             if (!ws) return;
             const parsed = url.parse(req.url || '/', true);
             const forceReload = parsed.query.forceReload === 'true' || parsed.query.refresh === 'true';
-            sendJSON(res, 200, buildMcpConfigResponse(ws, forceReload));
+            // Surface the per-repo enabled-tools allow-list so the UI can render
+            // and round-trip per-tool toggles (AC-03 allow-list semantics).
+            const enabledMcpTools = ctx.dataDir
+                ? readRepoPreferences(ctx.dataDir, ws.id).enabledMcpTools ?? null
+                : null;
+            sendJSON(res, 200, { ...buildMcpConfigResponse(ws, forceReload), enabledMcpTools });
         },
     });
 
