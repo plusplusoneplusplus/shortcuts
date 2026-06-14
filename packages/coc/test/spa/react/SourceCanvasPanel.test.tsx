@@ -85,4 +85,68 @@ describe('SourceCanvasPanel', () => {
         fireEvent.click(btn);
         expect(revealMock).not.toHaveBeenCalled();
     });
+
+    // --- AC-06: body load/error/success states ---
+
+    it('shows the loading state when no content is provided', () => {
+        const { getByTestId } = render(
+            <SourceCanvasPanel fileRef={fileRef} wsId="ws1" onClose={() => {}} />,
+        );
+        expect(getByTestId('source-canvas-loading')).toBeTruthy();
+    });
+
+    it('shows the loading state for content status "loading"', () => {
+        const { getByTestId } = render(
+            <SourceCanvasPanel
+                fileRef={fileRef}
+                wsId="ws1"
+                content={{ status: 'loading', content: '', language: '', resolvedPath: '', error: '' }}
+                onClose={() => {}}
+            />,
+        );
+        expect(getByTestId('source-canvas-loading')).toBeTruthy();
+    });
+
+    it('renders an error with the attempted path and reason', () => {
+        const { getByTestId, queryByTestId } = render(
+            <SourceCanvasPanel
+                fileRef={fileRef}
+                wsId="ws1"
+                content={{
+                    status: 'error',
+                    content: '',
+                    language: '',
+                    resolvedPath: '/home/u/proj/src/foo.ts',
+                    error: 'No workspace available',
+                }}
+                onClose={() => {}}
+            />,
+        );
+        expect(getByTestId('source-canvas-error-msg').textContent).toBe(
+            "Couldn't load /home/u/proj/src/foo.ts",
+        );
+        expect(getByTestId('source-canvas-error').textContent).toContain('No workspace available');
+        expect(queryByTestId('source-canvas-loading')).toBeNull();
+        expect(queryByTestId('source-canvas-source')).toBeNull();
+    });
+
+    it('renders the loaded source content on success', () => {
+        const { getByTestId, queryByTestId } = render(
+            <SourceCanvasPanel
+                fileRef={fileRef}
+                wsId="ws1"
+                content={{
+                    status: 'success',
+                    content: 'const x = 1;\n',
+                    language: 'typescript',
+                    resolvedPath: '/home/u/proj/src/foo.ts',
+                    error: '',
+                }}
+                onClose={() => {}}
+            />,
+        );
+        expect(getByTestId('source-canvas-source').textContent).toBe('const x = 1;\n');
+        expect(queryByTestId('source-canvas-loading')).toBeNull();
+        expect(queryByTestId('source-canvas-error')).toBeNull();
+    });
 });
