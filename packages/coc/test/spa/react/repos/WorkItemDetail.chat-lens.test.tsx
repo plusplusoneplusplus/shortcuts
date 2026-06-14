@@ -226,7 +226,12 @@ describe('WorkItemDetail Work Item chat lens', () => {
         expect(localStorage.getItem(getReviewChatOpenStorageKey(target))).toBe('true');
         expect(screen.getByTestId('work-item-chat-lens').getAttribute('data-work-item-id')).toBe('wi-1');
         expect(screen.getByTestId('work-item-chat-lens').getAttribute('data-title')).toBe('Saved title one');
-        expect(screen.getByTestId('work-item-chat-lens').getAttribute('data-unsaved')).toBe('true');
+        // `hasUnsavedChanges` reaches the lens a render-tick after the title edit,
+        // so poll for it rather than reading synchronously (mirrors the post-save
+        // assertion below). A bare read flakes under CI load (stale 'false').
+        await waitFor(() =>
+            expect(screen.getByTestId('work-item-chat-lens').getAttribute('data-unsaved')).toBe('true'),
+        );
 
         fireEvent.click(screen.getByTestId('wi-save-btn'));
 
