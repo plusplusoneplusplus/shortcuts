@@ -161,6 +161,8 @@ export function SourceCanvasPanel({ fileRef, wsId, content, onClose }: SourceCan
                         fileName={fileName}
                         content={content.content}
                         language={content.language}
+                        line={fileRef.line}
+                        endLine={fileRef.endLine}
                     />
                 )}
             </div>
