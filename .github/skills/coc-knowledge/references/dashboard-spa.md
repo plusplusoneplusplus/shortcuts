@@ -596,14 +596,17 @@ model built on `features/remote-shell/`:
   tab per remote (origin) via `groupReposByRemote`, with a color dot, clone-count
   chip, aggregate running pulse, and summed unseen badge. Selecting a remote picks
   its last-used clone (else the first). Aggregation comes from `summarizeRemote` /
-  `computeCloneStatusMap` in `shellModel.ts`.
+  `computeCloneStatusMap` in `shellModel.ts`. A trailing `+` button
+  (`remote-add-clone`) opens `CloneRepoDialog` — the single top-level "add clone"
+  action (it is not duplicated per-origin).
 - **Row 2 `RemoteSubBar`** renders above a `chromeless` `RepoDetail` in `ReposView`
-  and replaces RepoDetail's own header. It splits tabs by scope using
-  `partitionShellTabs`: remote-scoped (Work Items, Pull Requests) on the left, then
-  a clone-switcher popover (lists the remote's clones; footer opens
-  `CloneRepoDialog`), the primary clone tabs (Activity/Chats, CLI Sessions, Git,
-  Terminal), a `…` overflow for the rest (Explorer, Schedules, …), and compact
-  Ask/Queue buttons targeting the active clone.
+  and replaces RepoDetail's own header. `partitionShellTabs` splits tabs into
+  remote-scoped (Work Items, Pull Requests — always shown left) and clone-scoped
+  (everything else). A clone-switcher popover (lists the remote's clones only) sits
+  between them, then the clone tabs, then compact Ask/Queue targeting the active
+  clone. Clone tabs use **responsive overflow**: a hidden measurement mirror plus a
+  `ResizeObserver` feed `computeVisibleTabKeys`, which shows every tab that fits and
+  collapses the tail into a `…` menu (always keeping the active tab visible).
 
 The sub-tab taxonomy and feature-flag/git/layout gating live in
 `features/repo-detail/repoSubTabs.ts` (`SUB_TABS`, `VISIBLE_SUB_TABS`,

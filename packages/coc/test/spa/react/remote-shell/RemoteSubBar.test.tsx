@@ -28,9 +28,6 @@ vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useNativeCl
 vi.mock('../../../../src/server/spa/client/react/hooks/preferences/useUiLayoutMode', () => ({ useUiLayoutMode: () => ['dev-workflow', vi.fn()] }));
 vi.mock('../../../../src/server/spa/client/react/queue/hooks/useRepoQueueStats', () => ({ useRepoQueueStats: () => mockQueueStats, isHidden: () => false }));
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useGitInfo', () => ({ useGitInfo: () => mockGitInfo }));
-vi.mock('../../../../src/server/spa/client/react/repos/CloneRepoDialog', () => ({
-    CloneRepoDialog: ({ open }: { open: boolean }) => (open ? <div data-testid="clone-repo-dialog" /> : null),
-}));
 vi.mock('../../../../src/server/spa/client/react/features/remote-shell/useShellNavigation', () => ({
     useShellNavigation: () => ({ selectClone: mockSelectClone, switchSubTab: mockSwitchSubTab }),
 }));
@@ -45,7 +42,7 @@ const repo = (id: string, name: string, branch = 'main') => ({
 
 const renderBar = () => {
     const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2', 'feat/x')];
-    return render(<RemoteSubBar repo={repos[0] as any} repos={repos as any} onRefresh={vi.fn()} />);
+    return render(<RemoteSubBar repo={repos[0] as any} repos={repos as any} />);
 };
 
 beforeEach(() => {

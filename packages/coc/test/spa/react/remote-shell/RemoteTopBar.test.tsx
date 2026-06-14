@@ -24,6 +24,9 @@ vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => (
 vi.mock('../../../../src/server/spa/client/react/features/remote-shell/useShellNavigation', () => ({
     useShellNavigation: () => ({ selectClone: mockSelectClone, switchSubTab: vi.fn() }),
 }));
+vi.mock('../../../../src/server/spa/client/react/repos/CloneRepoDialog', () => ({
+    CloneRepoDialog: ({ open }: { open: boolean }) => (open ? <div data-testid="clone-repo-dialog" /> : null),
+}));
 
 import { RemoteTopBar } from '../../../../src/server/spa/client/react/features/remote-shell/RemoteTopBar';
 
@@ -89,5 +92,13 @@ describe('RemoteTopBar', () => {
         const active = screen.getAllByTestId('remote-tab').find(el => el.getAttribute('data-active') === 'true');
         expect(active).toBeTruthy();
         expect(active!.getAttribute('data-remote-key')).toContain('forge');
+    });
+
+    it('opens the clone dialog from the top-level add button (not per-origin)', () => {
+        mockRepos = [repo('a', 'shortcuts', SHORTCUTS)];
+        render(<RemoteTopBar />);
+        expect(screen.queryByTestId('clone-repo-dialog')).toBeNull();
+        fireEvent.click(screen.getByTestId('remote-add-clone'));
+        expect(screen.getByTestId('clone-repo-dialog')).toBeTruthy();
     });
 });

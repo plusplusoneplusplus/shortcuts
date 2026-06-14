@@ -113,7 +113,7 @@ export function ReposView() {
                         remoteShell ? (
                             // Remote-first shell: RemoteSubBar (row 2) above a chromeless RepoDetail body.
                             <>
-                                <RemoteSubBar repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
+                                <RemoteSubBar repo={selectedRepo} repos={repos} />
                                 <div className="flex-1 min-h-0 min-w-0 flex flex-col">
                                     <RepoDetail chromeless key={`${selectedRepo.workspace.id}-${state.currentAgentId ?? ''}`} repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
                                 </div>

@@ -28,7 +28,6 @@ import { useRepoQueueStats, isHidden as isHiddenTask } from '../../queue/hooks/u
 import { useGitInfo } from '../git/hooks/useGitInfo';
 import { computeVisibleSubTabs, type SubTabDef } from '../repo-detail/repoSubTabs';
 import { groupReposByRemote, truncatePath } from '../../repos/repoGrouping';
-import { CloneRepoDialog } from '../../repos/CloneRepoDialog';
 import {
     partitionShellTabs, computeCloneStatusMap, cloneStatusColor, summarizeRemote, computeVisibleTabKeys,
 } from './shellModel';
@@ -39,7 +38,6 @@ import type { RepoSubTab } from '../../types/dashboard';
 interface RemoteSubBarProps {
     repo: RepoData;
     repos: RepoData[];
-    onRefresh: () => void;
 }
 
 function Chevron() {
@@ -52,7 +50,7 @@ function Chevron() {
 
 const scopeLabelClass = 'hidden lg:inline-flex items-center text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#848484] dark:text-[#777] px-1 select-none flex-shrink-0';
 
-export function RemoteSubBar({ repo, repos, onRefresh }: RemoteSubBarProps) {
+export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
     const ws = repo.workspace;
     const cloneId = String(ws.id);
     const { state } = useApp();
@@ -95,7 +93,6 @@ export function RemoteSubBar({ repo, repos, onRefresh }: RemoteSubBarProps) {
 
     const [cloneOpen, setCloneOpen] = useState(false);
     const [ovOpen, setOvOpen] = useState(false);
-    const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
     // Which clone-tab keys fit inline; null means "show all" (no overflow / no layout yet).
     const [visibleKeys, setVisibleKeys] = useState<Set<string> | null>(null);
     const cloneRef = useRef<HTMLDivElement>(null);
@@ -286,16 +283,6 @@ export function RemoteSubBar({ repo, repos, onRefresh }: RemoteSubBarProps) {
                                 </button>
                             );
                         })}
-                        <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] mt-1.5 pt-1.5">
-                            <button
-                                data-testid="clone-add-worktree"
-                                onClick={() => { setCloneDialogOpen(true); setCloneOpen(false); }}
-                                className="w-full flex items-center gap-2 px-2 py-2 rounded-md text-[12px] font-medium text-[#656d76] dark:text-[#999] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors"
-                            >
-                                <span className="text-[15px] leading-none">+</span>
-                                Clone again / add worktree…
-                            </button>
-                        </div>
                     </div>
                 )}
             </div>
@@ -375,12 +362,6 @@ export function RemoteSubBar({ repo, repos, onRefresh }: RemoteSubBarProps) {
                 <span className="text-[14px] leading-none">+</span>
                 Queue
             </button>
-
-            <CloneRepoDialog
-                open={cloneDialogOpen}
-                onClose={() => setCloneDialogOpen(false)}
-                onSuccess={() => { setCloneDialogOpen(false); onRefresh(); }}
-            />
         </div>
     );
 }

@@ -9,13 +9,14 @@
  * Rendered inside TopBar in place of RepoTabStrip when the remote shell is on.
  */
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
 import { useRepos } from '../../contexts/ReposContext';
 import { groupReposByRemote, groupKey } from '../../repos/repoGrouping';
 import type { RepoGroup } from '../../repos/repoGrouping';
 import { isHidden as isHiddenTask } from '../../queue/hooks/useRepoQueueStats';
+import { CloneRepoDialog } from '../../repos/CloneRepoDialog';
 import { computeCloneStatusMap, summarizeRemote } from './shellModel';
 import { useShellNavigation } from './useShellNavigation';
 
@@ -31,8 +32,9 @@ function CloneGlyph() {
 export function RemoteTopBar() {
     const { state } = useApp();
     const { state: queueState } = useQueue();
-    const { repos, unseenCounts } = useRepos();
+    const { repos, unseenCounts, fetchRepos } = useRepos();
     const { selectClone } = useShellNavigation();
+    const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
 
     // Remember the last-selected clone per remote so re-selecting a remote
     // returns to the checkout you were last on rather than always the first.
@@ -129,6 +131,20 @@ export function RemoteTopBar() {
                     </button>
                 );
             })}
+            <button
+                data-testid="remote-add-clone"
+                title="Clone a repository…"
+                aria-label="Clone a repository"
+                onClick={() => setCloneDialogOpen(true)}
+                className="inline-flex items-center justify-center h-7 w-7 flex-shrink-0 rounded text-[#616161] dark:text-[#999] hover:bg-black/[0.05] dark:hover:bg-white/[0.08] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors"
+            >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
+            </button>
+            <CloneRepoDialog
+                open={cloneDialogOpen}
+                onClose={() => setCloneDialogOpen(false)}
+                onSuccess={() => { setCloneDialogOpen(false); fetchRepos(); }}
+            />
         </div>
     );
 }
