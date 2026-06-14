@@ -318,6 +318,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         status: effectiveStatus,
     }), [turns, task?.customTitle, task?.title, task?.displayName, title, effectiveStatus]);
 
+    // The Agents view only makes sense once this chat has actually spawned
+    // sub-agents. With none, hide the Thread/Agents toggle and pin the thread,
+    // so a stale `?view=agents` deep-link can't strand the user on an empty
+    // canvas with no toggle to escape. Keeping `view` state untouched means a
+    // deep-link "waits": the canvas appears the moment the first sub-agent does.
+    const hasSubAgents = agentRoot.children.length > 0;
+    const effectiveView: ChatView = hasSubAgents ? view : 'thread';
+
     // The inspector's "Open in thread" action: switch to the thread and scroll
     // to the run's turn.
     const openAgentInThread = useCallback((node: AgentRunNode) => {
@@ -1670,7 +1678,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 onRenameTitle={processId ? () => setRenameOpen(true) : undefined}
                 onStartFreshSameContext={onStartFreshSameContext}
                 startingFreshSameContext={startingFreshSameContext}
-                viewToggle={!loading && !isPending && variant !== 'floating'
+                viewToggle={hasSubAgents && !loading && !isPending && variant !== 'floating'
                     ? <ChatViewToggle view={view} onChange={setView} />
                     : undefined}
             />
@@ -1701,7 +1709,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 >
                     {/* Inner row: ConversationArea + MiniMap, or the Agents canvas */}
                     <div className="relative flex flex-1 min-h-0 overflow-hidden min-w-0">
-                    {view === 'agents' ? (
+                    {effectiveView === 'agents' ? (
                     <AgentCanvas root={agentRoot} onOpenInThread={openAgentInThread} />
                     ) : (
                     <>
@@ -1761,7 +1769,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     )}
                     </div>
                     {/* Ralph grilling complete — show Start Ralph panel (thread view only) */}
-                    {view === 'thread' && (() => {
+                    {effectiveView === 'thread' && (() => {
                         const ralphCtx = getRalphContext(task);
                         const goalPath = detectedGoalFile || (task?.metadata?.goalFilePath as string | undefined) || '';
                         // Path 1: traditional grilling-phase → start
@@ -1804,7 +1812,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         return null;
                     })()}
                     {/* Plan file complete — offer one-click handoff to autopilot (thread view only) */}
-                    {view === 'thread' && isTerminal && !planChatBusy && resolveLoadedTaskMode(task) === 'ask' && effectivePlanPath && (
+                    {effectiveView === 'thread' && isTerminal && !planChatBusy && resolveLoadedTaskMode(task) === 'ask' && effectivePlanPath && (
                         <ImplementPlanCard
                             planFilePath={effectivePlanPath}
                             workspaceId={workspaceId}

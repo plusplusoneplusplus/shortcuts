@@ -303,8 +303,13 @@ under `features/chat/agent-canvas/`) via its `viewToggle` slot. `ChatDetail`
 owns the `view` state and, in `agents` mode, swaps the `ConversationArea` inner
 row for `AgentCanvas` — a pannable/zoomable spatial tree of the chat's
 recursive sub-agent runs — while keeping the composer/scratchpad and hiding the
-thread-only flow cards (Ralph start, Implement-plan). The toggle is hidden in
-the `floating` variant and while loading/pending. In the main inline context
+thread-only flow cards (Ralph start, Implement-plan). The toggle is hidden when
+the chat has no sub-agents (`hasSubAgents = agentRoot.children.length > 0`), in
+the `floating` variant, and while loading/pending. Rendering keys off
+`effectiveView` (= `view` only when sub-agents exist, otherwise `thread`), so a
+stale `?view=agents` deep-link can't strand the user on an empty canvas — it
+"waits", revealing the canvas the moment the first sub-agent appears. In the
+main inline context
 the view is deep-linked: a `?view=agents` query param on the chat hash
 (`#repos/<ws>/<tab>/<taskId>?view=agents`) is read on mount (so a
 shared/bookmarked URL reopens straight into the canvas) and written via
@@ -330,6 +335,9 @@ centered (`centerContent`), re-centering on mount/growth/resize until the user
 takes over. The toolbar's % is a dropdown of preset levels
 (25/50/75/100/150/200% + Fit) backed by `useZoomPan`'s `zoomTo(scale)`
 (zooms about the viewport center); the Fit button zooms to fit the whole tree.
+`useZoomPan`'s wheel-zoom and pan-drag both skip events originating inside a
+`[data-no-drag]` overlay — the toolbar, legend, and the open inspector — so
+those scroll/click natively instead of zooming/panning the canvas behind them.
 It renders curved SVG edges + node cards (role glyph, name, live elapsed,
 spawn-count pill, status dot, progress bar) and a live 1s clock for running
 nodes. Clicking a sub-agent node opens `AgentInspector` — a right-side panel

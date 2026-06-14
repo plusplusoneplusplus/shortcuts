@@ -1,8 +1,31 @@
 import { describe, it, expect } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, render, fireEvent } from '@testing-library/react';
+import { createElement, type ReactElement } from 'react';
 import { useZoomPan } from '../../../../src/server/spa/client/react/hooks/ui/useZoomPan';
 
 const defaultOptions = { contentWidth: 400, contentHeight: 200 };
+
+/**
+ * A real-DOM harness: the wheel listener is attached in an effect to
+ * `containerRef.current`, so it only exists when the ref points at a live node
+ * (the `renderHook` tests above poke a mock ref and never exercise the wheel).
+ * The container holds a bare canvas surface and a `[data-no-drag]` overlay
+ * (mirroring the inspector/toolbar) so we can dispatch wheel events at each.
+ */
+function ZoomPanHarness(): ReactElement {
+    const { containerRef, zoomLabel } = useZoomPan(defaultOptions);
+    return createElement(
+        'div',
+        { ref: containerRef, 'data-testid': 'container' },
+        createElement('div', { 'data-testid': 'surface' }),
+        createElement(
+            'div',
+            { 'data-no-drag': true },
+            createElement('div', { 'data-testid': 'overlay-content' }),
+        ),
+        createElement('span', { 'data-testid': 'label' }, zoomLabel),
+    );
+}
 
 describe('useZoomPan', () => {
     it('initial state is scale=1, translate=(0,0), isDragging=false', () => {
@@ -179,5 +202,26 @@ describe('useZoomPan', () => {
         act(() => result.current.zoomTo(5));
         expect(result.current.state.scale).toBe(2);
         expect(result.current.state.translateX).toBe(0);
+    });
+});
+
+describe('useZoomPan wheel handling', () => {
+    it('zooms when the wheel fires over the canvas surface', () => {
+        const { getByTestId } = render(createElement(ZoomPanHarness));
+        // deltaY < 0 → zoom in by one ZOOM_STEP (0.15) → 115%.
+        const prevented = fireEvent.wheel(getByTestId('surface'), { deltaY: -100, clientX: 10, clientY: 10 });
+        expect(getByTestId('label').textContent).toBe('115%');
+        // The handler called preventDefault, so the page/canvas doesn't scroll.
+        expect(prevented).toBe(false);
+    });
+
+    it('does NOT zoom when the wheel fires inside a [data-no-drag] overlay', () => {
+        // Regression: scrolling inside the inspector panel must scroll the panel,
+        // not zoom the canvas underneath it.
+        const { getByTestId } = render(createElement(ZoomPanHarness));
+        const notPrevented = fireEvent.wheel(getByTestId('overlay-content'), { deltaY: -100, clientX: 10, clientY: 10 });
+        expect(getByTestId('label').textContent).toBe('100%');
+        // Not prevented → the browser performs its native scroll of the overlay.
+        expect(notPrevented).toBe(true);
     });
 });
