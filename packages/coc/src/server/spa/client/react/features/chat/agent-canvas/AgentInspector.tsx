@@ -3,6 +3,7 @@
 // result/conclusion, and its spawned children (clickable to drill in).
 
 import { AcIcons, roleIcon } from './icons';
+import { formatRunDuration } from './format';
 import type { AgentRunNode, AgentRunStatus } from './types';
 
 const STATUS_LABEL: Record<AgentRunStatus, string> = {
@@ -12,18 +13,12 @@ const STATUS_LABEL: Record<AgentRunStatus, string> = {
     queued: 'Queued',
 };
 
-function fmtDuration(ms: number): string {
-    const s = Math.max(0, Math.round(ms / 1000));
-    const m = Math.floor(s / 60);
-    return `${m}:${String(s % 60).padStart(2, '0')}`;
-}
-
 function durationText(node: AgentRunNode, now: number): string | null {
     if (node.status === 'running' && node.startedAt !== undefined) {
-        return fmtDuration((now || node.startedAt) - node.startedAt);
+        return formatRunDuration((now || node.startedAt) - node.startedAt);
     }
     if (node.startedAt !== undefined && node.completedAt !== undefined) {
-        return fmtDuration(node.completedAt - node.startedAt);
+        return formatRunDuration(node.completedAt - node.startedAt);
     }
     return null;
 }
