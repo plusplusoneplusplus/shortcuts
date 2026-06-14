@@ -40,6 +40,7 @@ import {
     type McpConfigScope,
 } from './mcp-config-writer';
 import { testMcpConnection } from './mcp-connection-tester';
+import { discoverWorkspaceMcpTools } from './mcp-tools-discovery';
 import { readMcpServerAuthInfo, type McpServerAuthStatus } from '../mcp-oauth';
 
 // Lazy singleton service
@@ -433,6 +434,20 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             const parsed = url.parse(req.url || '/', true);
             const forceReload = parsed.query.forceReload === 'true' || parsed.query.refresh === 'true';
             sendJSON(res, 200, buildMcpConfigResponse(ws, forceReload));
+        },
+    });
+
+    // GET /api/workspaces/:id/mcp-config/tools — Live-discover tools for all enabled MCP servers
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/mcp-config\/tools$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const parsed = url.parse(req.url || '/', true);
+            const forceReload = parsed.query.forceReload === 'true' || parsed.query.refresh === 'true';
+            const servers = await discoverWorkspaceMcpTools(ws.rootPath, ws.enabledMcpServers, { forceReload });
+            sendJSON(res, 200, { servers });
         },
     });
 
