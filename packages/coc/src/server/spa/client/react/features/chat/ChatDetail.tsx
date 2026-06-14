@@ -312,6 +312,28 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         direction: 'right',
     });
 
+    // Chat AI-response file-path links (feature flag default ON) dispatch
+    // `coc-open-source-canvas` to open the docked source-file canvas. The bare
+    // path is what the canvas resolves + fetches; any `:line`/`:start-end` info
+    // travels in the event for scroll + highlight.
+    const openSourceCanvas = sourceCanvas.open;
+    useEffect(() => {
+        const handler = (event: Event) => {
+            const detail = (event as CustomEvent).detail || {};
+            const filePath = typeof detail.filePath === 'string' ? detail.filePath : '';
+            if (!filePath) return;
+            openSourceCanvas({
+                fullPath: filePath,
+                wsId: typeof detail.wsId === 'string' ? detail.wsId : undefined,
+                line: typeof detail.line === 'number' ? detail.line : undefined,
+                endLine: typeof detail.endLine === 'number' ? detail.endLine : undefined,
+                sourceFilePath: typeof detail.sourceFilePath === 'string' ? detail.sourceFilePath : undefined,
+            });
+        };
+        window.addEventListener('coc-open-source-canvas', handler as EventListener);
+        return () => window.removeEventListener('coc-open-source-canvas', handler as EventListener);
+    }, [openSourceCanvas]);
+
     // Keep refs in sync with state for stale-closure-safe draft saves
     followUpInputRef.current = followUpInput;
     selectedModeRef.current = selectedMode;
