@@ -335,6 +335,9 @@ centered (`centerContent`), re-centering on mount/growth/resize until the user
 takes over. The toolbar's % is a dropdown of preset levels
 (25/50/75/100/150/200% + Fit) backed by `useZoomPan`'s `zoomTo(scale)`
 (zooms about the viewport center); the Fit button zooms to fit the whole tree.
+`useZoomPan`'s wheel-zoom and pan-drag both skip events originating inside a
+`[data-no-drag]` overlay — the toolbar, legend, and the open inspector — so
+those scroll/click natively instead of zooming/panning the canvas behind them.
 It renders curved SVG edges + node cards (role glyph, name, live elapsed,
 spawn-count pill, status dot, progress bar) and a live 1s clock for running
 nodes. Clicking a sub-agent node opens `AgentInspector` — a right-side panel
