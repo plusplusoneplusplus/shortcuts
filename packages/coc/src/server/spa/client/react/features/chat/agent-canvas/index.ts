@@ -2,6 +2,8 @@ export { AgentCanvas } from './AgentCanvas';
 export type { AgentCanvasProps } from './AgentCanvas';
 export { ChatViewToggle } from './ChatViewToggle';
 export type { ChatView } from './ChatViewToggle';
+export { AgentCascadeMenu } from './AgentCascadeMenu';
+export { SubAgentDetailView } from './SubAgentDetailView';
 export { readChatViewFromHash, applyChatViewToHash } from './chatViewHash';
 export { readAgentFromHash, applyAgentToHash } from './chatAgentHash';
 export { buildAgentRunTreeFromTurns, countRuns, findTurnIndexForRun } from './buildAgentRunTree';
