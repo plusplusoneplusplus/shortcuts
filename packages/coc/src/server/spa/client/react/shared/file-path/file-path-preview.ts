@@ -9,6 +9,7 @@ import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { getLinkHandlersConfig } from '../../hooks/useLinkHandlers';
 import { openLink } from '../../utils/link-handler';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS } from '../../featureFlags';
 
 interface WorkspaceInfo {
     id: string;
@@ -205,6 +206,51 @@ async function fetchPreview(path: string): Promise<PreviewResponse> {
     } catch (err) {
         throw new Error(getSpaCocClientErrorMessage(err, 'Failed to load preview'));
     }
+}
+
+/** Parse a non-negative integer data attribute, returning undefined when absent/NaN. */
+function readLineAttr(el: HTMLElement, name: string): number | undefined {
+    const raw = el.getAttribute(name);
+    if (!raw) return undefined;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * Open a clicked `.file-path-link`.
+ *
+ * Inside a chat AI response (`.chat-message.assistant`) — and when the
+ * source-canvas feature flag is ON — this routes to the docked, read-only
+ * source-file canvas via `coc-open-source-canvas`, carrying any `:line` /
+ * `:start-end` info (from `data-line` / `data-end-line`) separately from the
+ * bare path. Everywhere else (flag OFF, or non-chat surfaces like the tasks
+ * tree / notes) it falls back to the floating `MarkdownReviewDialog`.
+ */
+function openFilePathLink(link: HTMLElement): void {
+    const fullPath = link.getAttribute('data-full-path');
+    if (!fullPath) return;
+
+    const wsId = link.closest('[data-ws-id]')?.getAttribute('data-ws-id') || undefined;
+    hideTooltip();
+
+    const inChatResponse = !!link.closest('.chat-message.assistant');
+    if (SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS && inChatResponse) {
+        const sourceFilePath = link.closest('[data-source-file]')?.getAttribute('data-source-file') || undefined;
+        window.dispatchEvent(new CustomEvent('coc-open-source-canvas', {
+            detail: {
+                filePath: fullPath,
+                wsId,
+                line: readLineAttr(link, 'data-line'),
+                endLine: readLineAttr(link, 'data-end-line'),
+                sourceFilePath,
+            },
+        }));
+        return;
+    }
+
+    window.dispatchEvent(new CustomEvent('coc-open-markdown-review', {
+        detail: { filePath: fullPath, wsId },
+    }));
 }
 
 function findPathLink(target: EventTarget | null): HTMLElement | null {
@@ -558,14 +604,7 @@ function initFilePathPreviewDelegation(): void {
         event.preventDefault();
         event.stopPropagation();
 
-        const fullPath = target.getAttribute('data-full-path');
-        if (!fullPath) return;
-
-        const wsId = target.closest('[data-ws-id]')?.getAttribute('data-ws-id') || undefined;
-        hideTooltip();
-        window.dispatchEvent(new CustomEvent('coc-open-markdown-review', {
-            detail: { filePath: fullPath, wsId },
-        }));
+        openFilePathLink(target);
     });
 
     // Click delegation for goto-file buttons inside file preview tooltips.
@@ -604,14 +643,7 @@ function initFilePathPreviewDelegation(): void {
         event.preventDefault();
         event.stopPropagation();
 
-        const fullPath = link.getAttribute('data-full-path');
-        if (!fullPath) return;
-
-        const wsId = link.closest('[data-ws-id]')?.getAttribute('data-ws-id') || undefined;
-        hideTooltip();
-        window.dispatchEvent(new CustomEvent('coc-open-markdown-review', {
-            detail: { filePath: fullPath, wsId },
-        }));
+        openFilePathLink(link);
     });
 
     // Clear the mousedown scroll-guard flag when the mouse button is released.
