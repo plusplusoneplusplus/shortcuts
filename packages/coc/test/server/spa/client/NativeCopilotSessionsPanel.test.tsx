@@ -29,24 +29,71 @@ vi.mock('../../../../src/server/spa/client/react/ui', () => ({
     cn: (...parts: unknown[]) => parts.filter(Boolean).join(' '),
 }));
 
-// Stub the reused chat bubble so the panel test stays focused on the panel's
-// mapping/integration (the bubble is exercised by its own suite). The stub
-// surfaces the mapped turn's shape via data-attributes + renders content as a
-// React text node (so any stored HTML stays inert, mirroring the real bubble).
-vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble', () => ({
-    ConversationTurnBubble: ({ turn, wsId, provider }: any) => (
+// Stub the reused chat sub-components so the panel test stays focused on the
+// panel's fetch→prop wiring (ChatHeader, ConversationArea, ConversationMiniMap,
+// and FollowUpInputArea are each exercised by their own suites). Each stub
+// surfaces the props the panel passes via data-attributes. The ConversationArea
+// stub reproduces the chat bubble's data-shape (one node per mapped turn, with
+// content rendered as an inert React text node) so the transcript-mapping
+// assertions still hold without pulling in the real bubble.
+vi.mock('../../../../src/server/spa/client/react/features/chat/ChatHeader', () => ({
+    ChatHeader: ({ title, task, turns, metadataExtraRows, viewToggle }: any) => (
         <div
-            data-testid="conversation-turn-bubble"
-            data-role={turn.role}
-            data-ws-id={wsId}
-            data-provider={provider}
-            data-tool-calls={(turn.toolCalls ?? []).map((t: any) => t.toolName).join(',')}
-            data-images={String((turn.images ?? []).length)}
-            data-timeline-types={(turn.timeline ?? []).map((i: any) => i.type).join(',')}
-            data-model={turn.model ?? ''}
+            data-testid="chat-header"
+            data-title={title}
+            data-provider={task?.metadata?.provider}
+            data-turns={String(turns?.length ?? 0)}
+            data-extra-rows={JSON.stringify(metadataExtraRows ?? [])}
         >
-            {turn.content}
+            {viewToggle}
         </div>
+    ),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/features/chat/ConversationArea', () => ({
+    ConversationArea: ({ turns, provider, wsId, onAttachContext, onPinTurn, onArchiveTurn, onDeleteTurn }: any) => (
+        <div
+            data-testid="conversation-area"
+            data-provider={provider}
+            data-attach-context={onAttachContext ? 'on' : 'off'}
+            data-pin={onPinTurn ? 'on' : 'off'}
+            data-archive={onArchiveTurn ? 'on' : 'off'}
+            data-delete={onDeleteTurn ? 'on' : 'off'}
+        >
+            {turns.length === 0 ? (
+                <div data-testid="native-session-no-turns" />
+            ) : (
+                turns.map((turn: any, index: number) => (
+                    <div
+                        key={turn.turnIndex ?? index}
+                        data-testid="conversation-turn-bubble"
+                        data-role={turn.role}
+                        data-ws-id={wsId}
+                        data-provider={provider}
+                        data-tool-calls={(turn.toolCalls ?? []).map((t: any) => t.toolName).join(',')}
+                        data-images={String((turn.images ?? []).length)}
+                        data-timeline-types={(turn.timeline ?? []).map((i: any) => i.type).join(',')}
+                        data-model={turn.model ?? ''}
+                    >
+                        {turn.content}
+                    </div>
+                ))
+            )}
+        </div>
+    ),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationMiniMap', () => ({
+    ConversationMiniMap: () => <div data-testid="conversation-minimap" />,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/features/chat/FollowUpInputArea', () => ({
+    FollowUpInputArea: ({ inputDisabled, hideModeSelector }: any) => (
+        <div
+            data-testid="follow-up-input-area"
+            data-input-disabled={String(inputDisabled)}
+            data-hide-mode={String(hideModeSelector)}
+        />
     ),
 }));
 
@@ -237,9 +284,30 @@ describe('NativeCopilotSessionsPanel', () => {
         expect(mockGet).toHaveBeenCalledWith('ws-1', 'session-aaaa-bbbb', 'copilot');
 
         const detail = screen.getByTestId('native-session-detail');
-        // Metadata header preserved.
-        expect(detail.textContent).toContain('Full stored summary');
-        expect(screen.getByTestId('native-session-conversation').textContent).toContain('Conversation (2)');
+        // The transcript is presented with chat's own header + conversation area
+        // (chat UI parity), not the legacy custom card layout.
+        const header = screen.getByTestId('chat-header');
+        expect(header.getAttribute('data-title')).toBe('session-aaaa-bbbb');
+        expect(header.getAttribute('data-provider')).toBe('copilot');
+        expect(header.getAttribute('data-turns')).toBe('2');
+        // AC-04: session metadata (incl. the stored summary) is surfaced through
+        // the header's metadata popover via extra rows, not a standalone card.
+        const extraRows = JSON.parse(header.getAttribute('data-extra-rows') ?? '[]');
+        expect(extraRows.find((r: any) => r.label === 'Summary')?.value).toBe('Full stored summary');
+        expect(extraRows.find((r: any) => r.label === 'Repository')?.value).toBe('owner/repo');
+        expect(screen.getByTestId('conversation-area')).toBeTruthy();
+        expect(screen.getByTestId('conversation-minimap')).toBeTruthy();
+
+        // AC-05: the follow-up composer is rendered but blocked (greyed/disabled).
+        expect(screen.getByTestId('follow-up-input-area').getAttribute('data-input-disabled')).toBe('true');
+
+        // AC-06: per-turn mutations are inert (no CoC processId) — attach-context
+        // stays, pin/archive/delete are not wired.
+        const conversationArea = screen.getByTestId('conversation-area');
+        expect(conversationArea.getAttribute('data-attach-context')).toBe('on');
+        expect(conversationArea.getAttribute('data-pin')).toBe('off');
+        expect(conversationArea.getAttribute('data-archive')).toBe('off');
+        expect(conversationArea.getAttribute('data-delete')).toBe('off');
 
         // Transcript renders one reused chat bubble per conversation turn, in order.
         const bubbles = screen.getAllByTestId('conversation-turn-bubble');
@@ -279,7 +347,7 @@ describe('NativeCopilotSessionsPanel', () => {
         fireEvent.click(screen.getAllByTestId('native-session-row')[0]);
         await waitFor(() => expect(screen.getByTestId('native-session-detail')).toBeTruthy());
 
-        expect(screen.getByTestId('native-session-conversation').textContent).toContain('Conversation (0)');
+        expect(screen.getByTestId('conversation-area')).toBeTruthy();
         expect(screen.getByTestId('native-session-no-turns')).toBeTruthy();
         expect(screen.queryByTestId('conversation-turn-bubble')).toBeNull();
     });
