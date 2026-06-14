@@ -582,11 +582,13 @@ Each tool's internal sub-tab/hash scheme (e.g. `#skills/installed`,
 
 ### Remote-first shell (experimental)
 
-An optional two-row navigation mode gated by `useRemoteShell()`
-(`hooks/preferences/useRemoteShell.ts`), a localStorage-backed
-(`coc-remote-shell-enabled`) module-store flag toggled from the **Remote Shell**
-select in `RepoPreferencesSection` (`pref-remote-shell`). Disabled by default;
-desktop-only.
+An optional two-row navigation mode gated by `useRemoteShellEnabled()`
+(`hooks/feature-flags/useRemoteShellEnabled.ts`), which reads the live
+`features.remoteShell` admin flag (runtime flag `remoteShellEnabled`,
+`isRemoteShellEnabled()` in `utils/config.ts`). It is a **global admin setting**
+toggled in **Admin → Configure → Features → Remote-first shell**
+(`toggle-remote-shell-enabled`), defined once in `ADMIN_SETTING_DEFINITIONS`.
+Disabled by default; desktop-only; takes effect on reload.
 
 When on, the desktop top nav switches from per-clone repo tabs to a remote-first
 model built on `features/remote-shell/`:

@@ -19,7 +19,7 @@ import { NotificationBell } from '../shared/NotificationBell';
 import { agentProviderQuotaIndicator as AgentProviderQuotaIndicator } from '../shared/AgentProviderQuotaIndicator';
 import { RepoTabStrip } from '../features/repo-detail/RepoTabStrip';
 import { RemoteTopBar } from '../features/remote-shell/RemoteTopBar';
-import { useRemoteShell } from '../hooks/preferences/useRemoteShell';
+import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
 import { MY_WORK_WORKSPACE_ID } from '../repos/MyWorkView';
 import { MY_LIFE_WORKSPACE_ID } from '../repos/MyLifeView';
 import { useMyWorkEnabled } from '../hooks/feature-flags/useMyWorkEnabled';
@@ -68,7 +68,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     const { theme, toggleTheme } = useTheme();
     const { breakpoint } = useBreakpoint();
     const isMobile = breakpoint === 'mobile';
-    const [remoteShell] = useRemoteShell();
+    const remoteShell = useRemoteShellEnabled();
     const [popoverOpen, setPopoverOpen] = useState(false);
     const hostname = getHostname();
     const brandLabel = hostname ? `CoC @ ${hostname}` : 'CoC';

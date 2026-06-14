@@ -248,6 +248,7 @@ export interface RuntimeDashboardConfig {
     commitChatLensDormantMode: 'ghost' | 'pill';
     effortLevelsEnabled: boolean;
     nativeCliSessionsEnabled: boolean;
+    remoteShellEnabled: boolean;
   };
   hostname?: string;
   bindAddress?: string;

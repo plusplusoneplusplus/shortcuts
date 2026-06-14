@@ -14,7 +14,7 @@ import { useMyLifeEnabled } from '../hooks/feature-flags/useMyLifeEnabled';
 import { ReposGrid } from './ReposGrid';
 import { RepoDetail } from '../features/repo-detail/RepoDetail';
 import { RemoteSubBar } from '../features/remote-shell/RemoteSubBar';
-import { useRemoteShell } from '../hooks/preferences/useRemoteShell';
+import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
 import { ContainerSessionView, CONTAINER_DEFAULT_REPO_ID } from '../features/container-session/ContainerSessionView';
 import { MyWorkView, MY_WORK_WORKSPACE_ID } from './MyWorkView';
 import { MyLifeView, MY_LIFE_WORKSPACE_ID } from './MyLifeView';
@@ -26,7 +26,7 @@ export function ReposView() {
     const { breakpoint } = useBreakpoint();
     const myWorkEnabled = useMyWorkEnabled();
     const myLifeEnabled = useMyLifeEnabled();
-    const [remoteShell] = useRemoteShell();
+    const remoteShell = useRemoteShellEnabled();
     const isMobile = breakpoint === 'mobile';
     const hasSelection = state.selectedRepoId !== null;
     const heightClass = isMobile
