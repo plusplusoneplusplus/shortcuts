@@ -207,6 +207,66 @@ describe('ConversationMetadataPopover', () => {
     });
 });
 
+describe('ConversationMetadataPopover – extra rows', () => {
+    const EXTRA_ROWS = [
+        { label: 'Repository', value: 'owner/repo', breakAll: true },
+        { label: 'Branch', value: 'feature/x' },
+        { label: 'Summary', value: 'Stored session summary', breakAll: true },
+    ];
+
+    it('renders extra rows after the standard compact rows', async () => {
+        render(<ConversationMetadataPopover process={BASE_PROCESS} turnsCount={5} extraRows={EXTRA_ROWS} />);
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+        await act(async () => { fireEvent.click(trigger); });
+
+        // Standard rows still present…
+        expect(screen.getByText('Process ID')).toBeDefined();
+        // …and the appended extra rows render their labels + values.
+        expect(screen.getByText('Repository')).toBeDefined();
+        expect(screen.getByText('owner/repo')).toBeDefined();
+        expect(screen.getByText('Branch')).toBeDefined();
+        expect(screen.getByText('feature/x')).toBeDefined();
+        expect(screen.getByText('Summary')).toBeDefined();
+        expect(screen.getByText('Stored session summary')).toBeDefined();
+    });
+
+    it('keeps each extra row in a single grid cell (label + value, no overflow children)', async () => {
+        render(<ConversationMetadataPopover process={BASE_PROCESS} extraRows={EXTRA_ROWS} />);
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+        await act(async () => { fireEvent.click(trigger); });
+
+        const contentsDivs = document.querySelectorAll('.contents');
+        for (const div of contentsDivs) {
+            expect(div.children.length).toBe(2);
+        }
+    });
+
+    it('renders the popover from extra rows alone even when the process yields no rows', async () => {
+        // An empty process produces no buildRows output; extra rows must still
+        // surface (read-only native sessions rely on this).
+        render(<ConversationMetadataPopover process={null} extraRows={EXTRA_ROWS} />);
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+        await act(async () => { fireEvent.click(trigger); });
+
+        expect(screen.getByText('Repository')).toBeDefined();
+        expect(screen.getByText('owner/repo')).toBeDefined();
+    });
+
+    it('does not render the trigger when there are neither rows nor extra rows', () => {
+        const { container } = render(<ConversationMetadataPopover process={null} extraRows={[]} />);
+        expect(container.innerHTML).toBe('');
+    });
+
+    it('leaves the standard rows unchanged when extraRows is omitted', async () => {
+        render(<ConversationMetadataPopover process={BASE_PROCESS} turnsCount={5} />);
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+        await act(async () => { fireEvent.click(trigger); });
+
+        expect(screen.queryByText('Repository')).toBeNull();
+        expect(screen.queryByText('Branch')).toBeNull();
+    });
+});
+
 describe('compact metadata helpers', () => {
     it('moves short categorical fields into a summary strip', () => {
         const rows = buildRows(BASE_PROCESS, 5);

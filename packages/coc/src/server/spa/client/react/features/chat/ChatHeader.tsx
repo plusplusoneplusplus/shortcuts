@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ReferencesDropdown, ReferenceList, deduplicateReferenceFiles } from '../../ui/ReferencesDropdown';
 import { BottomSheet } from '../../ui/BottomSheet';
-import { ConversationMetadataPopover } from './conversation/ConversationMetadataPopover';
+import { ConversationMetadataPopover, type MetaRow } from './conversation/ConversationMetadataPopover';
 import { ContextWindowIndicator } from '../../ui/ContextWindowIndicator';
 import { copyToClipboard, copyHtmlToClipboard, formatConversationAsText, formatConversationAsHtml, formatDuration } from '../../utils/format';
 import { ChatStatusPill } from './ChatStatusPill';
@@ -105,6 +105,13 @@ export interface ChatHeaderProps {
     startingFreshSameContext?: boolean;
     /** Optional control rendered at the start of the right-side action area (e.g. the Thread/Agents view toggle). */
     viewToggle?: ReactNode;
+    /**
+     * Extra metadata rows forwarded to the conversation-metadata popover, shown
+     * after its standard rows. Used by read-only surfaces (e.g. native CLI
+     * sessions) to surface fields with no built-in slot — repository, branch,
+     * cwd, host, created/updated, stored summary. Omitted for CoC chats.
+     */
+    metadataExtraRows?: MetaRow[];
 }
 
 /** Build overflow menu items based on what's hidden at the current container tier */
@@ -147,6 +154,7 @@ function buildOverflowItems(
         forking?: boolean;
         onStartFreshSameContext?: () => Promise<boolean> | boolean | void;
         startingFreshSameContext?: boolean;
+        metadataExtraRows?: MetaRow[];
     },
 ): OverflowMenuItem[] {
     if (tier === 'wide') return [];
@@ -187,7 +195,7 @@ function buildOverflowItems(
             icon: <span className="text-[10px] font-semibold">i</span>,
             onClick: () => { /* handled via render */ },
             render: () => (
-                <ConversationMetadataPopover process={props.metadataProcess} turnsCount={props.turns.length} />
+                <ConversationMetadataPopover process={props.metadataProcess} turnsCount={props.turns.length} extraRows={props.metadataExtraRows} />
             ),
         });
     }
@@ -349,6 +357,7 @@ export function ChatHeader({
     onStartFreshSameContext,
     startingFreshSameContext = false,
     viewToggle,
+    metadataExtraRows,
 }: ChatHeaderProps) {
     const { isMobile } = useBreakpoint();
     const { isFloating } = useFloatingChats();
@@ -438,7 +447,8 @@ export function ChatHeader({
         forking,
         onStartFreshSameContext,
         startingFreshSameContext,
-    }), [tier, task, loading, turns, isPending, resumeSessionId, resumeLaunching, metadataProcess, planPath, createdFiles, sessionTokenLimit, sessionCurrentTokens, sessionModel, sessionSystemTokens, sessionToolTokens, sessionConversationTokens, variant, isPopOut, isMobile, taskId, copiedHtml, onFloat, onPopOut, onLaunchInteractiveResume, isFloating, wsId, onToggleSelecting, isSelecting, showScratchpadButton, onOpenScratchpad, onFork, forking, onStartFreshSameContext, startingFreshSameContext]); // eslint-disable-line react-hooks/exhaustive-deps
+        metadataExtraRows,
+    }), [tier, task, loading, turns, isPending, resumeSessionId, resumeLaunching, metadataProcess, planPath, createdFiles, sessionTokenLimit, sessionCurrentTokens, sessionModel, sessionSystemTokens, sessionToolTokens, sessionConversationTokens, variant, isPopOut, isMobile, taskId, copiedHtml, onFloat, onPopOut, onLaunchInteractiveResume, isFloating, wsId, onToggleSelecting, isSelecting, showScratchpadButton, onOpenScratchpad, onFork, forking, onStartFreshSameContext, startingFreshSameContext, metadataExtraRows]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
         <div
@@ -627,6 +637,7 @@ export function ChatHeader({
                             <ConversationMetadataPopover
                                 process={metadataProcess}
                                 turnsCount={turns.length}
+                                extraRows={metadataExtraRows}
                                 resumeSessionId={isMobile ? undefined : resumeSessionId}
                                 resumeLaunching={resumeLaunching}
                                 onLaunchInteractiveResume={isMobile ? undefined : onLaunchInteractiveResume}
