@@ -8,6 +8,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
+import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type {
     AutoFolderContext,
     ConversationTurn,
@@ -16,7 +17,6 @@ import type {
     SendMessageOptions,
     SystemMessageConfig,
 } from '@plusplusoneplusplus/forge';
-import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import {
     READ_ONLY_SYSTEM_MESSAGE,
     buildAutoFolderLocationBlock,
@@ -27,14 +27,21 @@ import {
 } from '@plusplusoneplusplus/forge';
 import * as fs from 'fs';
 import * as path from 'path';
-import { createSearchConversationsTool } from '../llm-tools/search-conversations-tool';
-import { createGetConversationTool } from '../llm-tools/get-conversation-tool';
-import { createSuggestFollowUpsTool } from '../llm-tools/suggest-follow-ups-tool';
-import { createAskUserTool } from '../llm-tools/ask-user-tool';
+import { CONFIG_FILE_NAME, resolveConfig } from '../../config';
 import type { AskUserAnswerInput, AskUserAnswerValue, AskUserToolDeps } from '../llm-tools/ask-user-tool';
+import { createAskUserTool } from '../llm-tools/ask-user-tool';
+import { createCanvasTools } from '../llm-tools/canvas-tools';
 import { createCreateUpdateWorkItemTool, type BroadcastWorkItemFn, type CreateUpdateWorkItemToolDeps } from '../llm-tools/create-update-work-item-tool';
+import { createExcalidrawTools } from '../llm-tools/excalidraw-tools';
+import { createGetConversationTool } from '../llm-tools/get-conversation-tool';
 import { createGetWorkItemTool } from '../llm-tools/get-work-item-tool';
-import type { ChatMode, ChatPayload, DreamRunPayload, PrClassificationPayload, RunScriptPayload } from '../tasks/task-types';
+import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';
+import type { LoopToolDeps } from '../llm-tools/loop-tools';
+import { createCancelLoopTool, createCreateLoopTool, createListLoopsTool, createScheduleWakeupTool } from '../llm-tools/loop-tools';
+import { createSearchConversationsTool } from '../llm-tools/search-conversations-tool';
+import { createSuggestFollowUpsTool } from '../llm-tools/suggest-follow-ups-tool';
+import { createTavilyWebSearchTool } from '../llm-tools/tavily-web-search-tool';
+import type { ChatMode, ChatPayload, DreamRunPayload, ForEachGenerationContext, MapReduceGenerationContext, PrClassificationPayload, RunScriptPayload } from '../tasks/task-types';
 import {
     hasCommitChatContext,
     hasPullRequestChatContext,
@@ -48,14 +55,6 @@ import {
     normalizeChatMode,
     resolveInstructionMode,
 } from '../tasks/task-types';
-import type { ForEachGenerationContext, MapReduceGenerationContext } from '../tasks/task-types';
-import { createTavilyWebSearchTool } from '../llm-tools/tavily-web-search-tool';
-import { createExcalidrawTools } from '../llm-tools/excalidraw-tools';
-import { createCanvasTools } from '../llm-tools/canvas-tools';
-import { resolveConfig, CONFIG_FILE_NAME } from '../../config';
-import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';
-import { createScheduleWakeupTool, createCreateLoopTool, createCancelLoopTool, createListLoopsTool } from '../llm-tools/loop-tools';
-import type { LoopToolDeps } from '../llm-tools/loop-tools';
 
 
 // ============================================================================
@@ -476,11 +475,8 @@ export function buildSearchConversationsAddon(
         currentProcessId,
     });
     const { tool: getTool } = createGetConversationTool({ store, workspaceId });
-    const suffix =
-        '\n\nconversation-history tools: `search_conversations` (keyword search, or no query + since/until to list recent sessions) ' +
-        'and `get_conversation` (full transcript by processId). Use when the user references past discussions.';
 
-    return { tools: [searchTool, getTool], suffix };
+    return { tools: [searchTool, getTool], suffix: '' };
 }
 
 // ============================================================================
@@ -516,7 +512,7 @@ export function buildAskUserAddon(
             answerQuestion: () => false,
             skipQuestion: () => false,
             answerQuestions: () => false,
-            cancelAll: () => {},
+            cancelAll: () => { },
             hasPending: () => false,
         };
     }
@@ -632,12 +628,7 @@ export function buildScheduleWakeupAddon(
     }
 
     const { tool } = createScheduleWakeupTool(deps);
-    const suffix =
-        '\n\nYou have access to the `scheduleWakeup` tool. ' +
-        'Use it to schedule a one-shot delayed follow-up message into the current conversation. ' +
-        'Specify a delay like "30s", "5m", or "1h". Minimum delay is 1 second.';
-
-    return { tools: [tool], suffix };
+    return { tools: [tool], suffix: '' };
 }
 
 // ============================================================================
@@ -655,12 +646,7 @@ export function buildLoopToolsAddon(
     const { tool: cancelTool } = createCancelLoopTool(deps);
     const { tool: listTool } = createListLoopsTool(deps);
 
-    const suffix =
-        '\n\nLoop management tools (`createLoop`, `cancelLoop`, `listLoops`) are active via the /loop skill. ' +
-        'When a message starts with an interval + task (e.g. "1m check status"), treat it as a fixed-interval ' +
-        'loop: perform the task now, then call `createLoop`. Do not use `scheduleWakeup` for this pattern.';
-
-    return { tools: [createTool, cancelTool, listTool], suffix };
+    return { tools: [createTool, cancelTool, listTool], suffix: '' };
 }
 
 // ============================================================================
