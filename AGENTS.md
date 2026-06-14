@@ -17,21 +17,6 @@ npm workspaces monorepo with one frozen VS Code extension and published Node pac
 
 For anything touching CoC, forge, deep-wiki, coc-client, the dashboard SPA, REST API, workflow engine, memory system, LLM tools, process store, admin config, MCP settings, Ralph, loops, EnDev, the Windows service, monorepo layout, build/test/release flow, or repo conventions — **load `.github/skills/coc-knowledge/SKILL.md` and read the relevant `references/*.md` files** before responding or editing.
 
-Quick-start pointers (full detail lives in the skill):
-
-- **Monorepo, build, test, changesets release** → [monorepo.md](.github/skills/coc-knowledge/references/monorepo.md)
-- **CoC server module layout / executors / startup** → [server-architecture.md](.github/skills/coc-knowledge/references/server-architecture.md)
-- **Admin config field registry + admin UI styling** → [admin-config.md](.github/skills/coc-knowledge/references/admin-config.md)
-- **Workspace MCP merge & allow-list** → [mcp-settings.md](.github/skills/coc-knowledge/references/mcp-settings.md)
-- **EnDev xDPU eligibility & skill surfacing** → [endev.md](.github/skills/coc-knowledge/references/endev.md)
-- **Windows service (`Manage-CoCService.ps1`)** → [coc-service.md](.github/skills/coc-knowledge/references/coc-service.md)
-- **Ralph iterative sessions + promote endpoint** → [ralph.md](.github/skills/coc-knowledge/references/ralph.md)
-- **Recurring loops + wakeups + circuit breakers** → [loops.md](.github/skills/coc-knowledge/references/loops.md)
-- **Deep Wiki six-phase pipeline** → [deep-wiki.md](.github/skills/coc-knowledge/references/deep-wiki.md)
-- **REST API catalog** → [rest-api.md](.github/skills/coc-knowledge/references/rest-api.md)
-- **Notes Git sync engine** → [sync.md](.github/skills/coc-knowledge/references/sync.md)
-- **SDK wrapper, Codex support, provider registry** → [sdk-wrapper.md](.github/skills/coc-knowledge/references/sdk-wrapper.md)
-
 ## Hard Invariants (apply even before reading the skill)
 
 - **Multi-repo:** every feature must support multiple workspaces.
@@ -41,3 +26,4 @@ Quick-start pointers (full detail lives in the skill):
 - **No SDK session caching:** `coc-agent-sdk` and above must never add `sendFollowUp` or keep-alive/session caches.
 - **Model resolution order:** `task.config.model` > `PerRepoPreferences.defaultModels[mode]` > `defaultModel` > CLI default.
 - **Node.js ≥ 24** for every package (`engines.node`).
+- **Never switch branches:** AI must NEVER run `git checkout`, `git switch`, or any command that changes the current branch. Always work on the current branch as-is.
