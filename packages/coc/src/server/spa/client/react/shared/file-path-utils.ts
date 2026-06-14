@@ -57,8 +57,48 @@ export const FILE_PATH_RE =
     /(?:(?<![:/\w])\/[a-zA-Z][a-zA-Z0-9_.-]*(?:\/[^\s&"'<>()]+)+|(?<![/\w])[A-Za-z]:[/\\][\w./@\\-]+)/g;
 
 /**
+ * A parsed file-path reference: the bare path plus an optional `:line` /
+ * `:startLine-endLine` suffix the model may emit to point at specific lines.
+ */
+export interface FilePathRef {
+    /** The bare path with any trailing `:line`/`:start-end` suffix removed. */
+    path: string;
+    /** The (start) line number, when a `:line` suffix is present. */
+    line?: number;
+    /** The end line number, when a `:start-end` range suffix is present. */
+    endLine?: number;
+}
+
+/**
+ * Split an optional trailing `:line` or `:startLine-endLine` suffix from a
+ * matched file-path token. The bare path is returned verbatim (no slash
+ * normalization) so callers can normalize as they see fit.
+ *
+ * Examples:
+ *   '/a/b.ts'        → { path: '/a/b.ts' }
+ *   '/a/b.ts:42'     → { path: '/a/b.ts', line: 42 }
+ *   '/a/b.ts:42-58'  → { path: '/a/b.ts', line: 42, endLine: 58 }
+ *   'src/foo.ts:42'  → { path: 'src/foo.ts', line: 42 }
+ *
+ * Only a *trailing* numeric suffix is stripped; an interior colon (e.g. a
+ * Windows drive letter or `:` inside a directory name) is left untouched.
+ */
+export function parseFilePathRef(token: string): FilePathRef {
+    const m = token.match(/^(.+):(\d+)(?:-(\d+))?$/);
+    if (!m) return { path: token };
+    const line = Number(m[2]);
+    const endLine = m[3] !== undefined ? Number(m[3]) : undefined;
+    return endLine !== undefined ? { path: m[1], line, endLine } : { path: m[1], line };
+}
+
+/**
  * Post-process HTML to wrap file paths in interactive `.file-path-link` spans.
  * Only operates on text outside HTML tags and `<code>` blocks.
+ *
+ * A path may carry an optional `:line` or `:start-end` suffix. The resulting
+ * span keeps `data-full-path` as the bare path (no suffix) and additionally
+ * carries `data-line` / `data-end-line` so click handlers can scroll to and
+ * highlight the referenced line(s).
  */
 export function linkifyFilePaths(html: string): string {
     let insideCode = 0;
@@ -71,9 +111,15 @@ export function linkifyFilePaths(html: string): string {
         if (otherTag) return otherTag;
         if (!text || insideCode > 0) return text || '';
         return text.replace(FILE_PATH_RE, (pathMatch: string) => {
-            const normalized = toForwardSlashes(pathMatch);
-            const short = shortenFilePath(normalized);
-            return `<span class="file-path-link" data-full-path="${normalized}" title="${normalized}">${short}</span>`;
+            const { path, line, endLine } = parseFilePathRef(pathMatch);
+            const normalized = toForwardSlashes(path);
+            const suffix = line === undefined
+                ? ''
+                : endLine === undefined ? `:${line}` : `:${line}-${endLine}`;
+            const short = shortenFilePath(normalized) + suffix;
+            const lineAttr = line === undefined ? '' : ` data-line="${line}"`;
+            const endLineAttr = endLine === undefined ? '' : ` data-end-line="${endLine}"`;
+            return `<span class="file-path-link" data-full-path="${normalized}"${lineAttr}${endLineAttr} title="${normalized}${suffix}">${short}</span>`;
         });
     });
 }
