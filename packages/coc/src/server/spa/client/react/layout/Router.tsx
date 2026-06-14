@@ -180,7 +180,8 @@ export function parsePrDetailTab(hash: string): PrDetailTab {
 }
 
 export function parseActivityDeepLink(hash: string): string | null {
-    const cleaned = hash.replace(/^#/, '');
+    // Strip any `?query` (e.g. `?view=agents`) so it never bleeds into the taskId.
+    const cleaned = hash.replace(/^#/, '').split('?')[0];
     const parts = cleaned.split('/');
     if (parts[0] === 'repos' && parts[1] && (parts[2] === 'chats' || parts[2] === 'activity') && parts[3]) {
         if (parts[3] === 'ralph' || parts[3] === 'for-each' || parts[3] === 'map-reduce') return null;
@@ -507,7 +508,10 @@ export function Router() {
     // blank-page flash when navigating directly to a deep-link (e.g. on refresh).
     useLayoutEffect(() => {
         const handleHash = () => {
-            const hash = location.hash.replace(/^#/, '');
+            // Strip any `?query` (e.g. `?view=agents`) before parsing the path —
+            // it's metadata for components (which read it from location.hash
+            // directly), never part of the routed path or a task id.
+            const hash = location.hash.replace(/^#/, '').split('?')[0];
             const tab = tabFromHash('#' + hash);
             if (tab) {
                 dispatch({ type: 'SET_ACTIVE_TAB', tab });

@@ -1,0 +1,245 @@
+import { describe, it, expect } from 'vitest';
+import {
+    buildAgentRunTreeFromTurns,
+    countRuns,
+    findTurnIndexForRun,
+} from '../../../../src/server/spa/client/react/features/chat/agent-canvas/buildAgentRunTree';
+import type { AgentRunNode } from '../../../../src/server/spa/client/react/features/chat/agent-canvas/types';
+import type { ClientConversationTurn, ClientToolCall } from '../../../../src/server/spa/client/react/types/dashboard';
+
+function tc(partial: Partial<ClientToolCall> & { id: string }): ClientToolCall {
+    return { toolName: 'Task', args: {}, status: 'completed', ...partial };
+}
+
+function assistantTurn(
+    toolCalls: ClientToolCall[],
+    timeline: ClientConversationTurn['timeline'] = [],
+): ClientConversationTurn {
+    return { role: 'assistant', content: '', timeline, toolCalls };
+}
+
+describe('buildAgentRunTreeFromTurns', () => {
+    it('returns a lone orchestrator root when there are no sub-agents', () => {
+        const root = buildAgentRunTreeFromTurns([], { title: 'Dark mode work', status: 'completed' });
+        expect(root).toMatchObject({
+            id: 'root',
+            isRoot: true,
+            role: 'orchestrator',
+            name: 'Dark mode work',
+            status: 'done',
+        });
+        expect(root.children).toEqual([]);
+        expect(countRuns(root)).toBe(1);
+    });
+
+    it('maps Task tool calls into sub-agent children with name/role/status/timing', () => {
+        const turns = [assistantTurn([
+            tc({
+                id: 't1',
+                args: { agent_type: 'Explore', description: 'map data model' },
+                status: 'running',
+                startTime: '2026-06-13T10:00:00.000Z',
+                endTime: undefined,
+            }),
+        ])];
+        const root = buildAgentRunTreeFromTurns(turns, { status: 'running' });
+        expect(root.status).toBe('running');
+        expect(root.children).toHaveLength(1);
+        expect(root.children[0]).toMatchObject({
+            id: 't1',
+            name: 'map data model',
+            role: 'Explore',
+            status: 'running',
+            startedAt: Date.parse('2026-06-13T10:00:00.000Z'),
+        });
+        expect(root.children[0].completedAt).toBeUndefined();
+    });
+
+    it('falls back to a truncated prompt when no description is present', () => {
+        const longPrompt = 'investigate the entire conversation timeline rendering pipeline end to end';
+        const turns = [assistantTurn([
+            tc({ id: 't1', args: { agent_type: 'general-purpose', prompt: longPrompt } }),
+        ])];
+        const root = buildAgentRunTreeFromTurns(turns);
+        expect(root.children[0].name).toBe('investigate the entire conversation timeline…');
+        expect(root.children[0].role).toBe('general-purpose');
+    });
+
+    it('also reads subagent_type as the role', () => {
+        const turns = [assistantTurn([
+            tc({ id: 't1', args: { subagent_type: 'rust-code-reviewer', description: 'review' } }),
+        ])];
+        expect(buildAgentRunTreeFromTurns(turns).children[0].role).toBe('rust-code-reviewer');
+    });
+
+    it('captures name, type, model, mode and description from Task args', () => {
+        const turns = [assistantTurn([tc({
+            id: 't1',
+            status: 'running',
+            args: {
+                agent_type: 'explore',
+                name: 'time-agent-1',
+                description: 'Query current time',
+                model: 'claude-sonnet-4.6',
+                mode: 'background',
+                prompt: 'Query the current date and time.',
+            },
+        })])];
+        expect(buildAgentRunTreeFromTurns(turns).children[0]).toMatchObject({
+            id: 't1',
+            name: 'time-agent-1',
+            role: 'explore',
+            description: 'Query current time',
+            model: 'claude-sonnet-4.6',
+            mode: 'background',
+            prompt: 'Query the current date and time.',
+        });
+    });
+
+    it('uses the agent name as the title and drops a redundant description', () => {
+        // No explicit name → title falls back to description, which is then cleared
+        // so the inspector does not show it twice.
+        const child = buildAgentRunTreeFromTurns([
+            assistantTurn([tc({ id: 't1', args: { agent_type: 'explore', description: 'map data' } })]),
+        ]).children[0];
+        expect(child.name).toBe('map data');
+        expect(child.description).toBeUndefined();
+        expect(child.model).toBeUndefined();
+    });
+
+    it('ignores non-Task tool calls', () => {
+        const turns = [assistantTurn([
+            tc({ id: 'r1', toolName: 'Read', args: { file_path: '/a.ts' } }),
+            tc({ id: 'b1', toolName: 'Bash', args: { command: 'ls' } }),
+        ])];
+        expect(buildAgentRunTreeFromTurns(turns).children).toEqual([]);
+    });
+
+    it('detects persisted Task calls that use `name` instead of `toolName`', () => {
+        // forge's persisted ToolCall read model carries `name`, not `toolName`,
+        // so sub-agents must still be found after the chat completes + refreshes.
+        const persisted = {
+            id: 't1', name: 'Task', status: 'completed', result: 'done',
+            args: { agent_type: 'Explore', description: 'map data model' },
+        } as unknown as ClientToolCall;
+        const root = buildAgentRunTreeFromTurns([assistantTurn([persisted])]);
+        expect(root.children).toHaveLength(1);
+        expect(root.children[0]).toMatchObject({ id: 't1', name: 'map data model', role: 'Explore', status: 'done' });
+    });
+
+    it('reads sub-agent args from `parameters` when `args` is absent', () => {
+        const persisted = {
+            id: 't1', name: 'Task', status: 'running',
+            parameters: { agent_type: 'general-purpose', description: 'research' },
+        } as unknown as ClientToolCall;
+        const root = buildAgentRunTreeFromTurns([assistantTurn([persisted])]);
+        expect(root.children[0]).toMatchObject({ id: 't1', name: 'research', role: 'general-purpose', status: 'running' });
+    });
+
+    it('dedupes a tool call seen in both toolCalls and the timeline, preferring terminal state', () => {
+        const turns = [assistantTurn(
+            [tc({ id: 't1', args: { description: 'x' }, status: 'running' })],
+            [{
+                type: 'tool-complete',
+                timestamp: '2026-06-13T10:00:00.000Z',
+                toolCall: tc({ id: 't1', args: { description: 'x' }, status: 'completed', result: 'all green\nmore' }),
+            }],
+        )];
+        const root = buildAgentRunTreeFromTurns(turns);
+        expect(root.children).toHaveLength(1);
+        expect(root.children[0].status).toBe('done');
+        expect(root.children[0].summary).toBe('all green');
+    });
+
+    it('keeps full args when a later tool-complete snapshot has empty args', () => {
+        // Real shape: toolCalls + timeline tool-start carry full args, but the
+        // timeline tool-complete (same id, same terminal status) has empty args.
+        const fullArgs = {
+            agent_type: 'explore', name: 'time-agent-1',
+            model: 'claude-sonnet-4.6', mode: 'background', description: 'Query current time',
+        };
+        const turns = [assistantTurn(
+            [tc({ id: 't1', args: fullArgs, status: 'completed', result: 'ok' })],
+            [
+                { type: 'tool-start', timestamp: '2026-06-13T21:18:04.000Z', toolCall: tc({ id: 't1', args: fullArgs, status: 'running' }) },
+                { type: 'tool-complete', timestamp: '2026-06-13T21:18:09.000Z', toolCall: tc({ id: 't1', args: {}, status: 'completed', result: 'ok' }) },
+            ],
+        )];
+        const child = buildAgentRunTreeFromTurns(turns).children[0];
+        expect(child).toMatchObject({
+            id: 't1', name: 'time-agent-1', role: 'explore',
+            model: 'claude-sonnet-4.6', mode: 'background', status: 'done',
+        });
+    });
+
+    it('derives root status from children when no explicit status is given', () => {
+        const running = [assistantTurn([tc({ id: 't1', args: { description: 'x' }, status: 'running' })])];
+        expect(buildAgentRunTreeFromTurns(running).status).toBe('running');
+
+        const allDone = [assistantTurn([tc({ id: 't1', args: { description: 'x' }, status: 'completed' })])];
+        expect(buildAgentRunTreeFromTurns(allDone).status).toBe('done');
+    });
+
+    it('maps failed/cancelled root status to failed and queued to queued', () => {
+        expect(buildAgentRunTreeFromTurns([], { status: 'failed' }).status).toBe('failed');
+        expect(buildAgentRunTreeFromTurns([], { status: 'cancelled' }).status).toBe('failed');
+        expect(buildAgentRunTreeFromTurns([], { status: 'queued' }).status).toBe('queued');
+    });
+
+    it('orders children by start time, placing unknown start times last', () => {
+        const turns = [assistantTurn([
+            tc({ id: 'late', args: { description: 'late' }, startTime: '2026-06-13T10:05:00.000Z' }),
+            tc({ id: 'early', args: { description: 'early' }, startTime: '2026-06-13T10:01:00.000Z' }),
+            tc({ id: 'unknown', args: { description: 'unknown' } }),
+        ])];
+        const ids = buildAgentRunTreeFromTurns(turns).children.map((c) => c.id);
+        expect(ids).toEqual(['early', 'late', 'unknown']);
+    });
+});
+
+describe('findTurnIndexForRun', () => {
+    it('returns the data-turn-index of the turn that issued the run', () => {
+        const turns = [
+            { role: 'user' as const, content: 'go', timeline: [], turnIndex: 0 },
+            assistantTurn([tc({ id: 't1', args: { description: 'x' } })], []),
+        ];
+        // second turn has no explicit turnIndex → falls back to array index 1
+        expect(findTurnIndexForRun(turns, 't1')).toBe(1);
+    });
+
+    it('prefers an explicit turn.turnIndex over the array index', () => {
+        const turns = [
+            { ...assistantTurn([tc({ id: 't1', args: { description: 'x' } })]), turnIndex: 7 },
+        ];
+        expect(findTurnIndexForRun(turns, 't1')).toBe(7);
+    });
+
+    it('matches a run found only in the timeline', () => {
+        const turns = [assistantTurn([], [{
+            type: 'tool-complete',
+            timestamp: '2026-06-13T10:00:00.000Z',
+            toolCall: tc({ id: 't9', args: {}, status: 'completed' }),
+        }])];
+        expect(findTurnIndexForRun(turns, 't9')).toBe(0);
+    });
+
+    it('returns null when the run is not present', () => {
+        expect(findTurnIndexForRun([assistantTurn([tc({ id: 't1', args: {} })])], 'missing')).toBeNull();
+        expect(findTurnIndexForRun(undefined, 't1')).toBeNull();
+    });
+});
+
+describe('countRuns', () => {
+    it('counts every run including the root', () => {
+        const tree: AgentRunNode = {
+            id: 'root', name: 'r', role: 'orchestrator', status: 'done',
+            children: [
+                { id: 'a', name: 'a', role: 'agent', status: 'done', children: [
+                    { id: 'a1', name: 'a1', role: 'agent', status: 'done', children: [] },
+                ] },
+                { id: 'b', name: 'b', role: 'agent', status: 'done', children: [] },
+            ],
+        };
+        expect(countRuns(tree)).toBe(4);
+    });
+});

@@ -129,4 +129,55 @@ describe('useZoomPan', () => {
         act(() => result.current.zoomOut());
         expect(result.current.state.scale).toBe(1);
     });
+
+    it('centerContent centers content at 100% using the container rect', () => {
+        const { result } = renderHook(() => useZoomPan(defaultOptions)); // content 400x200
+        act(() => {
+            (result.current.containerRef as { current: unknown }).current = {
+                getBoundingClientRect: () => ({ width: 800, height: 600 }),
+            };
+            result.current.centerContent(1);
+        });
+        expect(result.current.state.scale).toBe(1);
+        expect(result.current.state.translateX).toBe(200); // (800 - 400) / 2
+        expect(result.current.state.translateY).toBe(200); // (600 - 200) / 2
+    });
+
+    it('centerContent no-ops when there is no container', () => {
+        const { result } = renderHook(() => useZoomPan(defaultOptions));
+        act(() => result.current.centerContent(1));
+        expect(result.current.state).toEqual({ scale: 1, translateX: 0, translateY: 0, isDragging: false });
+    });
+
+    it('centerContent clamps the scale to the configured bounds', () => {
+        const { result } = renderHook(() => useZoomPan({ ...defaultOptions, maxZoom: 2 }));
+        act(() => {
+            (result.current.containerRef as { current: unknown }).current = {
+                getBoundingClientRect: () => ({ width: 800, height: 600 }),
+            };
+            result.current.centerContent(5); // above maxZoom
+        });
+        expect(result.current.state.scale).toBe(2);
+    });
+
+    it('zoomTo zooms about the viewport center, keeping that point fixed', () => {
+        const { result } = renderHook(() => useZoomPan(defaultOptions));
+        act(() => {
+            (result.current.containerRef as { current: unknown }).current = {
+                getBoundingClientRect: () => ({ width: 800, height: 600 }),
+            };
+            result.current.zoomTo(2);
+        });
+        expect(result.current.state.scale).toBe(2);
+        // center (400,300) under world point (400,300); tx = 400 - 400*2, ty = 300 - 300*2
+        expect(result.current.state.translateX).toBe(-400);
+        expect(result.current.state.translateY).toBe(-300);
+    });
+
+    it('zoomTo clamps the scale and works without a container', () => {
+        const { result } = renderHook(() => useZoomPan({ ...defaultOptions, maxZoom: 2 }));
+        act(() => result.current.zoomTo(5));
+        expect(result.current.state.scale).toBe(2);
+        expect(result.current.state.translateX).toBe(0);
+    });
 });
