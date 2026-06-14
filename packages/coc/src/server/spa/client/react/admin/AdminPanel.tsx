@@ -8,6 +8,12 @@
 
 import type { AdminAutoProviderRoutingConfig, AdminDefaultProvider, ProviderInstallStatus } from '@plusplusoneplusplus/coc-client';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+    ADMIN_CONFIG_FEATURE_GROUPS,
+    ADMIN_CONFIG_FEATURE_UI_FIELDS,
+    type AdminConfigFeatureUiFieldSpec,
+    type AdminConfigFieldUiSpec,
+} from '../../../../admin/admin-config-fields';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import { useApp } from '../contexts/AppContext';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
@@ -59,38 +65,8 @@ interface Stats {
 
 const VALID_OUTPUT_OPTIONS = ['table', 'json', 'csv', 'markdown'] as const;
 
-type FeaturesSnapshot = {
-    terminal: boolean;
-    notes: boolean;
-    myWork: boolean;
-    myLife: boolean;
-    scratchpad: boolean;
-    scratchpadLayout: 'horizontal' | 'vertical';
-    workflows: boolean;
-    pullRequests: boolean;
-    pullRequestsSuggestions: boolean;
-    pullRequestsAutoClassifyTeam: boolean;
-    servers: boolean;
-    ralph: boolean;
-    forEach: boolean;
-    mapReduce: boolean;
-    vimNavigation: boolean;
-    loops: boolean;
-    excalidraw: boolean;
-    mcpOauth: boolean;
-    mcpOauthAutoRefresh: boolean;
-    focusedDiff: boolean;
-    gitCrossCloneCherryPick: boolean;
-    sessionContextAttachments: boolean;
-    commitChatLens: boolean;
-    commitChatLensDormantMode: 'ghost' | 'pill';
-    autoAgentProviderRouting: boolean;
-    workItemsHierarchy: boolean;
-    workItemsSync: boolean;
-    workItemsAiAuthoring: boolean;
-    workItemsWorkflow: boolean;
-    effortLevels: boolean;
-};
+type FeatureFormValue = boolean | string;
+type FeatureFormState = Record<string, FeatureFormValue>;
 
 type DefaultProviderSnapshot = {
     provider: AdminDefaultProvider;
@@ -172,6 +148,54 @@ function parseSettingsSubTabFromHash(hash: string): SettingsSubTab | null {
     const candidate = parts[2] as SettingsSubTab | undefined;
     if (!candidate) return DEFAULT_SETTINGS_SUBTAB;
     return VALID_SETTINGS_SUBTABS.has(candidate) ? candidate : null;
+}
+
+function coerceFeatureFormValue(field: AdminConfigFeatureUiFieldSpec, value: unknown): FeatureFormValue {
+    const control = field.ui.control;
+    if (control.type === 'toggle') {
+        return typeof value === 'boolean' ? value : control.defaultValue;
+    }
+    if (typeof value === 'string' && control.options.some(option => option.value === value)) {
+        return value;
+    }
+    return control.defaultValue;
+}
+
+function getFeatureFormValue(
+    field: AdminConfigFeatureUiFieldSpec,
+    resolved: Record<string, unknown>,
+    defaults: Record<string, unknown>,
+): FeatureFormValue {
+    const resolvedValue = resolveNestedValue(resolved, field.key);
+    const fallbackValue = defaults[field.key] ?? field.ui.control.defaultValue;
+    return coerceFeatureFormValue(field, resolvedValue ?? fallbackValue);
+}
+
+function buildFeatureFormState(
+    resolved: Record<string, unknown> = {},
+    defaults: Record<string, unknown> = {},
+): FeatureFormState {
+    const form: FeatureFormState = {};
+    for (const field of ADMIN_CONFIG_FEATURE_UI_FIELDS) {
+        form[field.key] = getFeatureFormValue(field, resolved, defaults);
+    }
+    return form;
+}
+
+const DEFAULT_FEATURE_FORM_STATE = buildFeatureFormState();
+
+function featureFormsEqual(a: FeatureFormState, b: FeatureFormState): boolean {
+    return ADMIN_CONFIG_FEATURE_UI_FIELDS.every(field => Object.is(a[field.key], b[field.key]));
+}
+
+function isFeatureFieldVisible(field: AdminConfigFeatureUiFieldSpec, values: FeatureFormState): boolean {
+    const visibleWhen = field.ui.visibleWhen;
+    if (!visibleWhen) return true;
+    return values[visibleWhen.key] === visibleWhen.equals;
+}
+
+function featureFieldBadgeClass(ui: AdminConfigFieldUiSpec): string {
+    return ui.badge?.tone === 'warning' ? 'ar-badge ar-badge-warning' : 'ar-badge ar-badge-accent';
 }
 
 const WELCOME_RESET_PROGRESS = { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false, settingsVisited: false, dismissed: false, hasCompletedTour: false };
@@ -363,37 +387,10 @@ export function AdminPanel() {
     // Server name
     const [serverName, setServerName] = useState('');
 
-    // Feature toggles
-    const [terminalEnabled, setTerminalEnabled] = useState(true);
-    const [notesEnabled, setNotesEnabled] = useState(true);
-    const [myWorkEnabled, setMyWorkEnabled] = useState(false);
-    const [myLifeEnabled, setMyLifeEnabled] = useState(false);
-    const [scratchpadEnabled, setScratchpadEnabled] = useState(false);
-    const [scratchpadLayout, setScratchpadLayout] = useState<'horizontal' | 'vertical'>('horizontal');
-    const [workflowsEnabled, setWorkflowsEnabled] = useState(false);
-    const [pullRequestsEnabled, setPullRequestsEnabled] = useState(false);
-    const [pullRequestsSuggestionsEnabled, setPullRequestsSuggestionsEnabled] = useState(false);
-    const [pullRequestsAutoClassifyTeamEnabled, setPullRequestsAutoClassifyTeamEnabled] = useState(false);
-    const [serversEnabled, setServersEnabled] = useState(false);
-    const [ralphEnabled, setRalphEnabled] = useState(false);
-    const [forEachEnabled, setForEachEnabled] = useState(false);
-    const [mapReduceEnabled, setMapReduceEnabled] = useState(false);
-    const [vimNavigationEnabled, setVimNavigationEnabled] = useState(false);
-    const [loopsEnabled, setLoopsEnabled] = useState(false);
-    const [excalidrawEnabled, setExcalidrawEnabled] = useState(false);
-    const [mcpOauthEnabled, setMcpOauthEnabled] = useState(false);
-    const [mcpOauthAutoRefreshEnabled, setMcpOauthAutoRefreshEnabled] = useState(false);
-    const [focusedDiffEnabled, setFocusedDiffEnabled] = useState(false);
-    const [gitCrossCloneCherryPickEnabled, setGitCrossCloneCherryPickEnabled] = useState(false);
-    const [sessionContextAttachmentsEnabled, setSessionContextAttachmentsEnabled] = useState(false);
-    const [commitChatLensEnabled, setCommitChatLensEnabled] = useState(false);
-    const [commitChatLensDormantMode, setCommitChatLensDormantMode] = useState<'ghost' | 'pill'>('ghost');
+    // Registry-driven feature settings shown in the Features card.
+    const [featureForm, setFeatureForm] = useState<FeatureFormState>(() => ({ ...DEFAULT_FEATURE_FORM_STATE }));
+    const [featuresSnapshot, setFeaturesSnapshot] = useState<FeatureFormState>(() => ({ ...DEFAULT_FEATURE_FORM_STATE }));
     const [autoAgentProviderRoutingEnabled, setAutoAgentProviderRoutingEnabled] = useState(false);
-    const [workItemsHierarchyEnabled, setWorkItemsHierarchyEnabled] = useState(false);
-    const [workItemsSyncEnabled, setWorkItemsSyncEnabled] = useState(false);
-    const [workItemsAiAuthoringEnabled, setWorkItemsAiAuthoringEnabled] = useState(false);
-    const [workItemsWorkflowEnabled, setWorkItemsWorkflowEnabled] = useState(false);
-    const [effortLevelsEnabled, setEffortLevelsEnabled] = useState(false);
     const [codexEnabled, setCodexEnabled] = useState(false);
     const [claudeEnabled, setClaudeEnabled] = useState(false);
     const [defaultProvider, setDefaultProvider] = useState<AdminDefaultProvider>('copilot');
@@ -446,7 +443,6 @@ export function AdminPanel() {
         taskCardDensity: 'compact' as 'compact' | 'dense',
         historyGrouping: true,
     });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState<FeaturesSnapshot>({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal', workflows: false, pullRequests: false, pullRequestsSuggestions: false, pullRequestsAutoClassifyTeam: false, servers: false, ralph: false, forEach: false, mapReduce: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, mcpOauthAutoRefresh: false, focusedDiff: false, gitCrossCloneCherryPick: false, sessionContextAttachments: false, commitChatLens: false, commitChatLensDormantMode: 'ghost', autoAgentProviderRouting: false, workItemsHierarchy: false, workItemsSync: false, workItemsAiAuthoring: false, workItemsWorkflow: false, effortLevels: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -525,66 +521,11 @@ export function AdminPanel() {
             setHistoryGrouping(hg);
             setAppearanceSnapshot(prev => ({ ...prev, taskCardDensity: tcd, historyGrouping: hg }));
             setServerName(resolved.serve?.serverName ?? '');
-            const te = resolved.terminal?.enabled ?? true;
-            const ne = resolved.notes?.enabled ?? false;
-            const mwe = resolved.myWork?.enabled ?? false;
-            const mle = resolved.myLife?.enabled ?? false;
-            setTerminalEnabled(te);
-            setNotesEnabled(ne);
-            setMyWorkEnabled(mwe);
-            setMyLifeEnabled(mle);
-            const se = resolved.scratchpad?.enabled ?? false;
-            setScratchpadEnabled(se);
-            const sl = (resolved.scratchpad?.layout === 'vertical' ? 'vertical' : 'horizontal') as 'horizontal' | 'vertical';
-            setScratchpadLayout(sl);
-            const we = resolved.workflows?.enabled ?? false;
-            setWorkflowsEnabled(we);
-            const pre = resolved.pullRequests?.enabled ?? false;
-            setPullRequestsEnabled(pre);
-            const prse = resolved.pullRequests?.suggestions ?? false;
-            setPullRequestsSuggestionsEnabled(prse);
-            const pratce = resolved.pullRequests?.autoClassifyTeam ?? false;
-            setPullRequestsAutoClassifyTeamEnabled(pratce);
-            const svre = resolved.servers?.enabled ?? false;
-            setServersEnabled(svre);
-            const re = resolved.ralph?.enabled ?? false;
-            setRalphEnabled(re);
-            const fee = resolved.forEach?.enabled ?? false;
-            setForEachEnabled(fee);
-            const mre = resolved.mapReduce?.enabled ?? false;
-            setMapReduceEnabled(mre);
-            const vne = resolved.vimNavigation?.enabled ?? false;
-            setVimNavigationEnabled(vne);
-            const loe = resolved.loops?.enabled ?? false;
-            setLoopsEnabled(loe);
-            const exe = resolved.excalidraw?.enabled ?? false;
-            setExcalidrawEnabled(exe);
-            const moae = resolved.mcpOauth?.enabled ?? false;
-            setMcpOauthEnabled(moae);
-            const moare = resolved.mcpOauth?.autoRefresh?.enabled ?? false;
-            setMcpOauthAutoRefreshEnabled(moare);
-            const fde = resolved.features?.focusedDiff ?? false;
-            const gccpe = resolved.features?.gitCrossCloneCherryPick ?? false;
-            const scae = resolved.features?.sessionContextAttachments ?? false;
-            const ccle = resolved.features?.commitChatLens ?? false;
-            const ccldm = (resolved.features?.commitChatLensDormantMode === 'pill' ? 'pill' : 'ghost') as 'ghost' | 'pill';
             const aapre = resolved.features?.autoAgentProviderRouting ?? false;
-            setGitCrossCloneCherryPickEnabled(gccpe);
-            setFocusedDiffEnabled(fde);
-            setSessionContextAttachmentsEnabled(scae);
-            setCommitChatLensEnabled(ccle);
-            setCommitChatLensDormantMode(ccldm);
+            const loadedFeatureForm = buildFeatureFormState(resolved, data.defaults ?? {});
+            setFeatureForm(loadedFeatureForm);
+            setFeaturesSnapshot(loadedFeatureForm);
             setAutoAgentProviderRoutingEnabled(aapre);
-            const wihe = resolved.workItems?.hierarchy?.enabled ?? false;
-            setWorkItemsHierarchyEnabled(wihe);
-            const wise = resolved.workItems?.sync?.enabled ?? false;
-            setWorkItemsSyncEnabled(wise);
-            const waae = resolved.workItems?.aiAuthoring?.enabled ?? false;
-            setWorkItemsAiAuthoringEnabled(waae);
-            const wiwfe = resolved.workItems?.workflow?.enabled ?? false;
-            setWorkItemsWorkflowEnabled(wiwfe);
-            const ele = resolved.effortLevels?.enabled ?? false;
-            setEffortLevelsEnabled(ele);
             const cxe = resolved.codex?.enabled ?? false;
             setCodexEnabled(cxe);
             const cle = resolved.claude?.enabled ?? false;
@@ -593,7 +534,6 @@ export function AdminPanel() {
             const arc = normalizeAutoProviderRoutingConfig(resolved.agentProviderRouting?.auto);
             setDefaultProvider(dp);
             setAutoRoutingConfig(arc);
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, pullRequestsAutoClassifyTeam: pratce, servers: svre, ralph: re, forEach: fee, mapReduce: mre, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, mcpOauthAutoRefresh: moare, focusedDiff: fde, gitCrossCloneCherryPick: gccpe, sessionContextAttachments: scae, commitChatLens: ccle, commitChatLensDormantMode: ccldm, autoAgentProviderRouting: aapre, workItemsHierarchy: wihe, workItemsSync: wise, workItemsAiAuthoring: waae, workItemsWorkflow: wiwfe, effortLevels: ele });
             setAiExecSnapshot({ model: form.model, parallel: form.parallel, timeout: form.timeout, output: form.output });
             setDefaultProviderSnapshot({ provider: dp, codexEnabled: cxe, claudeEnabled: cle, autoAgentProviderRouting: aapre, autoRoutingConfig: arc });
             const sgr = resolved.sync?.gitRemote ?? '';
@@ -693,35 +633,7 @@ export function AdminPanel() {
         taskCardDensity !== appearanceSnapshot.taskCardDensity ||
         historyGrouping !== appearanceSnapshot.historyGrouping;
 
-    const featuresDirty = terminalEnabled !== featuresSnapshot.terminal ||
-        notesEnabled !== featuresSnapshot.notes ||
-        myWorkEnabled !== featuresSnapshot.myWork ||
-        myLifeEnabled !== featuresSnapshot.myLife ||
-        scratchpadEnabled !== featuresSnapshot.scratchpad ||
-        scratchpadLayout !== featuresSnapshot.scratchpadLayout ||
-        workflowsEnabled !== featuresSnapshot.workflows ||
-        pullRequestsEnabled !== featuresSnapshot.pullRequests ||
-        pullRequestsSuggestionsEnabled !== featuresSnapshot.pullRequestsSuggestions ||
-        pullRequestsAutoClassifyTeamEnabled !== featuresSnapshot.pullRequestsAutoClassifyTeam ||
-        serversEnabled !== featuresSnapshot.servers ||
-        ralphEnabled !== featuresSnapshot.ralph ||
-        forEachEnabled !== featuresSnapshot.forEach ||
-        mapReduceEnabled !== featuresSnapshot.mapReduce ||
-        vimNavigationEnabled !== featuresSnapshot.vimNavigation ||
-        loopsEnabled !== featuresSnapshot.loops ||
-        excalidrawEnabled !== featuresSnapshot.excalidraw ||
-        mcpOauthEnabled !== featuresSnapshot.mcpOauth ||
-        mcpOauthAutoRefreshEnabled !== featuresSnapshot.mcpOauthAutoRefresh ||
-        focusedDiffEnabled !== featuresSnapshot.focusedDiff ||
-        gitCrossCloneCherryPickEnabled !== featuresSnapshot.gitCrossCloneCherryPick ||
-        sessionContextAttachmentsEnabled !== featuresSnapshot.sessionContextAttachments ||
-        commitChatLensEnabled !== featuresSnapshot.commitChatLens ||
-        commitChatLensDormantMode !== featuresSnapshot.commitChatLensDormantMode ||
-        workItemsHierarchyEnabled !== featuresSnapshot.workItemsHierarchy ||
-        workItemsSyncEnabled !== featuresSnapshot.workItemsSync ||
-        workItemsAiAuthoringEnabled !== featuresSnapshot.workItemsAiAuthoring ||
-        workItemsWorkflowEnabled !== featuresSnapshot.workItemsWorkflow ||
-        effortLevelsEnabled !== featuresSnapshot.effortLevels;
+    const featuresDirty = !featureFormsEqual(featureForm, featuresSnapshot);
 
     // ── AI & Execution card ──
     const handleSaveAiExec = useCallback(async () => {
@@ -779,7 +691,6 @@ export function AdminPanel() {
             addToast('AI provider settings saved — restart required to apply changes', 'success');
             setAutoRoutingConfig(normalizedAutoRouting);
             setDefaultProviderSnapshot({ provider: defaultProvider, codexEnabled, claudeEnabled, autoAgentProviderRouting: autoAgentProviderRoutingEnabled, autoRoutingConfig: normalizedAutoRouting });
-            setFeaturesSnapshot(prev => ({ ...prev, autoAgentProviderRouting: autoAgentProviderRoutingEnabled }));
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
@@ -952,78 +863,23 @@ export function AdminPanel() {
     const handleSaveFeatures = useCallback(async () => {
         setFeaturesSaving(true);
         try {
-            const payload: Record<string, unknown> = {
-                'terminal.enabled': terminalEnabled,
-                'notes.enabled': notesEnabled,
-                'myWork.enabled': myWorkEnabled,
-                'myLife.enabled': myLifeEnabled,
-                'scratchpad.enabled': scratchpadEnabled,
-                'scratchpad.layout': scratchpadLayout,
-                'workflows.enabled': workflowsEnabled,
-                'pullRequests.enabled': pullRequestsEnabled,
-                'pullRequests.suggestions': pullRequestsSuggestionsEnabled,
-                'pullRequests.autoClassifyTeam': pullRequestsAutoClassifyTeamEnabled,
-                'servers.enabled': serversEnabled,
-                'ralph.enabled': ralphEnabled,
-                'forEach.enabled': forEachEnabled,
-                'mapReduce.enabled': mapReduceEnabled,
-                'vimNavigation.enabled': vimNavigationEnabled,
-                'loops.enabled': loopsEnabled,
-                'excalidraw.enabled': excalidrawEnabled,
-                'mcpOauth.enabled': mcpOauthEnabled,
-                'mcpOauth.autoRefresh.enabled': mcpOauthAutoRefreshEnabled,
-                'features.focusedDiff': focusedDiffEnabled,
-                'features.gitCrossCloneCherryPick': gitCrossCloneCherryPickEnabled,
-                'features.sessionContextAttachments': sessionContextAttachmentsEnabled,
-                'features.commitChatLens': commitChatLensEnabled,
-                'features.commitChatLensDormantMode': commitChatLensDormantMode,
-                'workItems.hierarchy.enabled': workItemsHierarchyEnabled,
-                'workItems.sync.enabled': workItemsSyncEnabled,
-                'workItems.aiAuthoring.enabled': workItemsAiAuthoringEnabled,
-                'workItems.workflow.enabled': workItemsWorkflowEnabled,
-                'effortLevels.enabled': effortLevelsEnabled,
-            };
+            const payload: Record<string, unknown> = {};
+            for (const field of ADMIN_CONFIG_FEATURE_UI_FIELDS) {
+                payload[field.key] = featureForm[field.key];
+            }
             await getSpaCocClient().admin.updateConfig(payload);
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setFeaturesSnapshot(prev => ({ ...prev, terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, pullRequestsAutoClassifyTeam: pullRequestsAutoClassifyTeamEnabled, servers: serversEnabled, ralph: ralphEnabled, forEach: forEachEnabled, mapReduce: mapReduceEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, mcpOauthAutoRefresh: mcpOauthAutoRefreshEnabled, focusedDiff: focusedDiffEnabled, gitCrossCloneCherryPick: gitCrossCloneCherryPickEnabled, sessionContextAttachments: sessionContextAttachmentsEnabled, commitChatLens: commitChatLensEnabled, commitChatLensDormantMode: commitChatLensDormantMode, autoAgentProviderRouting: prev.autoAgentProviderRouting, workItemsHierarchy: workItemsHierarchyEnabled, workItemsSync: workItemsSyncEnabled, workItemsAiAuthoring: workItemsAiAuthoringEnabled, workItemsWorkflow: workItemsWorkflowEnabled, effortLevels: effortLevelsEnabled }));
+            setFeaturesSnapshot({ ...featureForm });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, pullRequestsAutoClassifyTeamEnabled, serversEnabled, ralphEnabled, forEachEnabled, mapReduceEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, mcpOauthAutoRefreshEnabled, focusedDiffEnabled, gitCrossCloneCherryPickEnabled, sessionContextAttachmentsEnabled, commitChatLensEnabled, commitChatLensDormantMode, workItemsHierarchyEnabled, workItemsSyncEnabled, workItemsAiAuthoringEnabled, workItemsWorkflowEnabled, effortLevelsEnabled, addToast]);
+    }, [featureForm, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
-        setTerminalEnabled(featuresSnapshot.terminal);
-        setNotesEnabled(featuresSnapshot.notes);
-        setMyWorkEnabled(featuresSnapshot.myWork);
-        setMyLifeEnabled(featuresSnapshot.myLife);
-        setScratchpadEnabled(featuresSnapshot.scratchpad);
-        setScratchpadLayout(featuresSnapshot.scratchpadLayout);
-        setWorkflowsEnabled(featuresSnapshot.workflows);
-        setPullRequestsEnabled(featuresSnapshot.pullRequests);
-        setPullRequestsSuggestionsEnabled(featuresSnapshot.pullRequestsSuggestions);
-        setPullRequestsAutoClassifyTeamEnabled(featuresSnapshot.pullRequestsAutoClassifyTeam);
-        setServersEnabled(featuresSnapshot.servers);
-        setRalphEnabled(featuresSnapshot.ralph);
-        setForEachEnabled(featuresSnapshot.forEach);
-        setMapReduceEnabled(featuresSnapshot.mapReduce);
-        setVimNavigationEnabled(featuresSnapshot.vimNavigation);
-        setLoopsEnabled(featuresSnapshot.loops);
-        setExcalidrawEnabled(featuresSnapshot.excalidraw);
-        setMcpOauthEnabled(featuresSnapshot.mcpOauth);
-        setMcpOauthAutoRefreshEnabled(featuresSnapshot.mcpOauthAutoRefresh);
-        setFocusedDiffEnabled(featuresSnapshot.focusedDiff);
-        setGitCrossCloneCherryPickEnabled(featuresSnapshot.gitCrossCloneCherryPick);
-        setSessionContextAttachmentsEnabled(featuresSnapshot.sessionContextAttachments);
-        setCommitChatLensEnabled(featuresSnapshot.commitChatLens);
-        setCommitChatLensDormantMode(featuresSnapshot.commitChatLensDormantMode);
-        setWorkItemsHierarchyEnabled(featuresSnapshot.workItemsHierarchy);
-        setWorkItemsSyncEnabled(featuresSnapshot.workItemsSync);
-        setWorkItemsAiAuthoringEnabled(featuresSnapshot.workItemsAiAuthoring);
-        setWorkItemsWorkflowEnabled(featuresSnapshot.workItemsWorkflow);
-        setEffortLevelsEnabled(featuresSnapshot.effortLevels);
+        setFeatureForm({ ...featuresSnapshot });
     }, [featuresSnapshot]);
 
     const handleSaveServerName = useCallback(async () => {
@@ -1233,7 +1089,7 @@ export function AdminPanel() {
 
     // Servers row is gated by the dashboard runtime config, same source the
     // legacy topbar dropdown consulted. It is independent of the editable
-    // `serversEnabled` Features form state above.
+    // `servers.enabled` Features form value above.
     const serversNavItems = isServersEnabled() ? [toolNavItem('servers')] : [];
     const containerNavItems = isContainerMode() ? [adminNavItem('messaging')] : [];
     const containerAgentsNavItem = isContainerMode() ? [adminNavItem('agents')] : [];
@@ -1329,6 +1185,43 @@ export function AdminPanel() {
     const activePageDescription = activeTab === 'settings'
         ? SETTINGS_SUBTAB_DESCRIPTIONS[settingsSubTab]
         : TAB_DESCRIPTIONS[activeTab];
+
+    const setFeatureFieldValue = (key: string, value: FeatureFormValue) => {
+        setFeatureForm(prev => ({ ...prev, [key]: value }));
+    };
+
+    const renderFeatureField = (field: AdminConfigFeatureUiFieldSpec) => {
+        const ui = field.ui;
+        const name = ui.badge ? (
+            <>
+                {ui.label} <span className={featureFieldBadgeClass(ui)}>{ui.badge.label}</span>
+            </>
+        ) : ui.label;
+        const value = featureForm[field.key] ?? ui.control.defaultValue;
+        return (
+            <AdminRow key={field.key} name={name} hint={ui.hint}>
+                <SourceBadge source={sources[field.key]} isDefault={isDefaultValue(field.key)} />
+                {ui.control.type === 'toggle' ? (
+                    <AdminToggle
+                        checked={value === true}
+                        onChange={checked => setFeatureFieldValue(field.key, checked)}
+                        data-testid={ui.testId}
+                    />
+                ) : (
+                    <select
+                        className="ar-select ar-med"
+                        value={String(value)}
+                        onChange={e => setFeatureFieldValue(field.key, e.target.value)}
+                        data-testid={ui.testId}
+                    >
+                        {ui.control.options.map(option => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                    </select>
+                )}
+            </AdminRow>
+        );
+    };
 
     return (
         <div id="view-admin" className="admin-redesign">
@@ -1752,231 +1645,18 @@ export function AdminPanel() {
                                                     onCancel={handleCancelFeatures}
                                                     data-testid="settings-features"
                                                 >
-                                                    {/* ── Dashboard Modules ── */}
-                                                    <div className="ar-feature-group" data-testid="feature-group-dashboard">
-                                                        <div className="ar-feature-group-head">Dashboard Modules</div>
-                                                        <AdminRow name="Notes" hint="Markdown notebooks for creating and editing notes.">
-                                                            <SourceBadge source={sources['notes.enabled']} isDefault={isDefaultValue('notes.enabled')} />
-                                                            <AdminToggle checked={notesEnabled} onChange={setNotesEnabled} data-testid="toggle-notes-enabled" />
-                                                        </AdminRow>
-                                                        <AdminRow name="My Work" hint="Personal landing page with action items and weekly summaries.">
-                                                            <SourceBadge source={sources['myWork.enabled']} isDefault={isDefaultValue('myWork.enabled')} />
-                                                            <AdminToggle checked={myWorkEnabled} onChange={setMyWorkEnabled} data-testid="toggle-mywork-enabled" />
-                                                        </AdminRow>
-                                                        <AdminRow name="My Life" hint="Personal page with goals, journal, and life admin.">
-                                                            <SourceBadge source={sources['myLife.enabled']} isDefault={isDefaultValue('myLife.enabled')} />
-                                                            <AdminToggle checked={myLifeEnabled} onChange={setMyLifeEnabled} data-testid="toggle-mylife-enabled" />
-                                                        </AdminRow>
-                                                        <AdminRow name="Scratchpad panel" hint="Bottom-split note editor inside the chat detail view.">
-                                                            <SourceBadge source={sources['scratchpad.enabled']} isDefault={isDefaultValue('scratchpad.enabled')} />
-                                                            <AdminToggle checked={scratchpadEnabled} onChange={setScratchpadEnabled} data-testid="toggle-scratchpad-enabled" />
-                                                        </AdminRow>
-                                                        {scratchpadEnabled && (
-                                                            <AdminRow name="Layout" hint="Split direction for conversation and scratchpad.">
-                                                                <SourceBadge source={sources['scratchpad.layout']} isDefault={isDefaultValue('scratchpad.layout')} />
-                                                                <select
-                                                                    className="ar-select ar-med"
-                                                                    value={scratchpadLayout}
-                                                                    onChange={e => setScratchpadLayout(e.target.value as 'horizontal' | 'vertical')}
-                                                                    data-testid="select-scratchpad-layout"
-                                                                >
-                                                                    <option value="horizontal">Horizontal (top/bottom)</option>
-                                                                    <option value="vertical">Vertical (left/right)</option>
-                                                                </select>
-                                                            </AdminRow>
-                                                        )}
-                                                    </div>
-
-                                                    {/* ── Development Tools ── */}
-                                                    <div className="ar-feature-group" data-testid="feature-group-dev-tools">
-                                                        <div className="ar-feature-group-head">Development Tools</div>
-                                                        <AdminRow name={<>Terminal <span className="ar-badge ar-badge-warning">Restart</span></>} hint="Web terminal for shell access to the server machine. Toggling requires a server restart.">
-                                                            <SourceBadge source={sources['terminal.enabled']} isDefault={isDefaultValue('terminal.enabled')} />
-                                                            <AdminToggle checked={terminalEnabled} onChange={setTerminalEnabled} data-testid="toggle-terminal-enabled" />
-                                                        </AdminRow>
-                                                        <AdminRow name="Workflows Tab" hint="YAML workflow runner tab in repo view.">
-                                                            <SourceBadge source={sources['workflows.enabled']} isDefault={isDefaultValue('workflows.enabled')} />
-                                                            <AdminToggle checked={workflowsEnabled} onChange={setWorkflowsEnabled} data-testid="toggle-workflows-enabled" />
-                                                        </AdminRow>
-                                                        <AdminRow name="Pull Requests Tab" hint="Pull request list tab in repo view.">
-                                                            <SourceBadge source={sources['pullRequests.enabled']} isDefault={isDefaultValue('pullRequests.enabled')} />
-                                                            <AdminToggle checked={pullRequestsEnabled} onChange={setPullRequestsEnabled} data-testid="toggle-pull-requests-enabled" />
-                                                        </AdminRow>
-                                                        {pullRequestsEnabled && (
-                                                            <>
-                                                                <AdminRow name="PR Review Suggestions" hint="AI-ranked suggestions for which open PRs to review, based on your review history. Adds a 'For You' filter pill to the PR queue.">
-                                                                    <SourceBadge source={sources['pullRequests.suggestions']} isDefault={isDefaultValue('pullRequests.suggestions')} />
-                                                                    <AdminToggle checked={pullRequestsSuggestionsEnabled} onChange={setPullRequestsSuggestionsEnabled} data-testid="toggle-pull-requests-suggestions-enabled" />
-                                                                </AdminRow>
-                                                                <AdminRow name="Auto-classify Team PRs" hint="Automatically queues lightweight diff classification for open Pull Requests tab Team roster PRs. Disabled by default.">
-                                                                    <SourceBadge source={sources['pullRequests.autoClassifyTeam']} isDefault={isDefaultValue('pullRequests.autoClassifyTeam')} />
-                                                                    <AdminToggle checked={pullRequestsAutoClassifyTeamEnabled} onChange={setPullRequestsAutoClassifyTeamEnabled} data-testid="toggle-pull-requests-auto-classify-team-enabled" />
-                                                                </AdminRow>
-                                                            </>
-                                                        )}
-                                                        <AdminRow name="Servers" hint="Multi-server connection manager (devtunnel).">
-                                                            <SourceBadge source={sources['servers.enabled']} isDefault={isDefaultValue('servers.enabled')} />
-                                                            <AdminToggle checked={serversEnabled} onChange={setServersEnabled} data-testid="toggle-servers-enabled" />
-                                                        </AdminRow>
-                                                    </div>
-
-                                                    {/* ── Work Items ── */}
-                                                    <div className="ar-feature-group" data-testid="feature-group-work-items">
-                                                        <div className="ar-feature-group-head">Work Items</div>
-                                                        <AdminRow
-                                                            name="Work Items Hierarchy Board"
-                                                            hint="Extends the Work Items tab into an Epic → Feature → PBI → Work Item / Bug hierarchy board. Enabled by default."
-                                                        >
-                                                            <SourceBadge source={sources['workItems.hierarchy.enabled']} isDefault={isDefaultValue('workItems.hierarchy.enabled')} />
-                                                            <AdminToggle checked={workItemsHierarchyEnabled} onChange={setWorkItemsHierarchyEnabled} data-testid="toggle-work-items-hierarchy-enabled" />
-                                                        </AdminRow>
-                                                        <AdminRow
-                                                            name={<>Remote Work Items <span className="ar-badge ar-badge-accent">Preview</span></>}
-                                                            hint="Enables remote provider integration for hierarchy mode: provider status, imports, save-to-provider updates, and background polling. Requires the hierarchy board and never stores provider tokens."
-                                                        >
-                                                            <SourceBadge source={sources['workItems.sync.enabled']} isDefault={isDefaultValue('workItems.sync.enabled')} />
-                                                            <AdminToggle checked={workItemsSyncEnabled} onChange={setWorkItemsSyncEnabled} data-testid="toggle-work-items-sync-enabled" />
-                                                        </AdminRow>
-                                                        <AdminRow
-                                                            name={<>Work Items AI Authoring <span className="ar-badge ar-badge-accent">Experimental</span></>}
-                                                            hint="Adds AI-assisted work item creation and improvement to the Work Items tab. Disabled by default."
-                                                        >
-                                                            <SourceBadge source={sources['workItems.aiAuthoring.enabled']} isDefault={isDefaultValue('workItems.aiAuthoring.enabled')} />
-                                                            <AdminToggle checked={workItemsAiAuthoringEnabled} onChange={setWorkItemsAiAuthoringEnabled} data-testid="toggle-work-items-ai-authoring-enabled" />
-                                                        </AdminRow>
-                                                        <AdminRow
-                                                            name={<>Work Items Workflow <span className="ar-badge ar-badge-accent">Experimental</span></>}
-                                                            hint="Enables the durable Work Items/Goals command-center workflow. Disabled by default."
-                                                        >
-                                                            <SourceBadge source={sources['workItems.workflow.enabled']} isDefault={isDefaultValue('workItems.workflow.enabled')} />
-                                                            <AdminToggle checked={workItemsWorkflowEnabled} onChange={setWorkItemsWorkflowEnabled} data-testid="toggle-work-items-workflow-enabled" />
-                                                        </AdminRow>
-                                                    </div>
-
-                                                    {/* ── AI Execution Modes ── */}
-                                                    <div className="ar-feature-group" data-testid="feature-group-ai-modes">
-                                                        <div className="ar-feature-group-head">AI Execution Modes</div>
-                                                        <AdminRow
-                                                            name={<>Ralph Mode <span className="ar-badge ar-badge-accent">Experimental</span></>}
-                                                            hint="Autonomous iterative coding loop — stateless agents with fresh context per iteration."
-                                                        >
-                                                            <SourceBadge source={sources['ralph.enabled']} isDefault={isDefaultValue('ralph.enabled')} />
-                                                            <AdminToggle checked={ralphEnabled} onChange={setRalphEnabled} data-testid="toggle-ralph-enabled" />
-                                                        </AdminRow>
-                                                        <AdminRow
-                                                            name={<>For Each Mode <span className="ar-badge ar-badge-accent">Experimental</span></>}
-                                                            hint="Generate a reviewed item plan from New Chat, then run each item as a separate child chat. Disabled by default."
-                                                        >
-                                                            <SourceBadge source={sources['forEach.enabled']} isDefault={isDefaultValue('forEach.enabled')} />
-                                                            <AdminToggle checked={forEachEnabled} onChange={setForEachEnabled} data-testid="toggle-for-each-enabled" />
-                                                        </AdminRow>
-                                                        <AdminRow
-                                                            name={<>Map Reduce Mode <span className="ar-badge ar-badge-accent">Experimental</span></>}
-                                                            hint="Generate a reviewed map plan from New Chat, run items in parallel, then reduce outputs into one result. Disabled by default."
-                                                        >
-                                                            <SourceBadge source={sources['mapReduce.enabled']} isDefault={isDefaultValue('mapReduce.enabled')} />
-                                                            <AdminToggle checked={mapReduceEnabled} onChange={setMapReduceEnabled} data-testid="toggle-map-reduce-enabled" />
-                                                        </AdminRow>
-                                                        <AdminRow
-                                                            name={<>Effort Tiers <span className="ar-badge ar-badge-accent">Experimental</span></>}
-                                                            hint="Replace the model picker + reasoning-effort pill in the chat composer with a single Low / Medium / High effort selector. Configure tier mappings per provider on the AI Provider page. Disabled by default."
-                                                        >
-                                                            <SourceBadge source={sources['effortLevels.enabled']} isDefault={isDefaultValue('effortLevels.enabled')} />
-                                                            <AdminToggle checked={effortLevelsEnabled} onChange={setEffortLevelsEnabled} data-testid="toggle-effort-levels-enabled" />
-                                                        </AdminRow>
-                                                    </div>
-
-                                                    {/* ── Code Review & Collaboration ── */}
-                                                    <div className="ar-feature-group" data-testid="feature-group-review">
-                                                        <div className="ar-feature-group-head">Code Review &amp; Collaboration</div>
-                                                        <AdminRow
-                                                            name="Focused Diff"
-                                                            hint="AI-powered hunk classification for PR diffs. Highlights logic changes and dims mechanical edits."
-                                                        >
-                                                            <SourceBadge source={sources['features.focusedDiff']} isDefault={isDefaultValue('features.focusedDiff')} />
-                                                            <AdminToggle checked={focusedDiffEnabled} onChange={setFocusedDiffEnabled} data-testid="toggle-focused-diff-enabled" />
-                                                        </AdminRow>
-                                                        <AdminRow
-                                                            name={<>Cross-clone cherry-pick <span className="ar-badge ar-badge-accent">Experimental</span></>}
-                                                            hint="Adds a Git commit context-menu action that transfers one commit to another registered clone using patch export/apply. Enabled by default."
-                                                        >
-                                                            <SourceBadge source={sources['features.gitCrossCloneCherryPick']} isDefault={isDefaultValue('features.gitCrossCloneCherryPick')} />
-                                                            <AdminToggle checked={gitCrossCloneCherryPickEnabled} onChange={setGitCrossCloneCherryPickEnabled} data-testid="toggle-git-cross-clone-cherry-pick-enabled" />
-                                                        </AdminRow>
-                                                        <AdminRow
-                                                            name={<>Session context attachments <span className="ar-badge ar-badge-accent">Experimental</span></>}
-                                                            hint="Allow dragging existing same-workspace chat sessions into chat composers as pointer-only context. Disabled by default."
-                                                        >
-                                                            <SourceBadge source={sources['features.sessionContextAttachments']} isDefault={isDefaultValue('features.sessionContextAttachments')} />
-                                                            <AdminToggle checked={sessionContextAttachmentsEnabled} onChange={setSessionContextAttachmentsEnabled} data-testid="toggle-session-context-attachments-enabled" />
-                                                        </AdminRow>
-                                                        <AdminRow
-                                                            name={<>Review chat lens <span className="ar-badge ar-badge-accent">Experimental</span></>}
-                                                            hint="Open unpinned commit and pull-request review chat as a desktop bottom-right lens instead of the side panel or drawer. Disabled by default."
-                                                        >
-                                                            <SourceBadge source={sources['features.commitChatLens']} isDefault={isDefaultValue('features.commitChatLens')} />
-                                                            <AdminToggle checked={commitChatLensEnabled} onChange={setCommitChatLensEnabled} data-testid="toggle-commit-chat-lens-enabled" />
-                                                        </AdminRow>
-                                                        {commitChatLensEnabled && (
-                                                            <AdminRow
-                                                                name="Lens dormant mode"
-                                                                hint="How the lens recedes when your cursor leaves it. Ghost fades to near-transparent; Pill collapses to a compact status pill."
-                                                            >
-                                                                <SourceBadge source={sources['features.commitChatLensDormantMode']} isDefault={isDefaultValue('features.commitChatLensDormantMode')} />
-                                                                <select
-                                                                    className="ar-select ar-med"
-                                                                    value={commitChatLensDormantMode}
-                                                                    onChange={e => setCommitChatLensDormantMode(e.target.value as 'ghost' | 'pill')}
-                                                                    data-testid="select-commit-chat-lens-dormant-mode"
-                                                                >
-                                                                    <option value="ghost">Ghost fade</option>
-                                                                    <option value="pill">Collapse to pill</option>
-                                                                </select>
-                                                            </AdminRow>
-                                                        )}
-                                                        <AdminRow
-                                                            name="Excalidraw diagrams"
-                                                            hint="AI can generate and read Excalidraw diagrams during conversations. Disabled by default."
-                                                        >
-                                                            <SourceBadge source={sources['excalidraw.enabled']} isDefault={isDefaultValue('excalidraw.enabled')} />
-                                                            <AdminToggle checked={excalidrawEnabled} onChange={setExcalidrawEnabled} data-testid="toggle-excalidraw-enabled" />
-                                                        </AdminRow>
-                                                    </div>
-
-                                                    {/* ── Infrastructure ── */}
-                                                    <div className="ar-feature-group" data-testid="feature-group-infrastructure">
-                                                        <div className="ar-feature-group-head">Infrastructure</div>
-                                                        <AdminRow
-                                                            name={<>Loops &amp; Wakeups <span className="ar-badge ar-badge-warning">Restart</span></>}
-                                                            hint="Recurring follow-up loops and one-shot scheduleWakeup tool. Disabled by default — toggling requires a server restart to (de)wire infrastructure."
-                                                        >
-                                                            <SourceBadge source={sources['loops.enabled']} isDefault={isDefaultValue('loops.enabled')} />
-                                                            <AdminToggle checked={loopsEnabled} onChange={setLoopsEnabled} data-testid="toggle-loops-enabled" />
-                                                        </AdminRow>
-                                                        <AdminRow
-                                                            name={<>MCP OAuth <span className="ar-badge ar-badge-warning">Restart</span></>}
-                                                            hint="Handle OAuth flows for MCP servers that require authentication. Disabled by default — toggling requires a server restart."
-                                                        >
-                                                            <SourceBadge source={sources['mcpOauth.enabled']} isDefault={isDefaultValue('mcpOauth.enabled')} />
-                                                            <AdminToggle checked={mcpOauthEnabled} onChange={setMcpOauthEnabled} data-testid="toggle-mcp-oauth-enabled" />
-                                                        </AdminRow>
-                                                        {mcpOauthEnabled && (
-                                                            <AdminRow
-                                                                name={<>MCP OAuth auto-refresh <span className="ar-badge ar-badge-warning">Restart</span></>}
-                                                                hint="Periodically dedup ~/.copilot/mcp-oauth-config/ and refresh AAD-backed tokens before they expire so HTTP MCP servers don't re-prompt for auth. Disabled by default — toggling requires a server restart."
-                                                            >
-                                                                <SourceBadge source={sources['mcpOauth.autoRefresh.enabled']} isDefault={isDefaultValue('mcpOauth.autoRefresh.enabled')} />
-                                                                <AdminToggle checked={mcpOauthAutoRefreshEnabled} onChange={setMcpOauthAutoRefreshEnabled} data-testid="toggle-mcp-oauth-auto-refresh-enabled" />
-                                                            </AdminRow>
-                                                        )}
-                                                        <AdminRow
-                                                            name="Vim-style navigation"
-                                                            hint="Enable hjkl pane navigation, j/k to step through chats and messages, gg/G to jump, i to focus the input, Esc to blur. Disabled by default."
-                                                        >
-                                                            <SourceBadge source={sources['vimNavigation.enabled']} isDefault={isDefaultValue('vimNavigation.enabled')} />
-                                                            <AdminToggle checked={vimNavigationEnabled} onChange={setVimNavigationEnabled} data-testid="toggle-vim-navigation-enabled" />
-                                                        </AdminRow>
-                                                    </div>
+                                                    {ADMIN_CONFIG_FEATURE_GROUPS.map(group => {
+                                                        const fields = ADMIN_CONFIG_FEATURE_UI_FIELDS.filter(field =>
+                                                            field.ui.group === group.id && isFeatureFieldVisible(field, featureForm)
+                                                        );
+                                                        if (fields.length === 0) return null;
+                                                        return (
+                                                            <div key={group.id} className="ar-feature-group" data-testid={group.testId}>
+                                                                <div className="ar-feature-group-head">{group.label}</div>
+                                                                {fields.map(renderFeatureField)}
+                                                            </div>
+                                                        );
+                                                    })}
                                                 </SettingsCard>
                                             )}
 

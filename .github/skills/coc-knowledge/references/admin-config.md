@@ -6,15 +6,17 @@ Covers the editable admin config registry in `packages/coc/` and the self-contai
 
 Editable admin config fields are defined in a single registry: `packages/coc/src/server/admin/admin-config-fields.ts` (`ADMIN_CONFIG_FIELDS`).
 
-Each entry provides a flat key (e.g. `'loops.enabled'`), a field-local `validate()` function, and an `apply()` function. The `PUT /api/admin/config` handler derives `editableKeys`, field-local validation, and merge logic from this registry. Cross-field constraints belong in `CLIConfigSchema`/`validateConfigWithSchema()` and the admin write path re-validates the merged config before persisting so admin updates and config-file loading reject the same invalid combinations.
+Each entry provides a flat key (e.g. `'loops.enabled'`), a field-local `validate()` function, an `apply()` function, runtime classification, and optional `ui` metadata. The `PUT /api/admin/config` handler derives `editableKeys`, field-local validation, and merge logic from this registry. `GET /api/admin/config` exposes runtime/UI metadata through `fieldMetadata`. Cross-field constraints belong in `CLIConfigSchema`/`validateConfigWithSchema()` and the admin write path re-validates the merged config before persisting so admin updates and config-file loading reject the same invalid combinations.
 
-To expose a new config field via the admin API, add ONE entry to `ADMIN_CONFIG_FIELDS`. Also update:
+To expose a new config field via the admin API, add ONE entry to `ADMIN_CONFIG_FIELDS`. To expose a simple control on Admin -> Configure -> Features, include `ui` metadata on that registry entry (`featureToggle(...)` or `featureSelect(...)`), choose a group from `ADMIN_CONFIG_FEATURE_GROUPS`, and add/update the registry/UI tests. The Features card renders from `ADMIN_CONFIG_FEATURE_UI_FIELDS`, so simple feature toggles/selects do not require `AdminPanel.tsx` state, dirty tracking, save payload, or JSX changes.
+
+Also update:
 
 1. `CLIConfig` / `ResolvedCLIConfig` / `DEFAULT_CONFIG` in `packages/coc/src/config.ts`
 2. `CLIConfigSchema` in `packages/coc/src/config/schema.ts`
 3. Namespace registry in `packages/coc/src/config/namespace-registry.ts` (nested fields)
 4. `AdminResolvedConfig` / `AdminConfigUpdate` in `packages/coc-client/src/contracts/admin.ts`
-5. `AdminPanel.tsx` or the focused admin subpage component for the UI control
+5. The focused admin subpage component only when the setting needs custom UI outside the registry-driven Features card
 
 The `spaHtml` function in `packages/coc/src/server/index.ts` re-reads the config file on every page request, so feature-flag changes (e.g. `terminal.enabled`) take effect on the next browser reload — no server restart required.
 
@@ -55,6 +57,6 @@ When adding UI to the admin page, prefer the existing primitives:
 - **AI Provider page:** the `agents` tab content lives in `AIProviderPage.tsx` (not inline in `AdminPanel`). It uses a tab bar (`ar-subtab-row`) with two tabs: Provider routing (summary grid + routing table plus feature-gated Auto routing editor/preview) and Model catalog (lazy-loaded `ProviderModelsSection` + `ProviderEffortTiersSection`). All styles use `aip-*` classes in `admin-redesign.css`.
 - **New top-level tabs:** add to `AdminSubTab`, `TAB_LABELS`, `TAB_ICONS`, and `TAB_DESCRIPTIONS`, then place the destination in the grouped `navGroups` definition near the bottom of `AdminPanel.tsx` so the sidebar and mobile select expose it in the right user-intent group.
 
-- **Feature groups:** Inside the Features settings card, toggles are organized into named sections using `<div className="ar-feature-group">` with a `<div className="ar-feature-group-head">` heading. Groups are: Dashboard Modules, Development Tools, Work Items, AI Execution Modes, Code Review & Collaboration, and Infrastructure. New feature toggles should be added to the appropriate group.
+- **Feature groups:** The Features settings card renders groups from `ADMIN_CONFIG_FEATURE_GROUPS` and controls from `ADMIN_CONFIG_FEATURE_UI_FIELDS` in `admin-config-fields.ts`. Groups are: Dashboard Modules, Development Tools, Work Items, AI Execution Modes, Code Review & Collaboration, and Infrastructure. New simple feature toggles/selects should be added as registry `ui` metadata in the appropriate group.
 
 Avoid introducing Tailwind utilities or inline `bg-*`/`text-*` classes for admin-only UI — extend `admin-redesign.css` instead so the look stays cohesive.

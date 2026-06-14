@@ -2,22 +2,62 @@
  * Admin Config Field Registry
  *
  * Single source of truth for editable admin config fields.
- * Each entry defines the flat key, a validator, and an apply function.
+ * Each entry defines the flat key, a validator, an apply function, and optional
+ * admin UI metadata.
  *
  * To add a new editable admin config field:
  *   1. Add the field to CLIConfig / ResolvedCLIConfig in config.ts (if structural)
  *   2. Add a default in DEFAULT_CONFIG in config.ts
  *   3. Add schema validation in config/schema.ts
  *   4. Add namespace tracking in config/namespace-registry.ts (for nested fields)
- *   5. Add ONE entry here — the admin handler picks it up automatically
+ *   5. Add ONE entry here — the admin handler and registry-driven UI pick it up automatically
  *   6. Update AdminResolvedConfig / AdminConfigUpdate in coc-client/src/contracts/admin.ts
- *   7. Add UI in AdminPanel.tsx
  */
 
 import type { AutoProviderRoutingConfig, CLIConfig, ConcreteAgentProvider, DefaultAgentProvider } from '../../config';
 
 /** Runtime behavior classification for admin-editable config fields. */
 export type AdminConfigFieldRuntime = 'live' | 'reloadable' | 'restartRequired';
+
+export type AdminConfigUiSurface = 'features';
+export type AdminConfigFeatureGroupId =
+    | 'dashboard'
+    | 'dev-tools'
+    | 'work-items'
+    | 'ai-modes'
+    | 'review'
+    | 'infrastructure';
+
+export interface AdminConfigFeatureGroupSpec {
+    id: AdminConfigFeatureGroupId;
+    label: string;
+    testId: string;
+}
+
+export interface AdminConfigFieldUiBadge {
+    label: string;
+    tone: 'accent' | 'warning';
+}
+
+export interface AdminConfigFieldUiVisibleWhen {
+    key: string;
+    equals: boolean | string;
+}
+
+export type AdminConfigFieldUiControl =
+    | { type: 'toggle'; defaultValue: boolean }
+    | { type: 'select'; defaultValue: string; options: readonly { value: string; label: string }[] };
+
+export interface AdminConfigFieldUiSpec {
+    surface: AdminConfigUiSurface;
+    group: AdminConfigFeatureGroupId;
+    label: string;
+    hint: string;
+    testId: string;
+    badge?: AdminConfigFieldUiBadge;
+    visibleWhen?: AdminConfigFieldUiVisibleWhen;
+    control: AdminConfigFieldUiControl;
+}
 
 export interface AdminConfigFieldSpec {
     /** Flat key used in the PUT /api/admin/config request body, e.g. 'loops.enabled' */
@@ -28,15 +68,78 @@ export interface AdminConfigFieldSpec {
     validate: (value: unknown) => string | undefined;
     /** Write the (already-validated) value into the CLIConfig that will be persisted */
     apply: (config: CLIConfig, value: unknown) => void;
+    /** Optional metadata for registry-driven admin UI exposure. */
+    ui?: AdminConfigFieldUiSpec;
+}
+
+export type AdminConfigFeatureUiFieldSpec = AdminConfigFieldSpec & { ui: AdminConfigFieldUiSpec & { surface: 'features' } };
+
+export interface AdminConfigFieldMetadata {
+    runtime: AdminConfigFieldRuntime;
+    ui?: AdminConfigFieldUiSpec;
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-const bool = (key: string, set: (cfg: CLIConfig, v: boolean) => void, runtime: AdminConfigFieldRuntime = 'live'): AdminConfigFieldSpec => ({
+export const ADMIN_CONFIG_FEATURE_GROUPS: readonly AdminConfigFeatureGroupSpec[] = [
+    { id: 'dashboard', label: 'Dashboard Modules', testId: 'feature-group-dashboard' },
+    { id: 'dev-tools', label: 'Development Tools', testId: 'feature-group-dev-tools' },
+    { id: 'work-items', label: 'Work Items', testId: 'feature-group-work-items' },
+    { id: 'ai-modes', label: 'AI Execution Modes', testId: 'feature-group-ai-modes' },
+    { id: 'review', label: 'Code Review & Collaboration', testId: 'feature-group-review' },
+    { id: 'infrastructure', label: 'Infrastructure', testId: 'feature-group-infrastructure' },
+];
+
+const featureToggle = (
+    group: AdminConfigFeatureGroupId,
+    label: string,
+    hint: string,
+    testId: string,
+    defaultValue: boolean,
+    options?: {
+        badge?: AdminConfigFieldUiBadge;
+        visibleWhen?: AdminConfigFieldUiVisibleWhen;
+    },
+): AdminConfigFieldUiSpec => ({
+    surface: 'features',
+    group,
+    label,
+    hint,
+    testId,
+    badge: options?.badge,
+    visibleWhen: options?.visibleWhen,
+    control: { type: 'toggle', defaultValue },
+});
+
+const featureSelect = (
+    group: AdminConfigFeatureGroupId,
+    label: string,
+    hint: string,
+    testId: string,
+    defaultValue: string,
+    options: readonly { value: string; label: string }[],
+    visibleWhen: AdminConfigFieldUiVisibleWhen,
+): AdminConfigFieldUiSpec => ({
+    surface: 'features',
+    group,
+    label,
+    hint,
+    testId,
+    visibleWhen,
+    control: { type: 'select', defaultValue, options },
+});
+
+const bool = (
+    key: string,
+    set: (cfg: CLIConfig, v: boolean) => void,
+    runtime: AdminConfigFieldRuntime = 'live',
+    ui?: AdminConfigFieldUiSpec,
+): AdminConfigFieldSpec => ({
     key,
     runtime,
     validate: (v) => typeof v === 'boolean' ? undefined : `${key} must be a boolean`,
     apply: (cfg, v) => set(cfg, v as boolean),
+    ui,
 });
 
 const VALID_OUTPUT_VALUES = ['table', 'json', 'csv', 'markdown'] as const;
@@ -206,23 +309,54 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
     bool('terminal.enabled', (cfg, v) => {
         if (!cfg.terminal) { cfg.terminal = {}; }
         cfg.terminal.enabled = v;
-    }, 'restartRequired'),
+    }, 'restartRequired', featureToggle(
+        'dev-tools',
+        'Terminal',
+        'Web terminal for shell access to the server machine. Toggling requires a server restart.',
+        'toggle-terminal-enabled',
+        true,
+        { badge: { label: 'Restart', tone: 'warning' } },
+    )),
     bool('notes.enabled', (cfg, v) => {
         if (!cfg.notes) { cfg.notes = {}; }
         cfg.notes.enabled = v;
-    }),
+    }, 'live', featureToggle(
+        'dashboard',
+        'Notes',
+        'Markdown notebooks for creating and editing notes.',
+        'toggle-notes-enabled',
+        true,
+    )),
     bool('myWork.enabled', (cfg, v) => {
         if (!cfg.myWork) { cfg.myWork = {}; }
         cfg.myWork.enabled = v;
-    }),
+    }, 'live', featureToggle(
+        'dashboard',
+        'My Work',
+        'Personal landing page with action items and weekly summaries.',
+        'toggle-mywork-enabled',
+        false,
+    )),
     bool('myLife.enabled', (cfg, v) => {
         if (!cfg.myLife) { cfg.myLife = {}; }
         cfg.myLife.enabled = v;
-    }),
+    }, 'live', featureToggle(
+        'dashboard',
+        'My Life',
+        'Personal page with goals, journal, and life admin.',
+        'toggle-mylife-enabled',
+        false,
+    )),
     bool('scratchpad.enabled', (cfg, v) => {
         if (!cfg.scratchpad) { cfg.scratchpad = {}; }
         cfg.scratchpad.enabled = v;
-    }),
+    }, 'live', featureToggle(
+        'dashboard',
+        'Scratchpad panel',
+        'Bottom-split note editor inside the chat detail view.',
+        'toggle-scratchpad-enabled',
+        true,
+    )),
     {
         key: 'scratchpad.layout',
         runtime: 'live',
@@ -233,39 +367,104 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
             if (!cfg.scratchpad) { cfg.scratchpad = {}; }
             cfg.scratchpad.layout = v as 'horizontal' | 'vertical';
         },
+        ui: featureSelect(
+            'dashboard',
+            'Layout',
+            'Split direction for conversation and scratchpad.',
+            'select-scratchpad-layout',
+            'vertical',
+            [
+                { value: 'horizontal', label: 'Horizontal (top/bottom)' },
+                { value: 'vertical', label: 'Vertical (left/right)' },
+            ],
+            { key: 'scratchpad.enabled', equals: true },
+        ),
     },
     bool('workflows.enabled', (cfg, v) => {
         if (!cfg.workflows) { cfg.workflows = {}; }
         cfg.workflows.enabled = v;
-    }),
+    }, 'live', featureToggle(
+        'dev-tools',
+        'Workflows Tab',
+        'YAML workflow runner tab in repo view.',
+        'toggle-workflows-enabled',
+        false,
+    )),
     bool('pullRequests.enabled', (cfg, v) => {
         if (!cfg.pullRequests) { cfg.pullRequests = {}; }
         cfg.pullRequests.enabled = v;
-    }),
+    }, 'live', featureToggle(
+        'dev-tools',
+        'Pull Requests Tab',
+        'Pull request list tab in repo view.',
+        'toggle-pull-requests-enabled',
+        true,
+    )),
     bool('pullRequests.suggestions', (cfg, v) => {
         if (!cfg.pullRequests) { cfg.pullRequests = {}; }
         cfg.pullRequests.suggestions = v;
-    }),
+    }, 'live', featureToggle(
+        'dev-tools',
+        'PR Review Suggestions',
+        "AI-ranked suggestions for which open PRs to review, based on your review history. Adds a 'For You' filter pill to the PR queue.",
+        'toggle-pull-requests-suggestions-enabled',
+        false,
+        { visibleWhen: { key: 'pullRequests.enabled', equals: true } },
+    )),
     bool('pullRequests.autoClassifyTeam', (cfg, v) => {
         if (!cfg.pullRequests) { cfg.pullRequests = {}; }
         cfg.pullRequests.autoClassifyTeam = v;
-    }),
+    }, 'live', featureToggle(
+        'dev-tools',
+        'Auto-classify Team PRs',
+        'Automatically queues lightweight diff classification for open Pull Requests tab Team roster PRs. Disabled by default.',
+        'toggle-pull-requests-auto-classify-team-enabled',
+        false,
+        { visibleWhen: { key: 'pullRequests.enabled', equals: true } },
+    )),
     bool('servers.enabled', (cfg, v) => {
         if (!cfg.servers) { cfg.servers = {}; }
         cfg.servers.enabled = v;
-    }),
+    }, 'live', featureToggle(
+        'dev-tools',
+        'Servers',
+        'Multi-server connection manager (devtunnel).',
+        'toggle-servers-enabled',
+        true,
+    )),
     bool('ralph.enabled', (cfg, v) => {
         if (!cfg.ralph) { cfg.ralph = {}; }
         cfg.ralph.enabled = v;
-    }),
+    }, 'live', featureToggle(
+        'ai-modes',
+        'Ralph Mode',
+        'Autonomous iterative coding loop — stateless agents with fresh context per iteration.',
+        'toggle-ralph-enabled',
+        false,
+        { badge: { label: 'Experimental', tone: 'accent' } },
+    )),
     bool('forEach.enabled', (cfg, v) => {
         if (!cfg.forEach) { cfg.forEach = {}; }
         cfg.forEach.enabled = v;
-    }),
+    }, 'live', featureToggle(
+        'ai-modes',
+        'For Each Mode',
+        'Generate a reviewed item plan from New Chat, then run each item as a separate child chat. Disabled by default.',
+        'toggle-for-each-enabled',
+        false,
+        { badge: { label: 'Experimental', tone: 'accent' } },
+    )),
     bool('mapReduce.enabled', (cfg, v) => {
         if (!cfg.mapReduce) { cfg.mapReduce = {}; }
         cfg.mapReduce.enabled = v;
-    }),
+    }, 'live', featureToggle(
+        'ai-modes',
+        'Map Reduce Mode',
+        'Generate a reviewed map plan from New Chat, run items in parallel, then reduce outputs into one result. Disabled by default.',
+        'toggle-map-reduce-enabled',
+        false,
+        { badge: { label: 'Experimental', tone: 'accent' } },
+    )),
     {
         key: 'ralph.finalCheck.maxGapFixLoops',
         runtime: 'live' as AdminConfigFieldRuntime,
@@ -281,24 +480,60 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
     bool('vimNavigation.enabled', (cfg, v) => {
         if (!cfg.vimNavigation) { cfg.vimNavigation = {}; }
         cfg.vimNavigation.enabled = v;
-    }),
+    }, 'live', featureToggle(
+        'infrastructure',
+        'Vim-style navigation',
+        'Enable hjkl pane navigation, j/k to step through chats and messages, gg/G to jump, i to focus the input, Esc to blur. Disabled by default.',
+        'toggle-vim-navigation-enabled',
+        false,
+    )),
     bool('loops.enabled', (cfg, v) => {
         if (!cfg.loops) { cfg.loops = {}; }
         cfg.loops.enabled = v;
-    }, 'restartRequired'),
+    }, 'restartRequired', featureToggle(
+        'infrastructure',
+        'Loops & Wakeups',
+        'Recurring follow-up loops and one-shot scheduleWakeup tool. Disabled by default — toggling requires a server restart to (de)wire infrastructure.',
+        'toggle-loops-enabled',
+        true,
+        { badge: { label: 'Restart', tone: 'warning' } },
+    )),
     bool('excalidraw.enabled', (cfg, v) => {
         if (!cfg.excalidraw) { cfg.excalidraw = {}; }
         cfg.excalidraw.enabled = v;
-    }),
+    }, 'live', featureToggle(
+        'review',
+        'Excalidraw diagrams',
+        'AI can generate and read Excalidraw diagrams during conversations. Disabled by default.',
+        'toggle-excalidraw-enabled',
+        false,
+    )),
     bool('mcpOauth.enabled', (cfg, v) => {
         if (!cfg.mcpOauth) { cfg.mcpOauth = {}; }
         cfg.mcpOauth.enabled = v;
-    }, 'restartRequired'),
+    }, 'restartRequired', featureToggle(
+        'infrastructure',
+        'MCP OAuth',
+        'Handle OAuth flows for MCP servers that require authentication. Disabled by default — toggling requires a server restart.',
+        'toggle-mcp-oauth-enabled',
+        false,
+        { badge: { label: 'Restart', tone: 'warning' } },
+    )),
     bool('mcpOauth.autoRefresh.enabled', (cfg, v) => {
         if (!cfg.mcpOauth) { cfg.mcpOauth = {}; }
         if (!cfg.mcpOauth.autoRefresh) { cfg.mcpOauth.autoRefresh = {}; }
         cfg.mcpOauth.autoRefresh.enabled = v;
-    }, 'restartRequired'),
+    }, 'restartRequired', featureToggle(
+        'infrastructure',
+        'MCP OAuth auto-refresh',
+        "Periodically dedup ~/.copilot/mcp-oauth-config/ and refresh AAD-backed tokens before they expire so HTTP MCP servers don't re-prompt for auth. Disabled by default — toggling requires a server restart.",
+        'toggle-mcp-oauth-auto-refresh-enabled',
+        false,
+        {
+            badge: { label: 'Restart', tone: 'warning' },
+            visibleWhen: { key: 'mcpOauth.enabled', equals: true },
+        },
+    )),
     bool('containerDefaultAgent.enabled', (cfg, v) => {
         if (!cfg.containerDefaultAgent) { cfg.containerDefaultAgent = {}; }
         cfg.containerDefaultAgent.enabled = v;
@@ -332,19 +567,46 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
     bool('features.focusedDiff', (cfg, v) => {
         if (!cfg.features) { cfg.features = {}; }
         cfg.features.focusedDiff = v;
-    }),
+    }, 'live', featureToggle(
+        'review',
+        'Focused Diff',
+        'AI-powered hunk classification for PR diffs. Highlights logic changes and dims mechanical edits.',
+        'toggle-focused-diff-enabled',
+        false,
+    )),
     bool('features.gitCrossCloneCherryPick', (cfg, v) => {
         if (!cfg.features) { cfg.features = {}; }
         cfg.features.gitCrossCloneCherryPick = v;
-    }),
+    }, 'live', featureToggle(
+        'review',
+        'Cross-clone cherry-pick',
+        'Adds a Git commit context-menu action that transfers one commit to another registered clone using patch export/apply. Enabled by default.',
+        'toggle-git-cross-clone-cherry-pick-enabled',
+        true,
+        { badge: { label: 'Experimental', tone: 'accent' } },
+    )),
     bool('features.sessionContextAttachments', (cfg, v) => {
         if (!cfg.features) { cfg.features = {}; }
         cfg.features.sessionContextAttachments = v;
-    }),
+    }, 'live', featureToggle(
+        'review',
+        'Session context attachments',
+        'Allow dragging existing same-workspace chat sessions into chat composers as pointer-only context. Disabled by default.',
+        'toggle-session-context-attachments-enabled',
+        false,
+        { badge: { label: 'Experimental', tone: 'accent' } },
+    )),
     bool('features.commitChatLens', (cfg, v) => {
         if (!cfg.features) { cfg.features = {}; }
         cfg.features.commitChatLens = v;
-    }),
+    }, 'live', featureToggle(
+        'review',
+        'Review chat lens',
+        'Open unpinned commit and pull-request review chat as a desktop bottom-right lens instead of the side panel or drawer. Disabled by default.',
+        'toggle-commit-chat-lens-enabled',
+        false,
+        { badge: { label: 'Experimental', tone: 'accent' } },
+    )),
     {
         key: 'features.commitChatLensDormantMode',
         runtime: 'live' as AdminConfigFieldRuntime,
@@ -353,6 +615,18 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
             if (!cfg.features) { cfg.features = {}; }
             cfg.features.commitChatLensDormantMode = v as 'ghost' | 'pill';
         },
+        ui: featureSelect(
+            'review',
+            'Lens dormant mode',
+            'How the lens recedes when your cursor leaves it. Ghost fades to near-transparent; Pill collapses to a compact status pill.',
+            'select-commit-chat-lens-dormant-mode',
+            'ghost',
+            [
+                { value: 'ghost', label: 'Ghost fade' },
+                { value: 'pill', label: 'Collapse to pill' },
+            ],
+            { key: 'features.commitChatLens', equals: true },
+        ),
     },
     bool('features.autoAgentProviderRouting', (cfg, v) => {
         if (!cfg.features) { cfg.features = {}; }
@@ -363,40 +637,80 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         if (!cfg.workItems) { cfg.workItems = {}; }
         if (!cfg.workItems.hierarchy) { cfg.workItems.hierarchy = {}; }
         cfg.workItems.hierarchy.enabled = v;
-    }),
+    }, 'live', featureToggle(
+        'work-items',
+        'Work Items Hierarchy Board',
+        'Extends the Work Items tab into an Epic → Feature → PBI → Work Item / Bug hierarchy board. Enabled by default.',
+        'toggle-work-items-hierarchy-enabled',
+        true,
+    )),
 
     bool('workItems.sync.enabled', (cfg, v) => {
         if (!cfg.workItems) { cfg.workItems = {}; }
         if (!cfg.workItems.sync) { cfg.workItems.sync = {}; }
         cfg.workItems.sync.enabled = v;
-    }),
+    }, 'live', featureToggle(
+        'work-items',
+        'Remote Work Items',
+        'Enables remote provider integration for hierarchy mode: provider status, imports, save-to-provider updates, and background polling. Requires the hierarchy board and never stores provider tokens.',
+        'toggle-work-items-sync-enabled',
+        false,
+        { badge: { label: 'Preview', tone: 'accent' } },
+    )),
 
     bool('workItems.aiAuthoring.enabled', (cfg, v) => {
         if (!cfg.workItems) { cfg.workItems = {}; }
         if (!cfg.workItems.aiAuthoring) { cfg.workItems.aiAuthoring = {}; }
         cfg.workItems.aiAuthoring.enabled = v;
-    }),
+    }, 'live', featureToggle(
+        'work-items',
+        'Work Items AI Authoring',
+        'Adds AI-assisted work item creation and improvement to the Work Items tab. Disabled by default.',
+        'toggle-work-items-ai-authoring-enabled',
+        false,
+        { badge: { label: 'Experimental', tone: 'accent' } },
+    )),
 
     bool('workItems.workflow.enabled', (cfg, v) => {
         if (!cfg.workItems) { cfg.workItems = {}; }
         if (!cfg.workItems.workflow) { cfg.workItems.workflow = {}; }
         cfg.workItems.workflow.enabled = v;
-    }),
+    }, 'live', featureToggle(
+        'work-items',
+        'Work Items Workflow',
+        'Enables the durable Work Items/Goals command-center workflow. Disabled by default.',
+        'toggle-work-items-workflow-enabled',
+        false,
+        { badge: { label: 'Experimental', tone: 'accent' } },
+    )),
 
     bool('effortLevels.enabled', (cfg, v) => {
         if (!cfg.effortLevels) { cfg.effortLevels = {}; }
         cfg.effortLevels.enabled = v;
-    }),
+    }, 'live', featureToggle(
+        'ai-modes',
+        'Effort Tiers',
+        'Replace the model picker + reasoning-effort pill in the chat composer with a single Low / Medium / High effort selector. Configure tier mappings per provider on the AI Provider page. Disabled by default.',
+        'toggle-effort-levels-enabled',
+        false,
+        { badge: { label: 'Experimental', tone: 'accent' } },
+    )),
 ];
 
 /** Flat keys accepted by PUT /api/admin/config — derived from the registry. */
 export const ADMIN_EDITABLE_KEYS: readonly string[] = ADMIN_CONFIG_FIELDS.map(f => f.key);
 
+/** Admin feature settings surfaced by the registry-driven Features card. */
+export const ADMIN_CONFIG_FEATURE_UI_FIELDS: readonly AdminConfigFeatureUiFieldSpec[] =
+    ADMIN_CONFIG_FIELDS.filter((field): field is AdminConfigFeatureUiFieldSpec => field.ui?.surface === 'features');
+
 /** Build a key→metadata map for API responses. */
-export function getAdminFieldMetadata(): Record<string, { runtime: AdminConfigFieldRuntime }> {
-    const meta: Record<string, { runtime: AdminConfigFieldRuntime }> = {};
+export function getAdminFieldMetadata(): Record<string, AdminConfigFieldMetadata> {
+    const meta: Record<string, AdminConfigFieldMetadata> = {};
     for (const field of ADMIN_CONFIG_FIELDS) {
-        meta[field.key] = { runtime: field.runtime };
+        meta[field.key] = field.ui
+            ? { runtime: field.runtime, ui: field.ui }
+            : { runtime: field.runtime };
     }
     return meta;
 }

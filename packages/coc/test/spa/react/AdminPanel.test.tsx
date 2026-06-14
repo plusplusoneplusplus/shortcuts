@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppContext';
 import { AdminPanel } from '../../../src/server/spa/client/react/admin/AdminPanel';
+import { ADMIN_CONFIG_FEATURE_UI_FIELDS } from '../../../src/server/admin/admin-config-fields';
 
 // Mock fetch globally
 const mockFetch = vi.fn();
@@ -1057,8 +1058,38 @@ describe('AdminPanel', () => {
             });
 
             await waitFor(() => expect(capturedBody).not.toBeNull());
+            expect(Object.keys(capturedBody).sort()).toEqual(
+                ADMIN_CONFIG_FEATURE_UI_FIELDS.map(field => field.key).sort()
+            );
             expect(capturedBody['terminal.enabled']).toBe(true);
             expect(capturedBody['notes.enabled']).toBe(false);
+        });
+
+        it('renders every registry-exposed Features control', async () => {
+            mockFetch.mockImplementation((url: string) => {
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            resolved: {
+                                scratchpad: { enabled: true, layout: 'horizontal' },
+                                pullRequests: { enabled: true, suggestions: false, autoClassifyTeam: false },
+                                mcpOauth: { enabled: true, autoRefresh: { enabled: false } },
+                                features: { commitChatLens: true, commitChatLensDormantMode: 'ghost' },
+                            },
+                            sources: {},
+                        }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+
+            await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('features');
+
+            for (const field of ADMIN_CONFIG_FEATURE_UI_FIELDS) {
+                await waitFor(() => expect(screen.getByTestId(field.ui.testId)).toBeDefined());
+            }
         });
 
         it('renders Servers toggle unchecked by default and includes servers.enabled in PUT', async () => {

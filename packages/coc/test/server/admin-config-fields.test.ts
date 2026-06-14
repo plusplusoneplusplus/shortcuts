@@ -7,7 +7,13 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { ADMIN_CONFIG_FIELDS, ADMIN_EDITABLE_KEYS, getAdminFieldMetadata } from '../../src/server/admin/admin-config-fields';
+import {
+    ADMIN_CONFIG_FEATURE_GROUPS,
+    ADMIN_CONFIG_FEATURE_UI_FIELDS,
+    ADMIN_CONFIG_FIELDS,
+    ADMIN_EDITABLE_KEYS,
+    getAdminFieldMetadata,
+} from '../../src/server/admin/admin-config-fields';
 import type { AdminConfigFieldSpec } from '../../src/server/admin/admin-config-fields';
 import type { CLIConfig } from '../../src/config';
 
@@ -39,13 +45,14 @@ describe('ADMIN_EDITABLE_KEYS', () => {
             'chat.askUser.enabled',
             'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled',
             'scratchpad.enabled', 'scratchpad.layout',
-            'workflows.enabled', 'pullRequests.enabled', 'pullRequests.autoClassifyTeam', 'servers.enabled',
-            'ralph.enabled', 'forEach.enabled', 'vimNavigation.enabled', 'loops.enabled',
+            'workflows.enabled', 'pullRequests.enabled', 'pullRequests.suggestions', 'pullRequests.autoClassifyTeam', 'servers.enabled',
+            'ralph.enabled', 'forEach.enabled', 'mapReduce.enabled', 'vimNavigation.enabled', 'loops.enabled',
             'excalidraw.enabled',
             'mcpOauth.enabled', 'mcpOauth.autoRefresh.enabled',
             'codex.enabled', 'claude.enabled',
             'defaultProvider',
             'agentProviderRouting.auto',
+            'features.focusedDiff',
             'features.gitCrossCloneCherryPick',
             'features.sessionContextAttachments',
             'features.commitChatLens',
@@ -263,13 +270,14 @@ describe('validate()', () => {
         'showReportIntent', 'groupSingleLineMessages',
         'chat.followUpSuggestions.enabled', 'chat.askUser.enabled',
         'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled',
-        'scratchpad.enabled', 'workflows.enabled', 'pullRequests.enabled', 'pullRequests.autoClassifyTeam',
-        'servers.enabled', 'ralph.enabled', 'forEach.enabled', 'vimNavigation.enabled', 'loops.enabled',
+        'scratchpad.enabled', 'workflows.enabled', 'pullRequests.enabled', 'pullRequests.suggestions', 'pullRequests.autoClassifyTeam',
+        'servers.enabled', 'ralph.enabled', 'forEach.enabled', 'mapReduce.enabled', 'vimNavigation.enabled', 'loops.enabled',
         'excalidraw.enabled',
         'mcpOauth.enabled',
         'mcpOauth.autoRefresh.enabled',
         'codex.enabled',
         'claude.enabled',
+        'features.focusedDiff',
         'features.gitCrossCloneCherryPick',
         'features.sessionContextAttachments',
         'features.commitChatLens',
@@ -409,14 +417,18 @@ describe('apply()', () => {
         ['scratchpad.enabled', (c) => c.scratchpad?.enabled],
         ['workflows.enabled', (c) => c.workflows?.enabled],
         ['pullRequests.enabled', (c) => c.pullRequests?.enabled],
+        ['pullRequests.suggestions', (c) => c.pullRequests?.suggestions],
         ['pullRequests.autoClassifyTeam', (c) => c.pullRequests?.autoClassifyTeam],
         ['servers.enabled', (c) => c.servers?.enabled],
         ['ralph.enabled', (c) => c.ralph?.enabled],
         ['forEach.enabled', (c) => c.forEach?.enabled],
+        ['mapReduce.enabled', (c) => c.mapReduce?.enabled],
         ['vimNavigation.enabled', (c) => c.vimNavigation?.enabled],
         ['loops.enabled', (c) => c.loops?.enabled],
         ['excalidraw.enabled', (c) => c.excalidraw?.enabled],
         ['mcpOauth.enabled', (c) => c.mcpOauth?.enabled],
+        ['mcpOauth.autoRefresh.enabled', (c) => c.mcpOauth?.autoRefresh?.enabled],
+        ['features.focusedDiff', (c) => c.features?.focusedDiff],
         ['features.gitCrossCloneCherryPick', (c) => c.features?.gitCrossCloneCherryPick],
         ['features.sessionContextAttachments', (c) => c.features?.sessionContextAttachments],
         ['features.commitChatLens', (c) => c.features?.commitChatLens],
@@ -523,14 +535,15 @@ describe('runtime classification', () => {
 
     const liveFeatures = [
         'notes.enabled', 'myWork.enabled', 'myLife.enabled',
-        'scratchpad.enabled', 'workflows.enabled', 'pullRequests.enabled', 'pullRequests.autoClassifyTeam',
-        'servers.enabled', 'ralph.enabled', 'forEach.enabled', 'vimNavigation.enabled',
+        'scratchpad.enabled', 'workflows.enabled', 'pullRequests.enabled', 'pullRequests.suggestions', 'pullRequests.autoClassifyTeam',
+        'servers.enabled', 'ralph.enabled', 'forEach.enabled', 'mapReduce.enabled', 'vimNavigation.enabled',
         'excalidraw.enabled', 'features.focusedDiff',
         'features.gitCrossCloneCherryPick',
         'features.sessionContextAttachments',
         'features.commitChatLens',
         'features.commitChatLensDormantMode',
         'workItems.hierarchy.enabled', 'workItems.sync.enabled', 'workItems.aiAuthoring.enabled',
+        'workItems.workflow.enabled', 'effortLevels.enabled',
     ];
 
     for (const key of liveFeatures) {
@@ -540,14 +553,97 @@ describe('runtime classification', () => {
     }
 });
 
+// ── admin UI metadata ────────────────────────────────────────────────────────
+
+describe('admin feature UI metadata', () => {
+    it('contains only fields from the editable registry', () => {
+        for (const field of ADMIN_CONFIG_FEATURE_UI_FIELDS) {
+            expect(ADMIN_CONFIG_FIELDS).toContain(field);
+            expect(ADMIN_EDITABLE_KEYS).toContain(field.key);
+            expect(field.ui.surface).toBe('features');
+        }
+    });
+
+    it('uses declared feature groups', () => {
+        const groupIds = new Set(ADMIN_CONFIG_FEATURE_GROUPS.map(group => group.id));
+        for (const field of ADMIN_CONFIG_FEATURE_UI_FIELDS) {
+            expect(groupIds.has(field.ui.group), `${field.key} uses unknown group ${field.ui.group}`).toBe(true);
+        }
+    });
+
+    it('defines complete control metadata for every surfaced feature field', () => {
+        for (const field of ADMIN_CONFIG_FEATURE_UI_FIELDS) {
+            expect(field.ui.label.length, `${field.key} label`).toBeGreaterThan(0);
+            expect(field.ui.hint.length, `${field.key} hint`).toBeGreaterThan(0);
+            expect(field.ui.testId.length, `${field.key} testId`).toBeGreaterThan(0);
+            if (field.ui.control.type === 'toggle') {
+                expect(typeof field.ui.control.defaultValue, `${field.key} toggle default`).toBe('boolean');
+            } else {
+                expect(field.ui.control.options.length, `${field.key} select options`).toBeGreaterThan(0);
+                expect(field.ui.control.options.some(option => option.value === field.ui.control.defaultValue), `${field.key} select default`).toBe(true);
+            }
+        }
+    });
+
+    it('contains the existing Features card controls in registry order', () => {
+        expect(ADMIN_CONFIG_FEATURE_UI_FIELDS.map(field => field.key)).toEqual([
+            'terminal.enabled',
+            'notes.enabled',
+            'myWork.enabled',
+            'myLife.enabled',
+            'scratchpad.enabled',
+            'scratchpad.layout',
+            'workflows.enabled',
+            'pullRequests.enabled',
+            'pullRequests.suggestions',
+            'pullRequests.autoClassifyTeam',
+            'servers.enabled',
+            'ralph.enabled',
+            'forEach.enabled',
+            'mapReduce.enabled',
+            'vimNavigation.enabled',
+            'loops.enabled',
+            'excalidraw.enabled',
+            'mcpOauth.enabled',
+            'mcpOauth.autoRefresh.enabled',
+            'features.focusedDiff',
+            'features.gitCrossCloneCherryPick',
+            'features.sessionContextAttachments',
+            'features.commitChatLens',
+            'features.commitChatLensDormantMode',
+            'workItems.hierarchy.enabled',
+            'workItems.sync.enabled',
+            'workItems.aiAuthoring.enabled',
+            'workItems.workflow.enabled',
+            'effortLevels.enabled',
+        ]);
+    });
+
+    it('declares parent dependencies for conditional feature controls', () => {
+        expect(fieldFor('scratchpad.layout').ui?.visibleWhen).toEqual({ key: 'scratchpad.enabled', equals: true });
+        expect(fieldFor('pullRequests.suggestions').ui?.visibleWhen).toEqual({ key: 'pullRequests.enabled', equals: true });
+        expect(fieldFor('pullRequests.autoClassifyTeam').ui?.visibleWhen).toEqual({ key: 'pullRequests.enabled', equals: true });
+        expect(fieldFor('features.commitChatLensDormantMode').ui?.visibleWhen).toEqual({ key: 'features.commitChatLens', equals: true });
+        expect(fieldFor('mcpOauth.autoRefresh.enabled').ui?.visibleWhen).toEqual({ key: 'mcpOauth.enabled', equals: true });
+    });
+});
+
 // ── getAdminFieldMetadata() ───────────────────────────────────────────────────
 
 describe('getAdminFieldMetadata()', () => {
     it('returns metadata for every registered field', () => {
         const meta = getAdminFieldMetadata();
         for (const field of ADMIN_CONFIG_FIELDS) {
-            expect(meta[field.key]).toEqual({ runtime: field.runtime });
+            expect(meta[field.key]).toEqual(field.ui
+                ? { runtime: field.runtime, ui: field.ui }
+                : { runtime: field.runtime });
         }
+    });
+
+    it('exposes UI metadata for registry-driven feature controls', () => {
+        const meta = getAdminFieldMetadata();
+        expect(meta['features.focusedDiff'].ui?.testId).toBe('toggle-focused-diff-enabled');
+        expect(meta['scratchpad.layout'].ui?.control.type).toBe('select');
     });
 
     it('includes restartRequired for terminal.enabled', () => {

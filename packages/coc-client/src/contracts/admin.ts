@@ -114,8 +114,36 @@ export interface AdminResolvedConfig {
 
 export type AdminConfigFieldRuntime = 'live' | 'reloadable' | 'restartRequired';
 
+export type AdminConfigUiSurface = 'features';
+
+export interface AdminConfigFieldUiBadge {
+  label: string;
+  tone: 'accent' | 'warning';
+}
+
+export interface AdminConfigFieldUiVisibleWhen {
+  key: string;
+  equals: boolean | string;
+}
+
+export type AdminConfigFieldUiControl =
+  | { type: 'toggle'; defaultValue: boolean }
+  | { type: 'select'; defaultValue: string; options: { value: string; label: string }[] };
+
+export interface AdminConfigFieldUiMeta {
+  surface: AdminConfigUiSurface;
+  group: string;
+  label: string;
+  hint: string;
+  testId: string;
+  badge?: AdminConfigFieldUiBadge;
+  visibleWhen?: AdminConfigFieldUiVisibleWhen;
+  control: AdminConfigFieldUiControl;
+}
+
 export interface AdminConfigFieldMeta {
   runtime: AdminConfigFieldRuntime;
+  ui?: AdminConfigFieldUiMeta;
 }
 
 export interface AdminConfigChangeEffect {

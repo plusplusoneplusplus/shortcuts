@@ -45,9 +45,11 @@ all have their own `references/*.md`.
   `.coc-<name>.json` tracks CoC-managed commands to distinguish them from
   user-authored ones.
 - **Adding an editable config field** is usually a single registry entry. Put
-  field-local validation in `src/server/admin/admin-config-fields.ts`; reserve
-  `admin-handler.ts` changes for cross-field validation shared with config-file
-  loading (see [admin-config.md](../../.github/skills/coc-knowledge/references/admin-config.md)).
+  field-local validation, apply logic, runtime classification, and simple
+  Features-card UI metadata in `src/server/admin/admin-config-fields.ts`;
+  reserve `admin-handler.ts` changes for cross-field validation shared with
+  config-file loading (see
+  [admin-config.md](../../.github/skills/coc-knowledge/references/admin-config.md)).
 - **Adding a namespaced config field** must update
   `src/config/namespace-registry.ts`; do not expand branch lists in `config.ts`.
 - **MCP REST surface** must never expose secrets (`env`, headers, full `args`).
