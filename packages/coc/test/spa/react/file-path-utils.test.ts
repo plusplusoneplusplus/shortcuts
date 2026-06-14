@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { shortenFilePath, FILE_PATH_RE, linkifyFilePaths } from '../../../src/server/spa/client/react/shared/file-path-utils';
+import { shortenFilePath, FILE_PATH_RE, linkifyFilePaths, parseFilePathRef } from '../../../src/server/spa/client/react/shared/file-path-utils';
 
 describe('shortenFilePath', () => {
     it('returns empty string for empty input', () => {
@@ -180,5 +180,68 @@ describe('linkifyFilePaths', () => {
 
     it('handles empty input', () => {
         expect(linkifyFilePaths('')).toBe('');
+    });
+});
+
+describe('parseFilePathRef', () => {
+    it('returns a bare path unchanged when there is no line suffix', () => {
+        expect(parseFilePathRef('/Users/alice/code/foo.ts')).toEqual({ path: '/Users/alice/code/foo.ts' });
+    });
+
+    it('parses a single :line suffix', () => {
+        expect(parseFilePathRef('src/foo.ts:42')).toEqual({ path: 'src/foo.ts', line: 42 });
+    });
+
+    it('parses a :start-end range suffix', () => {
+        expect(parseFilePathRef('src/foo.ts:42-58')).toEqual({ path: 'src/foo.ts', line: 42, endLine: 58 });
+    });
+
+    it('strips only the trailing numeric suffix, leaving interior colons', () => {
+        expect(parseFilePathRef('/a:1/b.ts:7')).toEqual({ path: '/a:1/b.ts', line: 7 });
+    });
+
+    it('does not treat a Windows drive colon as a line suffix', () => {
+        expect(parseFilePathRef('C:/Users/alice/app.ts')).toEqual({ path: 'C:/Users/alice/app.ts' });
+    });
+
+    it('ignores a dangling range dash with no end number', () => {
+        expect(parseFilePathRef('/a/b.ts:42-')).toEqual({ path: '/a/b.ts:42-' });
+    });
+});
+
+describe('linkifyFilePaths — line/range suffixes (AC-01)', () => {
+    it('puts the bare path in data-full-path and the line in data-line', () => {
+        const result = linkifyFilePaths('see /Users/alice/code/foo.ts:42 now');
+        expect(result).toContain('data-full-path="/Users/alice/code/foo.ts"');
+        expect(result).toContain('data-line="42"');
+        expect(result).not.toContain('data-end-line');
+        // bare path, no :42, inside data-full-path
+        expect(result).not.toContain('data-full-path="/Users/alice/code/foo.ts:42"');
+    });
+
+    it('emits data-line and data-end-line for a :start-end range', () => {
+        const result = linkifyFilePaths('see /Users/alice/code/foo.ts:42-58 now');
+        expect(result).toContain('data-full-path="/Users/alice/code/foo.ts"');
+        expect(result).toContain('data-line="42"');
+        expect(result).toContain('data-end-line="58"');
+    });
+
+    it('keeps the :line suffix in the visible link text', () => {
+        const result = linkifyFilePaths('see /Users/alice/code/foo.ts:42');
+        expect(result).toContain('>~/code/foo.ts:42</span>');
+    });
+
+    it('leaves bare paths (no suffix) without line attributes', () => {
+        const result = linkifyFilePaths('see /Users/alice/code/foo.ts');
+        expect(result).toContain('data-full-path="/Users/alice/code/foo.ts"');
+        expect(result).not.toContain('data-line');
+        expect(result).not.toContain('data-end-line');
+    });
+
+    it('does not linkify a line-suffixed path inside a <code> block', () => {
+        const html = '<code>/Users/alice/code/foo.ts:42</code>';
+        const result = linkifyFilePaths(html);
+        expect(result).not.toContain('file-path-link');
+        expect(result).toBe(html);
     });
 });
