@@ -10,6 +10,25 @@
  * be toggled by the user.
  */
 
+/**
+ * Compact, display-only description of a single LLM tool input parameter.
+ *
+ * Derived from a tool's JSON-schema `parameters` purely for the settings UI;
+ * it never affects tool execution, validation, or persisted preferences.
+ */
+export interface LlmToolParam {
+    /** Parameter name as declared in the tool input schema. */
+    name: string;
+    /**
+     * Compact type label: a JSON-schema primitive (`string`, `number`,
+     * `boolean`, `integer`), `{...}` for nested objects, `[...]` for arrays,
+     * `enum` for typeless enums, or `any` when the type cannot be determined.
+     */
+    type: string;
+    /** Whether the parameter is required by the tool's input schema. */
+    required: boolean;
+}
+
 export interface LlmToolMeta {
     /** Tool name as registered with `defineTool()` (matches the AI-facing name). */
     name: string;
@@ -19,6 +38,13 @@ export interface LlmToolMeta {
     description: string;
     /** Whether this tool is enabled by default when no explicit preference exists. */
     enabledByDefault: boolean;
+    /**
+     * Optional, additive compact parameter summary derived from the tool's
+     * input schema for display in the settings UI. Absent when no JSON-schema
+     * is available (render as "parameters unavailable"); an empty array means
+     * the tool takes no parameters. Existing clients can ignore this field.
+     */
+    params?: LlmToolParam[];
 }
 
 /**

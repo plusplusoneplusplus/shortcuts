@@ -715,6 +715,14 @@ export class SqliteProcessStore implements ProcessStore {
         return rowToProcess(row, turnRows.map(rowToTurn));
     }
 
+    getSdkSessionIds(workspaceId: string): Set<string> {
+        const rows = this.db.prepare(
+            `SELECT DISTINCT sdk_session_id FROM processes
+             WHERE workspace_id = ? AND sdk_session_id IS NOT NULL AND sdk_session_id <> ''`
+        ).all(workspaceId) as Array<{ sdk_session_id: string }>;
+        return new Set(rows.map(r => r.sdk_session_id));
+    }
+
     async forkProcess(
         sourceId: string,
         newId: string,

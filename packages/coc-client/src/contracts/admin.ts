@@ -86,6 +86,8 @@ export interface AdminResolvedConfig {
   mapReduce?: { enabled?: boolean };
   dreams?: {
     enabled?: boolean;
+    provider?: AdminDefaultProvider;
+    model?: string;
     idleCheckIntervalMs?: number;
     minIdleMs?: number;
     confidenceThreshold?: number;
@@ -116,6 +118,7 @@ export interface AdminResolvedConfig {
     commitChatLensDormantMode?: 'ghost' | 'pill';
     autoAgentProviderRouting?: boolean;
     ralphMultiAgentGrill?: boolean;
+    nativeCliSessions?: boolean;
   };
   workItems?: { hierarchy?: { enabled?: boolean }; sync?: { enabled?: boolean }; aiAuthoring?: { enabled?: boolean }; workflow?: { enabled?: boolean } };
   effortLevels?: { enabled?: boolean };
@@ -174,6 +177,10 @@ export interface AdminConfigUpdate {
   'forEach.enabled'?: boolean;
   'mapReduce.enabled'?: boolean;
   'dreams.enabled'?: boolean;
+  'dreams.provider'?: AdminDefaultProvider | null;
+  'dreams.model'?: string | null;
+  'dreams.idleCheckIntervalMs'?: number;
+  'dreams.timeoutMs'?: number;
   'excalidraw.enabled'?: boolean;
   'mcpOauth.enabled'?: boolean;
   'mcpOauth.autoRefresh.enabled'?: boolean;
@@ -191,6 +198,7 @@ export interface AdminConfigUpdate {
   'features.commitChatLens'?: boolean;
   'features.commitChatLensDormantMode'?: 'ghost' | 'pill';
   'features.autoAgentProviderRouting'?: boolean;
+  'features.nativeCliSessions'?: boolean;
   'effortLevels.enabled'?: boolean;
   [key: string]: unknown;
 }
@@ -239,6 +247,7 @@ export interface RuntimeDashboardConfig {
     commitChatLensEnabled: boolean;
     commitChatLensDormantMode: 'ghost' | 'pill';
     effortLevelsEnabled: boolean;
+    nativeCliSessionsEnabled: boolean;
   };
   hostname?: string;
   bindAddress?: string;

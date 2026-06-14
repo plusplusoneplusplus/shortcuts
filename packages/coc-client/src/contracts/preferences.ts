@@ -96,11 +96,36 @@ export interface TaskSettingsUpdate {
   folderPaths: string[];
 }
 
+/**
+ * Compact, display-only description of a single LLM tool input parameter.
+ * Derived from a tool's JSON-schema `parameters` for the settings UI; it never
+ * affects tool execution or persisted preferences.
+ */
+export interface LlmToolParam {
+  /** Parameter name as declared in the tool input schema. */
+  name: string;
+  /**
+   * Compact type label: a JSON-schema primitive (`string`, `number`,
+   * `boolean`, `integer`), `{...}` for nested objects, `[...]` for arrays,
+   * `enum` for typeless enums, or `any` when the type cannot be determined.
+   */
+  type: string;
+  /** Whether the parameter is required by the tool's input schema. */
+  required: boolean;
+}
+
 export interface LlmToolMeta {
   name: string;
   label: string;
   description: string;
   enabledByDefault: boolean;
+  /**
+   * Optional, additive compact parameter summary derived from the tool's input
+   * schema. Absent when no JSON-schema is available (render as "parameters
+   * unavailable"); an empty array means the tool takes no parameters. Existing
+   * clients that only read name/label/description/enabledByDefault ignore this.
+   */
+  params?: LlmToolParam[];
 }
 
 export interface LlmToolsConfig {

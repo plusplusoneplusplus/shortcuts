@@ -344,6 +344,16 @@
   flex: 1;
   min-height: 0;
 }
+/* Dreams admin reuses the AI-provider `.aip-page` shell but, unlike that page
+   (which scrolls via `.ar-main`), it renders inside `.ar-tool-embed` where
+   `.ar-main--embed` suppresses the outer scroller. The Skills/Memory embeds
+   own an inner scroll region; the `.aip-page` grid has none, so give the
+   embedded page its own scroll region plus page padding (mirroring `.ar-page`)
+   so long content — the provider-activity queue — stays reachable. */
+.admin-redesign .ar-tool-embed > .aip-page {
+  overflow-y: auto;
+  padding: 28px 32px 120px;
+}
 .admin-redesign .ar-topbar {
   display: flex;
   align-items: center;
@@ -1149,6 +1159,9 @@
     margin-top: 8px;
   }
   .admin-redesign .ar-page {
+    padding: 20px 16px 80px;
+  }
+  .admin-redesign .ar-tool-embed > .aip-page {
     padding: 20px 16px 80px;
   }
   .admin-redesign .ar-row {

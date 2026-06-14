@@ -7,7 +7,7 @@
  */
 
 import type { AdminAutoProviderRoutingConfig, AdminDefaultProvider, ProviderInstallStatus } from '@plusplusoneplusplus/coc-client';
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import { useApp } from '../contexts/AppContext';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
@@ -26,9 +26,11 @@ import { DbBrowserSection } from './DbBrowserSection';
 import { PromptsPanel } from './PromptsPanel';
 import { ProviderTokensSection } from './ProviderTokensSection';
 import { SettingsCard } from './SettingsCard';
+import { AdminInputSuffix, AdminRow, AdminSeg, AdminToggle, SourceBadge } from './adminControls';
 
 import { applyRuntimeConfigPatch, isContainerMode, isServersEnabled } from '../utils/config';
 import { AIProviderPage, normalizeAutoProviderRoutingConfig, type NormalizedAutoProviderRoutingConfig } from './AIProviderPage';
+import type { DreamsConfigForm } from '../features/dreams/DreamsView';
 import {
     ADMIN_SETTING_DEFINITIONS,
     FEATURE_CARD_GROUPS,
@@ -50,6 +52,7 @@ const UsageStatsView = lazy(() => import('../features/stats/UsageStatsView').the
 const ServersView = lazy(() => import('../features/servers/ServersView').then(m => ({ default: m.ServersView })));
 const MemoryV2Panel = lazy(() => import('../features/memory/MemoryV2Panel').then(m => ({ default: m.MemoryV2Panel })));
 const ProviderModelsSection = lazy(() => import('../features/models/ProviderModelsSection').then(m => ({ default: m.ProviderModelsSection })));
+const DreamsView = lazy(() => import('../features/dreams/DreamsView').then(m => ({ default: m.DreamsView })));
 
 function formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
@@ -198,6 +201,7 @@ interface ToolNavItem {
 export const ALL_TOOL_NAV_ITEMS: ToolNavItem[] = [
     { id: 'memory-toggle', tab: 'memory', label: 'Memory', icon: '◈', description: 'View and manage global and workspace memory facts, reviews, and episodes.' },
     { id: 'skills-toggle', tab: 'skills', label: 'Skills', icon: '⚡', description: 'Install, configure, and inspect agent skills surfaced to the assistant.' },
+    { id: 'dreams-admin-toggle', tab: 'dreams-admin', label: 'Dreams', icon: '☾', description: 'Enable Dreams, tune the idle-reflection schedule and defaults, and watch provider activity.' },
     { id: 'logs-toggle', tab: 'logs', label: 'Logs', icon: '📋', description: 'Live and historical server logs streamed via SSE.' },
     { id: 'stats-toggle', tab: 'stats', label: 'Usage & Costs', icon: '📊', description: 'Aggregated usage statistics for chats, tokens, costs, and processes.' },
     { id: 'servers-toggle', tab: 'servers', label: 'Servers', icon: '🖥', description: 'Browse running CoC server instances and their health.' },
@@ -205,6 +209,7 @@ export const ALL_TOOL_NAV_ITEMS: ToolNavItem[] = [
 export const TOOL_TAB_GROUP_LABELS: Partial<Record<DashboardTab, string>> = {
     memory: 'Knowledge',
     skills: 'Knowledge',
+    'dreams-admin': 'Knowledge',
     servers: 'Configure',
     stats: 'Operations',
     logs: 'Operations',
@@ -408,6 +413,12 @@ export function AdminPanel() {
     const [dreamProviderActivity, setDreamProviderActivity] = useState<AgentProviderWorkActivity[]>([]);
     const [dreamProviderActivityError, setDreamProviderActivityError] = useState<string | null>(null);
 
+    // Dreams tab config (global). Owned here so it loads with the rest of the
+    // admin config; edited + saved from the Dreams tab (Knowledge nav group).
+    const [dreamsForm, setDreamsForm] = useState<DreamsConfigForm>({ enabled: false, provider: '', model: '', timeoutMinutes: '60', intervalMinutes: '5' });
+    const [dreamsSnapshot, setDreamsSnapshot] = useState<DreamsConfigForm>({ enabled: false, provider: '', model: '', timeoutMinutes: '60', intervalMinutes: '5' });
+    const [dreamsSaving, setDreamsSaving] = useState(false);
+
     // Snapshots for per-card dirty tracking (set when config/prefs loads)
     const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
     const [defaultProviderSnapshot, setDefaultProviderSnapshot] = useState<DefaultProviderSnapshot>({
@@ -510,6 +521,17 @@ export function AdminPanel() {
             const loadedFeatures = readFeatureValues(resolved);
             setFeatureValues(loadedFeatures);
             setFeaturesSnapshot(loadedFeatures);
+            const loadedDreams: DreamsConfigForm = {
+                enabled: resolved.dreams?.enabled ?? false,
+                provider: resolved.dreams?.provider === 'codex' || resolved.dreams?.provider === 'claude' || resolved.dreams?.provider === 'copilot'
+                    ? resolved.dreams.provider
+                    : '',
+                model: resolved.dreams?.model ?? '',
+                timeoutMinutes: String(Math.round((resolved.dreams?.timeoutMs ?? 3_600_000) / 60_000)),
+                intervalMinutes: String(Math.round((resolved.dreams?.idleCheckIntervalMs ?? 5 * 60 * 1000) / 60_000)),
+            };
+            setDreamsForm(loadedDreams);
+            setDreamsSnapshot(loadedDreams);
             const aapre = resolved.features?.autoAgentProviderRouting ?? false;
             setAutoAgentProviderRoutingEnabled(aapre);
             const cxe = resolved.codex?.enabled ?? false;
@@ -620,6 +642,12 @@ export function AdminPanel() {
         historyGrouping !== appearanceSnapshot.historyGrouping;
 
     const featuresDirty = FEATURES_CARD_SETTINGS.some(def => featureValues[def.key] !== featuresSnapshot[def.key]);
+
+    const dreamsDirty = dreamsForm.enabled !== dreamsSnapshot.enabled ||
+        dreamsForm.provider !== dreamsSnapshot.provider ||
+        dreamsForm.model !== dreamsSnapshot.model ||
+        dreamsForm.timeoutMinutes !== dreamsSnapshot.timeoutMinutes ||
+        dreamsForm.intervalMinutes !== dreamsSnapshot.intervalMinutes;
 
     // ── AI & Execution card ──
     const handleSaveAiExec = useCallback(async () => {
@@ -757,8 +785,16 @@ export function AdminPanel() {
             return;
         }
         void handleRefreshQuota();
+    }, [activeTab, handleRefreshQuota]);
+
+    // Dreams provider activity now lives in the admin Dreams tab; auto-load it
+    // whenever that tab becomes the active dashboard route.
+    useEffect(() => {
+        if (activeDashboardTab !== 'dreams-admin' || isContainerMode()) {
+            return;
+        }
         void refreshDreamProviderActivity();
-    }, [activeTab, handleRefreshQuota, refreshDreamProviderActivity]);
+    }, [activeDashboardTab, refreshDreamProviderActivity]);
 
     // ── Chat Experience card ──
     const handleSaveChat = useCallback(async () => {
@@ -874,6 +910,42 @@ export function AdminPanel() {
     const handleCancelFeatures = useCallback(() => {
         setFeatureValues({ ...featuresSnapshot });
     }, [featuresSnapshot]);
+
+    // ── Dreams tab config card ──
+    const handleSaveDreams = useCallback(async () => {
+        const intervalMinutes = Number(dreamsForm.intervalMinutes);
+        if (!Number.isInteger(intervalMinutes) || intervalMinutes < 1) {
+            addToast('Dreams idle check interval must be a positive whole number of minutes', 'error');
+            return;
+        }
+        const timeoutMinutes = Number(dreamsForm.timeoutMinutes);
+        if (!Number.isInteger(timeoutMinutes) || timeoutMinutes < 1) {
+            addToast('Dreams run timeout must be a positive whole number of minutes', 'error');
+            return;
+        }
+        setDreamsSaving(true);
+        try {
+            await getSpaCocClient().admin.updateConfig({
+                'dreams.enabled': dreamsForm.enabled,
+                'dreams.provider': dreamsForm.provider || null,
+                'dreams.model': dreamsForm.model.trim() || null,
+                'dreams.idleCheckIntervalMs': intervalMinutes * 60_000,
+                'dreams.timeoutMs': timeoutMinutes * 60_000,
+            });
+            addToast('Settings saved', 'success');
+            invalidateDisplaySettings();
+            applyRuntimeConfigPatch({ dreamsEnabled: dreamsForm.enabled });
+            setDreamsSnapshot({ ...dreamsForm });
+        } catch (err: unknown) {
+            addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
+        } finally {
+            setDreamsSaving(false);
+        }
+    }, [dreamsForm, addToast]);
+
+    const handleCancelDreams = useCallback(() => {
+        setDreamsForm({ ...dreamsSnapshot });
+    }, [dreamsSnapshot]);
 
     const handleSaveServerName = useCallback(async () => {
         const trimmed = serverName.trim();
@@ -1113,6 +1185,7 @@ export function AdminPanel() {
             items: [
                 toolNavItem('memory'),
                 toolNavItem('skills'),
+                toolNavItem('dreams-admin'),
             ],
         },
         {
@@ -1284,6 +1357,17 @@ export function AdminPanel() {
                                     }}
                                 />}
                                 {activeToolItem.tab === 'skills' && <SkillsView />}
+                                {activeToolItem.tab === 'dreams-admin' && <DreamsView
+                                    config={dreamsForm}
+                                    onConfigChange={patch => setDreamsForm(prev => ({ ...prev, ...patch }))}
+                                    configDirty={dreamsDirty}
+                                    configSaving={dreamsSaving}
+                                    onSaveConfig={handleSaveDreams}
+                                    onCancelConfig={handleCancelDreams}
+                                    providerActivity={dreamProviderActivity}
+                                    providerActivityError={dreamProviderActivityError}
+                                    onRefreshProviderActivity={refreshDreamProviderActivity}
+                                />}
                                 {activeToolItem.tab === 'logs' && <LogsView />}
                                 {activeToolItem.tab === 'stats' && <UsageStatsView />}
                                 {activeToolItem.tab === 'servers' && <ServersView />}
@@ -1983,9 +2067,6 @@ export function AdminPanel() {
                                     quotaLoading={quotaLoading}
                                     quotaError={quotaError}
                                     onRefreshQuota={handleRefreshQuota}
-                                    providerActivity={dreamProviderActivity}
-                                    providerActivityError={dreamProviderActivityError}
-                                    onRefreshProviderActivity={refreshDreamProviderActivity}
                                     sources={sources}
                                 />
                             )}
@@ -2014,106 +2095,4 @@ function resolveNestedValue(obj: Record<string, unknown>, key: string): unknown 
         current = (current as Record<string, unknown>)[seg];
     }
     return current;
-}
-
-function SourceBadge({ source, isDefault }: { source?: string; isDefault?: boolean }) {
-    const s = source || 'default';
-    const variant =
-        s === 'cli' ? 'ar-src-cli' :
-            s === 'env' ? 'ar-src-env' :
-                s === 'file' || s === 'config' ? 'ar-src-config' :
-                    '';
-    const modifiedClass = isDefault === false ? ' ar-src-modified' : '';
-    const label = isDefault === false ? 'modified' : s;
-    const title = isDefault === false
-        ? `Value differs from the built-in default (source: ${s})`
-        : `Source: ${s}`;
-    return <span className={`ar-src ${variant}${modifiedClass}`.trim()} title={title}>{label}</span>;
-}
-
-/* ── Row primitives that produce the new visual without changing behaviour ── */
-
-interface AdminRowProps {
-    name: ReactNode;
-    hint?: ReactNode;
-    children: ReactNode;
-    'data-testid'?: string;
-}
-function AdminRow({ name, hint, children, 'data-testid': dataTestId }: AdminRowProps) {
-    return (
-        <div className="ar-row" data-testid={dataTestId}>
-            <div className="ar-label-block">
-                <div className="ar-name">{name}</div>
-                {hint && <div className="ar-hint">{hint}</div>}
-            </div>
-            <div className="ar-control">{children}</div>
-        </div>
-    );
-}
-
-interface AdminToggleProps {
-    checked: boolean;
-    onChange: (checked: boolean) => void;
-    disabled?: boolean;
-    'data-testid'?: string;
-    'aria-label'?: string;
-}
-function AdminToggle({ checked, onChange, disabled, 'data-testid': dataTestId, 'aria-label': ariaLabel }: AdminToggleProps) {
-    return (
-        <label className="ar-toggle">
-            <input
-                type="checkbox"
-                checked={checked}
-                disabled={disabled}
-                onChange={e => onChange(e.target.checked)}
-                data-testid={dataTestId}
-                aria-label={ariaLabel}
-            />
-            <span className="ar-track" />
-            <span className="ar-knob" />
-        </label>
-    );
-}
-
-interface AdminSegOption<T extends string | number> {
-    value: T;
-    label: string;
-    testId?: string;
-}
-interface AdminSegProps<T extends string | number> {
-    value: T;
-    onChange: (value: T) => void;
-    options: ReadonlyArray<AdminSegOption<T>>;
-    'aria-label'?: string;
-}
-function AdminSeg<T extends string | number>({ value, onChange, options, 'aria-label': ariaLabel }: AdminSegProps<T>) {
-    return (
-        <div className="ar-seg" role="group" aria-label={ariaLabel}>
-            {options.map(opt => (
-                <button
-                    key={String(opt.value)}
-                    type="button"
-                    className={value === opt.value ? 'is-on' : ''}
-                    aria-pressed={value === opt.value}
-                    onClick={() => onChange(opt.value)}
-                    data-testid={opt.testId}
-                >
-                    {opt.label}
-                </button>
-            ))}
-        </div>
-    );
-}
-
-interface AdminInputSuffixProps {
-    suffix: string;
-    children: ReactNode;
-}
-function AdminInputSuffix({ suffix, children }: AdminInputSuffixProps) {
-    return (
-        <span className="ar-input-suffix">
-            {children}
-            <span className="ar-suffix">{suffix}</span>
-        </span>
-    );
 }

@@ -68,6 +68,10 @@ describe('tabFromHash', () => {
         expect(tabFromHash('#servers')).toBe('servers');
     });
 
+    it('returns "dreams-admin" for #dreams-admin', () => {
+        expect(tabFromHash('#dreams-admin')).toBe('dreams-admin');
+    });
+
     it('returns null for unknown hash', () => {
         expect(tabFromHash('#unknown')).toBeNull();
     });
@@ -140,8 +144,13 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('pull-requests')).toBe(true);
     });
 
-    it('has exactly 16 entries', () => {
-        expect(VALID_REPO_SUB_TABS.size).toBe(16);
+    it('includes "cli-sessions"', () => {
+        expect(VALID_REPO_SUB_TABS.has('cli-sessions')).toBe(true);
+        expect(VALID_REPO_SUB_TABS.has('copilot-sessions')).toBe(true);
+    });
+
+    it('has exactly 18 entries', () => {
+        expect(VALID_REPO_SUB_TABS.size).toBe(18);
     });
 });
 

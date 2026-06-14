@@ -16,6 +16,7 @@ import type { UiLayoutMode } from '../types/dashboard';
 import { lazy, Suspense } from 'react';
 import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, PrDetailTab, SettingsSection } from '../types/dashboard';
 import { SETTINGS_SECTION_VALUES, REPO_SUB_TAB_VALUES, WIKI_PROJECT_TAB_VALUES, WIKI_ADMIN_TAB_VALUES } from '../types/dashboard';
+import type { NativeCliSessionProviderId } from '@plusplusoneplusplus/coc-client';
 
 const AdminPanel = lazy(() => import('../admin/AdminPanel').then(m => ({ default: m.AdminPanel })));
 // Memory/Skills/Logs/Usage/Models/Servers no longer mount as standalone
@@ -36,6 +37,7 @@ export function tabFromHash(hash: string): DashboardTab | null {
     if (h === 'skills') return 'skills';
     if (h === 'logs') return 'logs';
     if (h === 'servers') return 'servers';
+    if (h === 'dreams-admin') return 'dreams-admin';
     if (h === 'admin') return 'admin';
     return null;
 }
@@ -304,6 +306,59 @@ export function parseNoteDeepLink(hash: string): string | null {
 export function buildNoteHash(wsId: string, notePath: string): string {
     const encodedPath = notePath.split('/').map(encodeURIComponent).join('/');
     return '#repos/' + encodeURIComponent(wsId) + '/notes/' + encodedPath;
+}
+
+/**
+ * Parse a native CLI Sessions deep-link:
+ *   `#repos/{wsId}/cli-sessions/{provider}`
+ *   `#repos/{wsId}/cli-sessions/{provider}/{sessionId}`
+ *
+ * Legacy `#repos/{wsId}/copilot-sessions/{sessionId}` links are treated as
+ * Copilot provider links so shared/bookmarked URLs keep working.
+ */
+export function parseNativeCliSessionDeepLink(
+    hash: string,
+): { workspaceId: string; provider: NativeCliSessionProviderId; sessionId: string | null } | null {
+    const cleaned = hash.replace(/^#/, '');
+    const parts = cleaned.split('/');
+    if (parts[0] === 'repos' && parts[1] && parts[2] === 'cli-sessions') {
+        const provider = parts[3] ? decodeURIComponent(parts[3]) : 'copilot';
+        if (provider !== 'copilot' && provider !== 'codex' && provider !== 'claude') return null;
+        return {
+            workspaceId: decodeURIComponent(parts[1]),
+            provider,
+            sessionId: parts[4] ? decodeURIComponent(parts[4]) : null,
+        };
+    }
+    if (parts[0] === 'repos' && parts[1] && parts[2] === 'copilot-sessions') {
+        return {
+            workspaceId: decodeURIComponent(parts[1]),
+            provider: 'copilot',
+            sessionId: parts[3] ? decodeURIComponent(parts[3]) : null,
+        };
+    }
+    return null;
+}
+
+/**
+ * Build a CLI Sessions hash. Omitting `sessionId` addresses the provider tab.
+ */
+export function buildNativeCliSessionHash(wsId: string, provider: NativeCliSessionProviderId, sessionId?: string | null): string {
+    const base = '#repos/' + encodeURIComponent(wsId) + '/cli-sessions/' + encodeURIComponent(provider);
+    return sessionId ? base + '/' + encodeURIComponent(sessionId) : base;
+}
+
+/** @deprecated Use parseNativeCliSessionDeepLink. */
+export function parseNativeCopilotSessionDeepLink(hash: string): { workspaceId: string; sessionId: string | null } | null {
+    const parsed = parseNativeCliSessionDeepLink(hash);
+    if (!parsed || parsed.provider !== 'copilot') return null;
+    return { workspaceId: parsed.workspaceId, sessionId: parsed.sessionId };
+}
+
+/** @deprecated Use buildNativeCliSessionHash. */
+export function buildNativeCopilotSessionHash(wsId: string, sessionId?: string | null): string {
+    const base = '#repos/' + encodeURIComponent(wsId) + '/copilot-sessions';
+    return sessionId ? base + '/' + encodeURIComponent(sessionId) : base;
 }
 
 export function buildRepoSubTabSuffix(
@@ -817,6 +872,7 @@ export function Router() {
         case 'logs':
         case 'stats':
         case 'servers':
+        case 'dreams-admin':
             return (
                 <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
                     <div className="h-full overflow-hidden" data-testid="admin-scroll-container">

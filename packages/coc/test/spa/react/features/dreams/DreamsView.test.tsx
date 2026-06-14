@@ -1,0 +1,166 @@
+/**
+ * Mock-based tests for the admin Dreams tab (`DreamsView`).
+ *
+ * AC-05: the "Dreams provider activity" queue + history section was relocated
+ * here from the AI Provider page. These tests assert the section renders inside
+ * the Dreams tab, attributes runs to provider/model/timeout, and that the
+ * Refresh control is preserved.
+ *
+ * AC-03: the global `dreams.enabled` toggle now lives in this tab (removed from
+ * the general Settings → Features grid). These tests assert the toggle renders,
+ * reflects the passed config, and drives the change/save/cancel callbacks.
+ *
+ * AC-02: `dreams.idleCheckIntervalMs` is edited here in minutes, while the
+ * owner component persists milliseconds through the global config API.
+ *
+ * AC-04: provider, model, and timeout defaults for idle-triggered Dream runs are
+ * edited from this tab.
+ */
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+
+// `shared/providerActivity` pulls in the SPA CoC client at module load; stub it
+// so importing DreamsView does not require a live client. DreamsView itself only
+// renders the data passed in as props, so no client method is exercised here.
+vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({}),
+}));
+
+const { DreamsView } = await import('../../../../../src/server/spa/client/react/features/dreams/DreamsView');
+import type { AgentProviderWorkActivity } from '../../../../../src/server/spa/client/react/shared/providerActivity';
+import type { DreamsConfigForm } from '../../../../../src/server/spa/client/react/features/dreams/DreamsView';
+
+const dreamsConfig = (overrides: Partial<DreamsConfigForm> = {}): DreamsConfigForm => ({
+    enabled: false,
+    provider: '',
+    model: '',
+    timeoutMinutes: '60',
+    intervalMinutes: '5',
+    ...overrides,
+});
+
+describe('DreamsView', () => {
+    beforeEach(() => { vi.clearAllMocks(); });
+
+    it('renders the Dreams page shell with title and restart-aware badge', () => {
+        render(<DreamsView />);
+        expect(screen.getByTestId('dreams-admin-page')).toBeDefined();
+        expect(screen.getByRole('heading', { level: 2, name: 'Dreams' })).toBeDefined();
+        expect(screen.getByText('Restart-aware')).toBeDefined();
+    });
+
+    // ── AC-03: global dreams.enabled toggle lives in the tab ──
+    it('renders the dreams.enabled toggle reflecting the passed config', () => {
+        const { rerender } = render(<DreamsView config={dreamsConfig({ enabled: false })} />);
+        const toggle = screen.getByTestId('toggle-dreams-enabled') as HTMLInputElement;
+        expect(toggle.checked).toBe(false);
+        rerender(<DreamsView config={dreamsConfig({ enabled: true })} />);
+        expect((screen.getByTestId('toggle-dreams-enabled') as HTMLInputElement).checked).toBe(true);
+    });
+
+    it('invokes onConfigChange with the new enabled value when toggled', () => {
+        const onConfigChange = vi.fn();
+        render(<DreamsView config={dreamsConfig({ enabled: false })} onConfigChange={onConfigChange} />);
+        fireEvent.click(screen.getByTestId('toggle-dreams-enabled'));
+        expect(onConfigChange).toHaveBeenCalledWith({ enabled: true });
+    });
+
+    // ── AC-02: idle interval is edited in minutes ──
+    it('renders the idle check interval in minutes with a restart hint', () => {
+        render(<DreamsView config={dreamsConfig({ intervalMinutes: '7' })} />);
+        const input = screen.getByTestId('dreams-idle-check-interval-minutes') as HTMLInputElement;
+        expect(input.value).toBe('7');
+        expect(screen.getByText(/restart the server for the scheduler cadence/i)).toBeDefined();
+    });
+
+    it('invokes onConfigChange with the new interval minute string when edited', () => {
+        const onConfigChange = vi.fn();
+        render(<DreamsView config={dreamsConfig()} onConfigChange={onConfigChange} />);
+        fireEvent.change(screen.getByTestId('dreams-idle-check-interval-minutes'), { target: { value: '12' } });
+        expect(onConfigChange).toHaveBeenCalledWith({ intervalMinutes: '12' });
+    });
+
+    // ── AC-04: provider/model/timeout defaults live in the Dreams tab ──
+    it('renders default provider, model, and timeout controls from config', () => {
+        render(<DreamsView config={dreamsConfig({ provider: 'claude', model: 'claude-sonnet-4.6', timeoutMinutes: '45' })} />);
+        expect(screen.getByTestId('dreams-provider-claude').getAttribute('aria-pressed')).toBe('true');
+        expect((screen.getByTestId('dreams-default-model') as HTMLInputElement).value).toBe('claude-sonnet-4.6');
+        expect((screen.getByTestId('dreams-timeout-minutes') as HTMLInputElement).value).toBe('45');
+    });
+
+    it('invokes onConfigChange when provider, model, and timeout defaults change', () => {
+        const onConfigChange = vi.fn();
+        render(<DreamsView config={dreamsConfig()} onConfigChange={onConfigChange} />);
+
+        fireEvent.click(screen.getByTestId('dreams-provider-codex'));
+        fireEvent.change(screen.getByTestId('dreams-default-model'), { target: { value: 'gpt-5-codex' } });
+        fireEvent.change(screen.getByTestId('dreams-timeout-minutes'), { target: { value: '30' } });
+
+        expect(onConfigChange).toHaveBeenCalledWith({ provider: 'codex' });
+        expect(onConfigChange).toHaveBeenCalledWith({ model: 'gpt-5-codex' });
+        expect(onConfigChange).toHaveBeenCalledWith({ timeoutMinutes: '30' });
+    });
+
+    it('wires the settings card Save/Cancel footer to the config handlers when dirty', () => {
+        const onSaveConfig = vi.fn();
+        const onCancelConfig = vi.fn();
+        render(
+            <DreamsView
+                config={dreamsConfig({ enabled: true })}
+                configDirty
+                onSaveConfig={onSaveConfig}
+                onCancelConfig={onCancelConfig}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('dreams-settings-save'));
+        expect(onSaveConfig).toHaveBeenCalledOnce();
+        fireEvent.click(screen.getByTestId('dreams-settings-cancel'));
+        expect(onCancelConfig).toHaveBeenCalledOnce();
+    });
+
+    it('renders the relocated Dreams provider activity section with provider/model/timeout attribution', () => {
+        const activity: AgentProviderWorkActivity[] = [{
+            id: 'dream-task-1',
+            provider: 'claude',
+            kind: 'dream-run',
+            trigger: 'manual',
+            status: 'running',
+            label: 'Dream Run: Manual',
+            model: 'claude-sonnet-4.6',
+            timeoutMs: 3_600_000,
+        }];
+        render(<DreamsView providerActivity={activity} />);
+
+        const section = screen.getByTestId('provider-dream-activity');
+        expect(within(section).getByText('Dreams provider activity')).toBeDefined();
+        const row = within(section).getByTestId('provider-dream-activity-dream-task-1');
+        expect(row.textContent).toContain('Dream Run: Manual');
+        expect(row.textContent).toContain('Claude');
+        expect(row.textContent).toContain('claude-sonnet-4.6');
+        expect(row.textContent).toContain('1h timeout');
+    });
+
+    it('shows the empty state when there is no Dreams activity', () => {
+        render(<DreamsView providerActivity={[]} />);
+        expect(screen.getByTestId('provider-dream-activity-empty')).toBeDefined();
+    });
+
+    it('renders the error banner instead of rows when activity fetch failed', () => {
+        render(<DreamsView providerActivity={[]} providerActivityError="boom" />);
+        const banner = screen.getByTestId('provider-dream-activity-error');
+        expect(banner.textContent).toContain('boom');
+        expect(screen.queryByTestId('provider-dream-activity-empty')).toBeNull();
+    });
+
+    it('preserves the Refresh control and invokes the handler on click', () => {
+        const onRefreshProviderActivity = vi.fn();
+        render(<DreamsView providerActivity={[]} onRefreshProviderActivity={onRefreshProviderActivity} />);
+        fireEvent.click(screen.getByTestId('provider-dream-activity-refresh'));
+        expect(onRefreshProviderActivity).toHaveBeenCalledOnce();
+    });
+
+    it('omits the Refresh control when no handler is provided', () => {
+        render(<DreamsView providerActivity={[]} />);
+        expect(screen.queryByTestId('provider-dream-activity-refresh')).toBeNull();
+    });
+});

@@ -49,6 +49,8 @@ describe('DreamIdleScheduler', () => {
             getDreamsEnabled: () => true,
             getWorkspaceDreamsEnabled: (workspaceId) => workspaceId === 'ws-two',
             getRunOptions: () => ({
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
                 minIdleMs: 123_000,
                 confidenceThreshold: 0.92,
                 maxCandidates: 3,
@@ -65,6 +67,8 @@ describe('DreamIdleScheduler', () => {
 
         expect(checkIdleReadiness).toHaveBeenCalledTimes(1);
         expect(checkIdleReadiness).toHaveBeenCalledWith('ws-two', {
+            provider: 'claude',
+            model: 'claude-sonnet-4.6',
             minIdleMs: 123_000,
             confidenceThreshold: 0.92,
             maxCandidates: 3,
@@ -83,6 +87,11 @@ describe('DreamIdleScheduler', () => {
             getWorkspaceIds: () => ['ws-one'],
             getDreamsEnabled: () => true,
             getWorkspaceDreamsEnabled: () => true,
+            getRunOptions: () => ({
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+                timeoutMs: 1_800_000,
+            }),
             checkIdleReadiness,
             enqueueIdleRun,
             onRunResult,
@@ -92,8 +101,16 @@ describe('DreamIdleScheduler', () => {
         scheduler.start();
         await flushPromises();
 
-        expect(checkIdleReadiness).toHaveBeenCalledWith('ws-one', {});
-        expect(enqueueIdleRun).toHaveBeenCalledWith('ws-one', {});
+        expect(checkIdleReadiness).toHaveBeenCalledWith('ws-one', {
+            provider: 'claude',
+            model: 'claude-sonnet-4.6',
+            timeoutMs: 1_800_000,
+        });
+        expect(enqueueIdleRun).toHaveBeenCalledWith('ws-one', {
+            provider: 'claude',
+            model: 'claude-sonnet-4.6',
+            timeoutMs: 1_800_000,
+        });
         expect(onRunResult).toHaveBeenCalledWith('ws-one', 'startup', expect.objectContaining({
             started: true,
             task: expect.objectContaining({ id: 'dream-task-1' }),

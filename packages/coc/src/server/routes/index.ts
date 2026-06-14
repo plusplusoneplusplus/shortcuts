@@ -111,6 +111,11 @@ import { registerMapReduceRoutes } from './map-reduce-routes';
 import { FileMapReduceRunStore } from '../map-reduce/map-reduce-run-store';
 import { createMapReducePlanGenerator } from '../map-reduce/map-reduce-plan-generator';
 import { MapReduceRunExecutor } from '../map-reduce/map-reduce-run-executor';
+import { registerNativeCopilotSessionRoutes } from './native-copilot-session-routes';
+import { NativeCopilotSessionService } from '../native-copilot-sessions/native-copilot-session-service';
+import { ClaudeNativeSessionProvider, CodexNativeSessionProvider, CopilotNativeSessionProvider } from '../native-copilot-sessions/native-cli-session-service';
+import { registerNativeCliSessionRoutes } from './native-cli-session-routes';
+import type { NativeCliSessionProviderId, NativeSessionProvider } from '../native-copilot-sessions/types';
 import { registerDreamRoutes } from '../dreams/dream-routes';
 import { FileDreamStore } from '../dreams/dream-store';
 import { DreamRunExecutor, type DreamRunRequestOptions } from '../dreams/dream-runner';
@@ -209,6 +214,10 @@ export interface RegisterRoutesOptions {
     hostname?: string;
     bindAddress?: string;
     syncEngines?: Map<string, SyncEngine>;
+    /** Native Copilot CLI session store path override (for tests). */
+    nativeCopilotSessionDbPath?: string;
+    /** Native Copilot CLI `session-state` base directory override (for tests). */
+    nativeCopilotSessionStateDir?: string;
 }
 
 export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; agentProvidersQuotaCache?: AgentProvidersQuotaCache; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler } {
@@ -711,6 +720,39 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         resolveDefaultProvider,
     });
 
+    // Legacy Native Copilot CLI session routes: read-only compatibility aliases
+    // over the server user's native Copilot store. They share the unified
+    // `features.nativeCliSessions` live guard so there is one operational switch
+    // for the CLI Sessions surface.
+    const getNativeCopilotSessionsEnabled = opts.runtimeConfigService
+        ? () => opts.runtimeConfigService!.config.features?.nativeCliSessions ?? false
+        : () => opts.resolvedConfig?.features?.nativeCliSessions ?? false;
+    const nativeCopilotSessionService = new NativeCopilotSessionService({
+        dbPath: opts.nativeCopilotSessionDbPath,
+        sessionStateDir: opts.nativeCopilotSessionStateDir,
+    });
+    registerNativeCopilotSessionRoutes({
+        routes,
+        store,
+        getEnabled: getNativeCopilotSessionsEnabled,
+        service: nativeCopilotSessionService,
+    });
+
+    const getNativeCliSessionsEnabled = opts.runtimeConfigService
+        ? () => opts.runtimeConfigService!.config.features?.nativeCliSessions ?? false
+        : () => opts.resolvedConfig?.features?.nativeCliSessions ?? false;
+    const nativeCliSessionProviders = new Map<NativeCliSessionProviderId, NativeSessionProvider>([
+        ['copilot', new CopilotNativeSessionProvider(nativeCopilotSessionService)],
+        ['codex', new CodexNativeSessionProvider()],
+        ['claude', new ClaudeNativeSessionProvider()],
+    ]);
+    registerNativeCliSessionRoutes({
+        routes,
+        store,
+        getEnabled: getNativeCliSessionsEnabled,
+        providers: nativeCliSessionProviders,
+    });
+
     const workItemStore = new FileWorkItemStore({ dataDir });
 
     // Dreams routes: reviewable, workspace-scoped cards plus manual run trigger.
@@ -770,6 +812,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const getDefaultDreamRunOptions = (): DreamRunRequestOptions => {
         const dreams = (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.dreams;
         return {
+            provider: dreams?.provider,
+            model: dreams?.model,
             minIdleMs: dreams?.minIdleMs,
             confidenceThreshold: dreams?.confidenceThreshold,
             maxCandidates: dreams?.maxCandidates,

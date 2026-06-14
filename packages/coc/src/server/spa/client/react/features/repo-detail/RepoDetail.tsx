@@ -24,6 +24,7 @@ import { WorkflowDetailView } from '../../processes/dag';
 import { TerminalView } from '../terminal/TerminalView';
 import { NotesView } from '../notes/NotesView';
 import { DreamsPanel } from '../dreams/DreamsPanel';
+import { NativeCliSessionsPanel } from '../native-copilot-sessions/NativeCopilotSessionsPanel';
 import { AddRepoDialog } from '../../repos/AddRepoDialog';
 import { ErrorBoundary } from '../../ui/ErrorBoundary';
 
@@ -38,6 +39,7 @@ import { useNotesEnabled } from '../notes/hooks/useNotesEnabled';
 import { useWorkflowsEnabled } from '../../hooks/feature-flags/useWorkflowsEnabled';
 import { usePullRequestsEnabled } from '../../hooks/feature-flags/usePullRequestsEnabled';
 import { useDreamsEnabled } from '../../hooks/feature-flags/useDreamsEnabled';
+import { useNativeCliSessionsEnabled } from '../../hooks/feature-flags/useNativeCliSessionsEnabled';
 import { MobileTabBar } from '../../layout/MobileTabBar';
 import { buildRepoSubTabSuffix } from '../../layout/Router';
 import { SHOW_WIKI_TAB } from '../../layout/TopBar';
@@ -59,6 +61,7 @@ interface RepoDetailProps {
 
 export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] = [
     { key: 'chats', label: 'Chats', shortcut: 'Alt+A' },
+    { key: 'cli-sessions', label: 'CLI Sessions' },
     { key: 'git', label: 'Git', shortcut: 'Alt+G' },
     { key: 'terminal', label: 'Terminal' },
     { key: 'work-items', label: 'Work Items', shortcut: 'Alt+I' },
@@ -84,7 +87,7 @@ export const VISIBLE_SUB_TABS = SHOW_WIKI_TAB
  * Group identity is purely visual and does not affect functionality.
  */
 const TAB_GROUP_INDEX: Record<string, number> = {
-    'chats': 1, 'activity': 1, 'git': 1, 'terminal': 1,
+    'chats': 1, 'activity': 1, 'cli-sessions': 1, 'copilot-sessions': 1, 'git': 1, 'terminal': 1,
     'work-items': 2, 'dreams': 2, 'pull-requests': 2, 'tasks': 2,
     'explorer': 3, 'workflows': 3, 'schedules': 3,
     'notes': 4, 'settings': 4, 'wiki': 4,
@@ -134,6 +137,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const workflowsEnabled = useWorkflowsEnabled();
     const pullRequestsEnabled = usePullRequestsEnabled();
     const dreamsEnabled = useDreamsEnabled();
+    const nativeCliSessionsEnabled = useNativeCliSessionsEnabled();
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(ws.id, sessionContextAttachmentsEnabled);
     const [headerContextDropTarget, setHeaderContextDropTarget] = useState<'task' | 'ask' | null>(null);
@@ -162,6 +166,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const prevWorkflowsEnabled = useRef(workflowsEnabled);
     const prevPullRequestsEnabled = useRef(pullRequestsEnabled);
     const prevDreamsEnabled = useRef(dreamsEnabled);
+    const prevNativeCliSessionsEnabled = useRef(nativeCliSessionsEnabled);
 
     const visibleSubTabs = useMemo(() => {
         let tabs = VISIBLE_SUB_TABS;
@@ -171,6 +176,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         if (!workflowsEnabled) tabs = tabs.filter(t => t.key !== 'workflows');
         if (!pullRequestsEnabled) tabs = tabs.filter(t => t.key !== 'pull-requests');
         if (!dreamsEnabled) tabs = tabs.filter(t => t.key !== 'dreams');
+        if (!nativeCliSessionsEnabled) tabs = tabs.filter(t => t.key !== 'cli-sessions' && t.key !== 'copilot-sessions');
         // Layout mode filtering
         if (uiLayoutMode === 'classic') {
             // Classic: replace Chats with Activity, relabel Tasks as Plans
@@ -184,7 +190,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 'pull-requests': 'Full Requests',
             };
             const devWorkflowOrder: RepoSubTab[] = [
-                'chats', 'work-items', 'dreams', 'schedules', 'explorer',
+                'chats', 'cli-sessions', 'work-items', 'dreams', 'schedules', 'explorer',
                 'workflows', 'git', 'terminal', 'pull-requests', 'tasks', 'settings',
             ];
             const tabMap = new Map(tabs.map(t => [t.key, t]));
@@ -204,7 +210,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             tabs = ordered;
         }
         return tabs;
-    }, [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, uiLayoutMode]);
+    }, [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, uiLayoutMode]);
 
     // Redirect away from git/pull-requests tab when switching to a non-git repo
     useEffect(() => {
@@ -252,6 +258,14 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         }
         prevDreamsEnabled.current = dreamsEnabled;
     }, [activeSubTab, dreamsEnabled, dispatch]);
+
+    // Redirect away from CLI sessions tab only when the feature transitions to disabled
+    useEffect(() => {
+        if ((activeSubTab === 'cli-sessions' || activeSubTab === 'copilot-sessions') && !nativeCliSessionsEnabled && prevNativeCliSessionsEnabled.current) {
+            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
+        }
+        prevNativeCliSessionsEnabled.current = nativeCliSessionsEnabled;
+    }, [activeSubTab, nativeCliSessionsEnabled, dispatch]);
 
     // Redirect when switching layout modes
     useEffect(() => {
@@ -777,7 +791,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         )}
                     </div>
                 ) : (
-                    <div className={cn("flex flex-col flex-1 min-h-0 min-w-0", activeSubTab === 'activity' || activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' || activeSubTab === 'dreams' ? "overflow-hidden" : "overflow-y-auto")}>
+                    <div className={cn("flex flex-col flex-1 min-h-0 min-w-0", activeSubTab === 'activity' || activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' || activeSubTab === 'dreams' || activeSubTab === 'cli-sessions' || activeSubTab === 'copilot-sessions' ? "overflow-hidden" : "overflow-y-auto")}>
                         {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} />}
                         {activeSubTab === 'workflows' && <TemplatesTab key={ws.id} repo={repo} />}
                         {/*
@@ -832,6 +846,11 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         {dreamsEnabled && (
                             <div style={{ display: activeSubTab === 'dreams' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                                 {wasVisited('dreams') && <DreamsPanel key={ws.id} workspaceId={ws.id} />}
+                            </div>
+                        )}
+                        {nativeCliSessionsEnabled && (
+                            <div style={{ display: (activeSubTab === 'cli-sessions' || activeSubTab === 'copilot-sessions') ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                                {(wasVisited('cli-sessions') || wasVisited('copilot-sessions')) && <NativeCliSessionsPanel key={ws.id} workspaceId={ws.id} />}
                             </div>
                         )}
                         {activeSubTab === 'workflow' && state.selectedWorkflowProcessId && <WorkflowDetailView key={state.selectedWorkflowProcessId} processId={state.selectedWorkflowProcessId} />}

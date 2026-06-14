@@ -47,13 +47,14 @@ function makeStore(): ProcessStore {
 
 function makeBridge(): any {
     return {
-        enqueue: vi.fn(),
+        enqueue: vi.fn().mockResolvedValue('task-1'),
         getRepoExecutor: vi.fn(),
         createAggregateQueueFacade: vi.fn(),
         registerRepoId: vi.fn(),
         dispatchToRepo: vi.fn(),
         setResolveDefaultProvider: vi.fn(),
         setDreamRunExecutor: vi.fn(),
+        findManagerForTask: vi.fn(),
         registry: {
             on: vi.fn(),
         },
@@ -64,6 +65,7 @@ function makeBridge(): any {
 function makeQueueFacade(): any {
     return {
         enqueue: vi.fn(),
+        getAll: vi.fn().mockReturnValue([]),
         getQueue: vi.fn(),
         getHistory: vi.fn(),
         getQueueStats: vi.fn(),
@@ -269,5 +271,64 @@ describe('registerAllRoutes', () => {
         registerAllRoutes(routes2, makeOpts());
         expect(routes1.length).toBe(routes2.length);
         expect(routes1).not.toBe(routes2);
+    });
+
+    it('passes configured Dreams provider, model, and timeout into Dream run tasks', async () => {
+        await fs.mkdir(path.join(tmpDir, 'repos', 'ws-dream'), { recursive: true });
+        await fs.writeFile(
+            path.join(tmpDir, 'repos', 'ws-dream', 'preferences.json'),
+            JSON.stringify({ dreams: { enabled: true } }),
+            'utf-8',
+        );
+
+        const routes: Route[] = [];
+        const bridge = makeBridge();
+        const store = makeStore();
+        vi.mocked(store.getWorkspaces).mockResolvedValue([{ id: 'ws-dream', rootPath: '/repo/ws-dream' } as any]);
+        const result = registerAllRoutes(routes, makeOpts({
+            dataDir: tmpDir,
+            store,
+            bridge,
+            runtimeConfigService: {
+                config: {
+                    dreams: {
+                        enabled: true,
+                        provider: 'claude',
+                        model: 'claude-sonnet-4.6',
+                        timeoutMs: 1_800_000,
+                        minIdleMs: 60_000,
+                    },
+                    defaultProvider: 'copilot',
+                    codex: { enabled: false },
+                    claude: { enabled: true },
+                },
+            } as any,
+        }));
+
+        expect(result.dreamIdleScheduler).toBeDefined();
+        const found = findRoute(routes, 'POST', '/api/workspaces/ws-dream/dreams/run');
+        expect(found).toBeDefined();
+        const res = fakeRes();
+        await found!.route.handler(fakeJsonReq('POST', {}), res, found!.match);
+
+        expect(res.statusCode).toBe(202);
+        expect(bridge.enqueue).toHaveBeenCalledOnce();
+        const input = bridge.enqueue.mock.calls[0][0];
+        expect(input).toMatchObject({
+            type: 'dream-run',
+            repoId: 'ws-dream',
+            payload: {
+                kind: 'dream-run',
+                workspaceId: 'ws-dream',
+                trigger: 'manual',
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+                timeoutMs: 1_800_000,
+            },
+            config: {
+                model: 'claude-sonnet-4.6',
+                timeoutMs: 1_800_000,
+            },
+        });
     });
 });

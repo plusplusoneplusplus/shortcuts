@@ -7,6 +7,14 @@ import { AdminPanel } from '../../../../src/server/spa/client/react/admin/AdminP
 // component reaches its idle state quickly.
 const mockFetch = vi.fn();
 
+function jsonResponse(body: unknown) {
+    return {
+        ok: true,
+        json: () => Promise.resolve(body),
+        headers: new Headers(),
+    } as Response;
+}
+
 // LogsView opens an SSE stream on mount. jsdom does not implement
 // EventSource — supply a minimal stub so the component does not throw
 // when it is rendered inside the embedded view tests.
@@ -26,11 +34,7 @@ class FakeEventSource {
 beforeEach(() => {
     vi.restoreAllMocks();
     mockFetch.mockReset();
-    mockFetch.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({}),
-        headers: new Headers(),
-    });
+    mockFetch.mockResolvedValue(jsonResponse({}));
     global.fetch = mockFetch;
     (globalThis as any).EventSource = FakeEventSource;
     if (typeof window !== 'undefined') {
@@ -51,6 +55,55 @@ function renderAdmin() {
             <AdminPanel />
         </AppProvider>,
     );
+}
+
+function mockDreamsAdminConfig() {
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes('/api/admin/config') && init?.method === 'PUT') {
+            return Promise.resolve(jsonResponse({ success: true }));
+        }
+        if (url.includes('/api/admin/config')) {
+            return Promise.resolve(jsonResponse({
+                resolved: {
+                    dreams: {
+                        enabled: false,
+                        provider: 'claude',
+                        model: 'claude-sonnet-4.6',
+                        timeoutMs: 3_600_000,
+                        idleCheckIntervalMs: 300_000,
+                    },
+                },
+            }));
+        }
+        if (url.includes('/api/admin/dream-provider-activity')) {
+            return Promise.resolve(jsonResponse({ items: [] }));
+        }
+        return Promise.resolve(jsonResponse({}));
+    });
+}
+
+async function openDreamsAdminSettings() {
+    await act(async () => { renderAdmin(); });
+    await waitFor(() => expect(document.getElementById('dreams-admin-toggle')).toBeTruthy());
+
+    await act(async () => {
+        fireEvent.click(document.getElementById('dreams-admin-toggle')!);
+    });
+
+    await waitFor(() => expect(document.querySelector('[data-testid="dreams-admin-page"]')).toBeTruthy());
+}
+
+function getDreamsSaveButton() {
+    return document.querySelector<HTMLButtonElement>('[data-testid="dreams-settings-save"]')!;
+}
+
+function getAdminConfigSavePayload() {
+    const saveCall = mockFetch.mock.calls.find(([input, init]: [RequestInfo | URL, RequestInit | undefined]) =>
+        String(input).includes('/api/admin/config') && init?.method === 'PUT'
+    );
+    expect(saveCall).toBeTruthy();
+    return JSON.parse(String(saveCall![1]!.body)) as Record<string, unknown>;
 }
 
 // ── AdminPanel grouped sidebar navigation ─────────────────────
@@ -162,7 +215,7 @@ describe('AdminPanel — grouped sidebar navigation', () => {
 
         expect(groups).toEqual([
             { label: 'Configure', ids: ['servers-toggle'] },
-            { label: 'Knowledge', ids: ['memory-toggle', 'skills-toggle'] },
+            { label: 'Knowledge', ids: ['memory-toggle', 'skills-toggle', 'dreams-admin-toggle'] },
             { label: 'Operations', ids: ['stats-toggle', 'logs-toggle'] },
             { label: 'Developer / Internals', ids: [] },
         ]);
@@ -178,6 +231,7 @@ describe('AdminPanel — grouped sidebar navigation', () => {
         await waitFor(() => expect(document.getElementById('servers-toggle')).toBeTruthy());
         expect(document.getElementById('memory-toggle')!.getAttribute('data-tab')).toBe('memory');
         expect(document.getElementById('skills-toggle')!.getAttribute('data-tab')).toBe('skills');
+        expect(document.getElementById('dreams-admin-toggle')!.getAttribute('data-tab')).toBe('dreams-admin');
         expect(document.getElementById('logs-toggle')!.getAttribute('data-tab')).toBe('logs');
         expect(document.getElementById('stats-toggle')!.getAttribute('data-tab')).toBe('stats');
         expect(document.getElementById('servers-toggle')!.getAttribute('data-tab')).toBe('servers');
@@ -330,5 +384,73 @@ describe('AdminPanel — embedded tools render in the right panel', () => {
         await waitFor(() => expect(document.querySelector('[data-testid="settings-chat"]')).toBeTruthy());
         // Chat tab is now marked active.
         expect(document.querySelector<HTMLButtonElement>('[data-testid="settings-subtab-chat"]')!.className).toContain('is-active');
+    });
+
+    it('saves the Dreams idle check interval in milliseconds after editing minutes', async () => {
+        mockDreamsAdminConfig();
+        await openDreamsAdminSettings();
+
+        const intervalInput = document.querySelector<HTMLInputElement>('[data-testid="dreams-idle-check-interval-minutes"]')!;
+        expect(intervalInput.value).toBe('5');
+        expect(document.querySelector<HTMLButtonElement>('[data-testid="dreams-provider-claude"]')?.getAttribute('aria-pressed')).toBe('true');
+        expect(document.querySelector<HTMLInputElement>('[data-testid="dreams-default-model"]')!.value).toBe('claude-sonnet-4.6');
+        expect(document.querySelector<HTMLInputElement>('[data-testid="dreams-timeout-minutes"]')!.value).toBe('60');
+
+        await act(async () => {
+            fireEvent.change(intervalInput, { target: { value: '12' } });
+            fireEvent.click(document.querySelector<HTMLButtonElement>('[data-testid="dreams-provider-codex"]')!);
+            fireEvent.change(document.querySelector<HTMLInputElement>('[data-testid="dreams-default-model"]')!, { target: { value: 'gpt-5-codex' } });
+            fireEvent.change(document.querySelector<HTMLInputElement>('[data-testid="dreams-timeout-minutes"]')!, { target: { value: '30' } });
+        });
+        await act(async () => {
+            fireEvent.click(document.querySelector<HTMLButtonElement>('[data-testid="dreams-settings-save"]')!);
+        });
+
+        expect(getAdminConfigSavePayload()).toMatchObject({
+            'dreams.enabled': false,
+            'dreams.provider': 'codex',
+            'dreams.model': 'gpt-5-codex',
+            'dreams.idleCheckIntervalMs': 720_000,
+            'dreams.timeoutMs': 1_800_000,
+        });
+    });
+
+    it.each([
+        {
+            field: 'provider',
+            edit: () => fireEvent.click(document.querySelector<HTMLButtonElement>('[data-testid="dreams-provider-codex"]')!),
+            expected: { 'dreams.provider': 'codex', 'dreams.model': 'claude-sonnet-4.6', 'dreams.timeoutMs': 3_600_000 },
+        },
+        {
+            field: 'model',
+            edit: () => fireEvent.change(document.querySelector<HTMLInputElement>('[data-testid="dreams-default-model"]')!, { target: { value: 'claude-opus-4.1' } }),
+            expected: { 'dreams.provider': 'claude', 'dreams.model': 'claude-opus-4.1', 'dreams.timeoutMs': 3_600_000 },
+        },
+        {
+            field: 'timeout',
+            edit: () => fireEvent.change(document.querySelector<HTMLInputElement>('[data-testid="dreams-timeout-minutes"]')!, { target: { value: '45' } }),
+            expected: { 'dreams.provider': 'claude', 'dreams.model': 'claude-sonnet-4.6', 'dreams.timeoutMs': 2_700_000 },
+        },
+    ])('enables Save and persists Dreams $field-only edits', async ({ edit, expected }) => {
+        mockDreamsAdminConfig();
+        await openDreamsAdminSettings();
+
+        expect(getDreamsSaveButton().disabled).toBe(true);
+
+        await act(async () => {
+            edit();
+        });
+
+        await waitFor(() => expect(getDreamsSaveButton().disabled).toBe(false));
+
+        await act(async () => {
+            fireEvent.click(getDreamsSaveButton());
+        });
+
+        expect(getAdminConfigSavePayload()).toMatchObject({
+            'dreams.enabled': false,
+            'dreams.idleCheckIntervalMs': 300_000,
+            ...expected,
+        });
     });
 });

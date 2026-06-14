@@ -8,6 +8,7 @@ export * from './for-each';
 export * from './git';
 export * from './map-reduce';
 export * from './memory';
+export * from './native-copilot-sessions';
 export * from './notes';
 export * from './preferences';
 export * from './processes';

@@ -176,6 +176,10 @@ export interface CLIConfig {
     /** Dreams review subsystem configuration. Disabled by default. */
     dreams?: {
         enabled?: boolean;
+        /** Default provider for idle-triggered Dream runs. Defaults to the global provider when unset. */
+        provider?: DefaultAgentProvider;
+        /** Default model for idle-triggered Dream runs. Defaults to the provider default when unset. */
+        model?: string;
         /** Period between automatic idle dream checks. Default: 5 minutes. */
         idleCheckIntervalMs?: number;
         /** Minimum quiet-window duration before automatic dream analysis may run. Default: 15 minutes. */
@@ -249,6 +253,8 @@ export interface CLIConfig {
         autoAgentProviderRouting?: boolean;
         /** Multi-agent Ralph grilling experience. Disabled by default. */
         ralphMultiAgentGrill?: boolean;
+        /** Read-only native Copilot/Codex/Claude CLI sessions tab. Disabled by default. */
+        nativeCliSessions?: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion?: {
@@ -456,6 +462,8 @@ export interface ResolvedCLIConfig {
     /** Dreams review subsystem configuration. */
     dreams: {
         enabled: boolean;
+        provider?: DefaultAgentProvider;
+        model?: string;
         idleCheckIntervalMs: number;
         minIdleMs: number;
         confidenceThreshold: number;
@@ -532,6 +540,8 @@ export interface ResolvedCLIConfig {
         autoAgentProviderRouting: boolean;
         /** Multi-agent Ralph grilling experience. Disabled by default. */
         ralphMultiAgentGrill: boolean;
+        /** Read-only native Copilot/Codex/Claude CLI sessions tab. Disabled by default. */
+        nativeCliSessions: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion: {
@@ -687,6 +697,8 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     dreams: {
         enabled: false,
+        provider: undefined,
+        model: undefined,
         idleCheckIntervalMs: 5 * 60 * 1000,
         minIdleMs: 15 * 60 * 1000,
         confidenceThreshold: 0.85,
@@ -763,6 +775,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         commitChatLensDormantMode: 'ghost',
         autoAgentProviderRouting: false,
         ralphMultiAgentGrill: false,
+        nativeCliSessions: false,
     },
     memoryPromotion: {
         batchSize: 50,

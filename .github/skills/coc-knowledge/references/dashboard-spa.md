@@ -23,6 +23,7 @@ spa/client/react/
 │   ├── chat/           # Chat UI: ChatDetail, ChatListPane, ConversationArea
 │   ├── dreams/         # Workspace Dreams review panel with feature/opt-in states, queue-backed run-now task summary, provider-attributed Activity/Admin AI Provider visibility, filters, plain-language card guidance, source evidence links, and card lifecycle actions
 │   ├── memory/         # Memory V2 route, facts/review/episodes tabs, repo memory settings section
+│   ├── native-copilot-sessions/  # Read-only CLI Sessions tab over native Copilot/Codex/Claude stores (see CLI Sessions Tab)
 │   ├── notes/          # Notes UI: NoteEditor, Mermaid zoom/pan, sidebar, multi-root dropdown with modifier/range root selection and bulk root removal (useNotesRoots)
 │   ├── pull-requests/  # PR dashboard: attention groups, provider-derived PR helpers, shared provider-id/displayName Team author matching, Team auto-classification triggers, real diff-stat queue badges/risk, deterministic review summary, BatchCommandPanel
 │   └── terminal/       # Terminal UI: TerminalView, pin/unpin
@@ -528,13 +529,21 @@ The legacy "Tools" popover has been migrated into the Admin page's left
 sidebar, but there is no longer a generic Tools group. The Admin sidebar is
 grouped by user task: Configure, Knowledge, Connections, Operations, and
 Developer / Internals. Embedded tool rows keep stable ids (`memory-toggle`,
-`skills-toggle`, `logs-toggle`, `stats-toggle`,
+`skills-toggle`, `dreams-admin-toggle`, `logs-toggle`, `stats-toggle`,
 `servers-toggle`) and `data-tab` still carries the matching dashboard route;
-Servers is shown only when `isServersEnabled()` is true.
+Servers is shown only when `isServersEnabled()` is true. The Knowledge group's
+**Dreams** row (`dreams-admin-toggle`, route `#dreams-admin`) renders
+`features/dreams/DreamsView.tsx` and is the admin home for global Dreams config:
+the live `dreams.enabled` toggle, `dreams.idleCheckIntervalMs` edited in minutes
+with a restart hint, idle-run defaults for provider, model, and timeout
+(`dreams.provider`, `dreams.model`, `dreams.timeoutMs`), and the relocated
+**Dreams provider activity** queue + history section
+(`features/dreams/ProviderActivitySection.tsx`); that section no longer lives on
+the AI Provider page. It is distinct from the per-workspace `DreamsPanel`.
 
 Clicking an embedded tool row dispatches `SET_ACTIVE_TAB` and updates
 `location.hash` to the corresponding top-level route (`#memory`, `#skills`,
-`#logs`, `#stats`, `#servers`). The Router maps every embedded tool
+`#dreams-admin`, `#logs`, `#stats`, `#servers`). The Router maps every embedded tool
 tab plus `'admin'` itself to a single `<AdminPanel />` render, so the admin shell
 (sidebar + breadcrumb + right pane) stays mounted across navigation.
 `AdminPanel` switches on `state.activeTab` — when it matches an embedded tool
@@ -573,6 +582,16 @@ Ralph activity deep-links mount `RalphWorkflowPane`, which shows a unified task 
 ## Dreams Route
 
 The repo-scoped Dreams tab (`features/dreams/DreamsPanel.tsx`) is a dedicated review surface separate from Work Items. It is included in repo tab strips only when the global `dreams.enabled` feature flag is on, then requires the workspace `preferences.dreams.enabled` opt-in before calling Dreams routes. Once enabled, it lists visible cards by default, supports status filters for hidden lifecycle history, exposes a manual **Run dream now** action, shows run summaries/no-new-dreams states, links source process turn ranges back to the Activity conversation route, and offers card lifecycle actions: approve, dismiss, record conversion, and supersede. Approved cards also expose an explicit **Take next action** dialog: skill/prompt cards can queue an Ask-mode skill-hardening task, user-workflow cards can save to Notes or Memory V2, and product cards can create a new Work Item or append the recommendation to an existing Work Item. Each next action runs only after the dialog submit and then records the resulting artifact as a dream conversion.
+
+## CLI Sessions Tab
+
+The repo-scoped `CLI Sessions` tab (`features/native-copilot-sessions/NativeCopilotSessionsPanel.tsx`, exported as `NativeCliSessionsPanel`) is a read-only provider-switched view of native Copilot, Codex, and Claude Code CLI sessions for the active workspace. It is gated by `features.nativeCliSessions` / `nativeCliSessionsEnabled` (disabled by default; `useNativeCliSessionsEnabled()` tracks live runtime-config updates), reads through `coc-client`'s `nativeCliSessions` domain, and registers as the `cli-sessions` repo sub-tab while accepting the legacy hidden `copilot-sessions` key for old links. The panel renders a two-pane layout on wide screens (searchable session list left at a clamped ~42% width, selected-session detail right) and stacked single-pane navigation on narrow screens. A provider switcher defaults to Copilot for legacy compatibility and selects Copilot, Codex, or Claude; the header uses the shared `ProviderBadge` palette (Copilot green, Codex indigo, Claude coral), a provider-specific native-session label, and a read-only badge whose tooltip shows the selected provider's local store path.
+
+The list supports text query, session-ID, branch, date-range filters, and pagination. Codex and Claude use on-demand substring search over JSONL transcripts and report `searchIndexAvailable: false`; when a query is active the panel explains that there is no native search index. Copilot delegates to the native SQLite provider and reports its native search-index availability. Each list row shows a short session-ID chip, updated timestamp, two-line summary preview, repository/cwd, optional match snippets, and right-aligned turn-count and branch pills; the selected row gets a left accent bar. The selected session is deep-linked through the URL hash (`#repos/{wsId}/cli-sessions/{provider}/{sessionId}`, parsed/built via `parseNativeCliSessionDeepLink`/`buildNativeCliSessionHash`) so selections survive refresh/back-forward and are shareable; `#repos/{wsId}/copilot-sessions/{sessionId}` is parsed as a legacy Copilot provider link.
+
+The list route deduplicates against the Activity tab: native sessions whose provider session ID matches a CoC process `sdk_session_id` for the workspace (resolved via `ProcessStore.getSdkSessionIds(workspaceId)`) are hidden, and the response `deduplicatedCount` drives a `native-sessions-deduplicated` hint reading `N sessions hidden — already tracked in CoC Activity`. Automated Copilot background-job sessions whose first turn matches `BACKGROUND_JOB_PROMPT_PREFIXES` are hidden by default and counted in `backgroundJobCount`, which drives a `native-sessions-background-hidden` hint. The panel renders distinct disabled/unavailable (`store-missing`/`store-invalid`)/loading/empty/error states per provider.
+
+The detail pane reconstructs the selected session as a rich CoC chat transcript rather than a plain text dump. The unified detail endpoint (`GET /api/workspaces/:id/native-cli-sessions/:sessionId?provider=...`) returns provider-tagged metadata, `storePath`, `searchIndexAvailable`, and an always-present `conversation: ReconstructedConversationTurn[]`. Copilot reconstruction prefers the native `session-state/<id>/events.jsonl` log and falls back to flat `session-store.db` turns; Codex and Claude reconstruction comes from defensive JSONL parsers that skip malformed or unknown records and preserve user/assistant messages, tool start/complete/failed timeline items, thinking/reasoning, data-URL images, and model metadata when present. Codex `event_msg` user-message image metadata is merged into the matching user turn; `local_images` paths are shown as read-only markdown references because the existing chat image gallery only renders data URLs. The SPA maps each turn to `ClientConversationTurn` via `nativeConversationTurns.ts` (`toClientConversationTurns`, folding assistant `thinking` into a leading markdown blockquote since `ClientConversationTurn` has no reasoning field) and renders one read-only `ConversationTurnBubble` per turn under a `native-session-conversation` card (`Conversation (N)`) with the selected provider passed through for avatar coloring. The whole feature is strictly read-only: no input box, streaming, resume, follow-up, archive, pin, delete, retry, or turn actions are exposed; stored HTML/scripts never execute.
 
 ## Memory Route
 

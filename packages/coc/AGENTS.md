@@ -123,6 +123,41 @@ all have their own `references/*.md`.
   per-trigger cap and low priority instead of adding client-side POST loops.
   The Team toolbar status UI should read batch status and route manual
   "Classify now" actions through the same bounded server helper.
+- **Native Copilot session reads** (`src/server/native-copilot-sessions/`)
+  must stay strictly read-only against the native store: open
+  `~/.copilot/session-store.db` with short-lived `readonly` SQLite connections,
+  keep every user-provided filter parameterized (FTS terms literal-quoted), and
+  return typed `db-missing`/`db-invalid` states instead of throwing. Never route
+  native session IDs into CoC process/chat action handlers. Rich detail
+  reconstruction reads the per-session log
+  `~/.copilot/session-state/<id>/events.jsonl` via `session-state-parser.ts`
+  (`parseNativeSessionState`), which maps the newline-delimited
+  `{type,id,parentId,timestamp,data}` events (`user.message`,
+  `assistant.message` with `content`/`reasoningText`/`model`,
+  `tool.execution_start`/`_complete` correlated by `toolCallId`,
+  `skill.invoked`) into `ReconstructedConversationTurn[]` and returns `null`
+  (never throws) on a missing/malformed/empty log so callers fall back to the
+  flat `session-store.db` turns. `getSession` populates
+  `NativeCopilotSessionDetail.conversation` (always present) from the parser
+  when it yields turns, else maps the flat DB turns into text-only
+  user/assistant turns; the service accepts `sessionStateDir`/`parseSessionState`
+  overrides for hermetic tests. The parser never writes to `~/.copilot` and
+  rejects unsafe session ids (path traversal). The list route dedups
+  against CoC processes by excluding native `sessions.id` values that match a
+  workspace's `ProcessStore.getSdkSessionIds(workspaceId)` (the Copilot SDK/CLI
+  session id equals the native store id) and hides automated background-job
+  sessions whose first flat turn or stored summary matches
+  `BACKGROUND_JOB_PROMPT_PREFIXES` (e.g. title summarization); the hidden counts
+  are returned as `deduplicatedCount` and `backgroundJobCount`. The panel
+  deep-links the selected session via
+  `#repos/{wsId}/copilot-sessions/{sessionId}`. The read-only detail pane
+  renders `NativeCopilotSessionDetail.conversation` as a rich transcript by
+  reusing the existing chat `ConversationTurnBubble` (no fork): the SPA-local
+  `nativeConversationTurns.ts` maps `ReconstructedConversationTurn[]` →
+  `ClientConversationTurn[]`, folding assistant `thinking` into the content
+  timeline as a markdown blockquote (the chat turn shape has no reasoning
+  field). The metadata header is preserved and no follow-up/streaming/resume or
+  per-turn (pin/archive/delete) actions are wired.
 - **Work-item create/update side effects** (hierarchy `parentId` validation,
   GitHub/Azure Boards provider sync, response-cache invalidation, dashboard
   broadcasts, auto-execute) live in the shared command service

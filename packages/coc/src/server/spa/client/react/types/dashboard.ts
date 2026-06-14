@@ -36,12 +36,12 @@ export interface ClientTokenUsage {
     conversationTokens?: number;
 }
 
-export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports' | 'stats' | 'admin' | 'memory' | 'skills' | 'logs' | 'servers';
+export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports' | 'stats' | 'admin' | 'memory' | 'skills' | 'logs' | 'servers' | 'dreams-admin';
 
 export const REPO_SUB_TAB_VALUES = [
     'chats', 'work-items', 'settings', 'workflows', 'templates', 'tasks',
     'schedules', 'git', 'wiki', 'workflow', 'explorer', 'activity',
-    'pull-requests', 'terminal', 'notes', 'dreams',
+    'pull-requests', 'terminal', 'notes', 'dreams', 'cli-sessions', 'copilot-sessions',
 ] as const;
 export type RepoSubTab = typeof REPO_SUB_TAB_VALUES[number];
 

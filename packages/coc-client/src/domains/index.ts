@@ -9,6 +9,8 @@ export { ForEachClient } from './for-each';
 export { GitClient } from './git';
 export { HealthClient } from './health';
 export { MemoryClient, MemoryV2Client } from './memory';
+export { NativeCliSessionsClient } from './native-cli-sessions';
+export { NativeCopilotSessionsClient } from './native-copilot-sessions';
 export { NotesClient } from './notes';
 export { PreferencesClient } from './preferences';
 export { ProcessesClient } from './processes';

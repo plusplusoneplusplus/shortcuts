@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -26,12 +27,25 @@ const TOOLS = [
         label: 'Create/Update Work Item',
         description: 'Creates typed work items and updates existing items.',
         enabledByDefault: true,
+        params: [
+            { name: 'title', type: 'string', required: true },
+            { name: 'description', type: 'string', required: false },
+            { name: 'plan', type: '{...}', required: false },
+        ],
     },
     {
         name: 'tavily_web_search',
         label: 'Tavily Web Search',
         description: 'Searches the web.',
         enabledByDefault: false,
+        params: [],
+    },
+    {
+        name: 'memory',
+        label: 'Memory',
+        description: 'Reads and writes persistent memory.',
+        enabledByDefault: true,
+        // No params field at all -> schema unavailable.
     },
 ];
 
@@ -104,5 +118,123 @@ describe('LlmToolsPanel', () => {
             expect(mocks.addToast).toHaveBeenCalledWith('Save failed', 'error');
             expect((screen.getByTestId('llm-tool-toggle-create_update_work_item') as HTMLInputElement).checked).toBe(true);
         });
+    });
+
+    it('shows a collapsed parameter-count affordance without raw schemas', async () => {
+        render(<LlmToolsPanel workspaceId="repo-a" />);
+        await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
+
+        const toggle = screen.getByTestId('llm-tool-params-toggle-create_update_work_item');
+        // Count is visible, but the per-parameter summary is collapsed by default.
+        expect(toggle.textContent).toContain('3 parameters');
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('llm-tool-params-create_update_work_item')).toBeNull();
+    });
+
+    it('expands inline to show required/optional parameter summaries on demand', async () => {
+        render(<LlmToolsPanel workspaceId="repo-a" />);
+        await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
+
+        const toggle = screen.getByTestId('llm-tool-params-toggle-create_update_work_item');
+        await act(async () => { fireEvent.click(toggle); });
+
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        const panel = screen.getByTestId('llm-tool-params-create_update_work_item');
+        // Required -> `name: type*`; optional -> `name?: type`; nested stays `{...}`.
+        expect(screen.getByTestId('llm-tool-param-create_update_work_item-title').textContent).toBe('title: string*');
+        expect(screen.getByTestId('llm-tool-param-create_update_work_item-description').textContent).toBe('description?: string');
+        expect(screen.getByTestId('llm-tool-param-create_update_work_item-plan').textContent).toBe('plan?: {...}');
+        expect(toggle.getAttribute('aria-controls')).toBe(panel.id);
+    });
+
+    it('collapses the parameter summary again when the affordance is re-activated', async () => {
+        render(<LlmToolsPanel workspaceId="repo-a" />);
+        await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
+
+        const toggle = screen.getByTestId('llm-tool-params-toggle-create_update_work_item');
+        await act(async () => { fireEvent.click(toggle); });
+        expect(screen.getByTestId('llm-tool-params-create_update_work_item')).toBeTruthy();
+
+        await act(async () => { fireEvent.click(toggle); });
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('llm-tool-params-create_update_work_item')).toBeNull();
+    });
+
+    it('expanding parameters does not toggle the tool enable/disable checkbox', async () => {
+        render(<LlmToolsPanel workspaceId="repo-a" />);
+        await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
+
+        const checkbox = screen.getByTestId('llm-tool-toggle-create_update_work_item') as HTMLInputElement;
+        expect(checkbox.checked).toBe(true);
+
+        await act(async () => { fireEvent.click(screen.getByTestId('llm-tool-params-toggle-create_update_work_item')); });
+
+        expect(checkbox.checked).toBe(true);
+        expect(mocks.preferences.updateLlmToolsConfig).not.toHaveBeenCalled();
+    });
+
+    it('exposes the parameter affordance as a focusable native button activated by Enter and Space', async () => {
+        const user = userEvent.setup();
+        render(<LlmToolsPanel workspaceId="repo-a" />);
+        await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
+
+        const toggle = screen.getByTestId('llm-tool-params-toggle-create_update_work_item') as HTMLButtonElement;
+        // Native <button> => platform-provided keyboard operability, reachable in the
+        // tab order, with an accessible label/state and no hover-only dependency.
+        expect(toggle.tagName).toBe('BUTTON');
+        expect(toggle.disabled).toBe(false);
+        expect(toggle.getAttribute('aria-hidden')).toBeNull();
+        expect(toggle.getAttribute('tabindex')).not.toBe('-1');
+        expect(toggle.getAttribute('aria-label')).toBe('Create/Update Work Item: 3 parameters');
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+
+        // Reachable via keyboard focus.
+        toggle.focus();
+        expect(document.activeElement).toBe(toggle);
+
+        // Enter expands the summary without any pointer interaction.
+        await user.keyboard('{Enter}');
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        expect(screen.getByTestId('llm-tool-params-create_update_work_item')).toBeTruthy();
+
+        // Space collapses it again (button keeps focus across the re-render).
+        expect(document.activeElement).toBe(toggle);
+        await user.keyboard(' ');
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('llm-tool-params-create_update_work_item')).toBeNull();
+    });
+
+    it('lays out for narrow screens: single-column grid, wrapping params, and a fit-width affordance', async () => {
+        render(<LlmToolsPanel workspaceId="repo-a" />);
+        await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
+
+        // Single column by default (narrow screens), two columns only from the `sm` breakpoint up.
+        const list = screen.getByTestId('llm-tools-list');
+        expect(list.className).toContain('grid-cols-1');
+        expect(list.className).toContain('sm:grid-cols-2');
+
+        // The affordance hugs its content rather than stretching, and is not hover-only.
+        const toggle = screen.getByTestId('llm-tool-params-toggle-create_update_work_item');
+        expect(toggle.className).toContain('w-fit');
+
+        // Expanded parameter tokens wrap instead of overflowing on narrow widths.
+        await act(async () => { fireEvent.click(toggle); });
+        expect(screen.getByTestId('llm-tool-params-create_update_work_item').className).toContain('flex-wrap');
+    });
+
+    it('renders a compact empty-state for tools with no parameters', async () => {
+        render(<LlmToolsPanel workspaceId="repo-a" />);
+        await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
+
+        expect(screen.getByTestId('llm-tool-params-empty-tavily_web_search').textContent).toBe('No parameters');
+        expect(screen.queryByTestId('llm-tool-params-toggle-tavily_web_search')).toBeNull();
+    });
+
+    it('renders a compact empty-state when a tool schema is unavailable', async () => {
+        render(<LlmToolsPanel workspaceId="repo-a" />);
+        await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
+
+        expect(screen.getByTestId('llm-tool-params-empty-memory').textContent).toBe('Parameters unavailable');
+        expect(screen.queryByTestId('llm-tool-params-toggle-memory')).toBeNull();
     });
 });

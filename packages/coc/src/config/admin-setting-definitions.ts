@@ -56,6 +56,8 @@ export type AdminSettingValueSpec =
     | {
         kind: 'enum';
         values: readonly string[];
+        /** Accept null/undefined; applying null clears the stored value. */
+        nullable?: boolean;
         /** Validation error message override. */
         message?: string;
     }
@@ -226,8 +228,10 @@ export function validateAdminSettingValue(def: AdminSettingDefinition, value: un
             return ok ? undefined : numberMessage(def.key, spec);
         }
         case 'enum': {
+            if (spec.nullable && (value === null || value === undefined)) return undefined;
             const ok = typeof value === 'string' && spec.values.includes(value);
-            return ok ? undefined : (spec.message ?? `${def.key} must be one of: ${spec.values.join(', ')}`);
+            const base = spec.message ?? `${def.key} must be one of: ${spec.values.join(', ')}`;
+            return ok ? undefined : (spec.nullable ? `${base}, or null to clear` : base);
         }
         case 'custom':
             return spec.validate(value);
@@ -241,6 +245,7 @@ function clearsStoredValue(def: AdminSettingDefinition, value: unknown): boolean
     if (spec.kind === 'string' && spec.nullable) {
         return value === null || (spec.clearOnEmpty === true && value === '');
     }
+    if (spec.kind === 'enum' && spec.nullable) return value === null;
     return false;
 }
 
@@ -580,14 +585,36 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-loops-enabled',
         },
     }),
+    // `dreams.enabled` is rendered bespoke in the admin Dreams tab
+    // (Knowledge nav group), not on the general Settings → Features grid, so it
+    // intentionally omits a `ui` block. Runtime flag + PUT validation are unchanged.
     bool({
         key: 'dreams.enabled', default: false, runtime: 'live', runtimeFlag: 'dreamsEnabled',
-        ui: {
-            group: 'aiModes', order: 50, label: 'Dreams', badge: 'experimental',
-            hint: 'Enables workspace opt-in review cards from idle-time reflection. Disabled by default; workspaces must also opt in individually.',
-            testId: 'toggle-dreams-enabled',
-        },
     }),
+    {
+        key: 'dreams.provider',
+        value: { kind: 'enum', values: ['copilot', 'codex', 'claude'], nullable: true, message: 'dreams.provider must be "copilot", "codex", or "claude"' },
+        default: undefined,
+        runtime: 'live',
+    },
+    {
+        key: 'dreams.model',
+        value: { kind: 'string', nullable: true, clearOnEmpty: true },
+        default: undefined,
+        runtime: 'live',
+    },
+    {
+        key: 'dreams.idleCheckIntervalMs',
+        value: { kind: 'number', integer: true, gt: 0, message: 'dreams.idleCheckIntervalMs must be a positive integer number of milliseconds' },
+        default: 5 * 60 * 1000,
+        runtime: 'restartRequired',
+    },
+    {
+        key: 'dreams.timeoutMs',
+        value: { kind: 'number', integer: true, gt: 0, message: 'dreams.timeoutMs must be a positive integer number of milliseconds' },
+        default: 3_600_000,
+        runtime: 'live',
+    },
     bool({
         key: 'excalidraw.enabled', default: false, runtime: 'live', runtimeFlag: 'excalidrawEnabled',
         ui: {
@@ -690,6 +717,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     },
     bool({ key: 'features.autoAgentProviderRouting', default: false, runtime: 'restartRequired', runtimeFlag: 'autoAgentProviderRoutingEnabled' }),
+    bool({
+        key: 'features.nativeCliSessions', default: false, runtime: 'live', runtimeFlag: 'nativeCliSessionsEnabled',
+        ui: {
+            group: 'dashboard', order: 60, label: 'Native CLI sessions', badge: 'experimental',
+            hint: 'Read-only CLI Sessions tab that lists native Copilot, Codex, and Claude Code sessions for the active workspace. Disabled by default.',
+            testId: 'toggle-native-cli-sessions-enabled',
+        },
+    }),
     bool({
         key: 'features.ralphMultiAgentGrill', default: false, runtime: 'live', runtimeFlag: 'ralphMultiAgentGrillEnabled',
         ui: {

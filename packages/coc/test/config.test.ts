@@ -964,6 +964,8 @@ timeout: 300
                 '  enabled: true',
                 'dreams:',
                 '  enabled: true',
+                '  provider: codex',
+                '  model: gpt-test',
                 '  idleCheckIntervalMs: 120000',
                 '  minIdleMs: 60000',
                 '  confidenceThreshold: 0.9',
@@ -1016,6 +1018,7 @@ timeout: 300
                 '  commitChatLensDormantMode: pill',
                 '  autoAgentProviderRouting: true',
                 '  ralphMultiAgentGrill: true',
+                '  nativeCliSessions: true',
                 'memoryPromotion:',
                 '  batchSize: 25',
                 '  timeoutMs: 80000',
@@ -1228,6 +1231,7 @@ timeout: 300
                     "focusedDiff": true,
                     "gitCommitLookup": false,
                     "gitCrossCloneCherryPick": true,
+                    "nativeCliSessions": false,
                     "ralphMultiAgentGrill": false,
                     "sessionContextAttachments": false,
                   },
@@ -1381,6 +1385,8 @@ timeout: 300
                   "dreams.idleCheckIntervalMs": "default",
                   "dreams.maxCandidates": "default",
                   "dreams.minIdleMs": "default",
+                  "dreams.model": "default",
+                  "dreams.provider": "default",
                   "dreams.timeoutMs": "default",
                   "effortLevels.enabled": "default",
                   "excalidraw.enabled": "default",
@@ -1390,6 +1396,7 @@ timeout: 300
                   "features.commitChatLensDormantMode": "default",
                   "features.focusedDiff": "file",
                   "features.gitCrossCloneCherryPick": "default",
+                  "features.nativeCliSessions": "default",
                   "features.ralphMultiAgentGrill": "default",
                   "features.sessionContextAttachments": "default",
                   "forEach.enabled": "file",
@@ -1490,6 +1497,8 @@ timeout: 300
             expect(defaults['excalidraw.enabled']).toBe(DEFAULT_CONFIG.excalidraw.enabled);
             expect(defaults['loops.enabled']).toBe(DEFAULT_CONFIG.loops.enabled);
             expect(defaults['dreams.enabled']).toBe(DEFAULT_CONFIG.dreams.enabled);
+            expect(defaults['dreams.provider']).toBe(DEFAULT_CONFIG.dreams.provider);
+            expect(defaults['dreams.model']).toBe(DEFAULT_CONFIG.dreams.model);
             expect(defaults['dreams.minIdleMs']).toBe(DEFAULT_CONFIG.dreams.minIdleMs);
             expect(defaults['dreams.confidenceThreshold']).toBe(DEFAULT_CONFIG.dreams.confidenceThreshold);
             expect(defaults['dreams.timeoutMs']).toBe(DEFAULT_CONFIG.dreams.timeoutMs);

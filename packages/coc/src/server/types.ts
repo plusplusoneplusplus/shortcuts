@@ -86,6 +86,10 @@ export interface ExecutionServerOptions {
     fileConfig?: CLIConfig;
     /** Admin token TTL override in ms (for testing). Defaults to TOKEN_EXPIRY_MS (5 min). */
     tokenTtlMs?: number;
+    /** Native Copilot CLI session store path override (for tests). Defaults to `~/.copilot/session-store.db`. */
+    nativeCopilotSessionDbPath?: string;
+    /** Native Copilot CLI `session-state` base directory override (for tests). Defaults to `~/.copilot/session-state`. */
+    nativeCopilotSessionStateDir?: string;
     /** Queue-specific options. */
     queue?: {
         /** Policy for tasks that were running when the server last stopped (default: 'fail'). */

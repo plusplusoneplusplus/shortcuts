@@ -222,6 +222,53 @@ describe('LLM Tools Config API endpoints', () => {
             }
         });
 
+        it('attaches compact param metadata derived from tool schemas', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
+            const data = res.json();
+            const byName = (n: string) => data.tools.find((t: any) => t.name === n);
+
+            // Single required array param -> compact `[...]` shape.
+            expect(byName('suggest_follow_ups').params).toEqual([
+                { name: 'suggestions', type: '[...]', required: true },
+            ]);
+
+            // Mixed required/optional primitives preserve declaration order.
+            expect(byName('get_conversation').params).toEqual([
+                { name: 'processId', type: 'string', required: true },
+                { name: 'maxChars', type: 'number', required: false },
+                { name: 'includeToolCalls', type: 'boolean', required: false },
+                { name: 'fromTurn', type: 'number', required: false },
+                { name: 'toTurn', type: 'number', required: false },
+            ]);
+
+            // Nested object param -> compact `{...}` shape; union/oneOf -> `any`.
+            const createWi = byName('create_update_work_item').params as Array<{ name: string; type: string; required: boolean }>;
+            expect(createWi.find(p => p.name === 'tags')).toEqual({ name: 'tags', type: '[...]', required: false });
+            expect(createWi.find(p => p.name === 'workItemNumber')).toEqual({ name: 'workItemNumber', type: 'any', required: false });
+        });
+
+        it('omits param metadata for tools without an available schema', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
+            const data = res.json();
+            const memory = data.tools.find((t: any) => t.name === 'memory');
+            // The built-in memory tool has no locally-declared schema -> field absent.
+            expect(memory).toBeTruthy();
+            expect(memory.params).toBeUndefined();
+        });
+
+        it('preserves the existing tool contract fields unchanged', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
+            const data = res.json();
+            const registryBase = getEffectiveLlmToolRegistry({ loopsEnabled: false });
+            for (const expected of registryBase) {
+                const tool = data.tools.find((t: any) => t.name === expected.name);
+                expect(tool).toBeTruthy();
+                expect(tool.label).toBe(expected.label);
+                expect(tool.description).toBe(expected.description);
+                expect(tool.enabledByDefault).toBe(expected.enabledByDefault);
+            }
+        });
+
         it('reports conversation retrieval availability from the process store', async () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
             expect(res.json().conversationRetrievalAvailable).toBe(true);
@@ -284,6 +331,9 @@ describe('LLM Tools Config API endpoints', () => {
             expect(data.disabledLlmTools).toEqual(['tavily_web_search', 'memory']);
             expect(data.tools).toHaveLength(getEffectiveLlmToolRegistry({ loopsEnabled: false }).length);
             expect(data.conversationRetrievalAvailable).toBe(true);
+            // The PUT response carries the same additive param metadata as GET.
+            const followUps = data.tools.find((t: any) => t.name === 'suggest_follow_ups');
+            expect(followUps.params).toEqual([{ name: 'suggestions', type: '[...]', required: true }]);
         });
 
         it('persists disabledLlmTools to disk', async () => {
