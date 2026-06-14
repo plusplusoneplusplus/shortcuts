@@ -10,7 +10,7 @@
  * execute.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
     ListNativeCliSessionsResponse,
     NativeCliSessionDetail,
@@ -22,9 +22,24 @@ import { getSpaCocClient } from '../../api/cocClient';
 import { Button, Spinner, cn } from '../../ui';
 import { useNativeCliSessionsEnabled } from '../../hooks/feature-flags/useNativeCliSessionsEnabled';
 import { buildNativeCliSessionHash, parseNativeCliSessionDeepLink } from '../../layout/Router';
-import { ConversationTurnBubble } from '../chat/conversation/ConversationTurnBubble';
 import { ProviderBadge } from '../chat/ProviderBadge';
+import { ChatHeader } from '../chat/ChatHeader';
+import { ConversationArea } from '../chat/ConversationArea';
+import { ConversationMiniMap } from '../chat/conversation/ConversationMiniMap';
+import { FollowUpInputArea } from '../chat/FollowUpInputArea';
+import { useConversationSelection } from '../chat/hooks/useConversationSelection';
+import type { RichTextInputHandle } from '../../shared/RichTextInput';
+import type { ChatMode } from '../../repos/modeConfig';
+import { copyHtmlToClipboard } from '../../utils/format';
+import { snapshotConversation } from '../../utils/snapshot-copy-utils';
 import { toClientConversationTurns } from './nativeConversationTurns';
+import {
+    buildNativeSessionMetadataExtraRows,
+    deriveNativeSessionModel,
+    nativeSessionTitle,
+    toNativeSessionHeaderTask,
+    toNativeSessionMetadataProcess,
+} from './nativeSessionChatAdapter';
 
 const PROVIDERS: NativeCliSessionProviderId[] = ['copilot', 'codex', 'claude'];
 
@@ -504,67 +519,193 @@ function SessionRow({ item, selected, onSelect }: {
 }
 
 function SessionDetailView({ detail, workspaceId, onBack }: { detail: NativeCliSessionDetail; workspaceId: string; onBack: () => void }) {
-    // Reconstructed transcript (rich `events.jsonl` parse, else flat DB
-    // fallback) mapped into the SPA chat shape so we can reuse the existing
-    // read-only chat bubble — no input box, streaming, or resume actions.
-    const conversation = toClientConversationTurns(detail.conversation);
-    return (
-        <div className="flex flex-col gap-2 p-2.5" data-testid="native-session-detail">
-            <div className="rounded-lg border border-[#d0d7de] bg-white p-3">
-                <div className="flex flex-wrap items-center gap-1.5">
-                    <button
-                        type="button"
-                        onClick={onBack}
-                        className="rounded border border-[#d0d7de] px-2 py-0.5 text-[11px] lg:hidden"
-                        data-testid="native-session-detail-back"
-                    >
-                        ← Back
-                    </button>
-                    <ProviderBadge provider={detail.provider} />
-                    <ExternalLabel provider={detail.provider} storePath={detail.storePath} />
-                    <ReadOnlyBadge provider={detail.provider} storePath={detail.storePath} />
-                </div>
-                <h2 className="mt-1.5 break-all font-mono text-[13px] font-semibold">{detail.id}</h2>
-                <p className="mt-0.5 text-[11px] text-[#57606a]" data-testid="native-session-readonly-helper">
-                    {readOnlyTooltip(detail.provider, detail.storePath)}
-                </p>
-                <dl className="mt-2 grid grid-cols-1 gap-x-6 gap-y-0.5 text-[11px] sm:grid-cols-2">
-                    <div className="flex gap-2"><dt className="font-medium text-[#57606a]">Repository</dt><dd className="break-all">{detail.repository || '—'}</dd></div>
-                    <div className="flex gap-2"><dt className="font-medium text-[#57606a]">Branch</dt><dd>{detail.branch || 'Unknown branch'}</dd></div>
-                    <div className="flex gap-2"><dt className="font-medium text-[#57606a]">Working dir</dt><dd className="break-all">{detail.cwd || '—'}</dd></div>
-                    <div className="flex gap-2"><dt className="font-medium text-[#57606a]">Host</dt><dd>{detail.hostType || '—'}</dd></div>
-                    <div className="flex gap-2"><dt className="font-medium text-[#57606a]">Created</dt><dd>{formatTimestamp(detail.createdAt)}</dd></div>
-                    <div className="flex gap-2"><dt className="font-medium text-[#57606a]">Updated</dt><dd>{formatTimestamp(detail.updatedAt)}</dd></div>
-                </dl>
-                {detail.summary && (
-                    <div className="mt-2">
-                        <h3 className="text-[11px] font-semibold text-[#57606a]">Stored summary</h3>
-                        <pre className="mt-0.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded bg-[#f6f8fa] p-1.5 font-sans text-[12px]" data-testid="native-session-summary">{detail.summary}</pre>
-                    </div>
-                )}
-            </div>
+    // A native CLI session is an external, static transcript. We present it with
+    // the SAME UI as a CoC chat activity — chat's own ChatHeader +
+    // ConversationArea + ConversationMiniMap + a (blocked) FollowUpInputArea —
+    // by composing those sub-components over adapters of the read-only detail,
+    // mirroring the WorkItemExecutionSession read-only reuse pattern. There is
+    // no SSE, follow-up, streaming, resume, or turn mutation: native sessions
+    // are not CoC processes, so the dependent UI is fed inert stubs and the
+    // composer is rendered disabled.
+    const conversation = useMemo(() => toClientConversationTurns(detail.conversation), [detail.conversation]);
 
-            <div className="rounded-lg border border-[#d0d7de] bg-white p-3" data-testid="native-session-conversation">
-                <h3 className="text-[13px] font-semibold">Conversation ({conversation.length})</h3>
-                <p className="mt-0.5 text-[11px] text-[#57606a]">
-                    Read-only reconstruction of the native {PROVIDER_META[detail.provider].label} CLI transcript. No follow-up, streaming, or resume.
-                </p>
-                {conversation.length === 0 ? (
-                    <p className="mt-1.5 text-[12px] text-[#57606a]" data-testid="native-session-no-turns">This native session has no stored turns.</p>
-                ) : (
-                    <div className="mt-1.5 space-y-1" data-testid="native-session-conversation-turns">
-                        {conversation.map((turn, index) => (
-                            <ConversationTurnBubble
-                                key={turn.turnIndex ?? index}
-                                turn={turn}
-                                turnIndex={turn.turnIndex ?? index}
-                                wsId={workspaceId}
-                                provider={detail.provider}
-                            />
-                        ))}
+    const headerTask = useMemo(() => toNativeSessionHeaderTask(detail), [detail]);
+    const metadataProcess = useMemo(() => toNativeSessionMetadataProcess(detail), [detail]);
+    const metadataExtraRows = useMemo(() => buildNativeSessionMetadataExtraRows(detail), [detail]);
+    const sessionModel = useMemo(() => deriveNativeSessionModel(detail), [detail]);
+    const title = nativeSessionTitle(detail);
+
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const turnsContainerRef = useRef<HTMLDivElement | null>(null);
+    const [isScrolledUp, setIsScrolledUp] = useState(false);
+    const [copied, setCopied] = useState(false);
+
+    // Disabled composer state (AC-05). FollowUpInputArea is rendered for visual
+    // parity but blocked: `inputDisabled` greys it out and every send/stream/
+    // resume handler is an inert stub.
+    const richTextRef = useRef<RichTextInputHandle>(null);
+    const [followUpInput, setFollowUpInput] = useState('');
+    const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
+    const inertSlashCommands = useMemo(() => ({
+        handleInputChange: () => {},
+        handleKeyDown: () => false,
+        selectSkill: () => {},
+        dismissMenu: () => {},
+        menuVisible: false,
+        menuFilter: '',
+        filteredSkills: [],
+        highlightIndex: 0,
+        activeCommandHint: null,
+    }), []);
+
+    // Per-turn actions are visual-only (AC-06): select-to-copy and attach-context
+    // stay; pin/archive/delete are omitted so ConversationArea/
+    // ConversationTurnBubble hide them — there is no CoC processId to mutate.
+    const selection = useConversationSelection();
+    const handleCopySelected = useCallback(async () => {
+        if (!turnsContainerRef.current || selection.selectedTurns.size === 0) return;
+        try {
+            const html = snapshotConversation(turnsContainerRef.current, {
+                selectedIndices: selection.selectedTurns,
+            });
+            await copyHtmlToClipboard(html);
+            selection.stopSelecting();
+        } catch (e) {
+            console.error('Copy selected HTML failed:', e);
+        }
+    }, [selection]);
+
+    const scrollToBottom = useCallback(() => {
+        if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }, []);
+
+    // Track scroll position so ConversationArea can surface the scroll-to-bottom
+    // affordance, exactly as chat does.
+    useEffect(() => {
+        const el = scrollRef.current;
+        if (!el) return;
+        const onScroll = () => setIsScrolledUp(el.scrollHeight - el.scrollTop - el.clientHeight > 100);
+        el.addEventListener('scroll', onScroll);
+        return () => el.removeEventListener('scroll', onScroll);
+    }, []);
+
+    // Snap to the latest turn when a session loads (matches chat's initial view).
+    useEffect(() => {
+        if (conversation.length > 0 && scrollRef.current) {
+            const el = scrollRef.current;
+            requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+        }
+    }, [conversation]);
+
+    return (
+        <div className="flex h-full min-h-0 flex-col bg-white" data-testid="native-session-detail">
+            <ChatHeader
+                task={headerTask}
+                metadataProcess={metadataProcess}
+                metadataExtraRows={metadataExtraRows}
+                planPath=""
+                createdFiles={[]}
+                pinnedFile={undefined}
+                onBack={onBack}
+                variant="inline"
+                // Float / Pop-out are inert for an external read-only transcript
+                // (no live CoC chat to detach), so suppress them — ChatHeader
+                // hides both controls when isPopOut is set. (AC-03: "Float/Pop-out
+                // only if already working".)
+                isPopOut={true}
+                loading={false}
+                turns={conversation}
+                resumeLaunching={false}
+                resumeSessionId={undefined}
+                isPending={false}
+                sessionTokenLimit={undefined}
+                sessionCurrentTokens={undefined}
+                sessionModel={sessionModel}
+                copied={copied}
+                setCopied={setCopied}
+                taskId={detail.id}
+                onLaunchInteractiveResume={() => {}}
+                onPopOut={() => {}}
+                onFloat={() => {}}
+                title={title}
+                wsId={workspaceId}
+                turnsContainerRef={turnsContainerRef}
+                isSelecting={selection.isSelecting}
+                onToggleSelecting={selection.toggleSelecting}
+                viewToggle={(
+                    <div className="mr-1 flex items-center gap-1.5">
+                        <ExternalLabel provider={detail.provider} storePath={detail.storePath} />
+                        <ReadOnlyBadge provider={detail.provider} storePath={detail.storePath} />
                     </div>
                 )}
+            />
+            <div className="relative flex min-h-0 flex-1 overflow-x-hidden" data-testid="native-session-conversation">
+                <ConversationArea
+                    loading={false}
+                    error={null}
+                    turns={conversation}
+                    pendingQueue={[]}
+                    isScrolledUp={isScrolledUp}
+                    scrollRef={scrollRef}
+                    turnsContainerRef={turnsContainerRef}
+                    onScrollToBottom={scrollToBottom}
+                    isPending={false}
+                    task={headerTask}
+                    fullTask={null}
+                    onCancel={() => {}}
+                    onMoveToTop={() => {}}
+                    variant="inline"
+                    taskId={detail.id}
+                    wsId={workspaceId}
+                    provider={detail.provider}
+                    isSelecting={selection.isSelecting}
+                    selectedTurns={selection.selectedTurns}
+                    onTurnClick={selection.handleTurnClick}
+                    onCopySelected={handleCopySelected}
+                    onCancelSelection={selection.stopSelecting}
+                    onAttachContext={() => {}}
+                />
+                <ConversationMiniMap
+                    turns={conversation}
+                    scrollContainerRef={scrollRef}
+                    turnsContainerRef={turnsContainerRef}
+                    isStreaming={false}
+                />
             </div>
+            <div
+                className="border-t border-[#e0e0e0] px-3 pt-1.5 text-[11px] text-[#57606a] dark:border-[#3c3c3c]"
+                data-testid="native-session-readonly-helper"
+            >
+                {readOnlyTooltip(detail.provider, detail.storePath)} Follow-up, streaming, and resume are disabled.
+            </div>
+            <FollowUpInputArea
+                richTextRef={richTextRef}
+                inputDisabled={true}
+                sending={false}
+                isActiveGeneration={false}
+                isCancelling={false}
+                error={null}
+                resumeFeedback={null}
+                suggestions={[]}
+                followUpInput={followUpInput}
+                setFollowUpInput={setFollowUpInput}
+                selectedMode={selectedMode}
+                setSelectedMode={setSelectedMode}
+                onSend={async () => {}}
+                onRetry={() => {}}
+                skills={[]}
+                attachments={[]}
+                onAttachmentPaste={() => {}}
+                onAttachmentRemove={() => {}}
+                onAttachmentFiles={() => {}}
+                attachmentError={null}
+                pastePreview={null}
+                task={headerTask}
+                slashCommands={inertSlashCommands}
+                hideModeSelector={true}
+                sessionContextAttachmentsEnabled={false}
+                canRetrieveConversations={false}
+            />
         </div>
     );
 }
