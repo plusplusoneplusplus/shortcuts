@@ -118,10 +118,12 @@ describe('CORS headers', () => {
 
     afterAll(async () => { await stopServer(server); });
 
-    it('OPTIONS /api/processes returns 204 with CORS headers', async () => {
+    it('OPTIONS /api/processes (no Origin) returns 204 without an ACAO header', async () => {
         const { status, headers } = await rawRequest(baseUrl, '/api/processes', { method: 'OPTIONS' });
         expect(status).toBe(204);
-        expect(headers['access-control-allow-origin']).toBe('*');
+        // No Origin → not a cross-origin request; no ACAO header is emitted and
+        // the wildcard `*` is never used.
+        expect(headers['access-control-allow-origin']).toBeUndefined();
     });
 
     it('OPTIONS response includes all required methods', async () => {
@@ -139,15 +141,24 @@ describe('CORS headers', () => {
         expect(addProcessCallCount).toBe(callsBefore);
     });
 
-    it('GET /api/processes includes Access-Control-Allow-Origin: *', async () => {
+    it('GET /api/processes (no Origin) omits Access-Control-Allow-Origin', async () => {
         const { status, headers } = await rawRequest(baseUrl, '/api/processes');
         expect(status).toBe(200);
-        expect(headers['access-control-allow-origin']).toBe('*');
+        expect(headers['access-control-allow-origin']).toBeUndefined();
     });
 
-    it('POST /api/processes includes Access-Control-Allow-Origin: *', async () => {
+    it('GET /api/processes reflects a loopback Origin (never wildcard)', async () => {
+        const loopback = `http://127.0.0.1:${new URL(baseUrl).port}`;
+        const { status, headers } = await rawRequest(baseUrl, '/api/processes', { origin: loopback });
+        expect(status).toBe(200);
+        expect(headers['access-control-allow-origin']).toBe(loopback);
+    });
+
+    it('POST /api/processes from a loopback Origin reflects it', async () => {
+        const loopback = `http://localhost:${new URL(baseUrl).port}`;
         const { status, headers } = await rawRequest(baseUrl, '/api/processes', {
             method: 'POST',
+            origin: loopback,
             body: JSON.stringify({
                 id: 'cors-proc-1',
                 promptPreview: 'hi',
@@ -155,9 +166,10 @@ describe('CORS headers', () => {
                 startTime: new Date().toISOString(),
             }),
         });
-        // Either 201 or 400 — either way CORS headers must be present
+        // Either 201 or 400 — either way the loopback origin is reflected and
+        // the wildcard is never used.
         expect([201, 400]).toContain(status);
-        expect(headers['access-control-allow-origin']).toBe('*');
+        expect(headers['access-control-allow-origin']).toBe(loopback);
     });
 
     it('Access-Control-Allow-Headers is set on all responses', async () => {
@@ -189,10 +201,20 @@ describe('CORS headers', () => {
         expect(headers['access-control-allow-credentials']).toBe('true');
     });
 
-    it('unknown origin gets wildcard (no credentials)', async () => {
+    it('non-loopback origin is NOT reflected and never gets wildcard', async () => {
         const { headers } = await rawRequest(baseUrl, '/api/processes', { origin: 'https://evil.example.com' });
-        expect(headers['access-control-allow-origin']).toBe('*');
+        expect(headers['access-control-allow-origin']).toBeUndefined();
         expect(headers['access-control-allow-credentials']).toBeUndefined();
+    });
+
+    it('private-LAN origin is NOT reflected (loopback ≠ private network)', async () => {
+        const { headers } = await rawRequest(baseUrl, '/api/processes', { origin: 'http://192.168.1.10:4000' });
+        expect(headers['access-control-allow-origin']).toBeUndefined();
+    });
+
+    it('look-alike subdomain origin is rejected', async () => {
+        const { headers } = await rawRequest(baseUrl, '/api/processes', { origin: 'http://attacker.localhost.evil.com' });
+        expect(headers['access-control-allow-origin']).toBeUndefined();
     });
 
     it('OPTIONS preflight from localhost reflects origin', async () => {
@@ -202,9 +224,9 @@ describe('CORS headers', () => {
         expect(headers['access-control-allow-origin']).toBe(localhostOrigin);
     });
 
-    it('OPTIONS preflight from unknown origin gets wildcard', async () => {
+    it('OPTIONS preflight from a non-loopback origin is not reflected (no wildcard)', async () => {
         const { status, headers } = await rawRequest(baseUrl, '/api/processes', { method: 'OPTIONS', origin: 'https://remote.devtunnels.ms' });
         expect(status).toBe(204);
-        expect(headers['access-control-allow-origin']).toBe('*');
+        expect(headers['access-control-allow-origin']).toBeUndefined();
     });
 });
