@@ -34,6 +34,7 @@ import { ChatBaseExecutor } from './chat-base-executor';
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
 import { buildRalphIterationPrompt } from '@plusplusoneplusplus/coc-workflow/ralph';
+import { buildSourceLocationMarkdownLinkSystemMessage } from './prompt-builder';
 
 // ============================================================================
 // RalphExecutor
@@ -84,6 +85,7 @@ export class RalphExecutor extends ChatBaseExecutor {
         // framing lives in the user message (AC-01, AC-02).
         const systemMessage = await systemMessageBuilder()
             .withRepoInstructions(workingDirectory, isFinalCheck ? 'ask' : 'ralph')
+            .append(buildSourceLocationMarkdownLinkSystemMessage(payload.provider ?? this.provider)?.content)
             .appendMemoryV2(ctx.memoryV2)
             .appendToolGuidance(ctx.toolGuidance)
             .build();

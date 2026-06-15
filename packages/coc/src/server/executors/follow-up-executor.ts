@@ -41,6 +41,7 @@ import {
     buildMapReduceGenerationSystemMessage,
     buildModeSystemMessage,
     buildConversationHistoryContext,
+    buildSourceLocationMarkdownLinkSystemMessage,
     prependSelectedSkillsDirective,
     resolveSelectedSkillReferences,
 } from './prompt-builder';
@@ -379,9 +380,10 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 .append(buildForEachGenerationSystemMessage(forEachGeneration)?.content)
                 .append(buildMapReduceGenerationSystemMessage(mapReduceGeneration)?.content)
                 .withRepoInstructions(workingDirectory, currentMode)
+                .append(buildSourceLocationMarkdownLinkSystemMessage(sessionProvider)?.content)
                 .appendMemoryV2(chatCtx.memoryV2)
                 .appendToolGuidance(chatCtx.toolGuidance)
-                .appendAutoFolder(autoFolderContextForFollowUp)
+                .appendAutoFolder(currentMode === 'ask' ? autoFolderContextForFollowUp : undefined)
                 .appendNoteFile(notePath)
                 .build();
 

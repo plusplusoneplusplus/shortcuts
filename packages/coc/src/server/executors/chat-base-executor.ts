@@ -58,6 +58,7 @@ import {
     buildForEachGenerationSystemMessage,
     buildMapReduceGenerationSystemMessage,
     buildModeSystemMessage,
+    buildSourceLocationMarkdownLinkSystemMessage,
     prependSelectedSkillsDirective,
     resolveSelectedSkillReferences,
 } from './prompt-builder';
@@ -488,6 +489,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             .append(buildForEachGenerationSystemMessage(forEachGeneration)?.content)
             .append(buildMapReduceGenerationSystemMessage(mapReduceGeneration)?.content)
             .withRepoInstructions(workingDirectory, mode)
+            .append(buildSourceLocationMarkdownLinkSystemMessage(payload.provider ?? this.provider)?.content)
             .appendMemoryV2(ctx.memoryV2)
             .appendToolGuidance(ctx.toolGuidance)
             .appendAutoFolder(isGrilling ? undefined : autoFolderContext)
