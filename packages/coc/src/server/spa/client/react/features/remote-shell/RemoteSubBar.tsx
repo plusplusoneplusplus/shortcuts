@@ -263,6 +263,12 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                             const isSel = cid === cloneId;
                             const st = cloneStatus[cid];
                             const isRemote = isRemoteRepo(c);
+                            // Offline (AC-06): reuse the AC-05 blended status — a remote
+                            // clone whose server is offline/failed resolves to 'offline'.
+                            // An offline row is greyed + non-interactive so its live tabs
+                            // are never opened; it flips back the moment the marker reports
+                            // online again (aggregateRemoteWorkspaces re-run).
+                            const isOffline = isRemote && st === 'offline';
                             // Anchor PRIMARY on the first LOCAL clone; clones are sorted
                             // local-first so that's the first non-remote row. A remote-only
                             // group has no local clone (primaryIdx === -1) — its first
@@ -277,17 +283,29 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                                     data-testid="clone-popover-item"
                                     data-remote={isRemote ? 'true' : 'false'}
                                     data-clone-status={st ?? 'idle'}
+                                    data-offline={isOffline ? 'true' : 'false'}
+                                    disabled={isOffline}
+                                    aria-disabled={isOffline}
                                     role="menuitem"
-                                    onClick={() => { selectClone(cid); setCloneOpen(false); }}
+                                    title={isOffline ? `${c.workspace.name} · offline (server unreachable)` : undefined}
+                                    onClick={() => {
+                                        // Block selection/navigation for offline clones so a
+                                        // dead remote server's tabs are never opened.
+                                        if (isOffline) return;
+                                        selectClone(cid);
+                                        setCloneOpen(false);
+                                    }}
                                     className={
                                         'w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-left transition-colors ' +
-                                        (isSel ? 'bg-[#ddf4ff] dark:bg-[#3794ff]/15' : 'hover:bg-black/[0.04] dark:hover:bg-white/[0.06]')
+                                        (isOffline
+                                            ? 'opacity-50 grayscale cursor-not-allowed'
+                                            : (isSel ? 'bg-[#ddf4ff] dark:bg-[#3794ff]/15' : 'hover:bg-black/[0.04] dark:hover:bg-white/[0.06]'))
                                     }
                                 >
                                     <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0 mt-0.5" style={{ background: cloneStatusColor(st, (c.workspace.color as string) || remoteColor) }} aria-hidden />
                                     <span className="flex-1 min-w-0">
                                         <span className="flex items-center gap-1.5">
-                                            <span className={'text-[12.5px] font-semibold truncate ' + (isSel ? 'text-[#0969da] dark:text-[#79c0ff]' : 'text-[#1e1e1e] dark:text-[#cccccc]')}>{c.workspace.name}</span>
+                                            <span className={'text-[12.5px] font-semibold truncate ' + (isSel && !isOffline ? 'text-[#0969da] dark:text-[#79c0ff]' : 'text-[#1e1e1e] dark:text-[#cccccc]')}>{c.workspace.name}</span>
                                             {isPrimary && clones.length > 1 && <span className="text-[9px] font-bold uppercase px-1.5 py-px rounded bg-[#ddf4ff] dark:bg-[#3794ff]/20 text-[#0969da] dark:text-[#79c0ff]">primary</span>}
                                             {serverLabel && (
                                                 <span
@@ -298,7 +316,17 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                                                     {serverLabel}
                                                 </span>
                                             )}
-                                            {st === 'running' && <span className="text-[9px] font-bold uppercase px-1.5 py-px rounded bg-[#16a34a]/15 text-[#16a34a]">running</span>}
+                                            {isOffline && (
+                                                <span
+                                                    data-testid="clone-offline-badge"
+                                                    title="Server offline — showing last-known state"
+                                                    className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-[0.04em] px-1.5 py-px rounded bg-[#8c959f]/15 text-[#6e7781] dark:text-[#8c959f]"
+                                                >
+                                                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#8c959f]" aria-hidden />
+                                                    offline
+                                                </span>
+                                            )}
+                                            {!isOffline && st === 'running' && <span className="text-[9px] font-bold uppercase px-1.5 py-px rounded bg-[#16a34a]/15 text-[#16a34a]">running</span>}
                                         </span>
                                         <span className="block font-mono text-[10.5px] text-[#848484] dark:text-[#777] truncate mt-0.5">{truncatePath(c.workspace.rootPath || '', 36)}</span>
                                     </span>

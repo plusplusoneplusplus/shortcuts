@@ -622,7 +622,15 @@ model built on `features/remote-shell/`:
   `connecting`/`idle` (not yet online) → connecting (blue `#3b82f6`, distinct from
   queued orange), else the remote `queue` state (mirroring local running/queued/
   paused/idle). The computed status is exposed on each row as
-  `data-clone-status`. Clone tabs use **responsive overflow**: a hidden
+  `data-clone-status`. A remote clone whose status resolves to `offline`
+  (server offline/failed) renders the row greyed (`opacity-50 grayscale`),
+  non-interactive (`disabled` + `aria-disabled`, `data-offline="true"`, click
+  guarded so `selectClone` is a no-op — its live tabs never open while offline),
+  and adds an `offline` badge (`clone-offline-badge`) next to the server-label
+  badge; it flips back to interactive automatically when the marker reports the
+  server online again (next `aggregateRemoteWorkspaces` run). Local clones and
+  online/connecting remote clones are never greyed. Clone tabs use **responsive
+  overflow**: a hidden
   measurement mirror plus a `ResizeObserver` feed `computeVisibleTabKeys`, which
   shows every tab that fits and collapses the tail into a `…` menu (always keeping
   the active tab visible).

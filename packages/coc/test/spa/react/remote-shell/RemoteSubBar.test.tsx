@@ -217,4 +217,82 @@ describe('RemoteSubBar', () => {
         expect(row.getAttribute('data-remote')).toBe('false');
         expect(row.getAttribute('data-clone-status')).toBe('idle');
     });
+
+    // ── AC-06: offline remote clones are greyed + non-interactive ─────────────
+
+    it('greys an offline remote clone, badges it offline, and disables the row', () => {
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox', SHORTCUTS, 'main', 'offline', 'running');
+        const row = openAndGetRow([local, remote], 'a', 'b');
+        // Greyed treatment + disabled state.
+        expect(row.getAttribute('data-offline')).toBe('true');
+        expect((row as HTMLButtonElement).disabled).toBe(true);
+        expect(row.getAttribute('aria-disabled')).toBe('true');
+        expect(row.className).toContain('opacity-50');
+        expect(row.className).toContain('cursor-not-allowed');
+        // Offline badge present (in addition to the server-label badge).
+        const offlineBadge = row.querySelector('[data-testid="clone-offline-badge"]');
+        expect(offlineBadge).toBeTruthy();
+        expect(offlineBadge!.textContent?.toLowerCase()).toContain('offline');
+        expect(row.querySelector('[data-testid="clone-remote-badge"]')).toBeTruthy();
+    });
+
+    it('does NOT select/navigate when an offline remote clone is clicked', () => {
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox', SHORTCUTS, 'main', 'offline', 'running');
+        const row = openAndGetRow([local, remote], 'a', 'b');
+        fireEvent.click(row);
+        expect(mockSelectClone).not.toHaveBeenCalled();
+        // Popover stays open (no navigation happened).
+        expect(screen.queryByTestId('clone-popover')).toBeTruthy();
+    });
+
+    it('treats a failed-connection remote clone as offline (greyed + non-interactive)', () => {
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox', SHORTCUTS, 'main', 'failed', 'idle');
+        const row = openAndGetRow([local, remote], 'a', 'b');
+        expect(row.getAttribute('data-clone-status')).toBe('offline');
+        expect(row.getAttribute('data-offline')).toBe('true');
+        fireEvent.click(row);
+        expect(mockSelectClone).not.toHaveBeenCalled();
+    });
+
+    it('the ONLINE variant of the same remote clone is interactive and not greyed', () => {
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox', SHORTCUTS, 'main', 'online', 'idle');
+        const row = openAndGetRow([local, remote], 'a', 'b');
+        expect(row.getAttribute('data-offline')).toBe('false');
+        expect((row as HTMLButtonElement).disabled).toBe(false);
+        expect(row.querySelector('[data-testid="clone-offline-badge"]')).toBeNull();
+        fireEvent.click(row);
+        expect(mockSelectClone).toHaveBeenCalledWith('b');
+    });
+
+    it('keeps the offline clone VISIBLE in its group (row still rendered)', () => {
+        // Group stays stable: an offline remote clone folds in and is still listed.
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox', SHORTCUTS, 'main', 'offline', 'idle');
+        render(<RemoteSubBar repo={local as any} repos={[local, remote] as any} />);
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        const items = screen.getAllByTestId('clone-popover-item');
+        expect(items).toHaveLength(2);
+        expect(items.some(el => el.getAttribute('data-offline') === 'true')).toBe(true);
+    });
+
+    it('does not grey or disable a connecting (not-yet-offline) remote clone', () => {
+        // 'connecting' is distinct from offline — the row stays interactive.
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox', SHORTCUTS, 'main', 'connecting', 'idle');
+        const row = openAndGetRow([local, remote], 'a', 'b');
+        expect(row.getAttribute('data-offline')).toBe('false');
+        expect((row as HTMLButtonElement).disabled).toBe(false);
+        fireEvent.click(row);
+        expect(mockSelectClone).toHaveBeenCalledWith('b');
+    });
+
+    it('never greys a LOCAL clone (offline treatment is remote-only)', () => {
+        const row = openAndGetRow([repo('a', 'shortcuts'), repo('b', 'shortcuts-2', 'feat/x')], 'a', 'b');
+        expect(row.getAttribute('data-offline')).toBe('false');
+        expect((row as HTMLButtonElement).disabled).toBe(false);
+    });
 });
