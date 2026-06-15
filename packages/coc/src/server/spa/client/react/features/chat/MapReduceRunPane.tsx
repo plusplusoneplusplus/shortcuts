@@ -8,7 +8,8 @@ import type {
     MapReduceRunStatus,
 } from '@plusplusoneplusplus/coc-client';
 import { cn } from '../../ui/cn';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { formatRelativeTime } from '../../utils/format';
 
 export interface MapReduceRunPaneProps {
@@ -88,20 +89,22 @@ function promptPreview(item: MapReduceItem): string {
 }
 
 export function MapReduceRunPane({ workspaceId, runId, onClose, onSelectGenerationProcess, onSelectChildProcess }: MapReduceRunPaneProps) {
+    // AC-07: Map Reduce run data + actions target the selected clone's server.
+    const cloneClient = useCocClient(workspaceId);
     const [run, setRun] = useState<MapReduceRun | null | undefined>(undefined);
     const [busyAction, setBusyAction] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     const refresh = useCallback(async () => {
         try {
-            const nextRun = await getSpaCocClient().mapReduce.get(workspaceId, runId);
+            const nextRun = await cloneClient.mapReduce.get(workspaceId, runId);
             setRun(nextRun);
             setError(null);
         } catch (err) {
             setRun(null);
             setError(getSpaCocClientErrorMessage(err, 'Failed to load Map Reduce run'));
         }
-    }, [workspaceId, runId]);
+    }, [workspaceId, runId, cloneClient]);
 
     useEffect(() => {
         setRun(undefined);
@@ -143,9 +146,9 @@ export function MapReduceRunPane({ workspaceId, runId, onClose, onSelectGenerati
     const cancelEnabled = canCancel(run);
     const startOrContinue = () => {
         if (run.status === 'approved') {
-            return getSpaCocClient().mapReduce.start(workspaceId, run.runId);
+            return cloneClient.mapReduce.start(workspaceId, run.runId);
         }
-        return getSpaCocClient().mapReduce.continue(workspaceId, run.runId);
+        return cloneClient.mapReduce.continue(workspaceId, run.runId);
     };
     const generationProcessId = run.generationProcessId;
 
@@ -192,7 +195,7 @@ export function MapReduceRunPane({ workspaceId, runId, onClose, onSelectGenerati
                     </button>
                     <button
                         type="button"
-                        onClick={() => runAction('cancel', () => getSpaCocClient().mapReduce.cancel(workspaceId, run.runId))}
+                        onClick={() => runAction('cancel', () => cloneClient.mapReduce.cancel(workspaceId, run.runId))}
                         disabled={!cancelEnabled || busyAction !== null}
                         data-testid="map-reduce-cancel-btn"
                         className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
@@ -254,7 +257,7 @@ export function MapReduceRunPane({ workspaceId, runId, onClose, onSelectGenerati
                         reduceStep={run.reduceStep}
                         busyAction={busyAction}
                         onSelectChildProcess={onSelectChildProcess}
-                        onRetry={() => runAction('retry-reduce', () => getSpaCocClient().mapReduce.retryReduce(workspaceId, run.runId))}
+                        onRetry={() => runAction('retry-reduce', () => cloneClient.mapReduce.retryReduce(workspaceId, run.runId))}
                     />
                 </section>
 
@@ -276,8 +279,8 @@ export function MapReduceRunPane({ workspaceId, runId, onClose, onSelectGenerati
                                     item={item}
                                     busyAction={busyAction}
                                     onSelectChildProcess={onSelectChildProcess}
-                                    onRetry={() => runAction(`retry:${item.id}`, () => getSpaCocClient().mapReduce.retryItem(workspaceId, run.runId, item.id))}
-                                    onSkip={() => runAction(`skip:${item.id}`, () => getSpaCocClient().mapReduce.skipItem(workspaceId, run.runId, item.id))}
+                                    onRetry={() => runAction(`retry:${item.id}`, () => cloneClient.mapReduce.retryItem(workspaceId, run.runId, item.id))}
+                                    onSkip={() => runAction(`skip:${item.id}`, () => cloneClient.mapReduce.skipItem(workspaceId, run.runId, item.id))}
                                 />
                             ))}
                         </tbody>

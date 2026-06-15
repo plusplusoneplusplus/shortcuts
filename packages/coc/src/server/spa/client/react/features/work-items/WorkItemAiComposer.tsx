@@ -17,7 +17,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Dialog } from '../../ui/Dialog';
 import { Button, cn, Spinner } from '../../ui';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { isWorkItemsHierarchyEnabled } from '../../utils/config';
 import type {
     WorkItemAiGenerationResponse,
@@ -100,6 +100,7 @@ export function WorkItemAiComposer({
     onCreated,
     onImproved,
 }: WorkItemAiComposerProps) {
+    const cloneClient = useCocClient(workspaceId); // AC-07: AI compose/create/improve on the selected clone's server.
     const [phase, setPhase] = useState<Phase>('idle');
 
     // Prompt & clarification
@@ -173,7 +174,7 @@ export function WorkItemAiComposer({
             let resp: WorkItemAiGenerationResponse;
 
             if (mode === 'create') {
-                resp = await getSpaCocClient().workItems.aiDraft(workspaceId, {
+                resp = await cloneClient.workItems.aiDraft(workspaceId, {
                     prompt: prompt.trim(),
                     type: (itemType as WorkItemType) ?? 'work-item',
                     parentId: parentId ?? undefined,
@@ -181,7 +182,7 @@ export function WorkItemAiComposer({
                     clarificationCount: effectiveClarifyCount,
                 });
             } else {
-                resp = await getSpaCocClient().workItems.aiImprove(workspaceId, existingItem!.id, {
+                resp = await cloneClient.workItems.aiImprove(workspaceId, existingItem!.id, {
                     prompt: prompt.trim(),
                     targets: ['fields', 'goal', 'childTasks'],
                     clarificationAnswers: clarifyAnswers.length > 0 ? clarifyAnswers : undefined,
@@ -202,7 +203,7 @@ export function WorkItemAiComposer({
             // Restore the previous phase so the user can retry
             setPhase(clarifyCount > 0 ? 'clarifying' : 'idle');
         }
-    }, [prompt, mode, workspaceId, existingItem, itemType, parentId, clarifyAnswers, clarifyCount, applyDraft]);
+    }, [prompt, mode, workspaceId, existingItem, itemType, parentId, clarifyAnswers, clarifyCount, applyDraft, cloneClient]);
 
     // Persist the approved draft via the standard create/update/plan routes
     const handleApprove = useCallback(async () => {
@@ -230,7 +231,7 @@ export function WorkItemAiComposer({
                         : `## Tasks\n${checklist}`;
                 }
 
-                const created = await getSpaCocClient().workItems.create(workspaceId, {
+                const created = await cloneClient.workItems.create(workspaceId, {
                     title: draftWorkItem.title,
                     description: draftWorkItem.description || undefined,
                     priority: draftWorkItem.priority,
@@ -249,7 +250,7 @@ export function WorkItemAiComposer({
                 if (hierarchyEnabled && draftChildTasks.length > 0) {
                     for (const child of draftChildTasks) {
                         if (!child.title.trim()) continue;
-                        await getSpaCocClient().workItems.create(workspaceId, {
+                        await cloneClient.workItems.create(workspaceId, {
                             title: child.title.trim(),
                             description: child.description || undefined,
                             type: (child.type as WorkItemType) || 'work-item',
@@ -263,7 +264,7 @@ export function WorkItemAiComposer({
                 onClose();
             } else {
                 // improve mode — patch the changed fields
-                await getSpaCocClient().workItems.update(workspaceId, existingItem!.id, {
+                await cloneClient.workItems.update(workspaceId, existingItem!.id, {
                     title: draftWorkItem.title,
                     description: draftWorkItem.description,
                     priority: draftWorkItem.priority,
@@ -272,7 +273,7 @@ export function WorkItemAiComposer({
 
                 // Update plan if the content changed from the current plan
                 if (draftGoal && draftGoal !== existingItem?.plan?.content) {
-                    await getSpaCocClient().workItems.updatePlan(workspaceId, existingItem!.id, draftGoal);
+                    await cloneClient.workItems.updatePlan(workspaceId, existingItem!.id, draftGoal);
                 }
 
                 onImproved?.();
@@ -285,7 +286,7 @@ export function WorkItemAiComposer({
     }, [
         mode, workspaceId, existingItem, parentId, hierarchyEnabled,
         draftWorkItem, draftGoal, draftChildTasks,
-        onCreated, onImproved, onClose,
+        onCreated, onImproved, onClose, cloneClient,
     ]);
 
     const isBusy = phase === 'generating' || phase === 'saving';

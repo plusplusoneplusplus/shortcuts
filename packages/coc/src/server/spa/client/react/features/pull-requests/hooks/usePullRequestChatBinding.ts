@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { useCocClient } from '../../../repos/cloneRouting';
 import type { AttachmentPayload } from '../../../types/attachments';
 
 export interface UsePullRequestChatBindingOptions {
@@ -43,6 +43,7 @@ export interface UsePullRequestChatBindingReturn {
 
 export function usePullRequestChatBinding(opts: UsePullRequestChatBindingOptions): UsePullRequestChatBindingReturn {
     const { workspaceId, prId, prNumber, prTitle, repoId } = opts;
+    const cloneClient = useCocClient(workspaceId); // AC-07: PR chat binding on the selected clone's server.
     const [taskId, setTaskId] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -70,7 +71,7 @@ export function usePullRequestChatBinding(opts: UsePullRequestChatBindingOptions
         setTaskId(null);
         setStartingFresh(false);
 
-        getSpaCocClient().pullRequests.getChatBinding(workspaceId, prId)
+        cloneClient.pullRequests.getChatBinding(workspaceId, prId)
             .then(data => { if (!cancelled) setTaskId(data.taskId); })
             .catch(err => {
                 if (cancelled) return;
@@ -80,7 +81,7 @@ export function usePullRequestChatBinding(opts: UsePullRequestChatBindingOptions
             .finally(() => { if (!cancelled) setLoading(false); });
 
         return () => { cancelled = true; };
-    }, [workspaceId, prId]);
+    }, [workspaceId, prId, cloneClient]);
 
     const createChat = useCallback(async (prompt: string, options: ReviewChatComposerSendOptions = {}): Promise<string | null> => {
         if (!prId) return null;
@@ -90,7 +91,7 @@ export function usePullRequestChatBinding(opts: UsePullRequestChatBindingOptions
             setError(null);
         }
         try {
-            const res = await getSpaCocClient().queue.enqueue({
+            const res = await cloneClient.queue.enqueue({
                 type: 'chat',
                 priority: 'normal',
                 payload: {
@@ -113,7 +114,7 @@ export function usePullRequestChatBinding(opts: UsePullRequestChatBindingOptions
             const newTaskId = res.task?.id ?? (res as { id?: string }).id;
             if (!newTaskId) throw new Error('Failed to create pull request chat task');
 
-            await getSpaCocClient().pullRequests.createChatBinding(workspaceId, prId, newTaskId);
+            await cloneClient.pullRequests.createChatBinding(workspaceId, prId, newTaskId);
 
             if (isCurrentRequest(requestedWorkspaceId, requestedPrId)) {
                 setError(null);
@@ -126,7 +127,7 @@ export function usePullRequestChatBinding(opts: UsePullRequestChatBindingOptions
             }
             return null;
         }
-    }, [workspaceId, prId, prNumber, prTitle, repoId, isCurrentRequest]);
+    }, [workspaceId, prId, prNumber, prTitle, repoId, isCurrentRequest, cloneClient]);
 
     const startFreshChat = useCallback(async (): Promise<boolean> => {
         if (!prId) return false;
@@ -137,7 +138,7 @@ export function usePullRequestChatBinding(opts: UsePullRequestChatBindingOptions
             setError(null);
         }
         try {
-            await getSpaCocClient().pullRequests.startFreshChat(workspaceId, prId);
+            await cloneClient.pullRequests.startFreshChat(workspaceId, prId);
             if (isCurrentRequest(requestedWorkspaceId, requestedPrId)) {
                 setTaskId(null);
                 setError(null);
@@ -153,7 +154,7 @@ export function usePullRequestChatBinding(opts: UsePullRequestChatBindingOptions
                 setStartingFresh(false);
             }
         }
-    }, [workspaceId, prId, isCurrentRequest]);
+    }, [workspaceId, prId, isCurrentRequest, cloneClient]);
 
     return { taskId, loading, error, createChat, startFreshChat, startingFresh };
 }

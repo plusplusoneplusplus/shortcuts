@@ -5,7 +5,7 @@
  * loop events to keep state up to date in real time.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { useCocClient } from '../../../repos/cloneRouting';
 import { isLoopsEnabled } from '../../../utils/config';
 import type { LoopEntry } from '@plusplusoneplusplus/coc-client';
 
@@ -34,6 +34,8 @@ export function useLoops(workspaceId: string | undefined, processId: string | nu
     const [loops, setLoops] = useState<LoopEntry[]>([]);
     const [loading, setLoading] = useState(false);
     const mountedRef = useRef(true);
+    // AC-07: loop list/pause/resume/cancel target the selected clone's server.
+    const cloneClient = useCocClient(workspaceId);
 
     const fetchLoops = useCallback(() => {
         if (!workspaceId) return;
@@ -43,7 +45,7 @@ export function useLoops(workspaceId: string | undefined, processId: string | nu
             return;
         }
         setLoading(true);
-        getSpaCocClient().loops.list(workspaceId)
+        cloneClient.loops.list(workspaceId)
             .then((all) => {
                 if (!mountedRef.current) return;
                 // Filter to loops for this process
@@ -56,7 +58,7 @@ export function useLoops(workspaceId: string | undefined, processId: string | nu
             .finally(() => {
                 if (mountedRef.current) setLoading(false);
             });
-    }, [workspaceId, processId]);
+    }, [workspaceId, processId, cloneClient]);
 
     useEffect(() => {
         mountedRef.current = true;
@@ -84,21 +86,21 @@ export function useLoops(workspaceId: string | undefined, processId: string | nu
 
     const pause = useCallback(async (loopId: string, reason?: string) => {
         if (!workspaceId) return;
-        await getSpaCocClient().loops.pause(workspaceId, loopId, reason);
+        await cloneClient.loops.pause(workspaceId, loopId, reason);
         fetchLoops();
-    }, [workspaceId, fetchLoops]);
+    }, [workspaceId, fetchLoops, cloneClient]);
 
     const resume = useCallback(async (loopId: string) => {
         if (!workspaceId) return;
-        await getSpaCocClient().loops.resume(workspaceId, loopId);
+        await cloneClient.loops.resume(workspaceId, loopId);
         fetchLoops();
-    }, [workspaceId, fetchLoops]);
+    }, [workspaceId, fetchLoops, cloneClient]);
 
     const cancel = useCallback(async (loopId: string) => {
         if (!workspaceId) return;
-        await getSpaCocClient().loops.delete(workspaceId, loopId);
+        await cloneClient.loops.delete(workspaceId, loopId);
         fetchLoops();
-    }, [workspaceId, fetchLoops]);
+    }, [workspaceId, fetchLoops, cloneClient]);
 
     const activeCount = loops.filter(l => l.status === 'active').length;
     const manageableCount = loops.filter(l => l.status !== 'cancelled').length;

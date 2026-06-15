@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Dialog } from '../../ui/Dialog';
 import { Button } from '../../ui';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { isWorkItemsHierarchyEnabled, isWorkItemsWorkflowEnabled } from '../../utils/config';
 
 type WorkItemTypeAll = 'work-item' | 'bug' | 'goal' | 'epic' | 'feature' | 'pbi';
@@ -29,6 +29,7 @@ export interface CreateWorkItemDialogProps {
 }
 
 export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fromChatId, itemType = 'work-item', parentId }: CreateWorkItemDialogProps) {
+    const cloneClient = useCocClient(workspaceId); // AC-07: create on the selected clone's server.
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [priority, setPriority] = useState<'normal' | 'high' | 'low'>('normal');
@@ -63,10 +64,10 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
         try {
             let data: any;
             if (fromChatId) {
-                data = await getSpaCocClient().workItems.createFromChat(workspaceId, { processId: fromChatId });
+                data = await cloneClient.workItems.createFromChat(workspaceId, { processId: fromChatId });
             } else {
                 const parsedTags = tags.split(',').map(t => t.trim()).filter(Boolean);
-                data = await getSpaCocClient().workItems.create(workspaceId, {
+                data = await cloneClient.workItems.create(workspaceId, {
                     title: title.trim(),
                     description: description.trim() || undefined,
                     priority,
@@ -84,7 +85,7 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
         } finally {
             setLoading(false);
         }
-    }, [workspaceId, fromChatId, title, description, priority, tags, successCriteria, selectedType, hierarchyEnabled, parentId, onCreated, onClose]);
+    }, [workspaceId, fromChatId, title, description, priority, tags, successCriteria, selectedType, hierarchyEnabled, parentId, onCreated, onClose, cloneClient]);
 
     const effectiveType = selectedType;
     const isBug = effectiveType === 'bug';

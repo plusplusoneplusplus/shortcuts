@@ -16,7 +16,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Button, cn } from '../../ui';
 import { Dialog } from '../../ui/Dialog';
 import { fetchApi } from '../../hooks/useApi';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { formatRelativeTime } from '../../utils/format';
 import { useMarkdownPreview } from '../../hooks/ui/useMarkdownPreview';
 import { SourceEditor } from '../../shared/SourceEditor';
@@ -126,6 +126,7 @@ export function WorkItemPlanSection({
     workspaceId, workItemId, plan, canEdit, draftContent, onDraftChange, onUpdated, onError, onNavigateToTasksTab,
     viewMode: controlledMode, onViewModeChange, enableVersionActions = false, hasUnsavedChanges = false,
 }: WorkItemPlanSectionProps) {
+    const cloneClient = useCocClient(workspaceId); // AC-07: plan versions/updates on the selected clone's server.
     // ── Plan version state ──────────────────────────────────────────────────
     const [versions, setVersions] = useState<PlanVersionMeta[]>([]);
     const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
@@ -196,10 +197,10 @@ export function WorkItemPlanSection({
     const loadVersions = useCallback(async () => {
         if (!plan) return;
         try {
-            const data: PlanVersionMeta[] = await getSpaCocClient().workItems.planVersions(workspaceId, workItemId);
+            const data: PlanVersionMeta[] = await cloneClient.workItems.planVersions(workspaceId, workItemId);
             setVersions(data || []);
         } catch { /* ignore */ }
-    }, [workspaceId, workItemId, plan]);
+    }, [workspaceId, workItemId, plan, cloneClient]);
 
     useEffect(() => { loadVersions(); }, [loadVersions]);
 
@@ -219,7 +220,7 @@ export function WorkItemPlanSection({
         setSelectedVersion(v);
         setLoadingVersion(true);
         try {
-            const data: PlanVersionFull = await getSpaCocClient().workItems.getPlanVersion(workspaceId, workItemId, v);
+            const data: PlanVersionFull = await cloneClient.workItems.getPlanVersion(workspaceId, workItemId, v);
             setSelectedContent(data.content ?? '');
         } catch {
             onError('Failed to load plan version');
@@ -245,7 +246,7 @@ export function WorkItemPlanSection({
         setComparison(null);
         setComparisonError(null);
         try {
-            const data = await getSpaCocClient().workItems.comparePlanVersions(workspaceId, workItemId, selectedVersion, currentVersion);
+            const data = await cloneClient.workItems.comparePlanVersions(workspaceId, workItemId, selectedVersion, currentVersion);
             setComparison(data);
         } catch (err: any) {
             setComparison(null);
@@ -253,14 +254,14 @@ export function WorkItemPlanSection({
         } finally {
             setComparisonLoading(false);
         }
-    }, [canActOnSelectedVersion, currentVersion, selectedVersion, workspaceId, workItemId]);
+    }, [canActOnSelectedVersion, currentVersion, selectedVersion, workspaceId, workItemId, cloneClient]);
 
     const handleRestoreSelectedVersion = useCallback(async () => {
         if (!canActOnSelectedVersion || selectedVersion === null || restoreDisabled) return;
         if (!window.confirm(`Restore plan v${selectedVersion} as a new current version?`)) return;
         setRestoreLoading(true);
         try {
-            await getSpaCocClient().workItems.restorePlanVersion(workspaceId, workItemId, selectedVersion, {
+            await cloneClient.workItems.restorePlanVersion(workspaceId, workItemId, selectedVersion, {
                 reason: `Restored plan v${selectedVersion} from version history`,
                 summary: `Restored plan v${selectedVersion}`,
             });
@@ -272,7 +273,7 @@ export function WorkItemPlanSection({
         } finally {
             setRestoreLoading(false);
         }
-    }, [canActOnSelectedVersion, onError, onUpdated, restoreDisabled, selectedVersion, workspaceId, workItemId]);
+    }, [canActOnSelectedVersion, onError, onUpdated, restoreDisabled, selectedVersion, workspaceId, workItemId, cloneClient]);
 
     // Resolve inline comments with AI — creates a Run# execution session
     const handleResolveAllWithAI = useCallback(async () => {
@@ -280,14 +281,14 @@ export function WorkItemPlanSection({
         if (open.length === 0) return;
         setResolving(true);
         try {
-            await getSpaCocClient().workItems.resolveComments(workspaceId, workItemId, { type: 'plan' });
+            await cloneClient.workItems.resolveComments(workspaceId, workItemId, { type: 'plan' });
             onUpdated();
         } catch (err: any) {
             onError(err.message || 'Failed to resolve plan comments');
         } finally {
             setResolving(false);
         }
-    }, [planComments, workspaceId, workItemId, onUpdated, onError]);
+    }, [planComments, workspaceId, workItemId, onUpdated, onError, cloneClient]);
 
     // Enqueue an AI run session to resolve a single plan comment.
     // Intentionally does NOT call onNavigateToTasksTab — user stays on the work item page.

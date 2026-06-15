@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AskUserResponseRequest } from '@plusplusoneplusplus/coc-client';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import type { AskUserBatch, AskUserQuestion } from './hooks/useChatSSE';
 import { AskUserMarkdown } from './AskUserMarkdown';
 import {
@@ -23,6 +23,8 @@ export interface AskUserInlineProps {
     batch: AskUserBatch;
     processId: string;
     onAnswered: () => void;
+    /** Owning workspace, so the ask_user reply routes to the chat's clone (AC-07). */
+    workspaceId?: string;
 }
 
 type AnswerValue = AskUserDraftValue;
@@ -222,7 +224,8 @@ function QuestionProvenance({ question }: { question: AskUserQuestion }) {
     );
 }
 
-export function AskUserInline({ batch, processId, onAnswered }: AskUserInlineProps) {
+export function AskUserInline({ batch, processId, onAnswered, workspaceId }: AskUserInlineProps) {
+    const cloneClient = useCocClient(workspaceId);
     const responseAcceptedRef = useRef(false);
     const [answers, setAnswers] = useState<Record<string, QuestionState>>(() => initialAnswers(batch, processId));
     const [submitting, setSubmitting] = useState(false);
@@ -249,7 +252,7 @@ export function AskUserInline({ batch, processId, onAnswered }: AskUserInlinePro
     const submitAll = useCallback(async (skipAll = false) => {
         setSubmitting(true);
         try {
-            await getSpaCocClient().processes.askUserResponse(processId, {
+            await cloneClient.processes.askUserResponse(processId, {
                 batchId: batch.batchId,
                 answers: batch.questions.map(question => {
                     const state = answers[question.questionId];
@@ -267,7 +270,7 @@ export function AskUserInline({ batch, processId, onAnswered }: AskUserInlinePro
         } finally {
             setSubmitting(false);
         }
-    }, [answers, batch.batchId, batch.questions, onAnswered, processId]);
+    }, [answers, batch.batchId, batch.questions, onAnswered, processId, cloneClient]);
 
     return (
         <div className="mx-2 my-3 rounded-lg border border-[#0078d4]/30 bg-[#f0f6ff] dark:bg-[#1a2332] p-4 shadow-sm" data-testid="ask-user-inline">

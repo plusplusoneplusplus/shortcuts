@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { cn } from '../../ui';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { isContainerMode, isForEachEnabled, isMapReduceEnabled } from '../../utils/config';
 import { useQueue } from '../../contexts/QueueContext';
 import { useApp } from '../../contexts/AppContext';
@@ -86,6 +86,11 @@ function getActiveProcessIds(tasks: any[]): string[] {
 
 export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
+
+    // Per-clone client (AC-07): the Activity tab's conversation LIST + queue +
+    // group-pins + forEach/mapReduce + pause/resume all load from THIS clone's
+    // server. A local clone resolves to the default origin (unchanged).
+    const cloneClient = useCocClient(workspaceId);
 
     // Seed from per-workspace caches so revisiting a repo renders the sidebar
     // instantly while the freshness fetch runs in the background.
@@ -172,7 +177,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     const selectedTaskRef = useRef<any>(null);
 
     const fetchHistory = useCallback(async (offset = 0) => {
-        const data = await getSpaCocClient().workspaces.history(workspaceId, { limit: 100, offset }).catch(() => null);
+        const data = await cloneClient.workspaces.history(workspaceId, { limit: 100, offset }).catch(() => null);
         const items = (data?.history as ProcessHistoryItem[]) || [];
         const nextHasMore = data?.hasMore ?? false;
         if (offset === 0) {
@@ -186,14 +191,14 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             });
         }
         setHasMore(nextHasMore);
-    }, [workspaceId, queueDispatch]);
+    }, [workspaceId, queueDispatch, cloneClient]);
 
     const fetchQueueAndHistory = useCallback(async () => {
         // In container mode, skip fetch if agent hasn't been resolved yet —
         // the effect will re-fire once currentAgentId is set.
         if (isContainerMode() && !appState.currentAgentId) return;
         try {
-            const client = getSpaCocClient();
+            const client = cloneClient;
             const groupPinsRequest = typeof client.processes.listGroupPins === 'function'
                 ? client.processes.listGroupPins(workspaceId).catch(() => null)
                 : Promise.resolve(null);
@@ -256,7 +261,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             // defensive. Deliberately do NOT clear local lists — keep the cached view.
         }
         setLoading(false);
-    }, [workspaceId, queueDispatch, appState.currentAgentId]);
+    }, [workspaceId, queueDispatch, appState.currentAgentId, cloneClient]);
 
     const fetchQueue = fetchQueueAndHistory;
 
@@ -376,13 +381,13 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
 
         let cancelled = false;
         // selectedTaskId is always a processId; probe /processes/ first, fall back to /queue/
-        const probeProcess = getSpaCocClient().processes.get(selectedTaskId)
+        const probeProcess = cloneClient.processes.get(selectedTaskId)
             .then((data: any) => {
                 if (cancelled) return;
                 if (data?.process) return; // found
                 // Not found as process — try queue with derived bare taskId
                 const bareId = isQueueProcessId(selectedTaskId) ? toTaskId(selectedTaskId) : selectedTaskId;
-                return getSpaCocClient().queue.getTask(bareId).then((qData: any) => {
+                return cloneClient.queue.getTask(bareId).then((qData: any) => {
                     if (cancelled) return;
                     if (!qData?.task) throw new Error('not found');
                 });
@@ -399,7 +404,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             });
         void probeProcess;
         return () => { cancelled = true; };
-    }, [selectedTaskId, running, queued, history, loading, queueDispatch, workspaceId]);
+    }, [selectedTaskId, running, queued, history, loading, queueDispatch, workspaceId, cloneClient]);
 
     // Update selectedTask when lists change
     useEffect(() => {
@@ -550,9 +555,9 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         setIsPauseResumeLoading(true);
         try {
             if (isPaused) {
-                await getSpaCocClient().queue.resume({ repoId: workspaceId });
+                await cloneClient.queue.resume({ repoId: workspaceId });
             } else {
-                await getSpaCocClient().queue.pause({ repoId: workspaceId }, isQueuePauseOptions(options) ? options : undefined);
+                await cloneClient.queue.pause({ repoId: workspaceId }, isQueuePauseOptions(options) ? options : undefined);
             }
             await fetchQueue();
         } finally {
@@ -564,9 +569,9 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         setIsAutopilotPauseLoading(true);
         try {
             if (isAutopilotPaused) {
-                await getSpaCocClient().queue.resumeAutopilot({ repoId: workspaceId });
+                await cloneClient.queue.resumeAutopilot({ repoId: workspaceId });
             } else {
-                await getSpaCocClient().queue.pauseAutopilot({ repoId: workspaceId }, isQueuePauseOptions(options) ? options : undefined);
+                await cloneClient.queue.pauseAutopilot({ repoId: workspaceId }, isQueuePauseOptions(options) ? options : undefined);
             }
             await fetchQueue();
         } finally {
@@ -592,7 +597,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             return pinned ? [{ type, groupId, pinnedAt: nextPinnedAt }, ...remaining] : remaining;
         });
         try {
-            const result = await getSpaCocClient().processes.pinGroup(workspaceId, type, groupId, pinned);
+            const result = await cloneClient.processes.pinGroup(workspaceId, type, groupId, pinned);
             setGroupPins(prev => {
                 const remaining = prev.filter(pin => !(pin.type === type && pin.groupId === groupId));
                 return result.pin ? [result.pin, ...remaining] : remaining;
@@ -600,7 +605,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         } catch {
             setGroupPins(previousPins);
         }
-    }, [groupPins, workspaceId]);
+    }, [groupPins, workspaceId, cloneClient]);
 
     const [selectedRalphSessionId, setSelectedRalphSessionId] = useState<string | null>(null);
     const [selectedRalphFileName, setSelectedRalphFileName] = useState<string | null>(null);

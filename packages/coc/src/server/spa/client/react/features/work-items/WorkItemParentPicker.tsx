@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Dialog } from '../../ui/Dialog';
 import { Button } from '../../ui';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { ALLOWED_PARENT_TYPES } from '@plusplusoneplusplus/coc-client';
 import { TYPE_LABELS } from './WorkItemHierarchyNode';
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
@@ -55,6 +55,7 @@ export function WorkItemParentPicker({
     onParentChanged,
     onlyPick = false,
 }: WorkItemParentPickerProps) {
+    const cloneClient = useCocClient(workspaceId); // AC-07: list/update parent on the selected clone's server.
     const [searchQuery, setSearchQuery] = useState('');
     const [candidates, setCandidates] = useState<ParentCandidate[]>([]);
     const [loading, setLoading] = useState(false);
@@ -71,7 +72,7 @@ export function WorkItemParentPicker({
         try {
             const results: ParentCandidate[] = [];
             for (const parentType of validParentTypes) {
-                const resp = await getSpaCocClient().workItems.list(workspaceId, {
+                const resp = await cloneClient.workItems.list(workspaceId, {
                     type: parentType,
                     q: searchQuery || undefined,
                     limit: 50,
@@ -93,7 +94,7 @@ export function WorkItemParentPicker({
         } finally {
             setLoading(false);
         }
-    }, [workspaceId, itemId, validParentTypes, searchQuery]);
+    }, [workspaceId, itemId, validParentTypes, searchQuery, cloneClient]);
 
     useEffect(() => {
         if (open) {
@@ -120,7 +121,7 @@ export function WorkItemParentPicker({
         setSaving(true);
         setError(null);
         try {
-            await getSpaCocClient().workItems.update(workspaceId, itemId, { parentId: selectedId ?? undefined });
+            await cloneClient.workItems.update(workspaceId, itemId, { parentId: selectedId ?? undefined });
             onParentChanged(selectedId);
             onClose();
         } catch (err: any) {
@@ -134,7 +135,7 @@ export function WorkItemParentPicker({
         setSaving(true);
         setError(null);
         try {
-            await getSpaCocClient().workItems.update(workspaceId, itemId, { parentId: null });
+            await cloneClient.workItems.update(workspaceId, itemId, { parentId: null });
             onParentChanged(null);
             onClose();
         } catch (err: any) {

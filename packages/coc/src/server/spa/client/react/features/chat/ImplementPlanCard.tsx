@@ -8,7 +8,8 @@
  */
 
 import { useState } from 'react';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { isQueueProcessId, toQueueProcessId } from '../../utils/queue-process-id';
 import { formatRelativeTime } from '../../utils/format';
 import { cn } from '../../ui/cn';
@@ -76,6 +77,8 @@ export function ImplementPlanCard({
     sourceMetadata,
     onRecordPersisted,
 }: ImplementPlanCardProps) {
+    // AC-07: enqueue + metadata update target the selected clone's server.
+    const cloneClient = useCocClient(workspaceId);
     const [submitting, setSubmitting] = useState(false);
     const [submitted, setSubmitted] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -90,7 +93,7 @@ export function ImplementPlanCard({
         setSubmitting(true);
         setError(null);
         try {
-            const result = await getSpaCocClient().queue.enqueue({
+            const result = await cloneClient.queue.enqueue({
                 type: 'chat',
                 priority: 'normal',
                 payload: {
@@ -121,7 +124,7 @@ export function ImplementPlanCard({
                     implementations: [...prevImpls, record],
                 };
                 try {
-                    await getSpaCocClient().processes.update(sourceProcessId, { metadata: merged } as any);
+                    await cloneClient.processes.update(sourceProcessId, { metadata: merged } as any);
                     onRecordPersisted?.(record);
                 } catch (persistErr) {
                     console.warn('Failed to persist implementation record:', persistErr);

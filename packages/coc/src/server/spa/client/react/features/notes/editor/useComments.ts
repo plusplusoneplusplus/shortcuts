@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { useCocClient } from '../../../repos/cloneRouting';
 import { notesApi, type CommentThread, type Comment } from '../notesApi';
 import type { TextAnchor } from './textAnchor';
 
@@ -64,6 +64,7 @@ function filterThreads(threads: CommentThread[], filter: CommentFilter): Comment
 
 export function useComments(options: UseCommentsOptions): UseCommentsReturn {
     const { workspaceId, notePath, root, parentProcessId, selectedMode, onThreadSelect } = options;
+    const cloneClient = useCocClient(workspaceId); // AC-07: comment-resolution message routes to the clone's server.
 
     const [allThreads, setAllThreads] = useState<CommentThread[]>([]);
     const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
@@ -81,6 +82,7 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
     const onThreadSelectRef = useRef(onThreadSelect);
     const threadsRef = useRef(allThreads);
     const lastFetchedPathRef = useRef<string | null>(null);
+    const cloneClientRef = useRef(cloneClient);
 
     workspaceIdRef.current = workspaceId;
     notePathRef.current = notePath;
@@ -89,6 +91,7 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
     selectedModeRef.current = selectedMode;
     onThreadSelectRef.current = onThreadSelect;
     threadsRef.current = allThreads;
+    cloneClientRef.current = cloneClient;
 
     const fetchThreads = useCallback(async (targetPath: string) => {
         setLoading(true);
@@ -275,7 +278,7 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
                 });
                 message += `\nThe current document content is provided. Please address each comment and make the necessary changes.`;
 
-                await getSpaCocClient().notes.sendCommentResolutionMessage(ppId, {
+                await cloneClientRef.current.notes.sendCommentResolutionMessage(ppId, {
                     content: message,
                     ...(selectedModeRef.current ? { mode: selectedModeRef.current } : {}),
                     noteContent: documentContent,

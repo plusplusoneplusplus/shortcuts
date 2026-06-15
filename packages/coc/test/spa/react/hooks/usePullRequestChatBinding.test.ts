@@ -78,7 +78,7 @@ describe('usePullRequestChatBinding', () => {
         });
 
         it('uses useEffect with workspaceId+prId dependency', () => {
-            expect(source).toContain('[workspaceId, prId]');
+            expect(source).toContain('[workspaceId, prId, cloneClient]');
         });
     });
 
@@ -97,7 +97,7 @@ describe('usePullRequestChatBinding', () => {
         it('resets taskId to null on prId change', () => {
             const effectBlock = source.substring(
                 source.indexOf('useEffect(() => {'),
-                source.indexOf('[workspaceId, prId]') + 50,
+                source.indexOf('[workspaceId, prId, cloneClient]') + 50,
             );
             expect(effectBlock).toContain('setTaskId(null)');
             expect(effectBlock).toContain('setLoading(true)');

@@ -11,7 +11,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { Badge, Spinner } from '../../ui';
 import { ConversationArea } from '../chat/ConversationArea';
 import { ConversationMiniMap } from '../chat/conversation/ConversationMiniMap';
@@ -29,6 +29,8 @@ export interface WorkItemExecutionSessionProps {
 }
 
 export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkItemExecutionSessionProps) {
+    // AC-07: the work-item execution session reads its process/turns from the clone.
+    const cloneClient = useCocClient(workspaceId);
     const [task, setTask] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [turns, setTurns] = useState<ClientConversationTurn[]>([]);
@@ -56,7 +58,7 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
 
     const refreshConversation = useCallback(async (pid: string) => {
         try {
-            const data = await getSpaCocClient().processes.get(pid);
+            const data = await cloneClient.processes.get(pid);
             setProcessDetails(data?.process ?? null);
             const refreshedTurns = getConversationTurns(data);
             // Preserve client-only costTimeMs across server refresh
@@ -74,7 +76,7 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
                 });
             });
         } catch { /* keep current turns on error */ }
-    }, [setTurnsAndRef]);
+    }, [setTurnsAndRef, cloneClient]);
 
     // Load task and conversation on mount / taskId change
     useEffect(() => {
@@ -89,7 +91,7 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
 
         (async () => {
             try {
-                const queueData = await getSpaCocClient().queue.getTask(taskId);
+                const queueData = await cloneClient.queue.getTask(taskId);
                 if (cancelled) return;
                 const loadedTask = queueData?.task ?? null;
                 setTask(loadedTask);
@@ -105,7 +107,7 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
                 }
 
                 const pid = loadedTask.processId ?? `queue_${taskId}`;
-                const procData = await getSpaCocClient().processes.get(pid);
+                const procData = await cloneClient.processes.get(pid);
                 if (cancelled) return;
 
                 setProcessDetails(procData?.process ?? null);
@@ -130,27 +132,27 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
         })();
 
         return () => { cancelled = true; };
-    }, [taskId, setTurnsAndRef]);
+    }, [taskId, setTurnsAndRef, cloneClient]);
 
     // Fetch resolved prompt while task is queued
     useEffect(() => {
         if (!isPending || !taskId) return;
-        getSpaCocClient().queue.resolvedPrompt(taskId)
+        cloneClient.queue.resolvedPrompt(taskId)
             .then((data: any) => { if (data) setResolvedPrompt(data); })
             .catch(() => { /* non-fatal */ });
-    }, [taskId, isPending]);
+    }, [taskId, isPending, cloneClient]);
 
     // Derive queue position while task is queued
     useEffect(() => {
         if (!isPending) { setQueuePosition(null); return; }
-        getSpaCocClient().queue.list()
+        cloneClient.queue.list()
             .then((data: any) => {
                 const queued: any[] = data?.queued ?? [];
                 const idx = queued.findIndex((t: any) => t.id === taskId);
                 setQueuePosition(idx >= 0 ? idx + 1 : null);
             })
             .catch(() => { /* non-fatal */ });
-    }, [taskId, isPending]);
+    }, [taskId, isPending, cloneClient]);
 
     // Track scroll position for the "scroll to bottom" button
     useEffect(() => {
@@ -203,13 +205,13 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
     const handleDeleteTurn = useCallback((turnIndex: number) => {
         if (!processId) return;
         setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: new Date().toISOString() } : t));
-        getSpaCocClient().request(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}`, { method: 'DELETE' }).catch(() => {
+        cloneClient.request(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}`, { method: 'DELETE' }).catch(() => {
             setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: undefined } : t));
         });
         if (undoDelete) clearTimeout(undoDelete.timer);
         const timer = setTimeout(() => setUndoDelete(null), 5000);
         setUndoDelete({ turnIndex, timer });
-    }, [processId, undoDelete]);
+    }, [processId, undoDelete, cloneClient]);
 
     const handleUndoDelete = useCallback(() => {
         if (!undoDelete || !processId) return;
@@ -217,11 +219,11 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
         const { turnIndex } = undoDelete;
         setUndoDelete(null);
         setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: undefined } : t));
-        getSpaCocClient().request(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}/restore`, {
+        cloneClient.request(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}/restore`, {
             method: 'PATCH',
             body: {},
         }).catch(() => {});
-    }, [undoDelete, processId]);
+    }, [undoDelete, processId, cloneClient]);
 
     const handlePinTurn = useCallback((turnIndex: number, pinned: boolean) => {
         if (!processId) return;
@@ -230,7 +232,7 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
                 ? { ...t, pinnedAt: pinned ? new Date().toISOString() : undefined, archived: pinned ? false : t.archived }
                 : t
         ));
-        getSpaCocClient().request(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}/pin`, {
+        cloneClient.request(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}/pin`, {
             method: 'PATCH',
             body: { pinned },
         }).catch(() => {
@@ -240,14 +242,14 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
                     : t
             ));
         });
-    }, [processId]);
+    }, [processId, cloneClient]);
 
     const handleArchiveTurn = useCallback((turnIndex: number, archived: boolean) => {
         if (!processId) return;
         setTurns(prev => prev.map(t =>
             t.turnIndex === turnIndex ? { ...t, archived } : t
         ));
-        getSpaCocClient().request(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}/archive`, {
+        cloneClient.request(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}/archive`, {
             method: 'PATCH',
             body: { archived },
         }).catch(() => {
@@ -255,7 +257,7 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
                 t.turnIndex === turnIndex ? { ...t, archived: !archived } : t
             ));
         });
-    }, [processId]);
+    }, [processId, cloneClient]);
 
     // ── Derived display values ──────────────────────────────────────────────
     const statusLabel =

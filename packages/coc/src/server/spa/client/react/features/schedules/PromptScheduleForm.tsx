@@ -9,6 +9,7 @@ import { useState, useEffect } from 'react';
 import { Button, cn } from '../../ui';
 import { SegmentedControl } from '../../ui/SegmentedControl';
 import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { getActiveProvider } from '../../utils/config';
 import { ScheduleTriggerPanel } from './ScheduleTriggerPanel';
 import {
@@ -57,6 +58,8 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
     scheduleId?: string;
     initialValues?: PromptScheduleFormValues;
 }) {
+    // AC-07: schedule create/update/disable target the selected clone's server.
+    const cloneClient = useCocClient(workspaceId);
     // Infer preset from existing cron on edit
     const inferred = initialValues?.cron ? inferPresetFromCron(initialValues.cron) : null;
 
@@ -154,11 +157,11 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
                 mode: chatMode,
             };
             if (formMode === 'edit' && scheduleId) {
-                await getSpaCocClient().schedules.update(workspaceId, scheduleId, payload);
+                await cloneClient.schedules.update(workspaceId, scheduleId, payload);
             } else {
-                const result = await getSpaCocClient().schedules.create(workspaceId, payload);
+                const result = await cloneClient.schedules.create(workspaceId, payload);
                 if (shouldPause && result?.id) {
-                    try { await getSpaCocClient().schedules.disable(workspaceId, result.id); } catch { /* best effort */ }
+                    try { await cloneClient.schedules.disable(workspaceId, result.id); } catch { /* best effort */ }
                 }
             }
             onCreated();

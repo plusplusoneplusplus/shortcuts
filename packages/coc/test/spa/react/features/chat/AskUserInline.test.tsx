@@ -508,7 +508,8 @@ describe('AskUserInline', () => {
             'utf-8',
         );
         expect(source).not.toMatch(/\bfetch\s*\(/);
-        expect(source).toContain('getSpaCocClient');
+        // AC-07: routes the ask_user reply through the clone-aware typed client.
+        expect(source).toContain('useCocClient');
     });
 
     describe('markdown rendering', () => {

@@ -1789,6 +1789,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         pendingAskUserBatch={pendingAskUserBatch}
                         ralphGrillPlanningProgress={ralphGrillPlanningProgress}
                         onAskUserAnswered={() => setPendingAskUserBatch(null)}
+                        workspaceId={workspaceId}
                         isScrolledUp={isScrolledUp}
                         scrollRef={conversationContainerRef}
                         turnsContainerRef={turnsContainerRef}

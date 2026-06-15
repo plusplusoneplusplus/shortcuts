@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ForEachItem, ForEachItemStatus, ForEachRun, ForEachRunStatus } from '@plusplusoneplusplus/coc-client';
 import { cn } from '../../ui/cn';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { formatRelativeTime } from '../../utils/format';
 
 export interface ForEachRunPaneProps {
@@ -66,20 +67,22 @@ function promptPreview(item: ForEachItem): string {
 }
 
 export function ForEachRunPane({ workspaceId, runId, onClose, onSelectGenerationProcess, onSelectChildProcess }: ForEachRunPaneProps) {
+    // AC-07: For Each run data + actions target the selected clone's server.
+    const cloneClient = useCocClient(workspaceId);
     const [run, setRun] = useState<ForEachRun | null | undefined>(undefined);
     const [busyAction, setBusyAction] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     const refresh = useCallback(async () => {
         try {
-            const nextRun = await getSpaCocClient().forEach.get(workspaceId, runId);
+            const nextRun = await cloneClient.forEach.get(workspaceId, runId);
             setRun(nextRun);
             setError(null);
         } catch (err) {
             setRun(null);
             setError(getSpaCocClientErrorMessage(err, 'Failed to load For Each run'));
         }
-    }, [workspaceId, runId]);
+    }, [workspaceId, runId, cloneClient]);
 
     useEffect(() => {
         setRun(undefined);
@@ -121,9 +124,9 @@ export function ForEachRunPane({ workspaceId, runId, onClose, onSelectGeneration
     const cancelEnabled = canCancel(run);
     const startOrContinue = () => {
         if (run.status === 'approved') {
-            return getSpaCocClient().forEach.start(workspaceId, run.runId);
+            return cloneClient.forEach.start(workspaceId, run.runId);
         }
-        return getSpaCocClient().forEach.continue(workspaceId, run.runId);
+        return cloneClient.forEach.continue(workspaceId, run.runId);
     };
     const generationProcessId = run.generationProcessId;
 
@@ -168,7 +171,7 @@ export function ForEachRunPane({ workspaceId, runId, onClose, onSelectGeneration
                     </button>
                     <button
                         type="button"
-                        onClick={() => runAction('cancel', () => getSpaCocClient().forEach.cancel(workspaceId, run.runId))}
+                        onClick={() => runAction('cancel', () => cloneClient.forEach.cancel(workspaceId, run.runId))}
                         disabled={!cancelEnabled || busyAction !== null}
                         data-testid="for-each-cancel-btn"
                         className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
@@ -234,8 +237,8 @@ export function ForEachRunPane({ workspaceId, runId, onClose, onSelectGeneration
                                     item={item}
                                     busyAction={busyAction}
                                     onSelectChildProcess={onSelectChildProcess}
-                                    onRetry={() => runAction(`retry:${item.id}`, () => getSpaCocClient().forEach.retryItem(workspaceId, run.runId, item.id))}
-                                    onSkip={() => runAction(`skip:${item.id}`, () => getSpaCocClient().forEach.skipItem(workspaceId, run.runId, item.id))}
+                                    onRetry={() => runAction(`retry:${item.id}`, () => cloneClient.forEach.retryItem(workspaceId, run.runId, item.id))}
+                                    onSkip={() => runAction(`skip:${item.id}`, () => cloneClient.forEach.skipItem(workspaceId, run.runId, item.id))}
                                 />
                             ))}
                         </tbody>

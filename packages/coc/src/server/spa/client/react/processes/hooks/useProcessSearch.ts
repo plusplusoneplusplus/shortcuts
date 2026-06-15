@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { CocNetworkError } from '@plusplusoneplusplus/coc-client';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 
 export interface ProcessSearchResult {
     processId: string;
@@ -83,8 +83,12 @@ export function useProcessSearch(
     const queryRef = useRef(query);
     queryRef.current = query;
 
+    // Route a single-workspace search to that clone's server (AC-07); an
+    // all-workspace search ('__all'/undefined) resolves to the default client.
+    const client = useCocClient(workspace);
+
     const executeSearch = useCallback(async (q: string, signal: AbortSignal, offset = 0) => {
-        return getSpaCocClient().processes.search({
+        return client.processes.search({
             q,
             ...(workspace && workspace !== '__all' ? { workspace } : {}),
             ...(statusFilter && statusFilter !== '__all' ? { status: statusFilter } : {}),
@@ -92,7 +96,7 @@ export function useProcessSearch(
             limit,
             ...(offset > 0 ? { offset } : {}),
         }, { signal });
-    }, [workspace, statusFilter, typeFilter, limit]);
+    }, [client, workspace, statusFilter, typeFilter, limit]);
 
     useEffect(() => {
         // Clear debounce on every query/filter change

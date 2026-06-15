@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dialog } from '../../ui/Dialog';
 import { Button, Spinner } from '../../ui';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import type { WorkItem, WorkItemAiClarificationResponse } from '@plusplusoneplusplus/coc-client';
 
 type DraftPhase = 'idle' | 'generating' | 'clarifying' | 'failed';
@@ -45,6 +46,7 @@ function isAbortError(error: unknown): boolean {
 }
 
 export function WorkItemAiDraftApplyDialog({ open, workspaceId, item, onClose, onApplied }: WorkItemAiDraftApplyDialogProps) {
+    const cloneClient = useCocClient(workspaceId); // AC-07: apply AI draft on the selected clone's server.
     const [phase, setPhase] = useState<DraftPhase>('idle');
     const [questions, setQuestions] = useState<string[]>([]);
     const [answers, setAnswers] = useState<string[]>([]);
@@ -67,7 +69,7 @@ export function WorkItemAiDraftApplyDialog({ open, workspaceId, item, onClose, o
             const effectiveClarificationCount = options.forceDraft
                 ? MAX_CLARIFICATION_ROUNDS
                 : options.clarificationCount ?? clarificationCount;
-            const response = await getSpaCocClient().workItems.applyAiDraft(
+            const response = await cloneClient.workItems.applyAiDraft(
                 workspaceId,
                 item.id,
                 {
@@ -104,7 +106,7 @@ export function WorkItemAiDraftApplyDialog({ open, workspaceId, item, onClose, o
                 abortRef.current = null;
             }
         }
-    }, [clarificationCount, isRevision, item, onApplied, onClose, prompt, workspaceId]);
+    }, [clarificationCount, isRevision, item, onApplied, onClose, prompt, workspaceId, cloneClient]);
 
     useEffect(() => {
         if (!open) return;

@@ -252,8 +252,9 @@ describe('ChatListPane pinned chats', () => {
         });
 
         it('deletes chat history through the typed client', () => {
-            expect(source).toContain('getSpaCocClient().workspaces.deleteHistory');
-            expect(source).toContain('getSpaCocClient().queue.deleteHistoryEntry');
+            // AC-07: ChatListPane routes through the clone-aware client (useCocClient).
+            expect(source).toContain('cloneClient.workspaces.deleteHistory');
+            expect(source).toContain('cloneClient.queue.deleteHistoryEntry');
         });
 
         it('shows a confirmation before deleting', () => {
@@ -506,7 +507,7 @@ describe('ChatListPane pinned chats', () => {
                 const dialogIdx = source.indexOf('<SummarizeChatDialog');
                 expect(dialogIdx).toBeGreaterThan(-1);
                 const block = source.substring(dialogIdx, dialogIdx + 1500);
-                expect(block).toContain('getSpaCocClient().queue.summarize');
+                expect(block).toContain('cloneClient.queue.summarize');
             });
 
             it('summarize sends processIds and workspaceId in body', () => {
@@ -557,7 +558,7 @@ describe('ChatListPane pinned chats', () => {
                 const dialogIdx = source.indexOf('<SummarizeChatDialog');
                 expect(dialogIdx).toBeGreaterThan(-1);
                 const block = source.substring(dialogIdx, dialogIdx + 1500);
-                expect(block).toContain('getSpaCocClient().queue.summarize');
+                expect(block).toContain('cloneClient.queue.summarize');
             });
 
             it('summarize calls closeContextMenu before fetch', () => {

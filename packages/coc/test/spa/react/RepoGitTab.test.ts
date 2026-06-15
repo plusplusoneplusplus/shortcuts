@@ -43,7 +43,9 @@ describe('RepoGitTab', () => {
         });
 
         it('imports typed CoC client', () => {
-            expect(source).toContain("import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient'");
+            // AC-07: routes Git tab data through the clone-aware client (useCocClient).
+            expect(source).toContain("import { getSpaCocClientErrorMessage } from '../../api/cocClient'");
+            expect(source).toContain("import { useCocClient } from '../../repos/cloneRouting'");
         });
 
         it('fetches branch-range data', () => {
@@ -254,16 +256,16 @@ describe('RepoGitTab', () => {
         });
 
         it('delegates Content-Type handling to typed client', () => {
-            expect(source).toContain('getSpaCocClient().git.pull');
+            expect(source).toContain('cloneClient.git.pull');
         });
 
         it('all action handlers use typed git methods', () => {
             const fetchBlock = source.match(/handleFetch[\s\S]*?(?=const handlePull)/);
             const pullBlock = source.match(/handlePull[\s\S]*?(?=const handlePush)/);
             const pushBlock = source.match(/handlePush[\s\S]*?(?=const handleSelect)/);
-            expect(fetchBlock![0]).toContain('getSpaCocClient().git.fetch');
-            expect(pullBlock![0]).toContain('getSpaCocClient().git.pull');
-            expect(pushBlock![0]).toContain('getSpaCocClient().git.push');
+            expect(fetchBlock![0]).toContain('cloneClient.git.fetch');
+            expect(pullBlock![0]).toContain('cloneClient.git.pull');
+            expect(pushBlock![0]).toContain('cloneClient.git.push');
         });
 
         it('handleFetch guards against concurrent calls', () => {
@@ -968,7 +970,9 @@ describe('RepoGitTab', () => {
         });
 
         it('imports typed CoC client utility', () => {
-            expect(source).toContain("import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient'");
+            // AC-07: routes Git tab data through the clone-aware client (useCocClient).
+            expect(source).toContain("import { getSpaCocClientErrorMessage } from '../../api/cocClient'");
+            expect(source).toContain("import { useCocClient } from '../../repos/cloneRouting'");
         });
 
         it('imports useMemo from react', () => {
@@ -1134,7 +1138,7 @@ describe('RepoGitTab', () => {
         });
 
         it('handleConfirmSkillRun enqueues through typed queue client', () => {
-            expect(source).toContain('getSpaCocClient().queue.enqueue');
+            expect(source).toContain('cloneClient.queue.enqueue');
         });
 
         it('handleConfirmSkillRun appends user context to prompt when non-empty', () => {

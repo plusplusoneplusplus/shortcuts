@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Button, cn } from '../../ui';
 import { fetchApi } from '../../hooks/useApi';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { formatRelativeTime } from '../../utils/format';
 import { WorkItemPlanSection, PLAN_MODE_OPTIONS } from './WorkItemPlanSection';
 import type { PlanViewMode } from './WorkItemPlanSection';
@@ -313,6 +313,8 @@ function ConflictValueCard({ label, value, selected, onSelect }: { label: string
 }
 
 export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, onViewTask, onViewCommit, onNavigateToTasksTab }: WorkItemDetailProps) {
+    // AC-07: all work-item detail reads/writes target the selected clone's server.
+    const cloneClient = useCocClient(workspaceId);
     const [item, setItem] = useState<WorkItemFull | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -383,7 +385,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         setLoading(true);
         setError(null);
         try {
-            const data = await getSpaCocClient().workItems.get(requestedWorkspaceId, requestedWorkItemId);
+            const data = await cloneClient.workItems.get(requestedWorkspaceId, requestedWorkItemId);
             const current = currentSelectionRef.current;
             if (
                 requestSeq !== fetchRequestSeqRef.current ||
@@ -413,7 +415,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                 setLoading(false);
             }
         }
-    }, [workspaceId, workItemId]);
+    }, [workspaceId, workItemId, cloneClient]);
 
     useEffect(() => { fetchItem(); }, [fetchItem]);
 
@@ -524,7 +526,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const handleAcceptDone = async () => {
         setAcceptingDone(true);
         try {
-            await getSpaCocClient().workItems.updateStatus(workspaceId, workItemId, 'done', { completedAt: new Date().toISOString() });
+            await cloneClient.workItems.updateStatus(workspaceId, workItemId, 'done', { completedAt: new Date().toISOString() });
             await fetchItem();
         } catch (err: any) {
             setError(err.message || 'Failed to accept');
@@ -541,7 +543,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         }
         setRequestingChanges(true);
         try {
-            await getSpaCocClient().workItems.requestChanges(workspaceId, workItemId, { comments });
+            await cloneClient.workItems.requestChanges(workspaceId, workItemId, { comments });
             setReviewComment('');
             await fetchItem();
         } catch (err: any) {
@@ -556,7 +558,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         setSubmittingPr(true);
         setError(null);
         try {
-            await getSpaCocClient().workItems.submitPullRequest(workspaceId, workItemId, {
+            await cloneClient.workItems.submitPullRequest(workspaceId, workItemId, {
                 changeId: latestReviewChange.id,
             });
             await fetchItem();
@@ -572,7 +574,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         setStartingAiReview(true);
         setError(null);
         try {
-            const result = await getSpaCocClient().workItems.startAiReview(workspaceId, workItemId);
+            const result = await cloneClient.workItems.startAiReview(workspaceId, workItemId);
             if (result.workItem) {
                 dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item: result.workItem as any });
             }
@@ -622,7 +624,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
             );
 
             // Call request-changes with diff-comments source
-            await getSpaCocClient().workItems.requestChanges(workspaceId, workItemId, { comments: formatted, source: 'diff-comments' });
+            await cloneClient.workItems.requestChanges(workspaceId, workItemId, { comments: formatted, source: 'diff-comments' });
 
             // Batch-resolve the open diff comments
             await Promise.all(
@@ -645,7 +647,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         if (!item) return;
         setResolvingCommitSha(sha);
         try {
-            const result = await getSpaCocClient().workItems.resolveComments(workspaceId, workItemId, {
+            const result = await cloneClient.workItems.resolveComments(workspaceId, workItemId, {
                 type: 'commit',
                 commitSha: sha,
                 ...(sourceRunIndex != null ? { sourceRunIndex } : {}),
@@ -670,7 +672,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
             for (const commit of commits) {
                 const ct = commentTotals.get(commit.sha);
                 if (!ct || ct.open === 0) continue;
-                await getSpaCocClient().workItems.resolveComments(workspaceId, workItemId, {
+                await cloneClient.workItems.resolveComments(workspaceId, workItemId, {
                     type: 'commit',
                     commitSha: commit.sha,
                     sourceRunIndex,
@@ -722,7 +724,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
 
             let updated: WorkItemFull = item;
             if (Object.keys(updates).length > 0) {
-                updated = await getSpaCocClient().workItems.update(workspaceId, workItemId, updates) as any;
+                updated = await cloneClient.workItems.update(workspaceId, workItemId, updates) as any;
             }
             setDraft(draftToSave);
             setSyncConflict(null);
@@ -741,7 +743,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         } finally {
             setSaving(false);
         }
-    }, [item, planDraft, workspaceId, workItemId, dispatch, fetchItem]);
+    }, [item, planDraft, workspaceId, workItemId, dispatch, fetchItem, cloneClient]);
 
     const handleSave = useCallback(async () => {
         if (!draft) return;
@@ -851,7 +853,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         setError(null);
         try {
             const sessionId = createRalphSessionId();
-            const result = await getSpaCocClient().queue.enqueue({
+            const result = await cloneClient.queue.enqueue({
                 type: 'chat',
                 priority: 'normal',
                 payload: {
@@ -884,8 +886,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
             const taskId = result.task?.id ?? (result as { id?: string }).id;
             if (!taskId) throw new Error('Failed to create Goal grilling chat task');
 
-            await getSpaCocClient().workItems.createChatBinding(workspaceId, workItemId, taskId);
-            await getSpaCocClient().workItems.update(workspaceId, workItemId, {
+            await cloneClient.workItems.createChatBinding(workspaceId, workItemId, taskId);
+            await cloneClient.workItems.update(workspaceId, workItemId, {
                 grillSessionId: ensureQueueProcessId(taskId),
                 ...(item.status === 'created' ? { status: 'drafting' } : {}),
             });
@@ -896,7 +898,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         } finally {
             setStartingGoalGrilling(false);
         }
-    }, [fetchItem, item, openWorkItemChat, workItemId, workspaceId]);
+    }, [fetchItem, item, openWorkItemChat, workItemId, workspaceId, cloneClient]);
 
     if (loading) {
         return <div className="flex items-center justify-center h-full text-sm text-[#848484]">Loading…</div>;
@@ -1154,7 +1156,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                 checked={item.autoExecute ?? false}
                                 onChange={async (e) => {
                                     try {
-                                        await getSpaCocClient().workItems.update(workspaceId, workItemId, { autoExecute: e.target.checked });
+                                        await cloneClient.workItems.update(workspaceId, workItemId, { autoExecute: e.target.checked });
                                         await fetchItem();
                                     } catch (err: any) {
                                         setError(err.message || 'Failed to update');
@@ -1249,7 +1251,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             type="button"
                             onClick={async () => {
                                 if (confirm('Delete this work item?')) {
-                                    await getSpaCocClient().workItems.delete(workspaceId, workItemId);
+                                    await cloneClient.workItems.delete(workspaceId, workItemId);
                                     closeWorkItemChat();
                                     onBack?.();
                                 }
