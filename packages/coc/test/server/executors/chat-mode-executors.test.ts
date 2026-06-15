@@ -22,6 +22,7 @@ import { modelMetadataStore, READ_ONLY_SYSTEM_MESSAGE } from '@plusplusonepluspl
 import { ChatExecutor } from '../../../src/server/executors/chat-executor';
 import { AutopilotExecutor } from '../../../src/server/executors/autopilot-executor';
 import { ClassificationExecutor } from '../../../src/server/executors/classification-executor';
+import { SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE } from '../../../src/server/executors/prompt-builder';
 import type { ChatModeExecutorOptions } from '../../../src/server/executors/chat-base-executor';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
@@ -231,6 +232,36 @@ describe('ChatBaseExecutor provider routing', () => {
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         expect(call).not.toHaveProperty('model');
     });
+
+    it.each(['copilot', 'claude'] as const)('adds source-location Markdown-link instructions for %s chats', async (provider) => {
+        const resolveAiServiceForProvider = vi.fn().mockReturnValue(sdkMocks.service as any);
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            provider: 'codex',
+            resolveAiServiceForProvider,
+        }));
+        const task = makeChatTask('ask', `task-source-link-${provider}`);
+        task.payload = { ...(task.payload as any), provider } as any;
+
+        await executor.execute(task, 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.systemMessage?.content).toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
+    });
+
+    it('omits source-location Markdown-link instructions for Codex chats', async () => {
+        const resolveAiServiceForProvider = vi.fn().mockReturnValue(sdkMocks.service as any);
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            provider: 'copilot',
+            resolveAiServiceForProvider,
+        }));
+        const task = makeChatTask('ask', 'task-source-link-codex');
+        task.payload = { ...(task.payload as any), provider: 'codex' } as any;
+
+        await executor.execute(task, 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.systemMessage?.content).not.toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
+    });
 });
 
 // ============================================================================
@@ -256,7 +287,7 @@ const executors: ExecutorFactory[] = [
     {
         label: 'AutopilotExecutor (autopilot)',
         expectedAgentMode: 'autopilot',
-        expectsSystemMessage: false,
+        expectsSystemMessage: true,
         makeExecutor: (store, overrides) => new AutopilotExecutor(store, makeOptions(store, overrides)),
         makeTask: (id) => makeChatTask('autopilot', id),
     },
@@ -308,7 +339,12 @@ for (const { label, expectedAgentMode, expectsSystemMessage, makeExecutor, makeT
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
             if (expectsSystemMessage) {
                 expect(call.systemMessage).toBeDefined();
-                expect(call.systemMessage.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+                if (expectedAgentMode === 'interactive') {
+                    expect(call.systemMessage.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+                } else {
+                    expect(call.systemMessage.content).not.toContain(READ_ONLY_SYSTEM_MESSAGE);
+                    expect(call.systemMessage.content).toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
+                }
             } else {
                 expect(call.systemMessage).toBeUndefined();
             }
@@ -427,7 +463,9 @@ describe('ChatExecutor system message content', () => {
         await executor.execute(task, 'Hi');
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(call.systemMessage?.content).toBe(READ_ONLY_SYSTEM_MESSAGE);
+        expect(call.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+        expect(call.systemMessage?.content).toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
+        expect(call.systemMessage?.content).not.toContain('<chosen-folder>');
     });
 
     it('injects note-file permission block when payload has noteChat.notePath', async () => {
@@ -588,12 +626,13 @@ describe('ChatExecutor system prompt persistence', () => {
         });
     });
 
-    it('does not persist system prompt when system message is absent (autopilot)', async () => {
-        const executor = new AutopilotExecutor(store, makeOptions(store));
+    it('does not persist system prompt when system message is absent (Codex autopilot)', async () => {
+        const executor = new AutopilotExecutor(store, makeOptions(store, { provider: 'codex' }));
         const task = makeChatTask('autopilot', 'task-no-sysprompt');
+        task.payload = { ...(task.payload as any), provider: 'codex' } as any;
         const processId = `queue_${task.id}`;
 
-        // Pre-add the process (autopilot has no system message, so persistence should not trigger)
+        // Pre-add the process (Codex autopilot has no system message, so persistence should not trigger)
         await store.addProcess({
             id: processId, type: 'chat', status: 'running',
             startTime: new Date(), promptPreview: 'Hello',
@@ -614,7 +653,7 @@ describe('ChatExecutor system prompt persistence', () => {
     });
 });
 
-describe('AutopilotExecutor has no system message', () => {
+describe('AutopilotExecutor system message', () => {
     let store: ReturnType<typeof createMockProcessStore>;
 
     beforeEach(() => {
@@ -624,7 +663,7 @@ describe('AutopilotExecutor has no system message', () => {
         sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1' });
     });
 
-    it('passes undefined systemMessage even with workingDirectory', async () => {
+    it('passes source-location instructions without read-only mode for Copilot', async () => {
         const executor = new AutopilotExecutor(store, makeOptions(store));
         const task: QueuedTask = {
             id: 'task-auto-wd',
@@ -640,7 +679,8 @@ describe('AutopilotExecutor has no system message', () => {
         await executor.execute(task, 'Do it');
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(call.systemMessage).toBeUndefined();
+        expect(call.systemMessage?.content).toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
+        expect(call.systemMessage?.content).not.toContain(READ_ONLY_SYSTEM_MESSAGE);
     });
 });
 

@@ -41,7 +41,7 @@ import { createCancelLoopTool, createCreateLoopTool, createListLoopsTool, create
 import { createSearchConversationsTool } from '../llm-tools/search-conversations-tool';
 import { createSuggestFollowUpsTool } from '../llm-tools/suggest-follow-ups-tool';
 import { createTavilyWebSearchTool } from '../llm-tools/tavily-web-search-tool';
-import type { ChatMode, ChatPayload, DreamRunPayload, ForEachGenerationContext, MapReduceGenerationContext, PrClassificationPayload, RunScriptPayload } from '../tasks/task-types';
+import type { ChatMode, ChatPayload, ChatProvider, DreamRunPayload, ForEachGenerationContext, MapReduceGenerationContext, PrClassificationPayload, RunScriptPayload } from '../tasks/task-types';
 import {
     hasCommitChatContext,
     hasPullRequestChatContext,
@@ -83,6 +83,21 @@ export function buildModeSystemMessage(
         return undefined;
     }
     return { mode: 'append' as const, content: READ_ONLY_SYSTEM_MESSAGE };
+}
+
+export const SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE = `\
+When citing source code locations, format each location as a Markdown link.
+
+Use:
+- [src/file.ts:42](src/file.ts:42)
+- [src/file.ts:42-58](src/file.ts:42-58)`;
+
+export function buildSourceLocationMarkdownLinkSystemMessage(
+    provider: ChatProvider | undefined,
+): SystemMessageConfig | undefined {
+    return provider === 'copilot' || provider === 'claude'
+        ? { mode: 'append' as const, content: SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE }
+        : undefined;
 }
 
 export function buildForEachGenerationSystemMessage(

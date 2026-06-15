@@ -13,6 +13,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
 import { READ_ONLY_SYSTEM_MESSAGE } from '@plusplusoneplusplus/forge';
 import { CommitChatExecutor } from '../../../src/server/executors/commit-chat-executor';
+import { SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE } from '../../../src/server/executors/prompt-builder';
 import type { ChatModeExecutorOptions } from '../../../src/server/executors/chat-base-executor';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
@@ -166,6 +167,7 @@ describe('CommitChatExecutor', () => {
             const callArgs = sdkMocks.service.sendMessage.mock.calls[0][0];
             expect(callArgs.systemMessage).toBeDefined();
             expect(callArgs.systemMessage.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+            expect(callArgs.systemMessage.content).toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
         });
 
         it('injects add_diff_comment tool when context is complete', async () => {

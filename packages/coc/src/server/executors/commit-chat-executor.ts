@@ -32,6 +32,7 @@ import {
     buildSearchConversationsAddon,
     buildTavilyWebSearchAddon,
     applyLlmToolPreferences,
+    buildSourceLocationMarkdownLinkSystemMessage,
 } from './prompt-builder';
 import { systemMessageBuilder } from './system-message-builder';
 import { readEffectiveDisabledLlmTools } from '../preferences-handler';
@@ -119,6 +120,7 @@ export class CommitChatExecutor extends ChatBaseExecutor {
         const systemMessage = await systemMessageBuilder()
             .append(buildModeSystemMessage('ask')?.content)
             .withRepoInstructions(workingDirectory, 'ask')
+            .append(buildSourceLocationMarkdownLinkSystemMessage(payload.provider ?? this.provider)?.content)
             .appendToolGuidance(toolGuidance)
             .appendAutoFolder(autoFolderContext)
             .build();

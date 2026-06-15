@@ -24,6 +24,7 @@ import type { ChatPayload } from '../tasks/task-types';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 import { buildChatTurnContext } from './chat-turn-context-builder';
+import { buildSourceLocationMarkdownLinkSystemMessage } from './prompt-builder';
 
 // ============================================================================
 // AutopilotExecutor
@@ -69,6 +70,7 @@ export class AutopilotExecutor extends ChatBaseExecutor {
         });
 
         const systemMessage = await systemMessageBuilder()
+            .append(buildSourceLocationMarkdownLinkSystemMessage(payload.provider ?? this.provider)?.content)
             .appendToolGuidance(ctx.toolGuidance)
             .build();
 
