@@ -27,7 +27,7 @@ import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { useRepoQueueStats, isHidden as isHiddenTask } from '../../queue/hooks/useRepoQueueStats';
 import { useGitInfo } from '../git/hooks/useGitInfo';
 import { computeVisibleSubTabs, type SubTabDef } from '../repo-detail/repoSubTabs';
-import { groupReposByRemote, truncatePath } from '../../repos/repoGrouping';
+import { groupReposByRemote, isRemoteRepo, truncatePath } from '../../repos/repoGrouping';
 import {
     partitionShellTabs, computeCloneStatusMap, cloneStatusColor, summarizeRemote, computeVisibleTabKeys,
 } from './shellModel';
@@ -83,6 +83,11 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
         return groups.find(g => g.repos.some(r => String(r.workspace.id) === cloneId)) ?? null;
     }, [repos, cloneId]);
     const clones = group?.repos ?? [repo];
+    // Index of the first LOCAL clone (clones are sorted local-first by
+    // groupReposByRemote). -1 ⇒ a remote-only group, whose first remote row is
+    // then the primary entry. Drives the PRIMARY marker so an aggregated remote
+    // clone never displaces a local primary.
+    const primaryIdx = clones.findIndex(c => !isRemoteRepo(c));
     const cloneStatus = useMemo(
         () => computeCloneStatusMap(repos, queueState.repoQueueMap, isHiddenTask),
         [repos, queueState.repoQueueMap],
@@ -257,10 +262,20 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                             const cid = String(c.workspace.id);
                             const isSel = cid === cloneId;
                             const st = cloneStatus[cid];
+                            const isRemote = isRemoteRepo(c);
+                            // Anchor PRIMARY on the first LOCAL clone; clones are sorted
+                            // local-first so that's the first non-remote row. A remote-only
+                            // group has no local clone (primaryIdx === -1) — its first
+                            // remote row is then the sole/primary entry.
+                            const isPrimary = primaryIdx >= 0 ? i === primaryIdx : i === 0;
+                            const serverLabel = isRemote
+                                ? String((c.workspace as { remote?: { serverLabel?: unknown } }).remote?.serverLabel ?? 'remote')
+                                : null;
                             return (
                                 <button
                                     key={cid}
                                     data-testid="clone-popover-item"
+                                    data-remote={isRemote ? 'true' : 'false'}
                                     role="menuitem"
                                     onClick={() => { selectClone(cid); setCloneOpen(false); }}
                                     className={
@@ -272,7 +287,16 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                                     <span className="flex-1 min-w-0">
                                         <span className="flex items-center gap-1.5">
                                             <span className={'text-[12.5px] font-semibold truncate ' + (isSel ? 'text-[#0969da] dark:text-[#79c0ff]' : 'text-[#1e1e1e] dark:text-[#cccccc]')}>{c.workspace.name}</span>
-                                            {i === 0 && clones.length > 1 && <span className="text-[9px] font-bold uppercase px-1.5 py-px rounded bg-[#ddf4ff] dark:bg-[#3794ff]/20 text-[#0969da] dark:text-[#79c0ff]">primary</span>}
+                                            {isPrimary && clones.length > 1 && <span className="text-[9px] font-bold uppercase px-1.5 py-px rounded bg-[#ddf4ff] dark:bg-[#3794ff]/20 text-[#0969da] dark:text-[#79c0ff]">primary</span>}
+                                            {serverLabel && (
+                                                <span
+                                                    data-testid="clone-remote-badge"
+                                                    title={`Remote · ${serverLabel}`}
+                                                    className="inline-flex items-center max-w-[110px] truncate text-[9px] font-bold uppercase tracking-[0.04em] px-1.5 py-px rounded bg-[#8250df]/12 text-[#8250df] dark:bg-[#a371f7]/15 dark:text-[#a371f7]"
+                                                >
+                                                    {serverLabel}
+                                                </span>
+                                            )}
                                             {st === 'running' && <span className="text-[9px] font-bold uppercase px-1.5 py-px rounded bg-[#16a34a]/15 text-[#16a34a]">running</span>}
                                         </span>
                                         <span className="block font-mono text-[10.5px] text-[#848484] dark:text-[#777] truncate mt-0.5">{truncatePath(c.workspace.rootPath || '', 36)}</span>

@@ -41,8 +41,19 @@ const repo = (id: string, name: string, remoteUrl: string, color = '#123456') =>
     gitInfo: { isGitRepo: true, branch: 'main', dirty: false, remoteUrl },
 });
 
+// A remote checkout aggregated by AC-01 (carries baseUrl + remote marker).
+const remoteRepo = (id: string, name: string, remoteUrl: string, serverLabel = 'devbox') => ({
+    workspace: {
+        id, name, color: '#123456', remoteUrl, rootPath: `/remote/${id}`,
+        baseUrl: 'http://127.0.0.1:4000',
+        remote: { baseUrl: 'http://127.0.0.1:4000', serverId: 'srv-1', serverLabel, offline: false },
+    },
+    gitInfo: { isGitRepo: true, branch: 'main', dirty: false, remoteUrl },
+});
+
 const SHORTCUTS = 'https://github.com/acme/shortcuts.git';
 const FORGE = 'https://github.com/acme/forge.git';
+const REMOTE_ONLY = 'https://github.com/acme/edge-svc.git';
 
 beforeEach(() => {
     cleanup();
@@ -124,5 +135,39 @@ describe('RemoteTopBar', () => {
         fireEvent.click(screen.getByTestId('remote-add-btn'));
         fireEvent.click(screen.getByTestId('remote-clone-repo-option'));
         expect(screen.getByTestId('clone-repo-dialog')).toBeTruthy();
+    });
+
+    // ── AC-04: remote-only repos surface as their own top-row entry ──────────
+
+    it('surfaces a remote-only repo as its own remote tab', () => {
+        mockRepos = [
+            repo('a', 'shortcuts', SHORTCUTS),
+            remoteRepo('edge', 'edge-svc', REMOTE_ONLY, 'edge-1'),
+        ];
+        render(<RemoteTopBar />);
+        const tabs = screen.getAllByTestId('remote-tab');
+        expect(tabs).toHaveLength(2);
+        const remoteOnly = tabs.find(el => el.getAttribute('data-remote-key')?.includes('edge-svc'));
+        expect(remoteOnly).toBeTruthy();
+    });
+
+    it('selecting a remote-only tab picks its remote clone', () => {
+        mockRepos = [remoteRepo('edge', 'edge-svc', REMOTE_ONLY, 'edge-1')];
+        render(<RemoteTopBar />);
+        fireEvent.click(screen.getAllByTestId('remote-tab')[0]);
+        expect(mockSelectClone).toHaveBeenCalledWith('edge');
+    });
+
+    it('picks the LOCAL clone when selecting a remote that also has a remote checkout', () => {
+        // Local + remote of the same origin fold into one tab; clicking it must
+        // select the local clone (sorted first), never the remote.
+        mockRepos = [
+            repo('local', 'shortcuts', SHORTCUTS),
+            remoteRepo('remote', 'shortcuts-remote', SHORTCUTS, 'devbox'),
+        ];
+        render(<RemoteTopBar />);
+        expect(screen.getAllByTestId('remote-tab')).toHaveLength(1);
+        fireEvent.click(screen.getAllByTestId('remote-tab')[0]);
+        expect(mockSelectClone).toHaveBeenCalledWith('local');
     });
 });

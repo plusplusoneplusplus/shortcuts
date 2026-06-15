@@ -39,6 +39,39 @@ export interface RepoGroup {
     expanded: boolean;
 }
 
+/**
+ * True when a repo's workspace is a remote checkout aggregated from another CoC
+ * server (carries AC-01's `remote` marker / `baseUrl`). Inlined here as a tiny
+ * pure guard so this grouping module stays dependency-light and never pulls the
+ * network-aware aggregation module into classic-flow bundles.
+ */
+export function isRemoteRepo(repo: RepoData): boolean {
+    const ws = repo.workspace as { baseUrl?: unknown; remote?: unknown } | undefined;
+    return (
+        !!ws &&
+        typeof ws.baseUrl === 'string' &&
+        typeof ws.remote === 'object' &&
+        ws.remote !== null
+    );
+}
+
+/**
+ * Order a group's clones so LOCAL checkouts come before REMOTE ones, preserving
+ * the original relative order within each partition (stable). This keeps the
+ * PRIMARY marker (the first clone) on a local checkout whenever the group has
+ * one, so an aggregated remote clone can never displace the local primary. A
+ * remote-only group (all remote) is left as-is, so its sole/first remote clone
+ * is the primary. No-op when the remote shell is off (no remote repos exist).
+ */
+export function sortClonesLocalFirst(repos: RepoData[]): RepoData[] {
+    const locals: RepoData[] = [];
+    const remotes: RepoData[] = [];
+    for (const repo of repos) {
+        (isRemoteRepo(repo) ? remotes : locals).push(repo);
+    }
+    return remotes.length === 0 ? repos : [...locals, ...remotes];
+}
+
 /** Extract a short display label from a normalized remote URL. */
 export function remoteUrlLabel(normalized: string): string {
     const parts = normalized.split('/');
@@ -78,6 +111,13 @@ export function groupReposByRemote(
             });
         }
         groups.get(normalized)!.repos.push(repo);
+    }
+
+    // Within every group, keep LOCAL clones before REMOTE ones so the PRIMARY
+    // marker (first clone) lands on a local checkout when one exists. No-op when
+    // no remote checkouts are present (i.e. remote shell off / no remote repos).
+    for (const g of groups.values()) {
+        g.repos = sortClonesLocalFirst(g.repos);
     }
 
     const result: RepoGroup[] = [];

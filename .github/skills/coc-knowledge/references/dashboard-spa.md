@@ -594,20 +594,31 @@ When on, the desktop top nav switches from per-clone repo tabs to a remote-first
 model built on `features/remote-shell/`:
 - **Row 1 `RemoteTopBar`** replaces `RepoTabStrip` inside `TopBar`. It renders one
   tab per remote (origin) via `groupReposByRemote`, with a color dot, clone-count
-  chip, aggregate running pulse, and summed unseen badge. Selecting a remote picks
-  its last-used clone (else the first). Aggregation comes from `summarizeRemote` /
-  `computeCloneStatusMap` in `shellModel.ts`. A trailing `+` button
-  (`remote-add-btn`) opens an add menu — Add workspace folder (`AddFolderDialog`),
-  Add specific repository (`AddRepoDialog`), Clone repository (`CloneRepoDialog`) —
-  the single top-level add action (not duplicated per-origin).
+  chip, aggregate running pulse, and summed unseen badge. Aggregated remote
+  checkouts fold into the matching local origin's tab (by normalized git URL); a
+  remote-only repo (no local counterpart) gets its own tab. Selecting a remote
+  picks its last-used clone (else the first) — and because each group's clones are
+  sorted **local-first** by `groupReposByRemote`, the first clone is a local
+  checkout when one exists (a remote-only group selects its sole remote clone).
+  Aggregation comes from `summarizeRemote` / `computeCloneStatusMap` in
+  `shellModel.ts`. A trailing `+` button (`remote-add-btn`) opens an add menu — Add
+  workspace folder (`AddFolderDialog`), Add specific repository (`AddRepoDialog`),
+  Clone repository (`CloneRepoDialog`) — the single top-level add action (not
+  duplicated per-origin).
 - **Row 2 `RemoteSubBar`** renders above a `chromeless` `RepoDetail` in `ReposView`
   and replaces RepoDetail's own header. `partitionShellTabs` splits tabs into
   remote-scoped (Work Items, Pull Requests — always shown left) and clone-scoped
   (everything else). A clone-switcher popover (lists the remote's clones only) sits
   between them, then the clone tabs, then compact Ask/Queue targeting the active
-  clone. Clone tabs use **responsive overflow**: a hidden measurement mirror plus a
-  `ResizeObserver` feed `computeVisibleTabKeys`, which shows every tab that fits and
-  collapses the tail into a `…` menu (always keeping the active tab visible).
+  clone. The popover lists local and folded remote clones together; each remote
+  clone row is badged (`clone-remote-badge`) with its `remote.serverLabel` so it's
+  visually distinct, and the PRIMARY marker is anchored on the first **local**
+  clone (a remote clone never displaces it; a remote-only group marks its first
+  remote clone primary). `isRemoteRepo(repo)` (`repos/repoGrouping.ts`) is the
+  pure guard that distinguishes folded remote rows. Clone tabs use **responsive
+  overflow**: a hidden measurement mirror plus a `ResizeObserver` feed
+  `computeVisibleTabKeys`, which shows every tab that fits and collapses the tail
+  into a `…` menu (always keeping the active tab visible).
 
 **Remote workspace aggregation** (gated by `features.remoteShell`): when the flag
 is ON, `ReposContext.fetchRepos` also calls `aggregateRemoteWorkspaces()`
