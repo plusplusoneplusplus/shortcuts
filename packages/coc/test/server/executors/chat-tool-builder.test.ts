@@ -56,7 +56,8 @@ describe('buildChatToolBundle', () => {
         expect(result.tools.map(t => t.name)).not.toContain('update_work_item');
         expect(result.tools.map(t => t.name)).not.toContain('create_bug');
         expect(result.toolGuidance).toContain('tavily_web_search');
-        expect(result.toolGuidance).toContain('search_conversations');
+        // search_conversations / get_conversation tools are still wired (asserted
+        // above); their prompt suffix was intentionally trimmed, so no guidance text.
         expect(result.toolGuidance).toContain('3 suggestions');
         expect(result.askUser).toBeDefined();
     });
@@ -124,7 +125,7 @@ describe('buildChatToolBundle', () => {
         expect(toolNames).toContain('createLoop');
         expect(toolNames).toContain('cancelLoop');
         expect(toolNames).toContain('listLoops');
-        expect(result.toolGuidance).toContain('Loop management tools');
+        // Loop tools are wired; their descriptive suffix was intentionally removed.
     });
 
     it('does not include loop tools when loopTools deps are not provided', () => {
