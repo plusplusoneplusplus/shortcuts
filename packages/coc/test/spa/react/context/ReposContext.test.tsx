@@ -36,9 +36,25 @@ vi.mock('../../../../src/server/spa/client/react/repos/repositoryService', () =>
     ...repositoryServiceMocks,
 }));
 
+// Stub only aggregateRemoteWorkspaces so the test controls the remote workspaces
+// deterministically (no live remote servers). The real isRemoteWorkspace /
+// tagRemoteWorkspaces are preserved — ReposContext's AC-08 write/restore logic
+// relies on the genuine remote marker shape.
+const aggregateRemoteWorkspacesMock = vi.hoisted(() => vi.fn());
+vi.mock('../../../../src/server/spa/client/react/repos/remoteWorkspaceAggregation', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../../../src/server/spa/client/react/repos/remoteWorkspaceAggregation')>();
+    return { ...actual, aggregateRemoteWorkspaces: aggregateRemoteWorkspacesMock };
+});
+
 import { ReposProvider, useRepos } from '../../../../src/server/spa/client/react/contexts/ReposContext';
 import { AppProvider, useApp } from '../../../../src/server/spa/client/react/contexts/AppContext';
 import { QueueProvider } from '../../../../src/server/spa/client/react/contexts/QueueContext';
+import { tagRemoteWorkspaces, type AggregatedRemoteWorkspaces } from '../../../../src/server/spa/client/react/repos/remoteWorkspaceAggregation';
+import {
+    _resetRemoteSelectionForTests,
+    loadPersistedRemoteSelection,
+    persistRemoteSelection,
+} from '../../../../src/server/spa/client/react/repos/remoteSelectionPersistence';
 
 afterEach(() => {
     vi.clearAllMocks();
@@ -53,6 +69,25 @@ const makeWorkspace = (id: string, name = id) => ({
 
 function makeWorkspacesResponse(workspaces: any[]) {
     return { workspaces };
+}
+
+function emptyAggregate(): AggregatedRemoteWorkspaces {
+    return { sources: [], workspaces: [], gitInfo: {}, warnings: [] };
+}
+
+/**
+ * Build an aggregate with a single online remote workspace, tagged with the real
+ * marker. `baseUrl` is varied across "reloads" to exercise port reassignment.
+ */
+function remoteAggregate(serverId: string, baseUrl: string, wsId: string, wsName = wsId): AggregatedRemoteWorkspaces {
+    const tagged = tagRemoteWorkspaces(
+        { id: serverId, label: serverId },
+        baseUrl,
+        [{ id: wsId, name: wsName, rootPath: `/repos/${wsId}` }],
+        false,
+        { connection: 'online' },
+    );
+    return { sources: [], workspaces: tagged, gitInfo: {}, warnings: [] };
 }
 
 function Wrapper({ children }: { children: ReactNode }) {
@@ -141,6 +176,13 @@ describe('ReposContext', () => {
         repositoryServiceMocks.getWorkspaceGitInfoBatch.mockResolvedValue({ results: {} });
         repositoryServiceMocks.getWorkspaceGitInfo.mockResolvedValue({ branch: null, dirty: false, isGitRepo: false, remoteUrl: null });
         repositoryServiceMocks.listQueueRepos.mockResolvedValue({ repos: [] });
+        // Default: no remote workspaces (classic flow). Overridden per AC-08 test.
+        aggregateRemoteWorkspacesMock.mockResolvedValue(emptyAggregate());
+        _resetRemoteSelectionForTests();
+    });
+
+    afterEach(() => {
+        _resetRemoteSelectionForTests();
     });
 
     it('throws when useRepos is used outside ReposProvider', () => {
@@ -260,5 +302,117 @@ describe('ReposContext', () => {
 
         // Selection should have been cleared because 'removed-ws' is gone
         expect(screen.getByTestId('selected-repo').textContent).toBe('none');
+    });
+
+    // ── AC-08: remote-clone selection persistence across reload ──────────────
+    describe('remote-clone selection persistence (AC-08)', () => {
+        it('restores the persisted remote clone once aggregation completes (cold reload, no hash)', async () => {
+            // Simulate a prior session having selected the remote clone.
+            persistRemoteSelection({ serverId: 'srv-1', workspaceId: 'remote-ws' });
+            // Reload: local workspaces load first; the remote clone appears only
+            // after aggregateRemoteWorkspaces resolves.
+            repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([makeWorkspace('local-1')]).workspaces);
+            aggregateRemoteWorkspacesMock.mockResolvedValueOnce(remoteAggregate('srv-1', 'http://127.0.0.1:4000', 'remote-ws'));
+
+            // No pre-selection (nothing set the hash) — restore must drive it.
+            render(
+                <Wrapper>
+                    <ReposProvider>
+                        <SelectedRepoConsumer />
+                    </ReposProvider>
+                </Wrapper>
+            );
+
+            await waitFor(() => {
+                expect(screen.getByTestId('selected-repo').textContent).toBe('remote-ws');
+            });
+            // The remote workspace is present in the merged list.
+            expect(screen.getByTestId('repo-remote-ws')).toBeTruthy();
+        });
+
+        it('restores via serverId after devtunnel PORT REASSIGNMENT (baseUrl differs on reload)', async () => {
+            // Persisted at :4000; on reload the SAME server is forwarded at :9999.
+            persistRemoteSelection({ serverId: 'srv-1', workspaceId: 'remote-ws' });
+            repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([makeWorkspace('local-1')]).workspaces);
+            aggregateRemoteWorkspacesMock.mockResolvedValueOnce(remoteAggregate('srv-1', 'http://127.0.0.1:9999', 'remote-ws'));
+
+            render(
+                <Wrapper>
+                    <ReposProvider>
+                        <SelectedRepoConsumer />
+                    </ReposProvider>
+                </Wrapper>
+            );
+
+            // Resolved purely via the stable serverId — the changed baseUrl/port
+            // does not prevent restoration.
+            await waitFor(() => {
+                expect(screen.getByTestId('selected-repo').textContent).toBe('remote-ws');
+            });
+        });
+
+        it('keeps a hash-restored remote selection (id matches the persisted pair)', async () => {
+            // Cold load where the hash DID set the remote id (via Router); restore
+            // confirms it via serverId and leaves it selected (idempotent).
+            persistRemoteSelection({ serverId: 'srv-1', workspaceId: 'remote-ws' });
+            repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([makeWorkspace('local-1')]).workspaces);
+            aggregateRemoteWorkspacesMock.mockResolvedValueOnce(remoteAggregate('srv-1', 'http://127.0.0.1:4000', 'remote-ws'));
+
+            render(<ProviderWithPreselectedRepo repoId="remote-ws" />);
+
+            await waitFor(() => {
+                expect(screen.getByTestId('repo-loading').textContent).toBe('false');
+            });
+            expect(screen.getByTestId('selected-repo').textContent).toBe('remote-ws');
+        });
+
+        it('does not hijack an unrelated active local selection', async () => {
+            // A remote clone is persisted, but on this load the user is on a local
+            // repo. Restore must NOT yank them to the remote clone.
+            persistRemoteSelection({ serverId: 'srv-1', workspaceId: 'remote-ws' });
+            repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([makeWorkspace('local-1')]).workspaces);
+            aggregateRemoteWorkspacesMock.mockResolvedValueOnce(remoteAggregate('srv-1', 'http://127.0.0.1:4000', 'remote-ws'));
+
+            render(<ProviderWithPreselectedRepo repoId="local-1" />);
+
+            await waitFor(() => {
+                expect(screen.getByTestId('repo-loading').textContent).toBe('false');
+            });
+            // Stays on the local repo the user is actually viewing.
+            expect(screen.getByTestId('selected-repo').textContent).toBe('local-1');
+        });
+
+        it('selecting a LOCAL clone clears any persisted remote pair (local unchanged)', async () => {
+            // Stale remote pair from before; the active selection is local. The
+            // write effect drops the remote pair so a later reload won't resurrect it.
+            persistRemoteSelection({ serverId: 'srv-1', workspaceId: 'remote-ws' });
+            repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([makeWorkspace('local-1')]).workspaces);
+            // No remote workspace this time (server gone) so local-1 is the only repo.
+            aggregateRemoteWorkspacesMock.mockResolvedValueOnce(emptyAggregate());
+
+            render(<ProviderWithPreselectedRepo repoId="local-1" />);
+
+            await waitFor(() => {
+                expect(screen.getByTestId('selected-repo').textContent).toBe('local-1');
+            });
+            await waitFor(() => {
+                expect(loadPersistedRemoteSelection()).toBeNull();
+            });
+        });
+
+        it('persists the { serverId, workspaceId } pair when a remote clone is selected', async () => {
+            // Remote clone present and selected → the stable pair is written.
+            repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([makeWorkspace('local-1')]).workspaces);
+            aggregateRemoteWorkspacesMock.mockResolvedValueOnce(remoteAggregate('srv-1', 'http://127.0.0.1:4000', 'remote-ws'));
+
+            render(<ProviderWithPreselectedRepo repoId="remote-ws" />);
+
+            await waitFor(() => {
+                expect(screen.getByTestId('selected-repo').textContent).toBe('remote-ws');
+            });
+            await waitFor(() => {
+                expect(loadPersistedRemoteSelection()).toEqual({ serverId: 'srv-1', workspaceId: 'remote-ws' });
+            });
+        });
     });
 });

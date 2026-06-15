@@ -30,6 +30,12 @@ import {
     listWorkspaces,
 } from '../repos/repositoryService';
 import { aggregateRemoteWorkspaces, isRemoteWorkspace } from '../repos/remoteWorkspaceAggregation';
+import {
+    clearPersistedRemoteSelection,
+    loadPersistedRemoteSelection,
+    persistRemoteSelection,
+    resolvePersistedRemoteSelection,
+} from '../repos/remoteSelectionPersistence';
 
 import type { RepoData } from '../repos/repoGrouping';
 import type { AggregatedRemoteWorkspaces } from '../repos/remoteWorkspaceAggregation';
@@ -207,6 +213,29 @@ export function ReposProvider({ children }: { children: ReactNode }) {
                 dispatch({ type: 'SET_SELECTED_REPO', id: null });
             }
 
+            // Restore a persisted REMOTE-clone selection across reload (AC-08).
+            // The remote workspace only appears after aggregation resolves, so we
+            // re-apply the selection here, matching the persisted stable
+            // { serverId, workspaceId } pair against the freshly-aggregated remote
+            // workspaces. Resolution is via serverId (not baseUrl), so a clone whose
+            // devtunnel port/baseUrl changed still resolves. We never hijack an
+            // unrelated active selection: restore only when nothing is selected (or
+            // the missing selection was just cleared above) or the current selection
+            // already equals the resolved id. Local selection is untouched — the
+            // persisted pair only ever covers remote clones.
+            const resolvedRemoteId = resolvePersistedRemoteSelection(
+                loadPersistedRemoteSelection(),
+                remoteRepos.map(r => r.workspace),
+            );
+            if (resolvedRemoteId) {
+                const current = selectionStillPresent ? selectedRepoIdRef.current : null;
+                if (current === null || current === resolvedRemoteId) {
+                    if (selectedRepoIdRef.current !== resolvedRemoteId) {
+                        dispatch({ type: 'SET_SELECTED_REPO', id: resolvedRemoteId });
+                    }
+                }
+            }
+
             // Phase 2: Fetch git-info for all workspaces in a single batch request
             gitInfoAbortRef.current?.abort();
             const abortController = new AbortController();
@@ -328,6 +357,31 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             }
         };
     }, []);
+
+    // Persist / clear the remote-clone selection as it changes (AC-08).
+    // - Remote selection → persist the stable { serverId, workspaceId } pair.
+    // - Known-LOCAL selection → clear any persisted remote pair so it can't fight
+    //   the hash-restored local selection on the next reload.
+    // - No selection yet, or an id not in the list yet (the cold-load window before
+    //   aggregation) → do NOTHING, so the persisted pair survives for the restore
+    //   step in fetchRepos. (Clearing on a null selection here would race the
+    //   restore and wipe the pair before it can be read.)
+    // Local behavior is otherwise unchanged: locals never write a remote pair; the
+    // only extra action for a known-local selection is dropping a stale REMOTE key.
+    useEffect(() => {
+        const selectedId = appState.selectedRepoId;
+        if (!selectedId) return;
+        const selected = repos.find(r => r.workspace.id === selectedId);
+        if (!selected) return;
+        if (isRemoteWorkspace(selected.workspace)) {
+            persistRemoteSelection({
+                serverId: selected.workspace.remote.serverId,
+                workspaceId: selected.workspace.id,
+            });
+        } else {
+            clearPersistedRemoteSelection();
+        }
+    }, [appState.selectedRepoId, repos]);
 
     const value = useMemo<ReposContextValue>(
         () => ({ repos, loading, fetchRepos, unseenCounts, refreshUnseenCounts }),
