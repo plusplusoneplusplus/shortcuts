@@ -303,6 +303,10 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
         const state = criteria?.status === 'closed' || criteria?.status === 'merged' ? 'closed'
             : criteria?.status === 'open' ? 'open'
             : 'open';
+        const perPage = Math.min(Math.max(criteria?.top ?? 30, 1), 100);
+        const page = criteria?.skip && criteria.skip > 0
+            ? Math.floor(criteria.skip / perPage) + 1
+            : undefined;
 
         const { data } = await this.octokit.pulls.list({
             owner: this.owner,
@@ -310,7 +314,8 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
             state,
             head: criteria?.sourceBranch ? `${this.owner}:${criteria.sourceBranch}` : undefined,
             base: criteria?.targetBranch,
-            per_page: criteria?.top ?? 30,
+            per_page: perPage,
+            page,
         });
 
         return (data as unknown as GitHubPullRequest[]).map(pr =>

@@ -6,6 +6,8 @@ import type {
   ClassifyDiffRequest,
   ClassifyDiffResponse,
   ProviderConfigRequest,
+  PullRequestCoworkerCandidateSearchQuery,
+  PullRequestCoworkerCandidateSearchResponse,
   PullRequestCoworkerRosterResponse,
   PrReviewHistoryResponse,
   PrSuggestionsResponse,
@@ -95,6 +97,18 @@ function serializeClassificationBatchStatusQuery(query: ClassificationBatchStatu
     identifiers: query.identifiers.join(','),
     workspaceId: query.workspaceId,
     repoId: query.repoId,
+  };
+}
+
+function serializeCoworkerCandidateQuery(query: PullRequestCoworkerCandidateSearchQuery): CocRequestOptions['query'] {
+  return {
+    workspaceId: query.workspaceId,
+    repoId: query.repoId,
+    query: query.query,
+    status: query.status,
+    scope: query.scope,
+    top: query.top,
+    includeRoster: query.includeRoster === true ? 'true' : undefined,
   };
 }
 
@@ -208,6 +222,20 @@ export class PullRequestsClient {
       {
         method: 'DELETE',
         query: serializeOriginPrStateQuery(options),
+        signal: options?.signal,
+      },
+    );
+  }
+
+  searchCoworkerCandidatesForOrigin(
+    originId: string,
+    query: PullRequestCoworkerCandidateSearchQuery & { workspaceId: string; repoId?: string },
+    options?: Pick<CocRequestOptions, 'signal'>,
+  ): Promise<PullRequestCoworkerCandidateSearchResponse> {
+    return this.transport.request<PullRequestCoworkerCandidateSearchResponse>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/coworker-candidates`,
+      {
+        query: serializeCoworkerCandidateQuery(query),
         signal: options?.signal,
       },
     );

@@ -15,6 +15,7 @@
  * GET  /api/origins/:originId/pull-requests/recent-opened    — list recently opened PRs
  * POST /api/origins/:originId/pull-requests/recent-opened    — record a recently opened PR
  * DELETE /api/origins/:originId/pull-requests/recent-opened/:prNumber — remove stale recent PR
+ * GET  /api/origins/:originId/pull-requests/coworker-candidates — search Team roster coworker candidates through an explicit workspace
  * GET  /api/origins/:originId/pull-requests/coworker-roster  — list Team roster coworkers
  * POST /api/origins/:originId/pull-requests/coworker-roster  — add/update a Team roster coworker
  * DELETE /api/origins/:originId/pull-requests/coworker-roster/:coworkerKey — remove a Team roster coworker
@@ -53,6 +54,7 @@ import {
     removePullRequestCoworkerFromRoster,
     validatePullRequestCoworkerRosterInput,
 } from './pr-coworker-roster-store';
+import { authorMatchesPrTeamRosterEntry, getPrTeamIdentityKey } from '../shared/pr-team-matching';
 import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
@@ -290,6 +292,11 @@ function parsePositiveIntegerPathSegment(raw: string): number | null {
 
 const PR_LIST_TTL_MS = 60 * 60 * 1000;
 const PR_LIST_FETCH_TOP = 100;
+const PR_COWORKER_CANDIDATE_TTL_MS = 2 * 60 * 1000;
+const PR_COWORKER_CANDIDATE_MIN_QUERY_LENGTH = 2;
+const PR_COWORKER_CANDIDATE_FETCH_PAGE_SIZE = 100;
+const PR_COWORKER_CANDIDATE_MAX_RESULTS = 50;
+const PR_COWORKER_CANDIDATE_MAX_PROVIDER_PAGES = 20;
 
 interface PrCacheEntry {
     data: any[];
@@ -298,6 +305,25 @@ interface PrCacheEntry {
 }
 
 const prListCache = new Map<string, PrCacheEntry>();
+
+interface PullRequestCoworkerCandidate {
+    id: string;
+    displayName: string;
+    email?: string;
+    avatarUrl?: string;
+    prCount: number;
+    isInRoster?: boolean;
+}
+
+interface PrCoworkerCandidateCacheEntry {
+    candidates: PullRequestCoworkerCandidate[];
+    fetchedAt: number;
+    expiresAt: number;
+    scannedPullRequests: number;
+    truncated: boolean;
+}
+
+const prCoworkerCandidateCache = new Map<string, PrCoworkerCandidateCacheEntry>();
 
 interface PullRequestDiffStats {
     additions: number;
@@ -312,6 +338,16 @@ const prDiffStatsCache = new Map<string, PullRequestDiffStats>();
 
 function makePrCacheKey(cacheScopeId: string, status: string, scope: string): string {
     return `${cacheScopeId}|${status}|${scope}`;
+}
+
+function makePrCoworkerCandidateCacheKey(
+    repoId: string,
+    workspaceId: string,
+    normalizedQuery: string,
+    status: string,
+    scope: string,
+): string {
+    return `${repoId}|${workspaceId}|${status}|${scope}|${normalizedQuery}`;
 }
 
 class PullRequestRouteError extends Error {
@@ -419,6 +455,126 @@ export async function warmPullRequestWorkspaceCache(options: WarmPullRequestWork
 export function clearPrListCache(): void {
     prListCache.clear();
     prDiffStatsCache.clear();
+    prCoworkerCandidateCache.clear();
+}
+
+function normalizeCandidateSearchQuery(raw: unknown): string {
+    return typeof raw === 'string' ? raw.trim() : '';
+}
+
+function parseCandidateTop(raw: unknown): number {
+    const value = typeof raw === 'string' && raw.trim() ? Number(raw) : PR_COWORKER_CANDIDATE_MAX_RESULTS;
+    if (!Number.isFinite(value) || value <= 0) return PR_COWORKER_CANDIDATE_MAX_RESULTS;
+    return Math.min(Math.floor(value), PR_COWORKER_CANDIDATE_MAX_RESULTS);
+}
+
+function normalizeAuthorIdentity(author: any): { id: string; displayName: string; email?: string; avatarUrl?: string } | undefined {
+    if (!author || typeof author !== 'object') return undefined;
+    const id = author.id === undefined || author.id === null ? '' : String(author.id).trim();
+    const displayName = typeof author.displayName === 'string' ? author.displayName.trim() : '';
+    if (!displayName) return undefined;
+
+    const email = typeof author.email === 'string' && author.email.trim() ? author.email.trim() : undefined;
+    const avatarUrl = typeof author.avatarUrl === 'string' && author.avatarUrl.trim() ? author.avatarUrl.trim() : undefined;
+    return {
+        id,
+        displayName,
+        ...(email ? { email } : {}),
+        ...(avatarUrl ? { avatarUrl } : {}),
+    };
+}
+
+function authorIdentityMatchesQuery(
+    author: { id: string; displayName: string; email?: string },
+    normalizedQuery: string,
+): boolean {
+    return (
+        author.displayName.toLowerCase().includes(normalizedQuery) ||
+        author.id.toLowerCase().includes(normalizedQuery) ||
+        (author.email?.toLowerCase().includes(normalizedQuery) ?? false)
+    );
+}
+
+function buildPrPageSignature(prs: ProviderPullRequest[]): string {
+    if (prs.length === 0) return 'empty';
+    const first = getPullRequestProviderId(prs[0]);
+    const last = getPullRequestProviderId(prs[prs.length - 1]);
+    return `${prs.length}:${first ?? '(missing)'}:${last ?? '(missing)'}`;
+}
+
+async function searchPullRequestCoworkerCandidateCache(
+    repoId: string,
+    workspaceId: string,
+    normalizedQuery: string,
+    status: string,
+    scope: 'mine' | 'all',
+    prSvc: IPullRequestsService,
+): Promise<PrCoworkerCandidateCacheEntry> {
+    const cacheKey = makePrCoworkerCandidateCacheKey(repoId, workspaceId, normalizedQuery, status, scope);
+    const cached = prCoworkerCandidateCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+        return cached;
+    }
+
+    const byKey = new Map<string, PullRequestCoworkerCandidate>();
+    const pageSignatures = new Set<string>();
+    let scannedPullRequests = 0;
+    let truncated = false;
+
+    for (let page = 0; page < PR_COWORKER_CANDIDATE_MAX_PROVIDER_PAGES; page++) {
+        const skip = page * PR_COWORKER_CANDIDATE_FETCH_PAGE_SIZE;
+        const prs = await prSvc.listPullRequests(repoId, {
+            status,
+            top: PR_COWORKER_CANDIDATE_FETCH_PAGE_SIZE,
+            skip,
+            scope,
+        });
+        scannedPullRequests += prs.length;
+
+        const signature = buildPrPageSignature(prs);
+        if (pageSignatures.has(signature)) break;
+        pageSignatures.add(signature);
+
+        for (const pr of prs) {
+            const author = normalizeAuthorIdentity(pr.author);
+            if (!author || !authorIdentityMatchesQuery(author, normalizedQuery)) continue;
+
+            const key = getPrTeamIdentityKey(author);
+            const existing = byKey.get(key);
+            if (existing) {
+                existing.prCount += 1;
+                if (!existing.email && author.email) existing.email = author.email;
+                if (!existing.avatarUrl && author.avatarUrl) existing.avatarUrl = author.avatarUrl;
+            } else {
+                byKey.set(key, { ...author, prCount: 1 });
+            }
+        }
+
+        if (byKey.size >= PR_COWORKER_CANDIDATE_MAX_RESULTS) {
+            truncated = true;
+            break;
+        }
+        if (prs.length < PR_COWORKER_CANDIDATE_FETCH_PAGE_SIZE) {
+            break;
+        }
+        if (page === PR_COWORKER_CANDIDATE_MAX_PROVIDER_PAGES - 1) {
+            truncated = true;
+        }
+    }
+
+    const fetchedAt = Date.now();
+    const candidates = Array.from(byKey.values())
+        .sort((a, b) => b.prCount - a.prCount || a.displayName.localeCompare(b.displayName))
+        .slice(0, PR_COWORKER_CANDIDATE_MAX_RESULTS);
+    const entry: PrCoworkerCandidateCacheEntry = {
+        candidates,
+        fetchedAt,
+        expiresAt: fetchedAt + PR_COWORKER_CANDIDATE_TTL_MS,
+        scannedPullRequests,
+        truncated,
+    };
+    prCoworkerCandidateCache.set(cacheKey, entry);
+    return entry;
 }
 
 function getPullRequestProviderId(pr: any): number | string | undefined {
@@ -1262,6 +1418,66 @@ export function registerPrRoutes(
                 return sendJson(res, { entries });
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    // -- Origin-scoped Team roster candidates ---------------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/origins\/([^/]+)\/pull-requests\/coworker-candidates$/,
+        handler: async (req, res, match) => {
+            try {
+                const originId = parseOriginId(match![1]);
+                if (!originId) return send400(res, 'originId must be a non-empty string');
+
+                const query = url.parse(req.url ?? '', true).query;
+                const rawSearch = normalizeCandidateSearchQuery(query.query);
+                if (rawSearch.length < PR_COWORKER_CANDIDATE_MIN_QUERY_LENGTH) {
+                    return sendJson(res, {
+                        error: `query must be at least ${PR_COWORKER_CANDIDATE_MIN_QUERY_LENGTH} characters`,
+                        minimumQueryLength: PR_COWORKER_CANDIDATE_MIN_QUERY_LENGTH,
+                    }, 400);
+                }
+
+                const scopeResult = await resolveOriginPrRepoScope(req, undefined, originId, svc, store);
+                if (!scopeResult.ok) return sendOriginPrRepoScopeError(res, scopeResult);
+                const { workspaceId, repoId, repo, storageScope } = scopeResult.value;
+                const status = typeof query.status === 'string' && query.status.trim() ? query.status.trim() : 'open';
+                const scope = typeof query.scope === 'string' && (query.scope === 'mine' || query.scope === 'all') ? query.scope : 'all';
+                const top = parseCandidateTop(query.top);
+                const includeRoster = query.includeRoster === 'true';
+                const normalizedQuery = rawSearch.toLowerCase();
+                const prSvc = await createPullRequestsServiceForRepo(repo);
+                const cached = await searchPullRequestCoworkerCandidateCache(
+                    repoId,
+                    workspaceId,
+                    normalizedQuery,
+                    status,
+                    scope,
+                    prSvc,
+                );
+                const roster = listPullRequestCoworkerRoster(dataDir, workspaceId, repoId, storageScope);
+                const candidates = cached.candidates
+                    .map(candidate => ({
+                        ...candidate,
+                        isInRoster: roster.some(entry => authorMatchesPrTeamRosterEntry(candidate, entry)),
+                    }))
+                    .filter(candidate => includeRoster || !candidate.isInRoster)
+                    .slice(0, top);
+
+                return sendJson(res, {
+                    candidates,
+                    total: candidates.length,
+                    query: rawSearch,
+                    minimumQueryLength: PR_COWORKER_CANDIDATE_MIN_QUERY_LENGTH,
+                    fetchedAt: cached.fetchedAt,
+                    scannedPullRequests: cached.scannedPullRequests,
+                    truncated: cached.truncated,
+                });
+            } catch (err) {
+                sendProviderBackedPrRouteError(res, err);
             }
         },
     });

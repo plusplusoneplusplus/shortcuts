@@ -193,6 +193,20 @@ describe('GitHubPullRequestsAdapter', () => {
                 per_page: 20,
             }));
         });
+
+        it('maps skip and top criteria to GitHub pull request pages', async () => {
+            await adapter.listPullRequests('repo', {
+                status: 'open',
+                top: 20,
+                skip: 40,
+            });
+
+            expect(octokit.pulls.list).toHaveBeenCalledWith(expect.objectContaining({
+                state: 'open',
+                per_page: 20,
+                page: 3,
+            }));
+        });
     });
 
     describe('getPullRequest', () => {

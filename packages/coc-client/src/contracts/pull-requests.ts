@@ -106,6 +106,35 @@ export interface AddPullRequestCoworkerRosterEntryRequest {
   avatarUrl?: string;
 }
 
+export interface PullRequestCoworkerCandidateSearchQuery {
+  workspaceId?: string;
+  repoId?: string;
+  query: string;
+  status?: string;
+  scope?: 'mine' | 'all';
+  top?: number;
+  includeRoster?: boolean;
+}
+
+export interface PullRequestCoworkerCandidate {
+  id: string;
+  displayName: string;
+  email?: string;
+  avatarUrl?: string;
+  prCount: number;
+  isInRoster?: boolean;
+}
+
+export interface PullRequestCoworkerCandidateSearchResponse {
+  candidates: PullRequestCoworkerCandidate[];
+  total: number;
+  query: string;
+  minimumQueryLength: number;
+  fetchedAt: number;
+  scannedPullRequests: number;
+  truncated: boolean;
+}
+
 export interface PullRequestThreadsResponse {
   threads: unknown[];
 }

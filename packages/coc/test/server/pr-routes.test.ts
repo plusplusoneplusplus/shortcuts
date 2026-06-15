@@ -883,15 +883,126 @@ describe('GET /api/origins/:originId/pull-requests', () => {
     });
 });
 
+describe('GET /api/origins/:originId/pull-requests/coworker-candidates', () => {
+    it('validates minimum query length before resolving the provider', async () => {
+        const res = await fetch(originPullRequestsUrl(`/coworker-candidates?workspaceId=ws-1&repoId=${REPO_ID}&query=a`));
+
+        expect(res.status).toBe(400);
+        const body = await res.json() as { error: string; minimumQueryLength: number };
+        expect(body.error).toContain('at least 2 characters');
+        expect(body.minimumQueryLength).toBe(2);
+        expect(mockSvc.listPullRequests).not.toHaveBeenCalled();
+        expect(mockSvc.getDiff).not.toHaveBeenCalled();
+    });
+
+    it('dedupes matching authors, reports PR counts, and excludes existing roster entries by workspace', async () => {
+        addPullRequestCoworkerToRoster(dataDir, 'ws-a', REPO_ID, {
+            id: 'alice-id',
+            displayName: 'Alice Old',
+        });
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockResolvedValue([
+            {
+                ...mockPr,
+                id: 1,
+                number: 1,
+                author: {
+                    id: 'alice-id',
+                    displayName: 'Alice Dev',
+                    email: 'alice@example.invalid',
+                    avatarUrl: 'https://avatars.example.invalid/alice',
+                },
+            },
+            { ...mockPr, id: 2, number: 2, author: { id: 'alice-id', displayName: 'Alice Dev' } },
+            { ...mockPr, id: 3, number: 3, author: { id: 'alex-id', displayName: 'Alex Dev' } },
+            { ...mockPr, id: 4, number: 4, author: { id: 'mona-id', displayName: 'Mona Dev' } },
+        ]);
+
+        const excluded = await fetch(originPullRequestsUrl(`/coworker-candidates?workspaceId=ws-a&repoId=${REPO_ID}&query=al&top=10`));
+        expect(excluded.status).toBe(200);
+        const excludedBody = await excluded.json() as { candidates: Array<{ id: string; displayName: string; prCount: number; isInRoster: boolean }> };
+        expect(excludedBody.candidates).toEqual([
+            { id: 'alex-id', displayName: 'Alex Dev', prCount: 1, isInRoster: false },
+        ]);
+
+        const included = await fetch(originPullRequestsUrl(`/coworker-candidates?workspaceId=ws-a&repoId=${REPO_ID}&query=al&includeRoster=true`));
+        expect(included.status).toBe(200);
+        const includedBody = await included.json() as { candidates: Array<{ id: string; displayName: string; email?: string; avatarUrl?: string; prCount: number; isInRoster: boolean }> };
+        expect(includedBody.candidates).toEqual([
+            {
+                id: 'alice-id',
+                displayName: 'Alice Dev',
+                email: 'alice@example.invalid',
+                avatarUrl: 'https://avatars.example.invalid/alice',
+                prCount: 2,
+                isInRoster: true,
+            },
+            { id: 'alex-id', displayName: 'Alex Dev', prCount: 1, isInRoster: false },
+        ]);
+
+        const otherWorkspace = await fetch(originPullRequestsUrl(`/coworker-candidates?workspaceId=ws-b&repoId=${REPO_ID}&query=al`));
+        expect(otherWorkspace.status).toBe(200);
+        const otherWorkspaceBody = await otherWorkspace.json() as { candidates: Array<{ id: string; isInRoster: boolean }> };
+        expect(otherWorkspaceBody.candidates.map(candidate => candidate.id)).toEqual(['alice-id', 'alex-id']);
+        expect(otherWorkspaceBody.candidates.every(candidate => candidate.isInRoster === false)).toBe(true);
+
+        expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'open', top: 100, skip: 0, scope: 'all' });
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
+        expect(mockSvc.getDiff).not.toHaveBeenCalled();
+    });
+
+    it('uses provider pagination and caches repeated searches without diff enrichment', async () => {
+        const firstPage = Array.from({ length: 100 }, (_, index) => ({
+            ...mockPr,
+            id: index + 1,
+            number: index + 1,
+            author: { id: `user-${index + 1}`, displayName: `User ${index + 1}` },
+        }));
+        const secondPage = [
+            {
+                ...mockPr,
+                id: 101,
+                number: 101,
+                author: { id: 'zoe-id', displayName: 'Zoe Zebra' },
+            },
+        ];
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>)
+            .mockResolvedValueOnce(firstPage)
+            .mockResolvedValueOnce(secondPage);
+
+        const first = await fetch(originPullRequestsUrl(`/coworker-candidates?workspaceId=ws-1&repoId=${REPO_ID}&query=zo`));
+        expect(first.status).toBe(200);
+        const firstBody = await first.json() as { candidates: Array<{ id: string; displayName: string; prCount: number; isInRoster: boolean }>; scannedPullRequests: number; truncated: boolean };
+        expect(firstBody.candidates).toEqual([
+            { id: 'zoe-id', displayName: 'Zoe Zebra', prCount: 1, isInRoster: false },
+        ]);
+        expect(firstBody.scannedPullRequests).toBe(101);
+        expect(firstBody.truncated).toBe(false);
+
+        const second = await fetch(originPullRequestsUrl(`/coworker-candidates?workspaceId=ws-1&repoId=${REPO_ID}&query=zo`));
+        expect(second.status).toBe(200);
+        const secondBody = await second.json() as { candidates: Array<{ id: string; displayName: string; prCount: number; isInRoster: boolean }> };
+        expect(secondBody.candidates).toEqual([
+            { id: 'zoe-id', displayName: 'Zoe Zebra', prCount: 1, isInRoster: false },
+        ]);
+
+        expect(mockSvc.listPullRequests).toHaveBeenNthCalledWith(1, REPO_ID, { status: 'open', top: 100, skip: 0, scope: 'all' });
+        expect(mockSvc.listPullRequests).toHaveBeenNthCalledWith(2, REPO_ID, { status: 'open', top: 100, skip: 100, scope: 'all' });
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
+        expect(mockSvc.getDiff).not.toHaveBeenCalled();
+    });
+});
+
 describe('GET /api/origins/:originId/pull-requests', () => {
     it('does not register repo-scoped pull request aliases', async () => {
         const list = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
         const detail = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
         const diff = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        const candidates = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/coworker-candidates?workspaceId=ws-1&query=al`);
 
         expect(list.status).toBe(404);
         expect(detail.status).toBe(404);
         expect(diff.status).toBe(404);
+        expect(candidates.status).toBe(404);
         expect(mockSvc.listPullRequests).not.toHaveBeenCalled();
         expect(mockSvc.getPullRequest).not.toHaveBeenCalled();
         expect(mockSvc.getDiff).not.toHaveBeenCalled();
