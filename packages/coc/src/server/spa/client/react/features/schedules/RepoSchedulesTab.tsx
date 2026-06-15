@@ -4,8 +4,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { cn } from '../../ui';
-import { fetchApi } from '../../hooks/useApi';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { useApp } from '../../contexts/AppContext';
@@ -30,6 +29,8 @@ interface RepoSchedulesTabProps {
 
 export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
     const { state, dispatch } = useApp();
+    // Route schedule CRUD + notes-git status to the workspace's clone (AC-07).
+    const client = useCocClient(workspaceId);
     const [schedules, setSchedules] = useState<Schedule[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedId, setSelectedId] = useState<string | null>(state.selectedScheduleId);
@@ -54,23 +55,23 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
     useEffect(() => {
         if (notesGitCheckedRef.current === workspaceId) return;
         notesGitCheckedRef.current = workspaceId;
-        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/notes/git/status`)
+        client.notes.getGitStatus(workspaceId)
             .then((data: any) => {
                 if (data?.initialized) setNotesGitInitialized(true);
                 else setNotesGitInitialized(false);
             })
             .catch(() => setNotesGitInitialized(false));
-    }, [workspaceId]);
+    }, [workspaceId, client]);
 
     const fetchSchedules = useCallback(async () => {
         try {
-            const nextSchedules = await getSpaCocClient().schedules.list(workspaceId);
+            const nextSchedules = await client.schedules.list(workspaceId);
             setSchedules(nextSchedules);
         } catch {
             setSchedules([]);
         }
         setLoading(false);
-    }, [workspaceId]);
+    }, [workspaceId, client]);
 
     useEffect(() => {
         setLoading(true);
@@ -98,7 +99,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
     useEffect(() => {
         if (!selectedId) return;
         let cancelled = false;
-        getSpaCocClient().schedules.history(workspaceId, selectedId)
+        client.schedules.history(workspaceId, selectedId)
             .then(nextHistory => {
                 if (!cancelled) setHistory(nextHistory);
             })
@@ -106,7 +107,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
                 if (!cancelled) setHistory([]);
             });
         return () => { cancelled = true; };
-    }, [selectedId, workspaceId]);
+    }, [selectedId, workspaceId, client]);
 
     // Auto-select first schedule when schedules load and nothing is selected
     useEffect(() => {
@@ -120,18 +121,18 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
 
     const handlePauseResume = async (schedule: Schedule) => {
         if (schedule.status === 'active') {
-            await getSpaCocClient().schedules.disable(workspaceId, schedule.id);
+            await client.schedules.disable(workspaceId, schedule.id);
         } else {
-            await getSpaCocClient().schedules.enable(workspaceId, schedule.id);
+            await client.schedules.enable(workspaceId, schedule.id);
         }
         fetchSchedules();
     };
 
     const handleRunNow = async (scheduleId: string) => {
-        await getSpaCocClient().schedules.run(workspaceId, scheduleId);
+        await client.schedules.run(workspaceId, scheduleId);
         fetchSchedules();
         if (selectedId === scheduleId) {
-            const nextHistory = await getSpaCocClient().schedules.history(workspaceId, scheduleId);
+            const nextHistory = await client.schedules.history(workspaceId, scheduleId);
             setHistory(nextHistory);
         }
     };
@@ -143,7 +144,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
             ? `This will permanently delete .github/schedules/${slug}.yaml. This cannot be undone. Continue?`
             : 'Delete this schedule?';
         if (!confirm(message)) return;
-        await getSpaCocClient().schedules.delete(workspaceId, scheduleId);
+        await client.schedules.delete(workspaceId, scheduleId);
         if (selectedId === scheduleId) {
             setSelectedId(null);
             dispatch({ type: 'SET_SELECTED_SCHEDULE', id: null });
@@ -153,7 +154,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
     };
 
     const handleMove = async (scheduleId: string, destination: 'user' | 'repo') => {
-        await getSpaCocClient().schedules.move(workspaceId, scheduleId, destination);
+        await client.schedules.move(workspaceId, scheduleId, destination);
         fetchSchedules();
     };
 

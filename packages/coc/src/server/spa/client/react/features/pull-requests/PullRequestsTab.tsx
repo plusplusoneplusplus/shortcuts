@@ -15,7 +15,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import type { PullRequestCoworkerRosterEntry, PrSuggestion, RecentOpenedPullRequestEntry } from '@plusplusoneplusplus/coc-client';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { useApp } from '../../contexts/AppContext';
 import { cn } from '../../ui';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
@@ -165,6 +166,9 @@ function buildRecentOpenedRecord(pr: unknown, prNumber: number): { number: numbe
 
 export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     const { state, dispatch } = useApp();
+    // Route PR list/suggestions/roster/classification to the workspace's clone
+    // (AC-07). All PR calls here are scoped to this workspace's repo.
+    const cloneClient = useCocClient(workspaceId);
     const sessionContextDragEnabled = isSessionContextAttachmentsEnabled();
     const [prs, setPrs] = useState<PullRequest[]>([]);
     const [loading, setLoading] = useState(false);
@@ -279,7 +283,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
             skipRef.current = 0;
         }
 
-        getSpaCocClient().pullRequests.list(
+        cloneClient.pullRequests.list(
             repoId,
             {
                 status: STATUS_FILTER,
@@ -326,7 +330,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                 }
             })
             .finally(() => setLoading(false));
-    }, [repoId, effectiveScope, cacheKey]);
+    }, [repoId, effectiveScope, cacheKey, cloneClient]);
 
     // Re-fetch from scratch whenever the active scope changes.
     useEffect(() => {
@@ -336,7 +340,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     useEffect(() => {
         let cancelled = false;
         setRecentOpenedPrs([]);
-        getSpaCocClient().pullRequests.listRecentOpened(repoId, workspaceId)
+        cloneClient.pullRequests.listRecentOpened(repoId, workspaceId)
             .then(data => {
                 if (!cancelled) {
                     setRecentOpenedPrs(data.entries ?? []);
@@ -348,7 +352,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                 }
             });
         return () => { cancelled = true; };
-    }, [repoId, workspaceId]);
+    }, [repoId, workspaceId, cloneClient]);
 
     useEffect(() => {
         let cancelled = false;
@@ -356,7 +360,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         setInactiveCoworkerKeys(new Set());
         setCoworkerPickerKey('');
         setCoworkerRosterError(null);
-        getSpaCocClient().pullRequests.listCoworkerRoster(repoId, workspaceId)
+        cloneClient.pullRequests.listCoworkerRoster(repoId, workspaceId)
             .then(data => {
                 if (!cancelled) {
                     setCoworkerRoster(data.entries ?? []);
@@ -368,7 +372,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                 }
             });
         return () => { cancelled = true; };
-    }, [repoId, workspaceId]);
+    }, [repoId, workspaceId, cloneClient]);
 
     useEffect(() => {
         const rosterKeys = new Set(coworkerRoster.map(getCoworkerRosterIdentityKey));
@@ -389,13 +393,13 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     // Fetch cached suggestions on mount when feature is enabled.
     useEffect(() => {
         if (!suggestionsEnabled) return;
-        getSpaCocClient().pullRequests.getSuggestions(repoId)
+        cloneClient.pullRequests.getSuggestions(repoId)
             .then(data => {
                 setSuggestions(data.suggestions ?? []);
                 setSuggestionsRankedAt(data.rankedAt ?? null);
             })
             .catch(() => { /* non-fatal */ });
-    }, [repoId, suggestionsEnabled]);
+    }, [repoId, suggestionsEnabled, cloneClient]);
 
     const handleRefreshSuggestions = useCallback(() => {
         if (suggestionsLoading) return;
@@ -403,7 +407,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         setSuggestionsInfo(null);
         setSuggestionsError(null);
         setSuggestionsStatus('Fetching review history...');
-        const client = getSpaCocClient().pullRequests;
+        const client = cloneClient.pullRequests;
         client.refreshReviewHistory(repoId)
             .then(history => {
                 if ((history.reviews ?? []).length === 0) {
@@ -428,7 +432,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                 setSuggestionsError(getSpaCocClientErrorMessage(err, 'Failed to generate PR suggestions.'));
             })
             .finally(() => setSuggestionsLoading(false));
-    }, [repoId, suggestionsLoading]);
+    }, [repoId, suggestionsLoading, cloneClient]);
 
     const filteredBySearch = useMemo(() => {
         if (!searchText) return prs;
@@ -578,7 +582,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         setTeamClassificationLoading(true);
         setTeamClassificationError(null);
         try {
-            const data = await getSpaCocClient().pullRequests.getClassificationBatchStatus(repoId, {
+            const data = await cloneClient.pullRequests.getClassificationBatchStatus(repoId, {
                 type: 'pr',
                 identifiers: teamAutoClassificationIdentifiers,
                 workspaceId,
@@ -590,7 +594,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         } finally {
             setTeamClassificationLoading(false);
         }
-    }, [repoId, teamAutoClassificationEnabled, teamAutoClassificationIdentifiers, teamAutoClassificationIdentifiersKey, workspaceId]);
+    }, [repoId, teamAutoClassificationEnabled, teamAutoClassificationIdentifiers, teamAutoClassificationIdentifiersKey, workspaceId, cloneClient]);
 
     useEffect(() => {
         void loadTeamClassificationStatuses();
@@ -602,7 +606,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         setTeamClassificationQueueing(true);
         setTeamClassificationError(null);
         try {
-            const result = await getSpaCocClient().pullRequests.autoClassifyTeam(repoId, {
+            const result = await cloneClient.pullRequests.autoClassifyTeam(repoId, {
                 workspaceId,
                 pullRequests: teamAutoClassificationPrs,
             });
@@ -623,6 +627,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         teamAutoClassificationPrs,
         teamClassificationQueueing,
         workspaceId,
+        cloneClient,
     ]);
 
     useEffect(() => {
@@ -709,7 +714,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         setCoworkerRosterSavingKey('add');
         setCoworkerRosterError(null);
         try {
-            const data = await getSpaCocClient().pullRequests.addCoworkerToRoster(repoId, workspaceId, {
+            const data = await cloneClient.pullRequests.addCoworkerToRoster(repoId, workspaceId, {
                 id: candidate.id,
                 displayName: candidate.displayName,
                 ...(candidate.email ? { email: candidate.email } : {}),
@@ -722,7 +727,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         } finally {
             setCoworkerRosterSavingKey(null);
         }
-    }, [addableCoworkerCandidates, coworkerPickerKey, repoId, workspaceId]);
+    }, [addableCoworkerCandidates, coworkerPickerKey, repoId, workspaceId, cloneClient]);
 
     const handleRemoveCoworker = useCallback(async (entry: Pick<PullRequestCoworkerRosterEntry, 'id' | 'displayName'>) => {
         const key = getCoworkerRosterIdentityKey(entry);
@@ -734,7 +739,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         setCoworkerRosterSavingKey(`remove:${key}`);
         setCoworkerRosterError(null);
         try {
-            const data = await getSpaCocClient().pullRequests.removeCoworkerFromRoster(repoId, workspaceId, key);
+            const data = await cloneClient.pullRequests.removeCoworkerFromRoster(repoId, workspaceId, key);
             setCoworkerRoster(data.entries ?? []);
             setInactiveCoworkerKeys(prev => {
                 if (!prev.has(key)) return prev;
@@ -747,7 +752,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         } finally {
             setCoworkerRosterSavingKey(null);
         }
-    }, [repoId, workspaceId]);
+    }, [repoId, workspaceId, cloneClient]);
 
     function handleToggleBatchMode() {
         setBatchMode(prev => {
@@ -771,7 +776,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     const openPrInRepo = useCallback(async (targetRepoId: string, prNumber: number): Promise<unknown> => {
         let pr: unknown;
         try {
-            pr = await getSpaCocClient().pullRequests.get(targetRepoId, String(prNumber));
+            pr = await cloneClient.pullRequests.get(targetRepoId, String(prNumber));
         } catch (err) {
             if (err instanceof CocApiError && err.status === 404) {
                 throw new PullRequestOpenError(`Pull request #${prNumber} not found.`, 404);
@@ -783,7 +788,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         window.location.hash = `#repos/${encodeURIComponent(targetRepoId)}/pull-requests/${prNumber}/overview`;
         if (isMobile) setMobileShowDetail(true);
         return pr;
-    }, [dispatch, isMobile]);
+    }, [dispatch, isMobile, cloneClient]);
 
     const recordRecentOpenedPr = useCallback(async (
         targetRepoId: string,
@@ -791,7 +796,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         prNumber: number,
         pr: unknown,
     ) => {
-        const data = await getSpaCocClient().pullRequests.recordRecentOpened(
+        const data = await cloneClient.pullRequests.recordRecentOpened(
             targetRepoId,
             targetWorkspaceId,
             buildRecentOpenedRecord(pr, prNumber),
@@ -799,10 +804,10 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         if (targetRepoId === repoId && targetWorkspaceId === workspaceId) {
             setRecentOpenedPrs(data.entries ?? []);
         }
-    }, [repoId, workspaceId]);
+    }, [repoId, workspaceId, cloneClient]);
 
     const removeRecentOpenedPr = useCallback(async (entry: RecentOpenedPullRequestEntry) => {
-        const data = await getSpaCocClient().pullRequests.removeRecentOpened(
+        const data = await cloneClient.pullRequests.removeRecentOpened(
             entry.repoId,
             entry.workspaceId,
             entry.number,
@@ -810,7 +815,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         if (entry.repoId === repoId && entry.workspaceId === workspaceId) {
             setRecentOpenedPrs(data.entries ?? []);
         }
-    }, [repoId, workspaceId]);
+    }, [repoId, workspaceId, cloneClient]);
 
     const handleRecentOpenedClick = useCallback(async (entry: RecentOpenedPullRequestEntry) => {
         if (openPrLoading) return;

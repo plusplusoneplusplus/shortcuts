@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { getApiBase } from '../../../utils/config';
+import { cloneApiBase } from '../../../repos/cloneRegistry';
 import type { ClientConversationTurn } from '../../../types/dashboard';
 import type { QueuedMessage } from '../../../utils/chatUtils';
 
@@ -103,6 +103,12 @@ export interface UseChatSSEOptions {
     taskId: string;
     task: any;
     processId: string | null;
+    /**
+     * Workspace owning this chat. When it is a remote clone, the process-event
+     * SSE stream is opened against that clone's server (AC-07); local/undefined
+     * keeps the default page-origin stream.
+     */
+    workspaceId?: string;
     setIsStreaming: (v: boolean) => void;
     setTask: (updater: (prev: any) => any) => void;
     /**
@@ -142,6 +148,7 @@ export function useChatSSE({
     taskId,
     task,
     processId,
+    workspaceId,
     setIsStreaming,
     setTask,
     setProcessDetails,
@@ -179,7 +186,7 @@ export function useChatSSE({
         if (!taskId || task?.status !== 'running' || !processId) return;
         if (typeof EventSource === 'undefined') return;
 
-        const es = new EventSource(`${getApiBase()}/processes/${encodeURIComponent(processId)}/stream`);
+        const es = new EventSource(`${cloneApiBase(workspaceId)}/processes/${encodeURIComponent(processId)}/stream`);
         eventSourceRef.current = es;
         setIsStreaming(true);
         const sseStartTime = Date.now();
@@ -484,7 +491,7 @@ export function useChatSSE({
         });
 
         return () => { es.close(); eventSourceRef.current = null; setIsStreaming(false); };
-    }, [taskId, task?.status, processId, refreshConversation]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [taskId, task?.status, processId, workspaceId, refreshConversation]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { stopStreaming };
 }

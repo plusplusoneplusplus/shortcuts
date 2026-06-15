@@ -9,7 +9,8 @@ import type { ChatMode } from '../../../repos/modeConfig';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
 import type { AttachmentPayload } from '../../../types/attachments';
 import { CocApiError, type ProcessMessageRequest } from '@plusplusoneplusplus/coc-client';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
+import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import { validateSessionContextAttachmentsForSend } from '../sessionContextDrop';
 import type { RalphGrillSetup } from '../../../../../../ralph/grill-planning';
 
@@ -206,7 +207,9 @@ export function useSendMessage({
             setError(null);
             setSending(true);
             try {
-                await getSpaCocClient().processes.promoteToRalph(processId, {
+                // Route the write to the chat's clone (AC-07): a remote clone's
+                // promotion hits its own server, never the local one.
+                await getCocClientForWorkspace(workspaceId).processes.promoteToRalph(processId, {
                     workspaceId,
                     extraGuidance: userText || undefined,
                     ...(ralphGrillSetup?.enabled ? { grill: ralphGrillSetup } : {}),
@@ -269,7 +272,8 @@ export function useSendMessage({
             // Both immediate and enqueue: fire POST to /message and let the
             // server steer, buffer, or enqueue as appropriate.  No local
             // pending queue entry — the server is the source of truth.
-            void getSpaCocClient().processes.sendMessage(
+            // Routed to the chat's clone (AC-07).
+            void getCocClientForWorkspace(workspaceId).processes.sendMessage(
                 processId,
                 buildMessageRequest(rawContent, deliveryMode, extractedSkills),
             ).catch(() => {});
@@ -296,7 +300,8 @@ export function useSendMessage({
         });
 
         try {
-            await getSpaCocClient().processes.sendMessage(
+            // Idle chat: start the streaming follow-up against the chat's clone (AC-07).
+            await getCocClientForWorkspace(workspaceId).processes.sendMessage(
                 processId,
                 buildMessageRequest(rawContent, deliveryMode, extractedSkills),
             );

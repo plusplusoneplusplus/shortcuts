@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { useCocClient } from '../../../repos/cloneRouting';
 
 export interface GitInfo {
     branch: string | null;
@@ -28,11 +28,14 @@ const DEFAULT_GIT_INFO: GitInfo = {
 
 export function useGitInfo(workspaceId: string): GitInfo {
     const [state, setState] = useState<GitInfo>(DEFAULT_GIT_INFO);
+    // Route to the workspace's clone: a remote clone reads git-info from its own
+    // server, a local clone from the default origin (AC-07).
+    const client = useCocClient(workspaceId);
 
     useEffect(() => {
         let cancelled = false;
         setState(prev => ({ ...prev, loading: true, error: false }));
-        getSpaCocClient().workspaces.gitInfo(workspaceId)
+        client.workspaces.gitInfo(workspaceId)
             .then((data: any) => {
                 if (cancelled) return;
                 setState({
@@ -51,7 +54,7 @@ export function useGitInfo(workspaceId: string): GitInfo {
         return () => {
             cancelled = true;
         };
-    }, [workspaceId]);
+    }, [workspaceId, client]);
 
     return state;
 }

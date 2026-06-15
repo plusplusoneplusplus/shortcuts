@@ -8,6 +8,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { getWsPath } from '../../../utils/config';
 import { cloneWsUrl } from '../../../api/wsUrl';
+import { lookupCloneBaseUrl } from '../../../repos/cloneRegistry';
 
 export type { WsStatus } from '../../../hooks/useWebSocket';
 type WsStatus = 'connecting' | 'open' | 'closed';
@@ -114,9 +115,14 @@ export function useTerminalWebSocket({
         }
 
         const basePath = getWsPath();
-        // baseUrl omitted → page-origin URL (local behavior unchanged). AC-07 wires
-        // a remote clone's baseUrl in so its terminal targets that server.
-        const wsUrl = cloneWsUrl(`${basePath}/terminal?workspaceId=${encodeURIComponent(params.workspaceId)}&cols=${params.cols}&rows=${params.rows}`);
+        // Route the terminal PTY socket to the workspace's clone (AC-07): a remote
+        // clone targets its server's baseUrl; a local clone resolves to undefined →
+        // the legacy page-origin URL, so local behavior is unchanged.
+        const cloneBaseUrl = lookupCloneBaseUrl(params.workspaceId);
+        const wsUrl = cloneWsUrl(
+            `${basePath}/terminal?workspaceId=${encodeURIComponent(params.workspaceId)}&cols=${params.cols}&rows=${params.rows}`,
+            cloneBaseUrl,
+        );
         setStatus('connecting');
 
         const ws = new WebSocket(wsUrl);

@@ -30,6 +30,7 @@ import {
 } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient } from '../api/cocClient';
 import { isRemoteShellEnabled } from '../utils/config';
+import { registerCloneBaseUrls } from './cloneRegistry';
 import {
     loadRemoteWorkspaceCache,
     saveRemoteWorkspaceCacheEntry,
@@ -294,6 +295,9 @@ async function loadOnlineSource(
  */
 export async function aggregateRemoteWorkspaces(): Promise<AggregatedRemoteWorkspaces> {
     if (!isRemoteShellEnabled()) {
+        // Flag off: clear any stale lookup entries so per-clone routing reverts to
+        // the local default for every id.
+        registerCloneBaseUrls([]);
         return EMPTY_AGGREGATE;
     }
 
@@ -302,6 +306,7 @@ export async function aggregateRemoteWorkspaces(): Promise<AggregatedRemoteWorks
         servers = await getSpaCocClient().servers.list();
     } catch {
         // Registry unavailable: nothing to aggregate. Local flow is unaffected.
+        registerCloneBaseUrls([]);
         return EMPTY_AGGREGATE;
     }
 
@@ -324,6 +329,13 @@ export async function aggregateRemoteWorkspaces(): Promise<AggregatedRemoteWorks
         workspaces.push(...source.workspaces);
         Object.assign(gitInfo, source.gitInfo);
     }
+
+    // Publish the workspaceId → baseUrl lookup (AC-07) so non-React services and
+    // hooks route a remote clone's per-clone REST/WS to its server. Full replace,
+    // covering online AND cached/offline remote rows (an offline-selected clone
+    // still resolves to its last-known baseUrl rather than silently hitting the
+    // local server).
+    registerCloneBaseUrls(workspaces.map(ws => ({ workspaceId: ws.id, baseUrl: ws.baseUrl })));
 
     return { sources, workspaces, gitInfo, warnings };
 }

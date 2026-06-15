@@ -27,8 +27,10 @@ describe('PullRequestsTab — URL construction', () => {
 
     it('uses the typed cocClient for pull requests (no raw getApiBase() URL construction)', () => {
         // After migrating to cocClient, URLs are built inside the client library.
-        // Check that cocClient is used and there are no manual /repos/ URL constructions with getApiBase().
-        expect(source).toMatch(/getSpaCocClient\(\)/);
+        // AC-07 routes the PR tab through the clone-aware useCocClient(workspaceId)
+        // so a remote clone targets its server; either typed client entry point
+        // satisfies "no raw URL building".
+        expect(source).toMatch(/getSpaCocClient\(\)|useCocClient\(/);
         expect(source).not.toMatch(/getApiBase\(\).*\/repos\//);
     });
 });

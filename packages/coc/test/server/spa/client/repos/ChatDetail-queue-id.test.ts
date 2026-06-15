@@ -80,8 +80,10 @@ describe('ChatDetail source-level regression', () => {
     });
 
     it('never passes raw taskId to typed queue task methods', () => {
+        // AC-07: ChatDetail routes queue calls through the clone-aware client
+        // (`useCocClient(workspaceId)` → `client.queue.*`), so match that call form.
         const queueTaskCallLines = src.split('\n').filter(line =>
-            line.includes('getSpaCocClient().queue.') && line.includes('taskId'),
+            line.includes('client.queue.') && line.includes('taskId'),
         );
 
         for (const line of queueTaskCallLines) {
@@ -94,10 +96,10 @@ describe('ChatDetail source-level regression', () => {
     });
 
     it('handleCancel uses bareTaskId', () => {
-        expect(src).toContain('getSpaCocClient().queue.cancel(bareTaskId)');
+        expect(src).toContain('client.queue.cancel(bareTaskId)');
     });
 
     it('handleMoveToTop uses bareTaskId', () => {
-        expect(src).toContain('getSpaCocClient().queue.moveToTop(bareTaskId)');
+        expect(src).toContain('client.queue.moveToTop(bareTaskId)');
     });
 });

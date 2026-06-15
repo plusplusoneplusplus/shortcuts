@@ -668,17 +668,55 @@ the default singleton when `baseUrl` is omitted, else a per-`baseUrl`-cached
 `CocClient` whose REST (`/api` base) and `events` WebSocket target that origin.
 `resolveCloneBaseUrl(ref, repos)` (`repos/cloneRouting.ts`) maps a workspace
 object or id to its remote `baseUrl` (or `undefined` when local) using the AC-01
-remote markers; the hooks `useResolveCloneBaseUrl()`, `useCocClient(ref?)`, and
-`useCloneWsUrl(ref?)` bind it to the live `ReposContext` repo list. WS URL
-construction goes through `cloneWsUrl(path, baseUrl?)` (`api/wsUrl.ts`): with a
-`baseUrl` it derives `ws(s)://{host:port}{path}` (http→ws, https→wss) keeping the
-path+query verbatim; without one it reproduces the legacy `window.location`
-behavior. The central WS call sites (the `/ws` comment subscriptions in
-`useTaskComments` + the `git/hooks/use*Comments` family, and the `/ws/terminal`
-socket in `useTerminalWebSocket`) route through `cloneWsUrl` so they are
-baseUrl-capable; wiring a clone's baseUrl into each tab is deferred to AC-07. The
-shared `/ws` process-event stream (`useWebSocket` → `getSpaCocClient().events`)
-is already baseUrl-aware through the SDK's `buildWebSocketUrl`.
+remote markers. WS URL construction goes through `cloneWsUrl(path, baseUrl?)`
+(`api/wsUrl.ts`): with a `baseUrl` it derives `ws(s)://{host:port}{path}`
+(http→ws, https→wss) keeping the path+query verbatim; without one it reproduces
+the legacy `window.location` behavior. The shared `/ws` process-event stream
+(`useWebSocket` → `getSpaCocClient().events`) is already baseUrl-aware through the
+SDK's `buildWebSocketUrl`.
+
+**Clone→baseUrl lookup registry + per-tab wiring (AC-07)**: every in-scope tab
+(Activity/Chats, Git, Terminal, Explorer, Schedules, Pull Requests, Work Items,
+Notes) loads and writes against a selected remote clone's own server, never the
+local one. The seam is `repos/cloneRegistry.ts` — a module-level
+`workspaceId → baseUrl` map (remote workspaces only) that `aggregateRemoteWorkspaces`
+populates on every repo refresh via `registerCloneBaseUrls` (full replace,
+covering online AND cached/offline rows; cleared when the flag is OFF or the
+registry is unavailable). It exposes `lookupCloneBaseUrl(workspaceId)`,
+`getCocClientForWorkspace(workspaceId)` (= `getCocClientFor(lookupCloneBaseUrl(id))`,
+falling back to `getSpaCocClient()` for a local/unknown id so local behavior is
+byte-for-byte unchanged), `cloneApiBase(workspaceId)` (absolute remote REST base
+for hand-built URLs like the `EventSource` process stream), and
+`cloneWsUrlForWorkspace(path, workspaceId)`. The routing hooks
+(`useResolveCloneBaseUrl()`, `useCocClient(ref?)`, `useCloneWsUrl(ref?)`) resolve a
+bare workspace id through this registry (no `ReposContext` dependency, so they are
+safe in deep per-tab components and unit tests) and a workspace **object** from its
+own marker.
+
+Wiring is at the per-feature HOOK/SERVICE seam where a `workspaceId` is already
+the input:
+- React components/hooks call `useCocClient(workspaceId)` and use the returned
+  client for all clone-scoped REST: `useGitInfo`, `TerminalView` (terminal
+  list/pin), `ChatDetail` (every `processes`/`queue`/`notes`/`canvases`/`skills`
+  call), `RepoSchedulesTab` (schedule CRUD + notes-git status),
+  `WorkItemSection` + `WorkItemHierarchyTree` (list/tree/mutations), and
+  `PullRequestsTab` (list/suggestions/roster/classification).
+- Non-React services that take a `workspaceId` resolve via
+  `getCocClientForWorkspace(workspaceId)`: `explorerApi.*` and `notesApi.*`.
+- The Activity WRITE path `useSendMessage` routes `processes.sendMessage` /
+  `promoteToRalph` through `getCocClientForWorkspace(workspaceId)`; the
+  Activity events stream `useChatSSE` opens its `EventSource` at
+  `cloneApiBase(workspaceId)`.
+- The terminal PTY socket (`useTerminalWebSocket`) resolves the clone baseUrl
+  from the registry and passes it into `cloneWsUrl`, so a remote clone's terminal
+  targets its server. The `/ws` comment subscriptions (`useTaskComments` +
+  `git/hooks/use*Comments`) already route through `cloneWsUrl`.
+
+No-local-fallthrough guarantee: a remote clone's id always resolves to its
+`baseUrl`, so its clone-scoped REST/WS never hit the default local client; an
+OFFLINE-selected clone still resolves to its last-known `baseUrl` (degrades to
+empty/cached UI, never a silent local call) because cached/offline rows are
+registered too.
 
 The sub-tab taxonomy and feature-flag/git/layout gating live in
 `features/repo-detail/repoSubTabs.ts` (`SUB_TABS`, `VISIBLE_SUB_TABS`,

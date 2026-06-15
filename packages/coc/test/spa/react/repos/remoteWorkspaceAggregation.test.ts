@@ -91,6 +91,10 @@ import {
     loadRemoteWorkspaceCache,
     saveRemoteWorkspaceCacheEntry,
 } from '../../../../src/server/spa/client/react/repos/remoteWorkspaceCache';
+import {
+    lookupCloneBaseUrl,
+    resetCloneRegistryForTests,
+} from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -147,10 +151,12 @@ beforeEach(() => {
     remoteResponses.clear();
     constructedBaseUrls.length = 0;
     _resetRemoteWorkspaceCache();
+    resetCloneRegistryForTests();
 });
 
 afterEach(() => {
     _resetRemoteWorkspaceCache();
+    resetCloneRegistryForTests();
 });
 
 // ── tag logic ─────────────────────────────────────────────────────────────────
@@ -465,5 +471,57 @@ describe('aggregateRemoteWorkspaces — connection + remote queue (AC-05)', () =
 
         const result = await aggregateRemoteWorkspaces();
         expect(result.workspaces[0].remote.connection).toBe('failed');
+    });
+});
+
+// ── AC-07: populate the workspace→baseUrl LOOKUP registry ───────────────────
+describe('aggregateRemoteWorkspaces — clone lookup registry (AC-07)', () => {
+    it('registers every remote workspace id → its baseUrl for per-clone routing', async () => {
+        serversList.mockResolvedValue([
+            onlineServer('srv-1', 'Server One', 'http://127.0.0.1:4000'),
+            onlineServer('srv-2', 'Server Two', 'http://127.0.0.1:4001'),
+        ]);
+        remoteResponses.set('http://127.0.0.1:4000', { workspaces: [ws('w1'), ws('w2')] });
+        remoteResponses.set('http://127.0.0.1:4001', { workspaces: [ws('w3')] });
+
+        await aggregateRemoteWorkspaces();
+
+        expect(lookupCloneBaseUrl('w1')).toBe('http://127.0.0.1:4000');
+        expect(lookupCloneBaseUrl('w2')).toBe('http://127.0.0.1:4000');
+        expect(lookupCloneBaseUrl('w3')).toBe('http://127.0.0.1:4001');
+        // A local id is never registered → resolves to undefined (default client).
+        expect(lookupCloneBaseUrl('local-only')).toBeUndefined();
+    });
+
+    it('registers OFFLINE (cached) clones too, so an offline-selected clone still resolves to its server (not local)', async () => {
+        saveRemoteWorkspaceCacheEntry('srv-o', { baseUrl: 'http://127.0.0.1:4000', workspaces: [ws('w1')] });
+        serversList.mockResolvedValue([offlineServer('srv-o', 'Offline')]);
+
+        await aggregateRemoteWorkspaces();
+        expect(lookupCloneBaseUrl('w1')).toBe('http://127.0.0.1:4000');
+    });
+
+    it('clears the registry when the remote-shell flag is OFF (per-clone routing reverts to local)', async () => {
+        // First populate while ON.
+        serversList.mockResolvedValue([onlineServer('srv-1', 'S1', 'http://127.0.0.1:4000')]);
+        remoteResponses.set('http://127.0.0.1:4000', { workspaces: [ws('w1')] });
+        await aggregateRemoteWorkspaces();
+        expect(lookupCloneBaseUrl('w1')).toBe('http://127.0.0.1:4000');
+
+        // Flip OFF and re-aggregate → registry cleared.
+        remoteShellEnabled = false;
+        await aggregateRemoteWorkspaces();
+        expect(lookupCloneBaseUrl('w1')).toBeUndefined();
+    });
+
+    it('clears the registry when the server registry is unavailable', async () => {
+        serversList.mockResolvedValue([onlineServer('srv-1', 'S1', 'http://127.0.0.1:4000')]);
+        remoteResponses.set('http://127.0.0.1:4000', { workspaces: [ws('w1')] });
+        await aggregateRemoteWorkspaces();
+        expect(lookupCloneBaseUrl('w1')).toBe('http://127.0.0.1:4000');
+
+        serversList.mockRejectedValue(new Error('registry down'));
+        await aggregateRemoteWorkspaces();
+        expect(lookupCloneBaseUrl('w1')).toBeUndefined();
     });
 });
