@@ -495,11 +495,17 @@ describe('source-canvas routing for chat AI-response file-path links (AC-03)', (
         freshBody();
     });
 
-    function clickLink(): ReturnType<typeof vi.spyOn> {
+    function clickLink(selector = '.file-path-link'): ReturnType<typeof vi.spyOn> {
         const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
-        const link = document.querySelector('.file-path-link') as HTMLElement;
+        const link = document.querySelector(selector) as HTMLElement;
         link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
         return dispatchSpy as any;
+    }
+
+    function eventCalls(dispatchSpy: ReturnType<typeof vi.spyOn>, eventType: string): any[] {
+        return (dispatchSpy.mock.calls as any[]).filter(
+            ([e]) => (e as Event)?.type === eventType
+        );
     }
 
     it('flag ON + chat AI response → dispatches coc-open-source-canvas with line/range info', async () => {
@@ -570,6 +576,54 @@ describe('source-canvas routing for chat AI-response file-path links (AC-03)', (
         expect(call[0].detail.endLine).toBeUndefined();
     });
 
+    it('flag ON + chat AI markdown anchor with non-path label → opens source canvas from href', async () => {
+        const fullPath = '/repo/src/foo.ts';
+        document.body.innerHTML = `
+            <div class="chat-message assistant" data-ws-id="ws-1">
+                <a href="${fullPath}:42-58"><span class="label">queryBackgroundJobSessionIds</span></a>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink('.label');
+
+        const call = eventCalls(dispatchSpy, 'coc-open-source-canvas')[0];
+        expect(call).toBeTruthy();
+        expect(call[0].detail).toEqual(expect.objectContaining({
+            filePath: fullPath,
+            wsId: 'ws-1',
+            line: 42,
+            endLine: 58,
+        }));
+        expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
+    });
+
+    it('flag ON + chat AI md-link span with non-path label → opens source canvas from data-href', async () => {
+        const fullPath = '/repo/src/foo.ts';
+        document.body.innerHTML = `
+            <div class="chat-message assistant" data-ws-id="ws-1" data-source-file="/repo/docs/current.md">
+                <span class="md-link" data-href="${fullPath}:42">
+                    <span class="md-link-text">[open implementation]</span>
+                    <span class="md-link-url">(${fullPath}:42)</span>
+                </span>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink('.md-link-text');
+
+        const call = eventCalls(dispatchSpy, 'coc-open-source-canvas')[0];
+        expect(call).toBeTruthy();
+        expect(call[0].detail).toEqual(expect.objectContaining({
+            filePath: fullPath,
+            wsId: 'ws-1',
+            line: 42,
+            sourceFilePath: '/repo/docs/current.md',
+        }));
+        expect(call[0].detail.endLine).toBeUndefined();
+        expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
+    });
+
     it('flag ON but link in a chat USER message → keeps floating dialog (AI response only)', async () => {
         const fullPath = '/repo/src/foo.ts';
         document.body.innerHTML = `
@@ -584,10 +638,7 @@ describe('source-canvas routing for chat AI-response file-path links (AC-03)', (
         expect(dispatchSpy).toHaveBeenCalledWith(
             expect.objectContaining({ type: 'coc-open-markdown-review' })
         );
-        const canvasCalls = (dispatchSpy.mock.calls as any[]).filter(
-            ([e]) => (e as Event)?.type === 'coc-open-source-canvas'
-        );
-        expect(canvasCalls.length).toBe(0);
+        expect(eventCalls(dispatchSpy, 'coc-open-source-canvas')).toHaveLength(0);
     });
 
     it('flag ON but non-chat surface (tasks tree) → keeps floating dialog', async () => {
@@ -607,10 +658,35 @@ describe('source-canvas routing for chat AI-response file-path links (AC-03)', (
                 detail: { filePath: fullPath },
             })
         );
-        const canvasCalls = (dispatchSpy.mock.calls as any[]).filter(
-            ([e]) => (e as Event)?.type === 'coc-open-source-canvas'
+        expect(eventCalls(dispatchSpy, 'coc-open-source-canvas')).toHaveLength(0);
+    });
+
+    it('flag OFF + chat AI markdown anchor falls back to markdown review with original href', async () => {
+        vi.doMock(FLAGS_MODULE, () => ({
+            SHOW_WELCOME_TUTORIAL: true,
+            SHOW_FOCUSED_DIFF: true,
+            SHOW_EXCALIDRAW_DIAGRAMS: true,
+            SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS: false,
+            RALPH_MULTI_LOOP: false,
+        }));
+
+        const fullPath = '/repo/src/foo.ts';
+        document.body.innerHTML = `
+            <div class="chat-message assistant" data-ws-id="ws-1">
+                <a href="${fullPath}:42"><span class="label">open implementation</span></a>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink('.label');
+
+        expect(dispatchSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: 'coc-open-markdown-review',
+                detail: { filePath: `${fullPath}:42`, wsId: 'ws-1' },
+            })
         );
-        expect(canvasCalls.length).toBe(0);
+        expect(eventCalls(dispatchSpy, 'coc-open-source-canvas')).toHaveLength(0);
     });
 
     it('flag OFF + chat AI response → falls back to floating dialog (coc-open-markdown-review)', async () => {
@@ -638,10 +714,7 @@ describe('source-canvas routing for chat AI-response file-path links (AC-03)', (
                 detail: { filePath: fullPath, wsId: 'ws-1' },
             })
         );
-        const canvasCalls = (dispatchSpy.mock.calls as any[]).filter(
-            ([e]) => (e as Event)?.type === 'coc-open-source-canvas'
-        );
-        expect(canvasCalls.length).toBe(0);
+        expect(eventCalls(dispatchSpy, 'coc-open-source-canvas')).toHaveLength(0);
     });
 });
 
