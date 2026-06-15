@@ -1519,7 +1519,8 @@ describe('Preferences REST API', () => {
 
     it('GET includes CORS headers', async () => {
         const res = await getJSON(`${baseUrl}/api/preferences`);
-        expect(res.headers['access-control-allow-origin']).toBe('*');
+        // AC-02: no wildcard ACAO; a no-Origin request gets no ACAO header.
+        expect(res.headers['access-control-allow-origin']).toBeUndefined();
     });
 
     // -- Content-Type --
@@ -1838,7 +1839,8 @@ describe('Per-Repo Preferences REST API', () => {
 
     it('GET includes CORS headers', async () => {
         const res = await getJSON(repoUrl(repoId));
-        expect(res.headers['access-control-allow-origin']).toBe('*');
+        // AC-02: no wildcard ACAO; a no-Origin request gets no ACAO header.
+        expect(res.headers['access-control-allow-origin']).toBeUndefined();
     });
 
     // -- PUT --
