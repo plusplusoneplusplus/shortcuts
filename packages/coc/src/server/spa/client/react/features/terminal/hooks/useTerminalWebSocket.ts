@@ -7,6 +7,7 @@
 
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { getWsPath } from '../../../utils/config';
+import { cloneWsUrl } from '../../../api/wsUrl';
 
 export type { WsStatus } from '../../../hooks/useWebSocket';
 type WsStatus = 'connecting' | 'open' | 'closed';
@@ -112,9 +113,10 @@ export function useTerminalWebSocket({
             wsRef.current.close();
         }
 
-        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
         const basePath = getWsPath();
-        const wsUrl = `${protocol}//${location.host}${basePath}/terminal?workspaceId=${encodeURIComponent(params.workspaceId)}&cols=${params.cols}&rows=${params.rows}`;
+        // baseUrl omitted → page-origin URL (local behavior unchanged). AC-07 wires
+        // a remote clone's baseUrl in so its terminal targets that server.
+        const wsUrl = cloneWsUrl(`${basePath}/terminal?workspaceId=${encodeURIComponent(params.workspaceId)}&cols=${params.cols}&rows=${params.rows}`);
         setStatus('connecting');
 
         const ws = new WebSocket(wsUrl);

@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { getWsPath } from '../../../utils/config';
+import { cloneWsUrl } from '../../../api/wsUrl';
 import { getSpaCocClient } from '../../../api/cocClient';
 
 export function useFileCommentCounts(
@@ -44,8 +45,7 @@ export function useFileCommentCounts(
     // WebSocket subscription for instant refresh on diff-comment-updated
     useEffect(() => {
         if (!wsId) return;
-        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        const ws = new WebSocket(`${protocol}://${window.location.host}${getWsPath()}`);
+        const ws = new WebSocket(cloneWsUrl(getWsPath()));
         ws.addEventListener('message', (event) => {
             try {
                 const msg = JSON.parse(event.data as string) as { type: string; workspaceId?: string };

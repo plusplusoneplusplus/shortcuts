@@ -627,6 +627,26 @@ unreachable servers contribute their last-known list from a two-layer
 OFF, `aggregateRemoteWorkspaces()` returns empty and performs no remote fetch, so
 the classic flow is unchanged.
 
+**Per-clone request routing**: a remote clone's REST + WS can be routed to its
+server's `baseUrl` via opt-in primitives — there is NO global "active baseUrl";
+the default `getSpaCocClient()` singleton and the repos-list/git-info aggregation
+stay on the page origin. `getCocClientFor(baseUrl?)` (`api/cocClient.ts`) returns
+the default singleton when `baseUrl` is omitted, else a per-`baseUrl`-cached
+`CocClient` whose REST (`/api` base) and `events` WebSocket target that origin.
+`resolveCloneBaseUrl(ref, repos)` (`repos/cloneRouting.ts`) maps a workspace
+object or id to its remote `baseUrl` (or `undefined` when local) using the AC-01
+remote markers; the hooks `useResolveCloneBaseUrl()`, `useCocClient(ref?)`, and
+`useCloneWsUrl(ref?)` bind it to the live `ReposContext` repo list. WS URL
+construction goes through `cloneWsUrl(path, baseUrl?)` (`api/wsUrl.ts`): with a
+`baseUrl` it derives `ws(s)://{host:port}{path}` (http→ws, https→wss) keeping the
+path+query verbatim; without one it reproduces the legacy `window.location`
+behavior. The central WS call sites (the `/ws` comment subscriptions in
+`useTaskComments` + the `git/hooks/use*Comments` family, and the `/ws/terminal`
+socket in `useTerminalWebSocket`) route through `cloneWsUrl` so they are
+baseUrl-capable; wiring a clone's baseUrl into each tab is deferred to AC-07. The
+shared `/ws` process-event stream (`useWebSocket` → `getSpaCocClient().events`)
+is already baseUrl-aware through the SDK's `buildWebSocketUrl`.
+
 The sub-tab taxonomy and feature-flag/git/layout gating live in
 `features/repo-detail/repoSubTabs.ts` (`SUB_TABS`, `VISIBLE_SUB_TABS`,
 `TAB_GROUP_INDEX`, `computeVisibleSubTabs`), shared by both `RepoDetail` and the

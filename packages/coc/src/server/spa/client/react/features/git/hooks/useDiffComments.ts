@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getWsPath } from '../../../utils/config';
 import { getSpaCocClient } from '../../../api/cocClient';
+import { cloneWsUrl } from '../../../api/wsUrl';
 import type { DiffComment, DiffCommentContext, DiffCommentSelection } from '../../../../comments/diff-comment-types';
 import type { DiffLine } from '../diff/UnifiedDiffViewer';
 import { relocateDiffAnchor } from '../../../utils/relocateDiffAnchor';
@@ -477,8 +478,7 @@ export function useDiffComments(
 
     useEffect(() => {
         if (!context) return;
-        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        const ws = new WebSocket(`${protocol}://${window.location.host}${getWsPath()}`);
+        const ws = new WebSocket(cloneWsUrl(getWsPath()));
         ws.addEventListener('open', () => {
             ws.send(JSON.stringify({ type: 'subscribe-diff', context }));
         });
