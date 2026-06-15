@@ -153,3 +153,19 @@ export function summarizeRemote(
     const name = label.includes('/') ? label.split('/').slice(-1)[0] : label;
     return { status, unseen, cloneCount: group.repos.length, color, name };
 }
+
+/**
+ * Derive the hosting-provider label ("ADO" or "GitHub") from a normalized
+ * remote URL (`host/user/repo`). Falls back to "Remote" for unknown hosts.
+ */
+export function remoteProviderLabel(normalizedUrl: string | null | undefined): string {
+    if (!normalizedUrl) return 'Remote';
+    const host = normalizedUrl.split('/')[0]?.toLowerCase() ?? '';
+    if (host === 'dev.azure.com' || host.endsWith('.visualstudio.com') || host.includes('azure.com')) {
+        return 'ADO';
+    }
+    if (host === 'github.com' || host.endsWith('.github.com') || host.includes('github')) {
+        return 'GitHub';
+    }
+    return 'Remote';
+}

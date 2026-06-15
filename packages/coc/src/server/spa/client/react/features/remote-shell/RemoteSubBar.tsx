@@ -30,6 +30,7 @@ import { computeVisibleSubTabs, type SubTabDef } from '../repo-detail/repoSubTab
 import { groupReposByRemote, truncatePath } from '../../repos/repoGrouping';
 import {
     partitionShellTabs, computeCloneStatusMap, cloneStatusColor, summarizeRemote, computeVisibleTabKeys,
+    remoteProviderLabel,
 } from './shellModel';
 import { useShellNavigation } from './useShellNavigation';
 import type { RepoData } from '../../repos/repoGrouping';
@@ -89,6 +90,7 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
     );
     const remoteColor = (clones[0]?.workspace.color as string) || '#848484';
     const remoteLabel = group ? summarizeRemote(group, cloneStatus, {}).name : ws.name;
+    const providerLabel = remoteProviderLabel(group?.normalizedUrl);
     const branch = repo.gitInfo?.branch || null;
 
     const [cloneOpen, setCloneOpen] = useState(false);
@@ -220,14 +222,13 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
             </div>
 
             {/* ── Remote scope ── */}
-            {remoteTabs.length > 0 && <span className={scopeLabelClass} data-testid="scope-label-remote">Remote</span>}
+            {remoteTabs.length > 0 && <span className={scopeLabelClass} data-testid="scope-label-remote">{providerLabel}</span>}
             {remoteTabs.map(t => renderTab(t, 'remote-scope-tab'))}
 
             {/* divider */}
             <span className="w-px h-[22px] bg-[#d8dee4] dark:bg-[#3c3c3c] mx-2 flex-shrink-0" aria-hidden />
 
             {/* ── Clone scope ── */}
-            <span className={scopeLabelClass} data-testid="scope-label-clone">Clone</span>
             <div className="relative flex-shrink-0" ref={cloneRef}>
                 <button
                     data-testid="clone-switch"

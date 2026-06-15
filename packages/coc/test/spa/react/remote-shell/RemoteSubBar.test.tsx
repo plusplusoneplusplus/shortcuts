@@ -65,6 +65,24 @@ describe('RemoteSubBar', () => {
         expect(remoteTabs).toEqual(['work-items', 'pull-requests']);
     });
 
+    it('labels the remote scope by provider (GitHub) and drops the Clone scope label', () => {
+        renderBar();
+        const label = screen.getByTestId('scope-label-remote');
+        expect(label.textContent).toBe('GitHub');
+        expect(screen.queryByTestId('scope-label-clone')).toBeNull();
+    });
+
+    it('labels the remote scope ADO for Azure DevOps remotes', () => {
+        const ado = 'https://dev.azure.com/org/project/_git/repo';
+        const adoRepo = (id: string, name: string) => ({
+            workspace: { id, name, color: '#0078d4', remoteUrl: ado, rootPath: `/r/${id}` },
+            gitInfo: { isGitRepo: true, branch: 'main', dirty: false, remoteUrl: ado },
+        });
+        const repos = [adoRepo('a', 'repo'), adoRepo('b', 'repo-2')];
+        render(<RemoteSubBar repo={repos[0] as any} repos={repos as any} />);
+        expect(screen.getByTestId('scope-label-remote').textContent).toBe('ADO');
+    });
+
     it('shows every non-remote tab in the clone scope, inline, when width is unconstrained', () => {
         renderBar();
         const cloneTabs = screen.getAllByTestId('clone-scope-tab').map(el => el.getAttribute('data-subtab'));
