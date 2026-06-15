@@ -609,6 +609,24 @@ model built on `features/remote-shell/`:
   `ResizeObserver` feed `computeVisibleTabKeys`, which shows every tab that fits and
   collapses the tail into a `…` menu (always keeping the active tab visible).
 
+**Remote workspace aggregation** (gated by `features.remoteShell`): when the flag
+is ON, `ReposContext.fetchRepos` also calls `aggregateRemoteWorkspaces()`
+(`repos/remoteWorkspaceAggregation.ts`) in parallel with the local
+`listWorkspaces()` + git-info batch. For each registry server (`/api/servers`)
+that is `online`, it fetches `/api/workspaces` + the git-info batch DIRECTLY at
+the server's `effectiveUrl` via a self-contained `CocClient` (it does NOT reuse
+`getSpaCocClient` routing). Each remote workspace is tagged with a `remote`
+marker `{ baseUrl, serverId, serverLabel, offline }` plus a top-level `baseUrl`
+(the routing key — no composite IDs, no serverId namespace); local workspaces
+carry neither, so `isRemoteWorkspace()` distinguishes them. Remote rows are
+merged into the same `RepoData[]` as local ones (git-info pre-resolved from the
+per-server batch) and are skipped by the local Phase-2 git-info update. Offline /
+unreachable servers contribute their last-known list from a two-layer
+(in-memory + `localStorage['coc-remote-workspace-cache']`) per-server cache
+(`repos/remoteWorkspaceCache.ts`), each entry flagged `offline`. When the flag is
+OFF, `aggregateRemoteWorkspaces()` returns empty and performs no remote fetch, so
+the classic flow is unchanged.
+
 The sub-tab taxonomy and feature-flag/git/layout gating live in
 `features/repo-detail/repoSubTabs.ts` (`SUB_TABS`, `VISIBLE_SUB_TABS`,
 `TAB_GROUP_INDEX`, `computeVisibleSubTabs`), shared by both `RepoDetail` and the

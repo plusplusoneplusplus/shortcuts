@@ -29,8 +29,10 @@ import {
     listQueueRepos,
     listWorkspaces,
 } from '../repos/repositoryService';
+import { aggregateRemoteWorkspaces, isRemoteWorkspace } from '../repos/remoteWorkspaceAggregation';
 
 import type { RepoData } from '../repos/repoGrouping';
+import type { AggregatedRemoteWorkspaces } from '../repos/remoteWorkspaceAggregation';
 
 // ── Context shape ──────────────────────────────────────────────────────
 
@@ -43,6 +45,27 @@ export interface ReposContextValue {
 }
 
 const ReposContext = createContext<ReposContextValue | null>(null);
+
+/**
+ * Build RepoData entries for aggregated remote workspaces. git-info comes from
+ * the per-server batch already fetched by the aggregator (online sources); offline
+ * (cached) sources have no git-info, so those rows fall back to the workspace's
+ * own isGitRepo flag. Remote rows are never re-sent to the local git-info batch.
+ */
+function buildRemoteRepoData(aggregate: AggregatedRemoteWorkspaces): RepoData[] {
+    return aggregate.workspaces.map((ws): RepoData => {
+        const git = aggregate.gitInfo[ws.id];
+        return {
+            workspace: ws,
+            gitInfo: git ?? { isGitRepo: !!ws.isGitRepo, branch: null, dirty: false },
+            // Offline (cached) rows never resolve git-info; online rows already have it.
+            gitInfoLoading: false,
+            workflows: [],
+            stats: { success: 0, failed: 0, running: 0 },
+            taskCount: 0,
+        };
+    });
+}
 
 // ── Provider ──────────────────────────────────────────────────────────
 
@@ -106,10 +129,14 @@ export function ReposProvider({ children }: { children: ReactNode }) {
 
     const fetchRepos = useCallback(async () => {
         try {
-            // Fetch workspaces and all process summaries in parallel
-            const [workspaces, processRes] = await Promise.all([
+            // Fetch workspaces, process summaries, and (when features.remoteShell
+            // is ON) remote-server workspaces in parallel. aggregateRemoteWorkspaces
+            // returns an empty result when the flag is OFF, so the classic flow is
+            // unchanged and incurs no remote fetch.
+            const [workspaces, processRes, remoteAggregate] = await Promise.all([
                 listWorkspaces(),
                 listProcessSummaries(5000).catch(() => null),
+                aggregateRemoteWorkspaces().catch(() => null),
             ]);
             if (!Array.isArray(workspaces)) {
                 setRepos([]);
@@ -152,20 +179,31 @@ export function ReposProvider({ children }: { children: ReactNode }) {
                 })
             );
 
-            // Render cards immediately (git-info still loading)
-            setRepos(enriched);
+            // Merge in remote-server workspaces (features.remoteShell only; empty
+            // otherwise). Remote rows already carry git-info from the per-server
+            // batch, so they render fully resolved alongside the local cards.
+            const remoteRepos = remoteAggregate ? buildRemoteRepoData(remoteAggregate) : [];
+            const combined = remoteRepos.length > 0 ? [...enriched, ...remoteRepos] : enriched;
+
+            // Render cards immediately (local git-info still loading; remote resolved)
+            setRepos(combined);
             setLoading(false);
 
             // Seed per-repo queue stats for card badges
-            seedRepoQueueStats(enriched);
+            seedRepoQueueStats(combined);
 
             // Fetch per-repo unseen counts from server
-            refreshUnseenCounts(enriched.map(r => r.workspace.id));
+            refreshUnseenCounts(combined.map(r => r.workspace.id));
 
             // Clear selection if repo was removed.
             // Check against the full workspaces list (not enriched) so virtual
             // workspaces like My Work / My Life don't get deselected on refresh.
-            if (selectedRepoIdRef.current && !workspaces.find((ws: any) => ws.id === selectedRepoIdRef.current)) {
+            // Remote workspaces are included so a selected remote clone survives a refresh.
+            const selectionStillPresent = selectedRepoIdRef.current
+                ? workspaces.some((ws: any) => ws.id === selectedRepoIdRef.current)
+                    || remoteRepos.some(r => r.workspace.id === selectedRepoIdRef.current)
+                : true;
+            if (!selectionStillPresent) {
                 dispatch({ type: 'SET_SELECTED_REPO', id: null });
             }
 
@@ -198,12 +236,15 @@ export function ReposProvider({ children }: { children: ReactNode }) {
                     if (abortController.signal.aborted) return;
                     const merged: Record<string, any> = {};
                     for (const data of responses) Object.assign(merged, data?.results || {});
-                    setRepos(prev => prev.map(r => ({
-                        ...r,
-                        // Preserve Phase 1 gitInfo (has isGitRepo) when batch result is absent
-                        gitInfo: merged[r.workspace.id] || r.gitInfo || undefined,
-                        gitInfoLoading: false,
-                    })));
+                    setRepos(prev => prev.map(r => (
+                        // Remote rows are resolved by the per-server batch; leave them untouched.
+                        isRemoteWorkspace(r.workspace) ? r : {
+                            ...r,
+                            // Preserve Phase 1 gitInfo (has isGitRepo) when batch result is absent
+                            gitInfo: merged[r.workspace.id] || r.gitInfo || undefined,
+                            gitInfoLoading: false,
+                        }
+                    )));
                 }).catch((err: unknown) => {
                     if (err instanceof Error && err.name === 'AbortError') return;
                     setRepos(prev => prev.map(r => ({ ...r, gitInfoLoading: false })));
@@ -212,11 +253,14 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             getWorkspaceGitInfoBatch(wsIds, abortController.signal).then((data: any) => {
                 if (abortController.signal.aborted) return;
                 const results = data?.results || {};
-                setRepos(prev => prev.map(r => ({
-                    ...r,
-                    gitInfo: results[r.workspace.id] || undefined,
-                    gitInfoLoading: false,
-                })));
+                setRepos(prev => prev.map(r => (
+                    // Remote rows are resolved by the per-server batch; leave them untouched.
+                    isRemoteWorkspace(r.workspace) ? r : {
+                        ...r,
+                        gitInfo: results[r.workspace.id] || undefined,
+                        gitInfoLoading: false,
+                    }
+                )));
             }).catch((err: unknown) => {
                 if (err instanceof Error && err.name === 'AbortError') return;
                 setRepos(prev => prev.map(r => ({ ...r, gitInfoLoading: false })));

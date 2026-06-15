@@ -978,8 +978,9 @@ describe('ReposContext — async git-info', () => {
         const fetchReposStart = source.indexOf('const fetchRepos = useCallback');
         const fetchReposEnd = source.indexOf('}, [dispatch, refreshUnseenCounts, seedRepoQueueStats]);', fetchReposStart);
         const fetchReposBody = source.substring(fetchReposStart, fetchReposEnd);
-        // setRepos and setLoading(false) should appear before the phase-2 git-info loop
-        const setReposIdx = fetchReposBody.indexOf('setRepos(enriched)');
+        // setRepos and setLoading(false) should appear before the phase-2 git-info loop.
+        // `combined` = local enriched repos plus any merged remote-server repos.
+        const setReposIdx = fetchReposBody.indexOf('setRepos(combined)');
         const setLoadingIdx = fetchReposBody.indexOf('setLoading(false)');
         const phase2Idx = fetchReposBody.indexOf('Phase 2');
         expect(setReposIdx).toBeGreaterThan(-1);
