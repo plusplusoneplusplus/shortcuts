@@ -8,6 +8,7 @@ import {
     computeCloneStatusMap,
     cloneStatusColor,
     summarizeRemote,
+    remoteProviderLabel,
     REMOTE_SCOPE_KEYS,
 } from '../../../../src/server/spa/client/react/features/remote-shell/shellModel';
 import type { SubTabDef } from '../../../../src/server/spa/client/react/features/repo-detail/repoSubTabs';
@@ -129,5 +130,24 @@ describe('summarizeRemote', () => {
     it('uses the whole label as the name when there is no owner/ prefix', () => {
         const g: RepoGroup = { normalizedUrl: null, label: 'my-repo', repos: [repo('a')], expanded: true };
         expect(summarizeRemote(g, {}, {}).name).toBe('my-repo');
+    });
+});
+
+describe('remoteProviderLabel', () => {
+    it('returns ADO for Azure DevOps remotes', () => {
+        expect(remoteProviderLabel('dev.azure.com/org/project/repo')).toBe('ADO');
+        expect(remoteProviderLabel('acme.visualstudio.com/project/repo')).toBe('ADO');
+    });
+
+    it('returns GitHub for GitHub remotes', () => {
+        expect(remoteProviderLabel('github.com/acme/shortcuts')).toBe('GitHub');
+        expect(remoteProviderLabel('ghe.github.com/acme/repo')).toBe('GitHub');
+    });
+
+    it('falls back to Remote for unknown or empty hosts', () => {
+        expect(remoteProviderLabel('gitlab.com/acme/repo')).toBe('Remote');
+        expect(remoteProviderLabel(null)).toBe('Remote');
+        expect(remoteProviderLabel(undefined)).toBe('Remote');
+        expect(remoteProviderLabel('')).toBe('Remote');
     });
 });
