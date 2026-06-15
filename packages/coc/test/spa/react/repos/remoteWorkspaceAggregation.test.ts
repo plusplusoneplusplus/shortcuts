@@ -25,10 +25,22 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
 
 // Per-server remote CocClient: replace only the constructor, keep real exports/types.
 // Each base URL gets its own canned workspaces.list() + gitInfoBatch() response.
+interface QueueRepoEntry {
+    repoId: string;
+    rootPath?: string;
+    isPaused?: boolean;
+    taskCount?: number;
+    queuedCount?: number;
+    runningCount?: number;
+}
 interface RemoteResponse {
     workspaces?: WorkspaceInfo[];
     gitInfo?: Record<string, unknown>;
     listError?: Error;
+    /** Canned `/api/queue/repos` rows for this base URL (AC-05). */
+    queueRepos?: QueueRepoEntry[];
+    /** When set, queue.repos() rejects (queue fetch must stay resilient). */
+    queueError?: Error;
 }
 const remoteResponses = new Map<string, RemoteResponse>();
 const constructedBaseUrls: string[] = [];
@@ -41,6 +53,9 @@ vi.mock('@plusplusoneplusplus/coc-client', async (importOriginal) => {
             list: () => Promise<{ workspaces: WorkspaceInfo[] }>;
             gitInfoBatch: (ids: string[]) => Promise<{ results: Record<string, unknown> }>;
         };
+        readonly queue: {
+            repos: () => Promise<{ repos: QueueRepoEntry[] }>;
+        };
         constructor(options: { baseUrl?: string }) {
             this.baseUrl = options.baseUrl ?? '';
             constructedBaseUrls.push(this.baseUrl);
@@ -52,6 +67,12 @@ vi.mock('@plusplusoneplusplus/coc-client', async (importOriginal) => {
                 },
                 gitInfoBatch: async () => ({ results: resp.gitInfo ?? {} }),
             };
+            this.queue = {
+                repos: async () => {
+                    if (resp.queueError) throw resp.queueError;
+                    return { repos: resp.queueRepos ?? [] };
+                },
+            };
         }
     }
     return { ...actual, CocClient: MockCocClient };
@@ -61,8 +82,10 @@ vi.mock('@plusplusoneplusplus/coc-client', async (importOriginal) => {
 import {
     aggregateRemoteWorkspaces,
     isRemoteWorkspace,
+    remoteQueueStatusFromRepo,
     tagRemoteWorkspaces,
 } from '../../../../src/server/spa/client/react/repos/remoteWorkspaceAggregation';
+import type { RemoteServerRuntimeStatus } from '@plusplusoneplusplus/coc-client';
 import {
     _resetRemoteWorkspaceCache,
     loadRemoteWorkspaceCache,
@@ -103,6 +126,21 @@ function offlineServer(id: string, label: string, effectiveUrl?: string): Remote
     } as RemoteServer;
 }
 
+/** A non-online server (e.g. 'connecting' | 'failed' | 'idle') for the status dot. */
+function serverWithStatus(id: string, label: string, status: RemoteServerRuntimeStatus, effectiveUrl?: string): RemoteServer {
+    return {
+        id,
+        label,
+        kind: 'ssh',
+        host: id,
+        localPort: 4000,
+        addedAt: 0,
+        updatedAt: 0,
+        status,
+        ...(effectiveUrl ? { effectiveUrl } : {}),
+    } as RemoteServer;
+}
+
 beforeEach(() => {
     remoteShellEnabled = true;
     serversList.mockReset();
@@ -133,15 +171,35 @@ describe('tagRemoteWorkspaces', () => {
                 serverId: 'srv-1',
                 serverLabel: 'Ubuntu ARM',
                 offline: false,
+                // AC-05: an online (offline=false) tag defaults to an online
+                // connection + idle queue when no explicit status is supplied.
+                connection: 'online',
+                queue: 'idle',
             });
             expect(isRemoteWorkspace(t)).toBe(true);
         }
     });
 
-    it('flags entries offline when offline=true and falls back to id when label missing', () => {
+    it('defaults connection to offline + idle queue when offline=true and no status given', () => {
         const tagged = tagRemoteWorkspaces({ id: 'srv-2', label: '' }, 'http://127.0.0.1:5000', [ws('a')], true);
         expect(tagged[0].remote.offline).toBe(true);
         expect(tagged[0].remote.serverLabel).toBe('srv-2');
+        expect(tagged[0].remote.connection).toBe('offline');
+        expect(tagged[0].remote.queue).toBe('idle');
+    });
+
+    it('applies an explicit connection + per-workspace queue status (AC-05)', () => {
+        const tagged = tagRemoteWorkspaces(
+            { id: 'srv-3', label: 'S3' },
+            'http://127.0.0.1:6000',
+            [ws('busy'), ws('calm')],
+            false,
+            { connection: 'online', queueByWorkspace: { busy: 'running' } },
+        );
+        const byId = new Map(tagged.map(t => [t.id, t]));
+        expect(byId.get('busy')!.remote.queue).toBe('running');
+        expect(byId.get('calm')!.remote.queue).toBe('idle'); // missing ⇒ idle
+        expect(byId.get('busy')!.remote.connection).toBe('online');
     });
 
     it('preserves original workspace fields', () => {
@@ -325,5 +383,87 @@ describe('aggregateRemoteWorkspaces — feature flag', () => {
         const result = await aggregateRemoteWorkspaces();
         expect(result.workspaces).toHaveLength(0);
         expect(result.sources).toHaveLength(0);
+    });
+});
+
+// ── AC-05: connection status + remote queue sourcing ──────────────────────────
+
+describe('remoteQueueStatusFromRepo', () => {
+    it('maps paused > running > queued > idle', () => {
+        expect(remoteQueueStatusFromRepo({ isPaused: true, runningCount: 3, queuedCount: 2 })).toBe('paused');
+        expect(remoteQueueStatusFromRepo({ runningCount: 1, queuedCount: 5 })).toBe('running');
+        expect(remoteQueueStatusFromRepo({ runningCount: 0, queuedCount: 2 })).toBe('queued');
+        expect(remoteQueueStatusFromRepo({ runningCount: 0, queuedCount: 0 })).toBe('idle');
+        expect(remoteQueueStatusFromRepo(undefined)).toBe('idle');
+    });
+});
+
+describe('aggregateRemoteWorkspaces — connection + remote queue (AC-05)', () => {
+    it('tags online workspaces with connection=online and their remote queue status', async () => {
+        serversList.mockResolvedValue([onlineServer('srv-1', 'S1', 'http://127.0.0.1:4000')]);
+        remoteResponses.set('http://127.0.0.1:4000', {
+            workspaces: [ws('busy'), ws('calm')],
+            queueRepos: [
+                { repoId: 'busy', runningCount: 2, queuedCount: 0, isPaused: false },
+                { repoId: 'calm', runningCount: 0, queuedCount: 0, isPaused: false },
+            ],
+        });
+
+        const result = await aggregateRemoteWorkspaces();
+        const byId = new Map(result.workspaces.map(w => [w.id, w]));
+        expect(byId.get('busy')!.remote.connection).toBe('online');
+        expect(byId.get('busy')!.remote.queue).toBe('running');
+        expect(byId.get('calm')!.remote.queue).toBe('idle');
+    });
+
+    it('maps a paused remote repo to queue=paused', async () => {
+        serversList.mockResolvedValue([onlineServer('srv-1', 'S1', 'http://127.0.0.1:4000')]);
+        remoteResponses.set('http://127.0.0.1:4000', {
+            workspaces: [ws('w1')],
+            queueRepos: [{ repoId: 'w1', isPaused: true, runningCount: 0, queuedCount: 0 }],
+        });
+        const result = await aggregateRemoteWorkspaces();
+        expect(result.workspaces[0].remote.queue).toBe('paused');
+    });
+
+    it('stays resilient when the remote queue fetch fails — workspaces survive with idle queue', async () => {
+        serversList.mockResolvedValue([onlineServer('srv-1', 'S1', 'http://127.0.0.1:4000')]);
+        remoteResponses.set('http://127.0.0.1:4000', {
+            workspaces: [ws('w1')],
+            queueError: new Error('queue 500'),
+        });
+        const result = await aggregateRemoteWorkspaces();
+        // Server is NOT dropped; queue defaults to idle.
+        expect(result.workspaces.map(w => w.id)).toEqual(['w1']);
+        expect(result.workspaces[0].remote.connection).toBe('online');
+        expect(result.workspaces[0].remote.queue).toBe('idle');
+    });
+
+    it('records connection=connecting for a connecting server (cached rows)', async () => {
+        saveRemoteWorkspaceCacheEntry('srv-c', { baseUrl: 'http://127.0.0.1:4000', workspaces: [ws('w1')] });
+        serversList.mockResolvedValue([serverWithStatus('srv-c', 'Connecting', 'connecting')]);
+
+        const result = await aggregateRemoteWorkspaces();
+        // No live fetch for a non-online server.
+        expect(constructedBaseUrls).toHaveLength(0);
+        expect(result.workspaces[0].remote.connection).toBe('connecting');
+        expect(result.workspaces[0].remote.offline).toBe(true); // still cache-sourced
+        expect(result.workspaces[0].remote.queue).toBe('idle');
+    });
+
+    it('records connection=offline for an offline server (cached rows)', async () => {
+        saveRemoteWorkspaceCacheEntry('srv-o', { baseUrl: 'http://127.0.0.1:4000', workspaces: [ws('w1')] });
+        serversList.mockResolvedValue([offlineServer('srv-o', 'Offline')]);
+
+        const result = await aggregateRemoteWorkspaces();
+        expect(result.workspaces[0].remote.connection).toBe('offline');
+    });
+
+    it('records connection=failed for a failed server (cached rows)', async () => {
+        saveRemoteWorkspaceCacheEntry('srv-f', { baseUrl: 'http://127.0.0.1:4000', workspaces: [ws('w1')] });
+        serversList.mockResolvedValue([serverWithStatus('srv-f', 'Failed', 'failed')]);
+
+        const result = await aggregateRemoteWorkspaces();
+        expect(result.workspaces[0].remote.connection).toBe('failed');
     });
 });

@@ -40,12 +40,21 @@ const repo = (id: string, name: string, branch = 'main') => ({
     gitInfo: { isGitRepo: true, branch, dirty: false, remoteUrl: SHORTCUTS },
 });
 
-// A remote checkout (AC-01 marker) of the same origin, foldable into the group.
-const remoteRepo = (id: string, name: string, serverLabel = 'devbox', remoteUrl: string | undefined = SHORTCUTS, branch = 'main') => ({
+// A remote checkout (AC-01/05 marker) of the same origin, foldable into the group.
+// `connection`/`queue` drive the AC-05 status dot; defaults keep an online, idle clone.
+const remoteRepo = (
+    id: string,
+    name: string,
+    serverLabel = 'devbox',
+    remoteUrl: string | undefined = SHORTCUTS,
+    branch = 'main',
+    connection: string = 'online',
+    queue: string = 'idle',
+) => ({
     workspace: {
         id, name, color: '#0078d4', remoteUrl, rootPath: `/remote/${id}`,
         baseUrl: 'http://127.0.0.1:4000',
-        remote: { baseUrl: 'http://127.0.0.1:4000', serverId: 'srv-1', serverLabel, offline: false },
+        remote: { baseUrl: 'http://127.0.0.1:4000', serverId: 'srv-1', serverLabel, offline: connection !== 'online', connection, queue },
     },
     gitInfo: remoteUrl ? { isGitRepo: true, branch, dirty: false, remoteUrl } : undefined,
 });
@@ -169,5 +178,43 @@ describe('RemoteSubBar', () => {
         screen.getAllByTestId('clone-popover-item').forEach(el => {
             expect(el.getAttribute('data-remote')).toBe('false');
         });
+    });
+
+    // ── AC-05: blended status dot reflected on each clone row ─────────────────
+
+    const openAndGetRow = (repos: any[], activeId: string, rowId: string) => {
+        const active = repos.find(r => r.workspace.id === activeId);
+        render(<RemoteSubBar repo={active as any} repos={repos as any} />);
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        return screen.getAllByTestId('clone-popover-item')
+            .find(el => el.textContent?.includes(repos.find(r => r.workspace.id === rowId)!.workspace.name))!;
+    };
+
+    it('blends an online+running remote clone to a running dot status', () => {
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox', SHORTCUTS, 'main', 'online', 'running');
+        const row = openAndGetRow([local, remote], 'a', 'b');
+        expect(row.getAttribute('data-remote')).toBe('true');
+        expect(row.getAttribute('data-clone-status')).toBe('running');
+    });
+
+    it('shows an offline status for a remote clone whose server is offline', () => {
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox', SHORTCUTS, 'main', 'offline', 'running');
+        const row = openAndGetRow([local, remote], 'a', 'b');
+        expect(row.getAttribute('data-clone-status')).toBe('offline');
+    });
+
+    it('shows a connecting status for a remote clone whose server is connecting', () => {
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox', SHORTCUTS, 'main', 'connecting', 'queued');
+        const row = openAndGetRow([local, remote], 'a', 'b');
+        expect(row.getAttribute('data-clone-status')).toBe('connecting');
+    });
+
+    it('keeps local clone dot status queue-derived (idle with no queue)', () => {
+        const row = openAndGetRow([repo('a', 'shortcuts'), repo('b', 'shortcuts-2', 'feat/x')], 'a', 'b');
+        expect(row.getAttribute('data-remote')).toBe('false');
+        expect(row.getAttribute('data-clone-status')).toBe('idle');
     });
 });

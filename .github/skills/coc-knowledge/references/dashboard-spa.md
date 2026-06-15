@@ -615,26 +615,40 @@ model built on `features/remote-shell/`:
   visually distinct, and the PRIMARY marker is anchored on the first **local**
   clone (a remote clone never displaces it; a remote-only group marks its first
   remote clone primary). `isRemoteRepo(repo)` (`repos/repoGrouping.ts`) is the
-  pure guard that distinguishes folded remote rows. Clone tabs use **responsive
-  overflow**: a hidden measurement mirror plus a `ResizeObserver` feed
-  `computeVisibleTabKeys`, which shows every tab that fits and collapses the tail
-  into a `…` menu (always keeping the active tab visible).
+  pure guard that distinguishes folded remote rows. Each clone row's **status
+  dot** comes from `cloneStatusColor(computeCloneStatusMap(...)[id])`: local
+  clones stay queue-derived; remote clones blend connection-first via
+  `blendRemoteCloneStatus` — `offline`/`failed` → offline (dim grey `#8c959f`),
+  `connecting`/`idle` (not yet online) → connecting (blue `#3b82f6`, distinct from
+  queued orange), else the remote `queue` state (mirroring local running/queued/
+  paused/idle). The computed status is exposed on each row as
+  `data-clone-status`. Clone tabs use **responsive overflow**: a hidden
+  measurement mirror plus a `ResizeObserver` feed `computeVisibleTabKeys`, which
+  shows every tab that fits and collapses the tail into a `…` menu (always keeping
+  the active tab visible).
 
 **Remote workspace aggregation** (gated by `features.remoteShell`): when the flag
 is ON, `ReposContext.fetchRepos` also calls `aggregateRemoteWorkspaces()`
 (`repos/remoteWorkspaceAggregation.ts`) in parallel with the local
 `listWorkspaces()` + git-info batch. For each registry server (`/api/servers`)
-that is `online`, it fetches `/api/workspaces` + the git-info batch DIRECTLY at
-the server's `effectiveUrl` via a self-contained `CocClient` (it does NOT reuse
-`getSpaCocClient` routing). Each remote workspace is tagged with a `remote`
-marker `{ baseUrl, serverId, serverLabel, offline }` plus a top-level `baseUrl`
-(the routing key — no composite IDs, no serverId namespace); local workspaces
-carry neither, so `isRemoteWorkspace()` distinguishes them. Remote rows are
-merged into the same `RepoData[]` as local ones (git-info pre-resolved from the
-per-server batch) and are skipped by the local Phase-2 git-info update. Offline /
-unreachable servers contribute their last-known list from a two-layer
-(in-memory + `localStorage['coc-remote-workspace-cache']`) per-server cache
-(`repos/remoteWorkspaceCache.ts`), each entry flagged `offline`. When the flag is
+that is `online`, it fetches `/api/workspaces` + the git-info batch + the queue
+(`queue.repos()`) DIRECTLY at the server's `effectiveUrl` via a self-contained
+`CocClient` (it does NOT reuse `getSpaCocClient` routing). Each remote workspace
+is tagged with a `remote` marker `{ baseUrl, serverId, serverLabel, offline,
+connection, queue }` plus a top-level `baseUrl` (the routing key — no composite
+IDs, no serverId namespace); local workspaces carry neither, so
+`isRemoteWorkspace()` distinguishes them. `connection` mirrors the registry's
+runtime status (`online`/`connecting`/`offline`/`failed`/`idle`) so the status
+dot can tell connecting from offline; `queue` is this workspace's remote queue
+state (`running`/`queued`/`paused`/`idle`, from `remoteQueueStatusFromRepo` keyed
+by `repoId` = workspace id), `'idle'` when offline or the resilient queue fetch
+fails (a queue failure never drops the server). Remote rows are merged into the
+same `RepoData[]` as local ones (git-info pre-resolved from the per-server batch)
+and are skipped by the local Phase-2 git-info update. Offline / unreachable
+servers contribute their last-known list from a two-layer (in-memory +
+`localStorage['coc-remote-workspace-cache']`) per-server cache
+(`repos/remoteWorkspaceCache.ts`), each entry flagged `offline` (with the real
+`connection` preserved). When the flag is
 OFF, `aggregateRemoteWorkspaces()` returns empty and performs no remote fetch, so
 the classic flow is unchanged.
 

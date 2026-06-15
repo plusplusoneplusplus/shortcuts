@@ -22,7 +22,9 @@
 import {
     CocClient,
     type GitInfoResponse,
+    type QueueReposResponse,
     type RemoteServer,
+    type RemoteServerRuntimeStatus,
     type WorkspaceInfo,
     type WorkspacesResponse,
 } from '@plusplusoneplusplus/coc-client';
@@ -32,6 +34,21 @@ import {
     loadRemoteWorkspaceCache,
     saveRemoteWorkspaceCacheEntry,
 } from './remoteWorkspaceCache';
+
+/**
+ * Remote server connection state, mirrored from the registry's runtime status.
+ * Drives the status dot's connection-first blend (AC-05): `offline`/`failed` →
+ * offline indicator, `connecting`/`idle` (not yet online) → connecting indicator,
+ * `online` → defer to the remote queue status.
+ */
+export type RemoteConnectionStatus = RemoteServerRuntimeStatus;
+
+/**
+ * Remote queue state for a single remote workspace, derived from the remote
+ * server's `/api/queue/repos`. Same vocabulary as the local clone-status map so
+ * the dot renders identically once a server is online.
+ */
+export type RemoteQueueStatus = 'idle' | 'running' | 'queued' | 'paused';
 
 /** Per-remote routing + provenance attached to every aggregated remote workspace. */
 export interface RemoteWorkspaceMarker {
@@ -43,6 +60,18 @@ export interface RemoteWorkspaceMarker {
     serverLabel: string;
     /** True when this entry came from cache because the server is offline/unreachable. */
     offline: boolean;
+    /**
+     * Raw connection state of the contributing server (AC-05). Lets the status
+     * dot distinguish `connecting` from `offline` even though both currently take
+     * the cached-workspace path. `idle`/`connecting` ⇒ connecting; `offline`/
+     * `failed` ⇒ offline; `online` ⇒ use `queue`.
+     */
+    connection: RemoteConnectionStatus;
+    /**
+     * Remote queue status for THIS workspace (AC-05), present only for online
+     * sources; `'idle'` when the server is offline or the queue fetch failed.
+     */
+    queue: RemoteQueueStatus;
 }
 
 /**
@@ -99,17 +128,30 @@ export function isRemoteWorkspace(workspace: unknown): workspace is RemoteWorksp
     );
 }
 
+/** Optional connection + per-workspace queue enrichment for `tagRemoteWorkspaces`. */
+export interface RemoteTagStatus {
+    /** Raw connection state of the server (defaults to `offline` when omitted). */
+    connection?: RemoteConnectionStatus;
+    /** Remote queue status keyed by workspace id (missing ⇒ `idle`). */
+    queueByWorkspace?: Record<string, RemoteQueueStatus>;
+}
+
 /**
  * Tag a server's raw workspace list with its remote marker. Pure: no I/O.
- * `offline` flags entries served from cache for an unreachable server.
+ * `offline` flags entries served from cache for an unreachable server. `status`
+ * carries the AC-05 connection state and per-workspace remote queue status; when
+ * omitted (e.g. cache path before queue is known) each row defaults to an
+ * offline connection with an idle queue.
  */
 export function tagRemoteWorkspaces(
     server: Pick<RemoteServer, 'id' | 'label'>,
     baseUrl: string,
     workspaces: WorkspaceInfo[],
     offline: boolean,
+    status: RemoteTagStatus = {},
 ): RemoteWorkspaceInfo[] {
     const serverLabel = server.label || server.id;
+    const connection: RemoteConnectionStatus = status.connection ?? (offline ? 'offline' : 'online');
     return workspaces.map(workspace => ({
         ...workspace,
         baseUrl,
@@ -118,8 +160,38 @@ export function tagRemoteWorkspaces(
             serverId: server.id,
             serverLabel,
             offline,
+            connection,
+            queue: status.queueByWorkspace?.[workspace.id] ?? 'idle',
         },
     }));
+}
+
+/**
+ * Derive a remote workspace's queue status from a `/api/queue/repos` entry.
+ * Mirrors the local clone-status precedence: paused > running > queued > idle.
+ * Pure; tolerant of partial/legacy entries.
+ */
+export function remoteQueueStatusFromRepo(
+    entry: { isPaused?: boolean; runningCount?: number; queuedCount?: number } | undefined,
+): RemoteQueueStatus {
+    if (!entry) return 'idle';
+    if (entry.isPaused) return 'paused';
+    if ((entry.runningCount ?? 0) > 0) return 'running';
+    if ((entry.queuedCount ?? 0) > 0) return 'queued';
+    return 'idle';
+}
+
+/**
+ * Build the per-workspace remote queue map for one online server from its
+ * `queue.repos()` response. The endpoint keys by `repoId`, which equals the
+ * workspace id in this codebase (the local `repoQueueMap` is keyed the same way).
+ */
+function queueMapFromReposResponse(response: QueueReposResponse | undefined): Record<string, RemoteQueueStatus> {
+    const map: Record<string, RemoteQueueStatus> = {};
+    for (const entry of response?.repos ?? []) {
+        map[entry.repoId] = remoteQueueStatusFromRepo(entry);
+    }
+    return map;
 }
 
 /** Whether a server is currently connected (online) with a reachable base URL. */
@@ -145,12 +217,15 @@ function offlineSourceFromCache(
     }
     // Prefer the server's current effectiveUrl, else the cached one used last time.
     const baseUrl = server.effectiveUrl || cached.baseUrl;
+    // Preserve the real connection state so the dot can show CONNECTING (not just
+    // OFFLINE) while a server is still coming up. No live queue for cached rows.
+    const connection: RemoteConnectionStatus = server.status ?? 'offline';
     return {
         serverId: server.id,
         serverLabel: server.label || server.id,
         baseUrl,
         online: false,
-        workspaces: tagRemoteWorkspaces(server, baseUrl, cached.workspaces, true),
+        workspaces: tagRemoteWorkspaces(server, baseUrl, cached.workspaces, true, { connection }),
         gitInfo: {},
     };
 }
@@ -174,6 +249,15 @@ async function loadOnlineSource(
             ? (await remoteClient.workspaces.gitInfoBatch(visible.map(ws => ws.id))).results ?? {}
             : {};
 
+        // Remote queue status (AC-05) for the status dot. Resilient: a queue
+        // fetch failure must never drop the server — fall back to an idle map.
+        let queueByWorkspace: Record<string, RemoteQueueStatus> = {};
+        try {
+            queueByWorkspace = queueMapFromReposResponse(await remoteClient.queue.repos());
+        } catch {
+            queueByWorkspace = {};
+        }
+
         // Persist the raw (untagged) list so a later offline load can re-tag it.
         saveRemoteWorkspaceCacheEntry(server.id, { baseUrl, workspaces: visible });
 
@@ -183,7 +267,10 @@ async function loadOnlineSource(
                 serverLabel,
                 baseUrl,
                 online: true,
-                workspaces: tagRemoteWorkspaces(server, baseUrl, visible, false),
+                workspaces: tagRemoteWorkspaces(server, baseUrl, visible, false, {
+                    connection: 'online',
+                    queueByWorkspace,
+                }),
                 gitInfo,
             },
         };

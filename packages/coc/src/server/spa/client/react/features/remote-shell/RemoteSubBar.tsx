@@ -276,6 +276,7 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                                     key={cid}
                                     data-testid="clone-popover-item"
                                     data-remote={isRemote ? 'true' : 'false'}
+                                    data-clone-status={st ?? 'idle'}
                                     role="menuitem"
                                     onClick={() => { selectClone(cid); setCloneOpen(false); }}
                                     className={
