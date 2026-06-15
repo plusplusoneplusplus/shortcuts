@@ -726,6 +726,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.remoteShell', default: false, runtime: 'live', runtimeFlag: 'remoteShellEnabled',
+        ui: {
+            group: 'dashboard', order: 65, label: 'Remote-first shell', badge: 'experimental',
+            hint: 'Replace per-clone repo tabs with a remote-first two-row top bar: one tab per git remote, a clone switcher, and remote/clone-scoped sub-tabs. Desktop only. Disabled by default.',
+            testId: 'toggle-remote-shell-enabled',
+        },
+    }),
+    bool({
         key: 'features.ralphMultiAgentGrill', default: false, runtime: 'live', runtimeFlag: 'ralphMultiAgentGrillEnabled',
         ui: {
             group: 'aiModes', order: 15, label: 'Ralph Multi-Agent Grilling', badge: 'experimental',

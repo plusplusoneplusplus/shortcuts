@@ -68,6 +68,8 @@ interface DashboardConfig {
     effortLevelsEnabled?: boolean;
     /** Whether the read-only native CLI sessions tab is enabled (feature flag). */
     nativeCliSessionsEnabled?: boolean;
+    /** Whether the remote-first two-row dashboard shell is enabled (feature flag). */
+    remoteShellEnabled?: boolean;
 }
 
 /** Cached runtime config loaded from the API. */
@@ -300,6 +302,11 @@ export function isDreamsEnabled(): boolean {
 
 export function isNativeCliSessionsEnabled(): boolean {
     return getConfig().nativeCliSessionsEnabled === true;
+}
+
+/** Returns true when the remote-first two-row dashboard shell is enabled. */
+export function isRemoteShellEnabled(): boolean {
+    return getConfig().remoteShellEnabled === true;
 }
 
 export function isExcalidrawEnabled(): boolean {

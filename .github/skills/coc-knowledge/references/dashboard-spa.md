@@ -580,6 +580,44 @@ unmounts the embed, and renders the standard admin card content.
 Each tool's internal sub-tab/hash scheme (e.g. `#skills/installed`,
 `#logs?sessionId=…`) is unchanged.
 
+### Remote-first shell (experimental)
+
+An optional two-row navigation mode gated by `useRemoteShellEnabled()`
+(`hooks/feature-flags/useRemoteShellEnabled.ts`), which reads the live
+`features.remoteShell` admin flag (runtime flag `remoteShellEnabled`,
+`isRemoteShellEnabled()` in `utils/config.ts`). It is a **global admin setting**
+toggled in **Admin → Configure → Features → Remote-first shell**
+(`toggle-remote-shell-enabled`), defined once in `ADMIN_SETTING_DEFINITIONS`.
+Disabled by default; desktop-only; takes effect on reload.
+
+When on, the desktop top nav switches from per-clone repo tabs to a remote-first
+model built on `features/remote-shell/`:
+- **Row 1 `RemoteTopBar`** replaces `RepoTabStrip` inside `TopBar`. It renders one
+  tab per remote (origin) via `groupReposByRemote`, with a color dot, clone-count
+  chip, aggregate running pulse, and summed unseen badge. Selecting a remote picks
+  its last-used clone (else the first). Aggregation comes from `summarizeRemote` /
+  `computeCloneStatusMap` in `shellModel.ts`. A trailing `+` button
+  (`remote-add-btn`) opens an add menu — Add workspace folder (`AddFolderDialog`),
+  Add specific repository (`AddRepoDialog`), Clone repository (`CloneRepoDialog`) —
+  the single top-level add action (not duplicated per-origin).
+- **Row 2 `RemoteSubBar`** renders above a `chromeless` `RepoDetail` in `ReposView`
+  and replaces RepoDetail's own header. `partitionShellTabs` splits tabs into
+  remote-scoped (Work Items, Pull Requests — always shown left) and clone-scoped
+  (everything else). A clone-switcher popover (lists the remote's clones only) sits
+  between them, then the clone tabs, then compact Ask/Queue targeting the active
+  clone. Clone tabs use **responsive overflow**: a hidden measurement mirror plus a
+  `ResizeObserver` feed `computeVisibleTabKeys`, which shows every tab that fits and
+  collapses the tail into a `…` menu (always keeping the active tab visible).
+
+The sub-tab taxonomy and feature-flag/git/layout gating live in
+`features/repo-detail/repoSubTabs.ts` (`SUB_TABS`, `VISIBLE_SUB_TABS`,
+`TAB_GROUP_INDEX`, `computeVisibleSubTabs`), shared by both `RepoDetail` and the
+shell so the two stay behaviorally identical. Selection/routing reuse
+`buildRepoSubTabSuffix` via `useShellNavigation`. `SHOW_WIKI_TAB` / `SHOW_MEMORY_TAB`
+live in a dedicated lightweight `navFlags.ts` (read by `repoSubTabs.ts`; re-exported
+from `TopBar` for `BottomNav`/`Router`) — kept out of the heavily-mocked
+`featureFlags.ts` so partial test mocks of it don't break on the missing export.
+
 ## Onboarding
 
 - `WelcomeTour`: 5-step full-screen modal (Welcome/Modes/Queue/Multi-repo/Servers)

@@ -255,6 +255,8 @@ export interface CLIConfig {
         ralphMultiAgentGrill?: boolean;
         /** Read-only native Copilot/Codex/Claude CLI sessions tab. Disabled by default. */
         nativeCliSessions?: boolean;
+        /** Remote-first two-row dashboard shell (one tab per remote). Disabled by default. */
+        remoteShell?: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion?: {
@@ -542,6 +544,8 @@ export interface ResolvedCLIConfig {
         ralphMultiAgentGrill: boolean;
         /** Read-only native Copilot/Codex/Claude CLI sessions tab. Disabled by default. */
         nativeCliSessions: boolean;
+        /** Remote-first two-row dashboard shell (one tab per remote). Disabled by default. */
+        remoteShell: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion: {
@@ -776,6 +780,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         autoAgentProviderRouting: false,
         ralphMultiAgentGrill: false,
         nativeCliSessions: false,
+        remoteShell: false,
     },
     memoryPromotion: {
         batchSize: 50,

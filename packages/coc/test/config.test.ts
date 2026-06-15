@@ -1019,6 +1019,7 @@ timeout: 300
                 '  autoAgentProviderRouting: true',
                 '  ralphMultiAgentGrill: true',
                 '  nativeCliSessions: true',
+                '  remoteShell: true',
                 'memoryPromotion:',
                 '  batchSize: 25',
                 '  timeoutMs: 80000',
@@ -1233,6 +1234,7 @@ timeout: 300
                     "gitCrossCloneCherryPick": true,
                     "nativeCliSessions": false,
                     "ralphMultiAgentGrill": false,
+                    "remoteShell": false,
                     "sessionContextAttachments": false,
                   },
                   "forEach": {
@@ -1398,6 +1400,7 @@ timeout: 300
                   "features.gitCrossCloneCherryPick": "default",
                   "features.nativeCliSessions": "default",
                   "features.ralphMultiAgentGrill": "default",
+                  "features.remoteShell": "default",
                   "features.sessionContextAttachments": "default",
                   "forEach.enabled": "file",
                   "groupSingleLineMessages": "file",

@@ -41,23 +41,12 @@ describe('buildLoopToolsAddon', () => {
         expect(names).toContain('listLoops');
     });
 
-    it('includes descriptive suffix about loop tools', () => {
+    it('does not emit a descriptive suffix (prompt guidance trimmed)', () => {
         const deps = makeMockLoopToolDeps();
         const result = buildLoopToolsAddon(deps);
 
-        expect(result.suffix).toContain('Loop management tools');
-        expect(result.suffix).toContain('createLoop');
-        expect(result.suffix).toContain('cancelLoop');
-        expect(result.suffix).toContain('listLoops');
-        expect(result.suffix).toContain('/loop skill');
-    });
-
-    it('instructs leading interval loop requests to prefer createLoop over scheduleWakeup', () => {
-        const deps = makeMockLoopToolDeps();
-        const result = buildLoopToolsAddon(deps);
-
-        expect(result.suffix).toContain('fixed-interval');
-        expect(result.suffix).toContain('call `createLoop`');
-        expect(result.suffix).toContain('Do not use `scheduleWakeup` for this pattern');
+        // The loop-tool prompt guidance was intentionally removed; the tools are
+        // still wired (asserted above), but no suffix text is appended.
+        expect(result.suffix).toBe('');
     });
 });

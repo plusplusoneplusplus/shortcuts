@@ -42,7 +42,7 @@ import { useDreamsEnabled } from '../../hooks/feature-flags/useDreamsEnabled';
 import { useNativeCliSessionsEnabled } from '../../hooks/feature-flags/useNativeCliSessionsEnabled';
 import { MobileTabBar } from '../../layout/MobileTabBar';
 import { buildRepoSubTabSuffix } from '../../layout/Router';
-import { SHOW_WIKI_TAB } from '../../layout/TopBar';
+import { TAB_GROUP_INDEX, computeVisibleSubTabs } from './repoSubTabs';
 import type { RepoData } from '../../repos/repoGrouping';
 import type { RepoSubTab, TasksPanelNavState } from '../../types/dashboard';
 import { isSessionContextAttachmentsEnabled } from '../../utils/config';
@@ -57,43 +57,16 @@ interface RepoDetailProps {
     repo: RepoData;
     repos: RepoData[];
     onRefresh: () => void;
+    /** When true, suppress the desktop header (title + sub-tab strip + actions).
+     *  Used by the remote-first shell, which renders its own RemoteSubBar instead. */
+    chromeless?: boolean;
 }
 
-export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] = [
-    { key: 'chats', label: 'Chats', shortcut: 'Alt+A' },
-    { key: 'cli-sessions', label: 'CLI Sessions' },
-    { key: 'git', label: 'Git', shortcut: 'Alt+G' },
-    { key: 'terminal', label: 'Terminal' },
-    { key: 'work-items', label: 'Work Items', shortcut: 'Alt+I' },
-    { key: 'dreams', label: 'Dreams', shortcut: 'Alt+D' },
-    { key: 'pull-requests', label: 'Pull Requests', shortcut: 'Alt+R' },
-    { key: 'explorer', label: 'Explorer', shortcut: 'Alt+E' },
-    { key: 'workflows', label: 'Workflows', shortcut: 'Alt+W' },
-    { key: 'schedules', label: 'Schedules', shortcut: 'Alt+S' },
-    { key: 'tasks', label: 'Tasks (Dep.)', shortcut: 'Alt+T' },
-    { key: 'notes', label: 'Notes', shortcut: 'Alt+N' },
-    { key: 'settings', label: 'Settings', shortcut: 'Alt+C' },
-    { key: 'wiki', label: 'Wiki' },
-];
+// The sub-tab taxonomy and visibility logic live in ./repoSubTabs so they can be
+// shared with the remote-first shell. Re-exported here for backward compatibility.
+export { SUB_TABS, VISIBLE_SUB_TABS } from './repoSubTabs';
 
-/** Tabs actually rendered in the UI — wiki is hidden behind a feature flag. */
-export const VISIBLE_SUB_TABS = SHOW_WIKI_TAB
-    ? SUB_TABS
-    : SUB_TABS.filter(t => t.key !== 'wiki');
-
-/**
- * Logical group buckets for the desktop tab strip — used to render thin
- * vertical dividers between adjacent tabs that belong to different groups.
- * Group identity is purely visual and does not affect functionality.
- */
-const TAB_GROUP_INDEX: Record<string, number> = {
-    'chats': 1, 'activity': 1, 'cli-sessions': 1, 'copilot-sessions': 1, 'git': 1, 'terminal': 1,
-    'work-items': 2, 'dreams': 2, 'pull-requests': 2, 'tasks': 2,
-    'explorer': 3, 'workflows': 3, 'schedules': 3,
-    'notes': 4, 'settings': 4, 'wiki': 4,
-};
-
-export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
+export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoDetailProps) {
     const { state, dispatch } = useApp();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { isMobile } = useBreakpoint();
@@ -168,49 +141,10 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const prevDreamsEnabled = useRef(dreamsEnabled);
     const prevNativeCliSessionsEnabled = useRef(nativeCliSessionsEnabled);
 
-    const visibleSubTabs = useMemo(() => {
-        let tabs = VISIBLE_SUB_TABS;
-        if (!isGitRepo) tabs = tabs.filter(t => t.key !== 'git' && t.key !== 'pull-requests');
-        if (!terminalEnabled) tabs = tabs.filter(t => t.key !== 'terminal');
-        if (!notesEnabled) tabs = tabs.filter(t => t.key !== 'notes');
-        if (!workflowsEnabled) tabs = tabs.filter(t => t.key !== 'workflows');
-        if (!pullRequestsEnabled) tabs = tabs.filter(t => t.key !== 'pull-requests');
-        if (!dreamsEnabled) tabs = tabs.filter(t => t.key !== 'dreams');
-        if (!nativeCliSessionsEnabled) tabs = tabs.filter(t => t.key !== 'cli-sessions' && t.key !== 'copilot-sessions');
-        // Layout mode filtering
-        if (uiLayoutMode === 'classic') {
-            // Classic: replace Chats with Activity, relabel Tasks as Plans
-            tabs = tabs
-                .map(t => t.key === 'chats' ? { ...t, key: 'activity' as RepoSubTab, label: 'Activity' } : t)
-                .map(t => t.key === 'tasks' ? { ...t, label: 'Plans (Dep.)' } : t);
-        } else {
-            // Dev-workflow: relabel and reorder tabs
-            const devWorkflowRelabels: Record<string, string> = {
-                'schedules': 'Jobs',
-                'pull-requests': 'Full Requests',
-            };
-            const devWorkflowOrder: RepoSubTab[] = [
-                'chats', 'cli-sessions', 'work-items', 'dreams', 'schedules', 'explorer',
-                'workflows', 'git', 'terminal', 'pull-requests', 'tasks', 'settings',
-            ];
-            const tabMap = new Map(tabs.map(t => [t.key, t]));
-            const ordered: typeof tabs = [];
-            for (const key of devWorkflowOrder) {
-                const tab = tabMap.get(key);
-                if (tab) {
-                    const newLabel = devWorkflowRelabels[key];
-                    ordered.push(newLabel ? { ...tab, label: newLabel } : tab);
-                    tabMap.delete(key);
-                }
-            }
-            // Append dynamic tabs (notes, wiki) that aren't in the fixed order
-            for (const [, tab] of tabMap) {
-                ordered.push(tab);
-            }
-            tabs = ordered;
-        }
-        return tabs;
-    }, [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, uiLayoutMode]);
+    const visibleSubTabs = useMemo(() => computeVisibleSubTabs({
+        isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
+        pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, uiLayoutMode,
+    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, uiLayoutMode]);
 
     // Redirect away from git/pull-requests tab when switching to a non-git repo
     useEffect(() => {
@@ -503,8 +437,9 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
 
     return (
         <div id="repo-detail-content" className="flex flex-col h-full min-h-0 min-w-0">
-            {/* Header — desktop only; on mobile the repo name lives in MobileTabBar leadingSlot */}
-            {!isMobile && (
+            {/* Header — desktop only; on mobile the repo name lives in MobileTabBar leadingSlot.
+                Suppressed when chromeless (remote-first shell renders its own RemoteSubBar). */}
+            {!isMobile && !chromeless && (
             <div
                 className="repo-detail-header px-3 border-b border-[#d0d7de] dark:border-[#3c3c3c] flex flex-row items-center bg-white dark:bg-[#1e1e1e] gap-2"
                 style={{ minHeight: 44 }}
