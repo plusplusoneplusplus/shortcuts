@@ -241,13 +241,18 @@ export async function setupPrRoutes(
         }
         const url = new URL(route.request().url());
         const statusParam = url.searchParams.get('status');
+        const topRaw = Number(url.searchParams.get('top') ?? '0');
+        const skipRaw = Number(url.searchParams.get('skip') ?? '0');
+        const top = Number.isFinite(topRaw) && topRaw > 0 ? Math.floor(topRaw) : undefined;
+        const skip = Number.isFinite(skipRaw) && skipRaw > 0 ? Math.floor(skipRaw) : 0;
         const filtered =
             !statusParam || statusParam === 'open' || statusParam === 'all'
                 ? pullRequests
                 : pullRequests.filter(pr => pr.status === statusParam);
+        const page = top === undefined ? filtered.slice(skip) : filtered.slice(skip, skip + top);
         return route.fulfill({
             status: 200,
-            json: { pullRequests: filtered, total: filtered.length },
+            json: { pullRequests: page, total: filtered.length },
         });
     };
     for (const pattern of listPatterns) await page.route(pattern, listHandler);

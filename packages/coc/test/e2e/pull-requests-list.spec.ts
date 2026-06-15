@@ -229,6 +229,31 @@ test.describe('Pull Requests tab — list', () => {
         }
     });
 
+    test('Load more appends the next PR page and keeps title search working', async ({ page, serverUrl }) => {
+        const { id: repoId, cleanup } = await seedPrWorkspace(serverUrl, 'ws-load-more', 'My Repo');
+        const routeCleanup = await setupPrRoutes(page, serverUrl, repoId, {
+            pullRequests: createMockPrList(30),
+        });
+        try {
+            await openPrTab(page, serverUrl, repoId);
+
+            await expect(page.locator('[data-testid="pr-row"]')).toHaveCount(25, { timeout: 10000 });
+            await expect(page.locator('[data-testid="load-more"]')).toBeVisible({ timeout: 10000 });
+
+            await page.locator('[data-testid="load-more"]').click();
+
+            await expect(page.locator('[data-testid="pr-row"]')).toHaveCount(30, { timeout: 10000 });
+            await expect(page.locator('[data-testid="load-more"]')).toHaveCount(0);
+
+            await page.locator('[data-testid="search-input"]').fill('number 30');
+            await expect(page.locator('[data-testid="pr-row"]')).toHaveCount(1, { timeout: 10000 });
+            await expect(page.locator('[data-testid="pr-row"]').first().locator('.pr-title')).toHaveText('feat: pull request number 30', { timeout: 10000 });
+        } finally {
+            await routeCleanup();
+            cleanup();
+        }
+    });
+
     test('shows file count and review minutes in each row meta line', async ({ page, serverUrl }) => {
         const { id: repoId, cleanup } = await seedPrWorkspace(serverUrl, 'ws-4', 'My Repo');
         const routeCleanup = await setupPrRoutes(page, serverUrl, repoId, {
