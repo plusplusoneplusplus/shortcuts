@@ -158,6 +158,18 @@ posts `canvas-state` on ready and on every live update, services
 the revision-checked `canvases.save`, so human UI actions and AI capability
 calls share one gate. Edit mode shows the raw JSON shared state.
 
+`features/chat/source-canvas/` renders the docked, read-only source-file canvas
+for local file references clicked inside assistant chat responses. The global
+file-path delegation normalizes bare `.file-path-link` spans, shared renderer
+`.md-link` spans, and local Markdown `<a href>` anchors from chat's markdown
+renderer into one file-reference path; when `SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS`
+is enabled, assistant-response clicks dispatch `coc-open-source-canvas` with the
+bare path, workspace hint, optional `sourceFilePath`, and optional line/range
+metadata. `ChatDetail` owns the listener, closes sibling right-side panels, and
+mounts `SourceCanvasPanel` as the right column on desktop or a bottom sheet on
+mobile. Flag-off, user-message, and non-chat file references continue to route
+to the floating `MarkdownReviewDialog`.
+
 ## Key Contexts
 
 | Context | Purpose |

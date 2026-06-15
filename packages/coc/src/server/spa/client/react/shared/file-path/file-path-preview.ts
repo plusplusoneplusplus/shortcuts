@@ -10,6 +10,7 @@ import { getLinkHandlersConfig } from '../../hooks/useLinkHandlers';
 import { openLink } from '../../utils/link-handler';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS } from '../../featureFlags';
+import { parseFilePathRef } from '../file-path-utils';
 
 interface WorkspaceInfo {
     id: string;
@@ -55,6 +56,17 @@ interface CacheEntry {
     data: PreviewResponse | null;
     error: string | null;
     timestamp: number;
+}
+
+interface FileReference {
+    /** Bare path used by the source canvas; excludes any trailing line suffix. */
+    filePath: string;
+    /** Original path-like reference used by the legacy review dialog fallback. */
+    reviewFilePath?: string;
+    wsId?: string;
+    line?: number;
+    endLine?: number;
+    sourceFilePath?: string;
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -216,41 +228,74 @@ function readLineAttr(el: HTMLElement, name: string): number | undefined {
     return Number.isFinite(n) ? n : undefined;
 }
 
+function readWorkspaceId(el: HTMLElement): string | undefined {
+    return el.closest('[data-ws-id]')?.getAttribute('data-ws-id') || undefined;
+}
+
+function readSourceFilePath(el: HTMLElement): string | undefined {
+    return el.closest('[data-source-file]')?.getAttribute('data-source-file') || undefined;
+}
+
+function dispatchOpenSourceCanvas(ref: FileReference): void {
+    window.dispatchEvent(new CustomEvent('coc-open-source-canvas', {
+        detail: {
+            filePath: ref.filePath,
+            wsId: ref.wsId,
+            line: ref.line,
+            endLine: ref.endLine,
+            sourceFilePath: ref.sourceFilePath,
+        },
+    }));
+}
+
+function dispatchOpenMarkdownReview(ref: FileReference): void {
+    const detail: { filePath: string; wsId?: string; sourceFilePath?: string } = {
+        filePath: ref.reviewFilePath ?? ref.filePath,
+    };
+    if (ref.wsId) {
+        detail.wsId = ref.wsId;
+    }
+    if (ref.sourceFilePath) {
+        detail.sourceFilePath = ref.sourceFilePath;
+    }
+    window.dispatchEvent(new CustomEvent('coc-open-markdown-review', { detail }));
+}
+
 /**
- * Open a clicked `.file-path-link`.
+ * Open a clicked local file reference.
  *
  * Inside a chat AI response (`.chat-message.assistant`) — and when the
  * source-canvas feature flag is ON — this routes to the docked, read-only
  * source-file canvas via `coc-open-source-canvas`, carrying any `:line` /
- * `:start-end` info (from `data-line` / `data-end-line`) separately from the
- * bare path. Everywhere else (flag OFF, or non-chat surfaces like the tasks
- * tree / notes) it falls back to the floating `MarkdownReviewDialog`.
+ * `:start-end` info separately from the bare path. Everywhere else (flag OFF,
+ * or non-chat surfaces like the tasks tree / notes) it falls back to the
+ * floating `MarkdownReviewDialog`.
  */
+function openFileReference(sourceEl: HTMLElement, ref: FileReference): void {
+    hideTooltip();
+
+    const inChatResponse = !!sourceEl.closest('.chat-message.assistant');
+    if (SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS && inChatResponse) {
+        dispatchOpenSourceCanvas(ref);
+        return;
+    }
+
+    dispatchOpenMarkdownReview(ref);
+}
+
+/** Open a clicked `.file-path-link` span. */
 function openFilePathLink(link: HTMLElement): void {
     const fullPath = link.getAttribute('data-full-path');
     if (!fullPath) return;
 
-    const wsId = link.closest('[data-ws-id]')?.getAttribute('data-ws-id') || undefined;
-    hideTooltip();
-
-    const inChatResponse = !!link.closest('.chat-message.assistant');
-    if (SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS && inChatResponse) {
-        const sourceFilePath = link.closest('[data-source-file]')?.getAttribute('data-source-file') || undefined;
-        window.dispatchEvent(new CustomEvent('coc-open-source-canvas', {
-            detail: {
-                filePath: fullPath,
-                wsId,
-                line: readLineAttr(link, 'data-line'),
-                endLine: readLineAttr(link, 'data-end-line'),
-                sourceFilePath,
-            },
-        }));
-        return;
-    }
-
-    window.dispatchEvent(new CustomEvent('coc-open-markdown-review', {
-        detail: { filePath: fullPath, wsId },
-    }));
+    openFileReference(link, {
+        filePath: fullPath,
+        reviewFilePath: fullPath,
+        wsId: readWorkspaceId(link),
+        line: readLineAttr(link, 'data-line'),
+        endLine: readLineAttr(link, 'data-end-line'),
+        sourceFilePath: readSourceFilePath(link),
+    });
 }
 
 function findPathLink(target: EventTarget | null): HTMLElement | null {
@@ -268,6 +313,39 @@ function findMdLink(target: EventTarget | null): HTMLElement | null {
     // Skip anchor links (handled separately for ToC navigation)
     if (link.classList.contains('md-anchor-link')) return null;
     return link;
+}
+
+function isExternalHref(href: string): boolean {
+    return /^https?:\/\/|^mailto:/i.test(href);
+}
+
+function findChatMarkdownAnchor(target: EventTarget | null): HTMLAnchorElement | null {
+    if (!(target instanceof HTMLElement)) return null;
+    const link = target.closest<HTMLAnchorElement>('a[href]');
+    if (!link || !link.closest('.chat-message.assistant')) return null;
+    const href = link.getAttribute('href') || '';
+    if (!href || isExternalHref(href) || href.startsWith('#')) return null;
+    return link;
+}
+
+function findMarkdownReferenceLink(target: EventTarget | null): HTMLElement | null {
+    return findMdLink(target) ?? findChatMarkdownAnchor(target);
+}
+
+function readMarkdownHref(link: HTMLElement): string {
+    return link.getAttribute('data-href') || link.getAttribute('href') || '';
+}
+
+function fileReferenceFromMarkdownHref(link: HTMLElement, href: string): FileReference {
+    const { path, line, endLine } = parseFilePathRef(toForwardSlashes(href));
+    return {
+        filePath: path,
+        reviewFilePath: href,
+        wsId: readWorkspaceId(link),
+        line,
+        endLine,
+        sourceFilePath: readSourceFilePath(link),
+    };
 }
 
 function positionTooltip(target: HTMLElement): void {
@@ -653,9 +731,10 @@ function initFilePathPreviewDelegation(): void {
         scheduleScrollEnd();
     });
 
-    // Click delegation for markdown link spans (.md-link) — open referenced files.
+    // Click delegation for markdown file links: `.md-link` spans from the shared
+    // renderer, plus local `<a href>` links from chat's marked renderer.
     document.body.addEventListener('click', (event) => {
-        const target = findMdLink(event.target);
+        const target = findMarkdownReferenceLink(event.target);
         if (!target) return;
         // Let browser handle Ctrl/Cmd+Click natively (open in new tab)
         const me = event as MouseEvent;
@@ -663,23 +742,16 @@ function initFilePathPreviewDelegation(): void {
         event.preventDefault();
         event.stopPropagation();
 
-        const href = target.getAttribute('data-href');
+        const href = readMarkdownHref(target);
         if (!href) return;
 
         // External URLs — open using link-handler (may redirect to desktop app)
-        if (/^https?:\/\/|^mailto:/i.test(href)) {
+        if (isExternalHref(href)) {
             openLink(href, getLinkHandlersConfig());
             return;
         }
 
-        // Determine the source file for relative path resolution
-        const sourceContainer = target.closest('[data-source-file]');
-        const sourceFilePath = sourceContainer?.getAttribute('data-source-file') || '';
-
-        hideTooltip();
-        window.dispatchEvent(new CustomEvent('coc-open-markdown-review', {
-            detail: { filePath: href, sourceFilePath },
-        }));
+        openFileReference(target, fileReferenceFromMarkdownHref(target, href));
     });
 }
 
