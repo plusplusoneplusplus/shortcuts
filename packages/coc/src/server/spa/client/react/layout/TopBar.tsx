@@ -27,12 +27,12 @@ import { useMyLifeEnabled } from '../hooks/feature-flags/useMyLifeEnabled';
 import { RepoManagementPopover } from '../repos/RepoManagementPopover';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { getHostname } from '../utils/config';
-import { SHOW_WIKI_TAB, SHOW_MEMORY_TAB } from '../featureFlags';
+import { SHOW_WIKI_TAB, SHOW_MEMORY_TAB } from '../navFlags';
 import type { DashboardTab } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 
-// Nav flags live in featureFlags.ts; re-exported here for modules that import
-// them from TopBar (BottomNav, Router).
+// Nav flags live in navFlags.ts; re-exported here for modules that import them
+// from TopBar (BottomNav, Router).
 export { SHOW_WIKI_TAB, SHOW_MEMORY_TAB };
 
 export const ALL_TABS: { label: string; tab: DashboardTab }[] = [

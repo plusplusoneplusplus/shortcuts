@@ -608,14 +608,14 @@ describe('buildSearchConversationsAddon', () => {
         expect(result.tools).toHaveLength(2);
         const names = result.tools.map(t => t.name).sort();
         expect(names).toEqual(['get_conversation', 'search_conversations']);
-        expect(result.suffix).toContain('search_conversations');
-        expect(result.suffix).toContain('get_conversation');
+        // The tools are wired (asserted above); their prompt suffix was
+        // intentionally trimmed, so no guidance text is appended.
     });
 
-    it('suffix mentions past conversation history', () => {
+    it('does not emit a suffix (conversation-history guidance trimmed)', () => {
         const store = { searchConversations: vi.fn() } as any;
         const result = buildSearchConversationsAddon(store);
-        expect(result.suffix).toContain('conversation-history');
+        expect(result.suffix).toBe('');
     });
 });
 

@@ -614,7 +614,9 @@ The sub-tab taxonomy and feature-flag/git/layout gating live in
 `TAB_GROUP_INDEX`, `computeVisibleSubTabs`), shared by both `RepoDetail` and the
 shell so the two stay behaviorally identical. Selection/routing reuse
 `buildRepoSubTabSuffix` via `useShellNavigation`. `SHOW_WIKI_TAB` / `SHOW_MEMORY_TAB`
-are defined in `featureFlags.ts` and re-exported from `TopBar` for back-compat.
+live in a dedicated lightweight `navFlags.ts` (read by `repoSubTabs.ts`; re-exported
+from `TopBar` for `BottomNav`/`Router`) — kept out of the heavily-mocked
+`featureFlags.ts` so partial test mocks of it don't break on the missing export.
 
 ## Onboarding
 

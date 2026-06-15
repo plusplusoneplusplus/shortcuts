@@ -7,7 +7,7 @@
  */
 
 import type { RepoSubTab } from '../../types/dashboard';
-import { SHOW_WIKI_TAB } from '../../featureFlags';
+import { SHOW_WIKI_TAB } from '../../navFlags';
 
 export interface SubTabDef {
     key: RepoSubTab;
