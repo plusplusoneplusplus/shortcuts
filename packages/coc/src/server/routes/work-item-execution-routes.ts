@@ -18,6 +18,12 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { execGit } from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody } from '../core/api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
+import {
+    queryWorkspaceId,
+    resolveWorkItemRouteScope,
+    type WorkItemRouteScope,
+    type WorkItemRouteScopeKind,
+} from './work-item-route-scope';
 import type { WorkItemStore, WorkItem, WorkItemChange } from '../work-items/types';
 import { getOwnWorkItemTrackerKind, HIERARCHY_CONTAINER_TYPES } from '../work-items/types';
 import { executeWorkItem, resolveWorkItemComments, type EnqueueFunction } from '../work-items/work-item-executor';
@@ -34,6 +40,10 @@ import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preference
 
 const VALID_EFFORT_TIERS = new Set(['very-low', 'low', 'medium', 'high']);
 const execFileAsync = promisify(execFile);
+const WORK_ITEM_EXECUTE_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/([^/]+)\/execute$/;
+const WORK_ITEM_SUBMIT_PR_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/([^/]+)\/submit-pr$/;
+const WORK_ITEM_AI_REVIEW_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/([^/]+)\/ai-review$/;
+const WORK_ITEM_RESOLVE_COMMENTS_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/([^/]+)\/resolve-comments$/;
 
 export interface WorkItemCommandResult {
     stdout: string;
@@ -173,6 +183,26 @@ function parsePrUrl(stdout: string): { prUrl: string; prNumber?: number } | unde
     };
 }
 
+function bodyWorkspaceId(body: unknown): string | undefined {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return undefined;
+    const raw = (body as Record<string, unknown>).workspaceId;
+    return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
+}
+
+async function resolveExecutionRouteScope(
+    ctx: WorkItemExecutionRouteContext,
+    req: http.IncomingMessage,
+    kind: WorkItemRouteScopeKind,
+    routeScopeId: string,
+    body: unknown,
+): Promise<WorkItemRouteScope> {
+    const workspaceId = bodyWorkspaceId(body) ?? queryWorkspaceId(req);
+    if (kind === 'origins' && !workspaceId) {
+        throw badRequest('workspaceId is required for origin-scoped Work Item execution actions');
+    }
+    return resolveWorkItemRouteScope(ctx, kind, routeScopeId, workspaceId);
+}
+
 async function resolveDefaultBaseBranch(repoRoot: string, runCommand: WorkItemCommandRunner): Promise<string> {
     try {
         const { stdout } = await runCommand('git', ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'], { cwd: repoRoot });
@@ -288,19 +318,34 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
     const { routes, workItemStore, processStore, enqueue, getWsServer, dataDir, getWorkflowEnabled } = ctx;
     const runCommand = ctx.runCommand ?? defaultCommandRunner;
 
-    // POST /api/workspaces/:id/work-items/:wid/execute — Execute work item
+    // POST /api/origins/:originId/work-items/:wid/execute — Execute work item
     routes.push({
         method: 'POST',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/execute$/,
+        pattern: WORK_ITEM_EXECUTE_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            const repoId = decodeURIComponent(match![1]);
-            const workItemId = decodeURIComponent(match![2]);
+            const routeKind = match![1] as WorkItemRouteScopeKind;
+            const routeScopeId = decodeURIComponent(match![2]);
+            const workItemId = decodeURIComponent(match![3]);
 
             if (!enqueue) {
                 return handleAPIError(res, badRequest('Task execution is not available'));
             }
 
-            const item = await workItemStore.getWorkItem(workItemId, repoId);
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                body = {};
+            }
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolveExecutionRouteScope(ctx, req, routeKind, routeScopeId, body);
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
+            const repoId = scope.commandRepoId;
+
+            const item = await workItemStore.getWorkItem(workItemId, scope.storageRepoId);
             if (!item) {
                 return handleAPIError(res, notFound('Work item'));
             }
@@ -309,13 +354,6 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
             const effectiveType = item.type ?? 'work-item';
             if (HIERARCHY_CONTAINER_TYPES.has(effectiveType)) {
                 return handleAPIError(res, badRequest(`Only WorkItem and Bug items can be executed. "${effectiveType}" is a planning container.`));
-            }
-
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                body = {};
             }
 
             // Capture git HEAD before execution for commit range tracking
@@ -397,7 +435,8 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                     : undefined;
 
                 const result = await executeWorkItem(workItemId, workItemStore, enqueue, {
-                    repoId,
+                    repoId: scope.storageRepoId,
+                    workspaceId: repoId,
                     model: body.model,
                     provider,
                     reasoningEffort,
@@ -411,10 +450,10 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                     taskFilePath,
                     skillNames: skillNames?.length ? skillNames : undefined,
                 });
-                const updatedItem = await workItemStore.getWorkItem(workItemId, repoId);
+                const updatedItem = await workItemStore.getWorkItem(workItemId, scope.storageRepoId);
                 if (updatedItem) {
-                    clearWorkItemResponseCacheForWorkspace(repoId);
-                    getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updatedItem });
+                    clearWorkItemResponseCacheForWorkspace(scope.storageRepoId);
+                    getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: scope.storageRepoId, item: updatedItem });
                 }
                 sendJSON(res, 200, result);
             } catch (err: any) {
@@ -423,13 +462,14 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
         },
     });
 
-    // POST /api/workspaces/:id/work-items/:wid/submit-pr — Create a PR from eligible execution commits
+    // POST /api/origins/:originId/work-items/:wid/submit-pr — Create a PR from eligible execution commits
     routes.push({
         method: 'POST',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/submit-pr$/,
+        pattern: WORK_ITEM_SUBMIT_PR_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            const repoId = decodeURIComponent(match![1]);
-            const workItemId = decodeURIComponent(match![2]);
+            const routeKind = match![1] as WorkItemRouteScopeKind;
+            const routeScopeId = decodeURIComponent(match![2]);
+            const workItemId = decodeURIComponent(match![3]);
 
             if (getWorkflowEnabled?.() !== true) {
                 return handleAPIError(res, badRequest('Work Item PR submission requires workItems.workflow.enabled'));
@@ -441,8 +481,15 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
             } catch {
                 return handleAPIError(res, badRequest('Invalid JSON body'));
             }
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolveExecutionRouteScope(ctx, req, routeKind, routeScopeId, body);
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
+            const repoId = scope.commandRepoId;
 
-            const item = await workItemStore.getWorkItem(workItemId, repoId);
+            const item = await workItemStore.getWorkItem(workItemId, scope.storageRepoId);
             if (!item) {
                 return handleAPIError(res, notFound('Work item'));
             }
@@ -493,20 +540,20 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                     prNumber: submitted.prNumber,
                     prUrl: submitted.prUrl,
                     prStatus: 'open',
-                }, repoId);
+                }, scope.storageRepoId);
                 if (change.taskId) {
-                    await workItemStore.updateExecution(workItemId, change.taskId, { prUrl: submitted.prUrl }, repoId);
+                    await workItemStore.updateExecution(workItemId, change.taskId, { prUrl: submitted.prUrl }, scope.storageRepoId);
                 }
                 const updated = await workItemStore.updateWorkItem(workItemId, {
                     status: 'done',
                     completedAt,
-                }, repoId);
+                }, scope.storageRepoId);
                 if (!updated) {
                     return handleAPIError(res, notFound('Work item'));
                 }
 
-                clearWorkItemResponseCacheForWorkspace(repoId);
-                getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
+                clearWorkItemResponseCacheForWorkspace(scope.storageRepoId);
+                getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: scope.storageRepoId, item: updated });
                 sendJSON(res, 200, {
                     workItem: updated,
                     changeId: change.id,
@@ -521,13 +568,14 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
         },
     });
 
-    // POST /api/workspaces/:id/work-items/:wid/ai-review — Enqueue an explicit AI review for the Review state
+    // POST /api/origins/:originId/work-items/:wid/ai-review — Enqueue an explicit AI review for the Review state
     routes.push({
         method: 'POST',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/ai-review$/,
+        pattern: WORK_ITEM_AI_REVIEW_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            const repoId = decodeURIComponent(match![1]);
-            const workItemId = decodeURIComponent(match![2]);
+            const routeKind = match![1] as WorkItemRouteScopeKind;
+            const routeScopeId = decodeURIComponent(match![2]);
+            const workItemId = decodeURIComponent(match![3]);
 
             if (getWorkflowEnabled?.() !== true) {
                 return handleAPIError(res, badRequest('Work Item AI review requires workItems.workflow.enabled'));
@@ -542,6 +590,13 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
             } catch {
                 body = {};
             }
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolveExecutionRouteScope(ctx, req, routeKind, routeScopeId, body);
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
+            const repoId = scope.commandRepoId;
 
             const provider: ChatProvider | undefined = body.provider === undefined
                 ? undefined
@@ -568,7 +623,7 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                 return handleAPIError(res, badRequest(`Invalid effortTier: '${body.effortTier}'`));
             }
 
-            const item = await workItemStore.getWorkItem(workItemId, repoId);
+            const item = await workItemStore.getWorkItem(workItemId, scope.storageRepoId);
             if (!item) {
                 return handleAPIError(res, notFound('Work item'));
             }
@@ -593,12 +648,14 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
             try {
                 const taskId = await enqueue({
                     type: 'run-workflow',
+                    repoId,
                     priority: item.priority ?? 'normal',
                     payload: {
                         kind: 'chat',
                         mode: 'ask',
                         prompt,
                         workspaceId: repoId,
+                        workItemStorageRepoId: scope.storageRepoId,
                         workItemId: item.id,
                         sessionCategory: 'work-item-ai-review',
                         ...(selectedVersion ? { planVersion: selectedVersion } : {}),
@@ -608,6 +665,7 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                             skills: ['code-review'],
                             workItemReview: {
                                 workspaceId: repoId,
+                                originId: scope.storageRepoId,
                                 workItemId: item.id,
                                 ...(latestImplementation ? { executionTaskId: latestImplementation.execution.taskId, executionRunIndex: latestImplementation.index + 1 } : {}),
                                 ...(change ? { changeId: change.id, commits: change.commits.map(commit => commit.sha) } : {}),
@@ -644,12 +702,12 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                     skillNames: ['code-review'],
                     ...(change ? { reviewedChangeId: change.id } : {}),
                     ...(latestImplementation ? { reviewedTaskId: latestImplementation.execution.taskId } : {}),
-                }, repoId);
+                }, scope.storageRepoId);
 
-                const updatedItem = await workItemStore.getWorkItem(workItemId, repoId);
+                const updatedItem = await workItemStore.getWorkItem(workItemId, scope.storageRepoId);
                 if (updatedItem) {
-                    clearWorkItemResponseCacheForWorkspace(repoId);
-                    getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updatedItem });
+                    clearWorkItemResponseCacheForWorkspace(scope.storageRepoId);
+                    getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: scope.storageRepoId, item: updatedItem });
                 }
                 sendJSON(res, 200, { taskId, workItem: updatedItem });
             } catch (err: any) {
@@ -658,22 +716,37 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
         },
     });
 
-    // POST /api/workspaces/:id/work-items/:wid/resolve-comments — Resolve comments as Run#
+    // POST /api/origins/:originId/work-items/:wid/resolve-comments — Resolve comments as Run#
     const taskCommentsManager = new TaskCommentsManager(dataDir ?? '');
     const diffCommentsManager = new DiffCommentsManager(dataDir ?? '');
 
     routes.push({
         method: 'POST',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/resolve-comments$/,
+        pattern: WORK_ITEM_RESOLVE_COMMENTS_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            const repoId = decodeURIComponent(match![1]);
-            const workItemId = decodeURIComponent(match![2]);
+            const routeKind = match![1] as WorkItemRouteScopeKind;
+            const routeScopeId = decodeURIComponent(match![2]);
+            const workItemId = decodeURIComponent(match![3]);
 
             if (!enqueue) {
                 return handleAPIError(res, badRequest('Task execution is not available'));
             }
 
-            const item = await workItemStore.getWorkItem(workItemId, repoId);
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return handleAPIError(res, badRequest('Invalid JSON body'));
+            }
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolveExecutionRouteScope(ctx, req, routeKind, routeScopeId, body);
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
+            const repoId = scope.commandRepoId;
+
+            const item = await workItemStore.getWorkItem(workItemId, scope.storageRepoId);
             if (!item) {
                 return handleAPIError(res, notFound('Work item'));
             }
@@ -682,13 +755,6 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
             const effectiveResolveType = item.type ?? 'work-item';
             if (HIERARCHY_CONTAINER_TYPES.has(effectiveResolveType)) {
                 return handleAPIError(res, badRequest(`Only WorkItem and Bug items can have comments resolved. "${effectiveResolveType}" is a planning container.`));
-            }
-
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return handleAPIError(res, badRequest('Invalid JSON body'));
             }
 
             const resolveType: 'plan' | 'commit' = body.type;
@@ -712,6 +778,8 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
 
                     const result = await resolveWorkItemComments(workItemId, workItemStore, enqueue, {
                         type: 'plan',
+                        repoId: scope.storageRepoId,
+                        workspaceId: repoId,
                         model: body.model,
                         prompt,
                         resolveContext: {
@@ -726,10 +794,10 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                         },
                     });
 
-                    const updatedItem = await workItemStore.getWorkItem(workItemId);
+                    const updatedItem = await workItemStore.getWorkItem(workItemId, scope.storageRepoId);
                     if (updatedItem) {
-                        clearWorkItemResponseCacheForWorkspace(repoId);
-                        getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updatedItem });
+                        clearWorkItemResponseCacheForWorkspace(scope.storageRepoId);
+                        getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: scope.storageRepoId, item: updatedItem });
                     }
                     sendJSON(res, 200, result);
                 } else {
@@ -788,6 +856,8 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
 
                     const result = await resolveWorkItemComments(workItemId, workItemStore, enqueue, {
                         type: 'commit',
+                        repoId: scope.storageRepoId,
+                        workspaceId: repoId,
                         commitSha,
                         sourceRunIndex: body.sourceRunIndex,
                         model: body.model,
@@ -803,10 +873,10 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                         },
                     });
 
-                    const updatedItem = await workItemStore.getWorkItem(workItemId);
+                    const updatedItem = await workItemStore.getWorkItem(workItemId, scope.storageRepoId);
                     if (updatedItem) {
-                        clearWorkItemResponseCacheForWorkspace(repoId);
-                        getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updatedItem });
+                        clearWorkItemResponseCacheForWorkspace(scope.storageRepoId);
+                        getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: scope.storageRepoId, item: updatedItem });
                     }
                     sendJSON(res, 200, result);
                 }

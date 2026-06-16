@@ -402,6 +402,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             if (body.tracker !== undefined) input.tracker = body.tracker;
             if ('parentId' in body) input.parentId = body.parentId;
             if (body.syncConflictResolution !== undefined) input.syncConflictResolution = body.syncConflictResolution;
+            input.storageRepoId = scope.storageRepoId;
 
             try {
                 const updated = await updateWorkItemCommand(commandCtx, scope.commandRepoId, workItemId, input);

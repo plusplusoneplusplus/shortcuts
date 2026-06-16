@@ -192,6 +192,12 @@ all have their own `references/*.md`.
   `client.workItems.*Plan*ForOrigin(...)`; pass `workspaceId` only as clone
   metadata for origin validation while execution/sync flows remain
   workspace-root dependent.
+- **Work-item execution actions** are origin-scoped persistent state but require
+  a concrete clone. New callers must use
+  `/api/origins/:originId/work-items/:itemId/{execute,submit-pr,ai-review,resolve-comments}`
+  or `client.workItems.*ForOrigin(...)`, always passing `workspaceId` so queue
+  routing, git/PR operations, task files, and comment resolution use the
+  selected workspace while execution history and broadcasts write to the origin.
 - **Direct package builds** use `scripts/prebuild.mjs` to build
   `@plusplusoneplusplus/coc-client`, `@plusplusoneplusplus/coc-workflow`, and `@plusplusoneplusplus/coc-memory`
   before `tsc`, clean `dist` before emitting, and generate

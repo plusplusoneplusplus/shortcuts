@@ -479,6 +479,10 @@ describe('WorkItemsClient mock coverage', () => {
     await client.restorePlanVersionForOrigin('gh_owner_repo', 'wi/1', 1, { reason: 'Restore v1' }, { workspaceId: 'repo/a' });
     await client.refinePlanForOrigin('gh_owner_repo', 'wi/1', { instructions: 'Tighten scope' }, { workspaceId: 'repo/a' });
     await client.resolveComments('repo/a', 'wi/1', { type: 'commit', commitSha: 'abc123', sourceRunIndex: 2, model: 'gpt-5.5' });
+    await client.executeForOrigin('gh_owner_repo', 'wi/1', { skillNames: ['impl'] }, { workspaceId: 'repo/a' });
+    await client.submitPullRequestForOrigin('gh_owner_repo', 'wi/1', { changeId: 'change-1' }, { workspaceId: 'repo/a' });
+    await client.startAiReviewForOrigin('gh_owner_repo', 'wi/1', { provider: 'claude' }, { workspaceId: 'repo/a' });
+    await client.resolveCommentsForOrigin('gh_owner_repo', 'wi/1', { type: 'plan' }, { workspaceId: 'repo/a' });
 
     expect(adapter.calls).toEqual([
       {
@@ -559,6 +563,34 @@ describe('WorkItemsClient mock coverage', () => {
         options: {
           method: 'POST',
           body: { type: 'commit', commitSha: 'abc123', sourceRunIndex: 2, model: 'gpt-5.5' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/execute',
+        options: {
+          method: 'POST',
+          body: { skillNames: ['impl'], workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/submit-pr',
+        options: {
+          method: 'POST',
+          body: { changeId: 'change-1', workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/ai-review',
+        options: {
+          method: 'POST',
+          body: { provider: 'claude', workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/resolve-comments',
+        options: {
+          method: 'POST',
+          body: { type: 'plan', workspaceId: 'repo/a' },
         },
       },
     ]);

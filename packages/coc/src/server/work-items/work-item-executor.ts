@@ -51,6 +51,8 @@ export interface ExecuteWorkItemOptions {
     skillNames?: string[];
     /** Storage repo/origin hint for resolving duplicate Work Item IDs safely. */
     repoId?: string;
+    /** Concrete workspace used for queue routing, workspace preferences, and filesystem actions. */
+    workspaceId?: string;
 }
 
 export interface EnqueueFunction {
@@ -128,6 +130,8 @@ export async function executeWorkItem(
     if (!item) {
         throw new Error(`Work item not found: ${workItemId}`);
     }
+    const storageRepoId = options?.repoId ?? item.repoId;
+    const executionWorkspaceId = options?.workspaceId ?? item.repoId;
 
     if (!isValidTransition(item.status, 'executing')) {
         throw new Error(
@@ -159,7 +163,7 @@ export async function executeWorkItem(
     if (executionMode === 'ralph') {
         const maxIterations = options?.maxRalphIterations ?? RALPH_DEFAULT_MAX_ITERATIONS;
         if (options?.dataDir) {
-            await new RalphSessionStore({ dataDir: options.dataDir }).initSession(item.repoId, ralphSessionId!, {
+            await new RalphSessionStore({ dataDir: options.dataDir }).initSession(executionWorkspaceId, ralphSessionId!, {
                 originalGoal: prompt,
                 maxIterations,
             });
@@ -167,14 +171,15 @@ export async function executeWorkItem(
         const ralphContext = {
             ...(context ?? {}),
             workItemExecution: {
-                workspaceId: item.repoId,
+                workspaceId: executionWorkspaceId,
+                originId: storageRepoId,
                 workItemId: item.id,
                 executionMode,
                 ...(selectedPlanVersion !== undefined ? { planVersion: selectedPlanVersion } : {}),
             },
         };
         const ralphTask = buildRalphIterationTask({
-            workspaceId: item.repoId,
+            workspaceId: executionWorkspaceId,
             sessionId: ralphSessionId!,
             originalGoal: prompt,
             iteration: 1,
@@ -195,20 +200,23 @@ export async function executeWorkItem(
                 ...ralphTask.payload,
                 sessionCategory: 'generating-code' satisfies SessionCategory,
                 workItemId: item.id,
+                workItemStorageRepoId: storageRepoId,
                 ...(selectedPlanVersion !== undefined ? { planVersion: selectedPlanVersion } : {}),
             },
         });
     } else {
         taskId = await enqueue({
             type: 'run-workflow',
+            repoId: executionWorkspaceId,
             priority,
             payload: {
                 kind: 'chat',
                 mode,
                 prompt,
-                workspaceId: item.repoId,
+                workspaceId: executionWorkspaceId,
                 sessionCategory: 'generating-code' satisfies SessionCategory,
                 workItemId: item.id,
+                workItemStorageRepoId: storageRepoId,
                 ...(selectedPlanVersion !== undefined ? { planVersion: selectedPlanVersion } : {}),
                 ...(options?.provider ? { provider: options.provider } : {}),
                 ...(options?.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
@@ -238,7 +246,6 @@ export async function executeWorkItem(
         title: executionTitle,
         ...(options?.autoReExecuted ? { autoReExecuted: true } : {}),
     };
-    const storageRepoId = options?.repoId ?? item.repoId;
     await store.addExecution(workItemId, execution, storageRepoId);
 
     // Open or reuse a Change entry for this execution cycle
@@ -290,6 +297,10 @@ export interface ResolveWorkItemCommentsOptions {
     resolveContext: Record<string, unknown>;
     /** Chat mode override (default: 'ask' for plan, 'autopilot' for commit). */
     mode?: Exclude<ChatMode, 'ralph'> | string;
+    /** Storage repo/origin hint for resolving duplicate Work Item IDs safely. */
+    repoId?: string;
+    /** Concrete workspace used for queue routing and filesystem actions. */
+    workspaceId?: string;
 }
 
 /**
@@ -305,10 +316,12 @@ export async function resolveWorkItemComments(
     enqueue: EnqueueFunction,
     options: ResolveWorkItemCommentsOptions,
 ): Promise<{ taskId: string }> {
-    const item = await store.getWorkItem(workItemId);
+    const item = await store.getWorkItem(workItemId, options.repoId);
     if (!item) {
         throw new Error(`Work item not found: ${workItemId}`);
     }
+    const storageRepoId = options.repoId ?? item.repoId;
+    const executionWorkspaceId = options.workspaceId ?? item.repoId;
 
     const runNumber = (item.executionHistory?.length ?? 0) + 1;
     const isPlan = options.type === 'plan';
@@ -321,14 +334,16 @@ export async function resolveWorkItemComments(
 
     const taskId = await enqueue({
         type: 'run-workflow',
+        repoId: executionWorkspaceId,
         priority: item.priority ?? 'normal',
         payload: {
             kind: 'chat',
             mode,
             prompt: options.prompt,
-            workspaceId: item.repoId,
+            workspaceId: executionWorkspaceId,
             sessionCategory,
             workItemId: item.id,
+            workItemStorageRepoId: storageRepoId,
             tools: ['resolve-comments'],
             context: options.resolveContext,
         },
@@ -345,7 +360,7 @@ export async function resolveWorkItemComments(
         sessionCategory,
         title,
     };
-    await store.addExecution(workItemId, execution);
+    await store.addExecution(workItemId, execution, storageRepoId);
 
     return { taskId };
 }
@@ -377,20 +392,21 @@ export async function handleWorkItemTaskComplete(
     taskId: string,
     result: { status: 'completed' | 'failed' | 'cancelled'; error?: string; processId?: string },
     store: WorkItemStore,
+    repoId?: string,
 ): Promise<void> {
     await store.updateExecution(workItemId, taskId, {
         status: result.status,
         completedAt: new Date().toISOString(),
         error: result.error,
         processId: result.processId,
-    });
+    }, repoId);
 
     // Check if this is a comment-resolve session — skip status transition
-    const item = await store.getWorkItem(workItemId);
+    const item = await store.getWorkItem(workItemId, repoId);
     const matchedExec = item?.executionHistory?.find(e => e.taskId === taskId);
     if (isResolveSessionCategory(matchedExec?.sessionCategory) || isWorkItemReviewSessionCategory(matchedExec?.sessionCategory)) {
         // Non-implementation sessions are timeline entries only; they must not move the item out of Review.
-        await store.updateWorkItem(workItemId, { processId: result.processId });
+        await store.updateWorkItem(workItemId, { processId: result.processId }, repoId);
         return;
     }
 
@@ -408,17 +424,17 @@ export async function handleWorkItemTaskComplete(
         status: newStatus,
         ...(completedAt ? { completedAt } : {}),
         processId: result.processId,
-    });
+    }, repoId);
 
     // Close the open Change for this taskId
     try {
-        const changes = await store.getChanges(workItemId);
+        const changes = await store.getChanges(workItemId, repoId);
         const openChange = changes.find(c => c.taskId === taskId && c.status === 'open');
         if (openChange) {
             await store.updateChange(workItemId, openChange.id, {
                 completedAt: new Date().toISOString(),
                 status: 'closed',
-            });
+            }, repoId);
         }
     } catch { /* non-fatal */ }
 }
@@ -434,6 +450,7 @@ export async function autoVersionPlanFromResolvedComments(
     workItemId: string,
     processResult: string | Record<string, unknown> | undefined,
     store: WorkItemStore,
+    repoId?: string,
 ): Promise<WorkItem | undefined> {
     if (!processResult) return undefined;
 
@@ -443,7 +460,7 @@ export async function autoVersionPlanFromResolvedComments(
     const revisedContent: string | undefined = parsed?.revisedContent || parsed?.response;
     if (!revisedContent) return undefined;
 
-    const item = await store.getWorkItem(workItemId);
+    const item = await store.getWorkItem(workItemId, repoId);
     if (!item) return undefined;
 
     const currentContent = item.plan?.content ?? '';
@@ -461,7 +478,7 @@ export async function autoVersionPlanFromResolvedComments(
         reason: 'Plan updated from resolved comments',
         summary: 'Plan updated from resolved comments',
     };
-    await store.savePlanVersion(workItemId, planVersion);
+    await store.savePlanVersion(workItemId, planVersion, repoId);
     return store.updateWorkItem(workItemId, {
         currentContentVersion: newVersion,
         plan: {
@@ -473,7 +490,7 @@ export async function autoVersionPlanFromResolvedComments(
             source: 'ai',
             reason: planVersion.reason,
         },
-    });
+    }, repoId);
 }
 
 export interface SaveGoalGrillingSpecOptions {

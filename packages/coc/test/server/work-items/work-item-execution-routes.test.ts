@@ -7,7 +7,7 @@ import type { Route } from '../../../src/server/types';
 import { createRouter } from '../../../src/server/shared/router';
 import { registerWorkItemRoutes } from '../../../src/server/routes/work-item-routes';
 import { registerWorkItemExecutionRoutes } from '../../../src/server/routes/work-item-execution-routes';
-import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
+import { createWorkItemStorageScopeResolver, FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
 
 let tmpDir: string;
 let store: FileWorkItemStore;
@@ -17,11 +17,13 @@ let baseUrl: string;
 const mockProcessStore = {
     getProcess: vi.fn(),
     getWorkspaces: vi.fn(),
+    updateWorkspace: vi.fn(),
 } as any;
+let workspaces: any[] = [];
 
 function makeServer(enqueue?: any, opts: { dataDir?: string; workflowEnabled?: boolean; runCommand?: any } = {}): http.Server {
     const routes: Route[] = [];
-    registerWorkItemRoutes({ routes, workItemStore: store });
+    registerWorkItemRoutes({ routes, workItemStore: store, processStore: mockProcessStore, enqueue });
     registerWorkItemExecutionRoutes({
         routes,
         workItemStore: store,
@@ -81,11 +83,19 @@ async function request(
 }
 
 const REPO_ID = 'test-repo';
+const ORIGIN_ID = 'gh_plusplusoneplusplus_shortcuts';
 
 describe('Work Item Execution Routes', () => {
     beforeEach(() => {
+        workspaces = [];
         mockProcessStore.getProcess.mockReset();
         mockProcessStore.getWorkspaces.mockReset();
+        mockProcessStore.updateWorkspace.mockReset();
+        mockProcessStore.getWorkspaces.mockImplementation(async () => workspaces);
+        mockProcessStore.updateWorkspace.mockImplementation(async (workspaceId: string, update: any) => {
+            const workspace = workspaces.find(entry => entry.id === workspaceId);
+            if (workspace) Object.assign(workspace, update);
+        });
     });
 
     describe('POST /execute', () => {
@@ -344,6 +354,232 @@ describe('Work Item Execution Routes', () => {
         });
     });
 
+    describe('origin-scoped execution actions', () => {
+        let enqueueMock: ReturnType<typeof vi.fn>;
+        let runCommand: ReturnType<typeof vi.fn>;
+
+        beforeEach(async () => {
+            tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-origin-exec-'));
+            workspaces = [
+                {
+                    id: 'clone-a',
+                    name: 'Clone A',
+                    rootPath: path.join(tmpDir, 'clone-a'),
+                    remoteUrl: 'https://github.com/plusplusoneplusplus/shortcuts.git',
+                },
+                {
+                    id: 'clone-b',
+                    name: 'Clone B',
+                    rootPath: path.join(tmpDir, 'clone-b'),
+                    remoteUrl: 'git@github.com:plusplusoneplusplus/shortcuts.git',
+                },
+                {
+                    id: 'other-clone',
+                    name: 'Other Clone',
+                    rootPath: path.join(tmpDir, 'other-clone'),
+                    remoteUrl: 'https://github.com/plusplusoneplusplus/other.git',
+                },
+            ];
+            store = new FileWorkItemStore({
+                dataDir: tmpDir,
+                scopeResolver: createWorkItemStorageScopeResolver(mockProcessStore),
+            });
+            enqueueMock = vi.fn().mockResolvedValue('task-origin');
+            runCommand = vi.fn(async (command: string, args: string[], options: any) => {
+                if (command === 'git' && args.join(' ') === 'status --porcelain') return { stdout: '', stderr: '' };
+                if (command === 'git' && args.join(' ') === 'rev-parse --abbrev-ref HEAD') return { stdout: 'feature/current\n', stderr: '' };
+                if (command === 'git' && args.join(' ') === 'symbolic-ref --quiet --short refs/remotes/origin/HEAD') return { stdout: 'origin/main\n', stderr: '' };
+                if (command === 'gh' && args[0] === 'pr' && args[1] === 'create') {
+                    expect(options.cwd).toBe(path.join(tmpDir, 'clone-b'));
+                    return { stdout: 'https://github.com/plusplusoneplusplus/shortcuts/pull/77\n', stderr: '' };
+                }
+                return { stdout: '', stderr: '' };
+            });
+            server = makeServer(enqueueMock, { dataDir: tmpDir, workflowEnabled: true, runCommand });
+            await startServer();
+        });
+
+        afterEach(async () => {
+            await stopServer();
+            await fs.rm(tmpDir, { recursive: true, force: true });
+        });
+
+        async function addOriginItem(overrides: Partial<Parameters<typeof store.addWorkItem>[0]> = {}) {
+            const now = new Date().toISOString();
+            await store.addWorkItem({
+                id: 'origin-wi',
+                repoId: 'clone-a',
+                title: 'Origin item',
+                description: 'Shared across clones.',
+                status: 'readyToExecute',
+                type: 'work-item',
+                source: 'manual',
+                tracker: { kind: 'local-only' },
+                createdAt: now,
+                updatedAt: now,
+                plan: { version: 1, currentVersion: 1, content: '## Plan\nShip it', updatedAt: now },
+                currentContentVersion: 1,
+                ...overrides,
+            });
+        }
+
+        it('executes origin work items through the selected concrete clone', async () => {
+            await addOriginItem();
+            const cloneB = workspaces.find(entry => entry.id === 'clone-b');
+            if (cloneB) cloneB.rootPath = undefined;
+
+            const res = await request('POST', `/api/origins/${ORIGIN_ID}/work-items/origin-wi/execute`, {
+                workspaceId: 'clone-b',
+                skillNames: ['impl'],
+            });
+
+            expect(res.status).toBe(200);
+            expect(enqueueMock).toHaveBeenCalledOnce();
+            const call = enqueueMock.mock.calls[0][0];
+            expect(call.repoId).toBe('clone-b');
+            expect(call.payload.workspaceId).toBe('clone-b');
+            expect(call.payload.workItemStorageRepoId).toBe(ORIGIN_ID);
+            expect(call.payload.context.skills).toEqual(['impl']);
+            const updated = await store.getWorkItem('origin-wi', ORIGIN_ID);
+            expect(updated?.status).toBe('executing');
+            expect(updated?.executionHistory?.[0].taskId).toBe('task-origin');
+        });
+
+        it('auto-executes origin status changes with origin storage in the queued payload', async () => {
+            await addOriginItem({ status: 'planning', autoExecute: true });
+            const cloneB = workspaces.find(entry => entry.id === 'clone-b');
+            if (cloneB) cloneB.rootPath = undefined;
+
+            const res = await request('PATCH', `/api/origins/${ORIGIN_ID}/work-items/origin-wi`, {
+                workspaceId: 'clone-b',
+                status: 'readyToExecute',
+            });
+
+            expect(res.status).toBe(200);
+            expect(enqueueMock).toHaveBeenCalledOnce();
+            const call = enqueueMock.mock.calls[0][0];
+            expect(call.repoId).toBe('clone-b');
+            expect(call.payload.workspaceId).toBe('clone-b');
+            expect(call.payload.workItemStorageRepoId).toBe(ORIGIN_ID);
+            const updated = await store.getWorkItem('origin-wi', ORIGIN_ID);
+            expect(updated?.status).toBe('executing');
+        });
+
+        it('rejects origin execution when workspace metadata is missing or mismatched', async () => {
+            await addOriginItem();
+
+            const missing = await request('POST', `/api/origins/${ORIGIN_ID}/work-items/origin-wi/execute`, {});
+            expect(missing.status).toBe(400);
+            expect(missing.body.error).toContain('workspaceId is required');
+
+            const mismatch = await request('POST', `/api/origins/${ORIGIN_ID}/work-items/origin-wi/execute`, {
+                workspaceId: 'other-clone',
+            });
+            expect(mismatch.status).toBe(400);
+            expect(mismatch.body.error).toContain("resolves to origin 'gh_plusplusoneplusplus_other'");
+            expect(enqueueMock).not.toHaveBeenCalled();
+        });
+
+        it('submits origin Work Item PRs using the selected clone root and records origin state', async () => {
+            await addOriginItem({
+                status: 'aiDone',
+                executionHistory: [{
+                    taskId: 'task-submit',
+                    status: 'completed',
+                    startedAt: new Date().toISOString(),
+                    completedAt: new Date().toISOString(),
+                    planVersion: 1,
+                    title: 'Code Implement',
+                }],
+                changes: [{
+                    id: 'change-submit',
+                    planVersion: 1,
+                    taskId: 'task-submit',
+                    startedAt: new Date().toISOString(),
+                    completedAt: new Date().toISOString(),
+                    status: 'closed',
+                    commits: [{ sha: '1111111111111111111111111111111111111111', message: 'Origin commit' }],
+                }],
+            });
+
+            const res = await request('POST', `/api/origins/${ORIGIN_ID}/work-items/origin-wi/submit-pr`, {
+                workspaceId: 'clone-b',
+                branchName: 'coc/work-items/origin-wi',
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body.prNumber).toBe(77);
+            const updated = await store.getWorkItem('origin-wi', ORIGIN_ID);
+            expect(updated?.status).toBe('done');
+            expect(updated?.changes?.[0].prUrl).toContain('/pull/77');
+        });
+
+        it('starts origin AI review through the selected clone while storing history on the origin', async () => {
+            await addOriginItem({
+                status: 'aiDone',
+                executionHistory: [{
+                    taskId: 'task-impl',
+                    status: 'completed',
+                    startedAt: new Date().toISOString(),
+                    completedAt: new Date().toISOString(),
+                    planVersion: 1,
+                    sessionCategory: 'generating-code',
+                    title: 'Code Implement',
+                }],
+                changes: [{
+                    id: 'change-review',
+                    planVersion: 1,
+                    taskId: 'task-impl',
+                    startedAt: new Date().toISOString(),
+                    completedAt: new Date().toISOString(),
+                    status: 'closed',
+                    commits: [{ sha: '2222222222222222222222222222222222222222', message: 'Review commit' }],
+                }],
+            });
+
+            const res = await request('POST', `/api/origins/${ORIGIN_ID}/work-items/origin-wi/ai-review`, {
+                workspaceId: 'clone-b',
+                provider: 'claude',
+            });
+
+            expect(res.status).toBe(200);
+            const call = enqueueMock.mock.calls[0][0];
+            expect(call.repoId).toBe('clone-b');
+            expect(call.payload.workspaceId).toBe('clone-b');
+            expect(call.payload.workItemStorageRepoId).toBe(ORIGIN_ID);
+            expect(call.payload.context.workItemReview.originId).toBe(ORIGIN_ID);
+            const updated = await store.getWorkItem('origin-wi', ORIGIN_ID);
+            expect(updated?.executionHistory?.at(-1)?.sessionCategory).toBe('work-item-ai-review');
+        });
+
+        it('resolves origin plan comments from the selected workspace and stores execution history on the origin', async () => {
+            await addOriginItem({ status: 'aiDone' });
+            const { TaskCommentsManager: TCM } = await import('../../../src/server/tasks/comments/task-comments-manager');
+            const tcm = new TCM(tmpDir);
+            await tcm.addComment('clone-b', '__wi-plan__/origin-wi', {
+                filePath: '__wi-plan__/origin-wi',
+                selection: { startLine: 1, startColumn: 0, endLine: 1, endColumn: 6 },
+                selectedText: 'Plan',
+                comment: 'Clarify this',
+                status: 'open',
+            });
+
+            const res = await request('POST', `/api/origins/${ORIGIN_ID}/work-items/origin-wi/resolve-comments`, {
+                workspaceId: 'clone-b',
+                type: 'plan',
+            });
+
+            expect(res.status).toBe(200);
+            const call = enqueueMock.mock.calls[0][0];
+            expect(call.repoId).toBe('clone-b');
+            expect(call.payload.workspaceId).toBe('clone-b');
+            expect(call.payload.workItemStorageRepoId).toBe(ORIGIN_ID);
+            expect(call.payload.context.resolveComments.wsId).toBe('clone-b');
+            const updated = await store.getWorkItem('origin-wi', ORIGIN_ID);
+            expect(updated?.executionHistory?.at(-1)?.sessionCategory).toBe('resolve-plan-comments');
+        });
+    });
+
     describe('POST /from-chat', () => {
         beforeEach(async () => {
             tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-fromchat-'));
@@ -472,8 +708,11 @@ describe('Work Item Execution Routes', () => {
 
         beforeEach(async () => {
             tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-submit-pr-'));
-            store = new FileWorkItemStore({ dataDir: tmpDir });
             mockProcessStore.getWorkspaces.mockResolvedValue([{ id: REPO_ID, rootPath: path.join(tmpDir, 'repo') }]);
+            store = new FileWorkItemStore({
+                dataDir: tmpDir,
+                scopeResolver: createWorkItemStorageScopeResolver(mockProcessStore),
+            });
             runCommand = vi.fn(async (command: string, args: string[]) => {
                 if (command === 'git' && args.join(' ') === 'status --porcelain') return { stdout: '', stderr: '' };
                 if (command === 'git' && args.join(' ') === 'rev-parse --abbrev-ref HEAD') return { stdout: 'feature/current\n', stderr: '' };

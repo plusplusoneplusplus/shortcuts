@@ -156,6 +156,8 @@ export interface UpdateWorkItemCommandInput {
     tracker?: unknown;
     plan?: { content?: unknown; resolvedBy?: unknown; reason?: unknown; summary?: unknown };
     syncConflictResolution?: unknown;
+    /** Internal route-scope hint for origin-scoped auto-execute task payloads. */
+    storageRepoId?: string;
     /**
      * Skip the status-transition validity check while still validating the
      * status value itself. The AI tool forces `planning` on plan updates
@@ -1229,7 +1231,11 @@ export async function updateWorkItemCommand(
                 }
             } catch { /* non-fatal */ }
 
-            await executeWorkItem(workItemId, ctx.workItemStore, ctx.enqueue, { headBefore });
+            await executeWorkItem(workItemId, ctx.workItemStore, ctx.enqueue, {
+                headBefore,
+                repoId: input.storageRepoId ?? repoId,
+                workspaceId: repoId,
+            });
             const afterExec = await ctx.workItemStore.getWorkItem(workItemId, repoId);
             if (afterExec) {
                 clearWorkItemResponseCacheForWorkspace(repoId);

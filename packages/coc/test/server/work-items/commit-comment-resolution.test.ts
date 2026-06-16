@@ -272,7 +272,7 @@ describe('autoExecute triggers re-execution after comment resolution', () => {
         const srcPath = path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'work-items', 'WorkItemDetail.tsx');
         const src = await fs.readFile(srcPath, 'utf-8');
         // handleAutoResolveChange should call the typed work-item resolve-comments client method
-        expect(src).toContain('workItems.resolveComments(workspaceId, workItemId');
+        expect(src).toContain('workItems.resolveCommentsForOrigin(workItemOriginId, workItemId');
         expect(src).toContain("type: 'commit'");
     });
 });
@@ -305,7 +305,7 @@ describe('WorkItemDetail layout — commit resolution UI', () => {
     });
 
     it('per-commit resolve button calls typed resolve-comments client method', () => {
-        expect(src).toContain('workItems.resolveComments(workspaceId, workItemId');
+        expect(src).toContain('workItems.resolveCommentsForOrigin(workItemOriginId, workItemId');
         expect(src).toContain("type: 'commit'");
     });
 

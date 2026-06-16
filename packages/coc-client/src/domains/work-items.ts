@@ -369,6 +369,18 @@ export class WorkItemsClient {
     });
   }
 
+  executeForOrigin(
+    originId: string,
+    workItemId: string,
+    request: ExecuteWorkItemRequest = {},
+    options?: WorkItemOriginScopeOptions,
+  ): Promise<ExecuteWorkItemResponse> {
+    return this.transport.request(originPath(originId, `/${encodePathSegment(workItemId)}/execute`), {
+      method: 'POST',
+      body: withWorkspaceBody({ ...request }, options),
+    });
+  }
+
   syncStatus(workspaceId: string, provider?: WorkItemSyncProvider): Promise<WorkItemSyncStatusResponse> {
     return this.transport.request<WorkItemSyncStatusResponse>(path(workspaceId, '/sync/status'), {
       query: provider ? { provider } : undefined,
@@ -405,6 +417,42 @@ export class WorkItemsClient {
     return this.transport.request(path(workspaceId, `/${encodePathSegment(workItemId)}/resolve-comments`), {
       method: 'POST',
       body: { ...request },
+    });
+  }
+
+  submitPullRequestForOrigin(
+    originId: string,
+    workItemId: string,
+    request: SubmitWorkItemPullRequestRequest = {},
+    options?: WorkItemOriginScopeOptions,
+  ): Promise<SubmitWorkItemPullRequestResponse> {
+    return this.transport.request<SubmitWorkItemPullRequestResponse>(originPath(originId, `/${encodePathSegment(workItemId)}/submit-pr`), {
+      method: 'POST',
+      body: withWorkspaceBody({ ...request }, options),
+    });
+  }
+
+  startAiReviewForOrigin(
+    originId: string,
+    workItemId: string,
+    request: StartWorkItemAiReviewRequest = {},
+    options?: WorkItemOriginScopeOptions,
+  ): Promise<StartWorkItemAiReviewResponse> {
+    return this.transport.request<StartWorkItemAiReviewResponse>(originPath(originId, `/${encodePathSegment(workItemId)}/ai-review`), {
+      method: 'POST',
+      body: withWorkspaceBody({ ...request }, options),
+    });
+  }
+
+  resolveCommentsForOrigin(
+    originId: string,
+    workItemId: string,
+    request: ResolveWorkItemCommentsRequest,
+    options?: WorkItemOriginScopeOptions,
+  ): Promise<ExecuteWorkItemResponse> {
+    return this.transport.request(originPath(originId, `/${encodePathSegment(workItemId)}/resolve-comments`), {
+      method: 'POST',
+      body: withWorkspaceBody({ ...request }, options),
     });
   }
 

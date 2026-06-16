@@ -38,7 +38,7 @@ describe('work items SPA client migration', () => {
             'workItems.updateStatusForOrigin(',
             'workItems.updateForOrigin(workItemOriginId, workItemId',
             'workItems.requestChangesForOrigin(workItemOriginId, workItemId',
-            'workItems.resolveComments(workspaceId, workItemId',
+            'workItems.resolveCommentsForOrigin(workItemOriginId, workItemId',
             'workItems.deleteForOrigin(workItemOriginId, workItemId',
         ]) {
             expect(detail).toContain(call);
@@ -69,7 +69,7 @@ describe('work items SPA client migration', () => {
         expect(planSection).toContain('workItems.getPlanVersionForOrigin(workItemOriginId, workItemId, v, originOptions)');
         expect(planSection).toContain('workItems.comparePlanVersionsForOrigin(workItemOriginId, workItemId');
         expect(planSection).toContain('workItems.restorePlanVersionForOrigin(workItemOriginId, workItemId');
-        expect(planSection).toContain('workItems.resolveComments(workspaceId, workItemId');
+        expect(planSection).toContain('workItems.resolveCommentsForOrigin(workItemOriginId, workItemId');
         // Plan persistence moved into the unified Ctrl+S PATCH batch in WorkItemDetail;
         // the plan section no longer performs an instant standalone save.
         expect(planSection).not.toContain('workItems.updatePlan(');
@@ -80,7 +80,7 @@ describe('work items SPA client migration', () => {
     });
 
     it('executes work items through client.workItems while keeping skill loading separate', () => {
-        expect(executeDialog).toContain('workItems.execute(workspaceId, workItemId');
+        expect(executeDialog).toContain('workItems.executeForOrigin(workItemOriginId, workItemId');
         expect(executeDialog).toContain("'/workspaces/' + encodeURIComponent(workspaceId) + '/skills'");
     });
 

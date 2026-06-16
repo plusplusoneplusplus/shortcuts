@@ -426,6 +426,16 @@ The sync route layer retains provider status for GitHub and Azure Boards availab
 
 `PATCH /api/origins/:originId/work-items/:itemId` accepts work-item metadata fields and an optional `plan: { content, resolvedBy?, summary?, reason? }` object in the same request; origin-scoped callers pass `workspaceId` when provider/filesystem semantics are needed. `plan.content` must contain non-whitespace Markdown. When `plan.content` is present, the server creates the next immutable plan/content version, records source/author metadata (`user` or `ai`), stores the explicit current-version pointer on `plan.currentVersion` and `currentContentVersion`, opens the corresponding change record, broadcasts one `work-item-updated` event, and returns the updated work item. The dedicated `PUT /api/origins/:originId/work-items/:itemId/plan` endpoint remains available for plan-only workflows and uses the same non-empty content requirement. Execution records and queued task payloads include the selected `planVersion` so runs can be traced back to the exact version that was executed.
 
+Work Item execution actions are exposed as origin routes that require concrete
+clone metadata: `POST /api/origins/:originId/work-items/:itemId/execute`,
+`/submit-pr`, `/ai-review`, and `/resolve-comments` all require `workspaceId`
+in the body or query. The selected workspace must resolve to `originId`; queue
+payloads, git/PR operations, task files, and comment resolution use that
+workspace, while execution history, changes, cache invalidation, and
+`work-item-updated` broadcasts write to the origin scope. `coc-client` exposes
+these through `executeForOrigin`, `submitPullRequestForOrigin`,
+`startAiReviewForOrigin`, and `resolveCommentsForOrigin`.
+
 Work-Item-bound Goal grilling is queue-driven rather than a dedicated REST endpoint: when a completed chat task carries `context.workItemGoalGrilling` and `workItems.workflow.enabled` is true, the server extracts the final assistant `## Goal` block and saves it to the addressed local-only `goal` as the next AI-authored immutable content version.
 
 ### AI Authoring (gated by `workItems.aiAuthoring` flag, default `false`)

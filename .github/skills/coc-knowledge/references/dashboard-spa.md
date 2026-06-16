@@ -208,11 +208,12 @@ leaf rows. Remote/Synced trees keep the type avatar, title, remote mirror badge,
 and container rollups, but omit local work-item numbers and leaf status chips so
 remote identifiers remain the primary row metadata. Compact GitHub mirror badges
 render the issue number only; full detail-page badges keep the provider label and
-link title. Core Work Item list/detail/create/update/pin/archive/delete and
-hierarchy-tree UI paths compute a canonical origin ID from the selected workspace
-remote (`gh_*`, `ado_*`, `git_*`, or `local_*`) and call the origin-scoped
-coc-client methods while still passing `workspaceId` when the route needs a
-concrete clone for provider or filesystem semantics. PR list/detail, provider
+link title. Core Work Item list/detail/create/update/pin/archive/delete, hierarchy-tree, plan
+history, execution, Submit PR, AI review, and comment-resolve UI paths compute a
+canonical origin ID from the selected workspace remote (`gh_*`, `ado_*`,
+`git_*`, or `local_*`) and call the origin-scoped coc-client methods while still
+passing `workspaceId` when the route needs a concrete clone for provider,
+queue, or filesystem semantics. PR list/detail, provider
 subresources (threads, reviewers, commits, checks, combined/per-file diffs), and
 chat bindings use the same browser-safe origin resolver and call origin-scoped
 APIs while passing the selected `workspaceId`/`repoId` to choose the concrete

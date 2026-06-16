@@ -1047,6 +1047,14 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         const workItemId = task.payload?.workItemId as string | undefined;
         if (!workItemId) return;
         if (taskStatus !== 'completed' && taskStatus !== 'failed' && taskStatus !== 'cancelled') return;
+        const workItemStorageRepoId = typeof task.payload?.workItemStorageRepoId === 'string'
+            ? task.payload.workItemStorageRepoId
+            : typeof task.payload?.context?.workItemExecution?.originId === 'string'
+                ? task.payload.context.workItemExecution.originId
+                : undefined;
+        const executionWorkspaceId = typeof task.payload?.workspaceId === 'string'
+            ? task.payload.workspaceId
+            : undefined;
 
         handleWorkItemTaskComplete(
             workItemId,
@@ -1057,21 +1065,24 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                 processId: task.processId,
             },
             workItemStore,
+            workItemStorageRepoId,
         ).then(async () => {
             try {
-                let updatedItem = await workItemStore.getWorkItem(workItemId).catch(() => undefined);
+                let updatedItem = await workItemStore.getWorkItem(workItemId, workItemStorageRepoId).catch(() => undefined);
                 if (!updatedItem) return;
+                const broadcastRepoId = workItemStorageRepoId ?? updatedItem.repoId;
 
                 // Auto-create plan version from resolved plan comments
                 if (taskStatus === 'completed') {
                     const matchedExec = updatedItem.executionHistory?.find(e => e.taskId === task.id);
                     if (matchedExec?.sessionCategory === 'resolve-plan-comments' && task.processId) {
                         try {
-                            const process = await store.getProcess(task.processId).catch(() => undefined);
+                            const process = await store.getProcess(task.processId, executionWorkspaceId).catch(() => undefined);
                             const afterPlan = await autoVersionPlanFromResolvedComments(
                                 workItemId,
                                 process?.result,
                                 workItemStore,
+                                workItemStorageRepoId,
                             );
                             if (afterPlan) updatedItem = afterPlan;
                         } catch { /* non-fatal: plan auto-versioning is best-effort */ }
@@ -1086,11 +1097,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                 );
                 if (justClosed?.headBefore) {
                     const workspaces = await store.getWorkspaces().catch(() => []);
-                    const workspace = workspaces.find(w => w.id === updatedItem.repoId);
+                    const workspace = workspaces.find(w => w.id === (executionWorkspaceId ?? updatedItem.repoId));
                     if (workspace?.rootPath) {
                         const commits = collectWorkItemCommits(workspace.rootPath, justClosed.headBefore);
                         if (commits.length > 0) {
-                            await workItemStore.updateChange(workItemId, justClosed.id, { commits }).catch(() => {});
+                            await workItemStore.updateChange(workItemId, justClosed.id, { commits }, workItemStorageRepoId).catch(() => {});
                             commitsAttached = true;
                         }
                     }
@@ -1099,22 +1110,24 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                 // Update the placeholder task file to reflect the final execution status.
                 try {
                     const fileStatus = toTaskFileStatus(taskStatus as 'completed' | 'failed' | 'cancelled');
-                    await upsertWorkItemTaskFile(dataDir, updatedItem.repoId, workItemId, updatedItem.title, fileStatus);
+                    const taskFileWorkspaceId = executionWorkspaceId ?? updatedItem.repoId;
+                    await upsertWorkItemTaskFile(dataDir, taskFileWorkspaceId, workItemId, updatedItem.title, fileStatus);
                     getWsServer?.()?.broadcastProcessEvent({
                         type: 'tasks-changed',
-                        workspaceId: updatedItem.repoId,
+                        workspaceId: taskFileWorkspaceId,
                         timestamp: Date.now(),
                     });
                 } catch { /* non-fatal — placeholder file update is best-effort */ }
 
                 // Re-fetch after commit attachment so the broadcast includes commits
                 const itemToSend = commitsAttached
-                    ? (await workItemStore.getWorkItem(workItemId).catch(() => updatedItem)) ?? updatedItem
+                    ? (await workItemStore.getWorkItem(workItemId, workItemStorageRepoId).catch(() => updatedItem)) ?? updatedItem
                     : updatedItem;
 
+                clearWorkItemResponseCacheForWorkspace(broadcastRepoId);
                 getWsServer?.()?.broadcastProcessEvent({
                     type: 'work-item-updated',
-                    workspaceId: itemToSend.repoId,
+                    workspaceId: broadcastRepoId,
                     item: itemToSend,
                 });
             } catch {

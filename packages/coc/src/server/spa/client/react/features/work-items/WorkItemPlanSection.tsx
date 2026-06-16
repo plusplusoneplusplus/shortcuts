@@ -289,7 +289,7 @@ export function WorkItemPlanSection({
         if (open.length === 0) return;
         setResolving(true);
         try {
-            await cloneClient.workItems.resolveComments(workspaceId, workItemId, { type: 'plan' });
+            await cloneClient.workItems.resolveCommentsForOrigin(workItemOriginId, workItemId, { type: 'plan' }, originOptions);
             onUpdated();
         } catch (err: any) {
             onError(err.message || 'Failed to resolve plan comments');

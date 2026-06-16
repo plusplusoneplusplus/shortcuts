@@ -568,9 +568,9 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
         setSubmittingPr(true);
         setError(null);
         try {
-            await cloneClient.workItems.submitPullRequest(workspaceId, workItemId, {
+            await cloneClient.workItems.submitPullRequestForOrigin(workItemOriginId, workItemId, {
                 changeId: latestReviewChange.id,
-            });
+            }, originOptions);
             await fetchItem();
         } catch (err: any) {
             setError(err.message || 'Failed to submit PR');
@@ -584,7 +584,7 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
         setStartingAiReview(true);
         setError(null);
         try {
-            const result = await cloneClient.workItems.startAiReview(workspaceId, workItemId);
+            const result = await cloneClient.workItems.startAiReviewForOrigin(workItemOriginId, workItemId, {}, originOptions);
             if (result.workItem) {
                 dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workItemOriginId, item: result.workItem as any });
             }
@@ -657,11 +657,11 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
         if (!item) return;
         setResolvingCommitSha(sha);
         try {
-            const result = await cloneClient.workItems.resolveComments(workspaceId, workItemId, {
+            const result = await cloneClient.workItems.resolveCommentsForOrigin(workItemOriginId, workItemId, {
                 type: 'commit',
                 commitSha: sha,
                 ...(sourceRunIndex != null ? { sourceRunIndex } : {}),
-            });
+            }, originOptions);
             if (result?.taskId && onViewTask) {
                 onViewTask(result.taskId);
             }
@@ -682,11 +682,11 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
             for (const commit of commits) {
                 const ct = commentTotals.get(commit.sha);
                 if (!ct || ct.open === 0) continue;
-                await cloneClient.workItems.resolveComments(workspaceId, workItemId, {
+                await cloneClient.workItems.resolveCommentsForOrigin(workItemOriginId, workItemId, {
                     type: 'commit',
                     commitSha: commit.sha,
                     sourceRunIndex,
-                });
+                }, originOptions);
             }
             fetchItem();
         } catch (err: any) {
@@ -1886,6 +1886,7 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
                 <WorkItemExecuteDialog
                     open={showExecuteDialog}
                     workspaceId={workspaceId}
+                    originId={workItemOriginId}
                     workItemId={workItemId}
                     workItemTitle={item.title}
                     defaultExecutionMode={defaultExecutionMode}
