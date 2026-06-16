@@ -16,7 +16,7 @@ import { CreateWorkItemDialog } from './CreateWorkItemDialog';
 import { ImportFromGitHubDialog } from './ImportFromGitHubDialog';
 import { useWorkItems } from '../../contexts/WorkItemContext';
 import { useApp } from '../../contexts/AppContext';
-import { fetchApi } from '../../hooks/useApi';
+import { requestForWorkspace } from '../../repos/cloneRegistry';
 import { useFileCommentCounts } from '../git/hooks/useFileCommentCounts';
 import { computeDiffCommentKey } from '../../../comments/diff-comment-utils';
 import { buildWorkItemHash, buildWorkItemSessionHash, buildWorkItemCommitHash } from '../../layout/Router';
@@ -109,8 +109,9 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
             return;
         }
         setCommitFilesLoading(true);
-        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${selectedCommitHash}/files`)
-            .then((data: { files?: { status: string; path: string }[] }) => {
+        // Route to the selected clone's server (remote clones hit their own host).
+        requestForWorkspace<{ files?: { status: string; path: string }[] }>(workspaceId, `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${selectedCommitHash}/files`)
+            .then((data) => {
                 const files = data.files ?? [];
                 setCommitFiles(files);
                 if (files.length > 0) {

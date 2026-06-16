@@ -703,10 +703,19 @@ the input:
   client for all clone-scoped REST: `useGitInfo`, `TerminalView` (terminal
   list/pin), `ChatDetail` (every `processes`/`queue`/`notes`/`canvases`/`skills`
   call), `RepoSchedulesTab` (schedule CRUD + notes-git status),
-  `WorkItemSection` + `WorkItemHierarchyTree` (list/tree/mutations), and
+  `WorkItemSection` + `WorkItemHierarchyTree` (list/tree/mutations),
+  `WorkItemExecuteDialog` (skill-list load), and
   `PullRequestsTab` (list/suggestions/roster/classification).
 - Non-React services that take a `workspaceId` resolve via
-  `getCocClientForWorkspace(workspaceId)`: `explorerApi.*` and `notesApi.*`.
+  `getCocClientForWorkspace(workspaceId)`: `explorerApi.*`, `notesApi.*`, and the
+  recent-skills hook `useRecentSkills` (per-workspace preferences get/patch).
+- Several React components route their workspace-scoped calls through the registry
+  seams inline (not the hook) — `requestForWorkspace(id, url, opts?)` for raw
+  fetches, `getCocClientForWorkspace(id)` for typed-client calls: `EnqueueDialog`
+  (`/summary` + `/skills/all` loads, the `queue.enqueue` mutation, and
+  `recordSkillUsage`), `RepoSettingsTab` (mcp-config, skills, instructions, repo
+  prefs, processes, description PATCH), `RepoDetail` (work-items badge preview),
+  and `WorkItemsTab` (commit file list).
 - The Activity WRITE path `useSendMessage` routes `processes.sendMessage` /
   `promoteToRalph` through `getCocClientForWorkspace(workspaceId)`; the
   Activity events stream `useChatSSE` opens its `EventSource` at

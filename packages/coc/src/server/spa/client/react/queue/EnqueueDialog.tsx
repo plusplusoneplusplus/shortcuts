@@ -7,8 +7,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useQueue } from '../contexts/QueueContext';
 import { useApp } from '../contexts/AppContext';
 import { Dialog, FloatingDialog, Button } from '../ui';
-import { fetchApi } from '../hooks/useApi';
-import { getSpaCocClient } from '../api/cocClient';
+import { getCocClientForWorkspace, requestForWorkspace } from '../repos/cloneRegistry';
 import { usePreferences } from '../hooks/preferences/usePreferences';
 import { useFileAttachments } from '../features/chat/hooks/useFileAttachments';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
@@ -194,7 +193,7 @@ export function EnqueueDialog() {
     useEffect(() => {
         setFolders([]);
         if (!workspaceId) return;
-        fetchApi('/workspaces/' + encodeURIComponent(workspaceId) + '/summary')
+        requestForWorkspace<any>(workspaceId, '/workspaces/' + encodeURIComponent(workspaceId) + '/summary')
             .then((resp: any) => {
                 const data = resp?.tasks;
                 if (data && typeof data === 'object') {
@@ -209,7 +208,7 @@ export function EnqueueDialog() {
         setSkills([]);
         setSelectedSkills([]);
         if (!workspaceId) return;
-        fetchApi('/workspaces/' + encodeURIComponent(workspaceId) + '/skills/all')
+        requestForWorkspace<any>(workspaceId, '/workspaces/' + encodeURIComponent(workspaceId) + '/skills/all')
             .then((data: any) => {
                 if (data?.merged && Array.isArray(data.merged)) {
                     setSkills(data.merged);
@@ -437,7 +436,7 @@ export function EnqueueDialog() {
                     const taskNameFromFile = file.split(/[/\\]/).pop()?.replace(/\.[^.]+$/, '') ?? '';
                     const body = buildBody([file], taskNameFromFile);
                     try {
-                        await getSpaCocClient().queue.enqueue(body);
+                        await getCocClientForWorkspace(workspaceId).queue.enqueue(body);
                         succeeded++;
                     } catch {
                         failed++;
@@ -452,7 +451,7 @@ export function EnqueueDialog() {
                 const body = buildBody(
                     contextFiles.length > 0 ? contextFiles : undefined,
                 );
-                const created = await getSpaCocClient().queue.enqueue(body);
+                const created = await getCocClientForWorkspace(workspaceId).queue.enqueue(body);
                 if (queueState.dialogLaunchMode === 'floating-chat') {
                     const createdId = created?.task?.id;
                     if (createdId) {
@@ -475,7 +474,7 @@ export function EnqueueDialog() {
             // Record skill usage for ordering
             for (const sk of effectiveSkills) {
                 if (sk && workspaceId) {
-                    getSpaCocClient().preferences.recordSkillUsage(workspaceId, sk).catch(() => { /* ignore */ });
+                    getCocClientForWorkspace(workspaceId).preferences.recordSkillUsage(workspaceId, sk).catch(() => { /* ignore */ });
                 }
             }
             clearAttachments();

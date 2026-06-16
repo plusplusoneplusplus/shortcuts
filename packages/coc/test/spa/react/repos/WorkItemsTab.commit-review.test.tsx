@@ -14,6 +14,15 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: (path: string, options?: RequestInit) => mockFetchApi(path, options),
 }));
 
+// WorkItemsTab routes the commit-files load to the clone via requestForWorkspace;
+// delegate to the same mockFetchApi so the existing path-based setup keeps working.
+// Spread the real module so other consumers (e.g. WorkItemAiComposer's useCocClient
+// → lookupCloneBaseUrl) keep their real implementations.
+vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../../../../src/server/spa/client/react/repos/cloneRegistry')>()),
+    requestForWorkspace: (_wsId: string, path: string, options?: RequestInit) => mockFetchApi(path, options),
+}));
+
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false, isTablet: false }),
 }));

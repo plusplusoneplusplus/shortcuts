@@ -73,6 +73,15 @@ describe('work items SPA client migration', () => {
         expect(executeDialog).toContain("'/workspaces/' + encodeURIComponent(workspaceId) + '/skills'");
     });
 
+    it('loads the execute-dialog skill list through the clone-aware client, not the local-origin fetchApi', () => {
+        // Regression: for a remote clone, GET /workspaces/:id/skills must target the
+        // clone's own server. Routing it through the local-origin fetchApi 404s with
+        // "Workspace not found" because the local server has no such workspace.
+        expect(executeDialog).toContain('cloneClient.request');
+        expect(executeDialog).toContain("'/workspaces/' + encodeURIComponent(workspaceId) + '/skills'");
+        expect(executeDialog).not.toContain('fetchApi');
+    });
+
     it('loads execution session data through typed process and queue clients', () => {
         expect(executionSession).toContain('queue.getTask(taskId)');
         expect(executionSession).toContain('processes.get(pid)');

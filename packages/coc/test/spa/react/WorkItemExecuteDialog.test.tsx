@@ -5,6 +5,7 @@ import { WorkItemExecuteDialog } from '../../../src/server/spa/client/react/feat
 const mocks = vi.hoisted(() => ({
     execute: vi.fn(),
     recordSkillUsage: vi.fn(),
+    request: vi.fn(),
     fetchApi: vi.fn(),
     trackUsage: vi.fn(),
     modalSelection: vi.fn(),
@@ -16,6 +17,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
 
 vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
+        request: mocks.request,
         workItems: {
             execute: mocks.execute,
         },
@@ -44,7 +46,9 @@ describe('WorkItemExecuteDialog', () => {
         vi.clearAllMocks();
         mocks.execute.mockResolvedValue({ taskId: 'task-1' });
         mocks.recordSkillUsage.mockResolvedValue({});
-        mocks.fetchApi.mockResolvedValue({
+        // Skills now load via the clone-aware cloneClient.request (AC-07), which for the
+        // unregistered ws-1 resolves to this getSpaCocClient() mock.
+        mocks.request.mockResolvedValue({
             skills: [
                 { name: 'impl', description: 'Implement changes' },
                 { name: 'code-review', description: 'Review changes' },
