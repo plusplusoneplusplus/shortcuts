@@ -322,7 +322,7 @@ Users can add up to **10** additional notes roots per workspace — subfolders i
 | GET | `/api/repos/:repoId/pull-requests/coworker-roster` | List persisted Team roster coworkers for the resolved canonical origin (`workspaceId` query selects the concrete workspace and defaults to `repoId`); legacy workspace/repo files migrate into the origin roster on access |
 | POST | `/api/repos/:repoId/pull-requests/coworker-roster` | Add or update a Team roster coworker under the resolved canonical origin; body includes `workspaceId`, `displayName`, optional `id`, `email`, `avatarUrl` |
 | DELETE | `/api/repos/:repoId/pull-requests/coworker-roster/:coworkerKey` | Remove a Team roster coworker by provider id or displayName fallback key from the resolved canonical origin (`workspaceId` query selects the concrete workspace and defaults to `repoId`) |
-| POST | `/api/repos/:repoId/pull-requests/team-auto-classification` | Manually trigger the same bounded Team PR auto-classification helper used by PR list/background warm paths. Requires the live Team auto-classification gate; body includes `workspaceId` and loaded PR list items. Returns counts for eligible/considered/skipped/ready/running/started/notFound/errors, uses low priority, and caps each call at 10 new enqueues. |
+| POST | `/api/repos/:repoId/pull-requests/team-auto-classification` | Manually trigger the same bounded Team PR auto-classification helper used by PR list/background warm paths. Requires the live Team auto-classification gate; body includes `workspaceId` and loaded PR list items. Returns counts for eligible/considered/skipped/ready/running/started/notFound/errors, reads/writes classification result and pending state under the resolved canonical origin, uses low priority, and caps each call at 10 new enqueues. |
 | GET | `/api/repos/:repoId/pull-requests/review-history` | Read cached PR review history |
 | POST | `/api/repos/:repoId/pull-requests/review-history/refresh` | Fetch and cache PR review history |
 | GET | `/api/repos/:repoId/pull-requests/suggestions` | Read cached AI-ranked PR suggestions |
@@ -336,9 +336,9 @@ Users can add up to **10** additional notes roots per workspace — subfolders i
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/repos/:repoId/classify-diff` | Trigger AI hunk classification. Body: `{ type: 'pr'\|'commit'\|'branch-range', identifier, workspaceId?, model?, provider? }`. Returns `{ status: 'started'\|'ready'\|'running', … }`. |
-| GET | `/api/repos/:repoId/classify-diff` | Poll for a single classification result. Query: `type`, `identifier`, `workspaceId?`. Returns `{ status: 'none'\|'ready'\|'running', result? }`. |
-| GET | `/api/repos/:repoId/classify-diff/batch-status` | Batch-check whether multiple identifiers have a stored result. Query: `type`, `identifiers` (comma-separated, max 200), `workspaceId?`. Returns `{ statuses: { [identifier]: 'none'\|'ready'\|'running' } }`. Read-only — never triggers a new classification task. |
+| POST | `/api/repos/:repoId/classify-diff` | Trigger AI hunk classification. Body: `{ type: 'pr'\|'commit'\|'branch-range', identifier, workspaceId?, model?, provider? }`. Returns `{ status: 'started'\|'ready'\|'running', … }`; result and pending marker files live under the resolved canonical origin, and legacy workspace/repo classification files migrate into that origin on access. |
+| GET | `/api/repos/:repoId/classify-diff` | Poll for a single classification result under the resolved canonical origin. Query: `type`, `identifier`, `workspaceId?`. Returns `{ status: 'none'\|'ready'\|'running', result? }`. |
+| GET | `/api/repos/:repoId/classify-diff/batch-status` | Batch-check whether multiple identifiers have a stored result under the resolved canonical origin. Query: `type`, `identifiers` (comma-separated, max 200), `workspaceId?`. Returns `{ statuses: { [identifier]: 'none'\|'ready'\|'running' } }`. Read-only — never triggers a new classification task. |
 
 ## Loops
 

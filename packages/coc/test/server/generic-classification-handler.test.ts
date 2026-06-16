@@ -88,6 +88,12 @@ beforeEach(() => new Promise<void>(resolve => {
         dataDir: tmpDir,
         store: fakeStore,
         bridge: fakeBridge,
+        repoTreeService: {
+            resolveRepo: async () => ({
+                localPath: path.join(tmpDir, 'repo'),
+                remoteUrl: 'https://github.com/org/repo.git',
+            }),
+        } as any,
     });
     server = makeServer(routes);
     server.listen(0, '127.0.0.1', resolve);

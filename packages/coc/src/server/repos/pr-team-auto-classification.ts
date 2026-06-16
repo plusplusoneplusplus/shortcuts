@@ -105,6 +105,7 @@ export async function autoClassifyTeamPullRequests(
                 prepareTaskForEnqueue: options.prepareTaskForEnqueue,
                 workspaceId: options.workspaceId,
                 repoId: options.repoId,
+                storageScope: options.storageScope,
                 type: 'pr',
                 identifier,
                 priority: 'low',

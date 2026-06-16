@@ -32,6 +32,13 @@ import { VALID_CHAT_PROVIDERS, VALID_REASONING_EFFORTS } from '../tasks/task-typ
 import type { ReasoningEffort } from '../tasks/task-types';
 import { buildClassificationPrompt } from './pr-classification-handler';
 import { renderClassificationPrompt } from './classification-prompt';
+import {
+    resolvePullRequestStorageId,
+    resolvePullRequestStorageScope,
+    type PullRequestStorageScope,
+    type PullRequestStorageScopeInput,
+} from './pr-origin-scope';
+import type { RepoInfo } from './types';
 
 const VALID_EFFORT_TIERS = new Set(['very-low', 'low', 'medium', 'high']);
 
@@ -84,6 +91,7 @@ export interface EnqueueGenericClassificationOptions {
     reasoningEffort?: ReasoningEffort;
     effortTier?: 'very-low' | 'low' | 'medium' | 'high';
     autoProviderRouting?: boolean;
+    storageScope?: PullRequestStorageScopeInput;
 }
 
 export type EnqueueGenericClassificationResult =
@@ -112,6 +120,7 @@ export type EnqueueGenericClassificationResult =
 
 export function registerGenericClassificationRoutes(routes: Route[], opts: GenericClassificationRouteOptions): void {
     const { dataDir, store, bridge } = opts;
+    const svc = opts.repoTreeService ?? new RepoTreeService(dataDir, undefined, store);
 
     // -- POST: Trigger classification -----------------------------------------
 
@@ -197,14 +206,15 @@ export function registerGenericClassificationRoutes(routes: Route[], opts: Gener
                     return sendJson(res, { statuses: {} });
                 }
 
+                const storageScope = await resolveClassificationStorageScope(svc, store, repoId, workspaceId);
                 const statuses: Record<string, 'none' | 'ready' | 'running'> = {};
                 for (const identifier of identifiers) {
-                    const cached = readClassificationGeneric(dataDir, workspaceId, repoId, type, identifier);
+                    const cached = readClassificationGeneric(dataDir, workspaceId, repoId, type, identifier, storageScope);
                     if (cached) {
                         statuses[identifier] = 'ready';
                         continue;
                     }
-                    const pending = readPendingGeneric(dataDir, workspaceId, repoId, type, identifier);
+                    const pending = readPendingGeneric(dataDir, workspaceId, repoId, type, identifier, storageScope);
                     if (pending && isTaskAlive(pending.processId, bridge)) {
                         statuses[identifier] = 'running';
                     } else {
@@ -240,7 +250,8 @@ export function registerGenericClassificationRoutes(routes: Route[], opts: Gener
                     return send400(res, 'Missing required query parameter: identifier');
                 }
 
-                const cached = readClassificationGeneric(dataDir, workspaceId, repoId, type, identifier);
+                const storageScope = await resolveClassificationStorageScope(svc, store, repoId, workspaceId);
+                const cached = readClassificationGeneric(dataDir, workspaceId, repoId, type, identifier, storageScope);
                 if (cached) {
                     return sendJson(res, {
                         status: 'ready',
@@ -250,7 +261,7 @@ export function registerGenericClassificationRoutes(routes: Route[], opts: Gener
                     });
                 }
 
-                const pending = readPendingGeneric(dataDir, workspaceId, repoId, type, identifier);
+                const pending = readPendingGeneric(dataDir, workspaceId, repoId, type, identifier, storageScope);
                 if (pending) {
                     if (isTaskAlive(pending.processId, bridge)) {
                         return sendJson(res, {
@@ -259,7 +270,7 @@ export function registerGenericClassificationRoutes(routes: Route[], opts: Gener
                         });
                     }
                     // Stale marker: task is gone or terminal — clear it and report idle
-                    clearPendingGeneric(dataDir, workspaceId, repoId, type, identifier);
+                    clearPendingGeneric(dataDir, workspaceId, repoId, type, identifier, storageScope);
                 }
 
                 sendJson(res, { status: 'none' });
@@ -282,8 +293,12 @@ export async function enqueueGenericClassification(
         identifier,
     } = options;
     const workspaceId = options.workspaceId || repoId;
+    const svc = options.repoTreeService ?? new RepoTreeService(dataDir, undefined, store);
+    const repo = await svc.resolveRepo(repoId);
+    const storageScope = options.storageScope
+        ?? await resolveClassificationStorageScope(svc, store, repoId, workspaceId, repo);
 
-    const cached = readClassificationGeneric(dataDir, workspaceId, repoId, type, identifier);
+    const cached = readClassificationGeneric(dataDir, workspaceId, repoId, type, identifier, storageScope);
     if (cached) {
         return {
             status: 'ready',
@@ -293,7 +308,7 @@ export async function enqueueGenericClassification(
         };
     }
 
-    const pending = readPendingGeneric(dataDir, workspaceId, repoId, type, identifier);
+    const pending = readPendingGeneric(dataDir, workspaceId, repoId, type, identifier, storageScope);
     if (pending) {
         if (isTaskAlive(pending.processId, bridge)) {
             return {
@@ -301,11 +316,9 @@ export async function enqueueGenericClassification(
                 processId: pending.processId,
             };
         }
-        clearPendingGeneric(dataDir, workspaceId, repoId, type, identifier);
+        clearPendingGeneric(dataDir, workspaceId, repoId, type, identifier, storageScope);
     }
 
-    const svc = options.repoTreeService ?? new RepoTreeService(dataDir, undefined, store);
-    const repo = await svc.resolveRepo(repoId);
     if (!repo) {
         return { status: 'not-found', message: `Repo ${repoId} not found` };
     }
@@ -325,6 +338,7 @@ export async function enqueueGenericClassification(
             prompt,
             workspaceId,
             repoId,
+            classificationStorageOriginId: resolvePullRequestStorageId(workspaceId, storageScope),
             classificationType: type,
             classificationIdentifier: identifier,
             ...extractPayloadFields(type, identifier),
@@ -346,7 +360,7 @@ export async function enqueueGenericClassification(
     const taskId = queueManager.enqueue(taskSpec);
 
     try {
-        writePendingGeneric(dataDir, workspaceId, repoId, type, identifier, String(taskId));
+        writePendingGeneric(dataDir, workspaceId, repoId, type, identifier, String(taskId), storageScope);
     } catch {
         /* best-effort */
     }
@@ -364,12 +378,13 @@ function readClassificationGeneric(
     repoId: string,
     type: ClassificationType,
     identifier: string,
+    storageScope?: PullRequestStorageScopeInput,
 ) {
     // Map generic key to the PR-style key the store expects.
     // For PRs: identifier = "prId:headSha"
     // For generic: we use (repoId, type_identifier_prefix, identifier_suffix) 
     const { prId, headSha } = splitIdentifier(type, identifier, repoId);
-    return readClassification(dataDir, workspaceId, repoId, prId, headSha);
+    return readClassification(dataDir, workspaceId, repoId, prId, headSha, storageScope);
 }
 
 function readPendingGeneric(
@@ -378,9 +393,10 @@ function readPendingGeneric(
     repoId: string,
     type: ClassificationType,
     identifier: string,
+    storageScope?: PullRequestStorageScopeInput,
 ) {
     const { prId, headSha } = splitIdentifier(type, identifier, repoId);
-    return readPending(dataDir, workspaceId, repoId, prId, headSha);
+    return readPending(dataDir, workspaceId, repoId, prId, headSha, storageScope);
 }
 
 function writePendingGeneric(
@@ -390,9 +406,10 @@ function writePendingGeneric(
     type: ClassificationType,
     identifier: string,
     processId: string,
+    storageScope?: PullRequestStorageScopeInput,
 ) {
     const { prId, headSha } = splitIdentifier(type, identifier, repoId);
-    writePending(dataDir, workspaceId, repoId, prId, headSha, processId);
+    writePending(dataDir, workspaceId, repoId, prId, headSha, processId, { storageScope });
 }
 
 function clearPendingGeneric(
@@ -401,9 +418,27 @@ function clearPendingGeneric(
     repoId: string,
     type: ClassificationType,
     identifier: string,
+    storageScope?: PullRequestStorageScopeInput,
 ) {
     const { prId, headSha } = splitIdentifier(type, identifier, repoId);
-    clearPending(dataDir, workspaceId, repoId, prId, headSha);
+    clearPending(dataDir, workspaceId, repoId, prId, headSha, storageScope);
+}
+
+async function resolveClassificationStorageScope(
+    svc: RepoTreeService,
+    store: ProcessStore,
+    repoId: string,
+    workspaceId: string,
+    repo?: RepoInfo,
+): Promise<PullRequestStorageScope> {
+    const resolvedRepo = repo ?? await svc.resolveRepo(repoId);
+    return resolvePullRequestStorageScope({
+        workspaceId,
+        repoId,
+        remoteUrl: resolvedRepo?.remoteUrl,
+        rootPath: resolvedRepo?.localPath,
+        processStore: store,
+    });
 }
 
 /**

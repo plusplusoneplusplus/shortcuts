@@ -43,6 +43,7 @@ import { RepoTreeService } from '../../src/server/repos/tree-service';
 
 const REPO_ID = 'repo-abc123';
 const REMOTE_URL = 'https://github.com/org/repo.git';
+const ORIGIN_ID = 'gh_org_repo';
 
 const mockRepoInfo = {
     id: REPO_ID,
@@ -593,6 +594,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
             payload: expect.objectContaining({
                 workspaceId: REPO_ID,
                 repoId: REPO_ID,
+                classificationStorageOriginId: ORIGIN_ID,
                 classificationIdentifier: '42:head-auto',
                 skills: ['classify-diff'],
             }),
@@ -671,6 +673,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
             payload: expect.objectContaining({
                 workspaceId: REPO_ID,
                 repoId: REPO_ID,
+                classificationStorageOriginId: ORIGIN_ID,
                 classificationIdentifier: '42:head-manual',
                 skills: ['classify-diff'],
             }),
@@ -744,6 +747,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
             payload: expect.objectContaining({
                 workspaceId,
                 repoId: REPO_ID,
+                classificationStorageOriginId: ORIGIN_ID,
                 classificationIdentifier: '42:head-workspace-scoped',
             }),
         }));

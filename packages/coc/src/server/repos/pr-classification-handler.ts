@@ -25,6 +25,9 @@ import {
 } from './classification-store';
 import { TaskDefs } from '../tasks/task-types';
 import { renderClassificationPrompt } from './classification-prompt';
+import { resolvePullRequestStorageScope } from './pr-origin-scope';
+import type { PullRequestStorageScope } from './pr-origin-scope';
+import type { RepoInfo } from './types';
 
 // ============================================================================
 // Types
@@ -77,9 +80,11 @@ export function registerPrClassificationRoutes(routes: Route[], opts: PrClassifi
 
                 const headSha = body.headSha.trim();
                 const workspaceId = body.workspaceId || repoId;
+                const repo = await svc.resolveRepo(repoId);
+                const storageScope = await resolveClassificationStorageScope(repoId, workspaceId, repo, store);
 
                 // Cached result wins.
-                const cached = readClassification(dataDir, workspaceId, repoId, prId, headSha);
+                const cached = readClassification(dataDir, workspaceId, repoId, prId, headSha, storageScope);
                 if (cached) {
                     return sendJson(res, {
                         status: 'ready',
@@ -90,7 +95,7 @@ export function registerPrClassificationRoutes(routes: Route[], opts: PrClassifi
                 }
 
                 // In-flight task already running for this exact (repo, pr, headSha)?
-                const pending = readPending(dataDir, workspaceId, repoId, prId, headSha);
+                const pending = readPending(dataDir, workspaceId, repoId, prId, headSha, storageScope);
                 if (pending) {
                     return sendJson(res, {
                         status: 'running',
@@ -99,7 +104,6 @@ export function registerPrClassificationRoutes(routes: Route[], opts: PrClassifi
                 }
 
                 // Resolve repo to get workspace root for queue routing.
-                const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const prompt = buildClassificationPrompt(repoId, prId, dataDir);
@@ -119,6 +123,7 @@ export function registerPrClassificationRoutes(routes: Route[], opts: PrClassifi
                         prompt,
                         workspaceId,
                         repoId,
+                        classificationStorageOriginId: storageScope.storageOriginId,
                         prId,
                         headSha,
                         workingDirectory: rootPath,
@@ -131,7 +136,7 @@ export function registerPrClassificationRoutes(routes: Route[], opts: PrClassifi
                 // Write the pending marker so concurrent requests / polls
                 // see a `running` status until the AI calls saveClassification.
                 try {
-                    writePending(dataDir, workspaceId, repoId, prId, headSha, String(taskId));
+                    writePending(dataDir, workspaceId, repoId, prId, headSha, String(taskId), { storageScope });
                 } catch {
                     /* best-effort */
                 }
@@ -162,7 +167,9 @@ export function registerPrClassificationRoutes(routes: Route[], opts: PrClassifi
                     return send400(res, 'Missing required query parameter: headSha');
                 }
 
-                const cached = readClassification(dataDir, workspaceId, repoId, prId, headSha);
+                const repo = await svc.resolveRepo(repoId);
+                const storageScope = await resolveClassificationStorageScope(repoId, workspaceId, repo, store);
+                const cached = readClassification(dataDir, workspaceId, repoId, prId, headSha, storageScope);
                 if (cached) {
                     return sendJson(res, {
                         status: 'ready',
@@ -172,7 +179,7 @@ export function registerPrClassificationRoutes(routes: Route[], opts: PrClassifi
                     });
                 }
 
-                const pending = readPending(dataDir, workspaceId, repoId, prId, headSha);
+                const pending = readPending(dataDir, workspaceId, repoId, prId, headSha, storageScope);
                 if (pending) {
                     return sendJson(res, {
                         status: 'running',
@@ -194,4 +201,19 @@ export function registerPrClassificationRoutes(routes: Route[], opts: PrClassifi
 
 export function buildClassificationPrompt(repoId: string, prId: string, dataDir?: string): string {
     return renderClassificationPrompt('pr', prId, repoId, dataDir);
+}
+
+async function resolveClassificationStorageScope(
+    repoId: string,
+    workspaceId: string,
+    repo: RepoInfo | undefined,
+    store: ProcessStore,
+): Promise<PullRequestStorageScope> {
+    return resolvePullRequestStorageScope({
+        workspaceId,
+        repoId,
+        remoteUrl: repo?.remoteUrl,
+        rootPath: repo?.localPath,
+        processStore: store,
+    });
 }

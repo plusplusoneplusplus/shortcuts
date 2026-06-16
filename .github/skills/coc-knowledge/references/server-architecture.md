@@ -245,7 +245,7 @@ Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT.
 
 **Per-repo (`~/.coc/repos/<workspaceId>/`) and per-origin (`~/.coc/repos/<originId>/`):**
 - `queues.json`, `schedules.json`, `git-ops.json`, `preferences.json`
-- `recent-opened-pull-requests/index.json`, `pr-coworker-roster/index.json`, and `review-progress/<prId>.json` under canonical origin directories — Pull Requests tab recent-opened entries, Team roster entries, and reviewer progress shared by same-origin clones; legacy workspace/repo tuple files migrate into the origin files on first access
+- `recent-opened-pull-requests/index.json`, `pr-coworker-roster/index.json`, `review-progress/<prId>.json`, and `classifications/<prId>_<headSha>.json(.pending)` under canonical origin directories — Pull Requests tab recent-opened entries, Team roster entries, reviewer progress, and focused-diff classification result/pending state shared by same-origin clones; legacy workspace/repo tuple files migrate into the origin files on first access
 - `work-items/` under canonical origin directories (`~/.coc/repos/<originId>/work-items/`) — Work Item JSON files, index, counter, and plan versions shared by same-origin clones; workspace directories migrate into the origin directory on first store access
 - `tasks/` — task and plan files
 - `outputs/` — AI conversation output markdown

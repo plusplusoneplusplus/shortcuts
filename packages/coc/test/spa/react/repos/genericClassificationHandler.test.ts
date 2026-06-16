@@ -59,7 +59,10 @@ describe('registerGenericClassificationRoutes', () => {
     let routes: Route[];
     const mockStore = {} as any;
     const mockRepoTreeService = {
-        resolveRepo: vi.fn(() => Promise.resolve({ localPath: '/tmp/repo' })),
+        resolveRepo: vi.fn(() => Promise.resolve({
+            localPath: '/tmp/repo',
+            remoteUrl: 'https://github.com/org/repo.git',
+        })),
     } as any;
 
     beforeEach(() => {
@@ -441,6 +444,7 @@ describe('registerGenericClassificationRoutes', () => {
             );
 
             expect(enqueueCapture()).toBeDefined();
+            expect(enqueueCapture().payload.classificationStorageOriginId).toBe('gh_org_repo');
             expect(enqueueCapture().payload.provider).toBeUndefined();
         });
 

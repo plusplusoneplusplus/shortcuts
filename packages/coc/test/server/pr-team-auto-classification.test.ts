@@ -17,6 +17,7 @@ import type { DiffClassificationResult } from '../../src/server/spa/client/react
 
 const WORKSPACE_ID = 'ws-1';
 const REPO_ID = 'repo-1';
+const ORIGIN_ID = 'gh_org_repo';
 const validResult: DiffClassificationResult = {
     classifications: [
         {
@@ -126,6 +127,7 @@ describe('autoClassifyTeamPullRequests', () => {
             payload: expect.objectContaining({
                 workspaceId: WORKSPACE_ID,
                 repoId: REPO_ID,
+                classificationStorageOriginId: `local_${WORKSPACE_ID}`,
                 classificationType: 'pr',
                 classificationIdentifier: '10:missing-head-0',
                 prId: '10',
@@ -173,7 +175,7 @@ describe('autoClassifyTeamPullRequests', () => {
 
         expect(result).toMatchObject({ started: 1, running: 0 });
         expect(queue.enqueue).toHaveBeenCalledTimes(1);
-        expect(readPending(dataDir, WORKSPACE_ID, REPO_ID, '42', 'stale-head')?.processId).toBe('task-1');
+        expect(readPending(dataDir, WORKSPACE_ID, REPO_ID, '42', 'stale-head', `local_${WORKSPACE_ID}`)?.processId).toBe('task-1');
     });
 
     it('uses workspace and repo scoped classification state', async () => {
@@ -198,5 +200,46 @@ describe('autoClassifyTeamPullRequests', () => {
         expect(result.started).toBe(2);
         expect(result.ready).toBe(0);
         expect(queue.enqueue).toHaveBeenCalledTimes(2);
+    });
+
+    it('shares ready classification state across workspaces with the same origin scope', async () => {
+        const cloneWorkspaceId = 'ws-clone';
+        const { bridge, queue } = makeBridge();
+        const service = makeService();
+        writeClassification(dataDir, WORKSPACE_ID, REPO_ID, '42', 'same-head', validResult, {
+            processId: 'legacy-ready',
+        });
+
+        const result = await autoClassifyTeamPullRequests({
+            dataDir,
+            store: {} as any,
+            bridge,
+            repoTreeService: service,
+            workspaceId: cloneWorkspaceId,
+            repoId: REPO_ID,
+            storageScope: {
+                storageOriginId: ORIGIN_ID,
+                legacyScopes: [
+                    { workspaceId: WORKSPACE_ID, repoId: REPO_ID },
+                    { workspaceId: cloneWorkspaceId, repoId: REPO_ID },
+                ],
+            },
+            pullRequests: [
+                pr({ number: 42, headSha: 'same-head' }),
+                pr({ number: 43, headSha: 'missing-head' }),
+            ],
+        });
+
+        expect(result.ready).toBe(1);
+        expect(result.started).toBe(1);
+        expect(queue.enqueue).toHaveBeenCalledTimes(1);
+        expect(queue.enqueue).toHaveBeenCalledWith(expect.objectContaining({
+            payload: expect.objectContaining({
+                workspaceId: cloneWorkspaceId,
+                repoId: REPO_ID,
+                classificationStorageOriginId: ORIGIN_ID,
+                classificationIdentifier: '43:missing-head',
+            }),
+        }));
     });
 });

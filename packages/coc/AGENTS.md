@@ -121,7 +121,10 @@ all have their own `references/*.md`.
   `pullRequests.enabled`, `pullRequests.autoClassifyTeam`, and
   `features.focusedDiff`; use the generic classify-diff enqueue helper with the
   per-trigger cap and low priority instead of adding client-side POST loops.
-  The Team toolbar status UI should read batch status and route manual
+  Classification result/pending files are origin-scoped and queued
+  `pr-classification` payloads must carry the resolved classification storage
+  origin so the `saveClassification` tool writes the same state route polling
+  reads. The Team toolbar status UI should read batch status and route manual
   "Classify now" actions through the same bounded server helper.
 - **Native Copilot session reads** (`src/server/native-copilot-sessions/`)
   must stay strictly read-only against the native store: open
