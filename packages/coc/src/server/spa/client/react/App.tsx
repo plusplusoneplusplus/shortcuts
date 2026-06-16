@@ -25,6 +25,7 @@ import { useWebSocket } from './hooks/useWebSocket';
 import { fetchApi } from './hooks/useApi';
 import { getSpaCocClient } from './api/cocClient';
 import { getCocClientForWorkspace } from './repos/cloneRegistry';
+import { RemoteCloneEventBridge } from './features/remote-shell/RemoteCloneEventBridge';
 import { ToastContainer, useToast } from './ui';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { MarkdownReviewDialog } from './processes/MarkdownReviewDialog';
@@ -467,6 +468,9 @@ function AppInner() {
     return (
         <ToastProvider value={{ addToast, removeToast, toasts }}>
             <ReposProvider>
+                {/* Mirror the global /ws event stream to every online remote clone
+                    so their tasks transition RUNNING → COMPLETED live (renders null). */}
+                <RemoteCloneEventBridge onMessage={onMessage} />
                 <div className="flex flex-col h-full">
                     <SecurityBanner />
                     <TopBar onAdminOpen={handleAdminOpen} />

@@ -720,6 +720,15 @@ the input:
   `promoteToRalph` through `getCocClientForWorkspace(workspaceId)`; the
   Activity events stream `useChatSSE` opens its `EventSource` at
   `cloneApiBase(workspaceId)`.
+- The GLOBAL `/ws` event stream is mirrored per-clone by `RemoteCloneEventBridge`
+  (`features/remote-shell/`, rendered inside `ReposProvider`): it opens one
+  `getCocClientFor(baseUrl).events.connect(...)` socket per ONLINE remote clone
+  (deduped by `baseUrl`, reconciled as clones connect/disconnect) and feeds every
+  message into App's shared `onMessage`. Without it, `useWebSocket` only listens to
+  the LOCAL `/ws`, so a remote task's `process-updated` lifecycle event never
+  arrives and its sidebar row stays stuck "running" (the per-process SSE still
+  shows the open conversation completing). This is the global-events counterpart to
+  the per-process `useChatSSE` routing.
 - The terminal PTY socket (`useTerminalWebSocket`) resolves the clone baseUrl
   from the registry and passes it into `cloneWsUrl`, so a remote clone's terminal
   targets its server. The `/ws` comment subscriptions (`useTaskComments` +

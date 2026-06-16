@@ -43,6 +43,8 @@ The dashboard SPA may talk directly to a *different* CoC server forwarded at `ht
 - WS: `attachWebSocketUpgradeHandler()` (`streaming/websocket.ts`) calls `isWebSocketOriginAllowed()` before dispatching `/ws` or `/ws/terminal`. A non-loopback `Origin` upgrade is answered `403 Forbidden` and the socket destroyed; a missing `Origin` (non-browser client) is allowed.
 - This is always-on for loopback origins (not gated by `features.remoteShell`, which is a client-side UI flag).
 
+**Per-clone global sockets (dashboard).** `useWebSocket` opens the global `/ws` to the LOCAL server only. When remote clones are shown, `RemoteCloneEventBridge` (`spa/client/react/features/remote-shell/`) opens one additional global `/ws` per ONLINE remote clone (`getCocClientFor(baseUrl).events.connect`, deduped by `baseUrl`) and feeds their messages into the same `onMessage` dispatcher — so remote processes' `process-added/updated/removed` lifecycle events reach the dashboard and remote task rows transition `running → completed` live, exactly like local ones. The per-process token SSE is already routed per-clone via `useChatSSE`/`cloneApiBase`.
+
 ## Internal Architecture (Single Node.js Process)
 
 Everything runs in one Node.js process. LLM API calls are async network I/O (not CPU-bound).
