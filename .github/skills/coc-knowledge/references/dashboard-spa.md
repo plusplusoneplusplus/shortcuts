@@ -686,8 +686,12 @@ registry is unavailable). It exposes `lookupCloneBaseUrl(workspaceId)`,
 `getCocClientForWorkspace(workspaceId)` (= `getCocClientFor(lookupCloneBaseUrl(id))`,
 falling back to `getSpaCocClient()` for a local/unknown id so local behavior is
 byte-for-byte unchanged), `cloneApiBase(workspaceId)` (absolute remote REST base
-for hand-built URLs like the `EventSource` process stream), and
-`cloneWsUrlForWorkspace(path, workspaceId)`. The routing hooks
+for hand-built URLs like the `EventSource` process stream),
+`cloneWsUrlForWorkspace(path, workspaceId)`, and `requestForWorkspace(workspaceId,
+url, options?)` (clone-routed analog of `requestSpaApi` that fetches a RELATIVE
+api path against the clone — same `toSpaCocRequestOptions`/error-translation as
+`requestSpaApi`, used by the git diff-viewing layer which builds a bare path and
+then fetches it). The routing hooks
 (`useResolveCloneBaseUrl()`, `useCocClient(ref?)`, `useCloneWsUrl(ref?)`) resolve a
 bare workspace id through this registry (no `ReposContext` dependency, so they are
 safe in deep per-tab components and unit tests) and a workspace **object** from its
@@ -711,6 +715,21 @@ the input:
   from the registry and passes it into `cloneWsUrl`, so a remote clone's terminal
   targets its server. The `/ws` comment subscriptions (`useTaskComments` +
   `git/hooks/use*Comments`) already route through `cloneWsUrl`.
+- The Git diff-viewing layer is routed too: `WorkingTree` /
+  `WorkingTreeFileDiff` / `WorkingTreeAllComments` and the comment hooks
+  (`useDiffComments`, `useAllCommitComments`, `useFileCommentCounts`,
+  `useCommitCommentTotals`) use `useCocClient(workspaceId)` for their REST git
+  calls (their `/ws` subscriptions stay on `cloneWsUrl` unchanged);
+  `useClassification` / `useCommitClassificationStatus` route the
+  `/api/repos/:id/classify-diff*` calls through `useCocClient(workspaceId)`. The
+  `DiffSource` factories (`createCommitDiffSource`/`createBranchRangeDiffSource`/
+  `createPrDiffSource` in `git/diff/diffSource.ts`) resolve their path-builder
+  client via `getCocClientForWorkspace(id)`, and `fetchDiffFromSource(workspaceId,
+  url)` + `useCachedDiff` fetch the relative diff url via
+  `requestForWorkspace(workspaceId, url)`. `useFileDiff(url, fullUrl?, workspaceId?)`
+  threads the id from `FileDiffPanel`. Non-React `diffCommentApi`
+  (`patchDiffComment`/`deleteDiffCommentById`) routes via
+  `getCocClientForWorkspace(wsId)`.
 
 No-local-fallthrough guarantee: a remote clone's id always resolves to its
 `baseUrl`, so its clone-scoped REST/WS never hit the default local client; an

@@ -31,29 +31,46 @@ vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useDiffComme
     }),
 }));
 
+const DIFF_BODY = { diff: '@@ -1,2 +1,2 @@\n-old\n+new' };
+
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: () => Promise.resolve({ diff: '@@ -1,2 +1,2 @@\n-old\n+new' }),
+    fetchApi: () => Promise.resolve(DIFF_BODY),
 }));
 
+// AC-07: the diff-viewing layer now routes through getCocClientForWorkspace /
+// requestForWorkspace (cloneRegistry), which call getCocClientFor + the stub's
+// generic .request(). Provide a single stub for both getSpaCocClient and
+// getCocClientFor so a default-origin (local) workspace resolves here.
+const cocStub = {
+    git: {
+        commitDiffPath: (workspaceId: string, hash: string) =>
+            `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/diff`,
+        commitFileDiffPath: (workspaceId: string, hash: string, filePath: string) =>
+            `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/files/${encodeURIComponent(filePath)}/diff`,
+        branchRangeFileDiffPath: (workspaceId: string, filePath: string) =>
+            `/workspaces/${encodeURIComponent(workspaceId)}/git/branch-range/files/${encodeURIComponent(filePath)}/diff`,
+        getWorkingTreeFileDiff: () => Promise.resolve(DIFF_BODY),
+    },
+    explorer: {
+        readBlob: () => Promise.resolve({ content: '', encoding: 'base64', mimeType: 'application/octet-stream' }),
+    },
+    preferences: {
+        getRepo: vi.fn().mockResolvedValue({}),
+        patchRepo: vi.fn().mockResolvedValue({}),
+    },
+    agentProviders: {
+        getReasoningEfforts: vi.fn().mockResolvedValue({ reasoningEfforts: {} }),
+        getEffortTiers: vi.fn().mockResolvedValue({ effortTiers: {}, defaults: {} }),
+    },
+    // Generic transport used by requestForWorkspace (diff fetches).
+    request: () => Promise.resolve(DIFF_BODY),
+};
+
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({
-        git: {
-            commitDiffPath: (workspaceId: string, hash: string) =>
-                `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/diff`,
-            getWorkingTreeFileDiff: () => Promise.resolve({ diff: '@@ -1,2 +1,2 @@\n-old\n+new' }),
-        },
-        explorer: {
-            readBlob: () => Promise.resolve({ content: '', encoding: 'base64', mimeType: 'application/octet-stream' }),
-        },
-        preferences: {
-            getRepo: vi.fn().mockResolvedValue({}),
-            patchRepo: vi.fn().mockResolvedValue({}),
-        },
-        agentProviders: {
-            getReasoningEfforts: vi.fn().mockResolvedValue({ reasoningEfforts: {} }),
-            getEffortTiers: vi.fn().mockResolvedValue({ effortTiers: {}, defaults: {} }),
-        },
-    }),
+    getSpaCocClient: () => cocStub,
+    getCocClientFor: () => cocStub,
+    toSpaCocRequestOptions: (opts?: unknown) => opts,
+    translateSpaCocClientError: (e: unknown) => { throw e; },
     requestSpaApi: vi.fn().mockResolvedValue(null),
 }));
 

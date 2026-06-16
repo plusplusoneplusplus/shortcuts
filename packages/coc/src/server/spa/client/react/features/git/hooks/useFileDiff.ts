@@ -36,10 +36,14 @@ export interface FileDiffState {
  *                      Pass null to skip fetching.
  * @param fullUrl     - API URL with ?full=true for the full (non-truncated) diff.
  *                      Pass null when the source doesn't support truncation.
+ * @param workspaceId - Clone to route the fetch to. A remote clone's diff lands
+ *                      on its own server; a local/unknown id (or undefined) uses
+ *                      the default origin (unchanged).
  */
 export function useFileDiff(
     url: string | null,
     fullUrl?: string | null,
+    workspaceId?: string,
 ): FileDiffState {
     const [diff, setDiff] = useState<string | null>(null);
     const [loading, setLoading] = useState(url !== null);
@@ -56,7 +60,7 @@ export function useFileDiff(
     const doFetch = useCallback((fetchUrl: string) => {
         setLoading(true);
         setError(null);
-        fetchDiffFromSource(fetchUrl)
+        fetchDiffFromSource(workspaceId ?? '', fetchUrl)
             .then((result: DiffFetchResult) => {
                 // Guard against stale responses after url changed
                 if (urlRef.current !== url) return;
@@ -73,7 +77,7 @@ export function useFileDiff(
                 if (urlRef.current !== url) return;
                 setLoading(false);
             });
-    }, [url]);
+    }, [url, workspaceId]);
 
     // Initial fetch on URL change
     useEffect(() => {

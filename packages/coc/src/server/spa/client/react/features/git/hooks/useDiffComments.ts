@@ -7,8 +7,9 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import type { CocClient } from '@plusplusoneplusplus/coc-client';
 import { getWsPath } from '../../../utils/config';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { useCocClient } from '../../../repos/cloneRouting';
 import { cloneWsUrl } from '../../../api/wsUrl';
 import type { DiffComment, DiffCommentContext, DiffCommentSelection } from '../../../../comments/diff-comment-types';
 import type { DiffLine } from '../diff/UnifiedDiffViewer';
@@ -74,12 +75,12 @@ export interface UseDiffCommentsReturn {
 // computeStorageKey, patchDiffComment, deleteDiffCommentById are imported from ../utils/diffCommentApi.
 
 /** Poll a queued task until it completes or fails. Returns the task result. */
-async function pollTaskResult<T>(taskId: string, timeoutMs = 180_000): Promise<T> {
+async function pollTaskResult<T>(client: CocClient, taskId: string, timeoutMs = 180_000): Promise<T> {
     const start = Date.now();
     let delay = 1000;
     while (Date.now() - start < timeoutMs) {
         await new Promise(r => setTimeout(r, delay));
-        const { task } = await getSpaCocClient().queue.getTask(taskId);
+        const { task } = await client.queue.getTask(taskId);
         if (task.status === 'completed') {
             return task.result as T;
         }
@@ -109,6 +110,10 @@ export function useDiffComments(
     wsId: string,
     context: DiffCommentContext | null,
 ): UseDiffCommentsReturn {
+    // Route every diff-comment REST call to the selected clone's server (AC-07).
+    // The diff-comment-updated WebSocket subscription below keeps using
+    // cloneWsUrl(getWsPath()) unchanged (AC-03).
+    const cloneClient = useCocClient(wsId);
     const [comments, setComments] = useState<DiffComment[]>([]);
     const [loading, setLoading]   = useState(true);
     const [error, setError]       = useState<string | null>(null);
@@ -144,7 +149,7 @@ export function useDiffComments(
         setLoading(true);
         setError(null);
         try {
-            const data = await getSpaCocClient().git.listDiffComments(wsId, {
+            const data = await cloneClient.git.listDiffComments(wsId, {
                 oldRef: ctx.oldRef,
                 newRef: ctx.newRef,
             });
@@ -163,7 +168,7 @@ export function useDiffComments(
         } finally {
             if (mountedRef.current) setLoading(false);
         }
-    }, [wsId]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [wsId, cloneClient]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         void fetchComments();
@@ -181,7 +186,7 @@ export function useDiffComments(
     ): Promise<DiffComment> => {
         const ctx = contextRef.current;
         if (!ctx) throw new Error('No diff context');
-        const data = await getSpaCocClient().git.createDiffComment(wsId, {
+        const data = await cloneClient.git.createDiffComment(wsId, {
             context: ctx,
             selection,
             selectedText,
@@ -193,7 +198,7 @@ export function useDiffComments(
             setComments(prev => [...prev, comment]);
         }
         return comment;
-    }, [wsId]);
+    }, [wsId, cloneClient]);
 
     // ------------------------------------------------------------------
     // updateComment — PATCH /api/diff-comments/:wsId/:storageKey/:id
@@ -273,12 +278,12 @@ export function useDiffComments(
         setAiErrors(prev => { const m = new Map(prev); m.delete(id); return m; });
         try {
             const storageKey = await computeStorageKey(ctx);
-            const data = await getSpaCocClient().git.askDiffCommentAI(wsId, storageKey, id, { commandId, customQuestion });
+            const data = await cloneClient.git.askDiffCommentAI(wsId, storageKey, id, { commandId, customQuestion });
             let aiResponse: string | undefined;
             if (data.aiResponse) {
                 aiResponse = data.aiResponse as string;
             } else if (data.taskId) {
-                const result = await pollTaskResult<{ aiResponse: string }>(data.taskId as string);
+                const result = await pollTaskResult<{ aiResponse: string }>(cloneClient, data.taskId as string);
                 aiResponse = result.aiResponse;
             }
             if (mountedRef.current && aiResponse !== undefined) {
@@ -294,7 +299,7 @@ export function useDiffComments(
                 setAiLoadingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
             }
         }
-    }, [wsId]);
+    }, [wsId, cloneClient]);
 
     // ------------------------------------------------------------------
     // clearAiError
@@ -378,7 +383,7 @@ export function useDiffComments(
         if (!ctx) throw new Error('No diff context');
         setResolving(true);
         try {
-            const data = await getSpaCocClient().git.resolveDiffCommentsWithAI(wsId, {
+            const data = await cloneClient.git.resolveDiffCommentsWithAI(wsId, {
                 oldRef: ctx.oldRef,
                 newRef: ctx.newRef,
                 filePath: ctx.filePath,
@@ -386,14 +391,14 @@ export function useDiffComments(
                 ...(skills?.length ? { skills } : {}),
             });
             if (data.taskId) {
-                await pollTaskResult(data.taskId as string);
+                await pollTaskResult(cloneClient, data.taskId as string);
             }
             await fetchComments();
             return { totalCount: data.totalCount ?? 0 };
         } finally {
             if (mountedRef.current) setResolving(false);
         }
-    }, [wsId, fetchComments]);
+    }, [wsId, cloneClient, fetchComments]);
 
     // ------------------------------------------------------------------
     // fixWithAI — resolve a single comment via AI
@@ -404,7 +409,7 @@ export function useDiffComments(
         if (!ctx) return;
         setAiLoadingIds(prev => new Set(prev).add(id));
         try {
-            const data = await getSpaCocClient().git.resolveDiffCommentsWithAI(wsId, {
+            const data = await cloneClient.git.resolveDiffCommentsWithAI(wsId, {
                 oldRef: ctx.oldRef,
                 newRef: ctx.newRef,
                 filePath: ctx.filePath,
@@ -413,7 +418,7 @@ export function useDiffComments(
                 ...(skills?.length ? { skills } : {}),
             });
             if (data.taskId) {
-                await pollTaskResult(data.taskId as string);
+                await pollTaskResult(cloneClient, data.taskId as string);
             }
             await fetchComments();
         } catch (err) {
@@ -426,7 +431,7 @@ export function useDiffComments(
                 setAiLoadingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
             }
         }
-    }, [wsId, fetchComments]);
+    }, [wsId, cloneClient, fetchComments]);
 
     // ------------------------------------------------------------------
     // copyResolvePrompt — copy a resolve prompt to clipboard

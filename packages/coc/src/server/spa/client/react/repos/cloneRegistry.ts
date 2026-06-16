@@ -28,7 +28,7 @@
  */
 
 import type { CocClient } from '@plusplusoneplusplus/coc-client';
-import { getCocClientFor, getSpaCocClient } from '../api/cocClient';
+import { getCocClientFor, getSpaCocClient, toSpaCocRequestOptions, translateSpaCocClientError } from '../api/cocClient';
 import { cloneWsUrl } from '../api/wsUrl';
 import { getApiBase } from '../utils/config';
 
@@ -78,6 +78,31 @@ export function getCocClientForWorkspace(workspaceId: string | null | undefined)
     // Local clone: call getSpaCocClient() directly (not getCocClientFor(undefined))
     // so this is identical to the pre-AC-07 code path — byte-for-byte unchanged.
     return baseUrl ? getCocClientFor(baseUrl) : getSpaCocClient();
+}
+
+/**
+ * Fetch a RELATIVE API `url` (e.g. `/workspaces/ws-x/git/changes/...`) against a
+ * workspace's clone — the non-hook seam for the git diff-viewing layer, whose
+ * `DiffSource` factories build a bare path string and then need to fetch it.
+ *
+ *   • Local clone  → the default client: `'' + getApiBase() + url`. This is the
+ *     EXACT path `fetchApi(url)` (→ `requestSpaApi`) takes today, so local clones
+ *     stay byte-for-byte unchanged.
+ *   • Remote clone → its client: `${baseUrl}${apiBase}${url}` (apiBase = `/api`).
+ *
+ * Error translation mirrors `requestSpaApi` so callers see the same `Error`
+ * shape they did before routing was introduced.
+ */
+export async function requestForWorkspace<T = unknown>(
+    workspaceId: string | null | undefined,
+    url: string,
+    options?: RequestInit,
+): Promise<T> {
+    try {
+        return await getCocClientForWorkspace(workspaceId).request<T>(url, toSpaCocRequestOptions(options));
+    } catch (error) {
+        translateSpaCocClientError(error);
+    }
 }
 
 /**

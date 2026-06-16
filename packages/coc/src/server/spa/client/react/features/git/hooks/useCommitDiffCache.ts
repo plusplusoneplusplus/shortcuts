@@ -14,8 +14,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { fetchApi } from '../../../hooks/useApi';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { getCocClientForWorkspace, requestForWorkspace } from '../../../repos/cloneRegistry';
 
 /** Module-level cache — survives re-renders, cleared on page reload. */
 const diffCache = new Map<string, string>();
@@ -45,7 +44,7 @@ export function splitDiffByFile(fullDiff: string): Array<[string, string]> {
  * Build a per-file diff API URL matching the server route convention.
  */
 export function buildFileDiffUrl(workspaceId: string, hash: string, filePath: string): string {
-    return getSpaCocClient().git.commitFileDiffPath(workspaceId, hash, filePath);
+    return getCocClientForWorkspace(workspaceId).git.commitFileDiffPath(workspaceId, hash, filePath);
 }
 
 /**
@@ -103,7 +102,7 @@ export function useCachedDiff(
         setLoading(true);
         setError(null);
         setDiff(null);
-        fetchApi(url)
+        requestForWorkspace<{ diff?: string }>(workspaceId, url)
             .then(data => {
                 const raw: string = data.diff || '';
                 diffCache.set(url, raw);

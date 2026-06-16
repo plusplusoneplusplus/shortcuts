@@ -21,14 +21,32 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 
 // ── Hoist mock factory before any imports ─────────────────────────────────
+// AC-07: useClassification now routes classify-diff REST through the clone's
+// CocClient via useCocClient(workspaceId).request(path, opts). We mock
+// useCocClient to hand back a stub whose .request IS our spy, and stub
+// toSpaCocRequestOptions to an identity so the spy still sees the raw
+// { method, body } RequestInit the POST-body assertions inspect.
 
-const mocks = vi.hoisted(() => ({
-    requestSpaApi: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-}));
+const mocks = vi.hoisted(() => {
+    const requestSpaApi = vi.fn<(...args: unknown[]) => Promise<unknown>>();
+    // A STABLE stub client so useCocClient returns the same identity each render
+    // (matches the real memoized hook); an unstable object would re-run the
+    // GET/poll effects every render and desync the mock-call queue.
+    const stubClient = { request: requestSpaApi };
+    return { requestSpaApi, stubClient };
+});
 
 vi.mock(
     '../../../../../src/server/spa/client/react/api/cocClient',
-    () => ({ requestSpaApi: mocks.requestSpaApi }),
+    () => ({
+        toSpaCocRequestOptions: (opts?: unknown) => opts,
+        translateSpaCocClientError: (e: unknown) => { throw e; },
+    }),
+);
+
+vi.mock(
+    '../../../../../src/server/spa/client/react/repos/cloneRouting',
+    () => ({ useCocClient: () => mocks.stubClient }),
 );
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

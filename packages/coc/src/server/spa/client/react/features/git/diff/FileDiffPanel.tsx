@@ -95,7 +95,7 @@ export function FileDiffPanel({
         : source.fileDiffUrl(filePath);
     const fullDiffUrl = source.supportsTruncation ? source.fileDiffUrl(filePath, true) : null;
     const { diff, loading, error, retry, truncated, totalLines, requestFullDiff, fullContextUnavailable } =
-        useFileDiff(diffUrl, fullDiffUrl);
+        useFileDiff(diffUrl, fullDiffUrl, workspaceId);
 
     // ── View mode ──
     const [viewMode, setViewMode] = useDiffViewMode();

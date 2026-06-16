@@ -9,13 +9,21 @@ import {
     extractFileDiffFromCombined,
 } from '../../../../src/server/spa/client/react/features/git/diff/diffSource';
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: vi.fn(),
-}));
+// diffSource fetches diffs via requestForWorkspace (clone-routed), so mock that
+// seam. The path-builder factories (createCommitDiffSource, …) resolve their
+// client through getCocClientForWorkspace, which with an empty registry returns
+// the default client whose path builders are pure — no mock needed for those.
+vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../../../src/server/spa/client/react/repos/cloneRegistry')>();
+    return {
+        ...actual,
+        requestForWorkspace: vi.fn(),
+    };
+});
 
-import { fetchApi } from '../../../../src/server/spa/client/react/hooks/useApi';
+import { requestForWorkspace } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
-const mockedFetchApi = vi.mocked(fetchApi);
+const mockedRequestForWorkspace = vi.mocked(requestForWorkspace);
 
 describe('createCommitDiffSource', () => {
     const ws = 'ws1';
@@ -186,18 +194,21 @@ describe('createBranchRangeDiffSource', () => {
 });
 
 describe('fetchDiffFromSource', () => {
+    const ws = 'ws1';
+
     beforeEach(() => {
-        mockedFetchApi.mockReset();
+        mockedRequestForWorkspace.mockReset();
     });
 
     it('normalizes standard response with all fields', async () => {
-        mockedFetchApi.mockResolvedValue({
+        mockedRequestForWorkspace.mockResolvedValue({
             diff: '--- a/file\n+++ b/file',
             truncated: true,
             totalLines: 8000,
         });
-        const result = await fetchDiffFromSource('/some/url');
-        expect(mockedFetchApi).toHaveBeenCalledWith('/some/url');
+        const result = await fetchDiffFromSource(ws, '/some/url');
+        // The relative url is routed to the workspace's clone (workspaceId, url).
+        expect(mockedRequestForWorkspace).toHaveBeenCalledWith(ws, '/some/url');
         expect(result).toEqual({
             diff: '--- a/file\n+++ b/file',
             truncated: true,
@@ -206,8 +217,8 @@ describe('fetchDiffFromSource', () => {
     });
 
     it('normalizes minimal response without truncation fields', async () => {
-        mockedFetchApi.mockResolvedValue({ diff: 'some diff' });
-        const result = await fetchDiffFromSource('/some/url');
+        mockedRequestForWorkspace.mockResolvedValue({ diff: 'some diff' });
+        const result = await fetchDiffFromSource(ws, '/some/url');
         expect(result).toEqual({
             diff: 'some diff',
             truncated: false,
@@ -216,8 +227,8 @@ describe('fetchDiffFromSource', () => {
     });
 
     it('handles missing diff field', async () => {
-        mockedFetchApi.mockResolvedValue({});
-        const result = await fetchDiffFromSource('/some/url');
+        mockedRequestForWorkspace.mockResolvedValue({});
+        const result = await fetchDiffFromSource(ws, '/some/url');
         expect(result).toEqual({
             diff: '',
             truncated: false,
@@ -225,9 +236,9 @@ describe('fetchDiffFromSource', () => {
         });
     });
 
-    it('propagates fetchApi errors', async () => {
-        mockedFetchApi.mockRejectedValue(new Error('API error: 500'));
-        await expect(fetchDiffFromSource('/some/url')).rejects.toThrow('API error: 500');
+    it('propagates request errors', async () => {
+        mockedRequestForWorkspace.mockRejectedValue(new Error('API error: 500'));
+        await expect(fetchDiffFromSource(ws, '/some/url')).rejects.toThrow('API error: 500');
     });
 });
 

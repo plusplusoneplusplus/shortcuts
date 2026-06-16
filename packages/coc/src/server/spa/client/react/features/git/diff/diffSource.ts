@@ -1,6 +1,5 @@
 import type { DiffCommentContext } from '../../../../comments/diff-comment-types';
-import { fetchApi } from '../../../hooks/useApi';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { getCocClientForWorkspace, requestForWorkspace } from '../../../repos/cloneRegistry';
 
 /**
  * Result of fetching a diff, including truncation metadata.
@@ -137,12 +136,12 @@ export function createCommitDiffSource(
         label: `Commit ${shortHash}`,
 
         fileDiffUrl(filePath: string, full?: boolean): string {
-            const base = getSpaCocClient().git.commitFileDiffPath(workspaceId, hash, filePath);
+            const base = getCocClientForWorkspace(workspaceId).git.commitFileDiffPath(workspaceId, hash, filePath);
             return full ? `${base}?full=true` : base;
         },
 
         fullDiffUrl(): string {
-            return getSpaCocClient().git.commitDiffPath(workspaceId, hash);
+            return getCocClientForWorkspace(workspaceId).git.commitDiffPath(workspaceId, hash);
         },
 
         commentContext(filePath: string): DiffCommentContext {
@@ -167,7 +166,7 @@ export function createCommitDiffSource(
         cacheKey: `commit:${hash}`,
 
         async fetchFileList(): Promise<string[]> {
-            const data = await getSpaCocClient().git.listCommitFiles(workspaceId, hash);
+            const data = await getCocClientForWorkspace(workspaceId).git.listCommitFiles(workspaceId, hash);
             return (data.files ?? []).map(f => f.path).sort();
         },
 
@@ -185,7 +184,7 @@ export function createBranchRangeDiffSource(
         label: 'Branch diff',
 
         fileDiffUrl(filePath: string, full?: boolean): string {
-            const base = getSpaCocClient().git.branchRangeFileDiffPath(workspaceId, filePath);
+            const base = getCocClientForWorkspace(workspaceId).git.branchRangeFileDiffPath(workspaceId, filePath);
             return full ? `${base}?full=true` : base;
         },
 
@@ -213,13 +212,21 @@ export function createBranchRangeDiffSource(
 }
 
 /**
- * Fetch a diff from the given URL and normalize the response into
- * a DiffFetchResult. Handles both response shapes:
+ * Fetch a diff from the given URL (routed to the workspace's clone) and normalize
+ * the response into a DiffFetchResult. Handles both response shapes:
  *   - { diff: string, truncated?: boolean, totalLines?: number }  (server standard)
  *   - { diff: string }  (useCachedDiff pre-populated entries)
+ *
+ * `workspaceId` selects the clone: a remote clone's diff fetch lands on its own
+ * server; a local/unknown id resolves to the default origin (unchanged).
  */
-export async function fetchDiffFromSource(url: string): Promise<DiffFetchResult> {
-    const data = await fetchApi(url);
+export async function fetchDiffFromSource(workspaceId: string, url: string): Promise<DiffFetchResult> {
+    const data = await requestForWorkspace<{
+        diff?: string;
+        truncated?: boolean;
+        totalLines?: number;
+        fullContextUnavailable?: boolean;
+    }>(workspaceId, url);
     return {
         diff: data.diff ?? '',
         truncated: !!data.truncated,
@@ -277,7 +284,7 @@ export function createPrDiffSource(
         cacheKey: `pr:${repoId}:${prId}`,
 
         async fetchFileList(): Promise<string[]> {
-            const client = getSpaCocClient();
+            const client = getCocClientForWorkspace(repoId);
             const diff = await client.pullRequests.getDiff(repoId, prId);
             return extractFilePathsFromDiff(diff);
         },

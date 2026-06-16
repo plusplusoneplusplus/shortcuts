@@ -34,8 +34,39 @@ vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useAllCommit
     }),
 }));
 
+const TWO_FILE_DIFF = {
+    diff: 'diff --git a/src/foo.ts b/src/foo.ts\n--- a/src/foo.ts\n+++ b/src/foo.ts\n@@ -1 +1 @@\n-old\n+new\ndiff --git a/src/bar.ts b/src/bar.ts\n--- a/src/bar.ts\n+++ b/src/bar.ts\n@@ -1 +1 @@\n-old\n+new',
+};
+
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: () => Promise.resolve({ diff: 'diff --git a/src/foo.ts b/src/foo.ts\n--- a/src/foo.ts\n+++ b/src/foo.ts\n@@ -1 +1 @@\n-old\n+new\ndiff --git a/src/bar.ts b/src/bar.ts\n--- a/src/bar.ts\n+++ b/src/bar.ts\n@@ -1 +1 @@\n-old\n+new' }),
+    fetchApi: () => Promise.resolve(TWO_FILE_DIFF),
+}));
+
+// AC-07: CommitDetail's diff is now fetched through useCachedDiff →
+// requestForWorkspace (cloneRegistry → getCocClientFor + stub.request), so the
+// commit diff must come from the routed client, not just fetchApi. The
+// commitDiffPath builder stays pure.
+const cocStub = {
+    git: {
+        commitDiffPath: (workspaceId: string, hash: string) =>
+            `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/diff`,
+    },
+    preferences: {
+        getRepo: vi.fn().mockResolvedValue({}),
+        patchRepo: vi.fn().mockResolvedValue({}),
+    },
+    agentProviders: {
+        getReasoningEfforts: vi.fn().mockResolvedValue({ reasoningEfforts: {} }),
+        getEffortTiers: vi.fn().mockResolvedValue({ effortTiers: {}, defaults: {} }),
+    },
+    request: () => Promise.resolve(TWO_FILE_DIFF),
+};
+
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => cocStub,
+    getCocClientFor: () => cocStub,
+    toSpaCocRequestOptions: (opts?: unknown) => opts,
+    translateSpaCocClientError: (e: unknown) => { throw e; },
 }));
 
 vi.mock('react-dom', async (importOriginal) => {

@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { requestSpaApi } from '../../../api/cocClient';
+import { useCocClient } from '../../../repos/cloneRouting';
 
 interface BatchStatusResponse {
     statuses: Record<string, 'none' | 'ready' | 'running'>;
@@ -34,6 +34,8 @@ export function useCommitClassificationStatus(
     hashes: string[],
 ): UseCommitClassificationStatusReturn {
     const [classifiedHashes, setClassifiedHashes] = useState<ReadonlySet<string>>(new Set());
+    // Route the batch-status fetch to the workspace's clone server (AC-07).
+    const cloneClient = useCocClient(workspaceId);
     // Stable join used as effect dependency — avoids re-fetching on reference changes.
     const sortedJoin = hashes.length > 0 ? [...hashes].sort().join(',') : '';
     const refreshCountRef = useRef(0);
@@ -52,7 +54,7 @@ export function useCommitClassificationStatus(
             ...(workspaceId && workspaceId !== repoId ? { workspaceId } : {}),
         });
 
-        requestSpaApi<BatchStatusResponse>(
+        cloneClient.request<BatchStatusResponse>(
             `/repos/${encodeURIComponent(repoId)}/classify-diff/batch-status?${params.toString()}`,
         )
             .then(resp => {
@@ -66,7 +68,7 @@ export function useCommitClassificationStatus(
             .catch(() => { /* best-effort — leave previous state */ });
 
         return () => { cancelled = true; };
-    }, [repoId, workspaceId, sortedJoin, refreshTick]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [repoId, workspaceId, sortedJoin, refreshTick, cloneClient]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const refresh = useCallback(() => {
         refreshCountRef.current += 1;

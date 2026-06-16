@@ -9,7 +9,7 @@
 import { getApiBase } from './config';
 import type { DiffComment, DiffCommentContext } from '../../comments/diff-comment-types';
 import type { UpdateDiffCommentRequest } from '../features/git/hooks/useDiffComments';
-import { getSpaCocClient } from '../api/cocClient';
+import { getCocClientForWorkspace } from '../repos/cloneRegistry';
 
 // ============================================================================
 // Storage key
@@ -53,7 +53,9 @@ export async function patchDiffComment(
     id: string,
     updates: UpdateDiffCommentRequest,
 ): Promise<DiffComment> {
-    const data = await getSpaCocClient().git.updateDiffComment(wsId, storageKey, id, updates);
+    // Route to the workspace's clone (AC-07): remote clones hit their own server,
+    // local/unknown ids resolve to the default origin (unchanged).
+    const data = await getCocClientForWorkspace(wsId).git.updateDiffComment(wsId, storageKey, id, updates);
     return data.comment as DiffComment;
 }
 
@@ -63,5 +65,5 @@ export async function deleteDiffCommentById(
     storageKey: string,
     id: string,
 ): Promise<void> {
-    await getSpaCocClient().git.deleteDiffComment(wsId, storageKey, id);
+    await getCocClientForWorkspace(wsId).git.deleteDiffComment(wsId, storageKey, id);
 }
