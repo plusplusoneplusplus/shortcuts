@@ -254,6 +254,12 @@ export class WorkItemsClient {
     return this.transport.request<WorkItemPlanResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/plan`));
   }
 
+  getPlanForOrigin(originId: string, workItemId: string, options?: WorkItemOriginScopeOptions): Promise<WorkItemPlanResponse> {
+    return this.transport.request<WorkItemPlanResponse>(originPath(originId, `/${encodePathSegment(workItemId)}/plan`), {
+      query: withWorkspaceQuery(undefined, options),
+    });
+  }
+
   updatePlan(workspaceId: string, workItemId: string, content: string, options?: { resolvedBy?: string; summary?: string }): Promise<WorkItemPlanUpdateResponse> {
     return this.transport.request<WorkItemPlanUpdateResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/plan`), {
       method: 'PUT',
@@ -261,17 +267,54 @@ export class WorkItemsClient {
     });
   }
 
+  updatePlanForOrigin(
+    originId: string,
+    workItemId: string,
+    content: string,
+    request?: { resolvedBy?: string; summary?: string },
+    options?: WorkItemOriginScopeOptions,
+  ): Promise<WorkItemPlanUpdateResponse> {
+    return this.transport.request<WorkItemPlanUpdateResponse>(originPath(originId, `/${encodePathSegment(workItemId)}/plan`), {
+      method: 'PUT',
+      body: withWorkspaceBody({ content, ...request }, options),
+    });
+  }
+
   planVersions(workspaceId: string, workItemId: string): Promise<WorkItemPlanVersion[]> {
     return this.transport.request(path(workspaceId, `/${encodePathSegment(workItemId)}/plan/versions`));
+  }
+
+  planVersionsForOrigin(originId: string, workItemId: string, options?: WorkItemOriginScopeOptions): Promise<WorkItemPlanVersion[]> {
+    return this.transport.request(originPath(originId, `/${encodePathSegment(workItemId)}/plan/versions`), {
+      query: withWorkspaceQuery(undefined, options),
+    });
   }
 
   getPlanVersion(workspaceId: string, workItemId: string, version: number): Promise<WorkItemPlanVersion> {
     return this.transport.request(path(workspaceId, `/${encodePathSegment(workItemId)}/plan/versions/${version}`));
   }
 
+  getPlanVersionForOrigin(originId: string, workItemId: string, version: number, options?: WorkItemOriginScopeOptions): Promise<WorkItemPlanVersion> {
+    return this.transport.request(originPath(originId, `/${encodePathSegment(workItemId)}/plan/versions/${version}`), {
+      query: withWorkspaceQuery(undefined, options),
+    });
+  }
+
   comparePlanVersions(workspaceId: string, workItemId: string, baseVersion: number, targetVersion: number): Promise<WorkItemPlanVersionComparison> {
     return this.transport.request(path(workspaceId, `/${encodePathSegment(workItemId)}/plan/versions/compare`), {
       query: { base: baseVersion, target: targetVersion },
+    });
+  }
+
+  comparePlanVersionsForOrigin(
+    originId: string,
+    workItemId: string,
+    baseVersion: number,
+    targetVersion: number,
+    options?: WorkItemOriginScopeOptions,
+  ): Promise<WorkItemPlanVersionComparison> {
+    return this.transport.request(originPath(originId, `/${encodePathSegment(workItemId)}/plan/versions/compare`), {
+      query: withWorkspaceQuery({ base: baseVersion, target: targetVersion }, options),
     });
   }
 
@@ -287,10 +330,35 @@ export class WorkItemsClient {
     });
   }
 
+  restorePlanVersionForOrigin(
+    originId: string,
+    workItemId: string,
+    version: number,
+    request: WorkItemPlanRestoreRequest = {},
+    options?: WorkItemOriginScopeOptions,
+  ): Promise<WorkItemPlanRestoreResponse> {
+    return this.transport.request(originPath(originId, `/${encodePathSegment(workItemId)}/plan/versions/${version}/restore`), {
+      method: 'POST',
+      body: withWorkspaceBody({ ...request }, options),
+    });
+  }
+
   refinePlan(workspaceId: string, workItemId: string, request: WorkItemPlanRefineRequest = {}): Promise<WorkItemPlanRefineResponse> {
     return this.transport.request(path(workspaceId, `/${encodePathSegment(workItemId)}/plan/refine`), {
       method: 'POST',
       body: { ...request },
+    });
+  }
+
+  refinePlanForOrigin(
+    originId: string,
+    workItemId: string,
+    request: WorkItemPlanRefineRequest = {},
+    options?: WorkItemOriginScopeOptions,
+  ): Promise<WorkItemPlanRefineResponse> {
+    return this.transport.request(originPath(originId, `/${encodePathSegment(workItemId)}/plan/refine`), {
+      method: 'POST',
+      body: withWorkspaceBody({ ...request }, options),
     });
   }
 

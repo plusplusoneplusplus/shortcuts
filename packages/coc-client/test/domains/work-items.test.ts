@@ -122,6 +122,11 @@ describe('WorkItemsClient', () => {
     await client.updateForOrigin('gh_owner/repo', 'wi/1', { status: 'planning' }, { workspaceId: 'repo/a' });
     await client.deleteForOrigin('gh_owner/repo', 'wi/1');
     await client.treeForOrigin('gh_owner/repo', { tracker: 'local-only', includeArchived: true }, { workspaceId: 'repo/a' });
+    await client.updatePlanForOrigin('gh_owner/repo', 'wi/1', 'origin plan', { summary: 'Origin plan' }, { workspaceId: 'repo/a' });
+    await client.planVersionsForOrigin('gh_owner/repo', 'wi/1', { workspaceId: 'repo/a' });
+    await client.getPlanVersionForOrigin('gh_owner/repo', 'wi/1', 3, { workspaceId: 'repo/a' });
+    await client.comparePlanVersionsForOrigin('gh_owner/repo', 'wi/1', 1, 2, { workspaceId: 'repo/a' });
+    await client.restorePlanVersionForOrigin('gh_owner/repo', 'wi/1', 1, { summary: 'Restore v1' }, { workspaceId: 'repo/a' });
 
     expect(adapter.calls[0]).toMatchObject({
       path: '/origins/gh_owner%2Frepo/work-items',
@@ -148,6 +153,26 @@ describe('WorkItemsClient', () => {
           workspaceId: 'repo/a',
         },
       },
+    });
+    expect(adapter.calls[5]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/plan',
+      options: { method: 'PUT', body: { content: 'origin plan', summary: 'Origin plan', workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[6]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/plan/versions',
+      options: { query: { workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[7]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/plan/versions/3',
+      options: { query: { workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[8]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/plan/versions/compare',
+      options: { query: { base: 1, target: 2, workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[9]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/plan/versions/1/restore',
+      options: { method: 'POST', body: { summary: 'Restore v1', workspaceId: 'repo/a' } },
     });
   });
 });

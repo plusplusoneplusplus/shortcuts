@@ -1025,7 +1025,7 @@ export async function createWorkItemCommand(
             authorType: planResolvedBy,
             reason: input.plan.reason,
             summary: input.plan.summary,
-        });
+        }, repoId);
     }
 
     clearWorkItemResponseCacheForWorkspace(repoId);
@@ -1198,9 +1198,9 @@ export async function updateWorkItemCommand(
     );
 
     if (pendingPlanVersion) {
-        await ctx.workItemStore.savePlanVersion(workItemId, pendingPlanVersion);
+        await ctx.workItemStore.savePlanVersion(workItemId, pendingPlanVersion, repoId);
     }
-    const updated = await ctx.workItemStore.updateWorkItem(workItemId, remoteReadyUpdates);
+    const updated = await ctx.workItemStore.updateWorkItem(workItemId, remoteReadyUpdates, repoId);
     if (!updated) {
         throw notFound('Work item');
     }
@@ -1213,7 +1213,7 @@ export async function updateWorkItemCommand(
             startedAt: updates.plan.updatedAt ?? new Date().toISOString(),
             status: 'open',
         };
-        ctx.workItemStore.addChange(workItemId, change).catch(() => { /* non-fatal */ });
+        ctx.workItemStore.addChange(workItemId, change, repoId).catch(() => { /* non-fatal */ });
     }
 
     // Auto-execute if status transitioned to 'readyToExecute' and autoExecute is enabled
@@ -1230,7 +1230,7 @@ export async function updateWorkItemCommand(
             } catch { /* non-fatal */ }
 
             await executeWorkItem(workItemId, ctx.workItemStore, ctx.enqueue, { headBefore });
-            const afterExec = await ctx.workItemStore.getWorkItem(workItemId);
+            const afterExec = await ctx.workItemStore.getWorkItem(workItemId, repoId);
             if (afterExec) {
                 clearWorkItemResponseCacheForWorkspace(repoId);
                 ctx.broadcast?.({ type: 'work-item-updated', workspaceId: repoId, item: afterExec });

@@ -1411,6 +1411,7 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
                     <div className="p-[10px]">
                         <WorkItemPlanSection
                             workspaceId={workspaceId}
+                            originId={workItemOriginId}
                             workItemId={workItemId}
                             plan={item.plan}
                             canEdit={canEditPlan}

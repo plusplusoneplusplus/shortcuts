@@ -37,6 +37,7 @@ import type { WorkItemPlanVersionComparison } from '@plusplusoneplusplus/coc-cli
 import { selectionToSourcePosition } from '../../utils/selection-position';
 import { extractDocumentContext } from '../../utils/document-context';
 import { DASHBOARD_AI_COMMANDS } from '../../shared/ai-commands';
+import { resolveWorkItemOriginId } from './workItemOriginScope';
 
 interface PlanVersionMeta {
     version: number;
@@ -51,6 +52,8 @@ interface PlanVersionFull extends PlanVersionMeta {
 
 interface WorkItemPlanSectionProps {
     workspaceId: string;
+    /** Canonical origin scope used for Work Item plan/version persistence. */
+    originId?: string;
     workItemId: string;
     /** Current plan attached to the work item (already loaded). */
     plan?: { version: number; content: string; updatedAt?: string; resolvedBy?: string };
@@ -123,10 +126,15 @@ function buildPlanAnchor(
 }
 
 export function WorkItemPlanSection({
-    workspaceId, workItemId, plan, canEdit, draftContent, onDraftChange, onUpdated, onError, onNavigateToTasksTab,
+    workspaceId, originId, workItemId, plan, canEdit, draftContent, onDraftChange, onUpdated, onError, onNavigateToTasksTab,
     viewMode: controlledMode, onViewModeChange, enableVersionActions = false, hasUnsavedChanges = false,
 }: WorkItemPlanSectionProps) {
     const cloneClient = useCocClient(workspaceId); // AC-07: plan versions/updates on the selected clone's server.
+    const workItemOriginId = useMemo(
+        () => originId ?? resolveWorkItemOriginId({ workspaceId }),
+        [originId, workspaceId],
+    );
+    const originOptions = useMemo(() => ({ workspaceId }), [workspaceId]);
     // ── Plan version state ──────────────────────────────────────────────────
     const [versions, setVersions] = useState<PlanVersionMeta[]>([]);
     const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
@@ -197,10 +205,10 @@ export function WorkItemPlanSection({
     const loadVersions = useCallback(async () => {
         if (!plan) return;
         try {
-            const data: PlanVersionMeta[] = await cloneClient.workItems.planVersions(workspaceId, workItemId);
+            const data: PlanVersionMeta[] = await cloneClient.workItems.planVersionsForOrigin(workItemOriginId, workItemId, originOptions);
             setVersions(data || []);
         } catch { /* ignore */ }
-    }, [workspaceId, workItemId, plan, cloneClient]);
+    }, [workItemOriginId, workItemId, originOptions, plan, cloneClient]);
 
     useEffect(() => { loadVersions(); }, [loadVersions]);
 
@@ -220,7 +228,7 @@ export function WorkItemPlanSection({
         setSelectedVersion(v);
         setLoadingVersion(true);
         try {
-            const data: PlanVersionFull = await cloneClient.workItems.getPlanVersion(workspaceId, workItemId, v);
+            const data: PlanVersionFull = await cloneClient.workItems.getPlanVersionForOrigin(workItemOriginId, workItemId, v, originOptions);
             setSelectedContent(data.content ?? '');
         } catch {
             onError('Failed to load plan version');
@@ -246,7 +254,7 @@ export function WorkItemPlanSection({
         setComparison(null);
         setComparisonError(null);
         try {
-            const data = await cloneClient.workItems.comparePlanVersions(workspaceId, workItemId, selectedVersion, currentVersion);
+            const data = await cloneClient.workItems.comparePlanVersionsForOrigin(workItemOriginId, workItemId, selectedVersion, currentVersion, originOptions);
             setComparison(data);
         } catch (err: any) {
             setComparison(null);
@@ -254,17 +262,17 @@ export function WorkItemPlanSection({
         } finally {
             setComparisonLoading(false);
         }
-    }, [canActOnSelectedVersion, currentVersion, selectedVersion, workspaceId, workItemId, cloneClient]);
+    }, [canActOnSelectedVersion, currentVersion, selectedVersion, workItemOriginId, workItemId, originOptions, cloneClient]);
 
     const handleRestoreSelectedVersion = useCallback(async () => {
         if (!canActOnSelectedVersion || selectedVersion === null || restoreDisabled) return;
         if (!window.confirm(`Restore plan v${selectedVersion} as a new current version?`)) return;
         setRestoreLoading(true);
         try {
-            await cloneClient.workItems.restorePlanVersion(workspaceId, workItemId, selectedVersion, {
+            await cloneClient.workItems.restorePlanVersionForOrigin(workItemOriginId, workItemId, selectedVersion, {
                 reason: `Restored plan v${selectedVersion} from version history`,
                 summary: `Restored plan v${selectedVersion}`,
-            });
+            }, originOptions);
             setSelectedVersion(null);
             setSelectedContent(null);
             await onUpdated();
@@ -273,7 +281,7 @@ export function WorkItemPlanSection({
         } finally {
             setRestoreLoading(false);
         }
-    }, [canActOnSelectedVersion, onError, onUpdated, restoreDisabled, selectedVersion, workspaceId, workItemId, cloneClient]);
+    }, [canActOnSelectedVersion, onError, onUpdated, restoreDisabled, selectedVersion, workItemOriginId, workItemId, originOptions, cloneClient]);
 
     // Resolve inline comments with AI — creates a Run# execution session
     const handleResolveAllWithAI = useCallback(async () => {

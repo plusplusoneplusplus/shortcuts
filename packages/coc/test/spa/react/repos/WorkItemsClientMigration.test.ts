@@ -65,12 +65,16 @@ describe('work items SPA client migration', () => {
     });
 
     it('loads plan versions through client.workItems and persists plan via the detail Ctrl+S batch', () => {
-        expect(planSection).toContain('workItems.planVersions(workspaceId, workItemId)');
-        expect(planSection).toContain('workItems.getPlanVersion(workspaceId, workItemId, v)');
+        expect(planSection).toContain('workItems.planVersionsForOrigin(workItemOriginId, workItemId, originOptions)');
+        expect(planSection).toContain('workItems.getPlanVersionForOrigin(workItemOriginId, workItemId, v, originOptions)');
+        expect(planSection).toContain('workItems.comparePlanVersionsForOrigin(workItemOriginId, workItemId');
+        expect(planSection).toContain('workItems.restorePlanVersionForOrigin(workItemOriginId, workItemId');
         expect(planSection).toContain('workItems.resolveComments(workspaceId, workItemId');
         // Plan persistence moved into the unified Ctrl+S PATCH batch in WorkItemDetail;
         // the plan section no longer performs an instant standalone save.
         expect(planSection).not.toContain('workItems.updatePlan(');
+        expect(planSection).not.toContain('workItems.planVersions(workspaceId');
+        expect(planSection).not.toContain('workItems.getPlanVersion(workspaceId');
         expect(detail).toContain('updates.plan');
         expect(detail).not.toContain('workItems.updatePlan(workspaceId, workItemId, planDraft');
     });

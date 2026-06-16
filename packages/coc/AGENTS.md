@@ -187,6 +187,11 @@ all have their own `references/*.md`.
   `/api/origins/:originId/work-item-chat-bindings...` or
   `client.workItems.*ChatBindingForOrigin(...)`; pass `workspaceId` only for
   fresh-chat archive/reset actions that need a concrete clone/process scope.
+- **Work-item plan and plan-version reads/writes** are persistent origin state.
+  New callers must use `/api/origins/:originId/work-items/:itemId/plan...` or
+  `client.workItems.*Plan*ForOrigin(...)`; pass `workspaceId` only as clone
+  metadata for origin validation while execution/sync flows remain
+  workspace-root dependent.
 - **Direct package builds** use `scripts/prebuild.mjs` to build
   `@plusplusoneplusplus/coc-client`, `@plusplusoneplusplus/coc-workflow`, and `@plusplusoneplusplus/coc-memory`
   before `tsc`, clean `dist` before emitting, and generate

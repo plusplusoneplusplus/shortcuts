@@ -516,12 +516,11 @@ export class FileWorkItemStore implements WorkItemStore {
     async updateWorkItem(
         id: string,
         updates: Partial<Omit<WorkItem, 'id' | 'repoId' | 'createdAt'>>,
+        repoId?: string,
     ): Promise<WorkItem | undefined> {
         let updated: WorkItem | undefined;
         await this.enqueueWrite(async () => {
-            const repos = updates.status !== undefined
-                ? await this.findRepoForItem(id)
-                : await this.findRepoForItem(id);
+            const repos = await this.findRepoForItem(id, repoId);
             if (!repos) return;
 
             const item = await this.readItem(repos, id);
@@ -549,13 +548,13 @@ export class FileWorkItemStore implements WorkItemStore {
         return updated;
     }
 
-    async removeWorkItem(id: string): Promise<boolean> {
+    async removeWorkItem(id: string, repoId?: string): Promise<boolean> {
         let removed = false;
         await this.enqueueWrite(async () => {
-            const repoId = await this.findRepoForItem(id);
-            if (!repoId) return;
+            const storageRepoId = await this.findRepoForItem(id, repoId);
+            if (!storageRepoId) return;
 
-            const index = await this.readIndex(repoId);
+            const index = await this.readIndex(storageRepoId);
 
             // Block deletion if children exist
             const childCount = index.filter(e => e.parentId === id).length;
@@ -568,17 +567,17 @@ export class FileWorkItemStore implements WorkItemStore {
 
             // Remove item file
             try {
-                await fs.unlink(this.itemPath(repoId, id));
+                await fs.unlink(this.itemPath(storageRepoId, id));
             } catch { /* ignore */ }
 
             // Remove plan versions directory
             try {
-                await fs.rm(this.planDir(repoId, id), { recursive: true, force: true });
+                await fs.rm(this.planDir(storageRepoId, id), { recursive: true, force: true });
             } catch { /* ignore */ }
 
             // Remove from index
             const filtered = index.filter(e => e.id !== id);
-            await this.writeIndex(repoId, filtered);
+            await this.writeIndex(storageRepoId, filtered);
 
             removed = index.length !== filtered.length;
         });
@@ -683,11 +682,11 @@ export class FileWorkItemStore implements WorkItemStore {
 
     // ── Plan versioning ─────────────────────────────────────────
 
-    async getPlanVersions(workItemId: string): Promise<WorkItemPlanVersion[]> {
-        const repoId = await this.findRepoForItem(workItemId);
-        if (!repoId) return [];
+    async getPlanVersions(workItemId: string, repoId?: string): Promise<WorkItemPlanVersion[]> {
+        const storageRepoId = await this.findRepoForItem(workItemId, repoId);
+        if (!storageRepoId) return [];
 
-        const dir = this.planDir(repoId, workItemId);
+        const dir = this.planDir(storageRepoId, workItemId);
         try {
             const files = await fs.readdir(dir);
             const versions: WorkItemPlanVersion[] = [];
@@ -705,11 +704,11 @@ export class FileWorkItemStore implements WorkItemStore {
         }
     }
 
-    async getPlanVersion(workItemId: string, version: number): Promise<WorkItemPlanVersion | undefined> {
-        const repoId = await this.findRepoForItem(workItemId);
-        if (!repoId) return undefined;
+    async getPlanVersion(workItemId: string, version: number, repoId?: string): Promise<WorkItemPlanVersion | undefined> {
+        const storageRepoId = await this.findRepoForItem(workItemId, repoId);
+        if (!storageRepoId) return undefined;
 
-        const filePath = this.planVersionPath(repoId, workItemId, version);
+        const filePath = this.planVersionPath(storageRepoId, workItemId, version);
         try {
             const content = await fs.readFile(filePath, 'utf-8');
             return this.parsePlanFile(content, version);
@@ -718,22 +717,22 @@ export class FileWorkItemStore implements WorkItemStore {
         }
     }
 
-    async savePlanVersion(workItemId: string, plan: WorkItemPlanVersion): Promise<void> {
+    async savePlanVersion(workItemId: string, plan: WorkItemPlanVersion, repoId?: string): Promise<void> {
         return this.enqueueWrite(async () => {
-            const repoId = await this.findRepoForItem(workItemId);
-            if (!repoId) return;
-            await this.writePlanVersionFile(repoId, workItemId, plan);
+            const storageRepoId = await this.findRepoForItem(workItemId, repoId);
+            if (!storageRepoId) return;
+            await this.writePlanVersionFile(storageRepoId, workItemId, plan);
         });
     }
 
     // ── Execution history ───────────────────────────────────────
 
-    async addExecution(workItemId: string, execution: WorkItemExecution): Promise<void> {
+    async addExecution(workItemId: string, execution: WorkItemExecution, repoId?: string): Promise<void> {
         return this.enqueueWrite(async () => {
-            const repoId = await this.findRepoForItem(workItemId);
-            if (!repoId) return;
+            const storageRepoId = await this.findRepoForItem(workItemId, repoId);
+            if (!storageRepoId) return;
 
-            const item = await this.readItem(repoId, workItemId);
+            const item = await this.readItem(storageRepoId, workItemId);
             if (!item) return;
 
             const history = item.executionHistory ?? [];
@@ -743,10 +742,10 @@ export class FileWorkItemStore implements WorkItemStore {
             item.processId = execution.processId;
             item.updatedAt = new Date().toISOString();
 
-            await this.writeItem(repoId, item);
+            await this.writeItem(storageRepoId, item);
 
             // Keep index in sync (lastRunAt, updatedAt)
-            await this.refreshIndexEntry(repoId, item);
+            await this.refreshIndexEntry(storageRepoId, item);
         });
     }
 
@@ -754,12 +753,13 @@ export class FileWorkItemStore implements WorkItemStore {
         workItemId: string,
         taskId: string,
         updates: Partial<WorkItemExecution>,
+        repoId?: string,
     ): Promise<void> {
         return this.enqueueWrite(async () => {
-            const repoId = await this.findRepoForItem(workItemId);
-            if (!repoId) return;
+            const storageRepoId = await this.findRepoForItem(workItemId, repoId);
+            if (!storageRepoId) return;
 
-            const item = await this.readItem(repoId, workItemId);
+            const item = await this.readItem(storageRepoId, workItemId);
             if (!item?.executionHistory) return;
 
             const execIdx = item.executionHistory.findIndex(e => e.taskId === taskId);
@@ -768,45 +768,45 @@ export class FileWorkItemStore implements WorkItemStore {
             item.executionHistory[execIdx] = { ...item.executionHistory[execIdx], ...updates };
             item.updatedAt = new Date().toISOString();
 
-            await this.writeItem(repoId, item);
+            await this.writeItem(storageRepoId, item);
 
             // Keep index in sync (lastRunAt, updatedAt)
-            await this.refreshIndexEntry(repoId, item);
+            await this.refreshIndexEntry(storageRepoId, item);
         });
     }
 
     // ── Change tracking ─────────────────────────────────────────────
 
-    async addChange(workItemId: string, change: WorkItemChange): Promise<void> {
+    async addChange(workItemId: string, change: WorkItemChange, repoId?: string): Promise<void> {
         return this.enqueueWrite(async () => {
-            const repoId = await this.findRepoForItem(workItemId);
-            if (!repoId) return;
-            const item = await this.readItem(repoId, workItemId);
+            const storageRepoId = await this.findRepoForItem(workItemId, repoId);
+            if (!storageRepoId) return;
+            const item = await this.readItem(storageRepoId, workItemId);
             if (!item) return;
             item.changes = [...(item.changes ?? []), change];
             item.updatedAt = new Date().toISOString();
-            await this.writeItem(repoId, item);
+            await this.writeItem(storageRepoId, item);
         });
     }
 
-    async updateChange(workItemId: string, changeId: string, updates: Partial<WorkItemChange>): Promise<void> {
+    async updateChange(workItemId: string, changeId: string, updates: Partial<WorkItemChange>, repoId?: string): Promise<void> {
         return this.enqueueWrite(async () => {
-            const repoId = await this.findRepoForItem(workItemId);
-            if (!repoId) return;
-            const item = await this.readItem(repoId, workItemId);
+            const storageRepoId = await this.findRepoForItem(workItemId, repoId);
+            if (!storageRepoId) return;
+            const item = await this.readItem(storageRepoId, workItemId);
             if (!item?.changes) return;
             const idx = item.changes.findIndex(c => c.id === changeId);
             if (idx === -1) return;
             item.changes[idx] = { ...item.changes[idx], ...updates };
             item.updatedAt = new Date().toISOString();
-            await this.writeItem(repoId, item);
+            await this.writeItem(storageRepoId, item);
         });
     }
 
-    async getChanges(workItemId: string): Promise<WorkItemChange[]> {
-        const repoId = await this.findRepoForItem(workItemId);
-        if (!repoId) return [];
-        const item = await this.readItem(repoId, workItemId);
+    async getChanges(workItemId: string, repoId?: string): Promise<WorkItemChange[]> {
+        const storageRepoId = await this.findRepoForItem(workItemId, repoId);
+        if (!storageRepoId) return [];
+        const item = await this.readItem(storageRepoId, workItemId);
         return item?.changes ?? [];
     }
 
@@ -1002,7 +1002,13 @@ export class FileWorkItemStore implements WorkItemStore {
         return nextEntries;
     }
 
-    private async findRepoForItem(id: string): Promise<string | undefined> {
+    private async findRepoForItem(id: string, repoId?: string): Promise<string | undefined> {
+        if (repoId) {
+            const { storageRepoId } = await this.resolveStorageScope(repoId);
+            const index = await this.readIndex(storageRepoId);
+            return index.some(e => e.id === id) ? storageRepoId : undefined;
+        }
+
         const repos = await this.listRepoIds();
         for (const repo of repos) {
             const index = await this.readIndex(repo);

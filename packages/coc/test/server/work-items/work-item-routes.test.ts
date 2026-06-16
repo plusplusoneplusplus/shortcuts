@@ -399,6 +399,40 @@ describe('Work Item Routes', () => {
             expect(detailFromOtherClone.body.title).toBe('Updated through origin');
         });
 
+        it('keeps origin PATCH plan versions isolated for duplicate Work Item IDs', async () => {
+            await restartWithOriginScopedServer();
+
+            const shared = await request('POST', '/api/workspaces/clone-a/work-items', {
+                id: 'duplicate-plan-id',
+                title: 'Shared origin task',
+            });
+            expect(shared.status).toBe(201);
+            const other = await request('POST', '/api/workspaces/other-clone/work-items', {
+                id: 'duplicate-plan-id',
+                title: 'Other origin task',
+            });
+            expect(other.status).toBe(201);
+
+            const sharedUpdate = await request('PATCH', '/api/origins/gh_owner_repo/work-items/duplicate-plan-id', {
+                plan: { content: '# Shared origin plan', resolvedBy: 'user' },
+            });
+            expect(sharedUpdate.status).toBe(200);
+            const otherUpdate = await request('PATCH', '/api/origins/gh_owner_other/work-items/duplicate-plan-id', {
+                plan: { content: '# Other origin plan', resolvedBy: 'user' },
+            });
+            expect(otherUpdate.status).toBe(200);
+
+            const sharedDetail = await request('GET', '/api/origins/gh_owner_repo/work-items/duplicate-plan-id');
+            const otherDetail = await request('GET', '/api/origins/gh_owner_other/work-items/duplicate-plan-id');
+            expect(sharedDetail.body.plan.content).toBe('# Shared origin plan');
+            expect(otherDetail.body.plan.content).toBe('# Other origin plan');
+
+            const sharedVersions = await store.getPlanVersions('duplicate-plan-id', 'gh_owner_repo');
+            const otherVersions = await store.getPlanVersions('duplicate-plan-id', 'gh_owner_other');
+            expect(sharedVersions.map(version => version.content)).toEqual(['# Shared origin plan']);
+            expect(otherVersions.map(version => version.content)).toEqual(['# Other origin plan']);
+        });
+
         it('rejects an explicit workspaceId that resolves to a different origin', async () => {
             await restartWithOriginScopedServer();
 

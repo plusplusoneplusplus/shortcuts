@@ -482,7 +482,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                     : `Incorporated ${comments.length} review comment(s)`,
             };
 
-            await workItemStore.savePlanVersion(workItemId, planVersion);
+            await workItemStore.savePlanVersion(workItemId, planVersion, scope.storageRepoId);
             const updated = await workItemStore.updateWorkItem(workItemId, {
                 status: 'readyToExecute',
                 currentContentVersion: newVersion,
@@ -496,7 +496,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                     reason: planVersion.reason,
                 },
                 reviewComments: [],
-            });
+            }, scope.storageRepoId);
 
             if (updated) {
                 clearWorkItemResponseCacheForWorkspace(scope.storageRepoId);

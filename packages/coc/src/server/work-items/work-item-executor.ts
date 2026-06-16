@@ -49,6 +49,8 @@ export interface ExecuteWorkItemOptions {
     taskFilePath?: string;
     /** Skill names selected by the user for this execution. */
     skillNames?: string[];
+    /** Storage repo/origin hint for resolving duplicate Work Item IDs safely. */
+    repoId?: string;
 }
 
 export interface EnqueueFunction {
@@ -122,7 +124,7 @@ export async function executeWorkItem(
     enqueue: EnqueueFunction,
     options?: ExecuteWorkItemOptions,
 ): Promise<{ taskId: string; ralphSessionId?: string }> {
-    const item = await store.getWorkItem(workItemId);
+    const item = await store.getWorkItem(workItemId, options?.repoId);
     if (!item) {
         throw new Error(`Work item not found: ${workItemId}`);
     }
@@ -236,10 +238,11 @@ export async function executeWorkItem(
         title: executionTitle,
         ...(options?.autoReExecuted ? { autoReExecuted: true } : {}),
     };
-    await store.addExecution(workItemId, execution);
+    const storageRepoId = options?.repoId ?? item.repoId;
+    await store.addExecution(workItemId, execution, storageRepoId);
 
     // Open or reuse a Change entry for this execution cycle
-    const existingChanges = await store.getChanges(workItemId);
+    const existingChanges = await store.getChanges(workItemId, storageRepoId);
     const openChange = existingChanges.find(
         c => c.planVersion === (selectedPlanVersion ?? 0) && c.status === 'open' && !c.taskId,
     );
@@ -248,7 +251,7 @@ export async function executeWorkItem(
             taskId,
             startedAt: execution.startedAt,
             ...(options?.headBefore !== undefined ? { headBefore: options.headBefore } : {}),
-        });
+        }, storageRepoId);
     } else {
         const change: WorkItemChange = {
             id: crypto.randomUUID(),
@@ -259,11 +262,11 @@ export async function executeWorkItem(
             taskId,
             ...(options?.headBefore !== undefined ? { headBefore: options.headBefore } : {}),
         };
-        await store.addChange(workItemId, change);
+        await store.addChange(workItemId, change, storageRepoId);
     }
 
     // Transition to executing
-    await store.updateWorkItem(workItemId, { status: 'executing' });
+    await store.updateWorkItem(workItemId, { status: 'executing' }, storageRepoId);
 
     return { taskId, ...(ralphSessionId ? { ralphSessionId } : {}) };
 }

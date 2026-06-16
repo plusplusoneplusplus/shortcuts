@@ -971,7 +971,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         getSyncEnabled: getWorkItemsSyncEnabled,
         dataDir,
     });
-    registerWorkItemPlanRoutes({ routes, workItemStore, getWsServer, getWorkflowEnabled: getWorkItemsWorkflowEnabled });
+    registerWorkItemPlanRoutes({ routes, workItemStore, processStore: store, getWsServer, getWorkflowEnabled: getWorkItemsWorkflowEnabled });
     registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer, dataDir, getWorkflowEnabled: getWorkItemsWorkflowEnabled });
     registerWorkItemChangesRoutes({ routes, workItemStore, getWsServer });
 

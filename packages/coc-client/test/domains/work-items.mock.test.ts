@@ -471,6 +471,13 @@ describe('WorkItemsClient mock coverage', () => {
     await client.comparePlanVersions('repo/a', 'wi/1', 1, 3);
     await client.restorePlanVersion('repo/a', 'wi/1', 1, { reason: 'Restore v1' });
     await client.refinePlan('repo/a', 'wi/1', { instructions: 'Tighten scope', summary: 'Refine' });
+    await client.getPlanForOrigin('gh_owner_repo', 'wi/1', { workspaceId: 'repo/a' });
+    await client.updatePlanForOrigin('gh_owner_repo', 'wi/1', 'origin plan', { resolvedBy: 'user' }, { workspaceId: 'repo/a' });
+    await client.planVersionsForOrigin('gh_owner_repo', 'wi/1', { workspaceId: 'repo/a' });
+    await client.getPlanVersionForOrigin('gh_owner_repo', 'wi/1', 3, { workspaceId: 'repo/a' });
+    await client.comparePlanVersionsForOrigin('gh_owner_repo', 'wi/1', 1, 3, { workspaceId: 'repo/a' });
+    await client.restorePlanVersionForOrigin('gh_owner_repo', 'wi/1', 1, { reason: 'Restore v1' }, { workspaceId: 'repo/a' });
+    await client.refinePlanForOrigin('gh_owner_repo', 'wi/1', { instructions: 'Tighten scope' }, { workspaceId: 'repo/a' });
     await client.resolveComments('repo/a', 'wi/1', { type: 'commit', commitSha: 'abc123', sourceRunIndex: 2, model: 'gpt-5.5' });
 
     expect(adapter.calls).toEqual([
@@ -500,6 +507,51 @@ describe('WorkItemsClient mock coverage', () => {
         options: {
           method: 'POST',
           body: { instructions: 'Tighten scope', summary: 'Refine' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/plan',
+        options: {
+          query: { workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/plan',
+        options: {
+          method: 'PUT',
+          body: { content: 'origin plan', resolvedBy: 'user', workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/plan/versions',
+        options: {
+          query: { workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/plan/versions/3',
+        options: {
+          query: { workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/plan/versions/compare',
+        options: {
+          query: { base: 1, target: 3, workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/plan/versions/1/restore',
+        options: {
+          method: 'POST',
+          body: { reason: 'Restore v1', workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/plan/refine',
+        options: {
+          method: 'POST',
+          body: { instructions: 'Tighten scope', workspaceId: 'repo/a' },
         },
       },
       {

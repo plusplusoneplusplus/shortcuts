@@ -397,6 +397,7 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                     : undefined;
 
                 const result = await executeWorkItem(workItemId, workItemStore, enqueue, {
+                    repoId,
                     model: body.model,
                     provider,
                     reasoningEffort,
@@ -410,7 +411,7 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                     taskFilePath,
                     skillNames: skillNames?.length ? skillNames : undefined,
                 });
-                const updatedItem = await workItemStore.getWorkItem(workItemId);
+                const updatedItem = await workItemStore.getWorkItem(workItemId, repoId);
                 if (updatedItem) {
                     clearWorkItemResponseCacheForWorkspace(repoId);
                     getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updatedItem });
@@ -492,14 +493,14 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                     prNumber: submitted.prNumber,
                     prUrl: submitted.prUrl,
                     prStatus: 'open',
-                });
+                }, repoId);
                 if (change.taskId) {
-                    await workItemStore.updateExecution(workItemId, change.taskId, { prUrl: submitted.prUrl });
+                    await workItemStore.updateExecution(workItemId, change.taskId, { prUrl: submitted.prUrl }, repoId);
                 }
                 const updated = await workItemStore.updateWorkItem(workItemId, {
                     status: 'done',
                     completedAt,
-                });
+                }, repoId);
                 if (!updated) {
                     return handleAPIError(res, notFound('Work item'));
                 }
@@ -643,7 +644,7 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                     skillNames: ['code-review'],
                     ...(change ? { reviewedChangeId: change.id } : {}),
                     ...(latestImplementation ? { reviewedTaskId: latestImplementation.execution.taskId } : {}),
-                });
+                }, repoId);
 
                 const updatedItem = await workItemStore.getWorkItem(workItemId, repoId);
                 if (updatedItem) {
