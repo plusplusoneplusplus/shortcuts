@@ -114,6 +114,53 @@ describe('PullRequestsClient mock coverage', () => {
     expectEmptyRequest(mock.requests[0], 'GET', '/api/repos/repo%2Fa/pull-requests/42');
   });
 
+  it('lists and gets PRs through origin routes with explicit workspace metadata', async () => {
+    mock = await startMockServer();
+    const pr = { id: 42, title: 'My PR', status: 'active' };
+    mock.on('GET', '/api/origins/gh_owner_repo/pull-requests', {
+      body: {
+        pullRequests: [pr],
+        total: 1,
+      },
+    });
+    mock.on('GET', '/api/origins/gh_owner_repo/pull-requests/42', { body: pr });
+    const client = createClient(mock);
+
+    await expect(client.pullRequests.listForOrigin('gh_owner_repo', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      status: 'open',
+      scope: 'all',
+      top: 10,
+      skip: 5,
+      force: true,
+      author: 'dev',
+      search: 'bug',
+    })).resolves.toEqual({ pullRequests: [pr], total: 1 });
+    await expect(client.pullRequests.getForOrigin('gh_owner_repo', '42', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      force: true,
+    })).resolves.toEqual(pr);
+
+    expectEmptyRequest(mock.requests[0], 'GET', '/api/origins/gh_owner_repo/pull-requests', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      status: 'open',
+      scope: 'all',
+      top: '10',
+      skip: '5',
+      force: 'true',
+      author: 'dev',
+      search: 'bug',
+    });
+    expectEmptyRequest(mock.requests[1], 'GET', '/api/origins/gh_owner_repo/pull-requests/42', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      force: 'true',
+    });
+  });
+
   it('gets comment threads for a PR', async () => {
     mock = await startMockServer();
     const threads = [{ id: 't-1', comments: [{ content: 'LGTM' }] }];

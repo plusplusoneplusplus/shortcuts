@@ -872,6 +872,34 @@ describe('GET /api/repos/:id/pull-requests', () => {
     });
 });
 
+describe('GET /api/origins/:originId/pull-requests', () => {
+    it('lists PRs through an explicit workspace that resolves to the origin', async () => {
+        const res = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests?workspaceId=${REPO_ID}&repoId=${REPO_ID}&scope=all`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { pullRequests: unknown[]; total: number; fetchedAt?: number };
+        expect(body.pullRequests).toHaveLength(1);
+        expect(body.total).toBe(1);
+        expect(body.fetchedAt).toEqual(expect.any(Number));
+        expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'open', top: 100, scope: 'all' });
+    });
+
+    it('rejects origin list requests without a concrete workspace', async () => {
+        const res = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests`);
+        expect(res.status).toBe(400);
+        await expect(res.text()).resolves.toContain('workspaceId is required');
+        expect(mockSvc.listPullRequests).not.toHaveBeenCalled();
+    });
+
+    it('rejects origin list requests when the workspace resolves to a different origin', async () => {
+        mockResolveRepo.mockResolvedValueOnce(makeMockRepoInfo(REPO_ID, 'https://github.com/other/repo.git'));
+
+        const res = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests?workspaceId=${REPO_ID}&repoId=${REPO_ID}`);
+        expect(res.status).toBe(400);
+        await expect(res.text()).resolves.toContain('not gh_org_repo');
+        expect(mockSvc.listPullRequests).not.toHaveBeenCalled();
+    });
+});
+
 // ── GET /api/repos/:id/pull-requests/:prId ───────────────────────────────────
 
 describe('GET /api/repos/:id/pull-requests/:prId', () => {
@@ -906,6 +934,23 @@ describe('GET /api/repos/:id/pull-requests/:prId', () => {
         (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('oops'));
         const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
         expect(res.status).toBe(500);
+    });
+});
+
+describe('GET /api/origins/:originId/pull-requests/:prId', () => {
+    it('gets a single PR through an explicit workspace that resolves to the origin', async () => {
+        const res = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/42?workspaceId=${REPO_ID}&repoId=${REPO_ID}`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { number: number };
+        expect(body.number).toBe(42);
+        expect(mockSvc.getPullRequest).toHaveBeenCalledWith(REPO_ID, '42');
+    });
+
+    it('rejects origin detail requests without a concrete workspace', async () => {
+        const res = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/42`);
+        expect(res.status).toBe(400);
+        await expect(res.text()).resolves.toContain('workspaceId is required');
+        expect(mockSvc.getPullRequest).not.toHaveBeenCalled();
     });
 });
 

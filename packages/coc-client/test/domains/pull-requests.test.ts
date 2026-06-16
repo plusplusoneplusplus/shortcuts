@@ -67,6 +67,61 @@ describe('PullRequestsClient', () => {
     ]);
   });
 
+  it('lists and gets provider PR data through origin APIs with explicit workspace metadata', async () => {
+    const adapter = createMockAdapter({});
+    const client = new PullRequestsClient(adapter);
+    const controller = new AbortController();
+
+    await client.listForOrigin('gh_owner_repo', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      status: 'open',
+      scope: 'all',
+      top: 10,
+      skip: 5,
+      force: true,
+      author: 'me',
+      search: 'fix',
+    }, { signal: controller.signal });
+    await client.getForOrigin('gh_owner_repo', 'pr/1', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      force: true,
+      signal: controller.signal,
+    });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/origins/gh_owner_repo/pull-requests',
+        options: {
+          query: {
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
+            status: 'open',
+            scope: 'all',
+            top: 10,
+            skip: 5,
+            force: 'true',
+            author: 'me',
+            search: 'fix',
+          },
+          signal: controller.signal,
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/pull-requests/pr%2F1',
+        options: {
+          query: {
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
+            force: 'true',
+          },
+          signal: controller.signal,
+        },
+      },
+    ]);
+  });
+
   it('lists, records, and removes recently opened PRs with workspace scope', async () => {
     const adapter = createMockAdapter({ entries: [] });
     const client = new PullRequestsClient(adapter);

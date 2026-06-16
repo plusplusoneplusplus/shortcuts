@@ -127,6 +127,10 @@ all have their own `references/*.md`.
   reads. The Team toolbar status UI reads origin batch status and routes manual
   "Classify now" actions through origin APIs backed by the same bounded server
   helper, passing workspace/repo metadata only to select the concrete clone.
+- **Pull Request provider list/detail callers** must use
+  `/api/origins/:originId/pull-requests...` or
+  `client.pullRequests.listForOrigin/getForOrigin(...)`, passing `workspaceId`
+  and optional `repoId` only to select the concrete clone for provider access.
 - **Pull Request review progress** for PR pop-out reviewed/visited file state is
   durable origin state. New callers must use
   `/api/origins/:originId/pull-requests/:prId/review-progress` or

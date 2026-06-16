@@ -1,11 +1,14 @@
 /**
  * Pull Request Routes
  *
- * Registers /api/repos/:repoId/pull-requests/* endpoints.
+ * Registers /api/origins/:originId/pull-requests/* and
+ * /api/repos/:repoId/pull-requests/* endpoints.
  * Uses ProviderFactory to resolve the correct adapter per repo.
  *
  * GET  /api/repos/:repoId/pull-requests              — list PRs
  * GET  /api/repos/:repoId/pull-requests/:prId        — get single PR
+ * GET  /api/origins/:originId/pull-requests          — list PRs through an explicit workspace
+ * GET  /api/origins/:originId/pull-requests/:prId    — get single PR through an explicit workspace
  * GET  /api/repos/:repoId/pull-requests/:prId/threads    — get comment threads
  * GET  /api/repos/:repoId/pull-requests/:prId/reviewers  — get reviewers
  * GET  /api/repos/:repoId/pull-requests/:prId/commits    — get commits
@@ -918,6 +921,107 @@ export function registerPrRoutes(
 ): void {
     const svc = service ?? new RepoTreeService(dataDir, undefined, store);
 
+    async function sendPullRequestList(
+        req: Parameters<Route['handler']>[0],
+        res: Parameters<Route['handler']>[1],
+        options: {
+            workspaceId: string;
+            repoId: string;
+            storageScope: PullRequestStorageScope;
+        },
+    ): Promise<void> {
+        const query = url.parse(req.url ?? '', true).query;
+        const status = typeof query.status === 'string' ? query.status : 'open';
+        const scope = typeof query.scope === 'string' && (query.scope === 'mine' || query.scope === 'all') ? query.scope : 'mine';
+        const top = Math.min(+(query.top ?? 25), 100);
+        const skip = +(query.skip ?? 0);
+        const force = query.force === 'true';
+        const cacheScopeId = options.storageScope.storageOriginId;
+        const cacheKey = makePrCacheKey(cacheScopeId, status, scope);
+
+        let entry: PrCacheEntry;
+
+        const cached = !force ? prListCache.get(cacheKey) : undefined;
+        if (force) prListCache.delete(cacheKey);
+
+        if (cached && cached.expiresAt > Date.now()) {
+            entry = cached;
+        } else {
+            entry = await refreshPullRequestListCache(dataDir, svc, options.repoId, cacheScopeId, status, scope);
+        }
+
+        let page = entry.data.slice(skip, skip + top);
+
+        if (typeof query.author === 'string' && query.author) {
+            const authorFilter = query.author.toLowerCase();
+            page = page.filter((pr: any) =>
+                pr.author?.displayName?.toLowerCase().includes(authorFilter) ||
+                pr.author?.id?.toLowerCase().includes(authorFilter),
+            );
+        }
+        if (typeof query.search === 'string' && query.search) {
+            const searchFilter = query.search.toLowerCase();
+            page = page.filter((pr: any) => pr.title.toLowerCase().includes(searchFilter));
+        }
+
+        if (isTeamAutoClassificationEnabled(autoClassification)) {
+            await triggerTeamAutoClassification({
+                dataDir,
+                store: autoClassification!.store,
+                bridge: autoClassification!.bridge,
+                repoTreeService: svc,
+                prepareTaskForEnqueue: autoClassification!.prepareTaskForEnqueue,
+                workspaceId: options.workspaceId,
+                repoId: options.repoId,
+                pullRequests: page,
+                storageScope: options.storageScope,
+            });
+        }
+
+        sendJson(res, { pullRequests: page, total: page.length, fetchedAt: entry.fetchedAt });
+    }
+
+    async function sendPullRequestDetail(
+        req: Parameters<Route['handler']>[0],
+        res: Parameters<Route['handler']>[1],
+        options: {
+            repoId: string;
+            prId: string;
+            cacheScopeId: string;
+        },
+    ): Promise<void> {
+        const query = url.parse(req.url ?? '', true).query;
+        const force = query.force === 'true';
+        const cacheKey = makePrDetailCacheKey(options.cacheScopeId, options.prId);
+
+        if (force) {
+            prDetailCache.delete(cacheKey);
+            clearPrDiffCacheEntry(options.cacheScopeId, options.prId);
+            clearPrDiffStatsCacheEntries(options.cacheScopeId, options.prId);
+            clearPrSubCacheEntries(options.cacheScopeId, options.prId);
+            console.debug(`[pr-detail-cache] bypass key=${cacheKey}`);
+        }
+
+        const cached = !force ? prDetailCache.get(cacheKey) : undefined;
+        if (cached && cached.expiresAt > Date.now()) {
+            console.debug(`[pr-detail-cache] hit key=${cacheKey}`);
+            return sendJson(res, cached.data);
+        }
+
+        if (!cached) {
+            console.debug(`[pr-detail-cache] miss key=${cacheKey}`);
+        }
+
+        const prSvc = await resolvePullRequestsService(dataDir, svc, options.repoId);
+        const pr = await getCachedPullRequestDetail(
+            options.cacheScopeId,
+            options.repoId,
+            options.prId,
+            prSvc.getPullRequest.bind(prSvc),
+        );
+        sendJson(res, pr);
+    }
+
     // -- Origin-scoped recent PRs ---------------------------------------------
 
     routes.push({
@@ -1279,6 +1383,63 @@ export function registerPrRoutes(
         },
     });
 
+    // -- Origin-scoped provider PR list/detail ---------------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/origins\/([^/]+)\/pull-requests$/,
+        handler: async (req, res, match) => {
+            try {
+                const originId = parseOriginId(match![1]);
+                if (!originId) return send400(res, 'originId must be a non-empty string');
+
+                const scopeResult = await resolveOriginPrRepoScope(req, undefined, originId, svc, store);
+                if (!scopeResult.ok) return sendOriginPrRepoScopeError(res, scopeResult);
+                const { workspaceId, repoId, storageScope } = scopeResult.value;
+
+                await sendPullRequestList(req, res, { workspaceId, repoId, storageScope });
+            } catch (err) {
+                if (sendPullRequestRouteError(res, err)) return;
+                if (isAuthError(err)) {
+                    sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 401);
+                } else {
+                    send500(res, err instanceof Error ? err.message : String(err));
+                }
+            }
+        },
+    });
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/origins\/([^/]+)\/pull-requests\/([^/]+)$/,
+        handler: async (req, res, match) => {
+            try {
+                const originId = parseOriginId(match![1]);
+                if (!originId) return send400(res, 'originId must be a non-empty string');
+
+                const prId = decodeURIComponent(match![2]);
+                const scopeResult = await resolveOriginPrRepoScope(req, undefined, originId, svc, store);
+                if (!scopeResult.ok) return sendOriginPrRepoScopeError(res, scopeResult);
+                const { repoId, storageScope } = scopeResult.value;
+
+                await sendPullRequestDetail(req, res, {
+                    repoId,
+                    prId,
+                    cacheScopeId: storageScope.storageOriginId,
+                });
+            } catch (err) {
+                if (sendPullRequestRouteError(res, err)) return;
+                if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
+                    send404(res, err.message);
+                } else if (isAuthError(err)) {
+                    sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 401);
+                } else {
+                    send500(res, err instanceof Error ? err.message : String(err));
+                }
+            }
+        },
+    });
+
     // -- List PRs -------------------------------------------------------------
 
     routes.push({
@@ -1288,63 +1449,13 @@ export function registerPrRoutes(
             try {
                 const repoId = decodeURIComponent(match![1]);
                 const query = url.parse(req.url ?? '', true).query;
-                const status = typeof query.status === 'string' ? query.status : 'open';
-                const scope = typeof query.scope === 'string' && (query.scope === 'mine' || query.scope === 'all') ? query.scope : 'mine';
-                const top = Math.min(+(query.top ?? 25), 100);
-                const skip = +(query.skip ?? 0);
-                const force = query.force === 'true';
                 const workspaceId = typeof query.workspaceId === 'string' && query.workspaceId.trim()
                     ? query.workspaceId.trim()
                     : repoId;
                 const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
                 const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId, repo);
-                const cacheScopeId = prStorageScope.storageOriginId;
-                const cacheKey = makePrCacheKey(cacheScopeId, status, scope);
-
-                let entry: PrCacheEntry;
-
-                // Serve from cache if valid and not forced
-                const cached = !force ? prListCache.get(cacheKey) : undefined;
-                if (force) prListCache.delete(cacheKey);
-
-                if (cached && cached.expiresAt > Date.now()) {
-                    entry = cached;
-                } else {
-                    entry = await refreshPullRequestListCache(dataDir, svc, repoId, cacheScopeId, status, scope);
-                }
-
-                // Apply in-memory pagination
-                let page = entry.data.slice(skip, skip + top);
-
-                // Apply server-side author and title filters
-                if (typeof query.author === 'string' && query.author) {
-                    const authorFilter = query.author.toLowerCase();
-                    page = page.filter((pr: any) =>
-                        pr.author?.displayName?.toLowerCase().includes(authorFilter) ||
-                        pr.author?.id?.toLowerCase().includes(authorFilter),
-                    );
-                }
-                if (typeof query.search === 'string' && query.search) {
-                    const searchFilter = query.search.toLowerCase();
-                    page = page.filter((pr: any) => pr.title.toLowerCase().includes(searchFilter));
-                }
-
-                if (isTeamAutoClassificationEnabled(autoClassification)) {
-                    await triggerTeamAutoClassification({
-                        dataDir,
-                        store: autoClassification!.store,
-                        bridge: autoClassification!.bridge,
-                        repoTreeService: svc,
-                        prepareTaskForEnqueue: autoClassification!.prepareTaskForEnqueue,
-                        workspaceId,
-                        repoId,
-                        pullRequests: page,
-                        storageScope: prStorageScope,
-                    });
-                }
-
-                sendJson(res, { pullRequests: page, total: page.length, fetchedAt: entry.fetchedAt });
+                await sendPullRequestList(req, res, { workspaceId, repoId, storageScope: prStorageScope });
             } catch (err) {
                 if (sendPullRequestRouteError(res, err)) return;
                 if (isAuthError(err)) {
@@ -1711,50 +1822,15 @@ export function registerPrRoutes(
                 const repoId = decodeURIComponent(match![1]);
                 const prId = decodeURIComponent(match![2]);
                 const query = url.parse(req.url ?? '', true).query;
-                const force = query.force === 'true';
                 const workspaceId = typeof query.workspaceId === 'string' && query.workspaceId.trim()
                     ? query.workspaceId.trim()
                     : repoId;
                 const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
                 const cacheScopeId = await resolvePrCacheScopeIdForRoute(svc, store, repoId, workspaceId, repo);
-                const cacheKey = makePrDetailCacheKey(cacheScopeId, prId);
-
-                // Serve from cache if valid and not forced
-                if (force) {
-                    prDetailCache.delete(cacheKey);
-                    // Also evict diff-related caches so the next diff/stat request
-                    // refetches for the current PR head without touching other PRs.
-                    clearPrDiffCacheEntry(cacheScopeId, prId);
-                    clearPrDiffStatsCacheEntries(cacheScopeId, prId);
-                    // Evict all sub-endpoint caches for this PR.
-                    clearPrSubCacheEntries(cacheScopeId, prId);
-                    console.debug(`[pr-detail-cache] bypass key=${cacheKey}`);
-                }
-
-                const cached = !force ? prDetailCache.get(cacheKey) : undefined;
-                if (cached && cached.expiresAt > Date.now()) {
-                    console.debug(`[pr-detail-cache] hit key=${cacheKey}`);
-                    return sendJson(res, cached.data);
-                }
-
-                if (!cached) {
-                    console.debug(`[pr-detail-cache] miss key=${cacheKey}`);
-                }
-
-                const cfg = await readProvidersConfig(dataDir);
-                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
-                if (!prSvc || isNoAdoCredentials(prSvc)) {
-                    if (isNoAdoCredentials(prSvc)) {
-                        return sendJson(res, { error: 'no-ado-credentials' }, 401);
-                    }
-                    const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
-                    return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
-                }
-
-                const pr = await getCachedPullRequestDetail(cacheScopeId, repoId, prId, prSvc.getPullRequest.bind(prSvc));
-                sendJson(res, pr);
+                await sendPullRequestDetail(req, res, { repoId, prId, cacheScopeId });
             } catch (err) {
+                if (sendPullRequestRouteError(res, err)) return;
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
                     send404(res, err.message);
                 } else if (isAuthError(err)) {

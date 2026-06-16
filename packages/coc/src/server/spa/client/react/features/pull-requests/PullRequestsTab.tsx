@@ -167,9 +167,8 @@ function buildRecentOpenedRecord(pr: unknown, prNumber: number): { number: numbe
 
 export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequestsTabProps) {
     const { state, dispatch } = useApp();
-    // Provider-backed PR list/detail calls stay on the selected clone. Durable
-    // PR state uses the workspace's canonical origin and carries workspace
-    // metadata only when a route needs a concrete clone.
+    // Provider-backed PR list/detail calls use origin routes with explicit
+    // selected-clone metadata; durable PR state shares the same origin key.
     const cloneClient = useCocClient(workspaceId);
     const originId = useMemo(
         () => resolveCanonicalOriginId({ workspaceId, remoteUrl }),
@@ -253,8 +252,8 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
     const effectiveScope = scopeForFilter(activeFilter);
 
     const cacheKey = useMemo(
-        () => `${repoId}|${STATUS_FILTER}|${effectiveScope}`,
-        [repoId, effectiveScope],
+        () => `${originId}|${STATUS_FILTER}|${effectiveScope}`,
+        [originId, effectiveScope],
     );
 
     const fetchPrs = useCallback((reset = false, force = false) => {
@@ -289,9 +288,11 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
             skipRef.current = 0;
         }
 
-        cloneClient.pullRequests.list(
-            repoId,
+        cloneClient.pullRequests.listForOrigin(
+            originId,
             {
+                workspaceId,
+                repoId,
                 status: STATUS_FILTER,
                 scope: effectiveScope,
                 top: PAGE_SIZE,
@@ -336,7 +337,7 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
                 }
             })
             .finally(() => setLoading(false));
-    }, [repoId, effectiveScope, cacheKey, cloneClient]);
+    }, [repoId, workspaceId, originId, effectiveScope, cacheKey, cloneClient]);
 
     // Re-fetch from scratch whenever the active scope changes.
     useEffect(() => {
@@ -782,10 +783,18 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
     }
 
     /** Navigate to a PR detail page after validating that the PR exists. */
-    const openPrInRepo = useCallback(async (targetRepoId: string, prNumber: number): Promise<unknown> => {
+    const openPrInRepo = useCallback(async (targetRepoId: string, targetWorkspaceId: string, prNumber: number): Promise<unknown> => {
+        const targetWorkspace = (state.workspaces ?? []).find((ws: WorkspaceLike) => ws.id === targetWorkspaceId);
+        const targetOriginId = resolveCanonicalOriginId({
+            workspaceId: targetWorkspaceId,
+            remoteUrl: targetWorkspace?.remoteUrl ?? (targetWorkspaceId === workspaceId ? remoteUrl : undefined),
+        });
         let pr: unknown;
         try {
-            pr = await cloneClient.pullRequests.get(targetRepoId, String(prNumber));
+            pr = await cloneClient.pullRequests.getForOrigin(targetOriginId, String(prNumber), {
+                workspaceId: targetWorkspaceId,
+                repoId: targetRepoId,
+            });
         } catch (err) {
             if (err instanceof CocApiError && err.status === 404) {
                 throw new PullRequestOpenError(`Pull request #${prNumber} not found.`, 404);
@@ -797,7 +806,7 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
         window.location.hash = `#repos/${encodeURIComponent(targetRepoId)}/pull-requests/${prNumber}/overview`;
         if (isMobile) setMobileShowDetail(true);
         return pr;
-    }, [dispatch, isMobile, cloneClient]);
+    }, [dispatch, isMobile, remoteUrl, state.workspaces, workspaceId, cloneClient]);
 
     const recordRecentOpenedPr = useCallback(async (
         targetRepoId: string,
@@ -834,7 +843,7 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
         setOpenPrError(null);
         setOpenPrLoading(true);
         try {
-            await openPrInRepo(entry.repoId, entry.number);
+            await openPrInRepo(entry.repoId, entry.workspaceId, entry.number);
         } catch (err) {
             setOpenPrError(err instanceof Error ? err.message : String(err));
             if (err instanceof PullRequestOpenError && err.status === 404) {
@@ -881,7 +890,7 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
 
         setOpenPrLoading(true);
         try {
-            const pr = await openPrInRepo(targetRepoId, prNumber);
+            const pr = await openPrInRepo(targetRepoId, targetWorkspaceId, prNumber);
             try {
                 await recordRecentOpenedPr(targetRepoId, targetWorkspaceId, prNumber, pr);
             } catch (err) {

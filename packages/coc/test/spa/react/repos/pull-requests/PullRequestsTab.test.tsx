@@ -1329,7 +1329,9 @@ describe('open PR by number or URL', () => {
         });
 
         await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
-        expect(String(fetchMock.mock.calls[3][0])).toContain('/repos/repo-1/pull-requests/8');
+        expect(String(fetchMock.mock.calls[3][0])).toContain('/origins/local_ws-1/pull-requests/8');
+        expect(String(fetchMock.mock.calls[3][0])).toContain('workspaceId=ws-1');
+        expect(String(fetchMock.mock.calls[3][0])).toContain('repoId=repo-1');
         expect(window.location.hash).toContain('#repos/repo-1/pull-requests/8/overview');
     });
 
@@ -1350,7 +1352,7 @@ describe('open PR by number or URL', () => {
         expect(screen.queryByTestId('recent-opened-prs')).not.toBeInTheDocument();
     });
 
-    it('opens a PR by bare number on Enter, validating via /pull-requests/:n first', async () => {
+    it('opens a PR by bare number on Enter, validating through the origin detail API first', async () => {
         const fetchMock = vi.fn()
             // initial list fetch
             .mockResolvedValueOnce(jsonResponse({ pullRequests: [] }))
@@ -1380,7 +1382,9 @@ describe('open PR by number or URL', () => {
         });
 
         await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
-        expect(String(fetchMock.mock.calls[3][0])).toContain('/repos/repo-1/pull-requests/7');
+        expect(String(fetchMock.mock.calls[3][0])).toContain('/origins/local_ws-1/pull-requests/7');
+        expect(String(fetchMock.mock.calls[3][0])).toContain('workspaceId=ws-1');
+        expect(String(fetchMock.mock.calls[3][0])).toContain('repoId=repo-1');
         expect(String(fetchMock.mock.calls[4][0])).toContain('/origins/local_ws-1/pull-requests/recent-opened');
         expect(fetchMock.mock.calls[4][1]?.method).toBe('POST');
         expect(JSON.parse(fetchMock.mock.calls[4][1]?.body as string)).toMatchObject({
@@ -1416,7 +1420,9 @@ describe('open PR by number or URL', () => {
         });
 
         await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
-        expect(String(fetchMock.mock.calls[3][0])).toContain('/repos/repo-1/pull-requests/12');
+        expect(String(fetchMock.mock.calls[3][0])).toContain('/origins/local_ws-1/pull-requests/12');
+        expect(String(fetchMock.mock.calls[3][0])).toContain('workspaceId=ws-1');
+        expect(String(fetchMock.mock.calls[3][0])).toContain('repoId=repo-1');
         expect(window.location.hash).toContain('pull-requests/12/overview');
     });
 
@@ -1445,7 +1451,9 @@ describe('open PR by number or URL', () => {
         });
 
         await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
-        expect(String(fetchMock.mock.calls[3][0])).toContain('/repos/ws-2/pull-requests/99');
+        expect(String(fetchMock.mock.calls[3][0])).toContain('/origins/gh_acme_api/pull-requests/99');
+        expect(String(fetchMock.mock.calls[3][0])).toContain('workspaceId=ws-2');
+        expect(String(fetchMock.mock.calls[3][0])).toContain('repoId=ws-2');
         expect(String(fetchMock.mock.calls[4][0])).toContain('/origins/gh_acme_api/pull-requests/recent-opened');
         expect(JSON.parse(fetchMock.mock.calls[4][1]?.body as string)).toMatchObject({
             workspaceId: 'ws-2',

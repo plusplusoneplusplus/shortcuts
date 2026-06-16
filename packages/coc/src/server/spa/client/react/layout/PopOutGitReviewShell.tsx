@@ -686,7 +686,7 @@ function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLoaded }:
         const client = getSpaCocClient();
 
         Promise.all([
-            client.pullRequests.get(repoId, prId) as Promise<{ title?: string; headSha?: string }>,
+            client.pullRequests.getForOrigin(progressOriginId, prId, { workspaceId, repoId }) as Promise<{ title?: string; headSha?: string }>,
             client.pullRequests.getDiff(repoId, prId),
         ])
             .then(([prData, diffText]) => {
@@ -698,7 +698,7 @@ function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLoaded }:
             })
             .catch((err: Error) => setError(err.message))
             .finally(() => setLoading(false));
-    }, [repoId, prId]);
+    }, [repoId, prId, progressOriginId, workspaceId]);
 
     // Sync the current selection into the persistence snapshot so reloads
     // remember which file the reviewer was on.

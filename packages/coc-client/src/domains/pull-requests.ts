@@ -48,11 +48,36 @@ type OriginPrStateOptions = Pick<CocRequestOptions, 'signal'> & {
   repoId?: string;
 };
 
+type OriginPrProviderOptions = Pick<CocRequestOptions, 'signal'> & {
+  workspaceId: string;
+  repoId?: string;
+};
+
+type OriginPrDetailOptions = OriginPrProviderOptions & {
+  force?: boolean;
+};
+
 function serializeOriginPrStateQuery(options?: OriginPrStateOptions): CocRequestOptions['query'] {
   if (!options?.workspaceId && !options?.repoId) return undefined;
   return {
     workspaceId: options.workspaceId,
     repoId: options.repoId,
+  };
+}
+
+function serializeOriginPrListQuery(query: PullRequestListQuery & { workspaceId: string; repoId?: string }): CocRequestOptions['query'] {
+  return {
+    ...serializePrListQuery(query),
+    workspaceId: query.workspaceId,
+    repoId: query.repoId,
+  };
+}
+
+function serializeOriginPrDetailQuery(options: OriginPrDetailOptions): CocRequestOptions['query'] {
+  return {
+    workspaceId: options.workspaceId,
+    repoId: options.repoId,
+    force: options.force === true ? 'true' : undefined,
   };
 }
 
@@ -97,10 +122,28 @@ export class PullRequestsClient {
     });
   }
 
+  listForOrigin(
+    originId: string,
+    query: PullRequestListQuery & { workspaceId: string; repoId?: string },
+    options?: Pick<CocRequestOptions, 'signal'>,
+  ): Promise<PullRequestListResponse> {
+    return this.transport.request<PullRequestListResponse>(`/origins/${encodePathSegment(originId)}/pull-requests`, {
+      query: serializeOriginPrListQuery(query),
+      signal: options?.signal,
+    });
+  }
+
   get(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'> & { force?: boolean }): Promise<unknown> {
     return this.transport.request<unknown>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}`, {
       query: options?.force ? { force: 'true' } : undefined,
       signal: options?.signal,
+    });
+  }
+
+  getForOrigin(originId: string, prId: string, options: OriginPrDetailOptions): Promise<unknown> {
+    return this.transport.request<unknown>(`/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}`, {
+      query: serializeOriginPrDetailQuery(options),
+      signal: options.signal,
     });
   }
 
