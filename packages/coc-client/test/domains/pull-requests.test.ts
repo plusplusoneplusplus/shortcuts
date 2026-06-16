@@ -215,6 +215,11 @@ describe('PullRequestsClient', () => {
     await client.createChatBinding('ws/a', '142', 'task-1');
     await client.deleteChatBinding('ws/a', '142');
     await client.startFreshChat('ws/a', '142');
+    await client.listChatBindingsForOrigin('gh_owner_repo');
+    await client.getChatBindingForOrigin('gh_owner_repo', '142');
+    await client.createChatBindingForOrigin('gh_owner_repo', '142', 'task-2');
+    await client.deleteChatBindingForOrigin('gh_owner_repo', '142');
+    await client.startFreshChatForOrigin('gh_owner_repo', '142', 'ws/a');
 
     expect(adapter.calls).toEqual([
       { path: '/workspaces/ws%2Fa/pull-request-chat-bindings', options: undefined },
@@ -230,6 +235,20 @@ describe('PullRequestsClient', () => {
       {
         path: '/workspaces/ws%2Fa/pull-request-chat-bindings/142/fresh',
         options: { method: 'POST', body: {} },
+      },
+      { path: '/origins/gh_owner_repo/pull-request-chat-bindings', options: undefined },
+      { path: '/origins/gh_owner_repo/pull-request-chat-bindings/142', options: undefined },
+      {
+        path: '/origins/gh_owner_repo/pull-request-chat-bindings',
+        options: { method: 'POST', body: { prId: '142', taskId: 'task-2' } },
+      },
+      {
+        path: '/origins/gh_owner_repo/pull-request-chat-bindings/142',
+        options: { method: 'DELETE' },
+      },
+      {
+        path: '/origins/gh_owner_repo/pull-request-chat-bindings/142/fresh',
+        options: { method: 'POST', body: {}, query: { workspaceId: 'ws/a' } },
       },
     ]);
   });

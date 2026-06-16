@@ -299,6 +299,20 @@ describe('PullRequestsClient mock coverage', () => {
       status: 204,
       body: undefined,
     });
+    mock.on('GET', '/api/origins/gh_owner_repo/pull-request-chat-bindings', {
+      body: { bindings: { '142': { taskId: 'task-origin', createdAt: now } } },
+    });
+    mock.on('GET', '/api/origins/gh_owner_repo/pull-request-chat-bindings/142', {
+      body: { prId: '142', taskId: 'task-origin' },
+    });
+    mock.on('POST', '/api/origins/gh_owner_repo/pull-request-chat-bindings', {
+      status: 201,
+      body: { prId: '142', taskId: 'task-origin' },
+    });
+    mock.on('DELETE', '/api/origins/gh_owner_repo/pull-request-chat-bindings/142', {
+      status: 204,
+      body: undefined,
+    });
     const client = createClient(mock);
 
     await expect(client.pullRequests.listChatBindings('ws-1')).resolves.toEqual({
@@ -313,6 +327,18 @@ describe('PullRequestsClient mock coverage', () => {
       taskId: 'task-1',
     });
     await expect(client.pullRequests.deleteChatBinding('ws-1', '142')).resolves.toBeUndefined();
+    await expect(client.pullRequests.listChatBindingsForOrigin('gh_owner_repo')).resolves.toEqual({
+      bindings: { '142': { taskId: 'task-origin', createdAt: now } },
+    });
+    await expect(client.pullRequests.getChatBindingForOrigin('gh_owner_repo', '142')).resolves.toEqual({
+      prId: '142',
+      taskId: 'task-origin',
+    });
+    await expect(client.pullRequests.createChatBindingForOrigin('gh_owner_repo', '142', 'task-origin')).resolves.toEqual({
+      prId: '142',
+      taskId: 'task-origin',
+    });
+    await expect(client.pullRequests.deleteChatBindingForOrigin('gh_owner_repo', '142')).resolves.toBeUndefined();
 
     expectEmptyRequest(mock.requests[0], 'GET', '/api/workspaces/ws-1/pull-request-chat-bindings');
     expectEmptyRequest(mock.requests[1], 'GET', '/api/workspaces/ws-1/pull-request-chat-bindings/142');
@@ -321,6 +347,13 @@ describe('PullRequestsClient mock coverage', () => {
       taskId: 'task-1',
     });
     expect(mock.requests[3]).toMatchObject({ method: 'DELETE', path: '/api/workspaces/ws-1/pull-request-chat-bindings/142' });
+    expectEmptyRequest(mock.requests[4], 'GET', '/api/origins/gh_owner_repo/pull-request-chat-bindings');
+    expectEmptyRequest(mock.requests[5], 'GET', '/api/origins/gh_owner_repo/pull-request-chat-bindings/142');
+    expectJsonRequest(mock.requests[6], 'POST', '/api/origins/gh_owner_repo/pull-request-chat-bindings', {
+      prId: '142',
+      taskId: 'task-origin',
+    });
+    expect(mock.requests[7]).toMatchObject({ method: 'DELETE', path: '/api/origins/gh_owner_repo/pull-request-chat-bindings/142' });
   });
 });
 

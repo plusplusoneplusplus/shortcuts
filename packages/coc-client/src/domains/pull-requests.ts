@@ -227,6 +227,39 @@ export class PullRequestsClient {
     );
   }
 
+  listChatBindingsForOrigin(originId: string): Promise<PullRequestChatBindingListResponse> {
+    return this.transport.request<PullRequestChatBindingListResponse>(
+      `/origins/${encodePathSegment(originId)}/pull-request-chat-bindings`,
+    );
+  }
+
+  getChatBindingForOrigin(originId: string, prId: string): Promise<PullRequestChatBinding> {
+    return this.transport.request<PullRequestChatBinding>(
+      `/origins/${encodePathSegment(originId)}/pull-request-chat-bindings/${encodePathSegment(prId)}`,
+    );
+  }
+
+  createChatBindingForOrigin(originId: string, prId: string, taskId: string): Promise<PullRequestChatBinding> {
+    return this.transport.request<PullRequestChatBinding>(
+      `/origins/${encodePathSegment(originId)}/pull-request-chat-bindings`,
+      { method: 'POST', body: { prId, taskId } },
+    );
+  }
+
+  deleteChatBindingForOrigin(originId: string, prId: string): Promise<void> {
+    return this.transport.request<void>(
+      `/origins/${encodePathSegment(originId)}/pull-request-chat-bindings/${encodePathSegment(prId)}`,
+      { method: 'DELETE' },
+    );
+  }
+
+  startFreshChatForOrigin(originId: string, prId: string, workspaceId: string): Promise<PullRequestChatFreshResponse> {
+    return this.transport.request<PullRequestChatFreshResponse>(
+      `/origins/${encodePathSegment(originId)}/pull-request-chat-bindings/${encodePathSegment(prId)}/fresh`,
+      { method: 'POST', body: {}, query: { workspaceId } },
+    );
+  }
+
   /** Trigger on-demand AI classification of a PR's diff hunks. */
   classify(repoId: string, prId: string, body: ClassifyDiffRequest, options?: Pick<CocRequestOptions, 'signal'>): Promise<ClassifyDiffResponse> {
     return this.transport.request<ClassifyDiffResponse>(

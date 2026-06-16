@@ -328,9 +328,9 @@ Users can add up to **10** additional notes roots per workspace — subfolders i
 | GET | `/api/repos/:repoId/pull-requests/suggestions` | Read cached AI-ranked PR suggestions from the resolved canonical origin (`workspaceId` query selects the concrete workspace and defaults to `repoId`); legacy workspace/repo cache files migrate into the origin file on access |
 | POST | `/api/repos/:repoId/pull-requests/suggestions/refresh` | Rank open PRs using origin-scoped cached review history and persist suggestions under the resolved canonical origin |
 | GET/PUT | `/api/repos/:repoId/pull-requests/:prId/review-progress` | Read or save reviewer progress under the resolved canonical origin; `workspaceId` selects the concrete workspace and `headSha` is required. Legacy workspace/repo progress files migrate into the origin file on access. |
-| GET/POST | `/api/workspaces/:id/pull-request-chat-bindings` | List or create workspace-scoped pull request → chat task bindings |
-| GET/DELETE | `/api/workspaces/:id/pull-request-chat-bindings/:prId` | Read or remove one workspace-scoped PR chat binding |
-| POST | `/api/workspaces/:id/pull-request-chat-bindings/:prId/fresh` | Archive the currently bound PR chat process and clear the binding so the same workspace/PR target starts from an empty chat on the next send; stale bindings whose process is already missing are cleared and return `archivedTaskId: null` |
+| GET/POST | `/api/origins/:originId/pull-request-chat-bindings` | List or create origin-scoped pull request → chat task bindings. Workspace-scoped callers resolve to their canonical origin and migrate legacy workspace rows on access. |
+| GET/DELETE | `/api/origins/:originId/pull-request-chat-bindings/:prId` | Read or remove one origin-scoped PR chat binding |
+| POST | `/api/origins/:originId/pull-request-chat-bindings/:prId/fresh` | Archive the currently bound PR chat process and clear the binding so the same origin/PR target starts from an empty chat on the next send. Requires `workspaceId` query parameter to select a concrete clone and rejects workspaces that resolve to a different origin; stale bindings whose process is already missing are cleared and return `archivedTaskId: null` |
 
 ## Diff Classification
 
