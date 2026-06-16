@@ -371,6 +371,39 @@ export class WorkItemsClient {
     );
   }
 
+  listChatBindingsForOrigin(originId: string): Promise<WorkItemChatBindingListResponse> {
+    return this.transport.request<WorkItemChatBindingListResponse>(
+      `/origins/${encodePathSegment(originId)}/work-item-chat-bindings`,
+    );
+  }
+
+  getChatBindingForOrigin(originId: string, workItemId: string): Promise<WorkItemChatBinding> {
+    return this.transport.request<WorkItemChatBinding>(
+      `/origins/${encodePathSegment(originId)}/work-item-chat-bindings/${encodePathSegment(workItemId)}`,
+    );
+  }
+
+  createChatBindingForOrigin(originId: string, workItemId: string, taskId: string): Promise<WorkItemChatBinding> {
+    return this.transport.request<WorkItemChatBinding>(
+      `/origins/${encodePathSegment(originId)}/work-item-chat-bindings`,
+      { method: 'POST', body: { workItemId, taskId } },
+    );
+  }
+
+  deleteChatBindingForOrigin(originId: string, workItemId: string): Promise<void> {
+    return this.transport.request<void>(
+      `/origins/${encodePathSegment(originId)}/work-item-chat-bindings/${encodePathSegment(workItemId)}`,
+      { method: 'DELETE' },
+    );
+  }
+
+  startFreshChatForOrigin(originId: string, workItemId: string, workspaceId: string): Promise<WorkItemChatFreshResponse> {
+    return this.transport.request<WorkItemChatFreshResponse>(
+      `/origins/${encodePathSegment(originId)}/work-item-chat-bindings/${encodePathSegment(workItemId)}/fresh`,
+      { method: 'POST', body: {}, query: { workspaceId } },
+    );
+  }
+
   tree(workspaceId: string, filter?: WorkItemTreeFilter): Promise<WorkItemTreeResponse> {
     return this.transport.request<WorkItemTreeResponse>(path(workspaceId, '/tree'), { query: serializeTreeFilter(filter) });
   }

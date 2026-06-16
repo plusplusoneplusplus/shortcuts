@@ -225,11 +225,12 @@ update the raw event scope and the resolved origin scope for known workspaces;
 origin-scoped events update the origin scope directly. `WorkItemHierarchyTree`
 uses the origin-scoped realtime revision and `client.workItems.treeForOrigin(...)`
 to refetch tree data, passing the selected `workspaceId` only for clone metadata
-validation. Sync/import/convert, plan-version, chat-binding, execution, and
-provider flows remain routed through workspace APIs until their server routes
-expose origin contracts. The hierarchy toolbar exposes a Refresh control that
-calls the same tree fetch path and is disabled while the tree request is in
-flight.
+validation. Work Item chat bindings use origin-scoped client methods and pass
+the selected `workspaceId` only for fresh-chat archive/reset actions.
+Sync/import/convert, plan-version, execution, and provider flows remain routed
+through workspace APIs until their server routes expose origin contracts. The
+hierarchy toolbar exposes a Refresh control that calls the same tree fetch path
+and is disabled while the tree request is in flight.
 
 `workItems.workflow.enabled` is the disabled-by-default durable workflow gate for
 turning local Work Items and Goals into the command-center planning/execution

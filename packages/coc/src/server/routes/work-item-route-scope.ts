@@ -47,6 +47,19 @@ export async function resolveWorkspaceWorkItemOriginId(
     return workspace ? workspaceOriginId(workspace, processStore) : workspaceId;
 }
 
+export async function legacyWorkspaceIdsForWorkItemOrigin(
+    processStore: Pick<ProcessStore, 'getWorkspaces' | 'updateWorkspace'>,
+    originId: string,
+): Promise<string[]> {
+    const legacyScopeIds: string[] = [];
+    for (const workspace of await processStore.getWorkspaces()) {
+        if (await workspaceOriginId(workspace, processStore) === originId) {
+            legacyScopeIds.push(workspace.id);
+        }
+    }
+    return legacyScopeIds;
+}
+
 export async function resolveWorkItemRouteScope(
     ctx: Pick<{ processStore: ProcessStore }, 'processStore'>,
     kind: WorkItemRouteScopeKind,

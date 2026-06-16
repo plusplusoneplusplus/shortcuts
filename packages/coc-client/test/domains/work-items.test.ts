@@ -28,6 +28,11 @@ describe('WorkItemsClient', () => {
     await client.createChatBinding('repo/a', 'wi/1', 'task/1');
     await client.deleteChatBinding('repo/a', 'wi/1');
     await client.startFreshChat('repo/a', 'wi/1');
+    await client.listChatBindingsForOrigin('gh_owner/repo');
+    await client.getChatBindingForOrigin('gh_owner/repo', 'wi/1');
+    await client.createChatBindingForOrigin('gh_owner/repo', 'wi/1', 'task/1');
+    await client.deleteChatBindingForOrigin('gh_owner/repo', 'wi/1');
+    await client.startFreshChatForOrigin('gh_owner/repo', 'wi/1', 'repo/a');
 
     expect(adapter.calls[0]).toMatchObject({
       path: '/workspaces/repo%2Fa/work-items',
@@ -85,6 +90,26 @@ describe('WorkItemsClient', () => {
     expect(adapter.calls[14]).toEqual({
       path: '/workspaces/repo%2Fa/work-item-chat-bindings/wi%2F1/fresh',
       options: { method: 'POST', body: {} },
+    });
+    expect(adapter.calls[15]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-item-chat-bindings',
+      options: undefined,
+    });
+    expect(adapter.calls[16]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-item-chat-bindings/wi%2F1',
+      options: undefined,
+    });
+    expect(adapter.calls[17]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-item-chat-bindings',
+      options: { method: 'POST', body: { workItemId: 'wi/1', taskId: 'task/1' } },
+    });
+    expect(adapter.calls[18]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-item-chat-bindings/wi%2F1',
+      options: { method: 'DELETE' },
+    });
+    expect(adapter.calls[19]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-item-chat-bindings/wi%2F1/fresh',
+      options: { method: 'POST', body: {}, query: { workspaceId: 'repo/a' } },
     });
   });
 

@@ -24,7 +24,7 @@ const { items } = await coc.workItems.listForOrigin(originId);
 - Node.js 24+ has a global `fetch`, which the client uses by default.
 - Browser usage can omit `baseUrl` for same-origin requests.
 - Node tools that use realtime APIs should inject `WebSocket` or `EventSource` constructors when the runtime does not provide them globally.
-- Persistent Work Item APIs, including hierarchy tree reads, use an explicit origin ID. Workspace-root-dependent actions still require a workspace ID. IDs are encoded as path segments, so IDs containing `/` are safe.
+- Persistent Work Item APIs, including hierarchy tree reads and chat bindings, use an explicit origin ID. Workspace-root-dependent actions still require a workspace ID. IDs are encoded as path segments, so IDs containing `/` are safe.
 - Pull Request provider APIs (list, detail, threads, reviewers, commits, checks, diffs) and persistent sidecar APIs such as recent-opened entries, Team roster, chat bindings, and review progress use explicit origin IDs. Provider and filesystem operations still require concrete workspace/repo metadata.
 - Follow-up routing, queue transitions, and storage paths remain server-authoritative.
 

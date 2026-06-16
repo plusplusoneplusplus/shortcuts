@@ -885,6 +885,7 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
                         },
                         workItemChat: {
                             workspaceId,
+                            originId: workItemOriginId,
                             workItemId,
                             workItemNumber: item.workItemNumber,
                             status: item.status,
@@ -896,7 +897,7 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
             const taskId = result.task?.id ?? (result as { id?: string }).id;
             if (!taskId) throw new Error('Failed to create Goal grilling chat task');
 
-            await cloneClient.workItems.createChatBinding(workspaceId, workItemId, taskId);
+            await cloneClient.workItems.createChatBindingForOrigin(workItemOriginId, workItemId, taskId);
             await cloneClient.workItems.updateForOrigin(workItemOriginId, workItemId, {
                 grillSessionId: ensureQueueProcessId(taskId),
                 ...(item.status === 'created' ? { status: 'drafting' } : {}),
@@ -993,6 +994,7 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
 
     const chatPanelProps = {
         workspaceId,
+        originId: workItemOriginId,
         workItemId,
         workItemNumber: item.workItemNumber,
         title: item.title,

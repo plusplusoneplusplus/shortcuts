@@ -70,4 +70,48 @@ describe('WorkItemChatBindingStore', () => {
         store.bind('ws1', 'feature:repo-a:42', 'task-custom');
         expect(store.get('ws1', 'feature:repo-a:42')!.taskId).toBe('task-custom');
     });
+
+    it('migrates legacy workspace rows into an origin scope using newest binding per work item', () => {
+        db.prepare(`
+            INSERT INTO work_item_chat_bindings (workspace_id, work_item_id, task_id, created_at)
+            VALUES (?, ?, ?, ?), (?, ?, ?, ?), (?, ?, ?, ?)
+        `).run(
+            'ws-a', 'wi-1', 'task-old', '2026-01-01T00:00:00.000Z',
+            'ws-b', 'wi-1', 'task-new', '2026-01-02T00:00:00.000Z',
+            'ws-a', 'wi-2', 'task-other', '2026-01-01T00:00:00.000Z',
+        );
+
+        const bindings = store.list('gh_owner_repo', ['ws-a', 'ws-b']);
+
+        expect(bindings['wi-1'].taskId).toBe('task-new');
+        expect(bindings['wi-1'].createdAt).toBe('2026-01-02T00:00:00.000Z');
+        expect(bindings['wi-2'].taskId).toBe('task-other');
+        expect(store.list('ws-a')).toEqual({});
+        expect(store.list('ws-b')).toEqual({});
+    });
+
+    it('preserves existing origin rows when migrating legacy workspace rows', () => {
+        db.prepare(`
+            INSERT INTO work_item_chat_bindings (workspace_id, work_item_id, task_id, created_at)
+            VALUES (?, ?, ?, ?), (?, ?, ?, ?)
+        `).run(
+            'gh_owner_repo', 'wi-1', 'task-origin', '2026-01-03T00:00:00.000Z',
+            'ws-a', 'wi-1', 'task-legacy', '2026-01-04T00:00:00.000Z',
+        );
+
+        expect(store.get('gh_owner_repo', 'wi-1', ['ws-a'])!.taskId).toBe('task-origin');
+        expect(store.get('ws-a', 'wi-1')).toBeUndefined();
+    });
+
+    it('does not resurrect migrated legacy rows after an origin unbind', () => {
+        db.prepare(`
+            INSERT INTO work_item_chat_bindings (workspace_id, work_item_id, task_id, created_at)
+            VALUES (?, ?, ?, ?)
+        `).run('ws-a', 'wi-1', 'task-legacy', '2026-01-01T00:00:00.000Z');
+
+        expect(store.unbind('gh_owner_repo', 'wi-1', ['ws-a'])).toBe(true);
+
+        expect(store.get('gh_owner_repo', 'wi-1', ['ws-a'])).toBeUndefined();
+        expect(store.get('ws-a', 'wi-1')).toBeUndefined();
+    });
 });

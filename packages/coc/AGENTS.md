@@ -181,8 +181,12 @@ all have their own `references/*.md`.
 - **Work-item hierarchy tree reads** are persistent origin state. New callers must
   use `/api/origins/:originId/work-items/tree` or
   `client.workItems.treeForOrigin(...)`; pass `workspaceId` only as clone
-  metadata/validation, while sync/import/convert/plan/chat-binding/execution
+  metadata/validation, while sync/import/convert/plan/execution
   flows remain workspace-root dependent until their origin contracts exist.
+- **Work-item chat bindings** are persistent origin state. New callers must use
+  `/api/origins/:originId/work-item-chat-bindings...` or
+  `client.workItems.*ChatBindingForOrigin(...)`; pass `workspaceId` only for
+  fresh-chat archive/reset actions that need a concrete clone/process scope.
 - **Direct package builds** use `scripts/prebuild.mjs` to build
   `@plusplusoneplusplus/coc-client`, `@plusplusoneplusplus/coc-workflow`, and `@plusplusoneplusplus/coc-memory`
   before `tsc`, clean `dist` before emitting, and generate

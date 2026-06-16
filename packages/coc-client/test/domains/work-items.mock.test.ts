@@ -587,7 +587,7 @@ describe('WorkItemsClient mock coverage', () => {
     });
   });
 
-  it('sends Work Item chat binding requests to workspace-scoped endpoints', async () => {
+  it('sends Work Item chat binding requests to workspace and origin endpoints', async () => {
     const adapter = createMockAdapter({ bindings: {} });
     const client = new WorkItemsClient(adapter);
 
@@ -595,6 +595,12 @@ describe('WorkItemsClient mock coverage', () => {
     await client.getChatBinding('repo/a', 'wi/1');
     await client.createChatBinding('repo/a', 'wi/1', 'task/1');
     await client.deleteChatBinding('repo/a', 'wi/1');
+    await client.startFreshChat('repo/a', 'wi/1');
+    await client.listChatBindingsForOrigin('gh_owner_repo');
+    await client.getChatBindingForOrigin('gh_owner_repo', 'wi/1');
+    await client.createChatBindingForOrigin('gh_owner_repo', 'wi/1', 'task/1');
+    await client.deleteChatBindingForOrigin('gh_owner_repo', 'wi/1');
+    await client.startFreshChatForOrigin('gh_owner_repo', 'wi/1', 'repo/a');
 
     expect(adapter.calls).toEqual([
       {
@@ -615,6 +621,33 @@ describe('WorkItemsClient mock coverage', () => {
       {
         path: '/workspaces/repo%2Fa/work-item-chat-bindings/wi%2F1',
         options: { method: 'DELETE' },
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-item-chat-bindings/wi%2F1/fresh',
+        options: { method: 'POST', body: {} },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-item-chat-bindings',
+        options: undefined,
+      },
+      {
+        path: '/origins/gh_owner_repo/work-item-chat-bindings/wi%2F1',
+        options: undefined,
+      },
+      {
+        path: '/origins/gh_owner_repo/work-item-chat-bindings',
+        options: {
+          method: 'POST',
+          body: { workItemId: 'wi/1', taskId: 'task/1' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-item-chat-bindings/wi%2F1',
+        options: { method: 'DELETE' },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-item-chat-bindings/wi%2F1/fresh',
+        options: { method: 'POST', body: {}, query: { workspaceId: 'repo/a' } },
       },
     ]);
   });
