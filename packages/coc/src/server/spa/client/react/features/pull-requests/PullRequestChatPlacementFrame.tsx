@@ -4,6 +4,7 @@ import type { ReviewChatPresentation } from '../git/commits/commitChatPlacement'
 
 export interface PullRequestChatPlacementFrameProps {
     workspaceId: string;
+    remoteUrl?: string | null;
     prId: string;
     prNumber?: number;
     prTitle?: string;
@@ -19,6 +20,7 @@ export interface PullRequestChatPlacementFrameProps {
 
 export function PullRequestChatPlacementFrame({
     workspaceId,
+    remoteUrl,
     prId,
     prNumber,
     prTitle,
@@ -48,6 +50,7 @@ export function PullRequestChatPlacementFrame({
         >
             <PullRequestChatPanel
                 workspaceId={workspaceId}
+                remoteUrl={remoteUrl}
                 prId={prId}
                 prNumber={prNumber}
                 prTitle={prTitle}

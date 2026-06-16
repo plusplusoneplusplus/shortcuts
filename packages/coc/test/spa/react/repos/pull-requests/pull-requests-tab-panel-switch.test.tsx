@@ -39,8 +39,8 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useResizablePanel',
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/features/pull-requests/PullRequestDetail', () => ({
-    PullRequestDetail: ({ prId }: { prId: number | string }) => (
-        <div data-testid="mock-pr-detail">PR detail {prId}</div>
+    PullRequestDetail: ({ prId, remoteUrl }: { prId: number | string; remoteUrl?: string | null }) => (
+        <div data-testid="mock-pr-detail" data-remote-url={remoteUrl ?? ''}>PR detail {prId}</div>
     ),
 }));
 
@@ -78,7 +78,7 @@ async function renderTab() {
     const { PullRequestsTab } = await import(
         '../../../../../src/server/spa/client/react/features/pull-requests/PullRequestsTab'
     );
-    return render(<PullRequestsTab repoId="repo-1" workspaceId="ws-1" />);
+    return render(<PullRequestsTab repoId="repo-1" workspaceId="ws-1" remoteUrl="https://github.com/octo/repo.git" />);
 }
 
 beforeEach(() => {
@@ -109,6 +109,7 @@ describe('PullRequestsTab batch panel switching', () => {
 
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.getByTestId('mock-pr-detail')).toHaveTextContent('PR detail 1'));
+        expect(screen.getByTestId('mock-pr-detail').getAttribute('data-remote-url')).toBe('https://github.com/octo/repo.git');
 
         // Enable batch mode, select the PR
         fireEvent.click(screen.getByTestId('select-mode-button'));

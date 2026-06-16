@@ -16,6 +16,8 @@ import { getReviewChatTargetStorageId } from '../git/commits/commitChatPlacement
 
 export interface PullRequestChatPanelProps {
     workspaceId: string;
+    /** Remote URL used to resolve the origin-scoped PR chat binding. */
+    remoteUrl?: string | null;
     /** Stringified PR identifier — stable per provider (GitHub PR number, ADO PR ID). */
     prId: string;
     prNumber?: number;
@@ -28,6 +30,7 @@ export interface PullRequestChatPanelProps {
 
 export function PullRequestChatPanel({
     workspaceId,
+    remoteUrl,
     prId,
     prNumber,
     prTitle,
@@ -37,6 +40,7 @@ export function PullRequestChatPanel({
 }: PullRequestChatPanelProps) {
     const { taskId, loading, error, createChat, startFreshChat, startingFresh } = usePullRequestChatBinding({
         workspaceId,
+        remoteUrl,
         prId,
         prNumber,
         prTitle,

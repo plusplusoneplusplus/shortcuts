@@ -164,7 +164,7 @@ function buildRecentOpenedRecord(pr: unknown, prNumber: number): { number: numbe
     };
 }
 
-export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
+export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequestsTabProps) {
     const { state, dispatch } = useApp();
     // Route PR list/suggestions/roster/classification to the workspace's clone
     // (AC-07). All PR calls here are scoped to this workspace's repo.
@@ -1434,6 +1434,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     ) : state.selectedPrId != null ? (
         <PullRequestDetail
             repoId={repoId}
+            remoteUrl={remoteUrl}
             prId={state.selectedPrId}
             onBack={() => { if (isMobile) setMobileShowDetail(false); }}
             isMobile={isMobile}

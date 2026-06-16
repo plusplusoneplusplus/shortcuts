@@ -21,6 +21,9 @@ const { mockClient } = vi.hoisted(() => ({
             getChatBinding: vi.fn(),
             createChatBinding: vi.fn(),
             startFreshChat: vi.fn(),
+            getChatBindingForOrigin: vi.fn(),
+            createChatBindingForOrigin: vi.fn(),
+            startFreshChatForOrigin: vi.fn(),
         },
     },
 }));
@@ -47,6 +50,9 @@ describe('usePullRequestChatBinding', () => {
         mockClient.pullRequests.getChatBinding.mockResolvedValue({ taskId: null });
         mockClient.pullRequests.createChatBinding.mockResolvedValue({});
         mockClient.pullRequests.startFreshChat.mockResolvedValue({ prId: '142', archivedTaskId: 'task-existing' });
+        mockClient.pullRequests.getChatBindingForOrigin.mockResolvedValue({ taskId: null });
+        mockClient.pullRequests.createChatBindingForOrigin.mockResolvedValue({});
+        mockClient.pullRequests.startFreshChatForOrigin.mockResolvedValue({ prId: '142', archivedTaskId: 'task-existing' });
         mockClient.queue.enqueue.mockResolvedValue({ task: { id: 'task-pr' } });
     });
 
@@ -64,7 +70,7 @@ describe('usePullRequestChatBinding', () => {
 
     describe('binding fetch on mount', () => {
         it('fetches binding via GET when prId changes', () => {
-            expect(source).toContain('pullRequests.getChatBinding(workspaceId, prId)');
+            expect(source).toContain('pullRequests.getChatBindingForOrigin(originId, prId)');
         });
 
         it('sets taskId from binding response', () => {
@@ -78,7 +84,7 @@ describe('usePullRequestChatBinding', () => {
         });
 
         it('uses useEffect with workspaceId+prId dependency', () => {
-            expect(source).toContain('[workspaceId, prId, cloneClient]');
+            expect(source).toContain('[workspaceId, originId, prId, cloneClient]');
         });
     });
 
@@ -97,7 +103,7 @@ describe('usePullRequestChatBinding', () => {
         it('resets taskId to null on prId change', () => {
             const effectBlock = source.substring(
                 source.indexOf('useEffect(() => {'),
-                source.indexOf('[workspaceId, prId, cloneClient]') + 50,
+                source.indexOf('[workspaceId, originId, prId, cloneClient]') + 60,
             );
             expect(effectBlock).toContain('setTaskId(null)');
             expect(effectBlock).toContain('setLoading(true)');
@@ -119,7 +125,7 @@ describe('usePullRequestChatBinding', () => {
         });
 
         it('includes pullRequestChat in context', () => {
-            expect(source).toContain('pullRequestChat: { prId, prNumber, prTitle, repoId }');
+            expect(source).toContain('pullRequestChat: { prId, prNumber, prTitle, repoId, originId }');
         });
 
         it('forwards composer AI selection and attachments into the queue payload', () => {
@@ -135,7 +141,30 @@ describe('usePullRequestChatBinding', () => {
         });
 
         it('POSTs binding after task creation', () => {
-            expect(source).toContain('pullRequests.createChatBinding(workspaceId, prId, newTaskId)');
+            expect(source).toContain('pullRequests.createChatBindingForOrigin(originId, prId, newTaskId)');
+        });
+
+        it('uses canonical origin binding APIs so same-origin clones share PR chats', async () => {
+            const { result } = renderHook(() => usePullRequestChatBinding({
+                workspaceId: 'clone-a',
+                remoteUrl: 'https://github.com/Octo/Repo.git',
+                prId: '142',
+                prNumber: 142,
+                prTitle: 'Add retry logic',
+                repoId: 'repo-1',
+            }));
+
+            await act(async () => {
+                await Promise.resolve();
+            });
+            expect(mockClient.pullRequests.getChatBindingForOrigin).toHaveBeenCalledWith('gh_octo_repo', '142');
+
+            await act(async () => {
+                await result.current.createChat('review prompt');
+            });
+
+            expect(mockClient.pullRequests.createChatBindingForOrigin).toHaveBeenCalledWith('gh_octo_repo', '142', 'task-pr');
+            expect(mockClient.pullRequests.createChatBinding).not.toHaveBeenCalled();
         });
 
         it('sets taskId on success', () => {
@@ -181,12 +210,12 @@ describe('usePullRequestChatBinding', () => {
                     reasoningEffort: 'medium',
                     context: {
                         skills: ['reviewer'],
-                        pullRequestChat: { prId: '142', prNumber: 142, prTitle: 'Add retry logic', repoId: 'repo-1' },
+                        pullRequestChat: { prId: '142', prNumber: 142, prTitle: 'Add retry logic', repoId: 'repo-1', originId: 'local_ws-1' },
                     },
                 },
                 config: { effortTier: 'medium' },
             });
-            expect(mockClient.pullRequests.createChatBinding).toHaveBeenCalledWith('ws-1', '142', 'task-pr');
+            expect(mockClient.pullRequests.createChatBindingForOrigin).toHaveBeenCalledWith('local_ws-1', '142', 'task-pr');
         });
     });
 
@@ -202,7 +231,7 @@ describe('usePullRequestChatBinding', () => {
 
     describe('startFreshChat clears the active binding', () => {
         it('calls the fresh PR endpoint and resets taskId to the empty same-context state', async () => {
-            mockClient.pullRequests.getChatBinding.mockResolvedValueOnce({ prId: '142', taskId: 'task-existing' });
+            mockClient.pullRequests.getChatBindingForOrigin.mockResolvedValueOnce({ prId: '142', taskId: 'task-existing' });
             const { result } = renderHook(() => usePullRequestChatBinding({
                 workspaceId: 'ws-1',
                 prId: '142',
@@ -222,7 +251,8 @@ describe('usePullRequestChatBinding', () => {
             });
 
             expect(freshResult).toBe(true);
-            expect(mockClient.pullRequests.startFreshChat).toHaveBeenCalledWith('ws-1', '142');
+            expect(mockClient.pullRequests.startFreshChatForOrigin).toHaveBeenCalledWith('local_ws-1', '142', 'ws-1');
+            expect(mockClient.pullRequests.startFreshChat).not.toHaveBeenCalled();
             expect(mockClient.queue.enqueue).not.toHaveBeenCalled();
             expect(result.current.taskId).toBeNull();
             expect(result.current.error).toBeNull();
@@ -230,8 +260,8 @@ describe('usePullRequestChatBinding', () => {
         });
 
         it('keeps the old taskId visible and surfaces an error when fresh reset fails', async () => {
-            mockClient.pullRequests.getChatBinding.mockResolvedValueOnce({ prId: '142', taskId: 'task-existing' });
-            mockClient.pullRequests.startFreshChat.mockRejectedValueOnce(new Error('archive failed'));
+            mockClient.pullRequests.getChatBindingForOrigin.mockResolvedValueOnce({ prId: '142', taskId: 'task-existing' });
+            mockClient.pullRequests.startFreshChatForOrigin.mockRejectedValueOnce(new Error('archive failed'));
             const { result } = renderHook(() => usePullRequestChatBinding({
                 workspaceId: 'ws-1',
                 prId: '142',

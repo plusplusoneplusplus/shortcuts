@@ -165,7 +165,13 @@ async function renderDetail(props: Partial<any> = {}) {
     );
     const onBack = props.onBack ?? vi.fn();
     return render(
-        <PullRequestDetail repoId="repo-1" prId={142} onBack={onBack} {...props} />
+        <PullRequestDetail
+            repoId="repo-1"
+            remoteUrl="https://github.com/octo/repo.git"
+            prId={142}
+            onBack={onBack}
+            {...props}
+        />
     );
 }
 

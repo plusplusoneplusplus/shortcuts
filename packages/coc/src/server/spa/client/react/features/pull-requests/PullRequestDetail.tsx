@@ -67,6 +67,7 @@ const descMarked = new Marked({ gfm: true, breaks: true, renderer: descRenderer 
 
 export interface PullRequestDetailProps {
     repoId: string;
+    remoteUrl?: string | null;
     prId: number | string;
     onBack: () => void;
     /** When true (mobile), renders the back button. Hidden on desktop. */
@@ -82,7 +83,7 @@ const TAB_DEFINITIONS: Array<{ id: PrDetailTab; label: string }> = [
 
 const EMPTY_FILES: FileChange[] = [];
 
-export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: PullRequestDetailProps) {
+export function PullRequestDetail({ repoId, remoteUrl, prId, onBack, isMobile = false }: PullRequestDetailProps) {
     const { state, dispatch } = useApp();
     const [pr, setPr] = useState<PullRequest | null>(null);
     const [threads, setThreads] = useState<CommentThread[]>([]);
@@ -636,6 +637,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
             {assistantOpen && assistantPresentation === 'lens' && (
                 <PullRequestChatPlacementFrame
                     workspaceId={String(repoId)}
+                    remoteUrl={remoteUrl}
                     repoId={String(repoId)}
                     prId={String(prId)}
                     prNumber={pr.number}
@@ -654,6 +656,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                     open={assistantOpen}
                     onClose={closeAssistant}
                     workspaceId={String(repoId)}
+                    remoteUrl={remoteUrl}
                     repoId={String(repoId)}
                     prId={String(prId)}
                     prNumber={pr.number}
