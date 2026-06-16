@@ -69,6 +69,11 @@ describe('WorkItemsClient mock coverage', () => {
       tracker: 'github-backed',
       includeDone: true,
     });
+    await client.treeForOrigin('gh_owner_repo', {
+      q: 'remote epic',
+      tracker: 'github-backed',
+      includeDone: true,
+    }, { workspaceId: 'repo/a' });
 
     expect(adapter.calls[0]).toEqual({
       path: '/workspaces/repo%2Fa/work-items',
@@ -105,6 +110,17 @@ describe('WorkItemsClient mock coverage', () => {
           q: 'epic',
           tracker: 'github-backed',
           includeDone: true,
+        },
+      },
+    });
+    expect(adapter.calls[3]).toEqual({
+      path: '/origins/gh_owner_repo/work-items/tree',
+      options: {
+        query: {
+          q: 'remote epic',
+          tracker: 'github-backed',
+          includeDone: true,
+          workspaceId: 'repo/a',
         },
       },
     });

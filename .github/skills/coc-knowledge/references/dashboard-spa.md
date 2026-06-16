@@ -208,26 +208,28 @@ leaf rows. Remote/Synced trees keep the type avatar, title, remote mirror badge,
 and container rollups, but omit local work-item numbers and leaf status chips so
 remote identifiers remain the primary row metadata. Compact GitHub mirror badges
 render the issue number only; full detail-page badges keep the provider label and
-link title. Core Work Item list/detail/create/update/pin/archive/delete UI paths compute a
-canonical origin ID from the selected workspace remote (`gh_*`, `ado_*`,
-`git_*`, or `local_*`) and call the origin-scoped coc-client methods while still
-passing `workspaceId` when the route needs a concrete clone for provider or
-filesystem semantics. PR list/detail, provider subresources (threads, reviewers,
-commits, checks, combined/per-file diffs), and chat bindings use the same
-browser-safe origin resolver and call origin-scoped APIs while passing the
-selected `workspaceId`/`repoId` to choose the concrete clone; fresh-chat reset
-still passes the selected `workspaceId` so archiving/process actions run against
-a concrete clone. `WorkItemContext` keys persistent Work Item lists, pagination, unseen IDs,
+link title. Core Work Item list/detail/create/update/pin/archive/delete and
+hierarchy-tree UI paths compute a canonical origin ID from the selected workspace
+remote (`gh_*`, `ado_*`, `git_*`, or `local_*`) and call the origin-scoped
+coc-client methods while still passing `workspaceId` when the route needs a
+concrete clone for provider or filesystem semantics. PR list/detail, provider
+subresources (threads, reviewers, commits, checks, combined/per-file diffs), and
+chat bindings use the same browser-safe origin resolver and call origin-scoped
+APIs while passing the selected `workspaceId`/`repoId` to choose the concrete
+clone; fresh-chat reset still passes the selected `workspaceId` so
+archiving/process actions run against a concrete clone. `WorkItemContext` keys persistent Work Item lists, pagination, unseen IDs,
 and realtime revisions by that origin ID so same-origin clones share the same
 list state and remote-shell Work Items badges.
 `work-item-added`, `work-item-updated`, and `work-item-removed` WebSocket events
 update the raw event scope and the resolved origin scope for known workspaces;
 origin-scoped events update the origin scope directly. `WorkItemHierarchyTree`
-uses the origin-scoped realtime revision to refetch tree data, while hierarchy
-tree, sync/import/convert, plan-version, chat-binding, execution, and provider
-flows remain routed through workspace APIs until their server routes expose
-origin contracts. The hierarchy toolbar exposes a Refresh control that calls the
-same tree fetch path and is disabled while the tree request is in flight.
+uses the origin-scoped realtime revision and `client.workItems.treeForOrigin(...)`
+to refetch tree data, passing the selected `workspaceId` only for clone metadata
+validation. Sync/import/convert, plan-version, chat-binding, execution, and
+provider flows remain routed through workspace APIs until their server routes
+expose origin contracts. The hierarchy toolbar exposes a Refresh control that
+calls the same tree fetch path and is disabled while the tree request is in
+flight.
 
 `workItems.workflow.enabled` is the disabled-by-default durable workflow gate for
 turning local Work Items and Goals into the command-center planning/execution

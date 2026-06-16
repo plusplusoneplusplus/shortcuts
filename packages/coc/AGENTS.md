@@ -178,6 +178,11 @@ all have their own `references/*.md`.
   (`src/server/routes/work-item-routes.ts`) and the `create_update_work_item`
   LLM tool call it — do not re-implement hierarchy or provider logic in either
   caller.
+- **Work-item hierarchy tree reads** are persistent origin state. New callers must
+  use `/api/origins/:originId/work-items/tree` or
+  `client.workItems.treeForOrigin(...)`; pass `workspaceId` only as clone
+  metadata/validation, while sync/import/convert/plan/chat-binding/execution
+  flows remain workspace-root dependent until their origin contracts exist.
 - **Direct package builds** use `scripts/prebuild.mjs` to build
   `@plusplusoneplusplus/coc-client`, `@plusplusoneplusplus/coc-workflow`, and `@plusplusoneplusplus/coc-memory`
   before `tsc`, clean `dist` before emitting, and generate

@@ -96,6 +96,7 @@ describe('WorkItemsClient', () => {
     await client.createForOrigin('gh_owner/repo', { title: 'Task' }, { workspaceId: 'repo/a' });
     await client.updateForOrigin('gh_owner/repo', 'wi/1', { status: 'planning' }, { workspaceId: 'repo/a' });
     await client.deleteForOrigin('gh_owner/repo', 'wi/1');
+    await client.treeForOrigin('gh_owner/repo', { tracker: 'local-only', includeArchived: true }, { workspaceId: 'repo/a' });
 
     expect(adapter.calls[0]).toMatchObject({
       path: '/origins/gh_owner%2Frepo/work-items',
@@ -112,6 +113,16 @@ describe('WorkItemsClient', () => {
     expect(adapter.calls[3]).toEqual({
       path: '/origins/gh_owner%2Frepo/work-items/wi%2F1',
       options: { method: 'DELETE', query: undefined },
+    });
+    expect(adapter.calls[4]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/tree',
+      options: {
+        query: {
+          tracker: 'local-only',
+          includeArchived: true,
+          workspaceId: 'repo/a',
+        },
+      },
     });
   });
 });

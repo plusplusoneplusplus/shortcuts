@@ -57,6 +57,13 @@ describe('work items SPA client migration', () => {
         expect(section).not.toContain('/work-items/grouped');
     });
 
+    it('loads hierarchy trees through the origin-scoped work item client', () => {
+        const tree = readWorkItemComponent('WorkItemHierarchyTree.tsx');
+        expect(tree).toContain('workItems.treeForOrigin(workItemOriginId');
+        expect(tree).toContain('{ workspaceId }');
+        expect(tree).not.toContain('workItems.tree(workspaceId');
+    });
+
     it('loads plan versions through client.workItems and persists plan via the detail Ctrl+S batch', () => {
         expect(planSection).toContain('workItems.planVersions(workspaceId, workItemId)');
         expect(planSection).toContain('workItems.getPlanVersion(workspaceId, workItemId, v)');

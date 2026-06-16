@@ -213,7 +213,7 @@ export function WorkItemHierarchyTree({
     highlightedWorkItemId,
     isMobile = false,
 }: WorkItemHierarchyTreeProps) {
-    // Route work-item tree/mutations to the workspace's clone (AC-07).
+    // Route persistent tree state to the origin while clone-dependent calls keep the workspace.
     const client = useCocClient(workspaceId);
     const workItemOriginId = originId ?? resolveWorkItemOriginId({ workspaceId });
     const [treeData, setTreeData] = useState<WorkItemTreeNode[]>([]);
@@ -294,7 +294,7 @@ export function WorkItemHierarchyTree({
                 showDone,
             });
             const responses: WorkItemTreeResponse[] = await Promise.all(
-                filters.map(filter => client.workItems.tree(workspaceId, filter)),
+                filters.map(filter => client.workItems.treeForOrigin(workItemOriginId, filter, { workspaceId })),
             );
             if (responses.some(resp => resp.disabled)) {
                 setError('Hierarchy feature is disabled.');
@@ -308,7 +308,7 @@ export function WorkItemHierarchyTree({
         } finally {
             setLoading(false);
         }
-    }, [workspaceId, effectiveTrackerKinds, isRemoteView, searchQuery, showArchived, showDone, client]);
+    }, [workspaceId, workItemOriginId, effectiveTrackerKinds, isRemoteView, searchQuery, showArchived, showDone, client]);
 
     // Initial load
     useEffect(() => { fetchTree(); }, [fetchTree]);

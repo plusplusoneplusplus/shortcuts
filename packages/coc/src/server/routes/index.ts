@@ -940,7 +940,12 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         generateImproveItemDraft: workItemAiGenerators.generateImproveItemDraft,
     });
     // Hierarchy tree route must be registered before generic /:workItemId to win the match
-    registerWorkItemHierarchyRoutes({ routes, workItemStore, getHierarchyEnabled: getWorkItemsHierarchyEnabled });
+    registerWorkItemHierarchyRoutes({
+        routes,
+        workItemStore,
+        processStore: store,
+        getHierarchyEnabled: getWorkItemsHierarchyEnabled,
+    });
     const workItemSyncProviders = [
         createGitHubWorkItemSyncProviderAdapter(),
         createAzureBoardsWorkItemSyncProviderAdapter({ dataDir }),

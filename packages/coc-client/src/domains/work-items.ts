@@ -83,6 +83,17 @@ function withWorkspaceBody<T extends Record<string, unknown>>(
   return { ...body, workspaceId: options.workspaceId };
 }
 
+function serializeTreeFilter(filter?: WorkItemTreeFilter): Record<string, string | number | boolean | undefined> {
+  const query: Record<string, string | number | boolean | undefined> = {};
+  if (filter?.q) query.q = filter.q;
+  if (filter?.type) query.type = filter.type;
+  if (filter?.status) query.status = filter.status;
+  if (filter?.tracker) query.tracker = filter.tracker;
+  if (filter?.includeArchived !== undefined) query.includeArchived = filter.includeArchived;
+  if (filter?.includeDone !== undefined) query.includeDone = filter.includeDone;
+  return query;
+}
+
 export class WorkItemsClient {
   constructor(private readonly transport: RequestAdapter) {}
 
@@ -361,14 +372,13 @@ export class WorkItemsClient {
   }
 
   tree(workspaceId: string, filter?: WorkItemTreeFilter): Promise<WorkItemTreeResponse> {
-    const query: Record<string, string | number | boolean | undefined> = {};
-    if (filter?.q) query.q = filter.q;
-    if (filter?.type) query.type = filter.type;
-    if (filter?.status) query.status = filter.status;
-    if (filter?.tracker) query.tracker = filter.tracker;
-    if (filter?.includeArchived !== undefined) query.includeArchived = filter.includeArchived;
-    if (filter?.includeDone !== undefined) query.includeDone = filter.includeDone;
-    return this.transport.request<WorkItemTreeResponse>(path(workspaceId, '/tree'), { query });
+    return this.transport.request<WorkItemTreeResponse>(path(workspaceId, '/tree'), { query: serializeTreeFilter(filter) });
+  }
+
+  treeForOrigin(originId: string, filter?: WorkItemTreeFilter, options?: WorkItemOriginScopeOptions): Promise<WorkItemTreeResponse> {
+    return this.transport.request<WorkItemTreeResponse>(originPath(originId, '/tree'), {
+      query: withWorkspaceQuery(serializeTreeFilter(filter), options),
+    });
   }
 
   aiDraft(workspaceId: string, request: NewWorkItemAiDraftRequest): Promise<WorkItemAiGenerationResponse> {

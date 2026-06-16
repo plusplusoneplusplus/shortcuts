@@ -20,14 +20,15 @@
 import * as http from 'http';
 import * as url from 'url';
 import type { Route } from '../types';
-import {
-    detectRemoteUrl,
-    resolveCanonicalOriginId,
-    type ProcessStore,
-    type WorkspaceInfo,
-} from '@plusplusoneplusplus/forge';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody } from '../core/api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
+import {
+    queryWorkspaceId,
+    resolveWorkItemRouteScope,
+    type WorkItemRouteScope,
+    type WorkItemRouteScopeKind,
+} from './work-item-route-scope';
 import type {
     WorkItemStore,
     WorkItemFilter,
@@ -67,16 +68,6 @@ const WORK_ITEM_DETAIL_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-it
 const WORK_ITEM_REQUEST_CHANGES_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/([^/]+)\/request-changes$/;
 const WORK_ITEM_PIN_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/([^/]+)\/pin$/;
 const WORK_ITEM_ARCHIVE_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/([^/]+)\/archive$/;
-
-type WorkItemRouteScopeKind = 'workspaces' | 'origins';
-
-interface WorkItemRouteScope {
-    kind: WorkItemRouteScopeKind;
-    routeScopeId: string;
-    storageRepoId: string;
-    commandRepoId: string;
-    workspaceId?: string;
-}
 
 export interface WorkItemRouteContext {
     routes: Route[];
@@ -131,74 +122,6 @@ export async function buildWorkItemGroupedRouteResponse(
         };
     }
     return { groups };
-}
-
-function queryWorkspaceId(req: http.IncomingMessage): string | undefined {
-    const parsed = url.parse(req.url || '/', true);
-    const raw = parsed.query.workspaceId;
-    return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
-}
-
-async function workspaceOriginId(
-    workspace: WorkspaceInfo,
-    processStore?: Pick<ProcessStore, 'updateWorkspace'>,
-): Promise<string> {
-    let remoteUrl = workspace.remoteUrl;
-    if (!remoteUrl && workspace.rootPath) {
-        remoteUrl = await detectRemoteUrl(workspace.rootPath);
-        if (remoteUrl) {
-            await processStore?.updateWorkspace?.(workspace.id, { remoteUrl });
-        }
-    }
-    return resolveCanonicalOriginId({ remoteUrl, workspaceId: workspace.id });
-}
-
-async function resolveWorkItemRouteScope(
-    ctx: Pick<WorkItemRouteContext, 'processStore'>,
-    kind: WorkItemRouteScopeKind,
-    routeScopeId: string,
-    workspaceId?: string,
-): Promise<WorkItemRouteScope> {
-    if (kind === 'origins') {
-        if (!workspaceId) {
-            return {
-                kind,
-                routeScopeId,
-                storageRepoId: routeScopeId,
-                commandRepoId: routeScopeId,
-            };
-        }
-
-        const workspaces = await ctx.processStore?.getWorkspaces?.() ?? [];
-        const workspace = workspaces.find(entry => entry.id === workspaceId);
-        if (!workspace) {
-            throw badRequest(`workspaceId '${workspaceId}' is not registered`);
-        }
-        const resolvedOriginId = await workspaceOriginId(workspace, ctx.processStore);
-        if (resolvedOriginId !== routeScopeId) {
-            throw badRequest(`workspaceId '${workspaceId}' resolves to origin '${resolvedOriginId}', not '${routeScopeId}'`);
-        }
-        return {
-            kind,
-            routeScopeId,
-            storageRepoId: routeScopeId,
-            commandRepoId: workspaceId,
-            workspaceId,
-        };
-    }
-
-    const workspaces = await ctx.processStore?.getWorkspaces?.() ?? [];
-    const workspace = workspaces.find(entry => entry.id === routeScopeId);
-    const storageRepoId = workspace
-        ? await workspaceOriginId(workspace, ctx.processStore)
-        : routeScopeId;
-    return {
-        kind,
-        routeScopeId,
-        storageRepoId,
-        commandRepoId: routeScopeId,
-        workspaceId: routeScopeId,
-    };
 }
 
 function invalidateAndBroadcastOriginScope(
