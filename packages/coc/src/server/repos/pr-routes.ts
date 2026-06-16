@@ -134,6 +134,17 @@ async function resolvePrStorageScopeForRoute(
     });
 }
 
+async function resolvePrCacheScopeIdForRoute(
+    svc: RepoTreeService,
+    store: ProcessStore | undefined,
+    repoId: string,
+    workspaceId: string,
+    repo?: RepoInfo,
+): Promise<string> {
+    const storageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId, repo);
+    return storageScope.storageOriginId;
+}
+
 function parseTeamAutoClassificationPullRequests(raw: unknown): TeamAutoClassifiablePullRequest[] | string {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
         return 'Body must be an object';
@@ -203,12 +214,12 @@ interface PullRequestDiffStats {
 }
 
 // Diff stats are derived from provider diffs and cached in memory by
-// repoId|prId|headSha only. They are never persisted because diffs can contain
+// originId|prId|headSha only. They are never persisted because diffs can contain
 // sensitive source content and can be refetched/recomputed.
 const prDiffStatsCache = new Map<string, PullRequestDiffStats>();
 
-function makePrCacheKey(repoId: string, status: string, scope: string): string {
-    return `${repoId}|${status}|${scope}`;
+function makePrCacheKey(cacheScopeId: string, status: string, scope: string): string {
+    return `${cacheScopeId}|${status}|${scope}`;
 }
 
 class PullRequestRouteError extends Error {
@@ -261,15 +272,16 @@ async function refreshPullRequestListCache(
     dataDir: string,
     svc: RepoTreeService,
     repoId: string,
+    cacheScopeId: string,
     status: string,
     scope: 'mine' | 'all',
 ): Promise<PrCacheEntry> {
     const prSvc = await resolvePullRequestsService(dataDir, svc, repoId);
     let prs = await prSvc.listPullRequests(repoId, { status, top: PR_LIST_FETCH_TOP, scope });
-    prs = await enrichPullRequestsWithDiffStats(repoId, prs, prSvc);
+    prs = await enrichPullRequestsWithDiffStats(cacheScopeId, repoId, prs, prSvc);
     const fetchedAt = Date.now();
     const entry = { data: prs, fetchedAt, expiresAt: fetchedAt + PR_LIST_TTL_MS };
-    prListCache.set(makePrCacheKey(repoId, status, scope), entry);
+    prListCache.set(makePrCacheKey(cacheScopeId, status, scope), entry);
     return entry;
 }
 
@@ -287,13 +299,13 @@ export interface WarmPullRequestWorkspaceCacheOptions {
 
 export async function warmPullRequestWorkspaceCache(options: WarmPullRequestWorkspaceCacheOptions): Promise<void> {
     const svc = options.service ?? new RepoTreeService(options.dataDir);
-    await refreshPullRequestListCache(options.dataDir, svc, options.repoId, 'open', 'mine');
     const repo = await svc.resolveRepo(options.repoId);
     const prStorageScope = await resolvePrStorageScopeForRoute(svc, options.store, options.repoId, options.workspaceId, repo);
+    await refreshPullRequestListCache(options.dataDir, svc, options.repoId, prStorageScope.storageOriginId, 'open', 'mine');
     listRecentOpenedPullRequests(options.dataDir, options.workspaceId, options.repoId, prStorageScope);
     listPullRequestCoworkerRoster(options.dataDir, options.workspaceId, options.repoId, prStorageScope);
     if (options.autoClassifyTeamEnabled === true && options.bridge && options.store) {
-        const allOpen = await refreshPullRequestListCache(options.dataDir, svc, options.repoId, 'open', 'all');
+        const allOpen = await refreshPullRequestListCache(options.dataDir, svc, options.repoId, prStorageScope.storageOriginId, 'open', 'all');
         await triggerTeamAutoClassification({
             dataDir: options.dataDir,
             store: options.store,
@@ -326,18 +338,18 @@ function normalizePullRequestHeadSha(pr: any): string | undefined {
     return headSha || undefined;
 }
 
-function makePrDiffStatsCacheKey(repoId: string, pr: any): string | undefined {
+function makePrDiffStatsCacheKey(cacheScopeId: string, pr: any): string | undefined {
     const headSha = normalizePullRequestHeadSha(pr);
     if (!headSha) return undefined;
 
     const prId = getPullRequestProviderId(pr);
     if (prId == null) return undefined;
 
-    return `${repoId}|${String(prId)}|${headSha}`;
+    return `${cacheScopeId}|${String(prId)}|${headSha}`;
 }
 
-function clearPrDiffStatsCacheEntries(repoId: string, prId: string): void {
-    const prefix = `${repoId}|${prId}|`;
+function clearPrDiffStatsCacheEntries(cacheScopeId: string, prId: string): void {
+    const prefix = `${cacheScopeId}|${prId}|`;
     for (const key of Array.from(prDiffStatsCache.keys())) {
         if (key.startsWith(prefix)) {
             prDiffStatsCache.delete(key);
@@ -356,6 +368,7 @@ function buildPullRequestDiffStats(diff: string): PullRequestDiffStats {
 }
 
 async function getPullRequestDiffStats(
+    cacheScopeId: string,
     repoId: string,
     pr: any,
     prSvc: IPullRequestsService,
@@ -365,7 +378,7 @@ async function getPullRequestDiffStats(
     const prId = getPullRequestProviderId(pr);
     if (prId == null) return undefined;
 
-    const cacheKey = makePrDiffStatsCacheKey(repoId, pr);
+    const cacheKey = makePrDiffStatsCacheKey(cacheScopeId, pr);
     const cached = cacheKey ? prDiffStatsCache.get(cacheKey) : undefined;
     if (cached) return cached;
 
@@ -378,6 +391,7 @@ async function getPullRequestDiffStats(
 }
 
 async function enrichPullRequestsWithDiffStats(
+    cacheScopeId: string,
     repoId: string,
     prs: any[],
     prSvc: IPullRequestsService,
@@ -386,7 +400,7 @@ async function enrichPullRequestsWithDiffStats(
 
     return Promise.all(prs.map(async pr => {
         try {
-            const diffStats = await getPullRequestDiffStats(repoId, pr, prSvc);
+            const diffStats = await getPullRequestDiffStats(cacheScopeId, repoId, pr, prSvc);
             return diffStats ? { ...pr, diffStats } : pr;
         } catch (err) {
             const prId = getPullRequestProviderId(pr);
@@ -411,16 +425,17 @@ interface PrDetailCacheEntry {
 
 const prDetailCache = new Map<string, PrDetailCacheEntry>();
 
-function makePrDetailCacheKey(repoId: string, prId: string): string {
-    return `${repoId}|${prId}`;
+function makePrDetailCacheKey(cacheScopeId: string, prId: string): string {
+    return `${cacheScopeId}|${prId}`;
 }
 
 async function getCachedPullRequestDetail(
+    cacheScopeId: string,
     repoId: string,
     prId: string,
     getPullRequest: (repoId: string, prId: string) => Promise<ProviderPullRequest>,
 ): Promise<ProviderPullRequest> {
-    const cacheKey = makePrDetailCacheKey(repoId, prId);
+    const cacheKey = makePrDetailCacheKey(cacheScopeId, prId);
     const cached = prDetailCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
         console.debug(`[pr-detail-cache] hit key=${cacheKey}`);
@@ -452,14 +467,14 @@ export function clearPrDetailCache(): void {
 // PR diff cache (in-memory, no TTL)
 // ============================================================================
 
-// Provider combined diffs are fetched once per repo/PR/headSha and shared by the
-// full diff and per-file diff endpoints. When the current PR head SHA cannot be
-// resolved, the cache safely falls back to repoId|prId and force-refresh
+// Provider combined diffs are fetched once per origin/PR/headSha and shared by
+// the full diff and per-file diff endpoints. When the current PR head SHA cannot be
+// resolved, the cache safely falls back to originId|prId and force-refresh
 // invalidation still removes that fallback. Diff contents are never persisted.
 const prDiffCache = new Map<string, string>();
 
-function makePrDiffCacheKey(repoId: string, prId: string, headSha?: string): string {
-    const baseKey = `${repoId}|${prId}`;
+function makePrDiffCacheKey(cacheScopeId: string, prId: string, headSha?: string): string {
+    const baseKey = `${cacheScopeId}|${prId}`;
     const normalizedHeadSha = headSha?.trim();
     return normalizedHeadSha ? `${baseKey}|${normalizedHeadSha}` : baseKey;
 }
@@ -470,8 +485,8 @@ export function clearPrDiffCache(): void {
 }
 
 /** Clear the cached diff for one specific PR (used by force-refresh). */
-function clearPrDiffCacheEntry(repoId: string, prId: string): void {
-    const fallbackKey = makePrDiffCacheKey(repoId, prId);
+function clearPrDiffCacheEntry(cacheScopeId: string, prId: string): void {
+    const fallbackKey = makePrDiffCacheKey(cacheScopeId, prId);
     prDiffCache.delete(fallbackKey);
     const headShaKeyPrefix = `${fallbackKey}|`;
     for (const key of Array.from(prDiffCache.keys())) {
@@ -501,8 +516,8 @@ const prReviewersCache = new Map<string, PrSubCacheEntry>();
 const prChecksCache    = new Map<string, PrSubCacheEntry>();
 
 /** Cache key for per-PR sub-endpoint caches — same format as detail cache. */
-function makePrSubCacheKey(repoId: string, prId: string): string {
-    return `${repoId}|${prId}`;
+function makePrSubCacheKey(cacheScopeId: string, prId: string): string {
+    return `${cacheScopeId}|${prId}`;
 }
 
 /** Clear all cached PR threads entries. Exported for testing. */
@@ -526,8 +541,8 @@ export function clearPrChecksCache(): void {
 }
 
 /** Evict all per-PR sub-endpoint cache entries for one PR (used by force-refresh). */
-function clearPrSubCacheEntries(repoId: string, prId: string): void {
-    const key = makePrSubCacheKey(repoId, prId);
+function clearPrSubCacheEntries(cacheScopeId: string, prId: string): void {
+    const key = makePrSubCacheKey(cacheScopeId, prId);
     prThreadsCache.delete(key);
     prCommitsCache.delete(key);
     prReviewersCache.delete(key);
@@ -680,12 +695,13 @@ async function getFullContextFileDiff(
  * provider round-trip occurs per PR per cache lifetime.
  */
 async function getCachedCombinedDiff(
+    cacheScopeId: string,
     repoId: string,
     prId: string,
     headSha: string | undefined,
     getDiff: (repoId: string, prId: string) => Promise<string>,
 ): Promise<string> {
-    const key = makePrDiffCacheKey(repoId, prId, headSha);
+    const key = makePrDiffCacheKey(cacheScopeId, prId, headSha);
     const hit = prDiffCache.get(key);
     if (hit !== undefined) {
         console.debug(`[pr-diff-cache] hit key=${key}`);
@@ -699,13 +715,14 @@ async function getCachedCombinedDiff(
 }
 
 async function resolvePullRequestDetailForDiffCache(
+    cacheScopeId: string,
     repoId: string,
     prId: string,
     getPullRequest: (repoId: string, prId: string) => Promise<ProviderPullRequest>,
 ): Promise<ProviderPullRequest | undefined> {
     try {
         const pr = await getPullRequest(repoId, prId);
-        prDetailCache.set(makePrDetailCacheKey(repoId, prId), {
+        prDetailCache.set(makePrDetailCacheKey(cacheScopeId, prId), {
             data: pr,
             expiresAt: Date.now() + PR_DETAIL_TTL_MS,
         });
@@ -804,7 +821,11 @@ export function registerPrRoutes(
                 const workspaceId = typeof query.workspaceId === 'string' && query.workspaceId.trim()
                     ? query.workspaceId.trim()
                     : repoId;
-                const cacheKey = makePrCacheKey(repoId, status, scope);
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+                const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId, repo);
+                const cacheScopeId = prStorageScope.storageOriginId;
+                const cacheKey = makePrCacheKey(cacheScopeId, status, scope);
 
                 let entry: PrCacheEntry;
 
@@ -815,7 +836,7 @@ export function registerPrRoutes(
                 if (cached && cached.expiresAt > Date.now()) {
                     entry = cached;
                 } else {
-                    entry = await refreshPullRequestListCache(dataDir, svc, repoId, status, scope);
+                    entry = await refreshPullRequestListCache(dataDir, svc, repoId, cacheScopeId, status, scope);
                 }
 
                 // Apply in-memory pagination
@@ -835,8 +856,6 @@ export function registerPrRoutes(
                 }
 
                 if (isTeamAutoClassificationEnabled(autoClassification)) {
-                    const repo = await svc.resolveRepo(repoId);
-                    const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId, repo);
                     await triggerTeamAutoClassification({
                         dataDir,
                         store: autoClassification!.store,
@@ -1210,17 +1229,23 @@ export function registerPrRoutes(
                 const prId = decodeURIComponent(match![2]);
                 const query = url.parse(req.url ?? '', true).query;
                 const force = query.force === 'true';
-                const cacheKey = makePrDetailCacheKey(repoId, prId);
+                const workspaceId = typeof query.workspaceId === 'string' && query.workspaceId.trim()
+                    ? query.workspaceId.trim()
+                    : repoId;
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+                const cacheScopeId = await resolvePrCacheScopeIdForRoute(svc, store, repoId, workspaceId, repo);
+                const cacheKey = makePrDetailCacheKey(cacheScopeId, prId);
 
                 // Serve from cache if valid and not forced
                 if (force) {
                     prDetailCache.delete(cacheKey);
                     // Also evict diff-related caches so the next diff/stat request
                     // refetches for the current PR head without touching other PRs.
-                    clearPrDiffCacheEntry(repoId, prId);
-                    clearPrDiffStatsCacheEntries(repoId, prId);
+                    clearPrDiffCacheEntry(cacheScopeId, prId);
+                    clearPrDiffStatsCacheEntries(cacheScopeId, prId);
                     // Evict all sub-endpoint caches for this PR.
-                    clearPrSubCacheEntries(repoId, prId);
+                    clearPrSubCacheEntries(cacheScopeId, prId);
                     console.debug(`[pr-detail-cache] bypass key=${cacheKey}`);
                 }
 
@@ -1234,9 +1259,6 @@ export function registerPrRoutes(
                     console.debug(`[pr-detail-cache] miss key=${cacheKey}`);
                 }
 
-                const repo = await svc.resolveRepo(repoId);
-                if (!repo) return send404(res, `Repo ${repoId} not found`);
-
                 const cfg = await readProvidersConfig(dataDir);
                 const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
                 if (!prSvc || isNoAdoCredentials(prSvc)) {
@@ -1247,7 +1269,7 @@ export function registerPrRoutes(
                     return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
                 }
 
-                const pr = await getCachedPullRequestDetail(repoId, prId, prSvc.getPullRequest.bind(prSvc));
+                const pr = await getCachedPullRequestDetail(cacheScopeId, repoId, prId, prSvc.getPullRequest.bind(prSvc));
                 sendJson(res, pr);
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
@@ -1266,20 +1288,21 @@ export function registerPrRoutes(
     routes.push({
         method: 'GET',
         pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/([^/]+)\/threads$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             try {
                 const repoId = decodeURIComponent(match![1]);
                 const prId = decodeURIComponent(match![2]);
-                const cacheKey = makePrSubCacheKey(repoId, prId);
+                const workspaceId = parseWorkspaceId(req, undefined, repoId);
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+                const cacheScopeId = await resolvePrCacheScopeIdForRoute(svc, store, repoId, workspaceId, repo);
+                const cacheKey = makePrSubCacheKey(cacheScopeId, prId);
 
                 const cached = prThreadsCache.get(cacheKey);
                 if (cached && cached.expiresAt > Date.now()) {
                     console.debug(`[pr-threads-cache] hit key=${cacheKey}`);
                     return sendJson(res, cached.data);
                 }
-
-                const repo = await svc.resolveRepo(repoId);
-                if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const cfg = await readProvidersConfig(dataDir);
                 const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
@@ -1313,20 +1336,21 @@ export function registerPrRoutes(
     routes.push({
         method: 'GET',
         pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/([^/]+)\/reviewers$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             try {
                 const repoId = decodeURIComponent(match![1]);
                 const prId = decodeURIComponent(match![2]);
-                const cacheKey = makePrSubCacheKey(repoId, prId);
+                const workspaceId = parseWorkspaceId(req, undefined, repoId);
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+                const cacheScopeId = await resolvePrCacheScopeIdForRoute(svc, store, repoId, workspaceId, repo);
+                const cacheKey = makePrSubCacheKey(cacheScopeId, prId);
 
                 const cached = prReviewersCache.get(cacheKey);
                 if (cached && cached.expiresAt > Date.now()) {
                     console.debug(`[pr-reviewers-cache] hit key=${cacheKey}`);
                     return sendJson(res, cached.data);
                 }
-
-                const repo = await svc.resolveRepo(repoId);
-                if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const cfg = await readProvidersConfig(dataDir);
                 const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
@@ -1360,20 +1384,21 @@ export function registerPrRoutes(
     routes.push({
         method: 'GET',
         pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/([^/]+)\/commits$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             try {
                 const repoId = decodeURIComponent(match![1]);
                 const prId = decodeURIComponent(match![2]);
-                const cacheKey = makePrSubCacheKey(repoId, prId);
+                const workspaceId = parseWorkspaceId(req, undefined, repoId);
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+                const cacheScopeId = await resolvePrCacheScopeIdForRoute(svc, store, repoId, workspaceId, repo);
+                const cacheKey = makePrSubCacheKey(cacheScopeId, prId);
 
                 const cached = prCommitsCache.get(cacheKey);
                 if (cached && cached.expiresAt > Date.now()) {
                     console.debug(`[pr-commits-cache] hit key=${cacheKey}`);
                     return sendJson(res, cached.data);
                 }
-
-                const repo = await svc.resolveRepo(repoId);
-                if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const cfg = await readProvidersConfig(dataDir);
                 const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
@@ -1411,20 +1436,21 @@ export function registerPrRoutes(
     routes.push({
         method: 'GET',
         pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/([^/]+)\/checks$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             try {
                 const repoId = decodeURIComponent(match![1]);
                 const prId = decodeURIComponent(match![2]);
-                const cacheKey = makePrSubCacheKey(repoId, prId);
+                const workspaceId = parseWorkspaceId(req, undefined, repoId);
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+                const cacheScopeId = await resolvePrCacheScopeIdForRoute(svc, store, repoId, workspaceId, repo);
+                const cacheKey = makePrSubCacheKey(cacheScopeId, prId);
 
                 const cached = prChecksCache.get(cacheKey);
                 if (cached && cached.expiresAt > Date.now()) {
                     console.debug(`[pr-checks-cache] hit key=${cacheKey}`);
                     return sendJson(res, cached.data);
                 }
-
-                const repo = await svc.resolveRepo(repoId);
-                if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const cfg = await readProvidersConfig(dataDir);
                 const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
@@ -1469,9 +1495,13 @@ export function registerPrRoutes(
                 const filePath = decodeURIComponent(match![3]);
                 const query = url.parse(req.url ?? '', true).query;
                 const fullContext = query.fullContext === 'true';
+                const workspaceId = typeof query.workspaceId === 'string' && query.workspaceId.trim()
+                    ? query.workspaceId.trim()
+                    : repoId;
 
                 const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
+                const cacheScopeId = await resolvePrCacheScopeIdForRoute(svc, store, repoId, workspaceId, repo);
 
                 const cfg = await readProvidersConfig(dataDir);
                 const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
@@ -1488,11 +1518,13 @@ export function registerPrRoutes(
                 }
 
                 const prData = await resolvePullRequestDetailForDiffCache(
+                    cacheScopeId,
                     repoId,
                     prId,
                     prSvc.getPullRequest.bind(prSvc),
                 );
                 const combinedDiff = await getCachedCombinedDiff(
+                    cacheScopeId,
                     repoId,
                     prId,
                     normalizePullRequestHeadSha(prData),
@@ -1545,13 +1577,15 @@ export function registerPrRoutes(
     routes.push({
         method: 'GET',
         pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/([^/]+)\/diff$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             try {
                 const repoId = decodeURIComponent(match![1]);
                 const prId = decodeURIComponent(match![2]);
+                const workspaceId = parseWorkspaceId(req, undefined, repoId);
 
                 const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
+                const cacheScopeId = await resolvePrCacheScopeIdForRoute(svc, store, repoId, workspaceId, repo);
 
                 const cfg = await readProvidersConfig(dataDir);
                 const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
@@ -1570,11 +1604,13 @@ export function registerPrRoutes(
                 }
 
                 const prData = await resolvePullRequestDetailForDiffCache(
+                    cacheScopeId,
                     repoId,
                     prId,
                     prSvc.getPullRequest.bind(prSvc),
                 );
                 const diff = await getCachedCombinedDiff(
+                    cacheScopeId,
                     repoId,
                     prId,
                     normalizePullRequestHeadSha(prData),

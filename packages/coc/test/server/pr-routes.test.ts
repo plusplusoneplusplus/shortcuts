@@ -53,6 +53,15 @@ const mockRepoInfo = {
     remoteUrl: REMOTE_URL,
 };
 
+function makeMockRepoInfo(repoId: string, remoteUrl = REMOTE_URL): typeof mockRepoInfo {
+    return {
+        ...mockRepoInfo,
+        id: repoId,
+        name: repoId,
+        remoteUrl,
+    };
+}
+
 const mockPr: ProviderPullRequest = {
     id: 42,
     number: 42,
@@ -429,6 +438,43 @@ describe('GET /api/repos/:id/pull-requests', () => {
         expect(body.pullRequests).toHaveLength(1);
         // Still only one upstream call
         expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(1);
+    });
+
+    it('shares PR list cache entries across same-origin repo ids', async () => {
+        const cloneRepoId = 'repo-clone-same-origin';
+        mockResolveRepo.mockImplementation(async (repoId: string) => makeMockRepoInfo(repoId, REMOTE_URL));
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockImplementation(async (repoId: string) => [
+            { ...mockPr, repositoryId: repoId, title: `from ${repoId}` },
+        ]);
+
+        const first = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        const firstBody = await first.json() as { pullRequests: Array<{ title: string }> };
+        expect(firstBody.pullRequests[0].title).toBe(`from ${REPO_ID}`);
+
+        const second = await fetch(`${baseUrl}/api/repos/${cloneRepoId}/pull-requests`);
+        const secondBody = await second.json() as { pullRequests: Array<{ title: string }> };
+        expect(second.status).toBe(200);
+        expect(secondBody.pullRequests[0].title).toBe(`from ${REPO_ID}`);
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps PR list cache entries isolated for distinct origins', async () => {
+        const otherRepoId = 'repo-other-origin';
+        mockResolveRepo.mockImplementation(async (repoId: string) => makeMockRepoInfo(
+            repoId,
+            repoId === otherRepoId ? 'https://github.com/org/other.git' : REMOTE_URL,
+        ));
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockImplementation(async (repoId: string) => [
+            { ...mockPr, repositoryId: repoId, title: `from ${repoId}` },
+        ]);
+
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        const other = await fetch(`${baseUrl}/api/repos/${otherRepoId}/pull-requests`);
+        const otherBody = await other.json() as { pullRequests: Array<{ title: string }> };
+
+        expect(other.status).toBe(200);
+        expect(otherBody.pullRequests[0].title).toBe(`from ${otherRepoId}`);
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
     });
 
     it('force=true bypasses cache and repopulates', async () => {
@@ -1288,7 +1334,7 @@ describe('PR diff cache (AC-01)', () => {
         expect(mockSvc.getDiff).toHaveBeenCalledTimes(2);
     });
 
-    it('falls back to the repo/PR combined-diff key when PR head SHA is unavailable', async () => {
+    it('falls back to the origin/PR combined-diff key when PR head SHA is unavailable', async () => {
         (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockResolvedValue({ ...mockPr, headSha: undefined });
 
         await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
@@ -1360,10 +1406,36 @@ describe('PR diff cache (AC-01)', () => {
         expect(mockSvc.getDiff).toHaveBeenCalledTimes(2);
     });
 
-    it('uses separate combined-diff cache entries per repo even for the same PR and head', async () => {
-        const otherRepoId = 'repo-other';
+    it('shares combined-diff cache entries across same-origin repo ids for the same PR and head', async () => {
+        const cloneRepoId = 'repo-clone-same-origin';
+        const repoDiff = 'diff --git a/src/repo.ts b/src/repo.ts\n';
+        mockResolveRepo.mockImplementation(async (repoId: string) => makeMockRepoInfo(repoId, REMOTE_URL));
+        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockImplementation(async (repoId: string) => ({
+            ...mockPr,
+            repositoryId: repoId,
+            headSha: 'shared-head',
+        }));
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(repoDiff);
+
+        const repoRes = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        expect(await repoRes.text()).toContain('src/repo.ts');
+
+        const cloneRepoRes = await fetch(`${baseUrl}/api/repos/${cloneRepoId}/pull-requests/42/diff`);
+        expect(await cloneRepoRes.text()).toContain('src/repo.ts');
+
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        await fetch(`${baseUrl}/api/repos/${cloneRepoId}/pull-requests/42/diff`);
+        expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps combined-diff cache entries isolated for distinct origins', async () => {
+        const otherRepoId = 'repo-other-origin';
         const repoDiff = 'diff --git a/src/repo.ts b/src/repo.ts\n';
         const otherRepoDiff = 'diff --git a/src/other-repo.ts b/src/other-repo.ts\n';
+        mockResolveRepo.mockImplementation(async (repoId: string) => makeMockRepoInfo(
+            repoId,
+            repoId === otherRepoId ? 'https://github.com/org/other.git' : REMOTE_URL,
+        ));
         (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockImplementation(async (repoId: string) => ({
             ...mockPr,
             repositoryId: repoId,
@@ -1457,6 +1529,22 @@ describe('threads cache (GET /api/repos/:id/pull-requests/:prId/threads)', () =>
         expect(res2.status).toBe(200);
         const body = await res2.json() as { threads: unknown[] };
         expect(body.threads).toHaveLength(1);
+        expect(mockSvc.getThreads).toHaveBeenCalledTimes(1);
+    });
+
+    it('shares thread cache entries across same-origin repo ids', async () => {
+        const cloneRepoId = 'repo-clone-same-origin';
+        mockResolveRepo.mockImplementation(async (repoId: string) => makeMockRepoInfo(repoId, REMOTE_URL));
+        (mockSvc.getThreads as ReturnType<typeof vi.fn>).mockImplementation(async (repoId: string) => [
+            { ...mockThread, id: repoId === cloneRepoId ? 2 : 1 },
+        ]);
+
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/threads`);
+        const res = await fetch(`${baseUrl}/api/repos/${cloneRepoId}/pull-requests/42/threads`);
+        const body = await res.json() as { threads: Array<{ id: number }> };
+
+        expect(res.status).toBe(200);
+        expect(body.threads[0].id).toBe(1);
         expect(mockSvc.getThreads).toHaveBeenCalledTimes(1);
     });
 
@@ -1641,6 +1729,45 @@ describe('PR detail cache (GET /api/repos/:id/pull-requests/:prId)', () => {
         expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(1);
     });
 
+    it('shares detail cache entries across same-origin repo ids', async () => {
+        const cloneRepoId = 'repo-clone-same-origin';
+        mockResolveRepo.mockImplementation(async (repoId: string) => makeMockRepoInfo(repoId, REMOTE_URL));
+        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockImplementation(async (repoId: string) => ({
+            ...mockPr,
+            repositoryId: repoId,
+            title: `detail ${repoId}`,
+        }));
+
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        const res = await fetch(`${baseUrl}/api/repos/${cloneRepoId}/pull-requests/42`);
+        const body = await res.json() as { title: string };
+
+        expect(res.status).toBe(200);
+        expect(body.title).toBe(`detail ${REPO_ID}`);
+        expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps detail cache entries isolated for distinct origins', async () => {
+        const otherRepoId = 'repo-other-origin';
+        mockResolveRepo.mockImplementation(async (repoId: string) => makeMockRepoInfo(
+            repoId,
+            repoId === otherRepoId ? 'https://github.com/org/other.git' : REMOTE_URL,
+        ));
+        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockImplementation(async (repoId: string) => ({
+            ...mockPr,
+            repositoryId: repoId,
+            title: `detail ${repoId}`,
+        }));
+
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        const res = await fetch(`${baseUrl}/api/repos/${otherRepoId}/pull-requests/42`);
+        const body = await res.json() as { title: string };
+
+        expect(res.status).toBe(200);
+        expect(body.title).toBe(`detail ${otherRepoId}`);
+        expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(2);
+    });
+
     it('force=true bypasses cache and repopulates', async () => {
         // Warm the cache
         await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
@@ -1669,10 +1796,10 @@ describe('PR detail cache (GET /api/repos/:id/pull-requests/:prId)', () => {
         }
     });
 
-    it('uses separate cache entries per repo and PR', async () => {
-        // Fetch PR 42 for repo-abc123
+    it('uses separate cache entries per origin and PR', async () => {
+        // Fetch PR 42 for the resolved origin
         await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
-        // Fetch PR 99 for repo-abc123
+        // Fetch PR 99 for the same resolved origin
         await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/99`);
         expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(2);
 
