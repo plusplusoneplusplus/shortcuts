@@ -5,6 +5,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useRecentSkills } from '../../../../src/server/spa/client/react/features/skills/hooks/useRecentSkills';
+import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 // Mock fetch globally
 const fetchMock = vi.fn();
@@ -35,6 +36,7 @@ describe('useRecentSkills', () => {
 
     afterEach(() => {
         vi.clearAllMocks();
+        resetCloneRegistryForTests();
     });
 
     // ── Initial load ──────────────────────────────────────────────
@@ -127,6 +129,32 @@ describe('useRecentSkills', () => {
 
         await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
         expect(fetchMock.mock.calls[0][0]).toContain(encodeURIComponent('my repo/path'));
+    });
+
+    // ── Remote-clone routing (AC-07) ──────────────────────────────
+
+    it('routes preferences to the remote clone server when wsId is a registered remote workspace', async () => {
+        // Regression: recent-skills preferences for a remote clone must hit the
+        // clone's own server, not the page origin (which 404s "Workspace not found").
+        registerCloneBaseUrls([{ workspaceId: 'remote-ws', baseUrl: 'http://127.0.0.1:9999' }]);
+        fetchMock.mockResolvedValue(makePrefsResponse());
+
+        renderHook(() => useRecentSkills('remote-ws'));
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+        const url = String(fetchMock.mock.calls[0][0]);
+        expect(url).toContain('http://127.0.0.1:9999');
+        expect(url).toContain('/workspaces/remote-ws/preferences');
+    });
+
+    it('keeps an unregistered (local) wsId on the page origin — no remote leakage', async () => {
+        fetchMock.mockResolvedValue(makePrefsResponse());
+
+        renderHook(() => useRecentSkills('local-ws'));
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+        const url = String(fetchMock.mock.calls[0][0]);
+        expect(url.startsWith('/workspaces/local-ws/preferences')).toBe(true);
     });
 
     // ── trackUsage ────────────────────────────────────────────────

@@ -703,10 +703,12 @@ the input:
   client for all clone-scoped REST: `useGitInfo`, `TerminalView` (terminal
   list/pin), `ChatDetail` (every `processes`/`queue`/`notes`/`canvases`/`skills`
   call), `RepoSchedulesTab` (schedule CRUD + notes-git status),
-  `WorkItemSection` + `WorkItemHierarchyTree` (list/tree/mutations), and
+  `WorkItemSection` + `WorkItemHierarchyTree` (list/tree/mutations),
+  `WorkItemExecuteDialog` (skill-list load), and
   `PullRequestsTab` (list/suggestions/roster/classification).
 - Non-React services that take a `workspaceId` resolve via
-  `getCocClientForWorkspace(workspaceId)`: `explorerApi.*` and `notesApi.*`.
+  `getCocClientForWorkspace(workspaceId)`: `explorerApi.*`, `notesApi.*`, and the
+  recent-skills hook `useRecentSkills` (per-workspace preferences get/patch).
 - The Activity WRITE path `useSendMessage` routes `processes.sendMessage` /
   `promoteToRalph` through `getCocClientForWorkspace(workspaceId)`; the
   Activity events stream `useChatSSE` opens its `EventSource` at

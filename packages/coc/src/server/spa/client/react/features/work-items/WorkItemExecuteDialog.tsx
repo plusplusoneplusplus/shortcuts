@@ -6,7 +6,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Dialog, Button } from '../../ui';
 import { useRecentSkills } from '../../features/skills/hooks/useRecentSkills';
-import { fetchApi } from '../../hooks/useApi';
 import { useCocClient } from '../../repos/cloneRouting';
 import { RunSkillPanel } from '../../shared/RunSkillPanel';
 import type { SkillItem } from '../../shared/RunSkillPanel';
@@ -54,7 +53,9 @@ export function WorkItemExecuteDialog({
         setLoading(true);
         (async () => {
             try {
-                const data = await fetchApi(
+                // AC-07: skills load from the selected clone's server (remote clones
+                // route to their own host; local clones hit the default origin).
+                const data = await cloneClient.request<{ skills?: SkillItem[] }>(
                     '/workspaces/' + encodeURIComponent(workspaceId) + '/skills',
                 );
                 if (cancelled) return;
@@ -66,7 +67,7 @@ export function WorkItemExecuteDialog({
             }
         })();
         return () => { cancelled = true; };
-    }, [open, workspaceId]);
+    }, [open, workspaceId, cloneClient]);
 
     const toggleSkill = useCallback((name: string) => {
         setSelectedSkills(prev =>

@@ -7,6 +7,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 const mocks = vi.hoisted(() => ({
     execute: vi.fn(),
     recordSkillUsage: vi.fn(),
+    request: vi.fn(),
     fetchApi: vi.fn(),
     trackUsage: vi.fn(),
 }));
@@ -24,6 +25,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/skills/hooks/useRec
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
+        request: mocks.request,
         workItems: {
             execute: mocks.execute,
         },
@@ -45,7 +47,9 @@ import { WorkItemExecuteDialog } from '../../../../../src/server/spa/client/reac
 describe('WorkItemExecuteDialog execution modes', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        mocks.fetchApi.mockResolvedValue({
+        // Skills load through the clone-aware cloneClient.request (AC-07); for the
+        // unregistered ws-1 that resolves to this getSpaCocClient() mock.
+        mocks.request.mockResolvedValue({
             skills: [{ name: 'impl', description: 'Implement changes' }],
         });
         mocks.execute.mockResolvedValue({ taskId: 'task-1' });
