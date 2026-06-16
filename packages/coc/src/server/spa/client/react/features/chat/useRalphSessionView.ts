@@ -18,7 +18,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { getSpaCocClient } from '../../api/cocClient';
+import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
 import type { RalphSessionView } from './RalphWorkflowPane';
 
 const DEFAULT_POLL_MS = 5000;
@@ -49,7 +49,11 @@ export function useRalphSessionView(
     useEffect(() => {
         if (!sessionId) return;
         let cancelled = false;
-        getSpaCocClient()
+        // Route the read to the clone that owns the workspace: a remote clone's
+        // Ralph session lives on its own server, so the bare local singleton
+        // would 404 ("Ralph session not found"). Local/unregistered ids resolve
+        // to the same default origin, so local behaviour is unchanged.
+        getCocClientForWorkspace(workspaceId)
             .workspaces.ralphSession(workspaceId, sessionId)
             .then((res) => {
                 if (cancelled) return;

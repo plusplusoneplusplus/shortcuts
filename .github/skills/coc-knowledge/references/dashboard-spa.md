@@ -722,6 +722,13 @@ the input:
   ralph-start` POSTs — so a remote clone's goal file and Ralph session target the
   clone's server (the local server 403s a remote-only path as "outside trusted
   directories").
+- The Ralph workflow pane routes its whole data flow to the clone: the per-session
+  journal READ (`useRalphSessionView` -> `workspaces.ralphSession`) resolves its
+  client via `getCocClientForWorkspace(workspaceId)`, and the continue/new-loop/
+  resume mutations (`RalphWorkflowPaneContainer` / `RalphWorkflowPane`) go through
+  `useCocClient(workspaceId)` -- so a remote clone's Ralph session is read and
+  mutated on its own server (the bare local singleton 404s a remote-only session as
+  "Ralph session not found").
 - The Activity WRITE path `useSendMessage` routes `processes.sendMessage` /
   `promoteToRalph` through `getCocClientForWorkspace(workspaceId)`; the
   Activity events stream `useChatSSE` opens its `EventSource` at
