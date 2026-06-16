@@ -122,6 +122,46 @@ describe('PullRequestsClient', () => {
     ]);
   });
 
+  it('loads provider PR subresources through origin APIs with explicit workspace metadata', async () => {
+    const adapter = createMockAdapter({});
+    const client = new PullRequestsClient(adapter);
+    const controller = new AbortController();
+    const options = {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      signal: controller.signal,
+    };
+
+    await client.getThreadsForOrigin('gh_owner_repo', 'pr/1', options);
+    await client.getReviewersForOrigin('gh_owner_repo', 'pr/1', options);
+    await client.getCommitsForOrigin('gh_owner_repo', 'pr/1', options);
+    await client.getDiffForOrigin('gh_owner_repo', 'pr/1', options);
+    await client.getChecksForOrigin('gh_owner_repo', 'pr/1', options);
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/origins/gh_owner_repo/pull-requests/pr%2F1/threads',
+        options: { query: { workspaceId: 'ws/a', repoId: 'repo/a' }, signal: controller.signal },
+      },
+      {
+        path: '/origins/gh_owner_repo/pull-requests/pr%2F1/reviewers',
+        options: { query: { workspaceId: 'ws/a', repoId: 'repo/a' }, signal: controller.signal },
+      },
+      {
+        path: '/origins/gh_owner_repo/pull-requests/pr%2F1/commits',
+        options: { query: { workspaceId: 'ws/a', repoId: 'repo/a' }, signal: controller.signal },
+      },
+      {
+        path: '/origins/gh_owner_repo/pull-requests/pr%2F1/diff',
+        options: { query: { workspaceId: 'ws/a', repoId: 'repo/a' }, signal: controller.signal },
+      },
+      {
+        path: '/origins/gh_owner_repo/pull-requests/pr%2F1/checks',
+        options: { query: { workspaceId: 'ws/a', repoId: 'repo/a' }, signal: controller.signal },
+      },
+    ]);
+  });
+
   it('lists, records, and removes recently opened PRs with workspace scope', async () => {
     const adapter = createMockAdapter({ entries: [] });
     const client = new PullRequestsClient(adapter);
@@ -639,6 +679,19 @@ describe('PullRequestsClient', () => {
 
     expect(client.prFileDiffPath('repo/a', 'pr/1', 'src/foo.ts')).toBe(
       '/api/repos/repo%2Fa/pull-requests/pr%2F1/diff/files/src%2Ffoo.ts',
+    );
+    expect(client.prDiffPathForOrigin('gh_owner_repo', 'pr/1', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+    })).toBe(
+      '/api/origins/gh_owner_repo/pull-requests/pr%2F1/diff?workspaceId=ws%2Fa&repoId=repo%2Fa',
+    );
+    expect(client.prFileDiffPathForOrigin('gh_owner_repo', 'pr/1', 'src/foo.ts', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      fullContext: true,
+    })).toBe(
+      '/api/origins/gh_owner_repo/pull-requests/pr%2F1/diff/files/src%2Ffoo.ts?workspaceId=ws%2Fa&repoId=repo%2Fa&fullContext=true',
     );
   });
 

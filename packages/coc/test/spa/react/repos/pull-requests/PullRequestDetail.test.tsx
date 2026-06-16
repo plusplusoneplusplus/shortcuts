@@ -210,6 +210,24 @@ describe('successful render', () => {
         expect(screen.getByTestId('pr-status-badge').textContent).toMatch(/Open/i);
     });
 
+    it('loads provider-backed PR resources through origin APIs with selected workspace metadata', async () => {
+        mockFetchDetail(makePr());
+
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('pr-title')).toBeInTheDocument());
+
+        const urls = vi.mocked(global.fetch).mock.calls
+            .map(([input]) => String(input))
+            .filter(url => /\/pull-requests\/142(?:[/?]|$)/.test(url));
+        expect(urls).toEqual([
+            '/origins/gh_octo_repo/pull-requests/142?workspaceId=repo-1&repoId=repo-1',
+            '/origins/gh_octo_repo/pull-requests/142/threads?workspaceId=repo-1&repoId=repo-1',
+            '/origins/gh_octo_repo/pull-requests/142/diff?workspaceId=repo-1&repoId=repo-1',
+            '/origins/gh_octo_repo/pull-requests/142/commits?workspaceId=repo-1&repoId=repo-1',
+            '/origins/gh_octo_repo/pull-requests/142/checks?workspaceId=repo-1&repoId=repo-1',
+        ]);
+    });
+
     it('renders branch info', async () => {
         mockFetchDetail(makePr());
         await act(async () => { await renderDetail(); });

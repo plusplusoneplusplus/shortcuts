@@ -107,6 +107,10 @@ export function PullRequestDetail({ repoId, remoteUrl, prId, onBack, isMobile = 
     const { markPoppedOut } = useGitReviewPopOut();
     const workspaceId = state.workspace ?? String(repoId);
     const placementWorkspaceId = state.selectedRepoId ?? String(repoId);
+    const originId = useMemo(
+        () => resolveCanonicalOriginId({ workspaceId, remoteUrl }),
+        [workspaceId, remoteUrl],
+    );
 
     // Classification hook — passes undefined key when feature flag is off or no real headSha yet.
     // Never fall back to sourceBranch: two PRs on the same branch would alias to the same key.
@@ -141,13 +145,12 @@ export function PullRequestDetail({ repoId, remoteUrl, prId, onBack, isMobile = 
     }, [assistantOpen, toggleAssistant]);
 
     const handleFileClick = useCallback((filePath: string) => {
-        const originId = resolveCanonicalOriginId({ workspaceId, remoteUrl });
         const url = buildGitPrPopOutUrl(workspaceId, String(repoId), String(prId), originId);
         const win = window.open(url, `coc-git-review-pr-${prId}`, 'width=1200,height=800');
         if (win) {
             markPoppedOut(gitReviewPrPopOutKey(workspaceId, String(prId)));
         }
-    }, [workspaceId, remoteUrl, repoId, prId, markPoppedOut]);
+    }, [workspaceId, originId, repoId, prId, markPoppedOut]);
 
     const switchTab = useCallback(
         (tab: PrDetailTab) => {
@@ -171,31 +174,32 @@ export function PullRequestDetail({ repoId, remoteUrl, prId, onBack, isMobile = 
         const client = getSpaCocClient();
         const prIdStr = String(prId);
         const repoIdStr = String(repoId);
+        const providerOptions = { workspaceId, repoId: repoIdStr };
 
         Promise.all([
             client.pullRequests
-                .get(repoIdStr, prIdStr, { force })
+                .getForOrigin(originId, prIdStr, { ...providerOptions, force })
                 .then(body => body as PullRequest),
             client.pullRequests
-                .getThreads(repoIdStr, prIdStr)
+                .getThreadsForOrigin(originId, prIdStr, providerOptions)
                 .then(body => (body.threads ?? []) as CommentThread[])
                 .catch(() => [] as CommentThread[]),
             client.pullRequests
-                .getDiff(repoIdStr, prIdStr)
+                .getDiffForOrigin(originId, prIdStr, providerOptions)
                 .then(text => ({ kind: 'ok' as const, parsed: parseDiffFileList(text) }))
                 .catch((err: unknown) => ({
                     kind: 'err' as const,
                     message: getSpaCocClientErrorMessage(err, 'Failed to load diff'),
                 })),
             client.pullRequests
-                .getCommits(repoIdStr, prIdStr)
+                .getCommitsForOrigin(originId, prIdStr, providerOptions)
                 .then(body => ({ kind: 'ok' as const, commits: (body.commits ?? []) as PullRequestCommit[] }))
                 .catch((err: unknown) => ({
                     kind: 'err' as const,
                     message: getSpaCocClientErrorMessage(err, 'Failed to load commits'),
                 })),
             client.pullRequests
-                .getChecks(repoIdStr, prIdStr)
+                .getChecksForOrigin(originId, prIdStr, providerOptions)
                 .then(body => ({ kind: 'ok' as const, checks: (body.checks ?? []) as PullRequestCheck[] }))
                 .catch((err: unknown) => ({
                     kind: 'err' as const,
@@ -226,7 +230,7 @@ export function PullRequestDetail({ repoId, remoteUrl, prId, onBack, isMobile = 
                 setLoading(false);
                 setRefreshing(false);
             });
-    }, [repoId, prId]);
+    }, [repoId, prId, originId, workspaceId]);
 
     useEffect(() => {
         fetchAll();

@@ -267,6 +267,20 @@ describe('createPrDiffSource', () => {
         expect(source.fileDiffUrl('src/foo.ts')).toBe('/api/repos/repo1/pull-requests/42/diff/files/src%2Ffoo.ts');
     });
 
+    it('uses origin PR diff endpoints when originId is provided', () => {
+        const source = createPrDiffSource(ws, repoId, prId, { originId: 'gh_owner_repo' });
+
+        expect(source.fullDiffUrl()).toBe(
+            '/api/origins/gh_owner_repo/pull-requests/42/diff?workspaceId=ws1&repoId=repo1',
+        );
+        expect(source.fileDiffUrl('src/foo.ts')).toBe(
+            '/api/origins/gh_owner_repo/pull-requests/42/diff/files/src%2Ffoo.ts?workspaceId=ws1&repoId=repo1',
+        );
+        expect(source.fullContextFileDiffUrl?.('src/foo.ts')).toBe(
+            '/api/origins/gh_owner_repo/pull-requests/42/diff/files/src%2Ffoo.ts?workspaceId=ws1&repoId=repo1&fullContext=true',
+        );
+    });
+
     it('commentContext returns PR-specific refs', () => {
         const source = createPrDiffSource(ws, repoId, prId);
         const ctx = source.commentContext('src/bar.ts');

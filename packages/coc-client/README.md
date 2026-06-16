@@ -25,7 +25,7 @@ const { items } = await coc.workItems.listForOrigin(originId);
 - Browser usage can omit `baseUrl` for same-origin requests.
 - Node tools that use realtime APIs should inject `WebSocket` or `EventSource` constructors when the runtime does not provide them globally.
 - Persistent Work Item APIs use an explicit origin ID. Workspace-root-dependent actions still require a workspace ID. IDs are encoded as path segments, so IDs containing `/` are safe.
-- Pull Request list/detail APIs and persistent sidecar APIs such as recent-opened entries, Team roster, chat bindings, and review progress use explicit origin IDs. Provider and filesystem operations still require concrete workspace/repo metadata.
+- Pull Request provider APIs (list, detail, threads, reviewers, commits, checks, diffs) and persistent sidecar APIs such as recent-opened entries, Team roster, chat bindings, and review progress use explicit origin IDs. Provider and filesystem operations still require concrete workspace/repo metadata.
 - Follow-up routing, queue transitions, and storage paths remain server-authoritative.
 
 ## Supported domains
@@ -38,7 +38,7 @@ const { items } = await coc.workItems.listForOrigin(originId);
 | Queue | `coc.queue` | list, stats, history, enqueue, pause/resume, cancel |
 | Schedules | `coc.schedules` | repo-scoped list, create, update, enable/disable, move, delete, run, history |
 | Work items | `coc.workItems` | list, grouped list, create, get, update, delete, plan, execute |
-| Pull requests | `coc.pullRequests` | origin-scoped provider PR list/detail, recent-opened, Team roster, chat bindings, classifications, review progress, suggestions |
+| Pull requests | `coc.pullRequests` | origin-scoped provider PR list/detail/subresources, recent-opened, Team roster, chat bindings, classifications, review progress, suggestions |
 | Workspaces/repos | `coc.workspaces`, `coc.repos` | list, register, discover, update, delete, git info, history deletion |
 | Servers | `coc.servers` | remote server CRUD, health, reconnect, patch-transfer cherry-pick orchestration |
 | Preferences | `coc.preferences` | global and per-repo preferences, skill usage |

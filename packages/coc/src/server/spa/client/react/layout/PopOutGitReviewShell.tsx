@@ -687,7 +687,7 @@ function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLoaded }:
 
         Promise.all([
             client.pullRequests.getForOrigin(progressOriginId, prId, { workspaceId, repoId }) as Promise<{ title?: string; headSha?: string }>,
-            client.pullRequests.getDiff(repoId, prId),
+            client.pullRequests.getDiffForOrigin(progressOriginId, prId, { workspaceId, repoId }),
         ])
             .then(([prData, diffText]) => {
                 setPrTitle(prData.title);
@@ -824,6 +824,7 @@ function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLoaded }:
                             workspaceId={workspaceId}
                             filePath={selectedFilePath}
                             source={createPrDiffSource(workspaceId, repoId, prId, {
+                                originId: progressOriginId,
                                 headSha,
                                 files: filePaths,
                                 title: prTitle,

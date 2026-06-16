@@ -161,6 +161,33 @@ describe('PullRequestsClient mock coverage', () => {
     });
   });
 
+  it('gets provider PR subresources through origin routes with explicit workspace metadata', async () => {
+    mock = await startMockServer();
+    const diff = 'diff --git a/src/foo.ts b/src/foo.ts\n';
+    mock.on('GET', '/api/origins/gh_owner_repo/pull-requests/42/threads', { body: { threads: [{ id: 't-1' }] } });
+    mock.on('GET', '/api/origins/gh_owner_repo/pull-requests/42/reviewers', { body: { reviewers: [{ id: 'r-1' }] } });
+    mock.on('GET', '/api/origins/gh_owner_repo/pull-requests/42/commits', { body: { commits: [{ id: 'c-1' }] } });
+    mock.on('GET', '/api/origins/gh_owner_repo/pull-requests/42/diff', {
+      headers: { 'content-type': 'text/plain; charset=utf-8' },
+      rawBody: diff,
+    });
+    mock.on('GET', '/api/origins/gh_owner_repo/pull-requests/42/checks', { body: { checks: [{ id: 'check-1' }] } });
+    const client = createClient(mock);
+    const options = { workspaceId: 'ws/a', repoId: 'repo/a' };
+
+    await expect(client.pullRequests.getThreadsForOrigin('gh_owner_repo', '42', options)).resolves.toEqual({ threads: [{ id: 't-1' }] });
+    await expect(client.pullRequests.getReviewersForOrigin('gh_owner_repo', '42', options)).resolves.toEqual({ reviewers: [{ id: 'r-1' }] });
+    await expect(client.pullRequests.getCommitsForOrigin('gh_owner_repo', '42', options)).resolves.toEqual({ commits: [{ id: 'c-1' }] });
+    await expect(client.pullRequests.getDiffForOrigin('gh_owner_repo', '42', options)).resolves.toBe(diff);
+    await expect(client.pullRequests.getChecksForOrigin('gh_owner_repo', '42', options)).resolves.toEqual({ checks: [{ id: 'check-1' }] });
+
+    expectEmptyRequest(mock.requests[0], 'GET', '/api/origins/gh_owner_repo/pull-requests/42/threads', options);
+    expectEmptyRequest(mock.requests[1], 'GET', '/api/origins/gh_owner_repo/pull-requests/42/reviewers', options);
+    expectEmptyRequest(mock.requests[2], 'GET', '/api/origins/gh_owner_repo/pull-requests/42/commits', options);
+    expectEmptyRequest(mock.requests[3], 'GET', '/api/origins/gh_owner_repo/pull-requests/42/diff', options);
+    expectEmptyRequest(mock.requests[4], 'GET', '/api/origins/gh_owner_repo/pull-requests/42/checks', options);
+  });
+
   it('gets comment threads for a PR', async () => {
     mock = await startMockServer();
     const threads = [{ id: 't-1', comments: [{ content: 'LGTM' }] }];

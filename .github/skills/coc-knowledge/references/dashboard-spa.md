@@ -212,10 +212,12 @@ link title. Core Work Item list/detail/create/update/pin/archive/delete UI paths
 canonical origin ID from the selected workspace remote (`gh_*`, `ado_*`,
 `git_*`, or `local_*`) and call the origin-scoped coc-client methods while still
 passing `workspaceId` when the route needs a concrete clone for provider or
-filesystem semantics. PR chat bindings use the same browser-safe origin resolver
-and call the origin-scoped binding APIs; fresh-chat reset still passes the
-selected `workspaceId` so archiving/process actions run against a concrete
-clone. `WorkItemContext` keys persistent Work Item lists, pagination, unseen IDs,
+filesystem semantics. PR list/detail, provider subresources (threads, reviewers,
+commits, checks, combined/per-file diffs), and chat bindings use the same
+browser-safe origin resolver and call origin-scoped APIs while passing the
+selected `workspaceId`/`repoId` to choose the concrete clone; fresh-chat reset
+still passes the selected `workspaceId` so archiving/process actions run against
+a concrete clone. `WorkItemContext` keys persistent Work Item lists, pagination, unseen IDs,
 and realtime revisions by that origin ID so same-origin clones share the same
 list state and remote-shell Work Items badges.
 `work-item-added`, `work-item-updated`, and `work-item-removed` WebSocket events

@@ -172,6 +172,12 @@ describe('PopOutGitReviewShell: typed client loading', () => {
         expect(SOURCE).not.toContain('/git/branch-range/files');
         expect(SOURCE).not.toContain('/git/commits/${encodeURIComponent(commitHash)}');
     });
+
+    it('loads PR diff data through origin-scoped client APIs', () => {
+        expect(SOURCE).toContain('getDiffForOrigin(progressOriginId, prId');
+        expect(SOURCE).toContain('originId: progressOriginId');
+        expect(SOURCE).not.toContain('getDiff(repoId, prId)');
+    });
 });
 
 describe('PopOutGitReviewShell: BroadcastChannel communication', () => {

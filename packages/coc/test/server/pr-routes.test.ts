@@ -954,6 +954,76 @@ describe('GET /api/origins/:originId/pull-requests/:prId', () => {
     });
 });
 
+describe('GET /api/origins/:originId/pull-requests/:prId provider subresources', () => {
+    it('serves threads, reviewers, commits, and checks through an explicit workspace', async () => {
+        const query = `workspaceId=${REPO_ID}&repoId=${REPO_ID}`;
+        const threads = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/42/threads?${query}`);
+        const reviewers = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/42/reviewers?${query}`);
+        const commits = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/42/commits?${query}`);
+        const checks = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/42/checks?${query}`);
+
+        expect(threads.status).toBe(200);
+        expect(reviewers.status).toBe(200);
+        expect(commits.status).toBe(200);
+        expect(checks.status).toBe(200);
+        const threadsBody = await threads.json() as { threads: Array<{ id: number }> };
+        const reviewersBody = await reviewers.json() as { reviewers: unknown[] };
+        const commitsBody = await commits.json() as { commits: Array<{ id: string }> };
+        const checksBody = await checks.json() as { checks: Array<{ id: string }> };
+        expect(threadsBody.threads).toHaveLength(1);
+        expect(threadsBody.threads[0].id).toBe(1);
+        expect(reviewersBody.reviewers).toHaveLength(1);
+        expect(commitsBody.commits).toHaveLength(1);
+        expect(commitsBody.commits[0].id).toBe(mockCommit.id);
+        expect(checksBody.checks).toHaveLength(1);
+        expect(checksBody.checks[0].id).toBe(mockCheck.id);
+        expect(mockSvc.getThreads).toHaveBeenCalledWith(REPO_ID, '42');
+        expect(mockSvc.getReviewers).toHaveBeenCalledWith(REPO_ID, '42');
+        expect(mockSvc.getCommits).toHaveBeenCalledWith(REPO_ID, '42');
+        expect(mockSvc.getChecks).toHaveBeenCalledWith(REPO_ID, '42');
+    });
+
+    it('serves combined and per-file diffs through origin routes using the same origin cache', async () => {
+        const combinedDiff = [
+            'diff --git a/src/foo.ts b/src/foo.ts',
+            '--- a/src/foo.ts',
+            '+++ b/src/foo.ts',
+            '@@ -1 +1 @@',
+            '-old',
+            '+new',
+        ].join('\n');
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(combinedDiff);
+
+        const query = `workspaceId=${REPO_ID}&repoId=${REPO_ID}`;
+        const diffRes = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/42/diff?${query}`);
+        const fileRes = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}?${query}`);
+
+        expect(diffRes.status).toBe(200);
+        await expect(diffRes.text()).resolves.toBe(combinedDiff);
+        expect(fileRes.status).toBe(200);
+        const fileBody = await fileRes.json() as { diff: string };
+        expect(fileBody.diff).toContain('diff --git a/src/foo.ts b/src/foo.ts');
+        expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects origin subresource requests without a concrete workspace', async () => {
+        const res = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/42/threads`);
+        expect(res.status).toBe(400);
+        await expect(res.text()).resolves.toContain('workspaceId is required');
+        expect(mockSvc.getThreads).not.toHaveBeenCalled();
+    });
+
+    it('rejects origin subresource requests when the workspace resolves to another origin', async () => {
+        mockResolveRepo.mockResolvedValueOnce(makeMockRepoInfo(REPO_ID, 'https://github.com/other/repo.git'));
+
+        const res = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/42/checks?workspaceId=${REPO_ID}&repoId=${REPO_ID}`);
+
+        expect(res.status).toBe(400);
+        await expect(res.text()).resolves.toContain('not gh_org_repo');
+        expect(mockSvc.getChecks).not.toHaveBeenCalled();
+    });
+});
+
 // ── GET /api/repos/:id/pull-requests/:prId/threads ───────────────────────────
 
 describe('GET /api/repos/:id/pull-requests/:prId/threads', () => {

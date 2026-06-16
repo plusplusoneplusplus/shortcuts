@@ -317,16 +317,46 @@ export class PullRequestsClient {
     });
   }
 
+  getThreadsForOrigin(originId: string, prId: string, options: OriginPrProviderOptions): Promise<PullRequestThreadsResponse> {
+    return this.transport.request<PullRequestThreadsResponse>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/threads`,
+      {
+        query: serializeOriginPrStateQuery(options),
+        signal: options.signal,
+      },
+    );
+  }
+
   getReviewers(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestReviewersResponse> {
     return this.transport.request<PullRequestReviewersResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/reviewers`, {
       signal: options?.signal,
     });
   }
 
+  getReviewersForOrigin(originId: string, prId: string, options: OriginPrProviderOptions): Promise<PullRequestReviewersResponse> {
+    return this.transport.request<PullRequestReviewersResponse>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/reviewers`,
+      {
+        query: serializeOriginPrStateQuery(options),
+        signal: options.signal,
+      },
+    );
+  }
+
   getCommits(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestCommitsResponse> {
     return this.transport.request<PullRequestCommitsResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/commits`, {
       signal: options?.signal,
     });
+  }
+
+  getCommitsForOrigin(originId: string, prId: string, options: OriginPrProviderOptions): Promise<PullRequestCommitsResponse> {
+    return this.transport.request<PullRequestCommitsResponse>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/commits`,
+      {
+        query: serializeOriginPrStateQuery(options),
+        signal: options.signal,
+      },
+    );
   }
 
   getDiff(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<string> {
@@ -337,14 +367,56 @@ export class PullRequestsClient {
     return this.transport.request<string>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/diff`, reqOptions);
   }
 
+  getDiffForOrigin(originId: string, prId: string, options: OriginPrProviderOptions): Promise<string> {
+    const reqOptions: CocRequestOptions = {
+      query: serializeOriginPrStateQuery(options),
+      signal: options.signal,
+    };
+    const path = `/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/diff`;
+    if (this.transport.requestText) {
+      return this.transport.requestText(path, reqOptions);
+    }
+    return this.transport.request<string>(path, reqOptions);
+  }
+
   prFileDiffPath(repoId: string, prId: string, filePath: string): string {
     return `/api/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/diff/files/${encodePathSegment(filePath)}`;
+  }
+
+  prDiffPathForOrigin(originId: string, prId: string, options: { workspaceId: string; repoId?: string }): string {
+    const query = new URLSearchParams();
+    query.set('workspaceId', options.workspaceId);
+    if (options.repoId) query.set('repoId', options.repoId);
+    return `/api/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/diff?${query.toString()}`;
+  }
+
+  prFileDiffPathForOrigin(
+    originId: string,
+    prId: string,
+    filePath: string,
+    options: { workspaceId: string; repoId?: string; fullContext?: boolean },
+  ): string {
+    const query = new URLSearchParams();
+    query.set('workspaceId', options.workspaceId);
+    if (options.repoId) query.set('repoId', options.repoId);
+    if (options.fullContext === true) query.set('fullContext', 'true');
+    return `/api/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/diff/files/${encodePathSegment(filePath)}?${query.toString()}`;
   }
 
   getChecks(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestChecksResponse> {
     return this.transport.request<PullRequestChecksResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/checks`, {
       signal: options?.signal,
     });
+  }
+
+  getChecksForOrigin(originId: string, prId: string, options: OriginPrProviderOptions): Promise<PullRequestChecksResponse> {
+    return this.transport.request<PullRequestChecksResponse>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/checks`,
+      {
+        query: serializeOriginPrStateQuery(options),
+        signal: options.signal,
+      },
+    );
   }
 
   // ── Pull-request chat bindings ──────────────────────────────────

@@ -238,31 +238,49 @@ export async function fetchDiffFromSource(workspaceId: string, url: string): Pro
 /**
  * Create a DiffSource backed by a pull request's diff endpoint.
  *
- * Uses the existing `/api/repos/:repoId/pull-requests/:prId/diff` endpoint
- * and client-side extraction for per-file diffs from the combined payload.
+ * Uses origin-scoped PR diff endpoints when an origin is provided so same-origin
+ * clones share cache identity while `workspaceId` still selects the concrete clone.
  */
 export function createPrDiffSource(
     workspaceId: string,
     repoId: string,
     prId: string,
     options?: {
+        originId?: string;
         headSha?: string;
         files?: string[];
         title?: string;
     },
 ): DiffSource {
+    const client = getCocClientForWorkspace(workspaceId);
+    const originOptions = options?.originId
+        ? { workspaceId, repoId }
+        : undefined;
+
     return {
         label: options?.title ? `PR: ${options.title}` : `PR #${prId}`,
 
         fileDiffUrl(filePath: string, _full?: boolean): string {
-            return `/api/repos/${encodeURIComponent(repoId)}/pull-requests/${encodeURIComponent(prId)}/diff/files/${encodeURIComponent(filePath)}`;
+            if (options?.originId && originOptions) {
+                return client.pullRequests.prFileDiffPathForOrigin(options.originId, prId, filePath, originOptions);
+            }
+            return client.pullRequests.prFileDiffPath(repoId, prId, filePath);
         },
 
         fullContextFileDiffUrl(filePath: string): string {
-            return `/api/repos/${encodeURIComponent(repoId)}/pull-requests/${encodeURIComponent(prId)}/diff/files/${encodeURIComponent(filePath)}?fullContext=true`;
+            if (options?.originId && originOptions) {
+                return client.pullRequests.prFileDiffPathForOrigin(options.originId, prId, filePath, {
+                    ...originOptions,
+                    fullContext: true,
+                });
+            }
+            return `${client.pullRequests.prFileDiffPath(repoId, prId, filePath)}?fullContext=true`;
         },
 
         fullDiffUrl(): string {
+            if (options?.originId && originOptions) {
+                return client.pullRequests.prDiffPathForOrigin(options.originId, prId, originOptions);
+            }
             return `/api/repos/${encodeURIComponent(repoId)}/pull-requests/${encodeURIComponent(prId)}/diff`;
         },
 
@@ -284,8 +302,9 @@ export function createPrDiffSource(
         cacheKey: `pr:${repoId}:${prId}`,
 
         async fetchFileList(): Promise<string[]> {
-            const client = getCocClientForWorkspace(repoId);
-            const diff = await client.pullRequests.getDiff(repoId, prId);
+            const diff = options?.originId && originOptions
+                ? await client.pullRequests.getDiffForOrigin(options.originId, prId, originOptions)
+                : await client.pullRequests.getDiff(repoId, prId);
             return extractFilePathsFromDiff(diff);
         },
 
