@@ -214,4 +214,59 @@ describe('Lens chat fresh binding API endpoints', () => {
         expect(bindingB.status).toBe(200);
         expect(bindingB.json().taskId).toBe('task-b');
     });
+
+    it.each([
+        {
+            name: 'Commit',
+            createPath: 'commit-chat-bindings',
+            targetPath: 'commit-chat-bindings/badf00d',
+            staleBody: { commitHash: 'badf00d', taskId: 'missing-commit-task' },
+            freshResponse: { commitHash: 'badf00d', archivedTaskId: null },
+            replacementTaskId: 'replacement-commit-task',
+            replacementBody: { commitHash: 'badf00d', taskId: 'replacement-commit-task' },
+        },
+        {
+            name: 'Pull Request',
+            createPath: 'pull-request-chat-bindings',
+            targetPath: 'pull-request-chat-bindings/stale-pr',
+            staleBody: { prId: 'stale-pr', taskId: 'missing-pr-task' },
+            freshResponse: { prId: 'stale-pr', archivedTaskId: null },
+            replacementTaskId: 'replacement-pr-task',
+            replacementBody: { prId: 'stale-pr', taskId: 'replacement-pr-task' },
+        },
+        {
+            name: 'Work Item',
+            createPath: 'work-item-chat-bindings',
+            targetPath: 'work-item-chat-bindings/WI%2Fstale',
+            staleBody: { workItemId: 'WI/stale', taskId: 'missing-work-item-task' },
+            freshResponse: { workItemId: 'WI/stale', archivedTaskId: null },
+            replacementTaskId: 'replacement-work-item-task',
+            replacementBody: { workItemId: 'WI/stale', taskId: 'replacement-work-item-task' },
+        },
+    ])('clears a stale $name binding whose process is already missing', async (lens) => {
+        await request(api(WORKSPACE_A, lens.createPath), {
+            method: 'POST',
+            body: JSON.stringify(lens.staleBody),
+        });
+
+        const res = await request(api(WORKSPACE_A, `${lens.targetPath}/fresh`), { method: 'POST', body: '{}' });
+
+        expect(res.status).toBe(200);
+        expect(res.json()).toEqual(lens.freshResponse);
+        expect(store.archiveProcess).not.toHaveBeenCalled();
+
+        const clearedBinding = await request(api(WORKSPACE_A, lens.targetPath));
+        expect(clearedBinding.status).toBe(404);
+
+        await seedProcess(WORKSPACE_A, lens.replacementTaskId);
+        const replacement = await request(api(WORKSPACE_A, lens.createPath), {
+            method: 'POST',
+            body: JSON.stringify(lens.replacementBody),
+        });
+        expect(replacement.status).toBe(201);
+
+        const reboundBinding = await request(api(WORKSPACE_A, lens.targetPath));
+        expect(reboundBinding.status).toBe(200);
+        expect(reboundBinding.json().taskId).toBe(lens.replacementTaskId);
+    });
 });
