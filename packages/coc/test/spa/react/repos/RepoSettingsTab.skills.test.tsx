@@ -35,6 +35,14 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
         error instanceof Error ? error.message : fallback,
 }));
 
+// RepoSettingsTab routes through the clone registry: typed calls via
+// getCocClientForWorkspace, raw fetches via requestForWorkspace. Delegate both to
+// the existing mocks so all assertions keep working for the unregistered ws-1.
+vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    getCocClientForWorkspace: () => mockClient,
+    requestForWorkspace: (_wsId: string, path: string, options?: RequestInit) => mockFetchApi(path, options),
+}));
+
 vi.mock('../../../../src/server/spa/client/react/contexts/ToastContext', () => ({
     useGlobalToast: () => ({ addToast: vi.fn() }),
 }));

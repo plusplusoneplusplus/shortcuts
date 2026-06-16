@@ -8,8 +8,8 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { fetchApi } from '../../hooks/useApi';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getCocClientForWorkspace, requestForWorkspace } from '../../repos/cloneRegistry';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import { useGlobalToast } from '../../contexts/ToastContext';
 import { useApp } from '../../contexts/AppContext';
@@ -304,7 +304,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
         setLoading(true);
         setError(null);
         setMcpSources(undefined);
-        fetchApi(`/workspaces/${workspaceId}/mcp-config${forceReload ? '?forceReload=true' : ''}`)
+        requestForWorkspace<any>(workspaceId, `/workspaces/${workspaceId}/mcp-config${forceReload ? '?forceReload=true' : ''}`)
             .then((data) => {
                 setAvailableServers(data.availableServers ?? []);
                 setMcpSources(data.sources);
@@ -332,7 +332,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
         setEnabledMcpServers(nextValue);
         setSaving(true);
         try {
-            await fetchApi(`/workspaces/${workspaceId}/mcp-config`, {
+            await requestForWorkspace(workspaceId, `/workspaces/${workspaceId}/mcp-config`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ enabledMcpServers: nextValue }),
@@ -360,7 +360,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
     const fetchSkills = useCallback(async () => {
         setSkillsLoading(true);
         try {
-            const skills = await getSpaCocClient().skills.listWorkspace(workspaceId);
+            const skills = await getCocClientForWorkspace(workspaceId).skills.listWorkspace(workspaceId);
             setSkills(skills);
         } catch {
             // ignore
@@ -372,13 +372,13 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
     useEffect(() => { fetchSkills(); }, [fetchSkills]);
 
     useEffect(() => {
-        getSpaCocClient().skills.getWorkspaceConfig(workspaceId)
+        getCocClientForWorkspace(workspaceId).skills.getWorkspaceConfig(workspaceId)
             .then((data) => {
                 setDisabledSkills(data.disabledSkills ?? []);
                 setExtraSkillFolders(data.extraSkillFolders ?? []);
             })
             .catch(() => {});
-        getSpaCocClient().preferences.getRepo(workspaceId)
+        getCocClientForWorkspace(workspaceId).preferences.getRepo(workspaceId)
             .then((data) => {
                 setLinkedRepoIds(data.linkedRepoIds ?? []);
             })
@@ -395,7 +395,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
         setSkillDetail(null);
         setDetailLoading(true);
         try {
-            const data = await getSpaCocClient().skills.detailWorkspace(workspaceId, name);
+            const data = await getCocClientForWorkspace(workspaceId).skills.detailWorkspace(workspaceId, name);
             setSkillDetail(data.skill || null);
         } catch {
             // ignore
@@ -406,7 +406,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
 
     const handleDeleteSkill = async (name: string) => {
         try {
-            await getSpaCocClient().skills.deleteWorkspace(workspaceId, name);
+            await getCocClientForWorkspace(workspaceId).skills.deleteWorkspace(workspaceId, name);
             addToast(`Deleted skill: ${name}`, 'success');
             fetchSkills();
         } catch (err: any) {
@@ -423,7 +423,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
         setDisabledSkills(nextDisabled);
         setSkillToggleSaving(true);
         try {
-            await getSpaCocClient().skills.updateWorkspaceConfig(workspaceId, { disabledSkills: nextDisabled });
+            await getCocClientForWorkspace(workspaceId).skills.updateWorkspaceConfig(workspaceId, { disabledSkills: nextDisabled });
         } catch (e: any) {
             setDisabledSkills(prevDisabled);
             addToast(e?.message ?? 'Failed to save skill config', 'error');
@@ -436,7 +436,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
         const prevFolders = extraSkillFolders;
         setExtraSkillFolders(nextFolders);
         try {
-            await getSpaCocClient().skills.updateWorkspaceConfig(workspaceId, { disabledSkills, extraSkillFolders: nextFolders });
+            await getCocClientForWorkspace(workspaceId).skills.updateWorkspaceConfig(workspaceId, { disabledSkills, extraSkillFolders: nextFolders });
             fetchSkills();
         } catch (e: any) {
             setExtraSkillFolders(prevFolders);
@@ -448,7 +448,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
         const prevIds = linkedRepoIds;
         setLinkedRepoIds(nextIds);
         try {
-            await getSpaCocClient().preferences.patchRepo(workspaceId, { linkedRepoIds: nextIds });
+            await getCocClientForWorkspace(workspaceId).preferences.patchRepo(workspaceId, { linkedRepoIds: nextIds });
         } catch (e: any) {
             setLinkedRepoIds(prevIds);
             addToast(e?.message ?? 'Failed to save linked repos', 'error');
@@ -468,7 +468,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
     const fetchInstructions = useCallback(async () => {
         setInstrLoading(true);
         try {
-            const data = await getSpaCocClient().workspaces.getInstructions(workspaceId) as Record<InstructionMode, string | null>;
+            const data = await getCocClientForWorkspace(workspaceId).workspaces.getInstructions(workspaceId) as Record<InstructionMode, string | null>;
             setInstrContents(data);
             setInstrDraft({
                 base: data.base ?? '',
@@ -488,7 +488,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
         setInstrSaving(true);
         try {
             const content = instrDraft[mode];
-            await getSpaCocClient().workspaces.updateInstruction(workspaceId, mode, { content });
+            await getCocClientForWorkspace(workspaceId).workspaces.updateInstruction(workspaceId, mode, { content });
             setInstrContents(prev => ({ ...prev, [mode]: content || null }));
             addToast('Instructions saved', 'success');
         } catch (e: any) {
@@ -502,7 +502,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
         setInstrSaving(true);
         try {
             try {
-                await getSpaCocClient().workspaces.deleteInstruction(workspaceId, mode);
+                await getCocClientForWorkspace(workspaceId).workspaces.deleteInstruction(workspaceId, mode);
             } catch (e) {
                 if (!(e instanceof CocApiError && e.status === 404)) throw e;
             }
@@ -535,7 +535,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
 
     const fetchProcesses = useCallback(() => {
         setLoadingProcesses(true);
-        return fetchApi(`/processes?workspace=${encodeURIComponent(ws.id)}&limit=10`)
+        return requestForWorkspace<any>(ws.id, `/processes?workspace=${encodeURIComponent(ws.id)}&limit=10`)
             .then(res => setProcesses(res?.processes || []))
             .catch(() => setProcesses([]))
             .finally(() => setLoadingProcesses(false));
@@ -544,7 +544,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
     useEffect(() => { void fetchProcesses(); }, [fetchProcesses]);
 
     useEffect(() => {
-        getSpaCocClient().preferences.getTaskSettings(ws.id)
+        getCocClientForWorkspace(workspaceId).preferences.getTaskSettings(ws.id)
             .then(res => setTasksFolder(res?.taskRootPath || res?.folderPath || null))
             .catch(() => setTasksFolder(null));
     }, [ws.id]);
@@ -570,7 +570,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
         if (desc === (ws.description ?? '')) return;
         setSavingDesc(true);
         try {
-            await fetchApi(`/workspaces/${encodeURIComponent(ws.id)}`, {
+            await requestForWorkspace(ws.id, `/workspaces/${encodeURIComponent(ws.id)}`, {
                 method: 'PATCH',
                 body: JSON.stringify({ description: desc }),
             });

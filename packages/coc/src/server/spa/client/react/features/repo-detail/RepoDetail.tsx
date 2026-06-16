@@ -32,6 +32,7 @@ import { GenerateTaskDialog } from '../../tasks/GenerateTaskDialog';
 import { TasksPanel } from '../../tasks/TasksPanel';
 import { fetchApi } from '../../hooks/useApi';
 import { getSpaCocClient } from '../../api/cocClient';
+import { requestForWorkspace } from '../../repos/cloneRegistry';
 import { useRepoQueueStats } from '../../queue/hooks/useRepoQueueStats';
 import { useGitInfo } from '../git/hooks/useGitInfo';
 import { useTerminalEnabled } from '../../hooks/feature-flags/useTerminalEnabled';
@@ -120,7 +121,8 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     const { state: workItemState, dispatch: workItemDispatch } = useWorkItems();
     useEffect(() => {
         if (workItemState.workItemsByRepo[ws.id] !== undefined) return;
-        fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/work-items?limit=20`)
+        // Route the work-items badge preview to the repo's clone server.
+        requestForWorkspace<any>(ws.id, `/workspaces/${encodeURIComponent(ws.id)}/work-items?limit=20`)
             .then(data => {
                 if (data) {
                     workItemDispatch({ type: 'SET_WORK_ITEMS', repoId: ws.id, items: data.items || [], total: data.total ?? 0, hasMore: data.hasMore ?? false });
