@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { useCocClient } from '../../../repos/cloneRouting';
 import type { AttachmentPayload } from '../../../types/attachments';
 import { formatAttachedContext, type AttachedWorkItemContextItem } from '../../chat/hooks/useAttachedContext';
 
@@ -61,6 +61,7 @@ function prependWorkItemPointer(prompt: string, opts: UseWorkItemChatBindingOpti
 
 export function useWorkItemChatBinding(opts: UseWorkItemChatBindingOptions): UseWorkItemChatBindingReturn {
     const { workspaceId, workItemId, status, type, workItemNumber } = opts;
+    const cloneClient = useCocClient(workspaceId); // AC-07: work-item chat binding on the selected clone's server.
     const [taskId, setTaskId] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -88,7 +89,7 @@ export function useWorkItemChatBinding(opts: UseWorkItemChatBindingOptions): Use
         setTaskId(null);
         setStartingFresh(false);
 
-        getSpaCocClient().workItems.getChatBinding(workspaceId, workItemId)
+        cloneClient.workItems.getChatBinding(workspaceId, workItemId)
             .then(data => { if (!cancelled) setTaskId(data.taskId); })
             .catch(err => {
                 if (cancelled) return;
@@ -98,7 +99,7 @@ export function useWorkItemChatBinding(opts: UseWorkItemChatBindingOptions): Use
             .finally(() => { if (!cancelled) setLoading(false); });
 
         return () => { cancelled = true; };
-    }, [workspaceId, workItemId]);
+    }, [workspaceId, workItemId, cloneClient]);
 
     const createChat = useCallback(async (prompt: string, options: WorkItemChatComposerSendOptions = {}): Promise<string | null> => {
         if (!workItemId) return null;
@@ -109,7 +110,7 @@ export function useWorkItemChatBinding(opts: UseWorkItemChatBindingOptions): Use
         }
         try {
             const promptWithPointer = prependWorkItemPointer(prompt, { workspaceId, workItemId, status, type, workItemNumber });
-            const res = await getSpaCocClient().queue.enqueue({
+            const res = await cloneClient.queue.enqueue({
                 type: 'chat',
                 priority: 'normal',
                 payload: {
@@ -132,7 +133,7 @@ export function useWorkItemChatBinding(opts: UseWorkItemChatBindingOptions): Use
             const newTaskId = res.task?.id ?? (res as { id?: string }).id;
             if (!newTaskId) throw new Error('Failed to create work item chat task');
 
-            await getSpaCocClient().workItems.createChatBinding(workspaceId, workItemId, newTaskId);
+            await cloneClient.workItems.createChatBinding(workspaceId, workItemId, newTaskId);
 
             if (isCurrentRequest(requestedWorkspaceId, requestedWorkItemId)) {
                 setError(null);
@@ -145,7 +146,7 @@ export function useWorkItemChatBinding(opts: UseWorkItemChatBindingOptions): Use
             }
             return null;
         }
-    }, [workspaceId, workItemId, status, type, workItemNumber, isCurrentRequest]);
+    }, [workspaceId, workItemId, status, type, workItemNumber, isCurrentRequest, cloneClient]);
 
     const startFreshChat = useCallback(async (): Promise<boolean> => {
         if (!workItemId) return false;
@@ -156,7 +157,7 @@ export function useWorkItemChatBinding(opts: UseWorkItemChatBindingOptions): Use
             setError(null);
         }
         try {
-            await getSpaCocClient().workItems.startFreshChat(workspaceId, workItemId);
+            await cloneClient.workItems.startFreshChat(workspaceId, workItemId);
             if (isCurrentRequest(requestedWorkspaceId, requestedWorkItemId)) {
                 setTaskId(null);
                 setError(null);
@@ -172,7 +173,7 @@ export function useWorkItemChatBinding(opts: UseWorkItemChatBindingOptions): Use
                 setStartingFresh(false);
             }
         }
-    }, [workspaceId, workItemId, isCurrentRequest]);
+    }, [workspaceId, workItemId, isCurrentRequest, cloneClient]);
 
     return { taskId, loading, error, createChat, startFreshChat, startingFresh };
 }

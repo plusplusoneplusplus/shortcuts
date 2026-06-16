@@ -14,7 +14,8 @@ import {
     scanForEachPlanArtifacts,
 } from '@plusplusoneplusplus/coc-client';
 import type { ClientConversationTurn } from '../../types/dashboard';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { cn } from '../../ui/cn';
 
 export interface ForEachGenerationMetadata {
@@ -190,6 +191,8 @@ export function ForEachPlanReviewCard({
     reasoningEffort,
     onApprovedRun,
 }: ForEachPlanReviewCardProps) {
+    // AC-07: plan create/update/approve route to the selected clone's server.
+    const cloneClient = useCocClient(workspaceId);
     const transcriptScan = useMemo(() => scanForEachPlans(turns), [turns]);
     const persistedScan = useMemo(() => getPersistedPlanState(forEach), [forEach]);
     const scan = latestScanTurn(transcriptScan) > latestScanTurn(persistedScan)
@@ -284,7 +287,7 @@ export function ForEachPlanReviewCard({
         setBusy(true);
         setError(null);
         try {
-            const client = getSpaCocClient();
+            const client = cloneClient;
             const run = forEach.runId
                 ? await client.forEach.updatePlan(workspaceId, forEach.runId, {
                     items: checked.items,

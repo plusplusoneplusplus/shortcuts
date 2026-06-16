@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { useCocClient } from '../../../repos/cloneRouting';
 import type { AttachmentPayload } from '../../../types/attachments';
 import { isCommitChatLensEnabled } from '../../../utils/config';
 
@@ -105,6 +105,7 @@ export function formatNoteAttachmentPrompt(prompt: string, workspaceId: string, 
  */
 export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
     const { workspaceId, notePath, noteTitle, defaultScope = 'per-workspace' } = opts;
+    const cloneClient = useCocClient(workspaceId); // AC-07: notes chat bindings on the selected clone's server.
     const key = storageKey(workspaceId);
 
     // ── Scope state ──────────────────────────────────────────────────────────
@@ -133,7 +134,7 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
         if (seededWorkspaceRef.current === workspaceId) return;
         seededWorkspaceRef.current = workspaceId;
         let cancelled = false;
-        void getSpaCocClient().notes.listChatBindings(workspaceId).then(res => {
+        void cloneClient.notes.listChatBindings(workspaceId).then(res => {
             if (cancelled) return;
             const next: Record<string, string> = {};
             for (const [path, binding] of Object.entries(res.bindings ?? {})) {
@@ -144,7 +145,7 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
             // Best-effort: if the request fails, leave the map empty.
         });
         return () => { cancelled = true; };
-    }, [workspaceId]);
+    }, [workspaceId, cloneClient]);
 
     // ── Derived task ID ──────────────────────────────────────────────────────
 
@@ -184,7 +185,7 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
 
     const createChat = useCallback(async (prompt: string, model?: string | null, mode: 'ask' | 'autopilot' = 'ask', skills?: string[], attachments?: AttachmentPayload[]): Promise<string | null> => {
         try {
-            const res = await getSpaCocClient().notes.createChat(workspaceId, {
+            const res = await cloneClient.notes.createChat(workspaceId, {
                 prompt: formatNoteAttachmentPrompt(prompt, workspaceId, notePath),
                 notePath,
                 noteTitle,
@@ -213,7 +214,7 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
         } catch {
             return null;
         }
-    }, [workspaceId, notePath, noteTitle, scope]);
+    }, [workspaceId, notePath, noteTitle, scope, cloneClient]);
 
     // ── resetChat ────────────────────────────────────────────────────────────
 
@@ -227,10 +228,10 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
                 return next;
             });
             // Best-effort server cleanup; failures are tolerated.
-            void getSpaCocClient().notes.deleteChatBindingByPath(workspaceId, notePath).catch(() => undefined);
+            void cloneClient.notes.deleteChatBindingByPath(workspaceId, notePath).catch(() => undefined);
         }
         setChatNoteContext(null);
-    }, [scope, notePath, workspaceId]);
+    }, [scope, notePath, workspaceId, cloneClient]);
 
     return { taskId, chatNoteContext, createChat, resetChat, scope, setScope };
 }

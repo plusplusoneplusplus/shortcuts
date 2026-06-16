@@ -665,6 +665,7 @@ describe('FileDiffPanel', () => {
         expect(mockUseFileDiff).toHaveBeenCalledWith(
             '/ws/branch-range/files/src/foo.ts/diff',
             '/ws/branch-range/files/src/foo.ts/diff?full=true',
+            'ws1',
         );
     });
 
@@ -675,6 +676,7 @@ describe('FileDiffPanel', () => {
         expect(mockUseFileDiff).toHaveBeenCalledWith(
             '/ws/commits/abc123/files/src/foo.ts/diff',
             null,
+            'ws1',
         );
     });
 
@@ -747,6 +749,7 @@ describe('FileDiffPanel', () => {
         expect(mockUseFileDiff).toHaveBeenLastCalledWith(
             `/api/repos/repo1/pull-requests/42/diff/files/src/foo.ts`,
             null,
+            'ws1',
         );
 
         await act(async () => {
@@ -757,6 +760,7 @@ describe('FileDiffPanel', () => {
         expect(mockUseFileDiff).toHaveBeenLastCalledWith(
             `/api/repos/repo1/pull-requests/42/diff/files/src/foo.ts?fullContext=true`,
             null,
+            'ws1',
         );
     });
 
@@ -801,6 +805,7 @@ describe('FileDiffPanel', () => {
         expect(mockUseFileDiff).toHaveBeenLastCalledWith(
             `/api/repos/repo1/pull-requests/42/diff/files/src/foo.ts?fullContext=true`,
             null,
+            'ws1',
         );
 
         // Navigate to a different file
@@ -810,6 +815,7 @@ describe('FileDiffPanel', () => {
         expect(mockUseFileDiff).toHaveBeenLastCalledWith(
             `/api/repos/repo1/pull-requests/42/diff/files/src/bar.ts`,
             null,
+            'ws1',
         );
     });
 });

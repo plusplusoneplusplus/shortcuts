@@ -6,7 +6,8 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Button, cn } from '../../ui';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { useWorkItems } from '../../contexts/WorkItemContext';
 import { WorkItemHierarchyNode } from './WorkItemHierarchyNode';
 import { WorkItemParentPicker } from './WorkItemParentPicker';
@@ -209,6 +210,8 @@ export function WorkItemHierarchyTree({
     highlightedWorkItemId,
     isMobile = false,
 }: WorkItemHierarchyTreeProps) {
+    // Route work-item tree/mutations to the workspace's clone (AC-07).
+    const client = useCocClient(workspaceId);
     const [treeData, setTreeData] = useState<WorkItemTreeNode[]>([]);
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(true);
@@ -287,7 +290,7 @@ export function WorkItemHierarchyTree({
                 showDone,
             });
             const responses: WorkItemTreeResponse[] = await Promise.all(
-                filters.map(filter => getSpaCocClient().workItems.tree(workspaceId, filter)),
+                filters.map(filter => client.workItems.tree(workspaceId, filter)),
             );
             if (responses.some(resp => resp.disabled)) {
                 setError('Hierarchy feature is disabled.');
@@ -301,7 +304,7 @@ export function WorkItemHierarchyTree({
         } finally {
             setLoading(false);
         }
-    }, [workspaceId, effectiveTrackerKinds, isRemoteView, searchQuery, showArchived, showDone]);
+    }, [workspaceId, effectiveTrackerKinds, isRemoteView, searchQuery, showArchived, showDone, client]);
 
     // Initial load
     useEffect(() => { fetchTree(); }, [fetchTree]);
@@ -327,7 +330,7 @@ export function WorkItemHierarchyTree({
         }
         let cancelled = false;
         setRemoteStatus({ loading: true });
-        getSpaCocClient().workItems.syncStatus(workspaceId)
+        client.workItems.syncStatus(workspaceId)
             .then(response => {
                 if (!cancelled) setRemoteStatus({ loading: false, response });
             })
@@ -340,7 +343,7 @@ export function WorkItemHierarchyTree({
                 }
             });
         return () => { cancelled = true; };
-    }, [isRemoteView, onDetectedRemoteProviderChange, workItemsSyncEnabled, workspaceId]);
+    }, [isRemoteView, onDetectedRemoteProviderChange, workItemsSyncEnabled, workspaceId, client]);
 
     useEffect(() => {
         if (!isRemoteView) return;
@@ -396,12 +399,12 @@ export function WorkItemHierarchyTree({
     const handleDelete = useCallback(async (id: string) => {
         if (!confirm('Delete this work item? Children must be moved or deleted first.')) return;
         try {
-            await getSpaCocClient().workItems.delete(workspaceId, id);
+            await client.workItems.delete(workspaceId, id);
             fetchTree();
         } catch (err: any) {
             alert(err.message ?? 'Failed to delete');
         }
-    }, [workspaceId, fetchTree]);
+    }, [workspaceId, fetchTree, client]);
 
     const buildContextMenuItems = useCallback((node: WorkItemTreeNode): ContextMenuItem[] => {
         const effectiveType = (node.item.type ?? 'work-item') as WorkItemTypeLabel;
@@ -450,7 +453,7 @@ export function WorkItemHierarchyTree({
                     icon: '🔓',
                     onClick: async () => {
                         try {
-                            await getSpaCocClient().workItems.update(workspaceId, node.item.id, { parentId: null });
+                            await client.workItems.update(workspaceId, node.item.id, { parentId: null });
                             fetchTree();
                         } catch (err: any) {
                             alert(err.message ?? 'Failed to unlink');
@@ -467,7 +470,7 @@ export function WorkItemHierarchyTree({
             separator: true,
             onClick: async () => {
                 try {
-                    await getSpaCocClient().workItems.pin(workspaceId, node.item.id, !node.item.pinnedAt);
+                    await client.workItems.pin(workspaceId, node.item.id, !node.item.pinnedAt);
                     fetchTree();
                 } catch (err: any) {
                     alert(err.message ?? 'Failed to pin');
@@ -479,7 +482,7 @@ export function WorkItemHierarchyTree({
             icon: '🗄️',
             onClick: async () => {
                 try {
-                    await getSpaCocClient().workItems.archive(workspaceId, node.item.id, !node.item.archivedAt);
+                    await client.workItems.archive(workspaceId, node.item.id, !node.item.archivedAt);
                     fetchTree();
                 } catch (err: any) {
                     alert(err.message ?? 'Failed to archive');
@@ -493,7 +496,7 @@ export function WorkItemHierarchyTree({
         });
 
         return items;
-    }, [workspaceId, onCreateItem, fetchTree, handleDelete]);
+    }, [workspaceId, onCreateItem, fetchTree, handleDelete, client]);
 
     /** Recursively render a tree node and its children. */
     const renderNode = useCallback((node: WorkItemTreeNode, depth: number): React.ReactNode => {

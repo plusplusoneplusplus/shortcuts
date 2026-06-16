@@ -21,7 +21,8 @@ import type {
     HunkIntensity,
 } from '../../pull-requests/classification-types';
 import { classificationPriority } from '../../pull-requests/classification-types';
-import { requestSpaApi } from '../../../api/cocClient';
+import { toSpaCocRequestOptions, translateSpaCocClientError } from '../../../api/cocClient';
+import { useCocClient } from '../../../repos/cloneRouting';
 import type { ClassificationKey } from './diffSource';
 import type { ResolvedModalJobAiSelection } from '../../../shared/ModalJobAiControls';
 
@@ -108,6 +109,21 @@ export function useClassification(
     options?: { workspaceId?: string },
 ): UseClassificationReturn {
     const workspaceId = options?.workspaceId;
+
+    // Route classify-diff REST to the workspace's clone server (AC-07). A remote
+    // clone hits its own origin; a local/unknown id resolves to the default.
+    // Mirrors requestSpaApi's error translation so behavior is unchanged locally.
+    const cloneClient = useCocClient(workspaceId);
+    const requestApi = useCallback(
+        async <T,>(path: string, opts?: RequestInit): Promise<T> => {
+            try {
+                return await cloneClient.request<T>(path, toSpaCocRequestOptions(opts));
+            } catch (error) {
+                translateSpaCocClientError(error);
+            }
+        },
+        [cloneClient],
+    );
 
     const [state, setState] = useState<ClassificationState>({
         status: 'idle',
@@ -225,7 +241,7 @@ export function useClassification(
                     type: ck.type,
                     identifier: ck.identifier,
                 });
-                const resp = await requestSpaApi<ClassificationGetResponse>(
+                const resp = await requestApi<ClassificationGetResponse>(
                     buildUrl(`?${params.toString()}`),
                 );
                 if (currentKeyRef.current !== capturedKeyStr) return; // stale — drop
@@ -238,7 +254,7 @@ export function useClassification(
                 // Transient error — keep polling
             }
         }, POLL_INTERVAL);
-    }, [keyStr, buildUrl]);
+    }, [keyStr, buildUrl, requestApi]);
 
     const classify = useCallback(() => {
         if (!classificationKey) return;
@@ -258,7 +274,7 @@ export function useClassification(
         if (ai.effortTier) postBody.effortTier = ai.effortTier;
         if (ai.autoProviderRouting) postBody.autoProviderRouting = true;
 
-        requestSpaApi<ClassifyResponse>(
+        requestApi<ClassifyResponse>(
             buildUrl(''),
             {
                 method: 'POST',
@@ -283,7 +299,7 @@ export function useClassification(
                     error: err instanceof Error ? err.message : 'Classification failed',
                 }));
             });
-    }, [keyStr, buildUrl, startPolling]);
+    }, [keyStr, buildUrl, startPolling, requestApi]);
 
     // On mount / key change, check for cached result
     useEffect(() => {
@@ -295,7 +311,7 @@ export function useClassification(
             type: ck.type,
             identifier: ck.identifier,
         });
-        requestSpaApi<ClassificationGetResponse>(
+        requestApi<ClassificationGetResponse>(
             buildUrl(`?${params.toString()}`),
         )
             .then(resp => {
@@ -308,7 +324,7 @@ export function useClassification(
                 }
             })
             .catch(() => { /* no cache — ok */ });
-    }, [keyStr, buildUrl, startPolling]);
+    }, [keyStr, buildUrl, startPolling, requestApi]);
 
     const toggleFilter = useCallback((cat: HunkCategory) => {
         setState(prev => {

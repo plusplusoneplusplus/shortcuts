@@ -65,7 +65,9 @@ function request(
 }
 
 function assertCorsHeaders(headers: Record<string, string>): void {
-    expect(headers['access-control-allow-origin']).toBe('*');
+    // AC-02: no wildcard ACAO; these no-Origin requests get no ACAO header, but
+    // the methods/headers advertisements are still emitted.
+    expect(headers['access-control-allow-origin']).toBeUndefined();
     expect(headers['access-control-allow-methods']).toContain('GET');
     expect(headers['access-control-allow-methods']).toContain('POST');
     expect(headers['access-control-allow-methods']).toContain('DELETE');

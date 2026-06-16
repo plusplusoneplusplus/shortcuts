@@ -34,6 +34,15 @@ CoC uses three communication channels between server and browser, plus a WebSock
 - WebSocket = lightweight notifications, global (all events to all clients)
 - If everything went through WebSocket, every browser tab would receive token-by-token output from ALL running processes
 
+### Cross-Origin Policy (REST + WS) — loopback only
+
+The dashboard SPA may talk directly to a *different* CoC server forwarded at `http://127.0.0.1:{localPort}` (a cross-origin call: same host, different port). Both the REST CORS layer and the WS upgrade path therefore allow cross-origin access **from loopback origins only**:
+
+- `isLoopbackOrigin(origin)` (`packages/coc/src/server/shared/cors.ts`) is the single shared predicate. Loopback = hostname `localhost`, `127.0.0.1`, or `::1`, scheme `http`/`https`, any port. Everything else (other hostnames, non-http(s) schemes, look-alikes like `attacker.localhost.evil.com`, private LAN IPs) is rejected.
+- REST: `applyCorsHeaders()` reflects the request `Origin` only when allowed and **never emits `Access-Control-Allow-Origin: *`**. Non-loopback origins get no ACAO header (browser blocks the read). Same-origin / no-`Origin` requests are unaffected.
+- WS: `attachWebSocketUpgradeHandler()` (`streaming/websocket.ts`) calls `isWebSocketOriginAllowed()` before dispatching `/ws` or `/ws/terminal`. A non-loopback `Origin` upgrade is answered `403 Forbidden` and the socket destroyed; a missing `Origin` (non-browser client) is allowed.
+- This is always-on for loopback origins (not gated by `features.remoteShell`, which is a client-side UI flag).
+
 ## Internal Architecture (Single Node.js Process)
 
 Everything runs in one Node.js process. LLM API calls are async network I/O (not CPU-bound).

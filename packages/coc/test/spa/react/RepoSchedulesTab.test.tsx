@@ -46,7 +46,14 @@ vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
 }));
 
 vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({ schedules: mockSchedulesClient, models: mockModelsClient, workflow: mockWorkflowClient, agentProviders: mockAgentProvidersClient }),
+    getSpaCocClient: () => ({
+        schedules: mockSchedulesClient,
+        models: mockModelsClient,
+        workflow: mockWorkflowClient,
+        agentProviders: mockAgentProvidersClient,
+        // AC-07: the tab now reads notes-git status via the clone-aware client.
+        notes: { getGitStatus: vi.fn().mockResolvedValue({ initialized: false }) },
+    }),
 }));
 
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({

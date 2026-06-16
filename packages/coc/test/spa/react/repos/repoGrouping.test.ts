@@ -7,10 +7,40 @@ import {
     groupKey,
     applyGroupOrder,
     groupReposByRemote,
+    isRemoteRepo,
     normalizeRemoteUrl,
     remoteUrlLabel,
+    sortClonesLocalFirst,
 } from '../../../../src/server/spa/client/react/repos/repoGrouping';
 import type { RepoGroup, RepoData } from '../../../../src/server/spa/client/react/repos/repoGrouping';
+
+// ── Remote-repo fixtures (AC-04) ──────────────────────────────────────────────
+// A remote checkout aggregated by AC-01 carries `baseUrl` + a `remote` marker on
+// its workspace, plus `remoteUrl` (when the remote server reported one) so it can
+// fold into the matching local group by normalized git URL.
+
+function localRepo(id: string, remoteUrl: string): RepoData {
+    return {
+        workspace: { id, name: id, rootPath: `/local/${id}`, remoteUrl },
+        gitInfo: { branch: 'main', dirty: false, isGitRepo: true, remoteUrl },
+    };
+}
+
+function remoteRepo(id: string, remoteUrl: string | undefined, serverLabel = 'devbox'): RepoData {
+    return {
+        workspace: {
+            id,
+            name: id,
+            rootPath: `/remote/${id}`,
+            remoteUrl,
+            baseUrl: 'http://127.0.0.1:4000',
+            remote: { baseUrl: 'http://127.0.0.1:4000', serverId: 'srv-1', serverLabel, offline: false },
+        },
+        gitInfo: remoteUrl
+            ? { branch: 'main', dirty: false, isGitRepo: true, remoteUrl }
+            : undefined,
+    };
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -253,5 +283,97 @@ describe('groupReposByRemote with Azure DevOps URLs', () => {
         expect(azureGroup).toBeDefined();
         const ungrouped = groups.find(g => g.normalizedUrl === null && g.repos[0].workspace.id === 'ws-bad');
         expect(ungrouped).toBeDefined();
+    });
+});
+
+// ── isRemoteRepo (AC-04) ──────────────────────────────────────────────────────
+
+describe('isRemoteRepo', () => {
+    it('is true for an aggregated remote checkout (carries baseUrl + remote marker)', () => {
+        expect(isRemoteRepo(remoteRepo('r1', 'https://github.com/acme/app.git'))).toBe(true);
+    });
+
+    it('is false for a local checkout', () => {
+        expect(isRemoteRepo(localRepo('l1', 'https://github.com/acme/app.git'))).toBe(false);
+    });
+
+    it('is false when only baseUrl is present without a remote marker', () => {
+        const repo: RepoData = { workspace: { id: 'x', name: 'x', rootPath: '/x', baseUrl: 'http://127.0.0.1:4000' } };
+        expect(isRemoteRepo(repo)).toBe(false);
+    });
+});
+
+// ── sortClonesLocalFirst (AC-04) ──────────────────────────────────────────────
+
+describe('sortClonesLocalFirst', () => {
+    const URL = 'https://github.com/acme/app.git';
+
+    it('moves remote clones after local clones, preserving relative order', () => {
+        const r1 = remoteRepo('r1', URL);
+        const l1 = localRepo('l1', URL);
+        const r2 = remoteRepo('r2', URL);
+        const l2 = localRepo('l2', URL);
+        const sorted = sortClonesLocalFirst([r1, l1, r2, l2]);
+        expect(sorted.map(r => r.workspace.id)).toEqual(['l1', 'l2', 'r1', 'r2']);
+    });
+
+    it('returns the same array reference (no-op) when there are no remote clones', () => {
+        const input = [localRepo('l1', URL), localRepo('l2', URL)];
+        expect(sortClonesLocalFirst(input)).toBe(input);
+    });
+
+    it('leaves a remote-only list untouched in order', () => {
+        const sorted = sortClonesLocalFirst([remoteRepo('r1', URL), remoteRepo('r2', URL)]);
+        expect(sorted.map(r => r.workspace.id)).toEqual(['r1', 'r2']);
+    });
+});
+
+// ── groupReposByRemote with remote checkouts (AC-04) ──────────────────────────
+
+describe('groupReposByRemote with remote checkouts', () => {
+    const URL = 'https://github.com/acme/app.git';
+    const OTHER = 'https://github.com/acme/other.git';
+
+    it('(a) folds a remote clone into the local group by normalized URL', () => {
+        // Local + remote checkout of the SAME origin → one group, two clones.
+        const groups = groupReposByRemote([localRepo('local', URL), remoteRepo('remote', URL)], {});
+        const group = groups.find(g => g.normalizedUrl === 'github.com/acme/app');
+        expect(group).toBeDefined();
+        expect(group!.repos).toHaveLength(2);
+        expect(group!.repos.map(r => r.workspace.id).sort()).toEqual(['local', 'remote']);
+    });
+
+    it('(b) surfaces a remote-only repo as its own group', () => {
+        // Remote checkout whose origin has NO local counterpart → standalone group.
+        const groups = groupReposByRemote([localRepo('local', URL), remoteRepo('remoteOnly', OTHER)], {});
+        const otherGroup = groups.find(g => g.normalizedUrl === 'github.com/acme/other');
+        expect(otherGroup).toBeDefined();
+        expect(otherGroup!.repos).toHaveLength(1);
+        expect(isRemoteRepo(otherGroup!.repos[0])).toBe(true);
+    });
+
+    it('(b) groups a remote-only repo that lacks gitInfo via its workspace.remoteUrl', () => {
+        const groups = groupReposByRemote([remoteRepo('remoteOnly', OTHER)], {});
+        expect(groups).toHaveLength(1);
+        expect(groups[0].normalizedUrl).toBe('github.com/acme/other');
+        expect(isRemoteRepo(groups[0].repos[0])).toBe(true);
+    });
+
+    it('(c) orders local clones before remote within a folded group (primary stays local)', () => {
+        // Remote listed FIRST in the input must still land after the local clone,
+        // so the i===0 PRIMARY marker points at a local checkout.
+        const groups = groupReposByRemote([remoteRepo('remote', URL), localRepo('local', URL)], {});
+        const group = groups.find(g => g.normalizedUrl === 'github.com/acme/app')!;
+        expect(group.repos.map(r => r.workspace.id)).toEqual(['local', 'remote']);
+        expect(isRemoteRepo(group.repos[0])).toBe(false); // primary = local
+    });
+
+    it('keeps multiple locals ahead of multiple remotes in a folded group', () => {
+        const groups = groupReposByRemote(
+            [remoteRepo('r1', URL), localRepo('l1', URL), remoteRepo('r2', URL), localRepo('l2', URL)],
+            {},
+        );
+        const group = groups.find(g => g.normalizedUrl === 'github.com/acme/app')!;
+        expect(group.repos.map(r => r.workspace.id)).toEqual(['l1', 'l2', 'r1', 'r2']);
     });
 });

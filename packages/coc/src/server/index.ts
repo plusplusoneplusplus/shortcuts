@@ -737,12 +737,16 @@ export { sendJson, send404, send400, send500, sendError, readJsonBody } from './
 export { createRequestHandler } from './router';
 export type { RouterOptions } from './router';
 
+// CORS / cross-origin policy (loopback-only allowance for REST + WS)
+export { applyCorsHeaders, getDefaultCorsPolicy, isLoopbackOrigin } from './shared/cors';
+export type { CorsPolicy } from './shared/cors';
+
 // Deprecated compat wrapper — use sendJson(res, data, statusCode) instead
 export { sendJSON, parseBody, parseQueryParams, stripExcludedFields } from './core/api-handler';
 export { detectRemoteUrl, normalizeRemoteUrl } from './core/api-handler';
 
 // WebSocket
-export { ProcessWebSocketServer, toProcessSummary, toCommentSummary, attachWebSocketUpgradeHandler } from './streaming/websocket';
+export { ProcessWebSocketServer, toProcessSummary, toCommentSummary, attachWebSocketUpgradeHandler, isWebSocketOriginAllowed } from './streaming/websocket';
 export type { WSClient, ProcessSummary, MarkdownCommentSummary, QueueTaskSummary, ServerMessage, ClientMessage, QueueSnapshot } from './streaming/websocket';
 
 // Terminal

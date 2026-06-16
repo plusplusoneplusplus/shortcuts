@@ -17,7 +17,8 @@ import {
     validateMapReduceDraftPlan,
 } from '@plusplusoneplusplus/coc-client';
 import type { ClientConversationTurn } from '../../types/dashboard';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { cn } from '../../ui/cn';
 
 export interface MapReduceGenerationMetadata {
@@ -213,6 +214,8 @@ export function MapReducePlanReviewCard({
     reasoningEffort,
     onApprovedRun,
 }: MapReducePlanReviewCardProps) {
+    // AC-07: plan create/update/approve route to the selected clone's server.
+    const cloneClient = useCocClient(workspaceId);
     const transcriptScan = useMemo(() => scanMapReducePlans(turns), [turns]);
     const persistedScan = useMemo(() => getPersistedPlanState(mapReduce), [mapReduce]);
     const scan = latestScanTurn(transcriptScan) > latestScanTurn(persistedScan)
@@ -319,7 +322,7 @@ export function MapReducePlanReviewCard({
         setBusy(true);
         setError(null);
         try {
-            const client = getSpaCocClient();
+            const client = cloneClient;
             const run = mapReduce.runId
                 ? await client.mapReduce.updatePlan(workspaceId, mapReduce.runId, {
                     items: checked.plan.items,

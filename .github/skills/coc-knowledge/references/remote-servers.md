@@ -114,6 +114,8 @@ Health checks call:
 
 If no effective local endpoint is available, health is reported as offline.
 
+Direct URL servers have no managed connector, so their runtime `status` is the last health-probe result against the configured `url`, cached per server id by the routes layer: `online` when reachable, `offline` when not, and `idle` before the first probe. The probe runs on create, edit, and `GET /api/servers/:id/health`; `GET /api/servers` additionally refreshes URL reachability in the background (serve-stale-revalidate) so a reachable direct-URL server converges to `online` on subsequent polls and contributes its clones to the dashboard.
+
 ## API routes
 
 The dashboard and client package use these server routes:

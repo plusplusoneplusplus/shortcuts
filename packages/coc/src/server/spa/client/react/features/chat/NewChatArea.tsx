@@ -16,7 +16,8 @@ import { MODE_BORDER_COLORS, cycleMode, normalizeChatMode } from '../../repos/mo
 import type { ChatMode } from '../../repos/modeConfig';
 import { useQueue } from '../../contexts/QueueContext';
 import { useApp } from '../../contexts/AppContext';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { useFileAttachments } from './hooks/useFileAttachments';
 import { isQueueProcessId, toQueueProcessId } from '../../utils/queue-process-id';
 import { useModels } from '../../hooks/useModels';
@@ -145,6 +146,8 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const { dispatch: queueDispatch } = useQueue();
     const { state: appState } = useApp();
     const { updateOnboarding } = useOnboardingPreferences();
+    // AC-07: enqueue the new chat onto the selected clone's server.
+    const cloneClient = useCocClient(workspaceId);
 
     function getSelectedWorkspaceRoot(): string | undefined {
         const ws = appState.workspaces?.find((w: any) => w.id === workspaceId);
@@ -152,7 +155,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     }
 
     async function handleSubmit(submission: InitialChatComposerSubmission): Promise<string | null> {
-        const result = await getSpaCocClient().queue.enqueue({
+        const result = await cloneClient.queue.enqueue({
             type: 'chat',
             priority: 'normal',
             payload: {
@@ -234,6 +237,9 @@ export function InitialChatComposer({
      *  When set, prevents auto-derive from overwriting the user's pick for the same model.
      *  Cleared on provider or model change (triggering re-derive for the new model). */
     const userPickedForModelRef = useRef<{ provider: ChatProvider; modelId: string } | null>(null);
+
+    // AC-07: skills + per-repo chat preferences load from the selected clone's server.
+    const cloneClient = useCocClient(workspaceId);
 
     const { attachments, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
     const attachedContext = useAttachedContext();
@@ -413,7 +419,7 @@ export function InitialChatComposer({
     useEffect(() => {
         setSkills([]);
         if (!workspaceId) return;
-        getSpaCocClient().skills.listAllWorkspace(workspaceId)
+        cloneClient.skills.listAllWorkspace(workspaceId)
             .then((data: any) => {
                 if (data?.merged && Array.isArray(data.merged)) {
                     setSkills(data.merged);
@@ -422,7 +428,7 @@ export function InitialChatComposer({
                 }
             })
             .catch(() => { /* ignore */ });
-    }, [workspaceId]);
+    }, [workspaceId, cloneClient]);
 
     const getSelectableDefaultProvider = () => {
         return getSelectableComposerDefaultProvider(agentProviders);
@@ -437,7 +443,7 @@ export function InitialChatComposer({
             setSelectedProvider(fallbackProvider);
             return;
         }
-        getSpaCocClient().preferences.getRepo(workspaceId)
+        cloneClient.preferences.getRepo(workspaceId)
             .then((prefs: any) => {
                 if (cancelled) return;
                 const last = prefs?.lastChatProvider;
@@ -451,7 +457,7 @@ export function InitialChatComposer({
                 if (!cancelled) setSelectedProvider(fallbackProvider);
             });
         return () => { cancelled = true; };
-    }, [workspaceId, agentProviders]);
+    }, [workspaceId, agentProviders, cloneClient]);
 
     // When agentProviders load and selected provider becomes unavailable, fall back to the default provider.
     useEffect(() => {
@@ -533,7 +539,7 @@ export function InitialChatComposer({
     function handleProviderChange(provider: ChatProvider) {
         setSelectedProvider(provider);
         if (workspaceId) {
-            getSpaCocClient().preferences.patchRepo(workspaceId, { lastChatProvider: provider })
+            cloneClient.preferences.patchRepo(workspaceId, { lastChatProvider: provider })
                 .catch(() => { /* non-fatal */ });
         }
     }

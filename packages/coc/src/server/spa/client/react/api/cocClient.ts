@@ -33,6 +33,10 @@ function toLegacyFetchInit(init?: RequestInit): RequestInit {
     return next;
 }
 
+function spaFetch(): typeof fetch {
+    return ((input, init) => fetch(input, toLegacyFetchInit(init))) as typeof fetch;
+}
+
 export function getSpaCocClient(): CocClient {
     const apiBasePath = getApiBase();
     const wsPath = (globalThis as any).window?.__DASHBOARD_CONFIG__?.wsPath ?? '/ws';
@@ -43,13 +47,51 @@ export function getSpaCocClient(): CocClient {
             baseUrl: '',
             apiBasePath,
             wsPath,
-            fetch: ((input, init) => fetch(input, toLegacyFetchInit(init))) as typeof fetch,
+            fetch: spaFetch(),
         });
         cachedKey = key;
         cachedFetch = fetch;
     }
 
     return cachedClient;
+}
+
+/** Per-baseUrl client cache. Keyed by the normalized remote baseUrl. */
+const remoteClientCache = new Map<string, { client: CocClient; fetchRef: typeof fetch }>();
+
+function normalizeBaseUrlKey(baseUrl: string): string {
+    return baseUrl.replace(/\/+$/, '');
+}
+
+/**
+ * Return a CocClient routed to a specific clone's `baseUrl` (AC-03).
+ *
+ * - `baseUrl` undefined/empty → the EXISTING default `getSpaCocClient()`
+ *   singleton (current origin). Local clones and the repos-list/git-info
+ *   aggregation in ReposContext keep using this — there is NO global mutable
+ *   "active baseUrl"; remote routing is strictly per-call/opt-in.
+ * - `baseUrl` present → a cached CocClient whose REST calls and `events`
+ *   WebSocket target that origin (e.g. `http://127.0.0.1:4000`). Uses the
+ *   default `/api` base + `/ws` path, matching the remote CoC server layout
+ *   (remote servers are never in container mode, so no agent prefix applies).
+ */
+export function getCocClientFor(baseUrl?: string): CocClient {
+    if (!baseUrl) {
+        return getSpaCocClient();
+    }
+    const key = normalizeBaseUrlKey(baseUrl);
+    const cached = remoteClientCache.get(key);
+    if (cached && cached.fetchRef === fetch) {
+        return cached.client;
+    }
+    const wsPath = (globalThis as any).window?.__DASHBOARD_CONFIG__?.wsPath ?? '/ws';
+    const client = new CocClient({
+        baseUrl: key,
+        wsPath,
+        fetch: spaFetch(),
+    });
+    remoteClientCache.set(key, { client, fetchRef: fetch });
+    return client;
 }
 
 export function toSpaCocRequestOptions(options?: RequestInit): CocRequestOptions {
@@ -113,4 +155,5 @@ export function resetSpaCocClientForTests(): void {
     cachedClient = undefined;
     cachedKey = '';
     cachedFetch = undefined;
+    remoteClientCache.clear();
 }

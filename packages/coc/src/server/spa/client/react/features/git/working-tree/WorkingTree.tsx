@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { useCocClient } from '../../../repos/cloneRouting';
 import { Spinner } from '../../../ui';
 import { copyToClipboard } from '../../../utils/format';
 import type { DiffComment } from '../../../../comments/diff-comment-types';
@@ -265,11 +265,15 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
     const [workingChangesExpanded, setWorkingChangesExpanded] = useState(false);
     const [allWorkingComments, setAllWorkingComments] = useState<DiffComment[]>([]);
 
+    // Route every working-tree call to the selected clone's server (AC-07): a
+    // remote clone hits its own origin; a local/unknown id resolves to the default.
+    const cloneClient = useCocClient(workspaceId);
+
     const fetchChanges = useCallback(() => {
-        return getSpaCocClient().git.getWorkingTreeChanges(workspaceId)
+        return cloneClient.git.getWorkingTreeChanges(workspaceId)
             .then(data => setChanges(data.changes ?? []))
             .catch(err => setError(err.message || 'Failed to load changes'));
-    }, [workspaceId]);
+    }, [workspaceId, cloneClient]);
 
     useEffect(() => {
         setLoading(true);
@@ -279,10 +283,10 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
 
     // Fetch working-tree comment count for the badge in the header.
     useEffect(() => {
-        getSpaCocClient().git.listDiffComments(workspaceId, { newRef: 'working-tree' })
+        cloneClient.git.listDiffComments(workspaceId, { newRef: 'working-tree' })
             .then((data: { comments?: DiffComment[] }) => setAllWorkingComments(data.comments ?? []))
             .catch(() => setAllWorkingComments([]));
-    }, [workspaceId]);
+    }, [workspaceId, cloneClient]);
 
     // Re-fetch when parent increments refreshKey (e.g. Refresh button click)
     const refreshKeyMountedRef = useRef(false);
@@ -319,13 +323,13 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
         try {
             let result: { success: boolean; error?: string };
             if (action === 'stage') {
-                result = await getSpaCocClient().git.stageFile(workspaceId, filePath);
+                result = await cloneClient.git.stageFile(workspaceId, filePath);
             } else if (action === 'unstage') {
-                result = await getSpaCocClient().git.unstageFile(workspaceId, filePath);
+                result = await cloneClient.git.unstageFile(workspaceId, filePath);
             } else if (action === 'discard') {
-                result = await getSpaCocClient().git.discardFile(workspaceId, filePath);
+                result = await cloneClient.git.discardFile(workspaceId, filePath);
             } else {
-                result = await getSpaCocClient().git.deleteUntrackedFile(workspaceId, filePath);
+                result = await cloneClient.git.deleteUntrackedFile(workspaceId, filePath);
             }
             if (result.success === false) throw new Error(result.error || `${action} failed`);
             await fetchChanges();
@@ -335,13 +339,13 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
         } finally {
             setBusy(filePath, false);
         }
-    }, [workspaceId, fetchChanges, onRefresh]);
+    }, [workspaceId, cloneClient, fetchChanges, onRefresh]);
 
     const handleStageAll = useCallback(async (files: WorkingTreeChange[]) => {
         setStagingAll(true);
         setActionError(null);
         try {
-            const result = await getSpaCocClient().git.stageFiles(workspaceId, files.map(f => f.filePath));
+            const result = await cloneClient.git.stageFiles(workspaceId, files.map(f => f.filePath));
             if (result.success === false) {
                 throw new Error(result.errors?.join(', ') || 'Stage failed');
             }
@@ -352,13 +356,13 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
         } finally {
             setStagingAll(false);
         }
-    }, [workspaceId, fetchChanges, onRefresh]);
+    }, [workspaceId, cloneClient, fetchChanges, onRefresh]);
 
     const handleUnstageAll = useCallback(async (files: WorkingTreeChange[]) => {
         setStagingAll(true);
         setActionError(null);
         try {
-            const result = await getSpaCocClient().git.unstageFiles(workspaceId, files.map(f => f.filePath));
+            const result = await cloneClient.git.unstageFiles(workspaceId, files.map(f => f.filePath));
             if (result.success === false) {
                 throw new Error(result.errors?.join(', ') || 'Unstage failed');
             }
@@ -369,7 +373,7 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
         } finally {
             setStagingAll(false);
         }
-    }, [workspaceId, fetchChanges, onRefresh]);
+    }, [workspaceId, cloneClient, fetchChanges, onRefresh]);
 
     const staged    = changes.filter(c => c.stage === 'staged');
     const unstaged  = changes.filter(c => c.stage === 'unstaged');

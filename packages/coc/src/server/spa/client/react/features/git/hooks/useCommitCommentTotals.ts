@@ -12,7 +12,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { getWsPath } from '../../../utils/config';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { cloneWsUrl } from '../../../api/wsUrl';
+import { useCocClient } from '../../../repos/cloneRouting';
 
 export interface CommitCommentCounts {
     open: number;
@@ -24,6 +25,9 @@ export function useCommitCommentTotals(
     commitHashes: string[],
 ): Map<string, CommitCommentCounts> {
     const [totals, setTotals] = useState<Map<string, CommitCommentCounts>>(new Map());
+    // Route the totals fetch to the workspace's clone server (AC-07); the WS
+    // subscription below stays on cloneWsUrl(getWsPath()) unchanged (AC-03).
+    const cloneClient = useCocClient(wsId);
 
     // Stable key for the hash list so the effect only re-runs when the
     // set of commits actually changes.
@@ -36,10 +40,10 @@ export function useCommitCommentTotals(
         }
         const commits = commitsKey.split(',').filter(Boolean);
         Promise.all([
-            getSpaCocClient().git
+            cloneClient.git
                 .getDiffCommentTotals(wsId, { commits, status: 'open' })
                 .then(data => data.totals),
-            getSpaCocClient().git
+            cloneClient.git
                 .getDiffCommentTotals(wsId, { commits, status: 'resolved' })
                 .then(data => data.totals),
         ])
@@ -58,7 +62,7 @@ export function useCommitCommentTotals(
             .catch(() => {
                 // Fail silently — comment totals are non-critical
             });
-    }, [wsId, commitsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [wsId, commitsKey, cloneClient]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         if (commitHashes.length === 0) {
@@ -72,8 +76,7 @@ export function useCommitCommentTotals(
     // WebSocket subscription for instant refresh on diff-comment-updated
     useEffect(() => {
         if (!wsId) return;
-        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        const ws = new WebSocket(`${protocol}://${window.location.host}${getWsPath()}`);
+        const ws = new WebSocket(cloneWsUrl(getWsPath()));
         ws.addEventListener('message', (event) => {
             try {
                 const msg = JSON.parse(event.data as string) as { type: string; workspaceId?: string };

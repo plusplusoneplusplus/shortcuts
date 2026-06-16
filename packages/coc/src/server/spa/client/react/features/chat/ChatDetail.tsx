@@ -8,7 +8,8 @@
  */
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { getConversationTurns } from './conversation/chatConversationUtils';
 import { getSessionIdFromProcess } from './conversation/ConversationMetadataPopover';
 import { useQueue } from '../../contexts/QueueContext';
@@ -132,6 +133,10 @@ export interface ChatDetailProps {
 }
 
 export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, compactModeSelector = false, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onOpenForEachRun, onOpenMapReduceRun, onStartFreshSameContext, startingFreshSameContext = false }: ChatDetailProps) {
+    // Per-clone REST client (AC-07): a remote clone's chat reads/writes go to its
+    // own server; a local clone keeps the default origin client. All process/
+    // queue/notes/canvas/skill calls below are scoped to this chat's workspace.
+    const client = useCocClient(workspaceId);
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
 
@@ -460,7 +465,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         if (!detectedPlanFile || planPath || task?.metadata?.planFilePath || !processId) return;
         planPatchedRef.current = true;
         const merged = { ...(task?.metadata ?? {}), planFilePath: detectedPlanFile };
-        getSpaCocClient().processes.update(processId, { metadata: merged })
+        client.processes.update(processId, { metadata: merged })
             .then((data: any) => {
                 if (data?.process) setTask((prev: any) => prev ? { ...prev, metadata: data.process.metadata } : prev);
             })
@@ -474,7 +479,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         if (!detectedGoalFile || task?.metadata?.goalFilePath || !processId) return;
         goalPatchedRef.current = true;
         const merged = { ...(task?.metadata ?? {}), goalFilePath: detectedGoalFile };
-        getSpaCocClient().processes.update(processId, { metadata: merged })
+        client.processes.update(processId, { metadata: merged })
             .then((data: any) => {
                 if (data?.process) setTask((prev: any) => prev ? { ...prev, metadata: data.process.metadata } : prev);
             })
@@ -486,7 +491,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         if (!processId || !isTerminal) return;
         // Only fetch for note-chat processes
         if (task?.metadata?.notePath === undefined) return;
-        getSpaCocClient().notes.listNoteEdits(processId)
+        client.notes.listNoteEdits(processId)
             .then((edits: any) => {
                 if (Array.isArray(edits) && edits.length > 0) setNoteEdits(edits);
             })
@@ -570,7 +575,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         Promise.all(
             unknown.map(async (run) => {
                 try {
-                    const data = await getSpaCocClient().processes.get(run.processId);
+                    const data = await client.processes.get(run.processId);
                     return { processId: run.processId, status: data?.process?.status as RunLiveStatus ?? 'unknown' };
                 } catch {
                     return { processId: run.processId, status: 'unknown' as RunLiveStatus };
@@ -775,7 +780,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
 
     const refreshConversation = useCallback(async (pid: string) => {
         try {
-            const data = await getSpaCocClient().processes.get(pid);
+            const data = await client.processes.get(pid);
             setProcessDetails(data?.process || null);
             const refreshedTurns = getConversationTurns(data);
             // Preserve client-only costTimeMs across server refresh
@@ -887,6 +892,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         taskId,
         task,
         processId,
+        workspaceId,
         setIsStreaming,
         setTask,
         setProcessDetails,
@@ -941,7 +947,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         const pid = processId ?? bareTaskId;
         if (!pid) return;
         let cancelled = false;
-        getSpaCocClient().canvases.list(workspaceId, { processId: pid })
+        client.canvases.list(workspaceId, { processId: pid })
             .then(canvases => {
                 if (!cancelled && canvases.length > 0) {
                     setActiveCanvasId(prev => prev ?? canvases[0].id);
@@ -1035,7 +1041,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     useEffect(() => {
         setSkills([]);
         if (!workspaceId) return;
-        getSpaCocClient().skills.listAllWorkspace(workspaceId)
+        client.skills.listAllWorkspace(workspaceId)
             .then((data: any) => {
                 if (data?.merged && Array.isArray(data.merged)) {
                     setSkills(data.merged);
@@ -1049,7 +1055,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // Fetch full task data for pending tasks (metadata + payload)
     useEffect(() => {
         if (!taskId || !isPending) { setFullTask(null); return; }
-        getSpaCocClient().queue.getTask(bareTaskId)
+        client.queue.getTask(bareTaskId)
             .then((data: any) => setFullTask(data?.task || null))
             .catch(() => setFullTask(null));
     }, [taskId, isPending, queueState.refreshVersion]);
@@ -1131,7 +1137,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         setLoading(false);
                         // Fire-and-forget background revalidation. Bail out if
                         // the user has navigated away or to another session.
-                        getSpaCocClient().processes.get(pid).then((processData: any) => {
+                        client.processes.get(pid).then((processData: any) => {
                             if (loadCounterRef.current !== loadId) return;
                             const loadedProcess = processData?.process ?? null;
                             if (!loadedProcess) return;
@@ -1155,7 +1161,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         return;
                     }
 
-                    const processData = await getSpaCocClient().processes.get(pid);
+                    const processData = await client.processes.get(pid);
                     if (loadCounterRef.current !== loadId) return;
                     const loadedProcess = processData?.process ?? null;
 
@@ -1185,7 +1191,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 }
 
                 // Queue fetch path — taskId may be bare or a processId that fell through
-                const queueData = await getSpaCocClient().queue.getTask(bareTaskId);
+                const queueData = await client.queue.getTask(bareTaskId);
                 if (loadCounterRef.current !== loadId) return;
                 const loadedTask = queueData?.task ?? null;
 
@@ -1206,7 +1212,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     setTask(loadedTask);
                     setTurnsAndRef(cached.turns);
                     // Background-refresh metadata
-                    getSpaCocClient().processes.get(pid)
+                    client.processes.get(pid)
                         .then((data: any) => {
                             setProcessDetails(data?.process || null);
                             seedSessionTokensFromProcess(data?.process);
@@ -1232,7 +1238,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         })
                         .catch(() => { /* metadata refresh is best-effort */ });
                 } else {
-                    const procData = await getSpaCocClient().processes.get(pid);
+                    const procData = await client.processes.get(pid);
                     if (loadCounterRef.current !== loadId) return;
 
                     // Reconcile: process status is authoritative over queue status.
@@ -1322,7 +1328,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             try {
                 // For processId-keyed taskIds, try loading process directly first
                 if (isQueueProcessId(taskId)) {
-                    const procData = await getSpaCocClient().processes.get(taskId);
+                    const procData = await client.processes.get(taskId);
                     if (procData?.process) {
                         setTask({
                             id: taskId,
@@ -1344,7 +1350,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     // Fall through to queue fetch with bare taskId
                 }
 
-                const queueData = await getSpaCocClient().queue.getTask(bareTaskId);
+                const queueData = await client.queue.getTask(bareTaskId);
                 const refreshedTask = queueData?.task ?? null;
 
                 const pid = refreshedTask?.processId ?? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(taskId));
@@ -1353,7 +1359,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     return;
                 }
 
-                const procData = await getSpaCocClient().processes.get(pid);
+                const procData = await client.processes.get(pid);
 
                 // Reconcile: process status is authoritative over queue status.
                 // Also propagate customTitle/lastMessagePreview/title from the
@@ -1423,13 +1429,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     useEffect(() => () => { stopStreaming(); closeFollowUpStream(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleCancel = async () => {
-        await getSpaCocClient().queue.cancel(bareTaskId);
+        await client.queue.cancel(bareTaskId);
         if (!standalone) queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
         onBack?.();
     };
 
     const handleMoveToTop = async () => {
-        await getSpaCocClient().queue.moveToTop(bareTaskId);
+        await client.queue.moveToTop(bareTaskId);
         queueDispatch({ type: 'REFRESH_SELECTED_QUEUE_TASK' });
     };
 
@@ -1441,7 +1447,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const handleStop = useCallback(async () => {
         if (!processId) return;
         try {
-            await getSpaCocClient().processes.cancel(processId);
+            await client.processes.cancel(processId);
         } catch { /* best-effort: SSE will reflect the actual state */ }
     }, [processId]);
 
@@ -1451,7 +1457,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const handleDeleteTurn = useCallback((turnIndex: number) => {
         if (!processId) return;
         setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: new Date().toISOString() } : t));
-        getSpaCocClient().processes.deleteTurn(processId, turnIndex).catch(() => {
+        client.processes.deleteTurn(processId, turnIndex).catch(() => {
             setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: undefined } : t));
         });
         if (undoDelete) clearTimeout(undoDelete.timer);
@@ -1465,7 +1471,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         const { turnIndex } = undoDelete;
         setUndoDelete(null);
         setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: undefined } : t));
-        getSpaCocClient().processes.restoreTurn(processId, turnIndex).catch(() => {});
+        client.processes.restoreTurn(processId, turnIndex).catch(() => {});
     }, [undoDelete, processId]);
 
     const handlePinTurn = useCallback((turnIndex: number, pinned: boolean) => {
@@ -1475,7 +1481,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 ? { ...t, pinnedAt: pinned ? new Date().toISOString() : undefined, archived: pinned ? false : t.archived }
                 : t
         ));
-        getSpaCocClient().processes.pinTurn(processId, turnIndex, pinned).catch(() => {
+        client.processes.pinTurn(processId, turnIndex, pinned).catch(() => {
             setTurns(prev => prev.map(t =>
                 t.turnIndex === turnIndex
                     ? { ...t, pinnedAt: pinned ? undefined : new Date().toISOString() }
@@ -1489,7 +1495,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         setTurns(prev => prev.map(t =>
             t.turnIndex === turnIndex ? { ...t, archived } : t
         ));
-        getSpaCocClient().processes.archiveTurn(processId, turnIndex, archived).catch(() => {
+        client.processes.archiveTurn(processId, turnIndex, archived).catch(() => {
             setTurns(prev => prev.map(t =>
                 t.turnIndex === turnIndex ? { ...t, archived: !archived } : t
             ));
@@ -1503,7 +1509,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             removed = prev.find(m => m.id === messageId);
             return prev.filter(m => m.id !== messageId);
         });
-        getSpaCocClient().processes.deletePendingMessage(processId, messageId).catch(() => {
+        client.processes.deletePendingMessage(processId, messageId).catch(() => {
             if (removed) {
                 setPendingQueue(prev => (prev.some(m => m.id === messageId) ? prev : [...prev, removed!]));
             }
@@ -1515,7 +1521,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         setResumeLaunching(true);
         setResumeFeedback(null);
         try {
-            const body = await getSpaCocClient().processes.resumeCli(processId);
+            const body = await client.processes.resumeCli(processId);
             const launched = body.launched !== false;
             setResumeFeedback({
                 type: 'success',
@@ -1533,7 +1539,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         if (!processId || forking) return;
         setForking(true);
         try {
-            const data = await getSpaCocClient().processes.fork(processId);
+            const data = await client.processes.fork(processId);
             if (data?.process?.id && workspaceId) {
                 location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/activity/' + encodeURIComponent(data.process.id);
             }
@@ -1550,7 +1556,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         if (retryingTask) return;
         setRetryingTask(true);
         try {
-            const res = await getSpaCocClient().queue.retry(bareTaskId);
+            const res = await client.queue.retry(bareTaskId);
             const newId = res?.task?.id;
             if (newId) {
                 const newProcessId = toQueueProcessId(String(newId));
@@ -1783,6 +1789,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         pendingAskUserBatch={pendingAskUserBatch}
                         ralphGrillPlanningProgress={ralphGrillPlanningProgress}
                         onAskUserAnswered={() => setPendingAskUserBatch(null)}
+                        workspaceId={workspaceId}
                         isScrolledUp={isScrolledUp}
                         scrollRef={conversationContainerRef}
                         turnsContainerRef={turnsContainerRef}
@@ -2123,7 +2130,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     setRenameOpen(false);
                     if (!processId) return;
                     try {
-                        await getSpaCocClient().processes.update(processId, { customTitle: newTitle });
+                        await client.processes.update(processId, { customTitle: newTitle });
                     } catch { /* WS will sync eventually */ }
                 }}
             />

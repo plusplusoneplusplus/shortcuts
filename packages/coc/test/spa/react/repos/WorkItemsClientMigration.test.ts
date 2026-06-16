@@ -27,8 +27,8 @@ describe('work items SPA client migration', () => {
     });
 
     it('creates manual and chat-derived work items through client.workItems', () => {
-        expect(createDialog).toContain('getSpaCocClient().workItems.createFromChat(workspaceId');
-        expect(createDialog).toContain('getSpaCocClient().workItems.create(workspaceId');
+        expect(createDialog).toContain('cloneClient.workItems.createFromChat(workspaceId');
+        expect(createDialog).toContain('cloneClient.workItems.create(workspaceId');
         expect(createDialog).not.toContain('/work-items/from-chat');
     });
 

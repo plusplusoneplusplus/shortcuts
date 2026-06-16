@@ -11,6 +11,7 @@
  */
 
 import type { RepoData, RepoGroup } from '../../repos/repoGrouping';
+import type { RemoteConnectionStatus, RemoteQueueStatus } from '../../repos/remoteWorkspaceAggregation';
 import type { RepoSubTab } from '../../types/dashboard';
 import type { SubTabDef } from '../repo-detail/repoSubTabs';
 
@@ -80,11 +81,52 @@ export function computeVisibleTabKeys(
 
 // ── Clone status ─────────────────────────────────────────────────────────────
 
-export type CloneStatus = 'idle' | 'running' | 'queued' | 'paused';
+/**
+ * Per-clone status driving the dropdown's status dot.
+ *   • Local clones: queue-derived (idle/running/queued/paused), unchanged.
+ *   • Remote clones (AC-05): connection-first — `offline` / `connecting` win over
+ *     the queue; when the server is online the remote queue status is used.
+ */
+export type CloneStatus = 'idle' | 'running' | 'queued' | 'paused' | 'offline' | 'connecting';
+
+/** Minimal remote marker shape this module reads off a workspace (set by AC-01/05). */
+interface RemoteStatusMarker {
+    connection?: RemoteConnectionStatus;
+    queue?: RemoteQueueStatus;
+}
 
 /**
- * Derive per-clone queue status from the QueueContext repoQueueMap, mirroring
- * RepoTabStrip's logic. `isHiddenTask` is injected to keep this module pure.
+ * Read a workspace's remote marker when present. Inlined (not imported from the
+ * network-aware aggregation module) to keep shellModel pure and dependency-light;
+ * local workspaces return `undefined`.
+ */
+function remoteMarker(workspace: unknown): RemoteStatusMarker | undefined {
+    const ws = workspace as { remote?: unknown } | undefined;
+    if (ws && typeof ws.remote === 'object' && ws.remote !== null) {
+        return ws.remote as RemoteStatusMarker;
+    }
+    return undefined;
+}
+
+/**
+ * Blend a remote clone's connection + queue into a single status (AC-05).
+ * Connection comes first: a server that is not online shows offline/connecting
+ * regardless of its last-known queue; once online, the remote queue status is
+ * used (mirroring local semantics).
+ */
+export function blendRemoteCloneStatus(marker: RemoteStatusMarker): CloneStatus {
+    const connection = marker.connection ?? 'offline';
+    if (connection === 'offline' || connection === 'failed') return 'offline';
+    if (connection !== 'online') return 'connecting'; // 'connecting' | 'idle' (not yet online)
+    return marker.queue ?? 'idle';
+}
+
+/**
+ * Derive per-clone status from the QueueContext repoQueueMap, mirroring
+ * RepoTabStrip's logic for LOCAL clones. For REMOTE clones (carrying an AC-01
+ * marker), the status is blended from the marker's connection + remote queue
+ * (AC-05) instead of the local queue map. `isHiddenTask` is injected to keep
+ * this module pure.
  */
 export function computeCloneStatusMap(
     repos: RepoData[],
@@ -94,6 +136,8 @@ export function computeCloneStatusMap(
     const map: Record<string, CloneStatus> = {};
     for (const repo of repos) {
         const id = String(repo.workspace.id);
+        const marker = remoteMarker(repo.workspace);
+        if (marker) { map[id] = blendRemoteCloneStatus(marker); continue; }
         const entry = repoQueueMap?.[id];
         if (!entry) { map[id] = 'idle'; continue; }
         if (entry.stats?.isPaused) { map[id] = 'paused'; continue; }
@@ -105,11 +149,17 @@ export function computeCloneStatusMap(
     return map;
 }
 
-/** Resolve the dot color for a clone given its status, falling back to the remote color. */
+/**
+ * Resolve the dot color for a clone given its status, falling back to the remote
+ * color for idle/unknown. Remote-only states get distinct hues: `offline` is a
+ * dim grey ("inactive"), `connecting` a blue in-progress hue (NOT queued orange).
+ */
 export function cloneStatusColor(status: CloneStatus | undefined, fallback: string): string {
     if (status === 'running') return '#16a34a';
     if (status === 'queued') return '#c98410';
     if (status === 'paused') return '#f14c4c';
+    if (status === 'connecting') return '#3b82f6';
+    if (status === 'offline') return '#8c959f';
     return fallback;
 }
 

@@ -639,7 +639,8 @@ describe('Task Comments REST API', () => {
 
         it('includes CORS headers', async () => {
             const res = await getJSON(commentsUrl());
-            expect(res.headers['access-control-allow-origin']).toBe('*');
+            // AC-02: no wildcard ACAO; a no-Origin request gets no ACAO header.
+            expect(res.headers['access-control-allow-origin']).toBeUndefined();
         });
     });
 

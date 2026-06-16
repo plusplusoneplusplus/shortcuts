@@ -15,7 +15,7 @@ import { useQueueDragDrop } from '../../queue/hooks/useQueueDragDrop';
 import { useQueueTouchDragDrop } from '../../queue/hooks/useQueueTouchDragDrop';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import { RenameDialog } from '../../ui/RenameDialog';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { useWorkflowProgress } from '../workflow/hooks/useWorkflowProgress';
 import { getDraft } from './hooks/useDraftStore';
 import { useLongPress } from '../../hooks/ui/useLongPress';
@@ -740,6 +740,11 @@ export function ChatListPane({
 }: ChatListPaneProps) {
     const { state: queueState } = useQueue();
     const isTaskSubmitting = queueState.isTaskSubmitting;
+
+    // Per-clone client (AC-07): list-row queue/history/summarize/rename actions
+    // target this clone's server. workspaceId may be undefined (e.g. floating
+    // panes) → default origin client, unchanged.
+    const cloneClient = useCocClient(workspaceId);
 
     /** Check if a task is the currently selected one (processId-aware). */
     const isSelected = useCallback((taskId: string): boolean => {
@@ -1577,15 +1582,15 @@ export function ChatListPane({
     }, [visibleHistoryRangeRows]);
 
     const handleCancel = async (taskId: string) => {
-        await getSpaCocClient().queue.cancel(taskId);
+        await cloneClient.queue.cancel(taskId);
         fetchQueue();
     };
 
     const deleteChatDirect = async (taskId: string) => {
         if (workspaceId) {
-            await getSpaCocClient().workspaces.deleteHistory(workspaceId, taskId);
+            await cloneClient.workspaces.deleteHistory(workspaceId, taskId);
         } else {
-            await getSpaCocClient().queue.deleteHistoryEntry(taskId);
+            await cloneClient.queue.deleteHistoryEntry(taskId);
         }
         fetchQueue();
     };
@@ -1596,27 +1601,27 @@ export function ChatListPane({
     };
 
     const handleMoveUp = async (taskId: string) => {
-        await getSpaCocClient().queue.moveUp(taskId);
+        await cloneClient.queue.moveUp(taskId);
         fetchQueue();
     };
 
     const handleMoveToTop = async (taskId: string) => {
-        await getSpaCocClient().queue.moveToTop(taskId);
+        await cloneClient.queue.moveToTop(taskId);
         fetchQueue();
     };
 
     const handleMoveToPosition = async (taskId: string, newIndex: number) => {
-        await getSpaCocClient().queue.moveToPosition(taskId, newIndex);
+        await cloneClient.queue.moveToPosition(taskId, newIndex);
         fetchQueue();
     };
 
     const handleFreeze = async (taskId: string) => {
-        await getSpaCocClient().queue.freeze(taskId);
+        await cloneClient.queue.freeze(taskId);
         fetchQueue();
     };
 
     const handleUnfreeze = async (taskId: string) => {
-        await getSpaCocClient().queue.unfreeze(taskId);
+        await cloneClient.queue.unfreeze(taskId);
         fetchQueue();
     };
 
@@ -1625,7 +1630,7 @@ export function ChatListPane({
     const handleAdmit = async (taskId: string) => {
         setIsAdmitting(true);
         try {
-            await getSpaCocClient().queue.admit(taskId);
+            await cloneClient.queue.admit(taskId);
             await fetchQueue();
         } finally {
             setIsAdmitting(false);
@@ -1633,18 +1638,18 @@ export function ChatListPane({
     };
 
     const handleUnadmit = async (taskId: string) => {
-        await getSpaCocClient().queue.unadmit(taskId);
+        await cloneClient.queue.unadmit(taskId);
         fetchQueue();
     };
 
     const handleInsertPauseMarker = async (afterIndex: number) => {
         setInsertingPauseAt(null);
-        await getSpaCocClient().queue.insertPauseMarker({ afterIndex, ...(workspaceId ? { repoId: workspaceId } : {}) });
+        await cloneClient.queue.insertPauseMarker({ afterIndex, ...(workspaceId ? { repoId: workspaceId } : {}) });
         fetchQueue();
     };
 
     const handleRemovePauseMarker = async (markerId: string) => {
-        await getSpaCocClient().queue.removePauseMarker(markerId);
+        await cloneClient.queue.removePauseMarker(markerId);
         fetchQueue();
     };
 
@@ -1790,10 +1795,10 @@ export function ChatListPane({
         const processId = ensureQueueProcessId(renameTarget.taskId);
         setRenameTarget(null);
         try {
-            await getSpaCocClient().processes.update(processId, { customTitle: newTitle });
+            await cloneClient.processes.update(processId, { customTitle: newTitle });
             fetchQueue();
         } catch { /* WS will sync eventually */ }
-    }, [renameTarget, fetchQueue]);
+    }, [renameTarget, fetchQueue, cloneClient]);
 
     const contextMenuItems = useMemo<ContextMenuItem[]>(() => {
         if (!contextMenu) return [];
@@ -3603,7 +3608,7 @@ export function ChatListPane({
             chatCount={summarizeDialogIds.length}
             onClose={() => setSummarizeDialogOpen(false)}
             onConfirm={async (userPrompt) => {
-                const data = await getSpaCocClient().queue.summarize({
+                const data = await cloneClient.queue.summarize({
                     processIds: summarizeDialogIds,
                     workspaceId,
                     userPrompt: userPrompt || undefined,

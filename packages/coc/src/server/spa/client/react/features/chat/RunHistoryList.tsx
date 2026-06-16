@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { cn } from '../../ui';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { formatRelativeTime } from '../../utils/format';
 import type { RunRecord } from '../schedules/scheduleTypes';
 
@@ -25,6 +25,8 @@ interface RunHistoryListProps {
 }
 
 export function RunHistoryList({ runs: initialRuns, scheduleId, wsId, onRunNow, isRunning }: RunHistoryListProps) {
+    // AC-07: schedule run history loads from the selected clone's server.
+    const cloneClient = useCocClient(wsId);
     const [showOutputId, setShowOutputId] = useState<string | null>(null);
     const [history, setHistory] = useState<RunRecord[]>(initialRuns);
     const [historyPage, setHistoryPage] = useState(1);
@@ -40,11 +42,11 @@ export function RunHistoryList({ runs: initialRuns, scheduleId, wsId, onRunNow, 
     const refreshHistory = useCallback(async () => {
         setRefreshing(true);
         try {
-            const history = await getSpaCocClient().schedules.history(wsId, scheduleId);
+            const history = await cloneClient.schedules.history(wsId, scheduleId);
             setHistory(history);
         } catch { /* ignore */ }
         setRefreshing(false);
-    }, [wsId, scheduleId]);
+    }, [wsId, scheduleId, cloneClient]);
 
     // Auto-poll every 3s while any run is in-progress
     useEffect(() => {

@@ -21,7 +21,7 @@ import {
     RalphWorkflowPane,
 } from './RalphWorkflowPane';
 import { useRalphSessionView } from './useRalphSessionView';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import type { ResolvedModalJobAiSelection } from '../../shared/ModalJobAiControls';
 
 export interface RalphWorkflowPaneContainerProps {
@@ -50,6 +50,8 @@ export function RalphWorkflowPaneContainer(
         onSelectFile,
         now,
     } = props;
+    // AC-07: Ralph continue/new-loop/resume target the selected clone's server.
+    const cloneClient = useCocClient(workspaceId);
     const { view, refresh } = useRalphSessionView(workspaceId, sessionId);
 
     const handleSelectIteration = useCallback(
@@ -67,37 +69,37 @@ export function RalphWorkflowPaneContainer(
 
     const handleContinue = useCallback(
         async (additionalIterations: number, aiSelection?: ResolvedModalJobAiSelection) => {
-            await getSpaCocClient().workspaces.continueRalphSession(
+            await cloneClient.workspaces.continueRalphSession(
                 workspaceId,
                 sessionId,
                 buildRalphContinueRequest(additionalIterations, aiSelection),
             );
             refresh();
         },
-        [workspaceId, sessionId, refresh],
+        [workspaceId, sessionId, refresh, cloneClient],
     );
 
     const handleNewLoop = useCallback(
         async (newGoal: string, additionalIterations: number) => {
-            await getSpaCocClient().workspaces.startNewRalphLoop(workspaceId, sessionId, {
+            await cloneClient.workspaces.startNewRalphLoop(workspaceId, sessionId, {
                 newGoal,
                 additionalIterations,
             });
             refresh();
         },
-        [workspaceId, sessionId, refresh],
+        [workspaceId, sessionId, refresh, cloneClient],
     );
 
     const handleResume = useCallback(
         async (aiSelection?: ResolvedModalJobAiSelection) => {
-            await getSpaCocClient().workspaces.resumeRalphSession(
+            await cloneClient.workspaces.resumeRalphSession(
                 workspaceId,
                 sessionId,
                 buildRalphResumeRequest(aiSelection),
             );
             refresh();
         },
-        [workspaceId, sessionId, refresh],
+        [workspaceId, sessionId, refresh, cloneClient],
     );
 
     return (

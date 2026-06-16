@@ -16,7 +16,9 @@ import type {
     DevTunnelRemoteServer,
     RemoteServer,
     RemoteServerCreateInput,
+    RemoteServerHealth,
     RemoteServerRuntime,
+    RemoteServerRuntimeStatus,
     RemoteServerWithRuntime,
     SshRemoteServer,
 } from './remote-server-types';
@@ -31,6 +33,26 @@ export interface RegisterRemoteServerRoutesOptions {
 }
 
 const LOCAL_SERVER_METADATA: GitOpServerMetadata = { id: 'local', label: 'Current CoC' };
+
+/**
+ * Cached reachability for `url`-kind servers, keyed by server id.
+ *
+ * `url`-kind remotes have no persistent connector (unlike ssh/devtunnel, whose
+ * connectors keep live runtime state). Their runtime status is instead the last
+ * health-probe result against the configured `url`: every `healthForServer` call
+ * (the `/health` endpoint, plus create/update) records it here, and the
+ * synchronous list/decorate path reads it back. A server stays `idle` until its
+ * first probe — matching the pre-existing baseline and the ssh/devtunnel
+ * "not yet connected" state — and only an actually reachable url reports
+ * `online`; an unreachable one reports `offline`.
+ */
+type UrlHealthCache = Map<string, RemoteServerHealth>;
+
+/** Map a cached url health probe onto the runtime status vocabulary. */
+function urlRuntimeStatus(health: RemoteServerHealth | undefined): RemoteServerRuntimeStatus {
+    if (!health) return 'idle';
+    return health.status === 'online' ? 'online' : 'offline';
+}
 
 interface ParsedTransferEndpoint {
     serverId?: string;
@@ -56,13 +78,21 @@ class TransferHttpError extends Error {
     }
 }
 
-function toRuntime(server: RemoteServer, connector: DevTunnelConnector, sshConnector?: SshConnector): RemoteServerRuntime {
+function toRuntime(
+    server: RemoteServer,
+    connector: DevTunnelConnector,
+    sshConnector?: SshConnector,
+    urlHealthCache?: UrlHealthCache,
+): RemoteServerRuntime {
     if (server.kind === 'url') {
+        const health = urlHealthCache?.get(server.id);
         return {
             serverId: server.id,
             kind: 'url',
             effectiveUrl: server.url,
-            status: 'idle',
+            status: urlRuntimeStatus(health),
+            lastChecked: health?.lastChecked,
+            lastError: health?.status === 'online' ? undefined : health?.error,
         };
     }
     if (server.kind === 'ssh') {
@@ -91,8 +121,13 @@ function toRuntime(server: RemoteServer, connector: DevTunnelConnector, sshConne
     };
 }
 
-function decorate(server: RemoteServer, connector: DevTunnelConnector, sshConnector?: SshConnector): RemoteServerWithRuntime {
-    const runtime = toRuntime(server, connector, sshConnector);
+function decorate(
+    server: RemoteServer,
+    connector: DevTunnelConnector,
+    sshConnector?: SshConnector,
+    urlHealthCache?: UrlHealthCache,
+): RemoteServerWithRuntime {
+    const runtime = toRuntime(server, connector, sshConnector, urlHealthCache);
     return {
         ...server,
         effectiveUrl: runtime.effectiveUrl,
@@ -189,6 +224,7 @@ async function callEndpoint<T>(
 async function resolveTransferEndpoint(
     ref: ParsedTransferEndpoint,
     options: RegisterRemoteServerRoutesOptions,
+    urlHealthCache: UrlHealthCache,
 ): Promise<ResolvedTransferEndpoint> {
     const timeoutMs = options.requestTimeoutMs ?? 30_000;
     if (!ref.serverId) {
@@ -210,7 +246,7 @@ async function resolveTransferEndpoint(
     if (!server) {
         transferError(404, { error: `Remote server not found: ${ref.serverId}` });
     }
-    const health = await healthForServer(server, options.connector, options.sshConnector);
+    const health = await healthForServer(server, options.connector, options.sshConnector, urlHealthCache);
     const metadata: GitOpServerMetadata = { id: server.id, label: server.label };
     if (health.status !== 'online' || !health.effectiveUrl) {
         transferError(503, {
@@ -229,9 +265,10 @@ async function resolveTransferEndpoint(
 async function runCherryPickTransfer(
     request: ParsedTransferRequest,
     options: RegisterRemoteServerRoutesOptions,
+    urlHealthCache: UrlHealthCache,
 ): Promise<CherryPickTransferResponse> {
-    const sourceEndpoint = await resolveTransferEndpoint(request.source, options);
-    const targetEndpoint = await resolveTransferEndpoint(request.target, options);
+    const sourceEndpoint = await resolveTransferEndpoint(request.source, options, urlHealthCache);
+    const targetEndpoint = await resolveTransferEndpoint(request.target, options, urlHealthCache);
 
     const exported = await callEndpoint<GitPatchExportResponse>(
         sourceEndpoint,
@@ -307,16 +344,21 @@ function disconnectIfUnusedTunnel(tunnelId: string, store: RemoteServerStore, co
     }
 }
 
-async function healthForServer(server: RemoteServer, connector: DevTunnelConnector, sshConnector?: SshConnector) {
+async function healthForServer(
+    server: RemoteServer,
+    connector: DevTunnelConnector,
+    sshConnector?: SshConnector,
+    urlHealthCache?: UrlHealthCache,
+): Promise<RemoteServerHealth> {
     if (server.kind === 'devtunnel') {
         await connectIfDevTunnel(server, connector);
     }
     if (server.kind === 'ssh') {
         await connectIfSsh(server, sshConnector);
     }
-    const runtime = toRuntime(server, connector, sshConnector);
+    const runtime = toRuntime(server, connector, sshConnector, urlHealthCache);
     const baseUrl = server.kind === 'url' ? server.url : runtime.effectiveUrl;
-    return checkRemoteServerHealth({
+    const health = await checkRemoteServerHealth({
         serverId: server.id,
         kind: server.kind,
         baseUrl,
@@ -325,6 +367,13 @@ async function healthForServer(server: RemoteServer, connector: DevTunnelConnect
         publicUrl: runtime.publicUrl,
         lastError: runtime.lastError,
     });
+    // `url`-kind has no connector to hold runtime state, so the probe result IS
+    // the runtime status. Record it (keyed by the real server id) so the
+    // synchronous list/decorate path reflects actual reachability.
+    if (server.kind === 'url' && urlHealthCache) {
+        urlHealthCache.set(server.id, health);
+    }
+    return health;
 }
 
 export function registerRemoteServerRoutes(
@@ -333,12 +382,46 @@ export function registerRemoteServerRoutes(
 ): void {
     const { store, connector, sshConnector } = options;
 
+    // Last-known reachability for url-kind servers (see UrlHealthCache). Lives for
+    // the life of the route registration, the same lifetime as the ssh/devtunnel
+    // connectors whose runtime state it mirrors for the connector-less url kind.
+    const urlHealthCache: UrlHealthCache = new Map();
+    // In-flight url health probes, so concurrent list requests share one probe per
+    // server instead of stampeding the remote.
+    const urlHealthInFlight = new Set<string>();
+
+    /**
+     * Serve-stale-revalidate: refresh url-kind reachability in the background so
+     * the next list reflects the current state, without blocking this response.
+     * Equivalent to how ssh/devtunnel connectors keep their state warm out of band.
+     */
+    function refreshUrlHealth(servers: RemoteServer[]): void {
+        for (const server of servers) {
+            if (server.kind !== 'url' || urlHealthInFlight.has(server.id)) {
+                continue;
+            }
+            urlHealthInFlight.add(server.id);
+            void healthForServer(server, connector, sshConnector, urlHealthCache)
+                .catch(() => {
+                    // checkRemoteServerHealth never rejects; this is defensive only.
+                })
+                .finally(() => {
+                    urlHealthInFlight.delete(server.id);
+                });
+        }
+    }
+
     routes.push({
         method: 'GET',
         pattern: '/api/servers',
         handler: (_req, res) => {
             try {
-                sendJson(res, store.list().map(server => decorate(server, connector, sshConnector)));
+                const servers = store.list();
+                sendJson(res, servers.map(server => decorate(server, connector, sshConnector, urlHealthCache)));
+                // Kick off a background reachability refresh for url-kind remotes so a
+                // reachable one converges to `online` (and an unreachable one to
+                // `offline`) on subsequent polls, without delaying this response.
+                refreshUrlHealth(servers);
             } catch (error) {
                 send500(res, error instanceof Error ? error.message : String(error));
             }
@@ -353,7 +436,12 @@ export function registerRemoteServerRoutes(
                 const server = store.create(await readJsonBody(req));
                 await connectIfDevTunnel(server, connector);
                 await connectIfSsh(server, sshConnector);
-                sendJson(res, decorate(server, connector, sshConnector), 201);
+                // Probe a new url-kind remote up front so the create response (and the
+                // next list) reflects whether it is actually reachable.
+                if (server.kind === 'url') {
+                    await healthForServer(server, connector, sshConnector, urlHealthCache);
+                }
+                sendJson(res, decorate(server, connector, sshConnector, urlHealthCache), 201);
             } catch (error) {
                 send400(res, error instanceof Error ? error.message : String(error));
             }
@@ -378,9 +466,16 @@ export function registerRemoteServerRoutes(
                 if (before.kind === 'ssh' && updated.kind !== 'ssh') {
                     sshConnector?.disconnect(before.id);
                 }
+                if (before.kind === 'url' && updated.kind !== 'url') {
+                    urlHealthCache.delete(before.id);
+                }
                 await connectIfDevTunnel(updated, connector);
                 await connectIfSsh(updated, sshConnector);
-                sendJson(res, decorate(updated, connector, sshConnector));
+                // The url may have changed; re-probe so the response reflects the new target.
+                if (updated.kind === 'url') {
+                    await healthForServer(updated, connector, sshConnector, urlHealthCache);
+                }
+                sendJson(res, decorate(updated, connector, sshConnector, urlHealthCache));
             } catch (error) {
                 send400(res, error instanceof Error ? error.message : String(error));
             }
@@ -402,6 +497,9 @@ export function registerRemoteServerRoutes(
             }
             if (removed.kind === 'ssh') {
                 sshConnector?.disconnect(removed.id);
+            }
+            if (removed.kind === 'url') {
+                urlHealthCache.delete(removed.id);
             }
             sendJson(res, { ok: true });
         },
@@ -430,7 +528,7 @@ export function registerRemoteServerRoutes(
                         addedAt: Date.now(),
                         updatedAt: Date.now(),
                     };
-                    sendJson(res, await healthForServer(server, connector, sshConnector));
+                    sendJson(res, await healthForServer(server, connector, sshConnector, urlHealthCache));
                     return;
                 }
                 // ssh kind: health check against the local forwarded port (no spawn at test time)
@@ -443,7 +541,7 @@ export function registerRemoteServerRoutes(
                     addedAt: Date.now(),
                     updatedAt: Date.now(),
                 };
-                sendJson(res, await healthForServer(server, connector, sshConnector));
+                sendJson(res, await healthForServer(server, connector, sshConnector, urlHealthCache));
             } catch (error) {
                 send400(res, error instanceof Error ? error.message : String(error));
             }
@@ -456,7 +554,7 @@ export function registerRemoteServerRoutes(
         handler: async (req, res) => {
             try {
                 const body = await readJsonBody<CherryPickTransferRequest>(req);
-                sendJson(res, await runCherryPickTransfer(parseTransferRequest(body), options));
+                sendJson(res, await runCherryPickTransfer(parseTransferRequest(body), options, urlHealthCache));
             } catch (error) {
                 sendTransferFailure(res, error);
             }
@@ -479,11 +577,11 @@ export function registerRemoteServerRoutes(
             }
             if (server.kind === 'ssh') {
                 await connectIfSsh(server, sshConnector);
-                sendJson(res, toRuntime(server, connector, sshConnector));
+                sendJson(res, toRuntime(server, connector, sshConnector, urlHealthCache));
                 return;
             }
             await connectIfDevTunnel(server, connector);
-            sendJson(res, toRuntime(server, connector, sshConnector));
+            sendJson(res, toRuntime(server, connector, sshConnector, urlHealthCache));
         },
     });
 
@@ -536,7 +634,7 @@ export function registerRemoteServerRoutes(
                         // Failed state is stored on the connector.
                     }
                 }
-                sendJson(res, toRuntime(server, connector, sshConnector));
+                sendJson(res, toRuntime(server, connector, sshConnector, urlHealthCache));
                 return;
             }
             try {
@@ -544,7 +642,7 @@ export function registerRemoteServerRoutes(
             } catch {
                 // The failed state is stored on the connector and returned below.
             }
-            sendJson(res, toRuntime(server, connector, sshConnector));
+            sendJson(res, toRuntime(server, connector, sshConnector, urlHealthCache));
         },
     });
 
@@ -558,7 +656,7 @@ export function registerRemoteServerRoutes(
                 send404(res, `Remote server not found: ${id}`);
                 return;
             }
-            sendJson(res, await healthForServer(server, connector, sshConnector));
+            sendJson(res, await healthForServer(server, connector, sshConnector, urlHealthCache));
         },
     });
 
@@ -572,7 +670,7 @@ export function registerRemoteServerRoutes(
                 send404(res, `Remote server not found: ${id}`);
                 return;
             }
-            sendJson(res, toRuntime(server, connector, sshConnector));
+            sendJson(res, toRuntime(server, connector, sshConnector, urlHealthCache));
         },
     });
 }

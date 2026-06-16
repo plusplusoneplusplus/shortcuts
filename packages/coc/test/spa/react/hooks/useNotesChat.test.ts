@@ -123,7 +123,7 @@ describe('useNotesChat', () => {
 
     describe('createChat creates queue task', () => {
         it('POSTs to /queue with chat payload', () => {
-            expect(source).toContain('getSpaCocClient().notes.createChat');
+            expect(source).toContain('cloneClient.notes.createChat');
         });
 
         it('accepts ask and autopilot as valid modes', () => {

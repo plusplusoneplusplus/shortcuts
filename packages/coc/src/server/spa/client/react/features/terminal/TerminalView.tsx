@@ -8,7 +8,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { cn } from '../../ui/cn';
 import { TerminalPanel } from './TerminalPanel';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import type { TerminalSessionInfo } from './hooks/useTerminalWebSocket';
 
@@ -27,6 +27,9 @@ interface TerminalTab {
 
 
 export function TerminalView({ workspaceId }: TerminalViewProps) {
+    // Route terminal REST (list/pin) to the workspace's clone (AC-07). The PTY
+    // socket itself is routed inside useTerminalWebSocket via the same registry.
+    const client = useCocClient(workspaceId);
     const [terminals, setTerminals] = useState<TerminalTab[]>([]);
     const [activeId, setActiveId] = useState<string>('');
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -48,7 +51,7 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
         let cancelled = false;
 
         async function hydratePinnedTerminals() {
-            const body = await getSpaCocClient().workspaces.listTerminals(workspaceId);
+            const body = await client.workspaces.listTerminals(workspaceId);
             const pinnedSessions = (Array.isArray(body.sessions) ? body.sessions : [])
                 .filter(session => session.pinned);
             if (cancelled) return;
@@ -92,7 +95,7 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
         return () => {
             cancelled = true;
         };
-    }, [workspaceId]);
+    }, [workspaceId, client]);
 
     const closeTerminal = useCallback((id: string) => {
         setTerminals(prev => {
@@ -144,7 +147,7 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
         try {
             let body: { sessionId: string; pinned: boolean };
             try {
-                body = await getSpaCocClient().workspaces.pinTerminal(workspaceId, tab.serverSessionId, requestedPinned);
+                body = await client.workspaces.pinTerminal(workspaceId, tab.serverSessionId, requestedPinned);
             } catch (err) {
                 if (err instanceof CocApiError && err.status === 404) {
                     markSessionMissing(id);
@@ -167,7 +170,7 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
         } finally {
             markPinning(id, false);
         }
-    }, [markPinning, markSessionMissing, pinningIds, terminals, workspaceId]);
+    }, [markPinning, markSessionMissing, pinningIds, terminals, workspaceId, client]);
 
     const handleServerSessionCreated = useCallback((id: string, session: TerminalSessionInfo) => {
         setTerminals(prev =>

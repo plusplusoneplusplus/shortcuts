@@ -18,7 +18,7 @@ import { useWorkItemSearch } from './hooks/useWorkItemSearch';
 import { formatRelativeTime } from '../../utils/format';
 import { ContextMenu } from '../../tasks/comments/ContextMenu';
 import type { ContextMenuItem } from '../../tasks/comments/ContextMenu';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { createWorkItemContextDragPayload, writePointerContextDragData } from '../chat/sessionContextDrag';
 import { isSessionContextAttachmentsEnabled } from '../../utils/config';
 
@@ -93,6 +93,8 @@ interface WorkItemSectionProps {
 
 export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkItemId, highlightedWorkItemId }: WorkItemSectionProps) {
     const { state, dispatch } = useWorkItems();
+    // Route work-item list/mutations to the workspace's clone (AC-07).
+    const client = useCocClient(workspaceId);
     const items = state.workItemsByRepo[workspaceId] || [];
     const pagination = state.paginationByRepo[workspaceId];
     const isLoading = state.loading[workspaceId] ?? false;
@@ -127,7 +129,7 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
     const fetchGroupedWorkItems = useCallback(async (query?: string) => {
         dispatch({ type: 'SET_LOADING', repoId: workspaceId, loading: true });
         try {
-            const data = await getSpaCocClient().workItems.grouped(workspaceId, {
+            const data = await client.workItems.grouped(workspaceId, {
                 limit: PAGE_SIZE,
                 q: query,
             });
@@ -137,7 +139,7 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
         } finally {
             dispatch({ type: 'SET_LOADING', repoId: workspaceId, loading: false });
         }
-    }, [workspaceId, dispatch]);
+    }, [workspaceId, dispatch, client]);
 
     // Load more items for a specific status group (per-category infinite scroll)
     const loadMoreForStatus = useCallback(async (status: string) => {
@@ -147,7 +149,7 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
 
         loadingStatusesRef.current.add(status);
         try {
-            const data = await getSpaCocClient().workItems.list(workspaceId, {
+            const data = await client.workItems.list(workspaceId, {
                 status,
                 limit: PAGE_SIZE,
                 offset: statusPagination.offset,
@@ -167,7 +169,7 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
         } finally {
             loadingStatusesRef.current.delete(status);
         }
-    }, [workspaceId, dispatch, searchQuery, pagination]);
+    }, [workspaceId, dispatch, searchQuery, pagination, client]);
 
     // Initial fetch
     useEffect(() => { fetchGroupedWorkItems(); }, [fetchGroupedWorkItems]);
@@ -187,33 +189,33 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
         // Optimistic update
         dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item: { ...item, pinnedAt: pinned ? new Date().toISOString() : undefined } });
         try {
-            await getSpaCocClient().workItems.pin(workspaceId, item.id, pinned);
+            await client.workItems.pin(workspaceId, item.id, pinned);
         } catch {
             // Revert on failure
             dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item });
         }
-    }, [workspaceId, dispatch]);
+    }, [workspaceId, dispatch, client]);
 
     const handleArchive = useCallback(async (item: WorkItemSummary) => {
         const archived = !item.archivedAt;
         dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item: { ...item, archivedAt: archived ? new Date().toISOString() : undefined } });
         try {
-            await getSpaCocClient().workItems.archive(workspaceId, item.id, archived);
+            await client.workItems.archive(workspaceId, item.id, archived);
         } catch {
             dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item });
         }
-    }, [workspaceId, dispatch]);
+    }, [workspaceId, dispatch, client]);
 
     const handleDelete = useCallback(async (item: WorkItemSummary) => {
         if (!confirm('Delete this work item?')) return;
         dispatch({ type: 'WORK_ITEM_REMOVED', repoId: workspaceId, id: item.id });
         try {
-            await getSpaCocClient().workItems.delete(workspaceId, item.id);
+            await client.workItems.delete(workspaceId, item.id);
         } catch {
             // Re-add on failure
             dispatch({ type: 'WORK_ITEM_ADDED', repoId: workspaceId, item });
         }
-    }, [workspaceId, dispatch]);
+    }, [workspaceId, dispatch, client]);
 
     const handleContextMenu = useCallback((e: React.MouseEvent, item: WorkItemSummary) => {
         e.preventDefault();

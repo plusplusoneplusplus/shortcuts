@@ -22,7 +22,8 @@ describe('WorkItemSection — grouped endpoint and infinite scroll', () => {
     });
 
     it('uses the typed grouped work item client for initial load', () => {
-        expect(src).toContain('getSpaCocClient().workItems.grouped(workspaceId');
+        // AC-07: routed through the clone-aware client (useCocClient(workspaceId)).
+        expect(src).toContain('client.workItems.grouped(workspaceId');
     });
 
     it('dispatches SET_GROUPED_WORK_ITEMS on initial fetch', () => {
@@ -64,7 +65,7 @@ describe('WorkItemSection — grouped endpoint and infinite scroll', () => {
     });
 
     it('loads more for a specific status using the typed list client with status filter', () => {
-        expect(src).toContain('getSpaCocClient().workItems.list(workspaceId');
+        expect(src).toContain('client.workItems.list(workspaceId');
         expect(src).toContain('status,');
     });
 

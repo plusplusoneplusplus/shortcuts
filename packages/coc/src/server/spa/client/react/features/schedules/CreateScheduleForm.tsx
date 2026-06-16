@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Button, cn } from '../../ui';
 import { SegmentedControl } from '../../ui/SegmentedControl';
 import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { getActiveProvider } from '../../utils/config';
 import { fetchWorkflows } from '../workflow/workflow-api';
 import { describeCron, parseCronToInterval, intervalToCron } from '../../utils/cron';
@@ -197,6 +198,9 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
     scheduleId?: string;
     initialValues?: ScheduleFormInitialValues;
 }) {
+    // AC-07: schedule create/update target the selected clone's server (provider
+    // model catalog stays on the default origin — it is not workspace-scoped).
+    const cloneClient = useCocClient(workspaceId);
     const workflowsEnabled = useWorkflowsEnabled();
     const inferredActionKind = inferActionKind(initialValues);
     const workflowActionBlocked = !workflowsEnabled && inferredActionKind === 'workflow';
@@ -391,9 +395,9 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
                 mode: targetType === 'prompt' ? chatMode : undefined,
             };
             if (formMode === 'edit' && scheduleId) {
-                await getSpaCocClient().schedules.update(workspaceId, scheduleId, payload);
+                await cloneClient.schedules.update(workspaceId, scheduleId, payload);
             } else {
-                await getSpaCocClient().schedules.create(workspaceId, payload);
+                await cloneClient.schedules.create(workspaceId, payload);
             }
             onCreated();
         } catch (err) {

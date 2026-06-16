@@ -24,6 +24,7 @@ import { FloatingChatManager } from './layout/FloatingChatManager';
 import { useWebSocket } from './hooks/useWebSocket';
 import { fetchApi } from './hooks/useApi';
 import { getSpaCocClient } from './api/cocClient';
+import { getCocClientForWorkspace } from './repos/cloneRegistry';
 import { ToastContainer, useToast } from './ui';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { MarkdownReviewDialog } from './processes/MarkdownReviewDialog';
@@ -335,7 +336,10 @@ function AppInner() {
             : null;
 
         const report = () => {
-            getSpaCocClient().workspaces.reportActiveWorkspace({ clientId, workspaceId }).catch(() => {});
+            // Route to the selected clone's server (AC-07): a remote clone's
+            // active-workspace report must reach the server that owns the workspace,
+            // else the local server 404s an unknown remote id. null/local → default.
+            getCocClientForWorkspace(workspaceId).workspaces.reportActiveWorkspace({ clientId, workspaceId }).catch(() => {});
         };
 
         report();

@@ -138,7 +138,10 @@ describe('Server', () => {
         server = await startTestServer();
         const res = await request(`${server.url}/api/health`);
 
-        expect(res.headers['access-control-allow-origin']).toBe('*');
+        // AC-02: applyCorsHeaders no longer emits a wildcard ACAO. A no-Origin
+        // request (same-origin / non-browser) gets no Access-Control-Allow-Origin
+        // header; the methods header is still emitted.
+        expect(res.headers['access-control-allow-origin']).toBeUndefined();
         expect(res.headers['access-control-allow-methods']).toContain('GET');
         expect(res.headers['access-control-allow-methods']).toContain('POST');
     });

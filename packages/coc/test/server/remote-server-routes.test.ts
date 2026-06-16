@@ -291,6 +291,67 @@ describe('remote server routes', () => {
         expect((await request(baseUrl, 'POST', `/api/servers/${created.body.id}/disconnect`)).status).toBe(400);
     });
 
+    describe('url-kind runtime reachability', () => {
+        it('reports a reachable URL server as online with its configured url as effectiveUrl', async () => {
+            const remoteBase = await startRemoteCoc();
+            const baseUrl = await startApi(new DevTunnelConnector());
+
+            // Creation probes reachability up front, so the create response already
+            // reflects the live status (no connector maintains url-kind state).
+            const created = await request(baseUrl, 'POST', '/api/servers', { kind: 'url', label: 'Reachable', url: remoteBase });
+            expect(created.status).toBe(201);
+            expect(created.body).toMatchObject({
+                kind: 'url',
+                status: 'online',
+                effectiveUrl: remoteBase,
+            });
+
+            // GET /api/servers (the dashboard's source) must surface the same online
+            // status so aggregateRemoteWorkspaces fetches this remote's clones.
+            const list = await request(baseUrl, 'GET', '/api/servers');
+            expect(list.status).toBe(200);
+            expect(list.body).toHaveLength(1);
+            expect(list.body[0]).toMatchObject({
+                kind: 'url',
+                status: 'online',
+                effectiveUrl: remoteBase,
+            });
+        });
+
+        it('reports an unreachable URL server as offline (never online)', async () => {
+            // Start then immediately stop a server to obtain a guaranteed-refused
+            // endpoint (fast ECONNREFUSED rather than a slow timeout).
+            const deadServer = http.createServer(() => {});
+            const dead = await start(deadServer);
+            await stop(deadServer);
+
+            const baseUrl = await startApi(new DevTunnelConnector());
+            const created = await request(baseUrl, 'POST', '/api/servers', { kind: 'url', label: 'Unreachable', url: dead.baseUrl });
+            expect(created.status).toBe(201);
+            expect(created.body.kind).toBe('url');
+            expect(created.body.status).toBe('offline');
+            expect(created.body.status).not.toBe('online');
+            expect(created.body.effectiveUrl).toBe(dead.baseUrl);
+
+            const list = await request(baseUrl, 'GET', '/api/servers');
+            expect(list.body[0].status).toBe('offline');
+            expect(list.body[0].status).not.toBe('online');
+        });
+
+        it('reflects a /health probe result in the subsequent /api/servers listing', async () => {
+            const remoteBase = await startRemoteCoc();
+            const baseUrl = await startApi(new DevTunnelConnector());
+            const created = await request(baseUrl, 'POST', '/api/servers', { kind: 'url', label: 'Reachable', url: remoteBase });
+
+            // An explicit health check refreshes the cached reachability the list reads.
+            const health = await request(baseUrl, 'GET', `/api/servers/${created.body.id}/health`);
+            expect(health.body).toMatchObject({ kind: 'url', status: 'online', effectiveUrl: remoteBase });
+
+            const list = await request(baseUrl, 'GET', '/api/servers');
+            expect(list.body[0]).toMatchObject({ status: 'online', effectiveUrl: remoteBase });
+        });
+    });
+
     describe('cherry-pick transfer orchestration', () => {
         let extraServers: http.Server[] = [];
 

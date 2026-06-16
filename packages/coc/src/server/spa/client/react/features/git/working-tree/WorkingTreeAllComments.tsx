@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { useCocClient } from '../../../repos/cloneRouting';
 import { Spinner } from '../../../ui';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import type { DiffComment } from '../../../../comments/diff-comment-types';
@@ -18,6 +18,9 @@ export function WorkingTreeAllComments({ workspaceId }: WorkingTreeAllCommentsPr
     const [comments, setComments] = useState<DiffComment[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    // Route the all-comments fetch to the selected clone's server (AC-07).
+    const cloneClient = useCocClient(workspaceId);
 
     const copyAllCommentsAsPrompt = useCallback(() => {
         const openComments = comments.filter(c => c.status === 'open');
@@ -53,11 +56,11 @@ export function WorkingTreeAllComments({ workspaceId }: WorkingTreeAllCommentsPr
     const fetchComments = useCallback(() => {
         setLoading(true);
         setError(null);
-        getSpaCocClient().git.listDiffComments(workspaceId, { newRef: 'working-tree' })
+        cloneClient.git.listDiffComments(workspaceId, { newRef: 'working-tree' })
             .then((data: { comments?: DiffComment[] }) => setComments(data.comments ?? []))
             .catch((err: any) => setError(err.message || 'Failed to load comments'))
             .finally(() => setLoading(false));
-    }, [workspaceId]);
+    }, [workspaceId, cloneClient]);
 
     useEffect(() => {
         fetchComments();

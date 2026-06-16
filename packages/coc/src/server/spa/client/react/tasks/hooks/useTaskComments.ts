@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getWsPath } from '../../utils/config';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { cloneWsUrl } from '../../api/wsUrl';
 import type {
     TaskComment,
     TaskCommentStatus,
@@ -231,8 +232,7 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
     // Subscribe to file-scoped WebSocket events for instant comment-resolved updates
     useEffect(() => {
         if (!taskPath) return;
-        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        const ws = new WebSocket(`${protocol}://${window.location.host}${getWsPath()}`);
+        const ws = new WebSocket(cloneWsUrl(getWsPath()));
         ws.addEventListener('open', () => {
             ws.send(JSON.stringify({ type: 'subscribe-file', filePath: taskPath }));
         });

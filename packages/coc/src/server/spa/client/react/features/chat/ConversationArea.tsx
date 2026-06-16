@@ -27,6 +27,8 @@ export interface ConversationAreaProps {
     ralphGrillPlanningProgress?: RalphGrillPlanningProgress | null;
     /** Called when the user answers or skips the pending question batch. */
     onAskUserAnswered?: () => void;
+    /** Owning workspace, so an ask_user reply routes to the chat's clone (AC-07). */
+    workspaceId?: string;
     isScrolledUp: boolean;
     scrollRef: React.RefObject<HTMLDivElement>;
     /** Ref attached to the inner turns container (for minimap navigation) */
@@ -119,6 +121,7 @@ export function ConversationArea({
     pendingAskUserBatch,
     ralphGrillPlanningProgress,
     onAskUserAnswered,
+    workspaceId,
     isScrolledUp,
     scrollRef,
     turnsContainerRef,
@@ -390,6 +393,7 @@ export function ConversationArea({
                                 batch={pendingAskUserBatch}
                                 processId={processId ?? taskId}
                                 onAnswered={onAskUserAnswered ?? (() => {})}
+                                workspaceId={workspaceId}
                             />
                         )}
                         {showRalphGrillPlanningProgress && (

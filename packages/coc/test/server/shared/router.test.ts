@@ -518,14 +518,17 @@ describe('CORS handling', () => {
 
     it('sets CORS headers on API responses', async () => {
         const res = await request(`${baseUrl}/api/test`);
-        expect(res.headers['access-control-allow-origin']).toBe('*');
+        // AC-02: no wildcard ACAO; a no-Origin request gets no ACAO header, but
+        // the methods/headers advertisements are still emitted.
+        expect(res.headers['access-control-allow-origin']).toBeUndefined();
         expect(res.headers['access-control-allow-methods']).toContain('GET');
         expect(res.headers['access-control-allow-headers']).toContain('Content-Type');
     });
 
     it('sets CORS headers on SPA responses', async () => {
         const res = await request(`${baseUrl}/`);
-        expect(res.headers['access-control-allow-origin']).toBe('*');
+        // AC-02: no wildcard ACAO for a no-Origin request.
+        expect(res.headers['access-control-allow-origin']).toBeUndefined();
     });
 });
 

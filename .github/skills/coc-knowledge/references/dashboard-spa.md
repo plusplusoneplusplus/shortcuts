@@ -594,20 +594,148 @@ When on, the desktop top nav switches from per-clone repo tabs to a remote-first
 model built on `features/remote-shell/`:
 - **Row 1 `RemoteTopBar`** replaces `RepoTabStrip` inside `TopBar`. It renders one
   tab per remote (origin) via `groupReposByRemote`, with a color dot, clone-count
-  chip, aggregate running pulse, and summed unseen badge. Selecting a remote picks
-  its last-used clone (else the first). Aggregation comes from `summarizeRemote` /
-  `computeCloneStatusMap` in `shellModel.ts`. A trailing `+` button
-  (`remote-add-btn`) opens an add menu — Add workspace folder (`AddFolderDialog`),
-  Add specific repository (`AddRepoDialog`), Clone repository (`CloneRepoDialog`) —
-  the single top-level add action (not duplicated per-origin).
+  chip, aggregate running pulse, and summed unseen badge. Aggregated remote
+  checkouts fold into the matching local origin's tab (by normalized git URL); a
+  remote-only repo (no local counterpart) gets its own tab. Selecting a remote
+  picks its last-used clone (else the first) — and because each group's clones are
+  sorted **local-first** by `groupReposByRemote`, the first clone is a local
+  checkout when one exists (a remote-only group selects its sole remote clone).
+  Aggregation comes from `summarizeRemote` / `computeCloneStatusMap` in
+  `shellModel.ts`. A trailing `+` button (`remote-add-btn`) opens an add menu — Add
+  workspace folder (`AddFolderDialog`), Add specific repository (`AddRepoDialog`),
+  Clone repository (`CloneRepoDialog`) — the single top-level add action (not
+  duplicated per-origin).
 - **Row 2 `RemoteSubBar`** renders above a `chromeless` `RepoDetail` in `ReposView`
   and replaces RepoDetail's own header. `partitionShellTabs` splits tabs into
   remote-scoped (Work Items, Pull Requests — always shown left) and clone-scoped
   (everything else). A clone-switcher popover (lists the remote's clones only) sits
   between them, then the clone tabs, then compact Ask/Queue targeting the active
-  clone. Clone tabs use **responsive overflow**: a hidden measurement mirror plus a
-  `ResizeObserver` feed `computeVisibleTabKeys`, which shows every tab that fits and
-  collapses the tail into a `…` menu (always keeping the active tab visible).
+  clone. The popover lists local and folded remote clones together; each remote
+  clone row is badged (`clone-remote-badge`) with its `remote.serverLabel` so it's
+  visually distinct, and the PRIMARY marker is anchored on the first **local**
+  clone (a remote clone never displaces it; a remote-only group marks its first
+  remote clone primary). `isRemoteRepo(repo)` (`repos/repoGrouping.ts`) is the
+  pure guard that distinguishes folded remote rows. Each clone row's **status
+  dot** comes from `cloneStatusColor(computeCloneStatusMap(...)[id])`: local
+  clones stay queue-derived; remote clones blend connection-first via
+  `blendRemoteCloneStatus` — `offline`/`failed` → offline (dim grey `#8c959f`),
+  `connecting`/`idle` (not yet online) → connecting (blue `#3b82f6`, distinct from
+  queued orange), else the remote `queue` state (mirroring local running/queued/
+  paused/idle). The computed status is exposed on each row as
+  `data-clone-status`. A remote clone whose status resolves to `offline`
+  (server offline/failed) renders the row greyed (`opacity-50 grayscale`),
+  non-interactive (`disabled` + `aria-disabled`, `data-offline="true"`, click
+  guarded so `selectClone` is a no-op — its live tabs never open while offline),
+  and adds an `offline` badge (`clone-offline-badge`) next to the server-label
+  badge; it flips back to interactive automatically when the marker reports the
+  server online again (next `aggregateRemoteWorkspaces` run). Local clones and
+  online/connecting remote clones are never greyed. Clone tabs use **responsive
+  overflow**: a hidden
+  measurement mirror plus a `ResizeObserver` feed `computeVisibleTabKeys`, which
+  shows every tab that fits and collapses the tail into a `…` menu (always keeping
+  the active tab visible).
+
+**Remote workspace aggregation** (gated by `features.remoteShell`): when the flag
+is ON, `ReposContext.fetchRepos` also calls `aggregateRemoteWorkspaces()`
+(`repos/remoteWorkspaceAggregation.ts`) in parallel with the local
+`listWorkspaces()` + git-info batch. For each registry server (`/api/servers`)
+that is `online`, it fetches `/api/workspaces` + the git-info batch + the queue
+(`queue.repos()`) DIRECTLY at the server's `effectiveUrl` via a self-contained
+`CocClient` (it does NOT reuse `getSpaCocClient` routing). Each remote workspace
+is tagged with a `remote` marker `{ baseUrl, serverId, serverLabel, offline,
+connection, queue }` plus a top-level `baseUrl` (the routing key — no composite
+IDs, no serverId namespace); local workspaces carry neither, so
+`isRemoteWorkspace()` distinguishes them. `connection` mirrors the registry's
+runtime status (`online`/`connecting`/`offline`/`failed`/`idle`) so the status
+dot can tell connecting from offline; `queue` is this workspace's remote queue
+state (`running`/`queued`/`paused`/`idle`, from `remoteQueueStatusFromRepo` keyed
+by `repoId` = workspace id), `'idle'` when offline or the resilient queue fetch
+fails (a queue failure never drops the server). Remote rows are merged into the
+same `RepoData[]` as local ones (git-info pre-resolved from the per-server batch)
+and are skipped by the local Phase-2 git-info update. Offline / unreachable
+servers contribute their last-known list from a two-layer (in-memory +
+`localStorage['coc-remote-workspace-cache']`) per-server cache
+(`repos/remoteWorkspaceCache.ts`), each entry flagged `offline` (with the real
+`connection` preserved). When the flag is
+OFF, `aggregateRemoteWorkspaces()` returns empty and performs no remote fetch, so
+the classic flow is unchanged.
+
+**Per-clone request routing**: a remote clone's REST + WS can be routed to its
+server's `baseUrl` via opt-in primitives — there is NO global "active baseUrl";
+the default `getSpaCocClient()` singleton and the repos-list/git-info aggregation
+stay on the page origin. `getCocClientFor(baseUrl?)` (`api/cocClient.ts`) returns
+the default singleton when `baseUrl` is omitted, else a per-`baseUrl`-cached
+`CocClient` whose REST (`/api` base) and `events` WebSocket target that origin.
+`resolveCloneBaseUrl(ref, repos)` (`repos/cloneRouting.ts`) maps a workspace
+object or id to its remote `baseUrl` (or `undefined` when local) using the AC-01
+remote markers. WS URL construction goes through `cloneWsUrl(path, baseUrl?)`
+(`api/wsUrl.ts`): with a `baseUrl` it derives `ws(s)://{host:port}{path}`
+(http→ws, https→wss) keeping the path+query verbatim; without one it reproduces
+the legacy `window.location` behavior. The shared `/ws` process-event stream
+(`useWebSocket` → `getSpaCocClient().events`) is already baseUrl-aware through the
+SDK's `buildWebSocketUrl`.
+
+**Clone→baseUrl lookup registry + per-tab wiring (AC-07)**: every in-scope tab
+(Activity/Chats, Git, Terminal, Explorer, Schedules, Pull Requests, Work Items,
+Notes) loads and writes against a selected remote clone's own server, never the
+local one. The seam is `repos/cloneRegistry.ts` — a module-level
+`workspaceId → baseUrl` map (remote workspaces only) that `aggregateRemoteWorkspaces`
+populates on every repo refresh via `registerCloneBaseUrls` (full replace,
+covering online AND cached/offline rows; cleared when the flag is OFF or the
+registry is unavailable). It exposes `lookupCloneBaseUrl(workspaceId)`,
+`getCocClientForWorkspace(workspaceId)` (= `getCocClientFor(lookupCloneBaseUrl(id))`,
+falling back to `getSpaCocClient()` for a local/unknown id so local behavior is
+byte-for-byte unchanged), `cloneApiBase(workspaceId)` (absolute remote REST base
+for hand-built URLs like the `EventSource` process stream),
+`cloneWsUrlForWorkspace(path, workspaceId)`, and `requestForWorkspace(workspaceId,
+url, options?)` (clone-routed analog of `requestSpaApi` that fetches a RELATIVE
+api path against the clone — same `toSpaCocRequestOptions`/error-translation as
+`requestSpaApi`, used by the git diff-viewing layer which builds a bare path and
+then fetches it). The routing hooks
+(`useResolveCloneBaseUrl()`, `useCocClient(ref?)`, `useCloneWsUrl(ref?)`) resolve a
+bare workspace id through this registry (no `ReposContext` dependency, so they are
+safe in deep per-tab components and unit tests) and a workspace **object** from its
+own marker.
+
+Wiring is at the per-feature HOOK/SERVICE seam where a `workspaceId` is already
+the input:
+- React components/hooks call `useCocClient(workspaceId)` and use the returned
+  client for all clone-scoped REST: `useGitInfo`, `TerminalView` (terminal
+  list/pin), `ChatDetail` (every `processes`/`queue`/`notes`/`canvases`/`skills`
+  call), `RepoSchedulesTab` (schedule CRUD + notes-git status),
+  `WorkItemSection` + `WorkItemHierarchyTree` (list/tree/mutations), and
+  `PullRequestsTab` (list/suggestions/roster/classification).
+- Non-React services that take a `workspaceId` resolve via
+  `getCocClientForWorkspace(workspaceId)`: `explorerApi.*` and `notesApi.*`.
+- The Activity WRITE path `useSendMessage` routes `processes.sendMessage` /
+  `promoteToRalph` through `getCocClientForWorkspace(workspaceId)`; the
+  Activity events stream `useChatSSE` opens its `EventSource` at
+  `cloneApiBase(workspaceId)`.
+- The terminal PTY socket (`useTerminalWebSocket`) resolves the clone baseUrl
+  from the registry and passes it into `cloneWsUrl`, so a remote clone's terminal
+  targets its server. The `/ws` comment subscriptions (`useTaskComments` +
+  `git/hooks/use*Comments`) already route through `cloneWsUrl`.
+- The Git diff-viewing layer is routed too: `WorkingTree` /
+  `WorkingTreeFileDiff` / `WorkingTreeAllComments` and the comment hooks
+  (`useDiffComments`, `useAllCommitComments`, `useFileCommentCounts`,
+  `useCommitCommentTotals`) use `useCocClient(workspaceId)` for their REST git
+  calls (their `/ws` subscriptions stay on `cloneWsUrl` unchanged);
+  `useClassification` / `useCommitClassificationStatus` route the
+  `/api/repos/:id/classify-diff*` calls through `useCocClient(workspaceId)`. The
+  `DiffSource` factories (`createCommitDiffSource`/`createBranchRangeDiffSource`/
+  `createPrDiffSource` in `git/diff/diffSource.ts`) resolve their path-builder
+  client via `getCocClientForWorkspace(id)`, and `fetchDiffFromSource(workspaceId,
+  url)` + `useCachedDiff` fetch the relative diff url via
+  `requestForWorkspace(workspaceId, url)`. `useFileDiff(url, fullUrl?, workspaceId?)`
+  threads the id from `FileDiffPanel`. Non-React `diffCommentApi`
+  (`patchDiffComment`/`deleteDiffCommentById`) routes via
+  `getCocClientForWorkspace(wsId)`.
+
+No-local-fallthrough guarantee: a remote clone's id always resolves to its
+`baseUrl`, so its clone-scoped REST/WS never hit the default local client; an
+OFFLINE-selected clone still resolves to its last-known `baseUrl` (degrades to
+empty/cached UI, never a silent local call) because cached/offline rows are
+registered too.
 
 The sub-tab taxonomy and feature-flag/git/layout gating live in
 `features/repo-detail/repoSubTabs.ts` (`SUB_TABS`, `VISIBLE_SUB_TABS`,

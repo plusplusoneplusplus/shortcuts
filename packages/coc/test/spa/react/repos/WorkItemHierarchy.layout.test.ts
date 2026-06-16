@@ -112,7 +112,9 @@ describe('WorkItemHierarchyTree — structure', () => {
 
     it('fetches tree using coc-client workItems.tree()', () => {
         expect(src).toContain('workItems.tree(');
-        expect(src).toContain('getSpaCocClient()');
+        // AC-07: clone-aware client (useCocClient(workspaceId)) instead of the
+        // default getSpaCocClient() singleton.
+        expect(src).toContain('useCocClient(');
     });
 
     it('has top-level Epic create action', () => {

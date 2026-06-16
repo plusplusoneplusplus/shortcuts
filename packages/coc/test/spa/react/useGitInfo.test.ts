@@ -24,9 +24,11 @@ describe('useGitInfo hook source', () => {
         expect(HOOK_SOURCE).toContain('workspaces.gitInfo(workspaceId)');
     });
 
-    it('imports typed CoC client', () => {
-        expect(HOOK_SOURCE).toContain("from '../../../api/cocClient'");
-        expect(HOOK_SOURCE).toContain('getSpaCocClient');
+    it('imports the clone-aware CoC client hook', () => {
+        // AC-07: useGitInfo routes via useCocClient(workspaceId) so a remote clone
+        // reads git-info from its own server.
+        expect(HOOK_SOURCE).toContain("from '../../../repos/cloneRouting'");
+        expect(HOOK_SOURCE).toContain('useCocClient');
     });
 
     it('exports GitInfo interface', () => {
@@ -61,6 +63,7 @@ describe('useGitInfo hook source', () => {
     });
 
     it('reacts to workspaceId changes via useEffect dependency', () => {
-        expect(HOOK_SOURCE).toContain('[workspaceId]');
+        // The clone-aware client is part of the dependency list (workspaceId drives it).
+        expect(HOOK_SOURCE).toContain('[workspaceId, client]');
     });
 });

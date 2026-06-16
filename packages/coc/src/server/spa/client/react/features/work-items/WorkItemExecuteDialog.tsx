@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Dialog, Button } from '../../ui';
 import { useRecentSkills } from '../../features/skills/hooks/useRecentSkills';
 import { fetchApi } from '../../hooks/useApi';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { RunSkillPanel } from '../../shared/RunSkillPanel';
 import type { SkillItem } from '../../shared/RunSkillPanel';
 import { ModalJobAiControls, useModalJobAiSelection } from '../../shared/ModalJobAiControls';
@@ -35,6 +35,7 @@ export function WorkItemExecuteDialog({
     onClose,
     onExecuted,
 }: WorkItemExecuteDialogProps) {
+    const cloneClient = useCocClient(workspaceId); // AC-07: execute on the selected clone's server.
     const { recentItems, trackUsage } = useRecentSkills(workspaceId);
     const aiSelection = useModalJobAiSelection({ workspaceId, mode: 'autopilot' });
 
@@ -82,7 +83,7 @@ export function WorkItemExecuteDialog({
         setSubmitting(true);
         setError(null);
         try {
-            await getSpaCocClient().workItems.execute(workspaceId, workItemId, {
+            await cloneClient.workItems.execute(workspaceId, workItemId, {
                 ...(allowExecutionModeSelection ? { executionMode } : {}),
                 skillNames,
                 ...(aiSelection.resolved.provider ? { provider: aiSelection.resolved.provider } : {}),
@@ -95,7 +96,7 @@ export function WorkItemExecuteDialog({
             // Track skill usage (fire-and-forget)
             for (const name of skillNames) {
                 trackUsage(name);
-                getSpaCocClient().preferences.recordSkillUsage(workspaceId, name).catch(() => {});
+                cloneClient.preferences.recordSkillUsage(workspaceId, name).catch(() => {});
             }
 
             onExecuted();
@@ -105,7 +106,7 @@ export function WorkItemExecuteDialog({
         } finally {
             setSubmitting(false);
         }
-    }, [workspaceId, workItemId, allowExecutionModeSelection, executionMode, aiSelection.resolved, trackUsage, onExecuted, onClose]);
+    }, [workspaceId, workItemId, allowExecutionModeSelection, executionMode, aiSelection.resolved, trackUsage, onExecuted, onClose, cloneClient]);
 
     if (!open) return null;
 

@@ -17,16 +17,28 @@ vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useDiffComme
     useDiffComments: (...args: any[]) => mockUseDiffComments(...args),
 }));
 
+const DIFF_BODY = { diff: '+added line\n context' };
+
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: () => Promise.resolve({ diff: '+added line\n context' }),
+    fetchApi: () => Promise.resolve(DIFF_BODY),
 }));
 
+// AC-07: FileDiffPanel fetches diffs via requestForWorkspace (cloneRegistry →
+// getCocClientFor + stub.request); WorkingTreeFileDiff uses
+// useCocClient(ws).git.getWorkingTreeFileDiff. One stub serves both, resolved
+// for the default origin (local workspace).
+const cocStub = {
+    git: {
+        getWorkingTreeFileDiff: () => Promise.resolve(DIFF_BODY),
+    },
+    request: () => Promise.resolve(DIFF_BODY),
+};
+
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({
-        git: {
-            getWorkingTreeFileDiff: () => Promise.resolve({ diff: '+added line\n context' }),
-        },
-    }),
+    getSpaCocClient: () => cocStub,
+    getCocClientFor: () => cocStub,
+    toSpaCocRequestOptions: (opts?: unknown) => opts,
+    translateSpaCocClientError: (e: unknown) => { throw e; },
 }));
 
 vi.mock('react-dom', async (importOriginal) => {

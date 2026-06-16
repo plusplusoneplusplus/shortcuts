@@ -11,8 +11,10 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import type { CocClient } from '@plusplusoneplusplus/coc-client';
 import { getWsPath } from '../../../utils/config';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { cloneWsUrl } from '../../../api/wsUrl';
+import { useCocClient } from '../../../repos/cloneRouting';
 import type { DiffComment } from '../../../../comments/diff-comment-types';
 import { computeStorageKey, patchDiffComment, deleteDiffCommentById } from '../../../utils/diffCommentApi';
 import type { UpdateDiffCommentRequest } from './useDiffComments';
@@ -45,12 +47,12 @@ export interface UseAllCommitCommentsReturn {
 // ============================================================================
 
 /** Poll a queued task until it completes or fails. */
-async function pollTaskResult<T>(taskId: string, timeoutMs = 180_000): Promise<T> {
+async function pollTaskResult<T>(client: CocClient, taskId: string, timeoutMs = 180_000): Promise<T> {
     const start = Date.now();
     let delay = 1000;
     while (Date.now() - start < timeoutMs) {
         await new Promise(r => setTimeout(r, delay));
-        const { task } = await getSpaCocClient().queue.getTask(taskId);
+        const { task } = await client.queue.getTask(taskId);
         if (task.status === 'completed') return task.result as T;
         if (task.status === 'failed' || task.status === 'cancelled') {
             throw new Error(task.error || `Task ${task.status}`);
@@ -61,6 +63,9 @@ async function pollTaskResult<T>(taskId: string, timeoutMs = 180_000): Promise<T
 }
 
 export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCommentsReturn {
+    // Route every commit-comment REST call to the workspace's clone server
+    // (AC-07); the WS subscription below stays on cloneWsUrl unchanged (AC-03).
+    const cloneClient = useCocClient(wsId);
     const [comments, setComments] = useState<DiffComment[]>([]);
     const [loading, setLoading] = useState(false);
     const [resolving, setResolving] = useState(false);
@@ -84,7 +89,7 @@ export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCo
         if (!wsId || !hash) return;
         setLoading(true);
         try {
-            const data = await getSpaCocClient().git.listDiffComments(wsId, { oldRef: `${hash}^`, newRef: hash });
+            const data = await cloneClient.git.listDiffComments(wsId, { oldRef: `${hash}^`, newRef: hash });
             if (mountedRef.current) {
                 setComments(data.comments ?? []);
             }
@@ -93,7 +98,7 @@ export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCo
         } finally {
             if (mountedRef.current) setLoading(false);
         }
-    }, [wsId, hash]);
+    }, [wsId, hash, cloneClient]);
 
     useEffect(() => {
         void fetchComments();
@@ -137,18 +142,18 @@ export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCo
     const resolveWithAI = useCallback(async (userContext?: string, skills?: string[]) => {
         setResolving(true);
         try {
-            const response = await getSpaCocClient().git.resolveDiffCommentsWithAI(wsId, {
+            const response = await cloneClient.git.resolveDiffCommentsWithAI(wsId, {
                 oldRef: `${hash}^`,
                 newRef: hash,
                 ...(userContext ? { userContext } : {}),
                 ...(skills?.length ? { skills } : {}),
             });
-            if (response.taskId) await pollTaskResult(response.taskId as string);
+            if (response.taskId) await pollTaskResult(cloneClient, response.taskId as string);
             await fetchComments();
         } finally {
             if (mountedRef.current) setResolving(false);
         }
-    }, [wsId, hash, fetchComments]);
+    }, [wsId, hash, cloneClient, fetchComments]);
 
     // ------------------------------------------------------------------
     // fixWithAI — resolve a single comment via AI
@@ -159,7 +164,7 @@ export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCo
         if (!comment) return;
         setAiLoadingIds(prev => new Set(prev).add(id));
         try {
-            const response = await getSpaCocClient().git.resolveDiffCommentsWithAI(wsId, {
+            const response = await cloneClient.git.resolveDiffCommentsWithAI(wsId, {
                 oldRef: comment.context.oldRef,
                 newRef: comment.context.newRef,
                 filePath: comment.context.filePath,
@@ -167,7 +172,7 @@ export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCo
                 ...(userContext ? { userContext } : {}),
                 ...(skills?.length ? { skills } : {}),
             });
-            if (response.taskId) await pollTaskResult(response.taskId as string);
+            if (response.taskId) await pollTaskResult(cloneClient, response.taskId as string);
             await fetchComments();
         } catch (err: any) {
             if (mountedRef.current) {
@@ -178,7 +183,7 @@ export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCo
                 setAiLoadingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
             }
         }
-    }, [wsId, fetchComments]);
+    }, [wsId, cloneClient, fetchComments]);
 
     // ------------------------------------------------------------------
     // clearAiError
@@ -228,8 +233,7 @@ export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCo
 
     useEffect(() => {
         if (!wsId || !hash) return;
-        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        const ws = new WebSocket(`${protocol}://${window.location.host}${getWsPath()}`);
+        const ws = new WebSocket(cloneWsUrl(getWsPath()));
         ws.addEventListener('open', () => {
             ws.send(JSON.stringify({ type: 'subscribe-commit-diff', wsId, hash }));
         });

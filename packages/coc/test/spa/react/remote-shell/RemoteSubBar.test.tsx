@@ -40,6 +40,25 @@ const repo = (id: string, name: string, branch = 'main') => ({
     gitInfo: { isGitRepo: true, branch, dirty: false, remoteUrl: SHORTCUTS },
 });
 
+// A remote checkout (AC-01/05 marker) of the same origin, foldable into the group.
+// `connection`/`queue` drive the AC-05 status dot; defaults keep an online, idle clone.
+const remoteRepo = (
+    id: string,
+    name: string,
+    serverLabel = 'devbox',
+    remoteUrl: string | undefined = SHORTCUTS,
+    branch = 'main',
+    connection: string = 'online',
+    queue: string = 'idle',
+) => ({
+    workspace: {
+        id, name, color: '#0078d4', remoteUrl, rootPath: `/remote/${id}`,
+        baseUrl: 'http://127.0.0.1:4000',
+        remote: { baseUrl: 'http://127.0.0.1:4000', serverId: 'srv-1', serverLabel, offline: connection !== 'online', connection, queue },
+    },
+    gitInfo: remoteUrl ? { isGitRepo: true, branch, dirty: false, remoteUrl } : undefined,
+});
+
 const renderBar = () => {
     const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2', 'feat/x')];
     return render(<RemoteSubBar repo={repos[0] as any} repos={repos as any} />);
@@ -126,5 +145,172 @@ describe('RemoteSubBar', () => {
         mockQueueStats = { running: 2, queued: 0 };
         renderBar();
         expect(screen.getByTestId('subbar-running-badge').textContent).toBe('2');
+    });
+
+    // ── AC-04: remote clones in the CLONE dropdown ───────────────────────────
+
+    it('folds a remote clone into the dropdown and badges it with the server label', () => {
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox');
+        render(<RemoteSubBar repo={local as any} repos={[local, remote] as any} />);
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        const items = screen.getAllByTestId('clone-popover-item');
+        expect(items).toHaveLength(2);
+        // Exactly the remote row carries the server-label badge.
+        const badges = screen.getAllByTestId('clone-remote-badge');
+        expect(badges).toHaveLength(1);
+        expect(badges[0].textContent).toBe('devbox');
+        const remoteRow = items.find(el => el.getAttribute('data-remote') === 'true')!;
+        expect(remoteRow.querySelector('[data-testid="clone-remote-badge"]')).toBeTruthy();
+    });
+
+    it('keeps the PRIMARY marker on the local clone, never the remote', () => {
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox');
+        // Remote passed FIRST — grouping must still sort the local clone ahead.
+        render(<RemoteSubBar repo={local as any} repos={[remote, local] as any} />);
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        const items = screen.getAllByTestId('clone-popover-item');
+        const primaryRow = items.find(el => el.textContent?.toLowerCase().includes('primary'))!;
+        expect(primaryRow).toBeTruthy();
+        expect(primaryRow.getAttribute('data-remote')).toBe('false');
+        // The remote row must NOT be marked primary.
+        const remoteRow = items.find(el => el.getAttribute('data-remote') === 'true')!;
+        expect(remoteRow.textContent?.toLowerCase()).not.toContain('primary');
+    });
+
+    it('renders a remote-only clone (no local counterpart) with its server badge', () => {
+        const remote = remoteRepo('only', 'remote-only', 'edge-1');
+        render(<RemoteSubBar repo={remote as any} repos={[remote] as any} />);
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        const items = screen.getAllByTestId('clone-popover-item');
+        expect(items).toHaveLength(1);
+        expect(items[0].getAttribute('data-remote')).toBe('true');
+        expect(screen.getByTestId('clone-remote-badge').textContent).toBe('edge-1');
+    });
+
+    it('does not badge any row when every clone is local', () => {
+        renderBar();
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        expect(screen.queryByTestId('clone-remote-badge')).toBeNull();
+        screen.getAllByTestId('clone-popover-item').forEach(el => {
+            expect(el.getAttribute('data-remote')).toBe('false');
+        });
+    });
+
+    // ── AC-05: blended status dot reflected on each clone row ─────────────────
+
+    const openAndGetRow = (repos: any[], activeId: string, rowId: string) => {
+        const active = repos.find(r => r.workspace.id === activeId);
+        render(<RemoteSubBar repo={active as any} repos={repos as any} />);
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        return screen.getAllByTestId('clone-popover-item')
+            .find(el => el.textContent?.includes(repos.find(r => r.workspace.id === rowId)!.workspace.name))!;
+    };
+
+    it('blends an online+running remote clone to a running dot status', () => {
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox', SHORTCUTS, 'main', 'online', 'running');
+        const row = openAndGetRow([local, remote], 'a', 'b');
+        expect(row.getAttribute('data-remote')).toBe('true');
+        expect(row.getAttribute('data-clone-status')).toBe('running');
+    });
+
+    it('shows an offline status for a remote clone whose server is offline', () => {
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox', SHORTCUTS, 'main', 'offline', 'running');
+        const row = openAndGetRow([local, remote], 'a', 'b');
+        expect(row.getAttribute('data-clone-status')).toBe('offline');
+    });
+
+    it('shows a connecting status for a remote clone whose server is connecting', () => {
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox', SHORTCUTS, 'main', 'connecting', 'queued');
+        const row = openAndGetRow([local, remote], 'a', 'b');
+        expect(row.getAttribute('data-clone-status')).toBe('connecting');
+    });
+
+    it('keeps local clone dot status queue-derived (idle with no queue)', () => {
+        const row = openAndGetRow([repo('a', 'shortcuts'), repo('b', 'shortcuts-2', 'feat/x')], 'a', 'b');
+        expect(row.getAttribute('data-remote')).toBe('false');
+        expect(row.getAttribute('data-clone-status')).toBe('idle');
+    });
+
+    // ── AC-06: offline remote clones are greyed + non-interactive ─────────────
+
+    it('greys an offline remote clone, badges it offline, and disables the row', () => {
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox', SHORTCUTS, 'main', 'offline', 'running');
+        const row = openAndGetRow([local, remote], 'a', 'b');
+        // Greyed treatment + disabled state.
+        expect(row.getAttribute('data-offline')).toBe('true');
+        expect((row as HTMLButtonElement).disabled).toBe(true);
+        expect(row.getAttribute('aria-disabled')).toBe('true');
+        expect(row.className).toContain('opacity-50');
+        expect(row.className).toContain('cursor-not-allowed');
+        // Offline badge present (in addition to the server-label badge).
+        const offlineBadge = row.querySelector('[data-testid="clone-offline-badge"]');
+        expect(offlineBadge).toBeTruthy();
+        expect(offlineBadge!.textContent?.toLowerCase()).toContain('offline');
+        expect(row.querySelector('[data-testid="clone-remote-badge"]')).toBeTruthy();
+    });
+
+    it('does NOT select/navigate when an offline remote clone is clicked', () => {
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox', SHORTCUTS, 'main', 'offline', 'running');
+        const row = openAndGetRow([local, remote], 'a', 'b');
+        fireEvent.click(row);
+        expect(mockSelectClone).not.toHaveBeenCalled();
+        // Popover stays open (no navigation happened).
+        expect(screen.queryByTestId('clone-popover')).toBeTruthy();
+    });
+
+    it('treats a failed-connection remote clone as offline (greyed + non-interactive)', () => {
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox', SHORTCUTS, 'main', 'failed', 'idle');
+        const row = openAndGetRow([local, remote], 'a', 'b');
+        expect(row.getAttribute('data-clone-status')).toBe('offline');
+        expect(row.getAttribute('data-offline')).toBe('true');
+        fireEvent.click(row);
+        expect(mockSelectClone).not.toHaveBeenCalled();
+    });
+
+    it('the ONLINE variant of the same remote clone is interactive and not greyed', () => {
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox', SHORTCUTS, 'main', 'online', 'idle');
+        const row = openAndGetRow([local, remote], 'a', 'b');
+        expect(row.getAttribute('data-offline')).toBe('false');
+        expect((row as HTMLButtonElement).disabled).toBe(false);
+        expect(row.querySelector('[data-testid="clone-offline-badge"]')).toBeNull();
+        fireEvent.click(row);
+        expect(mockSelectClone).toHaveBeenCalledWith('b');
+    });
+
+    it('keeps the offline clone VISIBLE in its group (row still rendered)', () => {
+        // Group stays stable: an offline remote clone folds in and is still listed.
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox', SHORTCUTS, 'main', 'offline', 'idle');
+        render(<RemoteSubBar repo={local as any} repos={[local, remote] as any} />);
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        const items = screen.getAllByTestId('clone-popover-item');
+        expect(items).toHaveLength(2);
+        expect(items.some(el => el.getAttribute('data-offline') === 'true')).toBe(true);
+    });
+
+    it('does not grey or disable a connecting (not-yet-offline) remote clone', () => {
+        // 'connecting' is distinct from offline — the row stays interactive.
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox', SHORTCUTS, 'main', 'connecting', 'idle');
+        const row = openAndGetRow([local, remote], 'a', 'b');
+        expect(row.getAttribute('data-offline')).toBe('false');
+        expect((row as HTMLButtonElement).disabled).toBe(false);
+        fireEvent.click(row);
+        expect(mockSelectClone).toHaveBeenCalledWith('b');
+    });
+
+    it('never greys a LOCAL clone (offline treatment is remote-only)', () => {
+        const row = openAndGetRow([repo('a', 'shortcuts'), repo('b', 'shortcuts-2', 'feat/x')], 'a', 'b');
+        expect(row.getAttribute('data-offline')).toBe('false');
+        expect((row as HTMLButtonElement).disabled).toBe(false);
     });
 });

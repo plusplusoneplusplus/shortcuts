@@ -24,7 +24,7 @@ import type {
 } from '@plusplusoneplusplus/coc-client';
 import { RalphWorkflowNode } from './RalphWorkflowNode';
 import { RalphFinalCheckNode } from './RalphFinalCheckNode';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { RALPH_MULTI_LOOP } from '../../featureFlags';
 import { ModalJobAiControls, type ResolvedModalJobAiSelection, useModalJobAiSelection } from '../../shared/ModalJobAiControls';
 
@@ -285,6 +285,9 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
         onSelectFile,
     } = props;
 
+    // AC-07: Ralph continue/new-loop/resume target the selected clone's server.
+    const cloneClient = useCocClient(workspaceId);
+
     const [continueState, setContinueState] = useState<'idle' | 'confirm' | 'submitting'>('idle');
     const [continueError, setContinueError] = useState<string | null>(null);
 
@@ -365,7 +368,7 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
             if (onResume) {
                 await onResume(resolvedResumeSelection);
             } else {
-                await getSpaCocClient().workspaces.resumeRalphSession(
+                await cloneClient.workspaces.resumeRalphSession(
                     workspaceId,
                     sessionId,
                     buildRalphResumeRequest(resolvedResumeSelection),
@@ -388,7 +391,7 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
             if (onContinue) {
                 await onContinue(continueDefaultIterations, resolvedContinueSelection);
             } else {
-                await getSpaCocClient().workspaces.continueRalphSession(
+                await cloneClient.workspaces.continueRalphSession(
                     workspaceId,
                     sessionId,
                     buildRalphContinueRequest(continueDefaultIterations, resolvedContinueSelection),
@@ -412,7 +415,7 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
             if (onNewLoop) {
                 await onNewLoop(trimmed, resolvedNewLoopIterations);
             } else {
-                await getSpaCocClient().workspaces.startNewRalphLoop(workspaceId, sessionId, {
+                await cloneClient.workspaces.startNewRalphLoop(workspaceId, sessionId, {
                     newGoal: trimmed,
                     additionalIterations: resolvedNewLoopIterations,
                 });

@@ -10,7 +10,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { getWsPath } from '../../../utils/config';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { cloneWsUrl } from '../../../api/wsUrl';
+import { useCocClient } from '../../../repos/cloneRouting';
 
 export function useFileCommentCounts(
     wsId: string,
@@ -18,13 +19,16 @@ export function useFileCommentCounts(
     newRef: string | null,
 ): Map<string, number> {
     const [counts, setCounts] = useState<Map<string, number>>(new Map());
+    // Route the count fetch to the workspace's clone server (AC-07); the WS
+    // subscription below stays on cloneWsUrl(getWsPath()) unchanged (AC-03).
+    const cloneClient = useCocClient(wsId);
 
     const fetchCounts = useCallback(() => {
         if (!wsId || !oldRef || !newRef) {
             setCounts(new Map());
             return;
         }
-        getSpaCocClient().git.getDiffCommentCounts(wsId, { oldRef, newRef, status: 'open' })
+        cloneClient.git.getDiffCommentCounts(wsId, { oldRef, newRef, status: 'open' })
             .then((data: { counts: Record<string, number> }) => {
                 const map = new Map<string, number>();
                 for (const [k, v] of Object.entries(data.counts)) {
@@ -35,7 +39,7 @@ export function useFileCommentCounts(
             .catch(() => {
                 // Fail silently — comment counts are non-critical
             });
-    }, [wsId, oldRef, newRef]);
+    }, [wsId, oldRef, newRef, cloneClient]);
 
     useEffect(() => {
         fetchCounts();
@@ -44,8 +48,7 @@ export function useFileCommentCounts(
     // WebSocket subscription for instant refresh on diff-comment-updated
     useEffect(() => {
         if (!wsId) return;
-        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        const ws = new WebSocket(`${protocol}://${window.location.host}${getWsPath()}`);
+        const ws = new WebSocket(cloneWsUrl(getWsPath()));
         ws.addEventListener('message', (event) => {
             try {
                 const msg = JSON.parse(event.data as string) as { type: string; workspaceId?: string };

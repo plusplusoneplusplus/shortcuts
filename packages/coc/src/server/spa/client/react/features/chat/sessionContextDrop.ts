@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import type { AttachedContextItem } from './hooks/useAttachedContext';
 import {
     GIT_COMMIT_CONTEXT_DRAG_KIND,
@@ -544,6 +544,8 @@ export function validateSessionContextAttachmentsForSend(options: {
 
 export function useConversationRetrievalCapability(workspaceId: string | undefined, enabled: boolean): boolean | null {
     const [available, setAvailable] = useState<boolean | null>(enabled && workspaceId ? null : false);
+    // AC-07: read the LLM-tools config from the selected clone's server.
+    const cloneClient = useCocClient(workspaceId);
 
     useEffect(() => {
         if (!enabled || !workspaceId) {
@@ -553,7 +555,7 @@ export function useConversationRetrievalCapability(workspaceId: string | undefin
 
         let cancelled = false;
         setAvailable(null);
-        getSpaCocClient().preferences.getLlmToolsConfig(workspaceId)
+        cloneClient.preferences.getLlmToolsConfig(workspaceId)
             .then((config) => {
                 if (cancelled) return;
                 const hasGetConversation = (config.tools ?? []).some(tool => tool.name === 'get_conversation');
@@ -567,7 +569,7 @@ export function useConversationRetrievalCapability(workspaceId: string | undefin
             });
 
         return () => { cancelled = true; };
-    }, [enabled, workspaceId]);
+    }, [enabled, workspaceId, cloneClient]);
 
     return available;
 }

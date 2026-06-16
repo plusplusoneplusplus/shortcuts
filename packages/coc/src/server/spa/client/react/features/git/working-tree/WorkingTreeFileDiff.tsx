@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { useCocClient } from '../../../repos/cloneRouting';
 import { Spinner, Button, TruncatedPath } from '../../../ui';
 import { UnifiedDiffViewer, HunkNavButtons } from '../diff/UnifiedDiffViewer';
 import type { UnifiedDiffViewerHandle, DiffLine } from '../diff/UnifiedDiffViewer';
@@ -69,6 +69,9 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, workingTreeF
     const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
     const [viewMode, setViewMode] = useDiffViewMode();
 
+    // Route this file's diff fetch to the selected clone's server (AC-07).
+    const cloneClient = useCocClient(workspaceId);
+
     const { handleNext, handlePrev } = useCrossFileNav({
         filePath,
         files: workingTreeFiles ?? [],
@@ -113,7 +116,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, workingTreeF
         setLoading(true);
         setError(null);
         setDiff(null);
-        getSpaCocClient().git.getWorkingTreeFileDiff(workspaceId, filePath, { stage, full })
+        cloneClient.git.getWorkingTreeFileDiff(workspaceId, filePath, { stage, full })
             .then(data => {
                 setDiff(data.diff ?? '');
                 setTruncated(!!data.truncated);
@@ -121,7 +124,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, workingTreeF
             })
             .catch(err => setError(err.message || 'Failed to load diff'))
             .finally(() => setLoading(false));
-    }, [workspaceId, filePath, stage]);
+    }, [workspaceId, filePath, stage, cloneClient]);
 
     useEffect(() => {
         setFullRequested(false);

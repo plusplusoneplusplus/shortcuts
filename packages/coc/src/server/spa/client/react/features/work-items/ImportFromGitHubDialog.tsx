@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { Dialog } from '../../ui/Dialog';
 import { Button, cn } from '../../ui';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import type { WorkItemSyncProvider } from '@plusplusoneplusplus/coc-client';
 
 export interface ImportFromGitHubDialogProps {
@@ -26,6 +26,7 @@ export function ImportFromGitHubDialog({
     providerOptions,
     onImported,
 }: ImportFromGitHubDialogProps) {
+    const cloneClient = useCocClient(workspaceId); // AC-07: import onto the selected clone's server.
     const providerOptionsKey = providerOptions?.join('|') ?? 'all';
     const allowedProviders = useMemo(() => {
         if (providerOptionsKey === 'all') return undefined;
@@ -65,13 +66,13 @@ export function ImportFromGitHubDialog({
                 const request = /^\d+$/.test(trimmedInput)
                     ? { issueNumber: Number(trimmedInput) }
                     : { issueUrl: trimmedInput };
-                const item = await getSpaCocClient().workItems.importFromGitHub(workspaceId, request);
+                const item = await cloneClient.workItems.importFromGitHub(workspaceId, request);
                 onImported?.(item, provider);
             } else {
                 const request = /^\d+$/.test(trimmedInput)
                     ? { workItemId: Number(trimmedInput) }
                     : { workItemUrl: trimmedInput };
-                const item = await getSpaCocClient().workItems.importFromAzureBoards(workspaceId, request);
+                const item = await cloneClient.workItems.importFromAzureBoards(workspaceId, request);
                 onImported?.(item, provider);
             }
             onClose();
@@ -84,7 +85,7 @@ export function ImportFromGitHubDialog({
         } finally {
             setLoading(false);
         }
-    }, [workspaceId, provider, remoteInput, onImported, onClose]);
+    }, [workspaceId, provider, remoteInput, onImported, onClose, cloneClient]);
 
     const isGitHub = provider === 'github';
     const inputTestId = isGitHub ? 'import-github-issue-input' : 'import-azure-boards-work-item-input';

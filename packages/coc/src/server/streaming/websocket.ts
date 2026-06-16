@@ -18,6 +18,7 @@ import type { Duplex } from 'stream';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { AIProcess, MarkdownComment } from '@plusplusoneplusplus/forge';
 import { getServerLogger } from '../logging/server-logger';
+import { isLoopbackOrigin } from '../shared/cors';
 
 // ============================================================================
 // Types
@@ -538,6 +539,13 @@ export function toCommentSummary(comment: MarkdownComment): MarkdownCommentSumma
  * - `/ws`          → processWs (ProcessWebSocketServer)
  * - `/ws/terminal` → terminalWs (TerminalWebSocketServer), if provided
  * - anything else  → socket.destroy()
+ *
+ * Cross-origin policy (mirrors the REST CORS layer via {@link isLoopbackOrigin}):
+ * a browser always sends an `Origin` on a WS upgrade. When present, it MUST be a
+ * loopback origin — this lets the dashboard SPA open the terminal/activity WS on
+ * a forwarded remote CoC at `http://127.0.0.1:{localPort}` while rejecting any
+ * non-loopback page (e.g. http://evil.com). A missing Origin (non-browser
+ * clients such as container-link or tooling) is allowed, matching the REST path.
  */
 export function attachWebSocketUpgradeHandler(
     server: http.Server,
@@ -545,6 +553,13 @@ export function attachWebSocketUpgradeHandler(
     terminalWs?: { handleUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer): void },
 ): void {
     server.on('upgrade', (req, socket: Duplex, head: Buffer) => {
+        if (!isWebSocketOriginAllowed(req.headers['origin'])) {
+            // Reject cross-origin (non-loopback) browser upgrades before handing
+            // off to any ws server. Reply with 403 then destroy the socket.
+            socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+            socket.destroy();
+            return;
+        }
         const url = new URL(req.url!, `http://${req.headers.host}`);
         if (url.pathname === '/ws') {
             processWs.handleUpgrade(req, socket, head);
@@ -554,4 +569,24 @@ export function attachWebSocketUpgradeHandler(
             socket.destroy();
         }
     });
+}
+
+/**
+ * WebSocket-origin acceptance decision, shared with the REST CORS layer via
+ * {@link isLoopbackOrigin}. Returns true when the upgrade may proceed:
+ *   - no `Origin` header (non-browser client) → allowed
+ *   - `Origin` is a loopback origin           → allowed
+ *   - any other `Origin`                       → rejected
+ *
+ * Exported for direct unit testing of the WS-origin rule.
+ */
+export function isWebSocketOriginAllowed(origin: string | string[] | undefined): boolean {
+    if (origin === undefined) {
+        return true;
+    }
+    // A duplicated Origin header (string[]) is non-conformant for upgrades; reject.
+    if (Array.isArray(origin)) {
+        return false;
+    }
+    return isLoopbackOrigin(origin);
 }

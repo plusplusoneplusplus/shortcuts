@@ -43,7 +43,23 @@ describe('useFileDiff', () => {
         expect(result.current.error).toBeNull();
         expect(result.current.truncated).toBe(false);
         expect(result.current.totalLines).toBe(0);
-        expect(mockFetchDiffFromSource).toHaveBeenCalledWith('/api/diff');
+        // No workspaceId passed → routes to the default origin ('' workspace id).
+        expect(mockFetchDiffFromSource).toHaveBeenCalledWith('', '/api/diff');
+    });
+
+    it('forwards the workspaceId so the fetch routes to that clone (AC-07)', async () => {
+        mockFetchDiffFromSource.mockResolvedValue({
+            diff: 'remote diff',
+            truncated: false,
+            totalLines: 0,
+        });
+
+        const { result } = renderHook(() => useFileDiff('/api/diff', null, 'remote-ws'));
+
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        expect(result.current.diff).toBe('remote diff');
+        expect(mockFetchDiffFromSource).toHaveBeenCalledWith('remote-ws', '/api/diff');
     });
 
     it('handles truncated response', async () => {
@@ -89,7 +105,7 @@ describe('useFileDiff', () => {
         });
 
         await waitFor(() => expect(result.current.diff).toBe('full content'));
-        expect(mockFetchDiffFromSource).toHaveBeenCalledWith('/api/diff?full=true');
+        expect(mockFetchDiffFromSource).toHaveBeenCalledWith('', '/api/diff?full=true');
         expect(result.current.truncated).toBe(false);
     });
 

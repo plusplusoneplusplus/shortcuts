@@ -230,7 +230,8 @@ describe('ChatDetail', () => {
         });
 
         it('fetches skills from the workspaces API', () => {
-            expect(source).toContain('getSpaCocClient().skills.listAllWorkspace');
+            // AC-07: ChatDetail routes through the clone-aware client.
+            expect(source).toContain('client.skills.listAllWorkspace');
         });
 
         it('initializes useSlashCommands with augmentedSkills', () => {
@@ -317,7 +318,8 @@ describe('ChatDetail', () => {
 
     describe('follow-up send', () => {
         it('sends through the typed processes client message endpoint', () => {
-            expect(USE_SEND_MESSAGE_SOURCE).toContain('getSpaCocClient().processes.sendMessage');
+            // AC-07: the follow-up send is routed to the chat's clone server.
+            expect(USE_SEND_MESSAGE_SOURCE).toContain('getCocClientForWorkspace(workspaceId).processes.sendMessage');
         });
 
         it('sends content in the body', () => {
@@ -417,7 +419,7 @@ describe('ChatDetail', () => {
                 USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 10000,
             );
             // Should NOT set lastFailedMessageRef eagerly before the typed client request
-            const preamble = sendBlock.substring(0, sendBlock.indexOf('await getSpaCocClient().processes.sendMessage'));
+            const preamble = sendBlock.substring(0, sendBlock.indexOf('await getCocClientForWorkspace(workspaceId).processes.sendMessage'));
             expect(preamble).not.toContain('lastFailedMessageRef.current = rawContent');
 
             // Typed client failures converge through the catch path.
@@ -476,13 +478,13 @@ describe('ChatDetail', () => {
     describe('cancel and move-to-top actions', () => {
         it('defines handleCancel that deletes the queue task', () => {
             expect(source).toContain('handleCancel');
-            expect(source).toContain('getSpaCocClient().queue.cancel(bareTaskId)');
+            expect(source).toContain('client.queue.cancel(bareTaskId)');
             expect(source).toContain("SELECT_QUEUE_TASK', id: null");
         });
 
         it('defines handleMoveToTop that POSTs move-to-top', () => {
             expect(source).toContain('handleMoveToTop');
-            expect(source).toContain('getSpaCocClient().queue.moveToTop(bareTaskId)');
+            expect(source).toContain('client.queue.moveToTop(bareTaskId)');
         });
 
         it('passes cancel and moveToTop to PendingTaskInfoPanel', () => {
@@ -1153,7 +1155,7 @@ describe('ChatDetail', () => {
                 source.indexOf('planPatchedRef.current = true'),
                 source.indexOf('planPatchedRef.current = true') + 400,
             );
-            expect(patchBlock).toContain('getSpaCocClient().processes.update');
+            expect(patchBlock).toContain('client.processes.update');
         });
 
         it('PATCH guard checks: no detectedPlanFile, or planPath already set, or metadata already has it', () => {
@@ -1285,7 +1287,7 @@ describe('ChatDetail', () => {
                 source.indexOf('handleCancel'),
                 source.indexOf('handleCancel') + 400,
             );
-            expect(cancelBlock).toContain('getSpaCocClient().queue.cancel(bareTaskId)');
+            expect(cancelBlock).toContain('client.queue.cancel(bareTaskId)');
         });
 
         it('stop button in FollowUpInputArea calls onStop on click', () => {
@@ -1356,7 +1358,7 @@ describe('ChatDetail', () => {
             const handleStopIdx = source.indexOf('handleStop');
             expect(handleStopIdx).toBeGreaterThan(-1);
             const handleStopBlock = source.substring(handleStopIdx, handleStopIdx + 300);
-            expect(handleStopBlock).toContain('getSpaCocClient().processes.cancel');
+            expect(handleStopBlock).toContain('client.processes.cancel');
         });
 
         it('ChatDetail passes onStop={handleStop} to FollowUpInputArea', () => {

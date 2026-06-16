@@ -5,6 +5,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useTerminalWebSocket } from '../../../../src/server/spa/client/react/features/terminal/hooks/useTerminalWebSocket';
+import {
+    registerCloneBaseUrls,
+    resetCloneRegistryForTests,
+} from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 // ── Minimal WebSocket mock ────────────────────────────────────────────
 
@@ -66,12 +70,14 @@ describe('useTerminalWebSocket', () => {
         MockWebSocket.reset();
         vi.stubGlobal('WebSocket', MockWebSocket);
         vi.useFakeTimers();
+        resetCloneRegistryForTests();
     });
 
     afterEach(() => {
         vi.unstubAllGlobals();
         vi.useRealTimers();
         vi.restoreAllMocks();
+        resetCloneRegistryForTests();
     });
 
     it('exports hook with correct API shape', () => {
@@ -96,6 +102,29 @@ describe('useTerminalWebSocket', () => {
         act(() => { result.current.connect('ws-123', 80, 24); });
         expect(MockWebSocket.last.url).toBe(
             'ws://localhost/ws/terminal?workspaceId=ws-123&cols=80&rows=24'
+        );
+    });
+
+    it('AC-07: opens a remote clone PTY against the remote server', () => {
+        registerCloneBaseUrls([{ workspaceId: 'remote-ws', baseUrl: 'http://127.0.0.1:4000' }]);
+        const { result } = renderHook(() =>
+            useTerminalWebSocket({ onMessage: vi.fn() }),
+        );
+        act(() => { result.current.connect('remote-ws', 80, 24); });
+        expect(MockWebSocket.last.url).toBe(
+            'ws://127.0.0.1:4000/ws/terminal?workspaceId=remote-ws&cols=80&rows=24'
+        );
+    });
+
+    it('AC-07: opens a LOCAL clone PTY against the page origin (unchanged)', () => {
+        registerCloneBaseUrls([{ workspaceId: 'remote-ws', baseUrl: 'http://127.0.0.1:4000' }]);
+        const { result } = renderHook(() =>
+            useTerminalWebSocket({ onMessage: vi.fn() }),
+        );
+        // 'local-ws' is not registered → page-origin URL.
+        act(() => { result.current.connect('local-ws', 80, 24); });
+        expect(MockWebSocket.last.url).toBe(
+            'ws://localhost/ws/terminal?workspaceId=local-ws&cols=80&rows=24'
         );
     });
 

@@ -31,7 +31,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import type { Canvas, CanvasComment, CanvasVersion, CanvasVersionMeta } from '@plusplusoneplusplus/coc-client';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { useMarkdownPreview } from '../../hooks/ui/useMarkdownPreview';
 import { MonacoFileEditor, getMonacoLanguage } from '../repo-detail/explorer/MonacoFileEditor';
 import { ExtensionCanvasView } from './ExtensionCanvasView';
@@ -136,6 +136,8 @@ function fenceCode(content: string, language: string | undefined): string {
 }
 
 export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi, onSendToAi, onFullscreenChange, onPopOut, reloadNonce }: CanvasPanelProps) {
+    // AC-07: canvas get/save/versions/comments + save-to-notes target the clone.
+    const cloneClient = useCocClient(workspaceId);
     const [canvas, setCanvas] = useState<Canvas | null>(null);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -188,7 +190,7 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
 
     const loadCanvas = useCallback(async () => {
         try {
-            const client = getSpaCocClient();
+            const client = cloneClient;
             const loaded = await client.canvases.get(workspaceId, canvasId);
             setCanvas(loaded);
             setDraft(loaded.content);
@@ -253,7 +255,7 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
             if (!current) return;
             const savedDraft = draft;
             setSaveState('saving');
-            getSpaCocClient().canvases
+            cloneClient.canvases
                 .save(workspaceId, canvasId, { content: savedDraft, expectedRevision: current.revision })
                 .then(saved => {
                     setCanvas({ ...saved, content: savedDraft });
@@ -289,7 +291,7 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
             setViewingVersion(null);
             return;
         }
-        getSpaCocClient().canvases.getVersion(workspaceId, canvasId, meta.revision)
+        cloneClient.canvases.getVersion(workspaceId, canvasId, meta.revision)
             .then(setViewingVersion)
             .catch(() => { /* keep current view on fetch failure */ });
     }, [workspaceId, canvasId, canvas]);
@@ -299,7 +301,7 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
         if (!current || !viewingVersion || restoring) return;
         setRestoring(true);
         try {
-            const saved = await getSpaCocClient().canvases.save(workspaceId, canvasId, {
+            const saved = await cloneClient.canvases.save(workspaceId, canvasId, {
                 content: viewingVersion.content,
                 expectedRevision: current.revision,
             });
@@ -308,7 +310,7 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
             setDirty(false);
             setSaveState('saved');
             setViewingVersion(null);
-            getSpaCocClient().canvases.listVersions(workspaceId, canvasId)
+            cloneClient.canvases.listVersions(workspaceId, canvasId)
                 .then(setVersions)
                 .catch(() => { /* best-effort */ });
         } catch (err) {
@@ -349,7 +351,7 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
     const handleSubmitComment = useCallback(async () => {
         if (!commentAnchor || !commentDraft.trim()) return;
         try {
-            const comment = await getSpaCocClient().canvases.addComment(workspaceId, canvasId, {
+            const comment = await cloneClient.canvases.addComment(workspaceId, canvasId, {
                 anchorText: commentAnchor,
                 body: commentDraft.trim(),
             });
@@ -361,7 +363,7 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
 
     const handleDeleteComment = useCallback(async (commentId: string) => {
         try {
-            await getSpaCocClient().canvases.deleteComment(workspaceId, canvasId, commentId);
+            await cloneClient.canvases.deleteComment(workspaceId, canvasId, commentId);
             setComments(prev => prev.filter(c => c.id !== commentId));
         } catch { /* keep the comment on failure */ }
     }, [workspaceId, canvasId]);
@@ -375,7 +377,7 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
         try {
             await onSendToAi(buildCommentsMessage(current, openComments));
             const updates = await Promise.all(openComments.map(c =>
-                getSpaCocClient().canvases.setCommentStatus(workspaceId, canvasId, c.id, 'sent').catch(() => null),
+                cloneClient.canvases.setCommentStatus(workspaceId, canvasId, c.id, 'sent').catch(() => null),
             ));
             setComments(prev => prev.map(c => updates.find(u => u?.id === c.id) ?? c));
         } catch { /* comments stay open if the send failed */ } finally {
@@ -428,7 +430,7 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
         if (!current || current.type !== 'markdown') return;
         try {
             const slug = current.id.replace(/-[0-9a-f]{6}$/, '') || current.id;
-            await getSpaCocClient().notes.saveContent(workspaceId, `canvases/${slug}.md`, current.content);
+            await cloneClient.notes.saveContent(workspaceId, `canvases/${slug}.md`, current.content);
             flashExportStatus('Saved to Notes');
         } catch {
             flashExportStatus('Save to Notes failed');
