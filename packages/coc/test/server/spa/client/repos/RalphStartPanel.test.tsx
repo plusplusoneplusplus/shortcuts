@@ -3,7 +3,7 @@
  *
  * Tests for RalphStartPanel component.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 
 // ---------------------------------------------------------------------------
@@ -33,6 +33,7 @@ vi.mock('../../../../../src/server/spa/client/react/shared/ModalJobAiControls', 
 
 import { RalphStartPanel } from '../../../../../src/server/spa/client/react/features/chat/RalphStartPanel';
 import type { ClientConversationTurn } from '../../../../../src/server/spa/client/react/types/dashboard';
+import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -59,6 +60,45 @@ describe('RalphStartPanel', () => {
         mockModalSelection.mockReset();
         mockModalSelection.mockReturnValue({ resolved: { provider: 'copilot' } });
         vi.stubGlobal('fetch', vi.fn());
+    });
+
+    afterEach(() => {
+        resetCloneRegistryForTests();
+    });
+
+    it('routes the goal-file blob fetch to the remote clone server, not the local origin', async () => {
+        // Regression: a remote clone's /fs/blob must target the clone's own server.
+        // Reading the path on the LOCAL server 403s ("Path is outside trusted
+        // directories") because that path only exists on the remote machine.
+        registerCloneBaseUrls([{ workspaceId: 'remote-ws', baseUrl: 'http://127.0.0.1:9999' }]);
+        const fetchMock = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ content: '## Goal\nremote goal body' }),
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        render(
+            <RalphStartPanel
+                processId="queue_remote"
+                workspaceId="remote-ws"
+                turns={[]}
+                goalFilePath="/home/u/.coc/repos/remote-ws/notes/Plans/x.goal.md"
+                onStarted={mockOnStarted}
+            />,
+        );
+
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+        await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+        const url = String(fetchMock.mock.calls[0][0]);
+        expect(url).toContain('http://127.0.0.1:9999/api/fs/blob');
+        expect(url).not.toContain('localhost:4000');
+
+        // The remote file's content flows into the goal-spec editor.
+        await waitFor(() => {
+            const textarea = screen.getByTestId('ralph-goal-spec-input') as HTMLTextAreaElement;
+            expect(textarea.value).toContain('remote goal body');
+        });
     });
 
     it('shows "Start Ralph" button initially', () => {
