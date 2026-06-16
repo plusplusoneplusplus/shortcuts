@@ -426,6 +426,50 @@ describe('PullRequestsClient mock coverage', () => {
     });
     expect(mock.requests[7]).toMatchObject({ method: 'DELETE', path: '/api/origins/gh_owner_repo/pull-request-chat-bindings/142' });
   });
+
+  it('gets and saves PR review progress by origin', async () => {
+    mock = await startMockServer();
+    const record = {
+      repoId: 'repo-1',
+      prId: '42',
+      headSha: 'abc123',
+      reviewedFiles: ['src/a.ts'],
+      visitedFiles: ['src/a.ts', 'src/b.ts'],
+      lastSelectedFile: 'src/b.ts',
+      updatedAt: '2026-06-05T00:00:00.000Z',
+    };
+    mock.on('GET', '/api/origins/gh_owner_repo/pull-requests/42/review-progress', { body: record });
+    mock.on('PUT', '/api/origins/gh_owner_repo/pull-requests/42/review-progress', { body: record });
+    const client = createClient(mock);
+
+    await expect(client.pullRequests.getReviewProgressForOrigin('gh_owner_repo', '42', 'abc123', {
+      workspaceId: 'ws-1',
+      repoId: 'repo-1',
+    })).resolves.toEqual(record);
+    await expect(client.pullRequests.saveReviewProgressForOrigin('gh_owner_repo', '42', {
+      headSha: 'abc123',
+      reviewedFiles: ['src/a.ts'],
+      visitedFiles: ['src/a.ts', 'src/b.ts'],
+      lastSelectedFile: 'src/b.ts',
+    }, {
+      workspaceId: 'ws-1',
+      repoId: 'repo-1',
+    })).resolves.toEqual(record);
+
+    expectEmptyRequest(mock.requests[0], 'GET', '/api/origins/gh_owner_repo/pull-requests/42/review-progress', {
+      workspaceId: 'ws-1',
+      repoId: 'repo-1',
+      headSha: 'abc123',
+    });
+    expectJsonRequest(mock.requests[1], 'PUT', '/api/origins/gh_owner_repo/pull-requests/42/review-progress', {
+      workspaceId: 'ws-1',
+      repoId: 'repo-1',
+      headSha: 'abc123',
+      reviewedFiles: ['src/a.ts'],
+      visitedFiles: ['src/a.ts', 'src/b.ts'],
+      lastSelectedFile: 'src/b.ts',
+    });
+  });
 });
 
 function createClient(mock: MockServer): CocClient {

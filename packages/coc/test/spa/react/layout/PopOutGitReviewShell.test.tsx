@@ -65,13 +65,14 @@ describe('parsePopOutGitReviewRoute', () => {
     it('parses PR review route', () => {
         const result = parsePopOutGitReviewRoute(
             '#popout/git-review/pr/42',
-            '?workspace=ws1&repo=myrepo'
+            '?workspace=ws1&repo=myrepo&origin=gh_org_repo'
         );
         expect(result).toEqual({
             workspaceId: 'ws1',
             reviewType: 'pr',
             prId: '42',
             repoId: 'myrepo',
+            originId: 'gh_org_repo',
         });
     });
 

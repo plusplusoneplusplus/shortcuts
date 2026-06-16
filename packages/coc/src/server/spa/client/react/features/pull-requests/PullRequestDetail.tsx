@@ -34,6 +34,7 @@ import { PullRequestChatPlacementFrame } from './PullRequestChatPlacementFrame';
 import { SHOW_FOCUSED_DIFF } from '../../featureFlags';
 import type { ClassificationKey } from '../git/diff/diffSource';
 import { buildGitPrPopOutUrl } from '../../layout/Router';
+import { resolveCanonicalOriginId } from '../../repos/originScope';
 import { useGitReviewPopOut, gitReviewPrPopOutKey } from '../../contexts/GitReviewPopOutContext';
 import { useReviewChatPresentation } from '../git/hooks/useReviewChatPresentation';
 import type { ReviewChatTarget } from '../git/commits/commitChatPlacement';
@@ -140,12 +141,13 @@ export function PullRequestDetail({ repoId, remoteUrl, prId, onBack, isMobile = 
     }, [assistantOpen, toggleAssistant]);
 
     const handleFileClick = useCallback((filePath: string) => {
-        const url = buildGitPrPopOutUrl(workspaceId, String(repoId), String(prId));
+        const originId = resolveCanonicalOriginId({ workspaceId, remoteUrl });
+        const url = buildGitPrPopOutUrl(workspaceId, String(repoId), String(prId), originId);
         const win = window.open(url, `coc-git-review-pr-${prId}`, 'width=1200,height=800');
         if (win) {
             markPoppedOut(gitReviewPrPopOutKey(workspaceId, String(prId)));
         }
-    }, [workspaceId, repoId, prId, markPoppedOut]);
+    }, [workspaceId, remoteUrl, repoId, prId, markPoppedOut]);
 
     const switchTab = useCallback(
         (tab: PrDetailTab) => {

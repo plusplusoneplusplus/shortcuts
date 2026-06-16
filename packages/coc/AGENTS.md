@@ -126,6 +126,11 @@ all have their own `references/*.md`.
   origin so the `saveClassification` tool writes the same state route polling
   reads. The Team toolbar status UI should read batch status and route manual
   "Classify now" actions through the same bounded server helper.
+- **Pull Request review progress** for PR pop-out reviewed/visited file state is
+  durable origin state. New callers must use
+  `/api/origins/:originId/pull-requests/:prId/review-progress` or
+  `client.pullRequests.*ReviewProgressForOrigin(...)`; workspace/repo metadata is
+  for legacy migration only, not storage identity.
 - **Native Copilot session reads** (`src/server/native-copilot-sessions/`)
   must stay strictly read-only against the native store: open
   `~/.copilot/session-store.db` with short-lived `readonly` SQLite connections,

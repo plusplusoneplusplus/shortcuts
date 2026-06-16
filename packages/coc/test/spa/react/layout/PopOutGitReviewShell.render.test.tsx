@@ -63,6 +63,24 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
         pullRequests: {
             get: (...args: unknown[]) => mocks.getPr(...args),
             getDiff: (...args: unknown[]) => mocks.getPrDiff(...args),
+            getReviewProgressForOrigin: vi.fn().mockResolvedValue({
+                repoId: 'repo1',
+                prId: '42',
+                headSha: 'head123',
+                reviewedFiles: [],
+                visitedFiles: [],
+                lastSelectedFile: null,
+                updatedAt: new Date(0).toISOString(),
+            }),
+            saveReviewProgressForOrigin: vi.fn().mockResolvedValue({
+                repoId: 'repo1',
+                prId: '42',
+                headSha: 'head123',
+                reviewedFiles: [],
+                visitedFiles: [],
+                lastSelectedFile: null,
+                updatedAt: new Date(0).toISOString(),
+            }),
         },
         preferences: {
             getRepo: vi.fn().mockResolvedValue({}),

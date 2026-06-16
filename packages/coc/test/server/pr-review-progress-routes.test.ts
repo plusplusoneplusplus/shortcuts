@@ -93,6 +93,8 @@ const progressUrl = (workspaceId: string, headSha: string) =>
     `${baseUrl}/api/repos/${REPO_ID}/pull-requests/${PR_ID}/review-progress?workspaceId=${encodeURIComponent(workspaceId)}&headSha=${encodeURIComponent(headSha)}`;
 const progressUrlFor = (repoId: string, workspaceId: string, headSha: string) =>
     `${baseUrl}/api/repos/${repoId}/pull-requests/${PR_ID}/review-progress?workspaceId=${encodeURIComponent(workspaceId)}&headSha=${encodeURIComponent(headSha)}`;
+const originProgressUrl = (originId: string, headSha: string, workspaceId = 'ws-1', repoId = REPO_ID) =>
+    `${baseUrl}/api/origins/${encodeURIComponent(originId)}/pull-requests/${PR_ID}/review-progress?workspaceId=${encodeURIComponent(workspaceId)}&repoId=${encodeURIComponent(repoId)}&headSha=${encodeURIComponent(headSha)}`;
 function originScopeForRepo(repoId = REPO_ID): string {
     return resolveCanonicalOriginId({ remoteUrl: `https://github.com/org/${repoId}.git`, workspaceId: 'ws-1' });
 }
@@ -145,6 +147,96 @@ describe('GET /api/repos/:repoId/pull-requests/:prId/review-progress', () => {
         const body = await res.json() as { reviewedFiles: string[]; headSha: string };
         expect(body.reviewedFiles).toEqual([]);
         expect(body.headSha).toBe('sha-new');
+    });
+});
+
+describe('origin-scoped PR review-progress routes', () => {
+    it('persists and reads review progress directly under the canonical origin', async () => {
+        const originId = originScopeForRepo();
+        const putRes = await fetch(`${baseUrl}/api/origins/${encodeURIComponent(originId)}/pull-requests/${PR_ID}/review-progress`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                workspaceId: 'ws-a',
+                repoId: REPO_ID,
+                headSha: 'sha-aaa',
+                reviewedFiles: ['a.ts'],
+                visitedFiles: ['a.ts', 'b.ts'],
+                lastSelectedFile: 'b.ts',
+            }),
+        });
+        expect(putRes.status).toBe(200);
+
+        const getRes = await fetch(originProgressUrl(originId, 'sha-aaa', 'ws-b', REPO_ID));
+        expect(getRes.status).toBe(200);
+        const body = await getRes.json() as { reviewedFiles: string[]; visitedFiles: string[]; lastSelectedFile: string };
+        expect(body.reviewedFiles).toEqual(['a.ts']);
+        expect(body.visitedFiles).toEqual(['a.ts', 'b.ts']);
+        expect(body.lastSelectedFile).toBe('b.ts');
+
+        const expected = path.join(dataDir, 'repos', originId, 'review-progress', `${PR_ID}.json`);
+        expect(fs.existsSync(expected)).toBe(true);
+    });
+
+    it('isolates distinct explicit origins', async () => {
+        await fetch(`${baseUrl}/api/origins/gh_org_repo_one/pull-requests/${PR_ID}/review-progress`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                workspaceId: 'ws-a',
+                repoId: 'repo-one',
+                headSha: 'sha-aaa',
+                reviewedFiles: ['one.ts'],
+                visitedFiles: ['one.ts'],
+                lastSelectedFile: null,
+            }),
+        });
+        await fetch(`${baseUrl}/api/origins/gh_org_repo_two/pull-requests/${PR_ID}/review-progress`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                workspaceId: 'ws-b',
+                repoId: 'repo-two',
+                headSha: 'sha-aaa',
+                reviewedFiles: ['two.ts'],
+                visitedFiles: ['two.ts'],
+                lastSelectedFile: null,
+            }),
+        });
+
+        const one = await (await fetch(originProgressUrl('gh_org_repo_one', 'sha-aaa', 'ws-c', 'repo-one'))).json() as { reviewedFiles: string[] };
+        const two = await (await fetch(originProgressUrl('gh_org_repo_two', 'sha-aaa', 'ws-c', 'repo-two'))).json() as { reviewedFiles: string[] };
+        expect(one.reviewedFiles).toEqual(['one.ts']);
+        expect(two.reviewedFiles).toEqual(['two.ts']);
+    });
+
+    it('migrates legacy workspace/repo progress into the origin file on origin access', async () => {
+        const originId = originScopeForRepo();
+        const legacyPaths = reviewProgressPaths(dataDir, 'ws-a', REPO_ID, PR_ID);
+        fs.mkdirSync(legacyPaths.dir, { recursive: true });
+        fs.writeFileSync(legacyPaths.filePath, JSON.stringify({
+            repoId: REPO_ID,
+            prId: PR_ID,
+            headSha: 'sha-aaa',
+            reviewedFiles: ['legacy.ts'],
+            visitedFiles: ['legacy.ts'],
+            lastSelectedFile: 'legacy.ts',
+            updatedAt: '2026-06-05T00:00:00.000Z',
+        }), 'utf-8');
+
+        const res = await fetch(originProgressUrl(originId, 'sha-aaa', 'ws-a', REPO_ID));
+        expect(res.status).toBe(200);
+        const body = await res.json() as { reviewedFiles: string[]; lastSelectedFile: string };
+        expect(body.reviewedFiles).toEqual(['legacy.ts']);
+        expect(body.lastSelectedFile).toBe('legacy.ts');
+
+        const originPaths = reviewProgressPaths(dataDir, 'ws-a', REPO_ID, PR_ID, originId);
+        expect(fs.existsSync(originPaths.filePath)).toBe(true);
+    });
+
+    it('400s when origin-scoped GET omits headSha', async () => {
+        const res = await fetch(`${baseUrl}/api/origins/${encodeURIComponent(originScopeForRepo())}/pull-requests/${PR_ID}/review-progress?workspaceId=ws-1&repoId=${REPO_ID}`);
+        expect(res.status).toBe(400);
     });
 });
 

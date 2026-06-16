@@ -295,6 +295,26 @@ export interface TeamPrAutoClassificationResponse {
   errors: Array<{ identifier?: string; message: string }>;
 }
 
+// ── PR review progress ───────────────────────────────────────────────
+
+export interface PullRequestReviewProgressRecord {
+  repoId: string;
+  prId: string;
+  headSha: string;
+  reviewedFiles: string[];
+  visitedFiles: string[];
+  lastSelectedFile: string | null;
+  /** ISO 8601 string. */
+  updatedAt: string;
+}
+
+export interface SavePullRequestReviewProgressRequest {
+  headSha: string;
+  reviewedFiles?: string[];
+  visitedFiles?: string[];
+  lastSelectedFile?: string | null;
+}
+
 // ── PR review suggestions ──────────────────────────────────────────
 
 /** A single suggested PR with relevance score. */

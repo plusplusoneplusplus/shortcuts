@@ -18,6 +18,8 @@
  * GET  /api/repos/:repoId/pull-requests/coworker-roster  — list Team roster coworkers
  * POST /api/repos/:repoId/pull-requests/coworker-roster  — add/update a Team roster coworker
  * DELETE /api/repos/:repoId/pull-requests/coworker-roster/:coworkerKey — remove a Team roster coworker
+ * GET  /api/origins/:originId/pull-requests/:prId/review-progress — get reviewer progress
+ * PUT  /api/origins/:originId/pull-requests/:prId/review-progress — save reviewer progress
  * POST /api/repos/:repoId/pull-requests/team-auto-classification — enqueue bounded Team PR classifications
  * GET  /api/repos/:repoId/pull-requests/:prId/review-progress — get reviewer progress (AC-04)
  * PUT  /api/repos/:repoId/pull-requests/:prId/review-progress — save reviewer progress (AC-04)
@@ -980,6 +982,69 @@ export function registerPrRoutes(
                 const { workspaceId, repoId, storageScope } = await resolveOriginPrStateScope(req, undefined, originId, store);
                 const entries = removePullRequestCoworkerFromRoster(dataDir, workspaceId, repoId, coworkerKey, storageScope);
                 return sendJson(res, { entries });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    // -- Origin-scoped review progress ----------------------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/origins\/([^/]+)\/pull-requests\/([^/]+)\/review-progress$/,
+        handler: async (req, res, match) => {
+            try {
+                const originId = parseOriginId(match![1]);
+                if (!originId) return send400(res, 'originId must be a non-empty string');
+                const prId = decodeURIComponent(match![2]);
+                const parsed = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`);
+                const headSha = parsed.searchParams.get('headSha');
+                if (!headSha) {
+                    return send400(res, 'Missing required query parameter: headSha');
+                }
+
+                const { workspaceId, repoId, storageScope } = await resolveOriginPrStateScope(req, undefined, originId, store);
+                const record = readReviewProgress(dataDir, workspaceId, repoId, prId, headSha, storageScope);
+                return sendJson(res, record);
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    routes.push({
+        method: 'PUT',
+        pattern: /^\/api\/origins\/([^/]+)\/pull-requests\/([^/]+)\/review-progress$/,
+        handler: async (req, res, match) => {
+            try {
+                const originId = parseOriginId(match![1]);
+                if (!originId) return send400(res, 'originId must be a non-empty string');
+                const prId = decodeURIComponent(match![2]);
+
+                let raw: unknown;
+                try {
+                    raw = await readJsonBody<unknown>(req);
+                } catch {
+                    return send400(res, 'Invalid JSON body');
+                }
+
+                const validation = validateReviewProgressInput(raw);
+                if (!validation.ok) {
+                    return send400(res, validation.error);
+                }
+
+                const { workspaceId, repoId, storageScope } = await resolveOriginPrStateScope(req, raw, originId, store);
+                const stored = writeReviewProgress(
+                    dataDir,
+                    workspaceId,
+                    repoId,
+                    prId,
+                    validation.record,
+                    undefined,
+                    storageScope,
+                );
+                return sendJson(res, stored);
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
             }

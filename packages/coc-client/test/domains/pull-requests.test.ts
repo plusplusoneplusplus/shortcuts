@@ -466,6 +466,57 @@ describe('PullRequestsClient', () => {
     ]);
   });
 
+  it('gets and saves review progress through origin routes', async () => {
+    const adapter = createMockAdapter({ reviewedFiles: [], visitedFiles: [] });
+    const client = new PullRequestsClient(adapter);
+    const controller = new AbortController();
+
+    await client.getReviewProgressForOrigin('gh_owner_repo', 'pr/1', 'abc123', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      signal: controller.signal,
+    });
+    await client.saveReviewProgressForOrigin('gh_owner_repo', 'pr/1', {
+      headSha: 'abc123',
+      reviewedFiles: ['src/a.ts'],
+      visitedFiles: ['src/a.ts', 'src/b.ts'],
+      lastSelectedFile: 'src/b.ts',
+    }, {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      signal: controller.signal,
+    });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/origins/gh_owner_repo/pull-requests/pr%2F1/review-progress',
+        options: {
+          query: {
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
+            headSha: 'abc123',
+          },
+          signal: controller.signal,
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/pull-requests/pr%2F1/review-progress',
+        options: {
+          method: 'PUT',
+          body: {
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
+            headSha: 'abc123',
+            reviewedFiles: ['src/a.ts'],
+            visitedFiles: ['src/a.ts', 'src/b.ts'],
+            lastSelectedFile: 'src/b.ts',
+          },
+          signal: controller.signal,
+        },
+      },
+    ]);
+  });
+
   it('prFileDiffPath returns encoded per-file diff path', () => {
     const adapter = createMockAdapter({});
     const client = new PullRequestsClient(adapter);

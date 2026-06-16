@@ -16,10 +16,12 @@ import type {
   PullRequestCommitsResponse,
   PullRequestListQuery,
   PullRequestListResponse,
+  PullRequestReviewProgressRecord,
   PullRequestReviewersResponse,
   PullRequestThreadsResponse,
   RecentOpenedPullRequestsResponse,
   RecordRecentOpenedPullRequestRequest,
+  SavePullRequestReviewProgressRequest,
   SanitizedProviderConfigResponse,
   TeamPrAutoClassificationRequest,
   TeamPrAutoClassificationResponse,
@@ -406,6 +408,42 @@ export class PullRequestsClient {
       {
         method: 'POST',
         body: { ...body },
+        signal: options?.signal,
+      },
+    );
+  }
+
+  /** Get persisted PR pop-out reviewer progress for a canonical origin. */
+  getReviewProgressForOrigin(
+    originId: string,
+    prId: string,
+    headSha: string,
+    options?: OriginPrStateOptions,
+  ): Promise<PullRequestReviewProgressRecord> {
+    return this.transport.request<PullRequestReviewProgressRecord>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/review-progress`,
+      {
+        query: {
+          ...serializeOriginPrStateQuery(options),
+          headSha,
+        },
+        signal: options?.signal,
+      },
+    );
+  }
+
+  /** Persist PR pop-out reviewer progress for a canonical origin. */
+  saveReviewProgressForOrigin(
+    originId: string,
+    prId: string,
+    body: SavePullRequestReviewProgressRequest,
+    options?: OriginPrStateOptions,
+  ): Promise<PullRequestReviewProgressRecord> {
+    return this.transport.request<PullRequestReviewProgressRecord>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/review-progress`,
+      {
+        method: 'PUT',
+        body: withOriginPrStateBody({ ...body }, options),
         signal: options?.signal,
       },
     );

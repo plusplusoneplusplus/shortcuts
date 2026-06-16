@@ -39,6 +39,7 @@ import {
     gitReviewPrPopOutKey,
 } from '../contexts/GitReviewPopOutContext';
 import { getHostname } from '../utils/config';
+import { resolveCanonicalOriginId } from '../repos/originScope';
 import { extractFileStatsFromDiff } from '../features/git/diff/diffSource';
 import { useClassification } from '../features/git/diff/useClassification';
 import { useModalJobAiSelection } from '../shared/ModalJobAiControls';
@@ -64,6 +65,7 @@ export interface PopOutGitReviewParams {
     commitHash?: string;
     prId?: string;
     repoId?: string;
+    originId?: string;
 }
 
 export function parsePopOutGitReviewRoute(hash: string, search: string): PopOutGitReviewParams | null {
@@ -81,7 +83,8 @@ export function parsePopOutGitReviewRoute(hash: string, search: string): PopOutG
 
     if (parts[2] === 'pr' && parts[3]) {
         const repoId = searchParams.get('repo') ?? workspaceId;
-        return { workspaceId, reviewType: 'pr', prId: decodeURIComponent(parts[3]), repoId };
+        const originId = searchParams.get('origin')?.trim() || undefined;
+        return { workspaceId, reviewType: 'pr', prId: decodeURIComponent(parts[3]), repoId, originId };
     }
 
     // 'pr' without a prId is invalid
@@ -559,7 +562,7 @@ function isBranchRangeInfo(data: GitBranchRangeResponse): data is BranchRangeInf
 
 // ── PR review content ──────────────────────────────────────────────────────────
 
-function PrReviewContent({ workspaceId, repoId, prId, onTitleLoaded }: { workspaceId: string; repoId: string; prId: string; onTitleLoaded?: (title: string) => void }) {
+function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLoaded }: { workspaceId: string; repoId: string; prId: string; originId?: string; onTitleLoaded?: (title: string) => void }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [fileList, setFileList] = useState<FileChange[]>([]);
@@ -595,8 +598,12 @@ function PrReviewContent({ workspaceId, repoId, prId, onTitleLoaded }: { workspa
         headSha ? { type: 'pr', repoId, identifier: `${prId}:${headSha}` } : undefined;
     const aiSelection = useModalJobAiSelection({ workspaceId, mode: 'ask' });
     const classification = useClassification(classificationKey, aiSelection.resolved, { workspaceId });
+    const progressOriginId = useMemo(
+        () => originId ?? resolveCanonicalOriginId({ workspaceId }),
+        [originId, workspaceId],
+    );
     const reviewProgress = usePrReviewProgress(headSha, {
-        persistence: { workspaceId, repoId, prId },
+        persistence: { originId: progressOriginId, workspaceId, repoId, prId },
     });
 
     const handleFileSelect = useCallback((filePath: string) => {
@@ -995,7 +1002,7 @@ function PopOutGitReviewContent({ params }: { params: PopOutGitReviewParams }) {
                     {params.reviewType === 'commit' ? (
                         <CommitReviewContent workspaceId={params.workspaceId} commitHash={params.commitHash!} />
                     ) : params.reviewType === 'pr' ? (
-                        <PrReviewContent workspaceId={params.workspaceId} repoId={params.repoId!} prId={params.prId!} onTitleLoaded={setPrTitle} />
+                        <PrReviewContent workspaceId={params.workspaceId} repoId={params.repoId!} prId={params.prId!} originId={params.originId} onTitleLoaded={setPrTitle} />
                     ) : (
                         <BranchRangeReviewContent workspaceId={params.workspaceId} />
                     )}

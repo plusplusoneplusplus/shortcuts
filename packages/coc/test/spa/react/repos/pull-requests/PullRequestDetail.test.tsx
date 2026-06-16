@@ -414,6 +414,22 @@ describe('tabs', () => {
         expect(screen.getByTestId('tab-files').textContent).toContain('2');
     });
 
+    it('opens PR review pop-out URLs with the resolved origin ID', async () => {
+        const openSpy = vi.spyOn(window, 'open').mockReturnValue({} as Window);
+        mockFetchDetail(makePr(), [], SAMPLE_DIFF);
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('tab-files')).toBeInTheDocument());
+        fireEvent.click(screen.getByTestId('tab-files'));
+        fireEvent.click(screen.getAllByTestId('pr-file-row')[0]);
+
+        expect(openSpy).toHaveBeenCalledWith(
+            '/?workspace=repo-1&repo=repo-1&origin=gh_octo_repo#popout/git-review/pr/142',
+            'coc-git-review-pr-142',
+            'width=1200,height=800',
+        );
+        openSpy.mockRestore();
+    });
+
     it('renders the minimal file list without inline diff in the Files tab', async () => {
         mockFetchDetail(makePr(), makeThreads([{
             id: 'thread-actual',
