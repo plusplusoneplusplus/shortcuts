@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -96,6 +96,30 @@ describe('CanvasStore', () => {
             expect(list.map(c => c.id)).toContain(a.id);
             expect(list[0].id).toBe(b.id);
             expect((list[0] as Record<string, unknown>).content).toBeUndefined();
+        });
+
+        it('orders the most recently touched canvas first when updatedAt timestamps collide', () => {
+            // Freeze the clock so every createdAt/updatedAt is byte-identical — the
+            // millisecond collision that made ordering flaky when it relied on the
+            // timestamp string alone. The monotonic per-store seq must still place
+            // the most recently touched canvas first.
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+            try {
+                const a = store.createCanvas({ workspaceId: WS, title: 'A', content: 'aaa' });
+                const b = store.createCanvas({ workspaceId: WS, title: 'B', content: 'bbb' });
+                // Touch A last; it must sort ahead of the more recently created B
+                // even though both carry the same updatedAt timestamp.
+                const updated = store.updateCanvas(WS, a.id, { content: 'aaa2', editor: 'ai' });
+
+                expect(updated.ok).toBe(true);
+                expect(a.updatedAt).toBe(b.updatedAt); // the tie is real
+
+                const list = store.listCanvases(WS);
+                expect(list.map(c => c.id)).toEqual([a.id, b.id]);
+            } finally {
+                vi.useRealTimers();
+            }
         });
 
         it('filters by processId', () => {
