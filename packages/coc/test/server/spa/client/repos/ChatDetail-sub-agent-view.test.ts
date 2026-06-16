@@ -14,6 +14,8 @@ import { resolve } from 'path';
 
 const SPA_ROOT = resolve(__dirname, '../../../../../src/server/spa/client/react');
 const source = readFileSync(resolve(SPA_ROOT, 'features/chat/ChatDetail.tsx'), 'utf-8');
+const canvasSource = readFileSync(resolve(SPA_ROOT, 'features/chat/agent-canvas/AgentCanvas.tsx'), 'utf-8');
+const inspectorSource = readFileSync(resolve(SPA_ROOT, 'features/chat/agent-canvas/AgentInspector.tsx'), 'utf-8');
 
 describe('ChatDetail sub-agent drill-in wiring', () => {
     it('imports the cascade menu, detail view, and the supporting helpers', () => {
@@ -46,6 +48,22 @@ describe('ChatDetail sub-agent drill-in wiring', () => {
     it('mounts the cascade menu in the viewToggle slot', () => {
         expect(source).toMatch(/<AgentCascadeMenu/);
         expect(source).toMatch(/onSelectAgent=\{handleSelectAgent\}/);
+    });
+
+    it('wires the canvas inspector action through the same selected-agent detail path', () => {
+        expect(source).toMatch(/const\s+openAgentDetail\s*=\s*useCallback/);
+        expect(source).toContain('handleSelectAgent(node.isRoot ? null : node.id)');
+        expect(source).toContain('<AgentCanvas root={agentRoot} onOpenAgentDetail={openAgentDetail} />');
+        expect(source).not.toContain('onOpenInThread={openAgentInThread}');
+    });
+
+    it('labels the inspector action as opening the sub-agent detail view', () => {
+        expect(canvasSource).toContain('onOpenAgentDetail');
+        expect(canvasSource).not.toContain('onOpenInThread');
+        expect(inspectorSource).toContain('data-testid="agent-inspector-open-detail"');
+        expect(inspectorSource).toContain('title="Open sub-agent detail"');
+        expect(inspectorSource).toContain('Open sub-agent detail');
+        expect(inspectorSource).not.toContain('Open in thread');
     });
 
     it('suppresses the follow-up composer in detail mode (read-only)', () => {

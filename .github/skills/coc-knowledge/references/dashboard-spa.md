@@ -378,9 +378,10 @@ nodes. Clicking a sub-agent node opens `AgentInspector` — a right-side panel
 with the run's name/type/status/elapsed, a details list (model, mode, summary),
 the task prompt, its result, and its children (clickable to drill in); clicking
 the orchestrator root closes it.
-`AgentCanvas` owns the selection; the inspector's "Open in thread" button calls
-`onOpenInThread`, which `ChatDetail` maps back to the issuing turn via
-`findTurnIndexForRun`, switching to the thread and scrolling there.
+`AgentCanvas` owns the inspector selection; the inspector's "Open sub-agent
+detail" button calls `onOpenAgentDetail`, which `ChatDetail` routes through the
+same `handleSelectAgent` path as the cascade menu so the read-only
+`SubAgentDetailView` opens for that node.
 
 **Cascading dropdown + in-place sub-agent detail.** Beside the toggle,
 `AgentCascadeMenu` lists the tree's depth levels (`flattenAgentLevels` → L0…Ln,

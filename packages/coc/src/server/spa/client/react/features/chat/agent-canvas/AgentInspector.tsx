@@ -43,11 +43,11 @@ export interface AgentInspectorProps {
     onClose: () => void;
     /** Select a child run (drill in). */
     onSelectChild?: (node: AgentRunNode) => void;
-    /** Jump to this run's turn in the linear thread. */
-    onOpenInThread?: (node: AgentRunNode) => void;
+    /** Open this run in the shared read-only sub-agent detail view. */
+    onOpenAgentDetail?: (node: AgentRunNode) => void;
 }
 
-export function AgentInspector({ node, now, onClose, onSelectChild, onOpenInThread }: AgentInspectorProps) {
+export function AgentInspector({ node, now, onClose, onSelectChild, onOpenAgentDetail }: AgentInspectorProps) {
     const isRoot = !!node.isRoot;
     const RoleIcon = isRoot ? AcIcons.Orchestr : roleIcon(node.role);
     const kids = node.children || [];
@@ -117,9 +117,9 @@ export function AgentInspector({ node, now, onClose, onSelectChild, onOpenInThre
                 </section>
             )}
 
-            {onOpenInThread && !isRoot && (
-                <button type="button" className="ai-open-thread" onClick={() => onOpenInThread(node)} data-testid="agent-inspector-open-thread">
-                    <AcIcons.Thread size={13} />Open in thread
+            {onOpenAgentDetail && !isRoot && (
+                <button type="button" className="ai-open-detail" onClick={() => onOpenAgentDetail(node)} title="Open sub-agent detail" data-testid="agent-inspector-open-detail">
+                    <AcIcons.Thread size={13} />Open sub-agent detail
                 </button>
             )}
         </aside>

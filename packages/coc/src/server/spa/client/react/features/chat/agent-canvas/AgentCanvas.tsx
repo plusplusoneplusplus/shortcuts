@@ -19,8 +19,8 @@ import './agent-canvas.css';
 export interface AgentCanvasProps {
     /** The orchestrator root whose subtree is the agent run tree. */
     root: AgentRunNode;
-    /** Jump to a run's turn in the linear thread (the inspector's "Open in thread"). */
-    onOpenInThread?: (node: AgentRunNode) => void;
+    /** Open a run in the shared read-only sub-agent detail view. */
+    onOpenAgentDetail?: (node: AgentRunNode) => void;
 }
 
 /** Depth-first lookup of a node by id within the run tree. */
@@ -113,7 +113,7 @@ function CanvasNode({ entry, selected, onSelect, now }: {
     );
 }
 
-export function AgentCanvas({ root, onOpenInThread }: AgentCanvasProps) {
+export function AgentCanvas({ root, onOpenAgentDetail }: AgentCanvasProps) {
     const layout = useMemo(() => buildLayout(root), [root]);
 
     // Selected run drives the inspector. Resolve from the live tree so a node
@@ -247,7 +247,7 @@ export function AgentCanvas({ root, onOpenInThread }: AgentCanvasProps) {
                     now={now}
                     onClose={() => setSelectedId(null)}
                     onSelectChild={(child) => setSelectedId(child.id)}
-                    onOpenInThread={onOpenInThread}
+                    onOpenAgentDetail={onOpenAgentDetail}
                 />
             )}
 
