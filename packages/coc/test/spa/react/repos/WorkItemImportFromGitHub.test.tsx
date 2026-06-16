@@ -15,7 +15,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/WorkItemContext', () =
     useWorkItems: () => ({
         state: {
             workItemsByRepo: {
-                'ws-test': [{
+                'local_ws-test': [{
                     id: 'wi-imported',
                     title: 'Imported issue',
                     status: 'created',
@@ -25,7 +25,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/WorkItemContext', () =
                 }],
             },
             paginationByRepo: {
-                'ws-test': {
+                'local_ws-test': {
                     created: { total: 1, hasMore: false, offset: 1 },
                 },
             },
@@ -41,6 +41,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
         workItems: {
             tree: mocks.tree,
             grouped: mocks.grouped,
+            groupedForOrigin: mocks.grouped,
             syncStatus: mocks.syncStatus,
         },
     }),

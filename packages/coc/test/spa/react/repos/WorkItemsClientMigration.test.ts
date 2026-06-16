@@ -28,18 +28,18 @@ describe('work items SPA client migration', () => {
 
     it('creates manual and chat-derived work items through client.workItems', () => {
         expect(createDialog).toContain('cloneClient.workItems.createFromChat(workspaceId');
-        expect(createDialog).toContain('cloneClient.workItems.create(workspaceId');
+        expect(createDialog).toContain('cloneClient.workItems.createForOrigin(workItemOriginId');
         expect(createDialog).not.toContain('/work-items/from-chat');
     });
 
     it('loads, mutates, and deletes work item detail through client.workItems', () => {
         for (const call of [
-            'workItems.get(requestedWorkspaceId, requestedWorkItemId)',
-            'workItems.updateStatus(workspaceId, workItemId',
-            'workItems.update(workspaceId, workItemId',
-            'workItems.requestChanges(workspaceId, workItemId',
+            'workItems.getForOrigin(workItemOriginId, requestedWorkItemId',
+            'workItems.updateStatusForOrigin(',
+            'workItems.updateForOrigin(workItemOriginId, workItemId',
+            'workItems.requestChangesForOrigin(workItemOriginId, workItemId',
             'workItems.resolveComments(workspaceId, workItemId',
-            'workItems.delete(workspaceId, workItemId)',
+            'workItems.deleteForOrigin(workItemOriginId, workItemId',
         ]) {
             expect(detail).toContain(call);
         }
@@ -49,11 +49,11 @@ describe('work items SPA client migration', () => {
     });
 
     it('loads grouped lists and optimistic context-menu mutations through client.workItems', () => {
-        expect(section).toContain('workItems.grouped(workspaceId');
-        expect(section).toContain('workItems.list(workspaceId');
-        expect(section).toContain('workItems.pin(workspaceId, item.id');
-        expect(section).toContain('workItems.archive(workspaceId, item.id');
-        expect(section).toContain('workItems.delete(workspaceId, item.id)');
+        expect(section).toContain('workItems.groupedForOrigin(workItemOriginId');
+        expect(section).toContain('workItems.listForOrigin(workItemOriginId');
+        expect(section).toContain('workItems.pinForOrigin(workItemOriginId, item.id');
+        expect(section).toContain('workItems.archiveForOrigin(workItemOriginId, item.id');
+        expect(section).toContain('workItems.deleteForOrigin(workItemOriginId, item.id');
         expect(section).not.toContain('/work-items/grouped');
     });
 

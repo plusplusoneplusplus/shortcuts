@@ -65,8 +65,8 @@ describe('WorkItemDetail always-on inline editing', () => {
             expect(statusSelect).toContain("updateDraft('status'");
         });
 
-        it('saves metadata in a single PATCH via workItems.update', () => {
-            expect(src).toContain('workItems.update(workspaceId, workItemId, updates');
+        it('saves metadata in a single PATCH via workItems.updateForOrigin', () => {
+            expect(src).toContain('workItems.updateForOrigin(workItemOriginId, workItemId, updates');
         });
 
         it('plan changes join the same PATCH payload', () => {

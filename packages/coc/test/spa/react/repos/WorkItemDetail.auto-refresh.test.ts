@@ -31,8 +31,8 @@ describe('WorkItemDetail — auto-refresh via context', () => {
             expect(src).toContain('useWorkItems()');
         });
 
-        it('looks up context items for the current workspace', () => {
-            expect(src).toContain('workItemsByRepo[workspaceId]');
+        it('looks up context items for the current origin scope', () => {
+            expect(src).toContain('workItemsByRepo[workItemOriginId]');
         });
 
         it('finds the current item in context by workItemId', () => {
@@ -99,8 +99,8 @@ describe('WorkItemDetail — auto-refresh via context', () => {
             expect(src).toMatch(/const fetchItem\s*=\s*useCallback/);
         });
 
-        it('fetchItem dependency includes workspace and work item IDs', () => {
-            expect(src).toContain('[workspaceId, workItemId]');
+        it('fetchItem dependency includes workspace, origin, and work item IDs', () => {
+            expect(src).toContain('[workspaceId, workItemOriginId, workItemId, cloneClient]');
         });
 
         it('auto-refresh effect depends on fetchItem for stability', () => {

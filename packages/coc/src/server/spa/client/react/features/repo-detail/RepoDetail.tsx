@@ -32,7 +32,7 @@ import { GenerateTaskDialog } from '../../tasks/GenerateTaskDialog';
 import { TasksPanel } from '../../tasks/TasksPanel';
 import { fetchApi } from '../../hooks/useApi';
 import { getSpaCocClient } from '../../api/cocClient';
-import { requestForWorkspace } from '../../repos/cloneRegistry';
+import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
 import { useRepoQueueStats } from '../../queue/hooks/useRepoQueueStats';
 import { useGitInfo } from '../git/hooks/useGitInfo';
 import { useTerminalEnabled } from '../../hooks/feature-flags/useTerminalEnabled';
@@ -53,6 +53,7 @@ import {
     useConversationRetrievalCapability,
     validateSessionContextDrop,
 } from '../chat/sessionContextDrop';
+import { resolveRepoWorkItemOriginScope } from '../work-items/workItemOriginScope';
 
 interface RepoDetailProps {
     repo: RepoData;
@@ -83,6 +84,8 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     const color = ws.color || '#848484';
     const activeSubTab = state.activeRepoSubTab;
     const taskCount = repo.taskCount || 0;
+    const workItemOriginScope = useMemo(() => resolveRepoWorkItemOriginScope(repo), [repo]);
+    const workItemOriginId = workItemOriginScope.originId;
 
     // Track which secondary sub-tabs have ever been visible for this workspace,
     // so we only mount their (often slow) data-fetching hooks on first activation
@@ -120,19 +123,18 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     // Work items: load for this repo if not yet in context (for badge)
     const { state: workItemState, dispatch: workItemDispatch } = useWorkItems();
     useEffect(() => {
-        if (workItemState.workItemsByRepo[ws.id] !== undefined) return;
-        // Route the work-items badge preview to the repo's clone server.
-        requestForWorkspace<any>(ws.id, `/workspaces/${encodeURIComponent(ws.id)}/work-items?limit=20`)
+        if (workItemState.workItemsByRepo[workItemOriginId] !== undefined) return;
+        getCocClientForWorkspace(ws.id).workItems.listForOrigin(workItemOriginId, { limit: 20 }, { workspaceId: ws.id })
             .then(data => {
                 if (data) {
-                    workItemDispatch({ type: 'SET_WORK_ITEMS', repoId: ws.id, items: data.items || [], total: data.total ?? 0, hasMore: data.hasMore ?? false });
-                    const ids = loadUnseenWorkItemIds(ws.id);
-                    workItemDispatch({ type: 'LOAD_UNSEEN_WORK_ITEMS', repoId: ws.id, ids });
+                    workItemDispatch({ type: 'SET_WORK_ITEMS', repoId: workItemOriginId, items: data.items || [], total: data.total ?? 0, hasMore: data.hasMore ?? false });
+                    const ids = loadUnseenWorkItemIds(workItemOriginId);
+                    workItemDispatch({ type: 'LOAD_UNSEEN_WORK_ITEMS', repoId: workItemOriginId, ids });
                 }
             })
             .catch(() => {});
-    }, [ws.id]);
-    const unseenWorkItemCount = (workItemState.unseenByRepo[ws.id] || []).length;
+    }, [ws.id, workItemOriginId, workItemDispatch, workItemState.workItemsByRepo]);
+    const unseenWorkItemCount = (workItemState.unseenByRepo[workItemOriginId] || []).length;
 
     // Track previous feature-flag values so redirects only fire on true→false
     // transitions, not on the initial mount (defense-in-depth for deep links).
@@ -392,7 +394,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     }, [ws.id]);
 
     const switchSubTab = (tab: RepoSubTab) => {
-        if (tab === 'work-items') workItemDispatch({ type: 'MARK_WORK_ITEMS_SEEN', repoId: ws.id });
+        if (tab === 'work-items') workItemDispatch({ type: 'MARK_WORK_ITEMS_SEEN', repoId: workItemOriginId });
         dispatch({ type: 'SET_REPO_SUB_TAB', tab });
         const selectedTaskId = queueState.selectedTaskIdByRepo[ws.id] ?? queueState.selectedTaskId;
         location.hash = '#repos/' + encodeURIComponent(ws.id) + buildRepoSubTabSuffix(tab, state, selectedTaskId);
@@ -711,7 +713,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
             {/* Sub-tab content */}
             <div id="repo-sub-tab-content" className={cn("flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden")}>
                 {activeSubTab === 'work-items' ? (
-                    <WorkItemsTab key={ws.id} workspaceId={ws.id} onNavigateToTasksTab={handleNavigateToTask} />
+                    <WorkItemsTab key={ws.id} workspaceId={ws.id} originId={workItemOriginId} onNavigateToTasksTab={handleNavigateToTask} />
                 ) : activeSubTab === 'tasks' ? (
                     <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                         {uiLayoutMode === 'classic' ? (

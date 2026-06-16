@@ -31,11 +31,17 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         workItems: {
             get: (...args: any[]) => mockGet(...args),
+            getForOrigin: (...args: any[]) => mockGet(...args),
             update: (...args: any[]) => mockUpdate(...args),
+            updateForOrigin: (...args: any[]) => mockUpdate(...args),
             updateStatus: (...args: any[]) => mockUpdateStatus(...args),
+            updateStatusForOrigin: (...args: any[]) => mockUpdateStatus(...args),
             pin: (...args: any[]) => mockPin(...args),
+            pinForOrigin: (...args: any[]) => mockPin(...args),
             archive: (...args: any[]) => mockArchive(...args),
+            archiveForOrigin: (...args: any[]) => mockArchive(...args),
             delete: (...args: any[]) => mockDelete(...args),
+            deleteForOrigin: (...args: any[]) => mockDelete(...args),
         },
     }),
 }));
@@ -349,7 +355,7 @@ describe('WorkItemDetail Work Item chat lens', () => {
 
         fireEvent.click(screen.getByTestId('work-item-delete-btn'));
 
-        await waitFor(() => expect(mockDelete).toHaveBeenCalledWith('ws-1', 'wi-1'));
+        await waitFor(() => expect(mockDelete).toHaveBeenCalledWith('local_ws-1', 'wi-1', { workspaceId: 'ws-1' }));
         expect(confirm).toHaveBeenCalledWith('Delete this work item?');
         expect(onBack).toHaveBeenCalledTimes(1);
         expect(localStorage.getItem(getReviewChatOpenStorageKey(targetOne))).toBe('false');

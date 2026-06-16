@@ -19,6 +19,7 @@ import { Dialog } from '../../ui/Dialog';
 import { Button, cn, Spinner } from '../../ui';
 import { useCocClient } from '../../repos/cloneRouting';
 import { isWorkItemsHierarchyEnabled } from '../../utils/config';
+import { resolveWorkItemOriginId } from './workItemOriginScope';
 import type {
     WorkItemAiGenerationResponse,
     WorkItemAiDraftResult,
@@ -34,6 +35,7 @@ export interface WorkItemAiComposerProps {
     open: boolean;
     onClose: () => void;
     workspaceId: string;
+    originId?: string;
     /** 'create' = draft new item; 'improve' = refine existing item */
     mode: 'create' | 'improve';
     /** Existing item context (required for 'improve' mode) */
@@ -93,6 +95,7 @@ export function WorkItemAiComposer({
     open,
     onClose,
     workspaceId,
+    originId,
     mode,
     existingItem,
     parentId,
@@ -101,6 +104,7 @@ export function WorkItemAiComposer({
     onImproved,
 }: WorkItemAiComposerProps) {
     const cloneClient = useCocClient(workspaceId); // AC-07: AI compose/create/improve on the selected clone's server.
+    const workItemOriginId = originId ?? resolveWorkItemOriginId({ workspaceId });
     const [phase, setPhase] = useState<Phase>('idle');
 
     // Prompt & clarification
@@ -231,7 +235,7 @@ export function WorkItemAiComposer({
                         : `## Tasks\n${checklist}`;
                 }
 
-                const created = await cloneClient.workItems.create(workspaceId, {
+                const created = await cloneClient.workItems.createForOrigin(workItemOriginId, {
                     title: draftWorkItem.title,
                     description: draftWorkItem.description || undefined,
                     priority: draftWorkItem.priority,
@@ -244,19 +248,19 @@ export function WorkItemAiComposer({
                     parentId: hierarchyEnabled && parentId ? parentId : undefined,
                     source: 'manual',
                     plan: planContent ? { content: planContent } : undefined,
-                });
+                }, { workspaceId });
 
                 // Create child leaf items when hierarchy is enabled
                 if (hierarchyEnabled && draftChildTasks.length > 0) {
                     for (const child of draftChildTasks) {
                         if (!child.title.trim()) continue;
-                        await cloneClient.workItems.create(workspaceId, {
+                        await cloneClient.workItems.createForOrigin(workItemOriginId, {
                             title: child.title.trim(),
                             description: child.description || undefined,
                             type: (child.type as WorkItemType) || 'work-item',
                             parentId: created.id,
                             source: 'manual',
-                        });
+                        }, { workspaceId });
                     }
                 }
 
@@ -264,17 +268,13 @@ export function WorkItemAiComposer({
                 onClose();
             } else {
                 // improve mode — patch the changed fields
-                await cloneClient.workItems.update(workspaceId, existingItem!.id, {
+                await cloneClient.workItems.updateForOrigin(workItemOriginId, existingItem!.id, {
                     title: draftWorkItem.title,
                     description: draftWorkItem.description,
                     priority: draftWorkItem.priority,
                     tags: tags.length > 0 ? tags : [],
-                });
-
-                // Update plan if the content changed from the current plan
-                if (draftGoal && draftGoal !== existingItem?.plan?.content) {
-                    await cloneClient.workItems.updatePlan(workspaceId, existingItem!.id, draftGoal);
-                }
+                    ...(draftGoal && draftGoal !== existingItem?.plan?.content ? { plan: { content: draftGoal } } : {}),
+                }, { workspaceId });
 
                 onImproved?.();
                 onClose();
@@ -284,7 +284,7 @@ export function WorkItemAiComposer({
             setPhase('preview');
         }
     }, [
-        mode, workspaceId, existingItem, parentId, hierarchyEnabled,
+        mode, workspaceId, workItemOriginId, existingItem, parentId, hierarchyEnabled,
         draftWorkItem, draftGoal, draftChildTasks,
         onCreated, onImproved, onClose, cloneClient,
     ]);

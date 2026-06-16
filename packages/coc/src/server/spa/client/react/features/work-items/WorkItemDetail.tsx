@@ -42,6 +42,7 @@ import { WorkItemChatPanel } from './WorkItemChatPanel';
 import { WorkItemChatPlacementFrame } from './WorkItemChatPlacementFrame';
 import { WorkItemAiDraftApplyDialog } from './WorkItemAiDraftApplyDialog';
 import { ensureQueueProcessId } from '../../utils/queue-process-id';
+import { resolveWorkItemOriginId } from './workItemOriginScope';
 
 const UNSAVED_CHANGES_MESSAGE = 'You have unsaved changes. Leave without saving?';
 const WORK_ITEM_CHAT_PANEL_WIDTH_STORAGE_PREFIX = 'coc.workItemChatPanel.width';
@@ -107,6 +108,7 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 interface WorkItemDetailProps {
     workItemId: string;
     workspaceId: string;
+    originId?: string;
     onBack?: () => void;
     onExecuted?: () => void;
     /** Called when the user clicks the execution session entry for a task. */
@@ -312,9 +314,11 @@ function ConflictValueCard({ label, value, selected, onSelect }: { label: string
     );
 }
 
-export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, onViewTask, onViewCommit, onNavigateToTasksTab }: WorkItemDetailProps) {
+export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onExecuted, onViewTask, onViewCommit, onNavigateToTasksTab }: WorkItemDetailProps) {
     // AC-07: all work-item detail reads/writes target the selected clone's server.
     const cloneClient = useCocClient(workspaceId);
+    const workItemOriginId = originId ?? resolveWorkItemOriginId({ workspaceId });
+    const originOptions = useMemo(() => ({ workspaceId }), [workspaceId]);
     const [item, setItem] = useState<WorkItemFull | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -385,7 +389,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         setLoading(true);
         setError(null);
         try {
-            const data = await cloneClient.workItems.get(requestedWorkspaceId, requestedWorkItemId);
+            const data = await cloneClient.workItems.getForOrigin(workItemOriginId, requestedWorkItemId, { workspaceId: requestedWorkspaceId });
             const current = currentSelectionRef.current;
             if (
                 requestSeq !== fetchRequestSeqRef.current ||
@@ -415,7 +419,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                 setLoading(false);
             }
         }
-    }, [workspaceId, workItemId, cloneClient]);
+    }, [workspaceId, workItemOriginId, workItemId, cloneClient]);
 
     useEffect(() => { fetchItem(); }, [fetchItem]);
 
@@ -433,7 +437,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
 
     /* ── Auto-refresh via WorkItemContext (WebSocket events) ── */
     const { state: workItemState, dispatch } = useWorkItems();
-    const contextItems = workItemState.workItemsByRepo[workspaceId] || [];
+    const contextItems = workItemState.workItemsByRepo[workItemOriginId] || [];
     const contextItem = contextItems.find(i => i.id === workItemId);
 
     const lastContextUpdatedAt = useRef<string | undefined>();
@@ -526,7 +530,13 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const handleAcceptDone = async () => {
         setAcceptingDone(true);
         try {
-            await cloneClient.workItems.updateStatus(workspaceId, workItemId, 'done', { completedAt: new Date().toISOString() });
+            await cloneClient.workItems.updateStatusForOrigin(
+                workItemOriginId,
+                workItemId,
+                'done',
+                { completedAt: new Date().toISOString() },
+                originOptions,
+            );
             await fetchItem();
         } catch (err: any) {
             setError(err.message || 'Failed to accept');
@@ -543,7 +553,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         }
         setRequestingChanges(true);
         try {
-            await cloneClient.workItems.requestChanges(workspaceId, workItemId, { comments });
+            await cloneClient.workItems.requestChangesForOrigin(workItemOriginId, workItemId, { comments }, originOptions);
             setReviewComment('');
             await fetchItem();
         } catch (err: any) {
@@ -576,7 +586,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         try {
             const result = await cloneClient.workItems.startAiReview(workspaceId, workItemId);
             if (result.workItem) {
-                dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item: result.workItem as any });
+                dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workItemOriginId, item: result.workItem as any });
             }
             if (result.taskId && onViewTask) {
                 onViewTask(result.taskId);
@@ -624,7 +634,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
             );
 
             // Call request-changes with diff-comments source
-            await cloneClient.workItems.requestChanges(workspaceId, workItemId, { comments: formatted, source: 'diff-comments' });
+            await cloneClient.workItems.requestChangesForOrigin(workItemOriginId, workItemId, { comments: formatted, source: 'diff-comments' }, originOptions);
 
             // Batch-resolve the open diff comments
             await Promise.all(
@@ -724,12 +734,12 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
 
             let updated: WorkItemFull = item;
             if (Object.keys(updates).length > 0) {
-                updated = await cloneClient.workItems.update(workspaceId, workItemId, updates) as any;
+                updated = await cloneClient.workItems.updateForOrigin(workItemOriginId, workItemId, updates, originOptions) as any;
             }
             setDraft(draftToSave);
             setSyncConflict(null);
             setSyncConflictChoices({});
-            dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item: updated as any });
+            dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workItemOriginId, item: updated as any });
             await fetchItem();
         } catch (err: any) {
             const conflict = getSyncConflictDetails(err);
@@ -743,7 +753,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         } finally {
             setSaving(false);
         }
-    }, [item, planDraft, workspaceId, workItemId, dispatch, fetchItem, cloneClient]);
+    }, [item, planDraft, workItemOriginId, workItemId, dispatch, fetchItem, cloneClient, originOptions]);
 
     const handleSave = useCallback(async () => {
         if (!draft) return;
@@ -887,10 +897,10 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
             if (!taskId) throw new Error('Failed to create Goal grilling chat task');
 
             await cloneClient.workItems.createChatBinding(workspaceId, workItemId, taskId);
-            await cloneClient.workItems.update(workspaceId, workItemId, {
+            await cloneClient.workItems.updateForOrigin(workItemOriginId, workItemId, {
                 grillSessionId: ensureQueueProcessId(taskId),
                 ...(item.status === 'created' ? { status: 'drafting' } : {}),
-            });
+            }, originOptions);
             await fetchItem();
             openWorkItemChat();
         } catch (err: any) {
@@ -898,7 +908,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         } finally {
             setStartingGoalGrilling(false);
         }
-    }, [fetchItem, item, openWorkItemChat, workItemId, workspaceId, cloneClient]);
+    }, [fetchItem, item, openWorkItemChat, workItemOriginId, originOptions, workItemId, workspaceId, cloneClient]);
 
     if (loading) {
         return <div className="flex items-center justify-center h-full text-sm text-[#848484]">Loading…</div>;
@@ -1156,7 +1166,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                 checked={item.autoExecute ?? false}
                                 onChange={async (e) => {
                                     try {
-                                        await cloneClient.workItems.update(workspaceId, workItemId, { autoExecute: e.target.checked });
+                                        await cloneClient.workItems.updateForOrigin(workItemOriginId, workItemId, { autoExecute: e.target.checked }, originOptions);
                                         await fetchItem();
                                     } catch (err: any) {
                                         setError(err.message || 'Failed to update');
@@ -1251,7 +1261,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             type="button"
                             onClick={async () => {
                                 if (confirm('Delete this work item?')) {
-                                    await cloneClient.workItems.delete(workspaceId, workItemId);
+                                    await cloneClient.workItems.deleteForOrigin(workItemOriginId, workItemId, originOptions);
                                     closeWorkItemChat();
                                     onBack?.();
                                 }
@@ -1885,6 +1895,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                 open={showAiComposer}
                 onClose={() => setShowAiComposer(false)}
                 workspaceId={workspaceId}
+                originId={workItemOriginId}
                 mode="improve"
                 existingItem={{
                     id: item.id,
@@ -1908,7 +1919,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     }}
                     onClose={() => setShowAiDraftApplyDialog(false)}
                     onApplied={(updated) => {
-                        dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item: updated as any });
+                        dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workItemOriginId, item: updated as any });
                         void fetchItem();
                     }}
                 />

@@ -37,6 +37,7 @@ import {
     type WorkItemRemoteProviderFilter,
     type WorkItemTrackerViewKind,
 } from './workItemTrackerViews';
+import { resolveWorkItemOriginId } from './workItemOriginScope';
 
 const TYPE_CHILD_LABELS: Record<WorkItemTypeLabel, string> = {
     epic:        'Feature',
@@ -165,6 +166,7 @@ function remoteSyncStatusNotice(state: RemoteSyncStatusState, filter: WorkItemRe
 
 export interface WorkItemHierarchyTreeProps {
     workspaceId: string;
+    originId?: string;
     /** Filters the tree to one Epic-rooted tracker partition. */
     trackerKind?: WorkItemTrackerKind;
     /** Filters the tree to multiple Epic-rooted tracker partitions, merged in order. */
@@ -194,6 +196,7 @@ export interface WorkItemHierarchyTreeProps {
 
 export function WorkItemHierarchyTree({
     workspaceId,
+    originId,
     trackerKind,
     trackerKinds,
     trackerViewKind,
@@ -212,6 +215,7 @@ export function WorkItemHierarchyTree({
 }: WorkItemHierarchyTreeProps) {
     // Route work-item tree/mutations to the workspace's clone (AC-07).
     const client = useCocClient(workspaceId);
+    const workItemOriginId = originId ?? resolveWorkItemOriginId({ workspaceId });
     const [treeData, setTreeData] = useState<WorkItemTreeNode[]>([]);
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(true);
@@ -359,8 +363,8 @@ export function WorkItemHierarchyTree({
         remoteProviderFilter,
     ]);
 
-    // Refresh when workspace-scoped Work Item WebSocket events arrive.
-    const realtimeRevision = workItemState.realtimeRevisionByRepo?.[workspaceId] ?? 0;
+    // Refresh when origin-scoped Work Item WebSocket events arrive.
+    const realtimeRevision = workItemState.realtimeRevisionByRepo?.[workItemOriginId] ?? 0;
     const prevRealtimeRevisionRef = useRef(realtimeRevision);
     useEffect(() => {
         if (prevRealtimeRevisionRef.current === realtimeRevision) return;

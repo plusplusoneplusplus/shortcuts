@@ -21,6 +21,7 @@ import type { ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import { useCocClient } from '../../repos/cloneRouting';
 import { createWorkItemContextDragPayload, writePointerContextDragData } from '../chat/sessionContextDrag';
 import { isSessionContextAttachmentsEnabled } from '../../utils/config';
+import { resolveWorkItemOriginId } from './workItemOriginScope';
 
 const PAGE_SIZE = 20;
 
@@ -86,18 +87,21 @@ function StatusGroupSentinel({
 
 interface WorkItemSectionProps {
     workspaceId: string;
+    originId?: string;
     onSelectWorkItem: (id: string) => void;
     selectedWorkItemId?: string | null;
     highlightedWorkItemId?: string | null;
 }
 
-export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkItemId, highlightedWorkItemId }: WorkItemSectionProps) {
+export function WorkItemSection({ workspaceId, originId, onSelectWorkItem, selectedWorkItemId, highlightedWorkItemId }: WorkItemSectionProps) {
     const { state, dispatch } = useWorkItems();
     // Route work-item list/mutations to the workspace's clone (AC-07).
     const client = useCocClient(workspaceId);
-    const items = state.workItemsByRepo[workspaceId] || [];
-    const pagination = state.paginationByRepo[workspaceId];
-    const isLoading = state.loading[workspaceId] ?? false;
+    const workItemOriginId = originId ?? resolveWorkItemOriginId({ workspaceId });
+    const originOptions = useMemo(() => ({ workspaceId }), [workspaceId]);
+    const items = state.workItemsByRepo[workItemOriginId] || [];
+    const pagination = state.paginationByRepo[workItemOriginId];
+    const isLoading = state.loading[workItemOriginId] ?? false;
     const { searchInput, searchQuery, searchInputRef, onSearchChange, onSearchClear } = useWorkItemSearch();
     const prevSearchRef = useRef(searchQuery);
     const loadingStatusesRef = useRef(new Set<string>());
@@ -110,7 +114,7 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
     const [showArchived, setShowArchived] = useState(false);
 
     // Per-status collapse state; persisted in localStorage (workspace-scoped)
-    const storageKey = `coc-wi-categories-${workspaceId}`;
+    const storageKey = `coc-wi-categories-${workItemOriginId}`;
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
         const defaults = Object.fromEntries(STATUS_ORDER.map(s => [s, STATUS_CONFIG[s].defaultCollapsed ?? false]));
         try {
@@ -127,19 +131,19 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
 
     // Fetch grouped work items (initial load and search)
     const fetchGroupedWorkItems = useCallback(async (query?: string) => {
-        dispatch({ type: 'SET_LOADING', repoId: workspaceId, loading: true });
+        dispatch({ type: 'SET_LOADING', repoId: workItemOriginId, loading: true });
         try {
-            const data = await client.workItems.grouped(workspaceId, {
+            const data = await client.workItems.groupedForOrigin(workItemOriginId, {
                 limit: PAGE_SIZE,
                 q: query,
-            });
-            dispatch({ type: 'SET_GROUPED_WORK_ITEMS', repoId: workspaceId, groups: data?.groups || {} });
+            }, originOptions);
+            dispatch({ type: 'SET_GROUPED_WORK_ITEMS', repoId: workItemOriginId, groups: data?.groups || {} });
         } catch {
             // silently fail
         } finally {
-            dispatch({ type: 'SET_LOADING', repoId: workspaceId, loading: false });
+            dispatch({ type: 'SET_LOADING', repoId: workItemOriginId, loading: false });
         }
-    }, [workspaceId, dispatch, client]);
+    }, [workItemOriginId, dispatch, client, originOptions]);
 
     // Load more items for a specific status group (per-category infinite scroll)
     const loadMoreForStatus = useCallback(async (status: string) => {
@@ -149,15 +153,15 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
 
         loadingStatusesRef.current.add(status);
         try {
-            const data = await client.workItems.list(workspaceId, {
+            const data = await client.workItems.listForOrigin(workItemOriginId, {
                 status,
                 limit: PAGE_SIZE,
                 offset: statusPagination.offset,
                 q: searchQuery || undefined,
-            });
+            }, originOptions);
             dispatch({
                 type: 'APPEND_STATUS_ITEMS',
-                repoId: workspaceId,
+                repoId: workItemOriginId,
                 status,
                 items: data?.items || [],
                 total: data?.total ?? statusPagination.total,
@@ -169,7 +173,7 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
         } finally {
             loadingStatusesRef.current.delete(status);
         }
-    }, [workspaceId, dispatch, searchQuery, pagination, client]);
+    }, [workItemOriginId, dispatch, searchQuery, pagination, client, originOptions]);
 
     // Initial fetch
     useEffect(() => { fetchGroupedWorkItems(); }, [fetchGroupedWorkItems]);
@@ -187,35 +191,35 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
     const handlePin = useCallback(async (item: WorkItemSummary) => {
         const pinned = !item.pinnedAt;
         // Optimistic update
-        dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item: { ...item, pinnedAt: pinned ? new Date().toISOString() : undefined } });
+        dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workItemOriginId, item: { ...item, pinnedAt: pinned ? new Date().toISOString() : undefined } });
         try {
-            await client.workItems.pin(workspaceId, item.id, pinned);
+            await client.workItems.pinForOrigin(workItemOriginId, item.id, pinned, originOptions);
         } catch {
             // Revert on failure
-            dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item });
+            dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workItemOriginId, item });
         }
-    }, [workspaceId, dispatch, client]);
+    }, [workItemOriginId, dispatch, client, originOptions]);
 
     const handleArchive = useCallback(async (item: WorkItemSummary) => {
         const archived = !item.archivedAt;
-        dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item: { ...item, archivedAt: archived ? new Date().toISOString() : undefined } });
+        dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workItemOriginId, item: { ...item, archivedAt: archived ? new Date().toISOString() : undefined } });
         try {
-            await client.workItems.archive(workspaceId, item.id, archived);
+            await client.workItems.archiveForOrigin(workItemOriginId, item.id, archived, originOptions);
         } catch {
-            dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item });
+            dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workItemOriginId, item });
         }
-    }, [workspaceId, dispatch, client]);
+    }, [workItemOriginId, dispatch, client, originOptions]);
 
     const handleDelete = useCallback(async (item: WorkItemSummary) => {
         if (!confirm('Delete this work item?')) return;
-        dispatch({ type: 'WORK_ITEM_REMOVED', repoId: workspaceId, id: item.id });
+        dispatch({ type: 'WORK_ITEM_REMOVED', repoId: workItemOriginId, id: item.id });
         try {
-            await client.workItems.delete(workspaceId, item.id);
+            await client.workItems.deleteForOrigin(workItemOriginId, item.id, originOptions);
         } catch {
             // Re-add on failure
-            dispatch({ type: 'WORK_ITEM_ADDED', repoId: workspaceId, item });
+            dispatch({ type: 'WORK_ITEM_ADDED', repoId: workItemOriginId, item });
         }
-    }, [workspaceId, dispatch, client]);
+    }, [workItemOriginId, dispatch, client, originOptions]);
 
     const handleContextMenu = useCallback((e: React.MouseEvent, item: WorkItemSummary) => {
         e.preventDefault();

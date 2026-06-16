@@ -24,6 +24,7 @@ import { isWorkItemsHierarchyEnabled, isWorkItemsAiAuthoringEnabled } from '../.
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
 import { WorkItemAiComposer } from './WorkItemAiComposer';
 import type { WorkItemSyncProvider, WorkItemTrackerKind } from '@plusplusoneplusplus/coc-client';
+import { resolveWorkItemOriginId } from './workItemOriginScope';
 import {
     WORK_ITEM_TRACKER_TABS,
     getTrackerKindsForView,
@@ -51,11 +52,13 @@ function AzureDevOpsIcon({ className, testId }: { className?: string; testId?: s
 
 export interface WorkItemsTabProps {
     workspaceId: string;
+    /** Canonical origin scope used for Work Item storage/cache state. */
+    originId?: string;
     /** Called when the user wants to view a completed task in the Tasks tab. */
     onNavigateToTasksTab?: (taskId: string) => void;
 }
 
-export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTabProps) {
+export function WorkItemsTab({ workspaceId, originId, onNavigateToTasksTab }: WorkItemsTabProps) {
     const [selectedWorkItemId, setSelectedWorkItemId] = useState<string | null>(null);
     const [selectedSessionTaskId, setSelectedSessionTaskId] = useState<string | null>(null);
     const [selectedCommitHash, setSelectedCommitHash] = useState<string | null>(null);
@@ -74,6 +77,10 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
     const { dispatch } = useWorkItems();
     const { state: appState } = useApp();
     const deepLinkConsumedRef = useRef(false);
+    const workItemOriginId = useMemo(
+        () => originId ?? resolveWorkItemOriginId({ workspaceId }),
+        [originId, workspaceId],
+    );
     const hierarchyEnabled = isWorkItemsHierarchyEnabled();
     const { width: leftPanelWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
         initialWidth: isTablet ? 280 : 340,
@@ -226,19 +233,19 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
     }, [workspaceId, selectedWorkItemId]);
 
     const handleCreated = useCallback((item: any) => {
-        dispatch({ type: 'WORK_ITEM_ADDED', repoId: workspaceId, item });
+        dispatch({ type: 'WORK_ITEM_ADDED', repoId: workItemOriginId, item });
         setSelectedWorkItemId(item.id);
         setSelectedSessionTaskId(null);
         setSelectedCommitHash(null);
         setSelectedCommitFile(null);
         if (isMobile) setMobileShowDetail(true);
         location.hash = buildWorkItemHash(workspaceId, item.id);
-    }, [dispatch, workspaceId, isMobile]);
+    }, [dispatch, workItemOriginId, workspaceId, isMobile]);
 
     const handleExecuted = useCallback(() => {
         // Refresh work items after execution
-        dispatch({ type: 'SET_LOADING', repoId: workspaceId, loading: true });
-    }, [dispatch, workspaceId]);
+        dispatch({ type: 'SET_LOADING', repoId: workItemOriginId, loading: true });
+    }, [dispatch, workItemOriginId]);
 
     const openCreateDialog = useCallback((type: WorkItemTypeLabel, parentId?: string) => {
         setCreateDialogType(type);
@@ -272,7 +279,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
             ?? (item?.tracker?.kind === 'azure-boards-backed' ? 'azure-boards' : item?.tracker?.kind === 'github-backed' ? 'github' : 'all');
         selectTracker('remote');
         setRemoteProviderFilter(importedProvider);
-        dispatch({ type: 'WORK_ITEM_ADDED', repoId: workspaceId, item });
+        dispatch({ type: 'WORK_ITEM_ADDED', repoId: workItemOriginId, item });
         setSelectedWorkItemId(item.id);
         setSelectedSessionTaskId(null);
         setSelectedCommitHash(null);
@@ -281,7 +288,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
         if (isMobile) setMobileShowDetail(true);
         location.hash = buildWorkItemHash(workspaceId, item.id);
         setTimeout(() => setHighlightedWorkItemId(null), 2000);
-    }, [dispatch, workspaceId, isMobile, selectTracker]);
+    }, [dispatch, workItemOriginId, workspaceId, isMobile, selectTracker]);
 
     const remoteTrackerKinds = useMemo<WorkItemTrackerKind[]>(
         () => getTrackerKindsForView(activeTracker, remoteProviderFilter),
@@ -340,6 +347,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
             <WorkItemHierarchyTree
                 key={`${activeTracker}-${remoteProviderFilter}`}
                 workspaceId={workspaceId}
+                originId={workItemOriginId}
                 trackerViewKind={activeTracker}
                 trackerKinds={remoteTrackerKinds}
                 remoteProviderFilter={remoteProviderFilter}
@@ -378,6 +386,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
             </div>
             <WorkItemSection
                 workspaceId={workspaceId}
+                originId={workItemOriginId}
                 onSelectWorkItem={handleSelectWorkItem}
                 selectedWorkItemId={selectedWorkItemId}
                 highlightedWorkItemId={highlightedWorkItemId}
@@ -410,6 +419,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
             <WorkItemDetail
                 workItemId={selectedWorkItemId}
                 workspaceId={workspaceId}
+                originId={workItemOriginId}
                 onBack={handleBack}
                 onExecuted={handleExecuted}
                 onViewTask={handleViewTask}
@@ -453,6 +463,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                     open={showCreateDialog}
                     onClose={() => setShowCreateDialog(false)}
                     workspaceId={workspaceId}
+                    originId={workItemOriginId}
                     onCreated={handleCreated}
                     itemType={createDialogType}
                     parentId={createDialogParentId}
@@ -461,6 +472,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                     open={showAiComposer}
                     onClose={() => setShowAiComposer(false)}
                     workspaceId={workspaceId}
+                    originId={workItemOriginId}
                     mode="create"
                     onCreated={handleCreated}
                 />
@@ -503,6 +515,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                 open={showCreateDialog}
                 onClose={() => setShowCreateDialog(false)}
                 workspaceId={workspaceId}
+                originId={workItemOriginId}
                 onCreated={handleCreated}
                 itemType={createDialogType}
                 parentId={createDialogParentId}
@@ -511,6 +524,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                 open={showAiComposer}
                 onClose={() => setShowAiComposer(false)}
                 workspaceId={workspaceId}
+                originId={workItemOriginId}
                 mode="create"
                 onCreated={handleCreated}
             />
