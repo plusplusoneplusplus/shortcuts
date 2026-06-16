@@ -34,9 +34,9 @@ const SYNC_LINK = {
     },
 };
 
-function makeServer(): http.Server {
+function makeServer(processStore: any = { getWorkspaces: async () => [] }): http.Server {
     const routes: Route[] = [];
-    registerWorkItemRoutes({ routes, workItemStore: store, processStore: { getWorkspaces: async () => [] } as any });
+    registerWorkItemRoutes({ routes, workItemStore: store, processStore });
     const handler = createRouter({ routes, spaHtml: '' });
     return http.createServer(handler);
 }
@@ -84,6 +84,47 @@ async function request(
         if (body) req.write(JSON.stringify(body));
         req.end();
     });
+}
+
+async function restartWithOriginScopedServer(): Promise<void> {
+    await stopServer();
+    store = new FileWorkItemStore({
+        dataDir: tmpDir,
+        scopeResolver: repoId => {
+            if (repoId === 'clone-a' || repoId === 'clone-b' || repoId === 'gh_owner_repo') {
+                return { storageRepoId: 'gh_owner_repo', legacyRepoIds: ['clone-a', 'clone-b'] };
+            }
+            if (repoId === 'other-clone' || repoId === 'gh_owner_other') {
+                return { storageRepoId: 'gh_owner_other', legacyRepoIds: ['other-clone'] };
+            }
+            return undefined;
+        },
+    });
+    const processStore = {
+        getWorkspaces: async () => [
+            {
+                id: 'clone-a',
+                name: 'Clone A',
+                rootPath: path.join(tmpDir, 'clone-a'),
+                remoteUrl: 'https://github.com/owner/repo.git',
+            },
+            {
+                id: 'clone-b',
+                name: 'Clone B',
+                rootPath: path.join(tmpDir, 'clone-b'),
+                remoteUrl: 'git@github.com:owner/repo.git',
+            },
+            {
+                id: 'other-clone',
+                name: 'Other Clone',
+                rootPath: path.join(tmpDir, 'other-clone'),
+                remoteUrl: 'https://github.com/owner/other.git',
+            },
+        ],
+        updateWorkspace: async () => undefined,
+    };
+    server = makeServer(processStore);
+    await startServer();
 }
 
 beforeEach(async () => {
@@ -322,6 +363,48 @@ describe('Work Item Routes', () => {
             const afterCreate = await request('GET', `/api/workspaces/${REPO_ID}/work-items/grouped?limit=20`);
             expect(afterCreate.status).toBe(200);
             expect(afterCreate.body.groups.created.total).toBe(3);
+        });
+
+        it('serves core Work Item state through the canonical origin shared by same-origin clones', async () => {
+            await restartWithOriginScopedServer();
+
+            const warmed = await request('GET', '/api/workspaces/clone-b/work-items?limit=20');
+            expect(warmed.status).toBe(200);
+            expect(warmed.body.total).toBe(0);
+
+            const created = await request('POST', '/api/workspaces/clone-a/work-items', {
+                title: 'Shared origin task',
+            });
+            expect(created.status).toBe(201);
+            expect(created.body.repoId).toBe('clone-a');
+
+            const originList = await request('GET', '/api/origins/gh_owner_repo/work-items?limit=20');
+            expect(originList.status).toBe(200);
+            expect(originList.body.items.map((item: any) => item.id)).toEqual([created.body.id]);
+
+            const cloneList = await request('GET', '/api/workspaces/clone-b/work-items?limit=20');
+            expect(cloneList.status).toBe(200);
+            expect(cloneList.body.items.map((item: any) => item.id)).toEqual([created.body.id]);
+
+            const updated = await request(
+                'PATCH',
+                `/api/origins/gh_owner_repo/work-items/${created.body.id}?workspaceId=clone-a`,
+                { title: 'Updated through origin' },
+            );
+            expect(updated.status).toBe(200);
+            expect(updated.body.title).toBe('Updated through origin');
+
+            const detailFromOtherClone = await request('GET', `/api/workspaces/clone-b/work-items/${created.body.id}`);
+            expect(detailFromOtherClone.status).toBe(200);
+            expect(detailFromOtherClone.body.title).toBe('Updated through origin');
+        });
+
+        it('rejects an explicit workspaceId that resolves to a different origin', async () => {
+            await restartWithOriginScopedServer();
+
+            const res = await request('GET', '/api/origins/gh_owner_repo/work-items?workspaceId=other-clone');
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain("not 'gh_owner_repo'");
         });
 
         it('filters by type', async () => {

@@ -7,17 +7,25 @@
  * validation, provider sync, cache invalidation, and broadcast behavior.
  *
  * Routes:
- *   GET    /api/workspaces/:id/work-items              — List work items (with filters)
- *   POST   /api/workspaces/:id/work-items              — Create work item
- *   GET    /api/workspaces/:id/work-items/:workItemId   — Get work item detail
- *   PATCH  /api/workspaces/:id/work-items/:workItemId   — Update work item
- *   DELETE /api/workspaces/:id/work-items/:workItemId   — Delete work item
+ *   GET    /api/origins/:originId/work-items              — List work items (with filters)
+ *   POST   /api/origins/:originId/work-items              — Create work item
+ *   GET    /api/origins/:originId/work-items/:workItemId   — Get work item detail
+ *   PATCH  /api/origins/:originId/work-items/:workItemId   — Update work item
+ *   DELETE /api/origins/:originId/work-items/:workItemId   — Delete work item
+ *
+ * Workspace URLs are still accepted during the origin API migration and resolve
+ * to the workspace's canonical origin for shared storage/cache keys.
  */
 
 import * as http from 'http';
 import * as url from 'url';
 import type { Route } from '../types';
-import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import {
+    detectRemoteUrl,
+    resolveCanonicalOriginId,
+    type ProcessStore,
+    type WorkspaceInfo,
+} from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody } from '../core/api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
 import type {
@@ -53,6 +61,22 @@ import {
 const VALID_SOURCES: Set<string> = new Set(['manual', 'chat', 'schedule']);
 const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);
 const VALID_TRACKER_KINDS: Set<string> = new Set(WORK_ITEM_TRACKER_KINDS);
+const WORK_ITEM_COLLECTION_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items$/;
+const WORK_ITEM_GROUPED_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/grouped$/;
+const WORK_ITEM_DETAIL_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/([^/]+)$/;
+const WORK_ITEM_REQUEST_CHANGES_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/([^/]+)\/request-changes$/;
+const WORK_ITEM_PIN_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/([^/]+)\/pin$/;
+const WORK_ITEM_ARCHIVE_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/([^/]+)\/archive$/;
+
+type WorkItemRouteScopeKind = 'workspaces' | 'origins';
+
+interface WorkItemRouteScope {
+    kind: WorkItemRouteScopeKind;
+    routeScopeId: string;
+    storageRepoId: string;
+    commandRepoId: string;
+    workspaceId?: string;
+}
 
 export interface WorkItemRouteContext {
     routes: Route[];
@@ -109,6 +133,102 @@ export async function buildWorkItemGroupedRouteResponse(
     return { groups };
 }
 
+function queryWorkspaceId(req: http.IncomingMessage): string | undefined {
+    const parsed = url.parse(req.url || '/', true);
+    const raw = parsed.query.workspaceId;
+    return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
+}
+
+async function workspaceOriginId(
+    workspace: WorkspaceInfo,
+    processStore?: Pick<ProcessStore, 'updateWorkspace'>,
+): Promise<string> {
+    let remoteUrl = workspace.remoteUrl;
+    if (!remoteUrl && workspace.rootPath) {
+        remoteUrl = await detectRemoteUrl(workspace.rootPath);
+        if (remoteUrl) {
+            await processStore?.updateWorkspace?.(workspace.id, { remoteUrl });
+        }
+    }
+    return resolveCanonicalOriginId({ remoteUrl, workspaceId: workspace.id });
+}
+
+async function resolveWorkItemRouteScope(
+    ctx: Pick<WorkItemRouteContext, 'processStore'>,
+    kind: WorkItemRouteScopeKind,
+    routeScopeId: string,
+    workspaceId?: string,
+): Promise<WorkItemRouteScope> {
+    if (kind === 'origins') {
+        if (!workspaceId) {
+            return {
+                kind,
+                routeScopeId,
+                storageRepoId: routeScopeId,
+                commandRepoId: routeScopeId,
+            };
+        }
+
+        const workspaces = await ctx.processStore?.getWorkspaces?.() ?? [];
+        const workspace = workspaces.find(entry => entry.id === workspaceId);
+        if (!workspace) {
+            throw badRequest(`workspaceId '${workspaceId}' is not registered`);
+        }
+        const resolvedOriginId = await workspaceOriginId(workspace, ctx.processStore);
+        if (resolvedOriginId !== routeScopeId) {
+            throw badRequest(`workspaceId '${workspaceId}' resolves to origin '${resolvedOriginId}', not '${routeScopeId}'`);
+        }
+        return {
+            kind,
+            routeScopeId,
+            storageRepoId: routeScopeId,
+            commandRepoId: workspaceId,
+            workspaceId,
+        };
+    }
+
+    const workspaces = await ctx.processStore?.getWorkspaces?.() ?? [];
+    const workspace = workspaces.find(entry => entry.id === routeScopeId);
+    const storageRepoId = workspace
+        ? await workspaceOriginId(workspace, ctx.processStore)
+        : routeScopeId;
+    return {
+        kind,
+        routeScopeId,
+        storageRepoId,
+        commandRepoId: routeScopeId,
+        workspaceId: routeScopeId,
+    };
+}
+
+function invalidateAndBroadcastOriginScope(
+    scope: WorkItemRouteScope,
+    getWsServer: WorkItemRouteContext['getWsServer'],
+    item: WorkItem,
+    type: 'work-item-added' | 'work-item-updated' = 'work-item-updated',
+): void {
+    if (scope.storageRepoId === scope.commandRepoId) return;
+    clearWorkItemResponseCacheForWorkspace(scope.storageRepoId);
+    getWsServer?.()?.broadcastProcessEvent({
+        type,
+        workspaceId: scope.storageRepoId,
+        item,
+    });
+}
+
+function invalidateAndBroadcastRemoval(
+    scope: WorkItemRouteScope,
+    getWsServer: WorkItemRouteContext['getWsServer'],
+    workItemId: string,
+): void {
+    clearWorkItemResponseCacheForWorkspace(scope.storageRepoId);
+    getWsServer?.()?.broadcastProcessEvent({
+        type: 'work-item-removed',
+        workspaceId: scope.storageRepoId,
+        itemId: workItemId,
+    });
+}
+
 export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
     const { routes, workItemStore, getWsServer } = ctx;
     // All valid types when hierarchy is enabled
@@ -127,17 +247,24 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
         broadcast: event => getWsServer?.()?.broadcastProcessEvent(event),
     };
 
-    // GET /api/workspaces/:id/work-items — List with optional filters
+    // GET /api/origins/:originId/work-items — List with optional filters
     routes.push({
         method: 'GET',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items$/,
+        pattern: WORK_ITEM_COLLECTION_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            const repoId = decodeURIComponent(match![1]);
+            const routeKind = match![1] as WorkItemRouteScopeKind;
+            const routeScopeId = decodeURIComponent(match![2]);
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolveWorkItemRouteScope(ctx, routeKind, routeScopeId, queryWorkspaceId(req));
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
             const parsed = url.parse(req.url || '/', true);
             const query = parsed.query;
             const force = query.force === 'true';
 
-            const filter: WorkItemFilter = { repoId };
+            const filter: WorkItemFilter = { repoId: scope.storageRepoId };
             if (typeof query.status === 'string' && query.status) {
                 const statuses = query.status.split(',').filter(isKnownWorkItemStatus);
                 if (statuses.length === 1) {
@@ -175,7 +302,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
 
             const response = await getOrRefreshWorkItemResponseCacheEntry(
                 makeWorkItemListResponseCacheKey(filter),
-                repoId,
+                scope.storageRepoId,
                 'list',
                 force,
                 () => buildWorkItemListRouteResponse(workItemStore, filter),
@@ -184,17 +311,24 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
         },
     });
 
-    // GET /api/workspaces/:id/work-items/grouped — List grouped by status with per-group pagination
+    // GET /api/origins/:originId/work-items/grouped — List grouped by status with per-group pagination
     routes.push({
         method: 'GET',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/grouped$/,
+        pattern: WORK_ITEM_GROUPED_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            const repoId = decodeURIComponent(match![1]);
+            const routeKind = match![1] as WorkItemRouteScopeKind;
+            const routeScopeId = decodeURIComponent(match![2]);
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolveWorkItemRouteScope(ctx, routeKind, routeScopeId, queryWorkspaceId(req));
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
             const parsed = url.parse(req.url || '/', true);
             const query = parsed.query;
             const force = query.force === 'true';
 
-            const filter: WorkItemFilter = { repoId };
+            const filter: WorkItemFilter = { repoId: scope.storageRepoId };
             if (typeof query.source === 'string' && VALID_SOURCES.has(query.source)) {
                 filter.source = query.source as WorkItemSource;
             }
@@ -220,7 +354,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
 
             const response = await getOrRefreshWorkItemResponseCacheEntry(
                 makeWorkItemGroupedResponseCacheKey(filter),
-                repoId,
+                scope.storageRepoId,
                 'grouped',
                 force,
                 () => buildWorkItemGroupedRouteResponse(workItemStore, filter),
@@ -229,21 +363,33 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
         },
     });
 
-    // POST /api/workspaces/:id/work-items — Create work item
+    // POST /api/origins/:originId/work-items — Create work item
     routes.push({
         method: 'POST',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items$/,
+        pattern: WORK_ITEM_COLLECTION_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            const repoId = decodeURIComponent(match![1]);
+            const routeKind = match![1] as WorkItemRouteScopeKind;
+            const routeScopeId = decodeURIComponent(match![2]);
             let body: any;
             try {
                 body = await parseBody(req);
             } catch {
                 return handleAPIError(res, badRequest('Invalid JSON body'));
             }
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolveWorkItemRouteScope(
+                    ctx,
+                    routeKind,
+                    routeScopeId,
+                    typeof body.workspaceId === 'string' ? body.workspaceId : queryWorkspaceId(req),
+                );
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
 
             try {
-                const item = await createWorkItemCommand(commandCtx, repoId, {
+                const item = await createWorkItemCommand(commandCtx, scope.commandRepoId, {
                     id: body.id,
                     title: body.title,
                     syncLinks: body.syncLinks,
@@ -259,6 +405,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                     successCriteria: body.successCriteria,
                     plan: body.plan,
                 });
+                invalidateAndBroadcastOriginScope(scope, getWsServer, item, 'work-item-added');
                 sendJSON(res, 201, item);
             } catch (err) {
                 handleAPIError(res, err);
@@ -266,15 +413,22 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
         },
     });
 
-    // GET /api/workspaces/:id/work-items/:workItemId — Get detail
+    // GET /api/origins/:originId/work-items/:workItemId — Get detail
     routes.push({
         method: 'GET',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)$/,
+        pattern: WORK_ITEM_DETAIL_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            const repoId = decodeURIComponent(match![1]);
-            const workItemId = decodeURIComponent(match![2]);
+            const routeKind = match![1] as WorkItemRouteScopeKind;
+            const routeScopeId = decodeURIComponent(match![2]);
+            const workItemId = decodeURIComponent(match![3]);
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolveWorkItemRouteScope(ctx, routeKind, routeScopeId, queryWorkspaceId(req));
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
 
-            const item = await workItemStore.getWorkItem(workItemId, repoId);
+            const item = await workItemStore.getWorkItem(workItemId, scope.storageRepoId);
             if (!item) {
                 return handleAPIError(res, notFound('Work item'));
             }
@@ -282,19 +436,31 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
         },
     });
 
-    // PATCH /api/workspaces/:id/work-items/:workItemId — Update work item
+    // PATCH /api/origins/:originId/work-items/:workItemId — Update work item
     routes.push({
         method: 'PATCH',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)$/,
+        pattern: WORK_ITEM_DETAIL_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            const repoId = decodeURIComponent(match![1]);
-            const workItemId = decodeURIComponent(match![2]);
+            const routeKind = match![1] as WorkItemRouteScopeKind;
+            const routeScopeId = decodeURIComponent(match![2]);
+            const workItemId = decodeURIComponent(match![3]);
 
             let body: any;
             try {
                 body = await parseBody(req);
             } catch {
                 return handleAPIError(res, badRequest('Invalid JSON body'));
+            }
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolveWorkItemRouteScope(
+                    ctx,
+                    routeKind,
+                    routeScopeId,
+                    typeof body.workspaceId === 'string' ? body.workspaceId : queryWorkspaceId(req),
+                );
+            } catch (err) {
+                return handleAPIError(res, err);
             }
 
             const input: UpdateWorkItemCommandInput = {};
@@ -315,7 +481,8 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             if (body.syncConflictResolution !== undefined) input.syncConflictResolution = body.syncConflictResolution;
 
             try {
-                const updated = await updateWorkItemCommand(commandCtx, repoId, workItemId, input);
+                const updated = await updateWorkItemCommand(commandCtx, scope.commandRepoId, workItemId, input);
+                invalidateAndBroadcastOriginScope(scope, getWsServer, updated);
                 sendJSON(res, 200, updated);
             } catch (err) {
                 handleAPIError(res, err);
@@ -323,13 +490,14 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
         },
     });
 
-    // POST /api/workspaces/:id/work-items/:workItemId/request-changes — Incorporate review comments into plan, transition to readyToExecute
+    // POST /api/origins/:originId/work-items/:workItemId/request-changes — Incorporate review comments into plan, transition to readyToExecute
     routes.push({
         method: 'POST',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/request-changes$/,
+        pattern: WORK_ITEM_REQUEST_CHANGES_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            const repoId = decodeURIComponent(match![1]);
-            const workItemId = decodeURIComponent(match![2]);
+            const routeKind = match![1] as WorkItemRouteScopeKind;
+            const routeScopeId = decodeURIComponent(match![2]);
+            const workItemId = decodeURIComponent(match![3]);
 
             let body: any;
             try {
@@ -337,13 +505,24 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             } catch {
                 return handleAPIError(res, badRequest('Invalid JSON body'));
             }
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolveWorkItemRouteScope(
+                    ctx,
+                    routeKind,
+                    routeScopeId,
+                    typeof body.workspaceId === 'string' ? body.workspaceId : queryWorkspaceId(req),
+                );
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
 
             const comments = body.comments;
             if (!Array.isArray(comments) || comments.length === 0) {
                 return handleAPIError(res, badRequest('At least one comment is required'));
             }
 
-            const item = await workItemStore.getWorkItem(workItemId, repoId);
+            const item = await workItemStore.getWorkItem(workItemId, scope.storageRepoId);
             if (!item) {
                 return handleAPIError(res, notFound('Work item'));
             }
@@ -397,39 +576,52 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             });
 
             if (updated) {
-                clearWorkItemResponseCacheForWorkspace(repoId);
-                getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
+                clearWorkItemResponseCacheForWorkspace(scope.storageRepoId);
+                getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: scope.storageRepoId, item: updated });
             }
 
             sendJSON(res, 200, { plan: planVersion, newVersion });
         },
     });
 
-    // DELETE /api/workspaces/:id/work-items/:workItemId — Delete work item
+    // DELETE /api/origins/:originId/work-items/:workItemId — Delete work item
     routes.push({
         method: 'DELETE',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)$/,
+        pattern: WORK_ITEM_DETAIL_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            const repoId = decodeURIComponent(match![1]);
-            const workItemId = decodeURIComponent(match![2]);
+            const routeKind = match![1] as WorkItemRouteScopeKind;
+            const routeScopeId = decodeURIComponent(match![2]);
+            const workItemId = decodeURIComponent(match![3]);
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolveWorkItemRouteScope(ctx, routeKind, routeScopeId, queryWorkspaceId(req));
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
 
             const removed = await workItemStore.removeWorkItem(workItemId);
             if (!removed) {
                 return handleAPIError(res, notFound('Work item'));
             }
-            clearWorkItemResponseCacheForWorkspace(repoId);
-            getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-removed', workspaceId: repoId, itemId: workItemId });
+            invalidateAndBroadcastRemoval(scope, getWsServer, workItemId);
             sendJSON(res, 204, null);
         },
     });
 
-    // PATCH /api/workspaces/:id/work-items/:workItemId/pin — Pin/unpin work item
+    // PATCH /api/origins/:originId/work-items/:workItemId/pin — Pin/unpin work item
     routes.push({
         method: 'PATCH',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/pin$/,
+        pattern: WORK_ITEM_PIN_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            const repoId = decodeURIComponent(match![1]);
-            const workItemId = decodeURIComponent(match![2]);
+            const routeKind = match![1] as WorkItemRouteScopeKind;
+            const routeScopeId = decodeURIComponent(match![2]);
+            const workItemId = decodeURIComponent(match![3]);
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolveWorkItemRouteScope(ctx, routeKind, routeScopeId, queryWorkspaceId(req));
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
 
             let body: any;
             try {
@@ -454,19 +646,26 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 return handleAPIError(res, notFound('Work item'));
             }
 
-            clearWorkItemResponseCacheForWorkspace(repoId);
-            getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
+            clearWorkItemResponseCacheForWorkspace(scope.storageRepoId);
+            getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: scope.storageRepoId, item: updated });
             sendJSON(res, 200, updated);
         },
     });
 
-    // PATCH /api/workspaces/:id/work-items/:workItemId/archive — Archive/unarchive work item
+    // PATCH /api/origins/:originId/work-items/:workItemId/archive — Archive/unarchive work item
     routes.push({
         method: 'PATCH',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/archive$/,
+        pattern: WORK_ITEM_ARCHIVE_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            const repoId = decodeURIComponent(match![1]);
-            const workItemId = decodeURIComponent(match![2]);
+            const routeKind = match![1] as WorkItemRouteScopeKind;
+            const routeScopeId = decodeURIComponent(match![2]);
+            const workItemId = decodeURIComponent(match![3]);
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolveWorkItemRouteScope(ctx, routeKind, routeScopeId, queryWorkspaceId(req));
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
 
             let body: any;
             try {
@@ -491,8 +690,8 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 return handleAPIError(res, notFound('Work item'));
             }
 
-            clearWorkItemResponseCacheForWorkspace(repoId);
-            getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
+            clearWorkItemResponseCacheForWorkspace(scope.storageRepoId);
+            getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: scope.storageRepoId, item: updated });
             sendJSON(res, 200, updated);
         },
     });
