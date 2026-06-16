@@ -2,8 +2,12 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
-import { getRepoDataPath } from '@plusplusoneplusplus/forge';
-import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
+import { getRepoDataPath, type ProcessStore, type WorkspaceInfo } from '@plusplusoneplusplus/forge';
+import {
+    FileWorkItemStore,
+    createWorkItemStorageScopeResolver,
+    type WorkItemStorageScope,
+} from '../../../src/server/work-items/work-item-store';
 import type { WorkItem, WorkItemIndexEntry, WorkItemPlanVersion, WorkItemExecution } from '../../../src/server/work-items/types';
 
 let tmpDir: string;
@@ -102,6 +106,15 @@ async function writeLegacyWorkItem(item: WorkItem & MaybeLegacySyncLinks): Promi
     await fs.writeFile(indexPath, JSON.stringify(nextIndex, null, 2), 'utf-8');
 }
 
+async function pathExists(targetPath: string): Promise<boolean> {
+    try {
+        await fs.access(targetPath);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-test-'));
     store = new FileWorkItemStore({ dataDir: tmpDir });
@@ -143,6 +156,120 @@ describe('FileWorkItemStore', () => {
             const found = await store.getWorkItem('wi-cross');
             expect(found).toBeDefined();
             expect(found!.id).toBe('wi-cross');
+        });
+    });
+
+    describe('origin-scoped storage', () => {
+        const sameOriginScope: WorkItemStorageScope = {
+            storageRepoId: 'gh_owner_repo',
+            legacyRepoIds: ['clone-a', 'clone-b'],
+        };
+
+        it('stores same-origin clone work items under one canonical origin directory', async () => {
+            const scopedStore = new FileWorkItemStore({
+                dataDir: tmpDir,
+                scopeResolver: () => sameOriginScope,
+            });
+
+            const item = makeWorkItem({ id: 'origin-shared', repoId: 'clone-a' });
+            await scopedStore.addWorkItem(item);
+
+            const originDir = getRepoDataPath(tmpDir, 'gh_owner_repo', 'work-items');
+            expect(await pathExists(path.join(originDir, 'origin-shared.json'))).toBe(true);
+            expect(await pathExists(getRepoDataPath(tmpDir, 'clone-a', 'work-items'))).toBe(false);
+
+            const fromOtherClone = await scopedStore.getWorkItem('origin-shared', 'clone-b');
+            expect(fromOtherClone?.id).toBe('origin-shared');
+
+            const listFromOtherClone = await scopedStore.listWorkItems({ repoId: 'clone-b' });
+            expect(listFromOtherClone.items.map(entry => entry.id)).toEqual(['origin-shared']);
+        });
+
+        it('migrates legacy same-origin workspace directories into the canonical origin directory', async () => {
+            const legacyItem = makeWorkItem({
+                id: 'legacy-origin',
+                repoId: 'clone-a',
+                workItemNumber: 7,
+                plan: {
+                    version: 1,
+                    content: 'legacy plan',
+                    updatedAt: '2026-01-01T00:00:00.000Z',
+                    resolvedBy: 'user',
+                },
+            });
+            await writeLegacyWorkItem(legacyItem);
+            const legacyDir = getRepoDataPath(tmpDir, 'clone-a', 'work-items');
+            await fs.mkdir(path.join(legacyDir, 'plans', legacyItem.id), { recursive: true });
+            await fs.writeFile(
+                path.join(legacyDir, 'plans', legacyItem.id, 'v1.md'),
+                'legacy plan',
+                'utf-8',
+            );
+            await fs.writeFile(
+                path.join(legacyDir, 'counter.json'),
+                JSON.stringify({ next: 8 }, null, 2),
+                'utf-8',
+            );
+
+            const scopedStore = new FileWorkItemStore({
+                dataDir: tmpDir,
+                scopeResolver: () => sameOriginScope,
+            });
+
+            const list = await scopedStore.listWorkItems({ repoId: 'clone-b' });
+            expect(list.items.map(entry => entry.id)).toEqual(['legacy-origin']);
+            expect(await pathExists(legacyDir)).toBe(false);
+
+            const originDir = getRepoDataPath(tmpDir, 'gh_owner_repo', 'work-items');
+            expect(await pathExists(path.join(originDir, 'legacy-origin.json'))).toBe(true);
+
+            const versions = await scopedStore.getPlanVersions('legacy-origin');
+            expect(versions).toHaveLength(1);
+            expect(versions[0].content).toBe('legacy plan');
+
+            const nextItem = makeWorkItem({ id: 'post-migration', repoId: 'clone-b' });
+            await scopedStore.addWorkItem(nextItem);
+            expect(nextItem.workItemNumber).toBe(8);
+        });
+
+        it('derives canonical origin scopes and sibling legacy directories from workspace metadata', async () => {
+            const workspaces: WorkspaceInfo[] = [
+                {
+                    id: 'clone-a',
+                    name: 'Clone A',
+                    rootPath: '/repo/a',
+                    remoteUrl: 'https://github.com/Owner/Repo.git',
+                },
+                {
+                    id: 'clone-b',
+                    name: 'Clone B',
+                    rootPath: '/repo/b',
+                    remoteUrl: 'git@github.com:owner/repo.git',
+                },
+                {
+                    id: 'other',
+                    name: 'Other',
+                    rootPath: '/repo/other',
+                    remoteUrl: 'https://github.com/owner/other.git',
+                },
+            ];
+            const processStore: Pick<ProcessStore, 'getWorkspaces' | 'updateWorkspace'> = {
+                getWorkspaces: async () => workspaces,
+                updateWorkspace: async (id, updates) => {
+                    const workspace = workspaces.find(entry => entry.id === id);
+                    if (!workspace) return undefined;
+                    Object.assign(workspace, updates);
+                    return workspace;
+                },
+            };
+            const resolver = createWorkItemStorageScopeResolver(processStore);
+
+            const scope = await resolver('clone-a');
+            if (!scope || typeof scope === 'string') {
+                throw new Error('Expected structured origin scope');
+            }
+            expect(scope.storageRepoId).toBe('gh_owner_repo');
+            expect(scope.legacyRepoIds?.sort()).toEqual(['clone-a', 'clone-b']);
         });
     });
 

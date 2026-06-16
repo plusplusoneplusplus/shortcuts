@@ -246,6 +246,7 @@ Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT.
 **Per-repo (`~/.coc/repos/<workspaceId>/`):**
 - `queues.json`, `schedules.json`, `git-ops.json`, `preferences.json`
 - `pr-coworker-roster/<repoId>.json` — Pull Requests tab Team roster entries for the workspace/repo
+- `work-items/` under canonical origin directories (`~/.coc/repos/<originId>/work-items/`) — Work Item JSON files, index, counter, and plan versions shared by same-origin clones; workspace directories migrate into the origin directory on first store access
 - `tasks/` — task and plan files
 - `outputs/` — AI conversation output markdown
 - `memory/MEMORY.md` — per-repo bounded memory
