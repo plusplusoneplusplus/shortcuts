@@ -716,6 +716,12 @@ the input:
   `recordSkillUsage`), `RepoSettingsTab` (mcp-config, skills, instructions, repo
   prefs, processes, description PATCH), `RepoDetail` (work-items badge preview),
   and `WorkItemsTab` (commit file list).
+- `RalphStartPanel` builds raw `fetch` URLs against `cloneApiBase(workspaceId)`
+  (absolute remote base, or local when unregistered) for its whole flow: the
+  goal-file read (`/fs/blob?path=...`) and the `ralph-launch` / `processes/:id/
+  ralph-start` POSTs — so a remote clone's goal file and Ralph session target the
+  clone's server (the local server 403s a remote-only path as "outside trusted
+  directories").
 - The Activity WRITE path `useSendMessage` routes `processes.sendMessage` /
   `promoteToRalph` through `getCocClientForWorkspace(workspaceId)`; the
   Activity events stream `useChatSSE` opens its `EventSource` at
