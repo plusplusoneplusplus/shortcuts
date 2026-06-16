@@ -48,6 +48,14 @@ export interface CanvasDescriptor {
     revision: number;
     createdAt: string;
     updatedAt: string;
+    /**
+     * Strictly-monotonic per-store ordering counter, bumped on every
+     * create/update. Breaks `updatedAt` ties in `listCanvases` so the most
+     * recently touched canvas sorts first even when several writes land in the
+     * same millisecond. Optional: descriptors written before this field existed
+     * fall back to `updatedAt` ordering.
+     */
+    seq?: number;
     /** Process that created the canvas (links the canvas to a chat). */
     processId?: string;
     lastEditor: CanvasEditor;
@@ -194,7 +202,21 @@ function writeFileAtomic(filePath: string, data: string): void {
 // ============================================================================
 
 export class CanvasStore {
+    /**
+     * Monotonic counter assigned to each create/update as `CanvasDescriptor.seq`.
+     * Breaks `updatedAt` ties in `listCanvases` so the most recently touched
+     * canvas sorts first even when several writes share a millisecond timestamp.
+     * Per store instance and in-memory only; cross-timestamp ordering still
+     * relies on `updatedAt`, so a fresh process (counter reset to 0) keeps older
+     * canvases correctly ordered by their persisted timestamps.
+     */
+    private seqCounter = 0;
+
     constructor(private readonly dataDir: string) {}
+
+    private nextSeq(): number {
+        return ++this.seqCounter;
+    }
 
     private getWorkspaceRoot(workspaceId: string): string {
         return getRepoDataPath(this.dataDir, workspaceId, CANVASES_DIR_NAME);
@@ -218,6 +240,7 @@ export class CanvasStore {
             revision: 1,
             createdAt: now,
             updatedAt: now,
+            seq: this.nextSeq(),
             ...(input.processId ? { processId: input.processId } : {}),
             lastEditor: input.editor ?? 'ai',
             content: input.content,
@@ -267,7 +290,15 @@ export class CanvasStore {
             }
         }
 
-        descriptors.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
+        // Newest first by wall-clock timestamp, with the monotonic seq breaking
+        // ties when writes share a millisecond so the most recently touched
+        // canvas is always first.
+        descriptors.sort((a, b) => {
+            if (a.updatedAt !== b.updatedAt) {
+                return a.updatedAt < b.updatedAt ? 1 : -1;
+            }
+            return (b.seq ?? 0) - (a.seq ?? 0);
+        });
         return descriptors;
     }
 
@@ -308,6 +339,7 @@ export class CanvasStore {
             content,
             revision: existing.revision + 1,
             updatedAt: new Date().toISOString(),
+            seq: this.nextSeq(),
             lastEditor: input.editor,
         };
         this.persist(updated);
@@ -396,6 +428,7 @@ export class CanvasStore {
             ...existing,
             revision: existing.revision + 1,
             updatedAt: new Date().toISOString(),
+            seq: this.nextSeq(),
             lastEditor: editor,
         };
         this.persist(updated);
