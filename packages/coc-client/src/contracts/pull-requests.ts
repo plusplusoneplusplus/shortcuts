@@ -175,7 +175,7 @@ export interface PullRequestChatBindingListResponse {
 
 export interface PullRequestChatFreshResponse {
   prId: string;
-  archivedTaskId: string;
+  archivedTaskId: string | null;
 }
 
 // ── Classification (focused-diff) ───────────────────────────────────

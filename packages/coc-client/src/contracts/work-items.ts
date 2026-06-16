@@ -262,7 +262,7 @@ export interface WorkItemChatBindingListResponse {
 
 export interface WorkItemChatFreshResponse {
   workItemId: string;
-  archivedTaskId: string;
+  archivedTaskId: string | null;
 }
 
 export interface WorkItemGroupedResponse {

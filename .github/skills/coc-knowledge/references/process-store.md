@@ -23,7 +23,7 @@ Default backend. Single `processes.db` file at `~/.coc/processes.db`. Schema ver
 | `task_groups` | Generic parent/child task-group registry: one row per hierarchical run/session (type, title, normalized status, hidden flag, origin process, extra JSON) |
 | `task_group_members` | Child links per task group: role ('generation'/'item'/'reduce'/'iteration'/'final-check'/'analyzer'/'critic'), task/process IDs, itemKey, memberIndex |
 
-Commit, Pull Request, and Work Item binding routes also expose a workspace-scoped fresh-chat operation that archives the currently bound process and deletes only that target's binding. It does not fork the process, copy conversation turns, or create a new process record; the next lens send uses the normal target-specific creation flow to bind a fresh chat.
+Commit, Pull Request, and Work Item binding routes also expose a workspace-scoped fresh-chat operation that archives the currently bound process and deletes only that target's binding. If the binding points to a missing process, the operation treats it as stale, deletes only the binding, and returns `archivedTaskId: null`. It does not fork the process, copy conversation turns, or create a new process record; the next lens send uses the normal target-specific creation flow to bind a fresh chat.
 
 ### Key Features
 
