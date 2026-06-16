@@ -56,4 +56,13 @@ describe('remote-clone routing sweep', () => {
         expect(workItemsTab).toContain('/git/commits/');
         expect(workItemsTab).not.toContain('fetchApi');
     });
+
+    it('useRalphSessionView routes the per-session journal read to the clone', () => {
+        const ralphView = read('features/chat/useRalphSessionView.ts');
+        expect(ralphView).toContain('getCocClientForWorkspace(workspaceId)');
+        expect(ralphView).toContain('.workspaces.ralphSession(workspaceId, sessionId)');
+        // The bare local singleton must not return — it 404s a remote clone's
+        // session ("Ralph session not found").
+        expect(ralphView).not.toContain('getSpaCocClient');
+    });
 });
