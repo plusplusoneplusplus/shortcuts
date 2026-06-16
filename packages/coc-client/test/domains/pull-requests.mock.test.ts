@@ -247,6 +247,41 @@ describe('PullRequestsClient mock coverage', () => {
     expectEmptyRequest(mock.requests[2], 'DELETE', '/api/repos/repo-1/pull-requests/recent-opened/42', { workspaceId: 'ws-1' });
   });
 
+  it('lists, records, and removes recently opened PRs by origin', async () => {
+    mock = await startMockServer();
+    const now = new Date('2026-06-03T00:00:00.000Z').toISOString();
+    const entry = {
+      workspaceId: 'ws-1',
+      repoId: 'repo-1',
+      number: 42,
+      title: 'Add recent list',
+      webUrl: 'https://github.com/org/repo/pull/42',
+      openedAt: now,
+    };
+    mock.on('GET', '/api/origins/gh_owner_repo/pull-requests/recent-opened', { body: { entries: [entry] } });
+    mock.on('POST', '/api/origins/gh_owner_repo/pull-requests/recent-opened', { body: { entries: [entry] } });
+    mock.on('DELETE', '/api/origins/gh_owner_repo/pull-requests/recent-opened/42', { body: { entries: [] } });
+    const client = createClient(mock);
+
+    await expect(client.pullRequests.listRecentOpenedForOrigin('gh_owner_repo', { workspaceId: 'ws-1', repoId: 'repo-1' })).resolves.toEqual({ entries: [entry] });
+    await expect(client.pullRequests.recordRecentOpenedForOrigin('gh_owner_repo', {
+      number: 42,
+      title: 'Add recent list',
+      webUrl: 'https://github.com/org/repo/pull/42',
+    }, { workspaceId: 'ws-1', repoId: 'repo-1' })).resolves.toEqual({ entries: [entry] });
+    await expect(client.pullRequests.removeRecentOpenedForOrigin('gh_owner_repo', 42, { workspaceId: 'ws-1', repoId: 'repo-1' })).resolves.toEqual({ entries: [] });
+
+    expectEmptyRequest(mock.requests[0], 'GET', '/api/origins/gh_owner_repo/pull-requests/recent-opened', { workspaceId: 'ws-1', repoId: 'repo-1' });
+    expectJsonRequest(mock.requests[1], 'POST', '/api/origins/gh_owner_repo/pull-requests/recent-opened', {
+      workspaceId: 'ws-1',
+      repoId: 'repo-1',
+      number: 42,
+      title: 'Add recent list',
+      webUrl: 'https://github.com/org/repo/pull/42',
+    });
+    expectEmptyRequest(mock.requests[2], 'DELETE', '/api/origins/gh_owner_repo/pull-requests/recent-opened/42', { workspaceId: 'ws-1', repoId: 'repo-1' });
+  });
+
   it('lists, adds, and removes Team coworker roster entries', async () => {
     mock = await startMockServer();
     const now = new Date('2026-06-05T00:00:00.000Z').toISOString();
@@ -280,6 +315,42 @@ describe('PullRequestsClient mock coverage', () => {
       avatarUrl: 'https://avatars.example.invalid/u/123',
     });
     expectEmptyRequest(mock.requests[2], 'DELETE', '/api/repos/repo-1/pull-requests/coworker-roster/123', { workspaceId: 'ws-1' });
+  });
+
+  it('lists, adds, and removes Team coworker roster entries by origin', async () => {
+    mock = await startMockServer();
+    const now = new Date('2026-06-05T00:00:00.000Z').toISOString();
+    const entry = {
+      id: '123',
+      displayName: 'Mona Dev',
+      email: 'mona@example.invalid',
+      avatarUrl: 'https://avatars.example.invalid/u/123',
+      addedAt: now,
+    };
+    mock.on('GET', '/api/origins/gh_owner_repo/pull-requests/coworker-roster', { body: { entries: [entry] } });
+    mock.on('POST', '/api/origins/gh_owner_repo/pull-requests/coworker-roster', { body: { entries: [entry] } });
+    mock.on('DELETE', '/api/origins/gh_owner_repo/pull-requests/coworker-roster/123', { body: { entries: [] } });
+    const client = createClient(mock);
+
+    await expect(client.pullRequests.listCoworkerRosterForOrigin('gh_owner_repo', { workspaceId: 'ws-1', repoId: 'repo-1' })).resolves.toEqual({ entries: [entry] });
+    await expect(client.pullRequests.addCoworkerToRosterForOrigin('gh_owner_repo', {
+      id: '123',
+      displayName: 'Mona Dev',
+      email: 'mona@example.invalid',
+      avatarUrl: 'https://avatars.example.invalid/u/123',
+    }, { workspaceId: 'ws-1', repoId: 'repo-1' })).resolves.toEqual({ entries: [entry] });
+    await expect(client.pullRequests.removeCoworkerFromRosterForOrigin('gh_owner_repo', '123', { workspaceId: 'ws-1', repoId: 'repo-1' })).resolves.toEqual({ entries: [] });
+
+    expectEmptyRequest(mock.requests[0], 'GET', '/api/origins/gh_owner_repo/pull-requests/coworker-roster', { workspaceId: 'ws-1', repoId: 'repo-1' });
+    expectJsonRequest(mock.requests[1], 'POST', '/api/origins/gh_owner_repo/pull-requests/coworker-roster', {
+      workspaceId: 'ws-1',
+      repoId: 'repo-1',
+      id: '123',
+      displayName: 'Mona Dev',
+      email: 'mona@example.invalid',
+      avatarUrl: 'https://avatars.example.invalid/u/123',
+    });
+    expectEmptyRequest(mock.requests[2], 'DELETE', '/api/origins/gh_owner_repo/pull-requests/coworker-roster/123', { workspaceId: 'ws-1', repoId: 'repo-1' });
   });
 
   it('lists, gets, creates, and deletes pull-request chat bindings', async () => {

@@ -59,7 +59,11 @@ import {
     autoClassifyTeamPullRequests,
     type TeamAutoClassifiablePullRequest,
 } from './pr-team-auto-classification';
-import { resolvePullRequestStorageScope, type PullRequestStorageScope } from './pr-origin-scope';
+import {
+    resolvePullRequestOriginStorageScope,
+    resolvePullRequestStorageScope,
+    type PullRequestStorageScope,
+} from './pr-origin-scope';
 import type { RepoInfo } from './types';
 
 // ============================================================================
@@ -115,6 +119,47 @@ function parseWorkspaceId(req: Parameters<Route['handler']>[0], body: unknown, r
     }
     const parsed = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`);
     return parsed.searchParams.get('workspaceId')?.trim() || repoId;
+}
+
+function parseOptionalScopeValue(
+    req: Parameters<Route['handler']>[0],
+    body: unknown,
+    key: 'workspaceId' | 'repoId',
+): string | undefined {
+    if (body && typeof body === 'object') {
+        const raw = (body as Record<string, unknown>)[key];
+        if (typeof raw === 'string' && raw.trim()) {
+            return raw.trim();
+        }
+    }
+    const parsed = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`);
+    return parsed.searchParams.get(key)?.trim() || undefined;
+}
+
+function parseOriginId(raw: string): string | null {
+    const originId = decodeURIComponent(raw).trim();
+    return originId || null;
+}
+
+interface OriginPrStateScope {
+    workspaceId: string;
+    repoId: string;
+    storageScope: PullRequestStorageScope;
+}
+
+async function resolveOriginPrStateScope(
+    req: Parameters<Route['handler']>[0],
+    body: unknown,
+    originId: string,
+    processStore?: ProcessStore,
+): Promise<OriginPrStateScope> {
+    const workspaceId = parseOptionalScopeValue(req, body, 'workspaceId') ?? originId;
+    const repoId = parseOptionalScopeValue(req, body, 'repoId') ?? workspaceId;
+    return {
+        workspaceId,
+        repoId,
+        storageScope: await resolvePullRequestOriginStorageScope({ originId, processStore }),
+    };
 }
 
 async function resolvePrStorageScopeForRoute(
@@ -803,6 +848,143 @@ export function registerPrRoutes(
     autoClassification?: PullRequestAutoClassificationOptions,
 ): void {
     const svc = service ?? new RepoTreeService(dataDir, undefined, store);
+
+    // -- Origin-scoped recent PRs ---------------------------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/origins\/([^/]+)\/pull-requests\/recent-opened$/,
+        handler: async (req, res, match) => {
+            try {
+                const originId = parseOriginId(match![1]);
+                if (!originId) return send400(res, 'originId must be a non-empty string');
+                const { workspaceId, repoId, storageScope } = await resolveOriginPrStateScope(req, undefined, originId, store);
+                const entries = listRecentOpenedPullRequests(dataDir, workspaceId, repoId, storageScope);
+                return sendJson(res, { entries });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/origins\/([^/]+)\/pull-requests\/recent-opened$/,
+        handler: async (req, res, match) => {
+            try {
+                const originId = parseOriginId(match![1]);
+                if (!originId) return send400(res, 'originId must be a non-empty string');
+
+                let raw: unknown;
+                try {
+                    raw = await readJsonBody<unknown>(req);
+                } catch {
+                    return send400(res, 'Invalid JSON body');
+                }
+
+                const validation = validateRecentOpenedPullRequestInput(raw);
+                if (!validation.ok) {
+                    return send400(res, validation.error);
+                }
+
+                const { workspaceId, repoId, storageScope } = await resolveOriginPrStateScope(req, raw, originId, store);
+                const entries = recordRecentOpenedPullRequest(dataDir, workspaceId, repoId, validation.entry, undefined, storageScope);
+                return sendJson(res, { entries });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    routes.push({
+        method: 'DELETE',
+        pattern: /^\/api\/origins\/([^/]+)\/pull-requests\/recent-opened\/([^/]+)$/,
+        handler: async (req, res, match) => {
+            try {
+                const originId = parseOriginId(match![1]);
+                if (!originId) return send400(res, 'originId must be a non-empty string');
+                const rawPrNumber = decodeURIComponent(match![2]);
+                const prNumber = parsePositiveIntegerPathSegment(rawPrNumber);
+                if (prNumber === null) {
+                    return send400(res, 'prNumber must be a positive integer');
+                }
+
+                const { workspaceId, repoId, storageScope } = await resolveOriginPrStateScope(req, undefined, originId, store);
+                const entries = removeRecentOpenedPullRequest(dataDir, workspaceId, repoId, prNumber, storageScope);
+                return sendJson(res, { entries });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    // -- Origin-scoped Team roster --------------------------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/origins\/([^/]+)\/pull-requests\/coworker-roster$/,
+        handler: async (req, res, match) => {
+            try {
+                const originId = parseOriginId(match![1]);
+                if (!originId) return send400(res, 'originId must be a non-empty string');
+                const { workspaceId, repoId, storageScope } = await resolveOriginPrStateScope(req, undefined, originId, store);
+                const entries = listPullRequestCoworkerRoster(dataDir, workspaceId, repoId, storageScope);
+                return sendJson(res, { entries });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/origins\/([^/]+)\/pull-requests\/coworker-roster$/,
+        handler: async (req, res, match) => {
+            try {
+                const originId = parseOriginId(match![1]);
+                if (!originId) return send400(res, 'originId must be a non-empty string');
+
+                let raw: unknown;
+                try {
+                    raw = await readJsonBody<unknown>(req);
+                } catch {
+                    return send400(res, 'Invalid JSON body');
+                }
+
+                const validation = validatePullRequestCoworkerRosterInput(raw);
+                if (!validation.ok) {
+                    return send400(res, validation.error);
+                }
+
+                const { workspaceId, repoId, storageScope } = await resolveOriginPrStateScope(req, raw, originId, store);
+                const entries = addPullRequestCoworkerToRoster(dataDir, workspaceId, repoId, validation.entry, undefined, storageScope);
+                return sendJson(res, { entries });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    routes.push({
+        method: 'DELETE',
+        pattern: /^\/api\/origins\/([^/]+)\/pull-requests\/coworker-roster\/([^/]+)$/,
+        handler: async (req, res, match) => {
+            try {
+                const originId = parseOriginId(match![1]);
+                if (!originId) return send400(res, 'originId must be a non-empty string');
+                const coworkerKey = decodeURIComponent(match![2]).trim();
+                if (!coworkerKey) {
+                    return send400(res, 'coworkerKey must be a non-empty string');
+                }
+
+                const { workspaceId, repoId, storageScope } = await resolveOriginPrStateScope(req, undefined, originId, store);
+                const entries = removePullRequestCoworkerFromRoster(dataDir, workspaceId, repoId, coworkerKey, storageScope);
+                return sendJson(res, { entries });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
 
     // -- List PRs -------------------------------------------------------------
 

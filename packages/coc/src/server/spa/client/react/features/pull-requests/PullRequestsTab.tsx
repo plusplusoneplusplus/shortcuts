@@ -17,6 +17,7 @@ import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import type { PullRequestCoworkerRosterEntry, PrSuggestion, RecentOpenedPullRequestEntry } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useCocClient } from '../../repos/cloneRouting';
+import { resolveCanonicalOriginId } from '../../repos/originScope';
 import { useApp } from '../../contexts/AppContext';
 import { cn } from '../../ui';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
@@ -169,6 +170,10 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
     // Route PR list/suggestions/roster/classification to the workspace's clone
     // (AC-07). All PR calls here are scoped to this workspace's repo.
     const cloneClient = useCocClient(workspaceId);
+    const originId = useMemo(
+        () => resolveCanonicalOriginId({ workspaceId, remoteUrl }),
+        [workspaceId, remoteUrl],
+    );
     const sessionContextDragEnabled = isSessionContextAttachmentsEnabled();
     const [prs, setPrs] = useState<PullRequest[]>([]);
     const [loading, setLoading] = useState(false);
@@ -340,7 +345,7 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
     useEffect(() => {
         let cancelled = false;
         setRecentOpenedPrs([]);
-        cloneClient.pullRequests.listRecentOpened(repoId, workspaceId)
+        cloneClient.pullRequests.listRecentOpenedForOrigin(originId, { workspaceId, repoId })
             .then(data => {
                 if (!cancelled) {
                     setRecentOpenedPrs(data.entries ?? []);
@@ -352,7 +357,7 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
                 }
             });
         return () => { cancelled = true; };
-    }, [repoId, workspaceId, cloneClient]);
+    }, [repoId, workspaceId, originId, cloneClient]);
 
     useEffect(() => {
         let cancelled = false;
@@ -360,7 +365,7 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
         setInactiveCoworkerKeys(new Set());
         setCoworkerPickerKey('');
         setCoworkerRosterError(null);
-        cloneClient.pullRequests.listCoworkerRoster(repoId, workspaceId)
+        cloneClient.pullRequests.listCoworkerRosterForOrigin(originId, { workspaceId, repoId })
             .then(data => {
                 if (!cancelled) {
                     setCoworkerRoster(data.entries ?? []);
@@ -372,7 +377,7 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
                 }
             });
         return () => { cancelled = true; };
-    }, [repoId, workspaceId, cloneClient]);
+    }, [repoId, workspaceId, originId, cloneClient]);
 
     useEffect(() => {
         const rosterKeys = new Set(coworkerRoster.map(getCoworkerRosterIdentityKey));
@@ -714,12 +719,12 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
         setCoworkerRosterSavingKey('add');
         setCoworkerRosterError(null);
         try {
-            const data = await cloneClient.pullRequests.addCoworkerToRoster(repoId, workspaceId, {
+            const data = await cloneClient.pullRequests.addCoworkerToRosterForOrigin(originId, {
                 id: candidate.id,
                 displayName: candidate.displayName,
                 ...(candidate.email ? { email: candidate.email } : {}),
                 ...(candidate.avatarUrl ? { avatarUrl: candidate.avatarUrl } : {}),
-            });
+            }, { workspaceId, repoId });
             setCoworkerRoster(data.entries ?? []);
             setCoworkerPickerKey('');
         } catch (err) {
@@ -727,7 +732,7 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
         } finally {
             setCoworkerRosterSavingKey(null);
         }
-    }, [addableCoworkerCandidates, coworkerPickerKey, repoId, workspaceId, cloneClient]);
+    }, [addableCoworkerCandidates, coworkerPickerKey, repoId, workspaceId, originId, cloneClient]);
 
     const handleRemoveCoworker = useCallback(async (entry: Pick<PullRequestCoworkerRosterEntry, 'id' | 'displayName'>) => {
         const key = getCoworkerRosterIdentityKey(entry);
@@ -739,7 +744,7 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
         setCoworkerRosterSavingKey(`remove:${key}`);
         setCoworkerRosterError(null);
         try {
-            const data = await cloneClient.pullRequests.removeCoworkerFromRoster(repoId, workspaceId, key);
+            const data = await cloneClient.pullRequests.removeCoworkerFromRosterForOrigin(originId, key, { workspaceId, repoId });
             setCoworkerRoster(data.entries ?? []);
             setInactiveCoworkerKeys(prev => {
                 if (!prev.has(key)) return prev;
@@ -752,7 +757,7 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
         } finally {
             setCoworkerRosterSavingKey(null);
         }
-    }, [repoId, workspaceId, cloneClient]);
+    }, [repoId, workspaceId, originId, cloneClient]);
 
     function handleToggleBatchMode() {
         setBatchMode(prev => {
@@ -796,26 +801,29 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
         prNumber: number,
         pr: unknown,
     ) => {
-        const data = await cloneClient.pullRequests.recordRecentOpened(
-            targetRepoId,
-            targetWorkspaceId,
+        const targetWorkspace = (state.workspaces ?? []).find((ws: WorkspaceLike) => ws.id === targetWorkspaceId);
+        const targetOriginId = resolveCanonicalOriginId({
+            workspaceId: targetWorkspaceId,
+            remoteUrl: targetWorkspace?.remoteUrl ?? (targetWorkspaceId === workspaceId ? remoteUrl : undefined),
+        });
+        const data = await cloneClient.pullRequests.recordRecentOpenedForOrigin(
+            targetOriginId,
             buildRecentOpenedRecord(pr, prNumber),
+            { workspaceId: targetWorkspaceId, repoId: targetRepoId },
         );
-        if (targetRepoId === repoId && targetWorkspaceId === workspaceId) {
+        if (targetOriginId === originId) {
             setRecentOpenedPrs(data.entries ?? []);
         }
-    }, [repoId, workspaceId, cloneClient]);
+    }, [repoId, workspaceId, remoteUrl, originId, state.workspaces, cloneClient]);
 
     const removeRecentOpenedPr = useCallback(async (entry: RecentOpenedPullRequestEntry) => {
-        const data = await cloneClient.pullRequests.removeRecentOpened(
-            entry.repoId,
-            entry.workspaceId,
+        const data = await cloneClient.pullRequests.removeRecentOpenedForOrigin(
+            originId,
             entry.number,
+            { workspaceId: entry.workspaceId, repoId: entry.repoId },
         );
-        if (entry.repoId === repoId && entry.workspaceId === workspaceId) {
-            setRecentOpenedPrs(data.entries ?? []);
-        }
-    }, [repoId, workspaceId, cloneClient]);
+        setRecentOpenedPrs(data.entries ?? []);
+    }, [originId, cloneClient]);
 
     const handleRecentOpenedClick = useCallback(async (entry: RecentOpenedPullRequestEntry) => {
         if (openPrLoading) return;

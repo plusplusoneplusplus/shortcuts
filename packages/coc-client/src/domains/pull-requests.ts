@@ -41,6 +41,27 @@ function serializePrListQuery(query?: PullRequestListQuery): CocRequestOptions['
   };
 }
 
+type OriginPrStateOptions = Pick<CocRequestOptions, 'signal'> & {
+  workspaceId?: string;
+  repoId?: string;
+};
+
+function serializeOriginPrStateQuery(options?: OriginPrStateOptions): CocRequestOptions['query'] {
+  if (!options?.workspaceId && !options?.repoId) return undefined;
+  return {
+    workspaceId: options.workspaceId,
+    repoId: options.repoId,
+  };
+}
+
+function withOriginPrStateBody<T extends Record<string, unknown>>(body: T, options?: OriginPrStateOptions): T & { workspaceId?: string; repoId?: string } {
+  return {
+    ...(options?.workspaceId ? { workspaceId: options.workspaceId } : {}),
+    ...(options?.repoId ? { repoId: options.repoId } : {}),
+    ...body,
+  };
+}
+
 export class PullRequestsClient {
   constructor(
     private readonly transport: RequestAdapter,
@@ -114,6 +135,46 @@ export class PullRequestsClient {
     );
   }
 
+  listRecentOpenedForOrigin(originId: string, options?: OriginPrStateOptions): Promise<RecentOpenedPullRequestsResponse> {
+    return this.transport.request<RecentOpenedPullRequestsResponse>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/recent-opened`,
+      {
+        query: serializeOriginPrStateQuery(options),
+        signal: options?.signal,
+      },
+    );
+  }
+
+  recordRecentOpenedForOrigin(
+    originId: string,
+    entry: RecordRecentOpenedPullRequestRequest,
+    options?: OriginPrStateOptions,
+  ): Promise<RecentOpenedPullRequestsResponse> {
+    return this.transport.request<RecentOpenedPullRequestsResponse>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/recent-opened`,
+      {
+        method: 'POST',
+        body: withOriginPrStateBody({ ...entry }, options),
+        signal: options?.signal,
+      },
+    );
+  }
+
+  removeRecentOpenedForOrigin(
+    originId: string,
+    prNumber: number,
+    options?: OriginPrStateOptions,
+  ): Promise<RecentOpenedPullRequestsResponse> {
+    return this.transport.request<RecentOpenedPullRequestsResponse>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/recent-opened/${encodePathSegment(String(prNumber))}`,
+      {
+        method: 'DELETE',
+        query: serializeOriginPrStateQuery(options),
+        signal: options?.signal,
+      },
+    );
+  }
+
   listCoworkerRoster(repoId: string, workspaceId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestCoworkerRosterResponse> {
     return this.transport.request<PullRequestCoworkerRosterResponse>(
       `/repos/${encodePathSegment(repoId)}/pull-requests/coworker-roster`,
@@ -151,6 +212,46 @@ export class PullRequestsClient {
       {
         method: 'DELETE',
         query: { workspaceId },
+        signal: options?.signal,
+      },
+    );
+  }
+
+  listCoworkerRosterForOrigin(originId: string, options?: OriginPrStateOptions): Promise<PullRequestCoworkerRosterResponse> {
+    return this.transport.request<PullRequestCoworkerRosterResponse>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/coworker-roster`,
+      {
+        query: serializeOriginPrStateQuery(options),
+        signal: options?.signal,
+      },
+    );
+  }
+
+  addCoworkerToRosterForOrigin(
+    originId: string,
+    entry: AddPullRequestCoworkerRosterEntryRequest,
+    options?: OriginPrStateOptions,
+  ): Promise<PullRequestCoworkerRosterResponse> {
+    return this.transport.request<PullRequestCoworkerRosterResponse>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/coworker-roster`,
+      {
+        method: 'POST',
+        body: withOriginPrStateBody({ ...entry }, options),
+        signal: options?.signal,
+      },
+    );
+  }
+
+  removeCoworkerFromRosterForOrigin(
+    originId: string,
+    coworkerKey: string,
+    options?: OriginPrStateOptions,
+  ): Promise<PullRequestCoworkerRosterResponse> {
+    return this.transport.request<PullRequestCoworkerRosterResponse>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/coworker-roster/${encodePathSegment(coworkerKey)}`,
+      {
+        method: 'DELETE',
+        query: serializeOriginPrStateQuery(options),
         signal: options?.signal,
       },
     );

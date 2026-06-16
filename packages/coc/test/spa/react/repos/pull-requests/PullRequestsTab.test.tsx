@@ -162,6 +162,30 @@ describe('successful fetch', () => {
         expect(screen.getByText('PR Two')).toBeInTheDocument();
     });
 
+    it('loads recent-opened PRs and Team roster through canonical origin routes', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ pullRequests: [], entries: [] }));
+        global.fetch = fetchMock;
+
+        await act(async () => {
+            await renderTab({ remoteUrl: 'https://github.com/Org/Repo.git' });
+        });
+
+        await waitFor(() => expect(fetchMock.mock.calls.some(call =>
+            String(call[0]).includes('/origins/gh_org_repo/pull-requests/recent-opened') &&
+            String(call[0]).includes('workspaceId=ws-1') &&
+            String(call[0]).includes('repoId=repo-1'),
+        )).toBe(true));
+        expect(fetchMock.mock.calls.some(call =>
+            String(call[0]).includes('/origins/gh_org_repo/pull-requests/coworker-roster') &&
+            String(call[0]).includes('workspaceId=ws-1') &&
+            String(call[0]).includes('repoId=repo-1'),
+        )).toBe(true);
+        expect(fetchMock.mock.calls.some(call =>
+            String(call[0]).includes('/repos/repo-1/pull-requests/recent-opened') ||
+            String(call[0]).includes('/repos/repo-1/pull-requests/coworker-roster'),
+        )).toBe(false);
+    });
+
     it('renders the PR queue header with title and collapse toggle', async () => {
         mockFetchOk([]);
         await act(async () => { await renderTab(); });
@@ -1351,10 +1375,11 @@ describe('open PR by number or URL', () => {
 
         await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
         expect(String(fetchMock.mock.calls[3][0])).toContain('/repos/repo-1/pull-requests/7');
-        expect(String(fetchMock.mock.calls[4][0])).toContain('/repos/repo-1/pull-requests/recent-opened');
+        expect(String(fetchMock.mock.calls[4][0])).toContain('/origins/local_ws-1/pull-requests/recent-opened');
         expect(fetchMock.mock.calls[4][1]?.method).toBe('POST');
         expect(JSON.parse(fetchMock.mock.calls[4][1]?.body as string)).toMatchObject({
             workspaceId: 'ws-1',
+            repoId: 'repo-1',
             number: 7,
             title: 'Validated PR',
             webUrl: 'https://github.com/acme/web/pull/7?notification=1',
@@ -1415,9 +1440,10 @@ describe('open PR by number or URL', () => {
 
         await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
         expect(String(fetchMock.mock.calls[3][0])).toContain('/repos/ws-2/pull-requests/99');
-        expect(String(fetchMock.mock.calls[4][0])).toContain('/repos/ws-2/pull-requests/recent-opened');
+        expect(String(fetchMock.mock.calls[4][0])).toContain('/origins/gh_acme_api/pull-requests/recent-opened');
         expect(JSON.parse(fetchMock.mock.calls[4][1]?.body as string)).toMatchObject({
             workspaceId: 'ws-2',
+            repoId: 'ws-2',
             number: 99,
             title: 'API workspace PR',
         });
@@ -1489,7 +1515,9 @@ describe('open PR by number or URL', () => {
 
         await waitFor(() => expect(screen.getByTestId('open-pr-error')).toHaveTextContent('Pull request #77 not found.'));
         await waitFor(() => expect(screen.queryByTestId('recent-opened-prs')).not.toBeInTheDocument());
-        expect(String(fetchMock.mock.calls[4][0])).toContain('/repos/repo-1/pull-requests/recent-opened/77');
+        expect(String(fetchMock.mock.calls[4][0])).toContain('/origins/local_ws-1/pull-requests/recent-opened/77');
+        expect(String(fetchMock.mock.calls[4][0])).toContain('workspaceId=ws-1');
+        expect(String(fetchMock.mock.calls[4][0])).toContain('repoId=repo-1');
         expect(fetchMock.mock.calls[4][1]?.method).toBe('DELETE');
     });
 

@@ -29,6 +29,11 @@ export interface ResolvePullRequestStorageScopeOptions {
     processStore?: PullRequestScopeProcessStore;
 }
 
+export interface ResolvePullRequestOriginStorageScopeOptions {
+    originId: string;
+    processStore?: PullRequestScopeProcessStore;
+}
+
 function isCanonicalOriginId(value: string): boolean {
     return /^(gh|ado|git|local)_/.test(value);
 }
@@ -113,7 +118,8 @@ export function isPullRequestOriginScoped(
     scope?: PullRequestStorageScopeInput,
 ): boolean {
     if (!scope) return false;
-    return resolvePullRequestStorageId(workspaceId, scope) !== workspaceId || typeof scope === 'string';
+    if (typeof scope === 'string') return true;
+    return Boolean(scope.storageOriginId?.trim());
 }
 
 export async function resolvePullRequestStorageScope(
@@ -149,6 +155,35 @@ export async function resolvePullRequestStorageScope(
             if (originId !== storageOriginId) continue;
             legacyScopes.push({ workspaceId: workspace.id, repoId: workspace.id });
             legacyScopes.push({ workspaceId: workspace.id, repoId });
+        }
+    }
+
+    return {
+        storageOriginId,
+        legacyScopes: dedupeLegacyScopes(legacyScopes),
+    };
+}
+
+export async function resolvePullRequestOriginStorageScope(
+    options: ResolvePullRequestOriginStorageScopeOptions,
+): Promise<PullRequestStorageScope> {
+    const storageOriginId = trimNonEmpty(options.originId);
+    if (!storageOriginId) {
+        throw new Error('originId is required to resolve pull-request storage scope');
+    }
+
+    const legacyScopes: PullRequestLegacyStorageScope[] = [];
+    const processStore = options.processStore;
+    if (
+        processStore &&
+        typeof processStore.getWorkspaces === 'function' &&
+        typeof processStore.updateWorkspace === 'function'
+    ) {
+        const workspaces = await processStore.getWorkspaces();
+        for (const workspace of workspaces) {
+            const originId = await resolveWorkspaceOriginId(workspace, processStore);
+            if (originId !== storageOriginId) continue;
+            legacyScopes.push({ workspaceId: workspace.id, repoId: workspace.id });
         }
     }
 

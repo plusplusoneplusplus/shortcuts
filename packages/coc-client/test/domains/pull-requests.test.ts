@@ -105,6 +105,57 @@ describe('PullRequestsClient', () => {
     ]);
   });
 
+  it('lists, records, and removes recently opened PRs with origin scope', async () => {
+    const adapter = createMockAdapter({ entries: [] });
+    const client = new PullRequestsClient(adapter);
+    const controller = new AbortController();
+
+    await client.listRecentOpenedForOrigin('gh_owner_repo', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      signal: controller.signal,
+    });
+    await client.recordRecentOpenedForOrigin('gh_owner_repo', {
+      number: 42,
+      title: 'Add recent list',
+      webUrl: 'https://github.com/org/repo/pull/42',
+    }, {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      signal: controller.signal,
+    });
+    await client.removeRecentOpenedForOrigin('gh_owner_repo', 42, {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      signal: controller.signal,
+    });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/origins/gh_owner_repo/pull-requests/recent-opened',
+        options: { query: { workspaceId: 'ws/a', repoId: 'repo/a' }, signal: controller.signal },
+      },
+      {
+        path: '/origins/gh_owner_repo/pull-requests/recent-opened',
+        options: {
+          method: 'POST',
+          body: {
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
+            number: 42,
+            title: 'Add recent list',
+            webUrl: 'https://github.com/org/repo/pull/42',
+          },
+          signal: controller.signal,
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/pull-requests/recent-opened/42',
+        options: { method: 'DELETE', query: { workspaceId: 'ws/a', repoId: 'repo/a' }, signal: controller.signal },
+      },
+    ]);
+  });
+
   it('lists, adds, and removes Team coworker roster entries with workspace scope', async () => {
     const adapter = createMockAdapter({ entries: [] });
     const client = new PullRequestsClient(adapter);
@@ -141,6 +192,59 @@ describe('PullRequestsClient', () => {
       {
         path: '/repos/repo%2Fa/pull-requests/coworker-roster/123',
         options: { method: 'DELETE', query: { workspaceId: 'ws/a' }, signal: controller.signal },
+      },
+    ]);
+  });
+
+  it('lists, adds, and removes Team coworker roster entries with origin scope', async () => {
+    const adapter = createMockAdapter({ entries: [] });
+    const client = new PullRequestsClient(adapter);
+    const controller = new AbortController();
+
+    await client.listCoworkerRosterForOrigin('gh_owner_repo', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      signal: controller.signal,
+    });
+    await client.addCoworkerToRosterForOrigin('gh_owner_repo', {
+      id: '123',
+      displayName: 'Mona Dev',
+      email: 'mona@example.invalid',
+      avatarUrl: 'https://avatars.example.invalid/u/123',
+    }, {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      signal: controller.signal,
+    });
+    await client.removeCoworkerFromRosterForOrigin('gh_owner_repo', 'Pat Dev', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      signal: controller.signal,
+    });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/origins/gh_owner_repo/pull-requests/coworker-roster',
+        options: { query: { workspaceId: 'ws/a', repoId: 'repo/a' }, signal: controller.signal },
+      },
+      {
+        path: '/origins/gh_owner_repo/pull-requests/coworker-roster',
+        options: {
+          method: 'POST',
+          body: {
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
+            id: '123',
+            displayName: 'Mona Dev',
+            email: 'mona@example.invalid',
+            avatarUrl: 'https://avatars.example.invalid/u/123',
+          },
+          signal: controller.signal,
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/pull-requests/coworker-roster/Pat%20Dev',
+        options: { method: 'DELETE', query: { workspaceId: 'ws/a', repoId: 'repo/a' }, signal: controller.signal },
       },
     ]);
   });

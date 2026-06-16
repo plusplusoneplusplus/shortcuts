@@ -69,6 +69,22 @@ function recentDeleteUrl(repoId: string, workspaceId: string, prNumber: string |
     return `${baseUrl}/api/repos/${encodeURIComponent(repoId)}/pull-requests/recent-opened/${encodeURIComponent(String(prNumber))}?workspaceId=${encodeURIComponent(workspaceId)}`;
 }
 
+function originRecentUrl(originId: string, workspaceId?: string, repoId?: string): string {
+    const params = new URLSearchParams();
+    if (workspaceId) params.set('workspaceId', workspaceId);
+    if (repoId) params.set('repoId', repoId);
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+    return `${baseUrl}/api/origins/${encodeURIComponent(originId)}/pull-requests/recent-opened${suffix}`;
+}
+
+function originRecentDeleteUrl(originId: string, prNumber: string | number, workspaceId?: string, repoId?: string): string {
+    const params = new URLSearchParams();
+    if (workspaceId) params.set('workspaceId', workspaceId);
+    if (repoId) params.set('repoId', repoId);
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+    return `${baseUrl}/api/origins/${encodeURIComponent(originId)}/pull-requests/recent-opened/${encodeURIComponent(String(prNumber))}${suffix}`;
+}
+
 function originScopeForRepo(repoId = REPO_ID): string {
     return resolveCanonicalOriginId({ remoteUrl: `https://github.com/org/${repoId}.git`, workspaceId: 'ws-1' });
 }
@@ -244,5 +260,58 @@ describe('DELETE /api/repos/:repoId/pull-requests/recent-opened/:prNumber', () =
         const res = await fetch(recentDeleteUrl(REPO_ID, 'ws-1', 'not-a-number'), { method: 'DELETE' });
         expect(res.status).toBe(400);
         expect(await listRecent('ws-1')).toMatchObject([{ number: 42 }]);
+    });
+});
+
+describe('origin-scoped recent-opened pull-request routes', () => {
+    it('round-trips entries directly under /api/origins/:originId without resolving a repo', async () => {
+        const originId = originScopeForRepo();
+
+        const post = await fetch(originRecentUrl(originId), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ number: 42, title: 'Origin recent PR' }),
+        });
+        expect(post.status).toBe(200);
+        expect(mockResolveRepo).not.toHaveBeenCalled();
+
+        const created = await post.json() as { entries: Array<{ workspaceId: string; repoId: string; number: number; title: string }> };
+        expect(created.entries).toMatchObject([{
+            workspaceId: originId,
+            repoId: originId,
+            number: 42,
+            title: 'Origin recent PR',
+        }]);
+
+        const paths = recentOpenedPullRequestsPaths(dataDir, originId, originId, { storageOriginId: originId });
+        expect(paths.filePath.endsWith(path.join('repos', originId, 'recent-opened-pull-requests', 'index.json'))).toBe(true);
+        expect(fs.existsSync(paths.filePath)).toBe(true);
+
+        const get = await fetch(originRecentUrl(originId));
+        expect(get.status).toBe(200);
+        expect(await get.json()).toMatchObject({ entries: [{ number: 42, title: 'Origin recent PR' }] });
+
+        const del = await fetch(originRecentDeleteUrl(originId, 42), { method: 'DELETE' });
+        expect(del.status).toBe(200);
+        expect(await del.json()).toEqual({ entries: [] });
+    });
+
+    it('uses optional workspace/repo metadata only to migrate legacy files into the origin list', async () => {
+        const legacyPaths = recentOpenedPullRequestsPaths(dataDir, 'ws-a', REPO_ID);
+        fs.mkdirSync(legacyPaths.dir, { recursive: true });
+        fs.writeFileSync(legacyPaths.filePath, JSON.stringify({
+            entries: [{
+                workspaceId: 'ws-a',
+                repoId: REPO_ID,
+                number: 77,
+                title: 'Legacy origin recent PR',
+                openedAt: '2026-06-05T00:00:00.000Z',
+            }],
+        }), 'utf-8');
+
+        const res = await fetch(originRecentUrl(originScopeForRepo(), 'ws-a', REPO_ID));
+        expect(res.status).toBe(200);
+        expect(await res.json()).toMatchObject({ entries: [{ number: 77, title: 'Legacy origin recent PR' }] });
+        expect(mockResolveRepo).not.toHaveBeenCalled();
     });
 });
