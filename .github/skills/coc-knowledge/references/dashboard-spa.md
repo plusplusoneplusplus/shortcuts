@@ -889,11 +889,11 @@ The PR list route is backed by a server-side cache that can be proactively warme
 for the currently active workspace. Background warming uses the same provider
 list and diff-stat enrichment path as the tab load, refreshes the default
 `open`/`mine` list without clearing stale data on failure, and reads the
-origin-scoped recently opened list, origin-scoped Team roster, and cached suggestions
-when PR suggestions are enabled.
+origin-scoped recently opened list, origin-scoped Team roster, and origin-scoped
+cached suggestions when PR suggestions are enabled.
 
 The PR detail overview renders a deterministic review-summary card from the PR description, parsed/provider diff stats, checks, reviewers, and comment threads. Findings are derived from failing checks and unresolved threads, and the former persona-lens grid is not rendered.
 
 PR popout file views expose a Full context toggle that calls the PR per-file diff endpoint with `fullContext=true`. The server first tries a full-file-context git diff from PR `baseSha` to `headSha`, fetches missing PR commits into the requested repo checkout when possible, and only then returns the hunk-only diff with `fullContextUnavailable: true`; the banner is shown only for that fallback response.
 
-PR review suggestions remain behind the separate `pullRequests.suggestions` config flag. The `For You` filter includes a `Generate suggestions`/`Refresh` action that first refreshes review history, then asks the server to rank open PRs. The UI shows inline progress, empty-state guidance, and recovery messages for missing review history or provider errors.
+PR review suggestions remain behind the separate `pullRequests.suggestions` config flag. The `For You` filter includes a `Generate suggestions`/`Refresh` action that first refreshes origin-scoped review history, then asks the server to rank open PRs and cache the result under the same origin. The UI shows inline progress, empty-state guidance, and recovery messages for missing review history or provider errors.

@@ -319,7 +319,7 @@ export async function warmPullRequestWorkspaceCache(options: WarmPullRequestWork
         });
     }
     if (options.suggestionsEnabled) {
-        readSuggestionsCache(options.dataDir, options.repoId);
+        readSuggestionsCache(options.dataDir, options.workspaceId, options.repoId, prStorageScope);
     }
 }
 
@@ -886,13 +886,15 @@ export function registerPrRoutes(
     routes.push({
         method: 'GET',
         pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/review-history$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             try {
                 const repoId = decodeURIComponent(match![1]);
                 const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
-                const cached = readReviewHistoryCache(dataDir, repoId);
+                const workspaceId = parseWorkspaceId(req, undefined, repoId);
+                const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId, repo);
+                const cached = readReviewHistoryCache(dataDir, workspaceId, repoId, prStorageScope);
                 if (cached) {
                     sendJson(res, cached);
                 } else {
@@ -909,11 +911,13 @@ export function registerPrRoutes(
     routes.push({
         method: 'POST',
         pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/review-history\/refresh$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             try {
                 const repoId = decodeURIComponent(match![1]);
                 const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
+                const workspaceId = parseWorkspaceId(req, undefined, repoId);
+                const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId, repo);
 
                 const cfg = await readProvidersConfig(dataDir);
                 const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
@@ -929,7 +933,7 @@ export function registerPrRoutes(
                     return sendJson(res, { error: 'Provider does not support review history' }, 501);
                 }
 
-                const cached = await fetchAndCacheReviewHistory(dataDir, repoId, prSvc, repoId);
+                const cached = await fetchAndCacheReviewHistory(dataDir, workspaceId, prSvc, repoId, undefined, prStorageScope);
                 sendJson(res, cached);
             } catch (err) {
                 if (isAuthError(err)) {
@@ -946,13 +950,15 @@ export function registerPrRoutes(
     routes.push({
         method: 'GET',
         pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/suggestions$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             try {
                 const repoId = decodeURIComponent(match![1]);
                 const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
-                const cached = readSuggestionsCache(dataDir, repoId);
+                const workspaceId = parseWorkspaceId(req, undefined, repoId);
+                const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId, repo);
+                const cached = readSuggestionsCache(dataDir, workspaceId, repoId, prStorageScope);
                 if (cached) {
                     sendJson(res, cached);
                 } else {
@@ -969,7 +975,7 @@ export function registerPrRoutes(
     routes.push({
         method: 'POST',
         pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/suggestions\/refresh$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             try {
                 if (!aiService) {
                     return sendJson(res, { error: 'AI service not available' }, 503);
@@ -978,9 +984,11 @@ export function registerPrRoutes(
                 const repoId = decodeURIComponent(match![1]);
                 const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
+                const workspaceId = parseWorkspaceId(req, undefined, repoId);
+                const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId, repo);
 
                 // Need review history first
-                const history = readReviewHistoryCache(dataDir, repoId);
+                const history = readReviewHistoryCache(dataDir, workspaceId, repoId, prStorageScope);
                 if (!history || history.reviews.length === 0) {
                     return sendJson(res, { error: 'No review history cached. Refresh review history first.' }, 400);
                 }
@@ -999,7 +1007,7 @@ export function registerPrRoutes(
                 const openPrs = await prSvc.listPullRequests(repoId, { status: 'open', top: 100, scope: 'all' });
                 const prMetadata = openPrs.map(toPrMetadata);
 
-                const cached = await rankAndCacheSuggestions(dataDir, repoId, aiService, history, prMetadata);
+                const cached = await rankAndCacheSuggestions(dataDir, workspaceId, aiService, history, prMetadata, prStorageScope);
                 sendJson(res, cached);
             } catch (err) {
                 if (isAuthError(err)) {

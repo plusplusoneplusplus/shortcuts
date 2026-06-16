@@ -146,9 +146,13 @@ async function initGitRepo(repoPath: string): Promise<void> {
     await git(repoPath, ['config', 'user.name', 'Test User']);
 }
 
-function makeServer(dir: string, autoClassification?: Parameters<typeof registerPrRoutes>[5]): http.Server {
+function makeServer(
+    dir: string,
+    autoClassification?: Parameters<typeof registerPrRoutes>[5],
+    aiService?: Parameters<typeof registerPrRoutes>[4],
+): http.Server {
     const routes: Route[] = [];
-    registerPrRoutes(routes, dir, undefined, undefined, undefined, autoClassification);
+    registerPrRoutes(routes, dir, undefined, undefined, aiService, autoClassification);
     const handler = createRouter({ routes, spaHtml: '' });
     return http.createServer(handler);
 }
@@ -168,9 +172,12 @@ async function stopServer(): Promise<void> {
     return new Promise(resolve => server.close(() => resolve()));
 }
 
-async function restartServer(autoClassification?: Parameters<typeof registerPrRoutes>[5]): Promise<void> {
+async function restartServer(
+    autoClassification?: Parameters<typeof registerPrRoutes>[5],
+    aiService?: Parameters<typeof registerPrRoutes>[4],
+): Promise<void> {
     await stopServer();
-    server = makeServer(dataDir, autoClassification);
+    server = makeServer(dataDir, autoClassification, aiService);
     await startServer();
 }
 
@@ -1884,8 +1891,8 @@ describe('GET /api/repos/:id/pull-requests/review-history', () => {
         expect(body.fetchedAt).toBeNull();
     });
 
-    it('returns cached review history from disk', async () => {
-        // Write a cache file
+    it('returns cached review history from legacy disk cache and migrates it to origin storage', async () => {
+        // Write a legacy workspace cache file
         const repoDir = path.join(dataDir, 'repos', REPO_ID);
         fs.mkdirSync(repoDir, { recursive: true });
         const cache = {
@@ -1899,6 +1906,26 @@ describe('GET /api/repos/:id/pull-requests/review-history', () => {
         const body = await res.json() as { reviews: unknown[]; fetchedAt: string };
         expect(body.reviews).toHaveLength(1);
         expect(body.fetchedAt).toBe('2024-06-01T12:00:00.000Z');
+        const originFile = path.join(dataDir, 'repos', ORIGIN_ID, 'pr-review-history.json');
+        expect(fs.existsSync(originFile)).toBe(true);
+    });
+
+    it('serves review history from the shared origin for a same-remote clone', async () => {
+        const originDir = path.join(dataDir, 'repos', ORIGIN_ID);
+        fs.mkdirSync(originDir, { recursive: true });
+        fs.writeFileSync(path.join(originDir, 'pr-review-history.json'), JSON.stringify({
+            fetchedAt: '2024-06-02T12:00:00.000Z',
+            reviews: [{ number: 2, title: 'Clone PR', author: { id: 'u2', displayName: 'Bob' }, filesChanged: [], labels: [], reviewedAt: '2024-06-02T10:00:00.000Z', targetBranch: 'main', url: 'https://example.com/pr/2' }],
+        }), 'utf-8');
+
+        const cloneRepoId = 'repo-clone';
+        mockResolveRepo.mockResolvedValueOnce(makeMockRepoInfo(cloneRepoId));
+        const res = await fetch(`${baseUrl}/api/repos/${cloneRepoId}/pull-requests/review-history?workspaceId=${cloneRepoId}`);
+
+        expect(res.status).toBe(200);
+        const body = await res.json() as { reviews: Array<{ number: number }>; fetchedAt: string };
+        expect(body.fetchedAt).toBe('2024-06-02T12:00:00.000Z');
+        expect(body.reviews[0].number).toBe(2);
     });
 
     it('returns 404 when repo not found', async () => {
@@ -1923,8 +1950,8 @@ describe('POST /api/repos/:id/pull-requests/review-history/refresh', () => {
         expect(body.reviews).toHaveLength(1);
         expect(body.fetchedAt).toBeTruthy();
 
-        // Verify written to disk
-        const cached = fs.readFileSync(path.join(dataDir, 'repos', REPO_ID, 'pr-review-history.json'), 'utf-8');
+        // Verify written to origin storage
+        const cached = fs.readFileSync(path.join(dataDir, 'repos', ORIGIN_ID, 'pr-review-history.json'), 'utf-8');
         expect(JSON.parse(cached).reviews).toHaveLength(1);
     });
 
@@ -1934,6 +1961,68 @@ describe('POST /api/repos/:id/pull-requests/review-history/refresh', () => {
 
         const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/review-history/refresh`, { method: 'POST' });
         expect(res.status).toBe(501);
+    });
+
+    // ── GET /api/repos/:id/pull-requests/suggestions ─────────────────────────────
+
+    describe('GET /api/repos/:id/pull-requests/suggestions', () => {
+        it('returns empty suggestions when no cache exists', async () => {
+            const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/suggestions`);
+
+            expect(res.status).toBe(200);
+            const body = await res.json() as { suggestions: unknown[]; rankedAt: string | null };
+            expect(body.suggestions).toEqual([]);
+            expect(body.rankedAt).toBeNull();
+        });
+
+        it('returns cached suggestions from legacy disk cache and migrates them to origin storage', async () => {
+            const repoDir = path.join(dataDir, 'repos', REPO_ID);
+            fs.mkdirSync(repoDir, { recursive: true });
+            const cache = {
+                rankedAt: '2024-06-01T14:00:00.000Z',
+                suggestions: [{ prNumber: 42, score: 95 }],
+            };
+            fs.writeFileSync(path.join(repoDir, 'pr-suggestions-cache.json'), JSON.stringify(cache), 'utf-8');
+
+            const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/suggestions`);
+
+            expect(res.status).toBe(200);
+            const body = await res.json() as { suggestions: Array<{ prNumber: number }>; rankedAt: string };
+            expect(body.rankedAt).toBe('2024-06-01T14:00:00.000Z');
+            expect(body.suggestions[0].prNumber).toBe(42);
+            const originFile = path.join(dataDir, 'repos', ORIGIN_ID, 'pr-suggestions-cache.json');
+            expect(fs.existsSync(originFile)).toBe(true);
+        });
+    });
+
+    // ── POST /api/repos/:id/pull-requests/suggestions/refresh ────────────────────
+
+    describe('POST /api/repos/:id/pull-requests/suggestions/refresh', () => {
+        it('ranks PRs using origin-scoped review history and caches suggestions by origin', async () => {
+            const originDir = path.join(dataDir, 'repos', ORIGIN_ID);
+            fs.mkdirSync(originDir, { recursive: true });
+            fs.writeFileSync(path.join(originDir, 'pr-review-history.json'), JSON.stringify({
+                fetchedAt: '2024-06-01T12:00:00.000Z',
+                reviews: [{ number: 1, title: 'Test PR', author: { id: 'u1', displayName: 'Alice' }, filesChanged: [], labels: [], reviewedAt: '2024-06-01T10:00:00.000Z', targetBranch: 'main', url: 'https://example.com/pr/1' }],
+            }), 'utf-8');
+            const aiService = {
+                transform: vi.fn().mockResolvedValue({
+                    success: true,
+                    text: '[{"prNumber":42,"score":88}]',
+                }),
+            } as Parameters<typeof registerPrRoutes>[4];
+            await restartServer(undefined, aiService);
+
+            const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/suggestions/refresh`, { method: 'POST' });
+
+            expect(res.status).toBe(200);
+            const body = await res.json() as { suggestions: Array<{ prNumber: number; score: number }> };
+            expect(body.suggestions).toEqual([{ prNumber: 42, score: 88 }]);
+            expect(aiService?.transform).toHaveBeenCalledTimes(1);
+            const cached = fs.readFileSync(path.join(originDir, 'pr-suggestions-cache.json'), 'utf-8');
+            expect(JSON.parse(cached).suggestions).toEqual([{ prNumber: 42, score: 88 }]);
+            expect(fs.existsSync(path.join(dataDir, 'repos', REPO_ID, 'pr-suggestions-cache.json'))).toBe(false);
+        });
     });
 
     it('returns an informational empty cache when provider has review history support but no reviews', async () => {
