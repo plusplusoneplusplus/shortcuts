@@ -11,6 +11,7 @@ import { createRouter } from '../../src/server/shared/router';
 import { registerPrRoutes } from '../../src/server/repos/pr-routes';
 import { recentOpenedPullRequestsPaths } from '../../src/server/repos/recent-opened-pr-store';
 import type { Route } from '../../src/server/types';
+import { resolveCanonicalOriginId } from '@plusplusoneplusplus/forge';
 
 vi.mock('../../src/server/providers/provider-factory', () => ({
     ProviderFactory: {
@@ -66,6 +67,10 @@ function recentUrl(repoId: string, workspaceId: string): string {
 
 function recentDeleteUrl(repoId: string, workspaceId: string, prNumber: string | number): string {
     return `${baseUrl}/api/repos/${encodeURIComponent(repoId)}/pull-requests/recent-opened/${encodeURIComponent(String(prNumber))}?workspaceId=${encodeURIComponent(workspaceId)}`;
+}
+
+function originScopeForRepo(repoId = REPO_ID): string {
+    return resolveCanonicalOriginId({ remoteUrl: `https://github.com/org/${repoId}.git`, workspaceId: 'ws-1' });
 }
 
 async function recordRecent(
@@ -129,7 +134,7 @@ describe('GET /api/repos/:repoId/pull-requests/recent-opened', () => {
 });
 
 describe('POST /api/repos/:repoId/pull-requests/recent-opened', () => {
-    it('records and persists a recent PR entry under the repo-scoped data layout', async () => {
+    it('records and persists a recent PR entry under the origin-scoped data layout', async () => {
         const res = await recordRecent(42, '  Add feature X  ', 'ws-1', REPO_ID, {
             webUrl: 'https://github.com/org/repo/pull/42?notification_secret=drop#files',
         });
@@ -146,8 +151,9 @@ describe('POST /api/repos/:repoId/pull-requests/recent-opened', () => {
         });
         expect(new Date(body.entries[0].openedAt).toString()).not.toBe('Invalid Date');
 
-        const paths = recentOpenedPullRequestsPaths(dataDir, 'ws-1', REPO_ID);
+        const paths = recentOpenedPullRequestsPaths(dataDir, 'ws-1', REPO_ID, originScopeForRepo());
         expect(fs.existsSync(paths.filePath)).toBe(true);
+        expect(paths.filePath.endsWith(path.join('repos', originScopeForRepo(), 'recent-opened-pull-requests', 'index.json'))).toBe(true);
         expect(fs.readdirSync(dataDir)).toEqual(['repos']);
     });
 
@@ -172,14 +178,32 @@ describe('POST /api/repos/:repoId/pull-requests/recent-opened', () => {
         expect(entries.map(entry => entry.number)).toEqual([12, 11, 10, 9, 8, 7, 6, 5, 4, 3]);
     });
 
-    it('keeps workspace and repo records isolated', async () => {
+    it('shares same-origin workspace records and isolates distinct origins', async () => {
         await recordRecent(7, 'Workspace A', 'ws-a', REPO_ID);
-        await recordRecent(7, 'Workspace B', 'ws-b', REPO_ID);
+        await recordRecent(8, 'Workspace B', 'ws-b', REPO_ID);
         await recordRecent(7, 'Other repo', 'ws-a', OTHER_REPO_ID);
 
-        expect(await listRecent('ws-a', REPO_ID)).toMatchObject([{ title: 'Workspace A' }]);
-        expect(await listRecent('ws-b', REPO_ID)).toMatchObject([{ title: 'Workspace B' }]);
+        expect(await listRecent('ws-a', REPO_ID)).toMatchObject([{ title: 'Workspace B' }, { title: 'Workspace A' }]);
+        expect(await listRecent('ws-b', REPO_ID)).toMatchObject([{ title: 'Workspace B' }, { title: 'Workspace A' }]);
         expect(await listRecent('ws-a', OTHER_REPO_ID)).toMatchObject([{ title: 'Other repo' }]);
+    });
+
+    it('migrates a legacy workspace/repo recent file into the origin list on access', async () => {
+        const legacyPaths = recentOpenedPullRequestsPaths(dataDir, 'ws-a', REPO_ID);
+        fs.mkdirSync(legacyPaths.dir, { recursive: true });
+        fs.writeFileSync(legacyPaths.filePath, JSON.stringify({
+            entries: [{
+                workspaceId: 'ws-a',
+                repoId: REPO_ID,
+                number: 99,
+                title: 'Legacy recent PR',
+                openedAt: '2026-06-05T00:00:00.000Z',
+            }],
+        }), 'utf-8');
+
+        expect(await listRecent('ws-a', REPO_ID)).toMatchObject([{ number: 99, title: 'Legacy recent PR' }]);
+        const originPaths = recentOpenedPullRequestsPaths(dataDir, 'ws-a', REPO_ID, originScopeForRepo());
+        expect(fs.existsSync(originPaths.filePath)).toBe(true);
     });
 
     it('does not create entries for invalid bodies', async () => {

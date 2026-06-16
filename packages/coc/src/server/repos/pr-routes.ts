@@ -59,6 +59,8 @@ import {
     autoClassifyTeamPullRequests,
     type TeamAutoClassifiablePullRequest,
 } from './pr-team-auto-classification';
+import { resolvePullRequestStorageScope, type PullRequestStorageScope } from './pr-origin-scope';
+import type { RepoInfo } from './types';
 
 // ============================================================================
 // Helpers
@@ -113,6 +115,23 @@ function parseWorkspaceId(req: Parameters<Route['handler']>[0], body: unknown, r
     }
     const parsed = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`);
     return parsed.searchParams.get('workspaceId')?.trim() || repoId;
+}
+
+async function resolvePrStorageScopeForRoute(
+    svc: RepoTreeService,
+    store: ProcessStore | undefined,
+    repoId: string,
+    workspaceId: string,
+    repo?: RepoInfo,
+): Promise<PullRequestStorageScope> {
+    const resolvedRepo = repo ?? await svc.resolveRepo(repoId);
+    return resolvePullRequestStorageScope({
+        workspaceId,
+        repoId,
+        remoteUrl: resolvedRepo?.remoteUrl,
+        rootPath: resolvedRepo?.localPath,
+        processStore: store,
+    });
 }
 
 function parseTeamAutoClassificationPullRequests(raw: unknown): TeamAutoClassifiablePullRequest[] | string {
@@ -269,8 +288,10 @@ export interface WarmPullRequestWorkspaceCacheOptions {
 export async function warmPullRequestWorkspaceCache(options: WarmPullRequestWorkspaceCacheOptions): Promise<void> {
     const svc = options.service ?? new RepoTreeService(options.dataDir);
     await refreshPullRequestListCache(options.dataDir, svc, options.repoId, 'open', 'mine');
-    listRecentOpenedPullRequests(options.dataDir, options.workspaceId, options.repoId);
-    listPullRequestCoworkerRoster(options.dataDir, options.workspaceId, options.repoId);
+    const repo = await svc.resolveRepo(options.repoId);
+    const prStorageScope = await resolvePrStorageScopeForRoute(svc, options.store, options.repoId, options.workspaceId, repo);
+    listRecentOpenedPullRequests(options.dataDir, options.workspaceId, options.repoId, prStorageScope);
+    listPullRequestCoworkerRoster(options.dataDir, options.workspaceId, options.repoId, prStorageScope);
     if (options.autoClassifyTeamEnabled === true && options.bridge && options.store) {
         const allOpen = await refreshPullRequestListCache(options.dataDir, svc, options.repoId, 'open', 'all');
         await triggerTeamAutoClassification({
@@ -282,6 +303,7 @@ export async function warmPullRequestWorkspaceCache(options: WarmPullRequestWork
             workspaceId: options.workspaceId,
             repoId: options.repoId,
             pullRequests: allOpen.data,
+            storageScope: prStorageScope,
         });
     }
     if (options.suggestionsEnabled) {
@@ -714,6 +736,7 @@ interface TriggerTeamAutoClassificationOptions {
     workspaceId: string;
     repoId: string;
     pullRequests: readonly TeamAutoClassifiablePullRequest[];
+    storageScope?: PullRequestStorageScope;
 }
 
 async function triggerTeamAutoClassification(options: TriggerTeamAutoClassificationOptions): Promise<void> {
@@ -812,6 +835,8 @@ export function registerPrRoutes(
                 }
 
                 if (isTeamAutoClassificationEnabled(autoClassification)) {
+                    const repo = await svc.resolveRepo(repoId);
+                    const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId, repo);
                     await triggerTeamAutoClassification({
                         dataDir,
                         store: autoClassification!.store,
@@ -821,6 +846,7 @@ export function registerPrRoutes(
                         workspaceId,
                         repoId,
                         pullRequests: page,
+                        storageScope: prStorageScope,
                     });
                 }
 
@@ -978,7 +1004,8 @@ export function registerPrRoutes(
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const workspaceId = parseWorkspaceId(req, undefined, repoId);
-                const entries = listRecentOpenedPullRequests(dataDir, workspaceId, repoId);
+                const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId, repo);
+                const entries = listRecentOpenedPullRequests(dataDir, workspaceId, repoId, prStorageScope);
                 return sendJson(res, { entries });
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
@@ -1010,7 +1037,8 @@ export function registerPrRoutes(
                 }
 
                 const workspaceId = parseWorkspaceId(req, raw, repoId);
-                const entries = recordRecentOpenedPullRequest(dataDir, workspaceId, repoId, validation.entry);
+                const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId, repo);
+                const entries = recordRecentOpenedPullRequest(dataDir, workspaceId, repoId, validation.entry, undefined, prStorageScope);
                 return sendJson(res, { entries });
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
@@ -1036,7 +1064,8 @@ export function registerPrRoutes(
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const workspaceId = parseWorkspaceId(req, undefined, repoId);
-                const entries = removeRecentOpenedPullRequest(dataDir, workspaceId, repoId, prNumber);
+                const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId, repo);
+                const entries = removeRecentOpenedPullRequest(dataDir, workspaceId, repoId, prNumber, prStorageScope);
                 return sendJson(res, { entries });
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
@@ -1056,7 +1085,8 @@ export function registerPrRoutes(
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const workspaceId = parseWorkspaceId(req, undefined, repoId);
-                const entries = listPullRequestCoworkerRoster(dataDir, workspaceId, repoId);
+                const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId, repo);
+                const entries = listPullRequestCoworkerRoster(dataDir, workspaceId, repoId, prStorageScope);
                 return sendJson(res, { entries });
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
@@ -1088,7 +1118,8 @@ export function registerPrRoutes(
                 }
 
                 const workspaceId = parseWorkspaceId(req, raw, repoId);
-                const entries = addPullRequestCoworkerToRoster(dataDir, workspaceId, repoId, validation.entry);
+                const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId, repo);
+                const entries = addPullRequestCoworkerToRoster(dataDir, workspaceId, repoId, validation.entry, undefined, prStorageScope);
                 return sendJson(res, { entries });
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
@@ -1113,7 +1144,8 @@ export function registerPrRoutes(
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const workspaceId = parseWorkspaceId(req, undefined, repoId);
-                const entries = removePullRequestCoworkerFromRoster(dataDir, workspaceId, repoId, coworkerKey);
+                const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId, repo);
+                const entries = removePullRequestCoworkerFromRoster(dataDir, workspaceId, repoId, coworkerKey, prStorageScope);
                 return sendJson(res, { entries });
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
@@ -1158,6 +1190,7 @@ export function registerPrRoutes(
                     workspaceId,
                     repoId,
                     pullRequests: validation,
+                    storageScope: await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId, repo),
                 });
                 return sendJson(res, result);
             } catch (err) {
@@ -1577,7 +1610,8 @@ export function registerPrRoutes(
                     return send400(res, 'Missing required query parameter: headSha');
                 }
                 const workspaceId = workspaceIdParam || repoId;
-                const record = readReviewProgress(dataDir, workspaceId, repoId, prId, headSha);
+                const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId);
+                const record = readReviewProgress(dataDir, workspaceId, repoId, prId, headSha, prStorageScope);
                 return sendJson(res, record);
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
@@ -1616,6 +1650,7 @@ export function registerPrRoutes(
                         return parsed.searchParams.get('workspaceId') ?? '';
                     })();
                 const workspaceId = workspaceIdRaw || repoId;
+                const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId);
 
                 const stored = writeReviewProgress(
                     dataDir,
@@ -1623,6 +1658,8 @@ export function registerPrRoutes(
                     repoId,
                     prId,
                     validation.record,
+                    undefined,
+                    prStorageScope,
                 );
                 return sendJson(res, stored);
             } catch (err) {
