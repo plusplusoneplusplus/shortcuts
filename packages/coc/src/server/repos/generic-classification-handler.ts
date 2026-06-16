@@ -33,6 +33,7 @@ import type { ReasoningEffort } from '../tasks/task-types';
 import { buildClassificationPrompt } from './pr-classification-handler';
 import { renderClassificationPrompt } from './classification-prompt';
 import {
+    resolvePullRequestOriginStorageScope,
     resolvePullRequestStorageId,
     resolvePullRequestStorageScope,
     type PullRequestStorageScope,
@@ -167,6 +168,68 @@ export function registerGenericClassificationRoutes(routes: Route[], opts: Gener
                     return send404(res, result.message);
                 }
                 sendJson(res, result, result.status === 'started' ? 202 : 200);
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    // -- GET: Origin-scoped PR batch status ------------------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/origins\/([^/]+)\/classify-diff\/batch-status$/,
+        handler: async (req, res, match) => {
+            try {
+                const originId = decodeURIComponent(match![1]).trim();
+                if (!originId) {
+                    return send400(res, 'originId must be a non-empty string');
+                }
+
+                const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`);
+                const type = url.searchParams.get('type') as ClassificationType | null;
+                const rawIdentifiers = url.searchParams.get('identifiers');
+                const workspaceIdParam = url.searchParams.get('workspaceId')?.trim();
+                const repoIdParam = url.searchParams.get('repoId')?.trim();
+                const workspaceId = workspaceIdParam || originId;
+                const repoId = repoIdParam || workspaceId;
+
+                if (type !== 'pr') {
+                    return send400(res, 'Origin-scoped classification batch status only supports type=pr');
+                }
+                if (!rawIdentifiers) {
+                    return sendJson(res, { statuses: {} });
+                }
+
+                const identifiers = rawIdentifiers
+                    .split(',')
+                    .map(s => s.trim())
+                    .filter(Boolean);
+
+                if (identifiers.length > 200) {
+                    return send400(res, 'Too many identifiers: max 200 per request');
+                }
+                if (identifiers.length === 0) {
+                    return sendJson(res, { statuses: {} });
+                }
+
+                const storageScope = await resolvePullRequestOriginStorageScope({ originId, processStore: store });
+                const statuses: Record<string, 'none' | 'ready' | 'running'> = {};
+                for (const identifier of identifiers) {
+                    const cached = readClassificationGeneric(dataDir, workspaceId, repoId, type, identifier, storageScope);
+                    if (cached) {
+                        statuses[identifier] = 'ready';
+                        continue;
+                    }
+                    const pending = readPendingGeneric(dataDir, workspaceId, repoId, type, identifier, storageScope);
+                    if (pending && isTaskAlive(pending.processId, bridge)) {
+                        statuses[identifier] = 'running';
+                    } else {
+                        statuses[identifier] = 'none';
+                    }
+                }
+
+                sendJson(res, { statuses });
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
             }

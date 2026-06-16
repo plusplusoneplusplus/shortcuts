@@ -272,6 +272,7 @@ export interface ClassificationBatchStatusQuery {
   type: ClassificationTargetType;
   identifiers: string[];
   workspaceId?: string;
+  repoId?: string;
 }
 
 export interface ClassificationBatchStatusResponse {
@@ -280,6 +281,7 @@ export interface ClassificationBatchStatusResponse {
 
 export interface TeamPrAutoClassificationRequest {
   workspaceId?: string;
+  repoId?: string;
   pullRequests: PullRequestListItem[];
 }
 

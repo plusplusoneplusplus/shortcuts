@@ -421,6 +421,7 @@ describe('PullRequestsClient', () => {
       type: 'pr',
       identifiers: ['1:abc', '2:def'],
       workspaceId: 'ws/a',
+      repoId: 'repo/a',
     }, { signal: controller.signal });
 
     expect(adapter.calls).toEqual([
@@ -431,6 +432,35 @@ describe('PullRequestsClient', () => {
             type: 'pr',
             identifiers: '1:abc,2:def',
             workspaceId: 'ws/a',
+            repoId: 'repo/a',
+          },
+          signal: controller.signal,
+        },
+      },
+    ]);
+  });
+
+  it('getClassificationBatchStatusForOrigin sends encoded origin batch-status query params', async () => {
+    const adapter = createMockAdapter({ statuses: {} });
+    const client = new PullRequestsClient(adapter);
+    const controller = new AbortController();
+
+    await client.getClassificationBatchStatusForOrigin('gh_owner_repo', {
+      type: 'pr',
+      identifiers: ['1:abc', '2:def'],
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+    }, { signal: controller.signal });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/origins/gh_owner_repo/classify-diff/batch-status',
+        options: {
+          query: {
+            type: 'pr',
+            identifiers: '1:abc,2:def',
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
           },
           signal: controller.signal,
         },
@@ -456,6 +486,37 @@ describe('PullRequestsClient', () => {
           method: 'POST',
           body: {
             workspaceId: 'ws/a',
+            pullRequests: [
+              { number: 42, status: 'open', headSha: 'abc123', author: { id: 'u1', displayName: 'Mona Dev' } },
+            ],
+          },
+          signal: undefined,
+        },
+      },
+    ]);
+  });
+
+  it('autoClassifyTeamForOrigin sends POST with origin metadata and loaded PR payload', async () => {
+    const adapter = createMockAdapter({ started: 1 });
+    const client = new PullRequestsClient(adapter);
+
+    await client.autoClassifyTeamForOrigin('gh_owner_repo', {
+      pullRequests: [
+        { number: 42, status: 'open', headSha: 'abc123', author: { id: 'u1', displayName: 'Mona Dev' } },
+      ],
+    }, {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+    });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/origins/gh_owner_repo/pull-requests/team-auto-classification',
+        options: {
+          method: 'POST',
+          body: {
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
             pullRequests: [
               { number: 42, status: 'open', headSha: 'abc123', author: { id: 'u1', displayName: 'Mona Dev' } },
             ],
@@ -542,6 +603,29 @@ describe('PullRequestsClient', () => {
     ]);
   });
 
+  it('getSuggestionsForOrigin sends GET to origin suggestions endpoint', async () => {
+    const adapter = createMockAdapter({ suggestions: [], rankedAt: null });
+    const client = new PullRequestsClient(adapter);
+
+    await client.getSuggestionsForOrigin('gh_owner_repo', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+    });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/origins/gh_owner_repo/pull-requests/suggestions',
+        options: {
+          query: {
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
+          },
+          signal: undefined,
+        },
+      },
+    ]);
+  });
+
   it('refreshSuggestions sends POST to suggestions/refresh endpoint', async () => {
     const adapter = createMockAdapter({ suggestions: [{ prNumber: 1, score: 90 }], rankedAt: '2026-01-01' });
     const client = new PullRequestsClient(adapter);
@@ -556,6 +640,30 @@ describe('PullRequestsClient', () => {
     ]);
   });
 
+  it('refreshSuggestionsForOrigin sends POST to origin suggestions/refresh endpoint', async () => {
+    const adapter = createMockAdapter({ suggestions: [{ prNumber: 1, score: 90 }], rankedAt: '2026-01-01' });
+    const client = new PullRequestsClient(adapter);
+
+    await client.refreshSuggestionsForOrigin('gh_owner_repo', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+    });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/origins/gh_owner_repo/pull-requests/suggestions/refresh',
+        options: {
+          method: 'POST',
+          query: {
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
+          },
+          signal: undefined,
+        },
+      },
+    ]);
+  });
+
   it('refreshReviewHistory sends POST to review-history/refresh endpoint', async () => {
     const adapter = createMockAdapter({ reviews: [], fetchedAt: '2026-01-01' });
     const client = new PullRequestsClient(adapter);
@@ -566,6 +674,30 @@ describe('PullRequestsClient', () => {
       {
         path: '/repos/repo%2Fa/pull-requests/review-history/refresh',
         options: { method: 'POST', signal: undefined },
+      },
+    ]);
+  });
+
+  it('refreshReviewHistoryForOrigin sends POST to origin review-history/refresh endpoint', async () => {
+    const adapter = createMockAdapter({ reviews: [], fetchedAt: '2026-01-01' });
+    const client = new PullRequestsClient(adapter);
+
+    await client.refreshReviewHistoryForOrigin('gh_owner_repo', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+    });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/origins/gh_owner_repo/pull-requests/review-history/refresh',
+        options: {
+          method: 'POST',
+          query: {
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
+          },
+          signal: undefined,
+        },
       },
     ]);
   });

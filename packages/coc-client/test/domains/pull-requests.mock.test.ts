@@ -470,6 +470,56 @@ describe('PullRequestsClient mock coverage', () => {
       lastSelectedFile: 'src/b.ts',
     });
   });
+
+  it('uses origin routes for PR suggestions and Team classification state', async () => {
+    mock = await startMockServer();
+    const client = createClient(mock);
+    mock.on('GET', '/api/origins/gh_owner_repo/pull-requests/suggestions', { body: { suggestions: [], rankedAt: null } });
+    mock.on('POST', '/api/origins/gh_owner_repo/pull-requests/review-history/refresh', { body: { reviews: [], fetchedAt: '2026-01-01T00:00:00.000Z' } });
+    mock.on('POST', '/api/origins/gh_owner_repo/pull-requests/suggestions/refresh', { body: { suggestions: [{ prNumber: 42, score: 90 }], rankedAt: '2026-01-01T00:01:00.000Z' } });
+    mock.on('GET', '/api/origins/gh_owner_repo/classify-diff/batch-status', { body: { statuses: { '42:abc123': 'ready' } } });
+    mock.on('POST', '/api/origins/gh_owner_repo/pull-requests/team-auto-classification', { body: { eligible: 1, considered: 1, skippedMissingHeadSha: 0, skippedMissingNumber: 0, ready: 0, running: 0, started: 1, notFound: 0, errors: [] } });
+
+    await expect(client.pullRequests.getSuggestionsForOrigin('gh_owner_repo', { workspaceId: 'ws-1', repoId: 'repo-1' })).resolves.toEqual({ suggestions: [], rankedAt: null });
+    await expect(client.pullRequests.refreshReviewHistoryForOrigin('gh_owner_repo', { workspaceId: 'ws-1', repoId: 'repo-1' })).resolves.toEqual({ reviews: [], fetchedAt: '2026-01-01T00:00:00.000Z' });
+    await expect(client.pullRequests.refreshSuggestionsForOrigin('gh_owner_repo', { workspaceId: 'ws-1', repoId: 'repo-1' })).resolves.toEqual({ suggestions: [{ prNumber: 42, score: 90 }], rankedAt: '2026-01-01T00:01:00.000Z' });
+    await expect(client.pullRequests.getClassificationBatchStatusForOrigin('gh_owner_repo', {
+      type: 'pr',
+      identifiers: ['42:abc123'],
+      workspaceId: 'ws-1',
+      repoId: 'repo-1',
+    })).resolves.toEqual({ statuses: { '42:abc123': 'ready' } });
+    await expect(client.pullRequests.autoClassifyTeamForOrigin('gh_owner_repo', {
+      pullRequests: [{ number: 42, status: 'open', headSha: 'abc123', title: 'PR 42' }],
+    }, {
+      workspaceId: 'ws-1',
+      repoId: 'repo-1',
+    })).resolves.toMatchObject({ started: 1 });
+
+    expectEmptyRequest(mock.requests[0], 'GET', '/api/origins/gh_owner_repo/pull-requests/suggestions', {
+      workspaceId: 'ws-1',
+      repoId: 'repo-1',
+    });
+    expectEmptyRequest(mock.requests[1], 'POST', '/api/origins/gh_owner_repo/pull-requests/review-history/refresh', {
+      workspaceId: 'ws-1',
+      repoId: 'repo-1',
+    });
+    expectEmptyRequest(mock.requests[2], 'POST', '/api/origins/gh_owner_repo/pull-requests/suggestions/refresh', {
+      workspaceId: 'ws-1',
+      repoId: 'repo-1',
+    });
+    expectEmptyRequest(mock.requests[3], 'GET', '/api/origins/gh_owner_repo/classify-diff/batch-status', {
+      type: 'pr',
+      identifiers: '42:abc123',
+      workspaceId: 'ws-1',
+      repoId: 'repo-1',
+    });
+    expectJsonRequest(mock.requests[4], 'POST', '/api/origins/gh_owner_repo/pull-requests/team-auto-classification', {
+      workspaceId: 'ws-1',
+      repoId: 'repo-1',
+      pullRequests: [{ number: 42, status: 'open', headSha: 'abc123', title: 'PR 42' }],
+    });
+  });
 });
 
 function createClient(mock: MockServer): CocClient {

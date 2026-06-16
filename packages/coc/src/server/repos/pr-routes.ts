@@ -20,9 +20,11 @@
  * DELETE /api/repos/:repoId/pull-requests/coworker-roster/:coworkerKey — remove a Team roster coworker
  * GET  /api/origins/:originId/pull-requests/:prId/review-progress — get reviewer progress
  * PUT  /api/origins/:originId/pull-requests/:prId/review-progress — save reviewer progress
- * POST /api/repos/:repoId/pull-requests/team-auto-classification — enqueue bounded Team PR classifications
- * GET  /api/repos/:repoId/pull-requests/:prId/review-progress — get reviewer progress (AC-04)
- * PUT  /api/repos/:repoId/pull-requests/:prId/review-progress — save reviewer progress (AC-04)
+ * GET  /api/origins/:originId/pull-requests/review-history — get cached review history
+ * POST /api/origins/:originId/pull-requests/review-history/refresh — fetch/cache review history through a selected workspace
+ * GET  /api/origins/:originId/pull-requests/suggestions — get cached suggestions
+ * POST /api/origins/:originId/pull-requests/suggestions/refresh — rank/cache suggestions through a selected workspace
+ * POST /api/origins/:originId/pull-requests/team-auto-classification — enqueue bounded Team PR classifications through a selected workspace
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -149,6 +151,14 @@ interface OriginPrStateScope {
     storageScope: PullRequestStorageScope;
 }
 
+interface OriginPrRepoScope extends OriginPrStateScope {
+    repo: RepoInfo;
+}
+
+type OriginPrRepoScopeResult =
+    | { ok: true; value: OriginPrRepoScope }
+    | { ok: false; status: 400 | 404; message: string };
+
 async function resolveOriginPrStateScope(
     req: Parameters<Route['handler']>[0],
     body: unknown,
@@ -162,6 +172,63 @@ async function resolveOriginPrStateScope(
         repoId,
         storageScope: await resolvePullRequestOriginStorageScope({ originId, processStore }),
     };
+}
+
+async function resolveOriginPrRepoScope(
+    req: Parameters<Route['handler']>[0],
+    body: unknown,
+    originId: string,
+    svc: RepoTreeService,
+    processStore?: ProcessStore,
+): Promise<OriginPrRepoScopeResult> {
+    const workspaceId = parseOptionalScopeValue(req, body, 'workspaceId');
+    if (!workspaceId) {
+        return {
+            ok: false,
+            status: 400,
+            message: 'workspaceId is required for provider-backed origin pull request actions',
+        };
+    }
+
+    const repoId = parseOptionalScopeValue(req, body, 'repoId') ?? workspaceId;
+    const repo = await svc.resolveRepo(repoId);
+    if (!repo) {
+        return {
+            ok: false,
+            status: 404,
+            message: `Repo ${repoId} not found`,
+        };
+    }
+
+    const storageScope = await resolvePrStorageScopeForRoute(svc, processStore, repoId, workspaceId, repo);
+    if (storageScope.storageOriginId !== originId) {
+        return {
+            ok: false,
+            status: 400,
+            message: `Workspace ${workspaceId} resolves to origin ${storageScope.storageOriginId}, not ${originId}`,
+        };
+    }
+
+    return {
+        ok: true,
+        value: {
+            workspaceId,
+            repoId,
+            repo,
+            storageScope,
+        },
+    };
+}
+
+function sendOriginPrRepoScopeError(
+    res: Parameters<Route['handler']>[1],
+    result: Extract<OriginPrRepoScopeResult, { ok: false }>,
+): void {
+    if (result.status === 404) {
+        send404(res, result.message);
+        return;
+    }
+    send400(res, result.message);
 }
 
 async function resolvePrStorageScopeForRoute(
@@ -1045,6 +1112,167 @@ export function registerPrRoutes(
                     storageScope,
                 );
                 return sendJson(res, stored);
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    // -- Origin-scoped review history and suggestions --------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/origins\/([^/]+)\/pull-requests\/review-history$/,
+        handler: async (req, res, match) => {
+            try {
+                const originId = parseOriginId(match![1]);
+                if (!originId) return send400(res, 'originId must be a non-empty string');
+                const { workspaceId, repoId, storageScope } = await resolveOriginPrStateScope(req, undefined, originId, store);
+                const cached = readReviewHistoryCache(dataDir, workspaceId, repoId, storageScope);
+                return sendJson(res, cached ?? { reviews: [], fetchedAt: null });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/origins\/([^/]+)\/pull-requests\/review-history\/refresh$/,
+        handler: async (req, res, match) => {
+            try {
+                const originId = parseOriginId(match![1]);
+                if (!originId) return send400(res, 'originId must be a non-empty string');
+                const scopeResult = await resolveOriginPrRepoScope(req, undefined, originId, svc, store);
+                if (!scopeResult.ok) return sendOriginPrRepoScopeError(res, scopeResult);
+                const { workspaceId, repoId, repo, storageScope } = scopeResult.value;
+
+                const cfg = await readProvidersConfig(dataDir);
+                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+                if (!prSvc || isNoAdoCredentials(prSvc)) {
+                    if (isNoAdoCredentials(prSvc)) {
+                        return sendJson(res, { error: 'no-ado-credentials' }, 401);
+                    }
+                    const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
+                    return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
+                }
+
+                if (typeof prSvc.getReviewedPullRequests !== 'function') {
+                    return sendJson(res, { error: 'Provider does not support review history' }, 501);
+                }
+
+                const cached = await fetchAndCacheReviewHistory(dataDir, workspaceId, prSvc, repoId, undefined, storageScope);
+                return sendJson(res, cached);
+            } catch (err) {
+                if (isAuthError(err)) {
+                    sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 401);
+                } else {
+                    send500(res, err instanceof Error ? err.message : String(err));
+                }
+            }
+        },
+    });
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/origins\/([^/]+)\/pull-requests\/suggestions$/,
+        handler: async (req, res, match) => {
+            try {
+                const originId = parseOriginId(match![1]);
+                if (!originId) return send400(res, 'originId must be a non-empty string');
+                const { workspaceId, repoId, storageScope } = await resolveOriginPrStateScope(req, undefined, originId, store);
+                const cached = readSuggestionsCache(dataDir, workspaceId, repoId, storageScope);
+                return sendJson(res, cached ?? { suggestions: [], rankedAt: null });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/origins\/([^/]+)\/pull-requests\/suggestions\/refresh$/,
+        handler: async (req, res, match) => {
+            try {
+                if (!aiService) {
+                    return sendJson(res, { error: 'AI service not available' }, 503);
+                }
+
+                const originId = parseOriginId(match![1]);
+                if (!originId) return send400(res, 'originId must be a non-empty string');
+                const scopeResult = await resolveOriginPrRepoScope(req, undefined, originId, svc, store);
+                if (!scopeResult.ok) return sendOriginPrRepoScopeError(res, scopeResult);
+                const { workspaceId, repoId, repo, storageScope } = scopeResult.value;
+
+                const history = readReviewHistoryCache(dataDir, workspaceId, repoId, storageScope);
+                if (!history || history.reviews.length === 0) {
+                    return sendJson(res, { error: 'No review history cached. Refresh review history first.' }, 400);
+                }
+
+                const cfg = await readProvidersConfig(dataDir);
+                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+                if (!prSvc || isNoAdoCredentials(prSvc)) {
+                    if (isNoAdoCredentials(prSvc)) {
+                        return sendJson(res, { error: 'no-ado-credentials' }, 401);
+                    }
+                    const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
+                    return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
+                }
+
+                const openPrs = await prSvc.listPullRequests(repoId, { status: 'open', top: 100, scope: 'all' });
+                const prMetadata = openPrs.map(toPrMetadata);
+
+                const cached = await rankAndCacheSuggestions(dataDir, workspaceId, aiService, history, prMetadata, storageScope);
+                return sendJson(res, cached);
+            } catch (err) {
+                if (isAuthError(err)) {
+                    sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 401);
+                } else {
+                    send500(res, err instanceof Error ? err.message : String(err));
+                }
+            }
+        },
+    });
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/origins\/([^/]+)\/pull-requests\/team-auto-classification$/,
+        handler: async (req, res, match) => {
+            try {
+                if (!isTeamAutoClassificationEnabled(autoClassification)) {
+                    return sendJson(res, { error: 'Pull Requests Team auto-classification is disabled' }, 403);
+                }
+
+                const originId = parseOriginId(match![1]);
+                if (!originId) return send400(res, 'originId must be a non-empty string');
+
+                let raw: unknown;
+                try {
+                    raw = await readJsonBody<unknown>(req);
+                } catch {
+                    return send400(res, 'Invalid JSON body');
+                }
+
+                const validation = parseTeamAutoClassificationPullRequests(raw);
+                if (typeof validation === 'string') {
+                    return send400(res, validation);
+                }
+
+                const scopeResult = await resolveOriginPrRepoScope(req, raw, originId, svc, store);
+                if (!scopeResult.ok) return sendOriginPrRepoScopeError(res, scopeResult);
+                const { workspaceId, repoId, storageScope } = scopeResult.value;
+                const result = await autoClassifyTeamPullRequests({
+                    dataDir,
+                    store: autoClassification!.store,
+                    bridge: autoClassification!.bridge,
+                    repoTreeService: svc,
+                    prepareTaskForEnqueue: autoClassification!.prepareTaskForEnqueue,
+                    workspaceId,
+                    repoId,
+                    pullRequests: validation,
+                    storageScope,
+                });
+                return sendJson(res, result);
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
             }

@@ -167,8 +167,9 @@ function buildRecentOpenedRecord(pr: unknown, prNumber: number): { number: numbe
 
 export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequestsTabProps) {
     const { state, dispatch } = useApp();
-    // Route PR list/suggestions/roster/classification to the workspace's clone
-    // (AC-07). All PR calls here are scoped to this workspace's repo.
+    // Provider-backed PR list/detail calls stay on the selected clone. Durable
+    // PR state uses the workspace's canonical origin and carries workspace
+    // metadata only when a route needs a concrete clone.
     const cloneClient = useCocClient(workspaceId);
     const originId = useMemo(
         () => resolveCanonicalOriginId({ workspaceId, remoteUrl }),
@@ -398,13 +399,13 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
     // Fetch cached suggestions on mount when feature is enabled.
     useEffect(() => {
         if (!suggestionsEnabled) return;
-        cloneClient.pullRequests.getSuggestions(repoId)
+        cloneClient.pullRequests.getSuggestionsForOrigin(originId, { workspaceId, repoId })
             .then(data => {
                 setSuggestions(data.suggestions ?? []);
                 setSuggestionsRankedAt(data.rankedAt ?? null);
             })
             .catch(() => { /* non-fatal */ });
-    }, [repoId, suggestionsEnabled, cloneClient]);
+    }, [repoId, workspaceId, originId, suggestionsEnabled, cloneClient]);
 
     const handleRefreshSuggestions = useCallback(() => {
         if (suggestionsLoading) return;
@@ -413,7 +414,7 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
         setSuggestionsError(null);
         setSuggestionsStatus('Fetching review history...');
         const client = cloneClient.pullRequests;
-        client.refreshReviewHistory(repoId)
+        client.refreshReviewHistoryForOrigin(originId, { workspaceId, repoId })
             .then(history => {
                 if ((history.reviews ?? []).length === 0) {
                     setSuggestions([]);
@@ -423,7 +424,7 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
                     return null;
                 }
                 setSuggestionsStatus('Ranking open PRs...');
-                return client.refreshSuggestions(repoId);
+                return client.refreshSuggestionsForOrigin(originId, { workspaceId, repoId });
             })
             .then(data => {
                 if (!data) return;
@@ -437,7 +438,7 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
                 setSuggestionsError(getSpaCocClientErrorMessage(err, 'Failed to generate PR suggestions.'));
             })
             .finally(() => setSuggestionsLoading(false));
-    }, [repoId, suggestionsLoading, cloneClient]);
+    }, [repoId, workspaceId, originId, suggestionsLoading, cloneClient]);
 
     const filteredBySearch = useMemo(() => {
         if (!searchText) return prs;
@@ -587,10 +588,11 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
         setTeamClassificationLoading(true);
         setTeamClassificationError(null);
         try {
-            const data = await cloneClient.pullRequests.getClassificationBatchStatus(repoId, {
+            const data = await cloneClient.pullRequests.getClassificationBatchStatusForOrigin(originId, {
                 type: 'pr',
                 identifiers: teamAutoClassificationIdentifiers,
                 workspaceId,
+                repoId,
             });
             setTeamClassificationStatuses(data.statuses ?? {});
         } catch (err) {
@@ -599,7 +601,7 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
         } finally {
             setTeamClassificationLoading(false);
         }
-    }, [repoId, teamAutoClassificationEnabled, teamAutoClassificationIdentifiers, teamAutoClassificationIdentifiersKey, workspaceId, cloneClient]);
+    }, [repoId, originId, teamAutoClassificationEnabled, teamAutoClassificationIdentifiers, teamAutoClassificationIdentifiersKey, workspaceId, cloneClient]);
 
     useEffect(() => {
         void loadTeamClassificationStatuses();
@@ -611,8 +613,9 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
         setTeamClassificationQueueing(true);
         setTeamClassificationError(null);
         try {
-            const result = await cloneClient.pullRequests.autoClassifyTeam(repoId, {
+            const result = await cloneClient.pullRequests.autoClassifyTeamForOrigin(originId, {
                 workspaceId,
+                repoId,
                 pullRequests: teamAutoClassificationPrs,
             });
             if (result.errors.length > 0) {
@@ -628,6 +631,7 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
     }, [
         loadTeamClassificationStatuses,
         repoId,
+        originId,
         teamAutoClassificationEnabled,
         teamAutoClassificationPrs,
         teamClassificationQueueing,

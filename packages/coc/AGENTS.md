@@ -124,8 +124,9 @@ all have their own `references/*.md`.
   Classification result/pending files are origin-scoped and queued
   `pr-classification` payloads must carry the resolved classification storage
   origin so the `saveClassification` tool writes the same state route polling
-  reads. The Team toolbar status UI should read batch status and route manual
-  "Classify now" actions through the same bounded server helper.
+  reads. The Team toolbar status UI reads origin batch status and routes manual
+  "Classify now" actions through origin APIs backed by the same bounded server
+  helper, passing workspace/repo metadata only to select the concrete clone.
 - **Pull Request review progress** for PR pop-out reviewed/visited file state is
   durable origin state. New callers must use
   `/api/origins/:originId/pull-requests/:prId/review-progress` or

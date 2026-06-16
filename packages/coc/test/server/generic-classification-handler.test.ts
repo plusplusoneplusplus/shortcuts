@@ -109,6 +109,7 @@ afterEach(() => new Promise<void>((resolve, reject) => {
 describe('GET /api/repos/:repoId/classify-diff/batch-status', () => {
     const repoId = 'ws-test';
     const ws = 'ws-test';
+    const originId = 'gh_org_repo';
 
     it('returns ready for a stored classification', async () => {
         const hash = 'aaabbbccc';
@@ -179,6 +180,29 @@ describe('GET /api/repos/:repoId/classify-diff/batch-status', () => {
         const res = await get(server, `/api/repos/${encodeURIComponent(repoId)}/classify-diff?type=commit&identifier=unknownabc`);
         expect(res.status).toBe(200);
         expect(res.body.status).toBe('none');
+    });
+
+    it('returns PR statuses from the origin-scoped batch-status endpoint', async () => {
+        writeClassification(tmpDir, ws, repoId, '42', 'head123', validResult, {
+            storageScope: { storageOriginId: originId },
+        });
+
+        const res = await get(
+            server,
+            `/api/origins/${originId}/classify-diff/batch-status?type=pr&identifiers=42:head123,43:missing&workspaceId=${ws}&repoId=${repoId}`,
+        );
+
+        expect(res.status).toBe(200);
+        expect(res.body.statuses).toEqual({
+            '42:head123': 'ready',
+            '43:missing': 'none',
+        });
+    });
+
+    it('rejects non-PR status reads on the origin-scoped batch-status endpoint', async () => {
+        const res = await get(server, `/api/origins/${originId}/classify-diff/batch-status?type=commit&identifiers=abc`);
+
+        expect(res.status).toBe(400);
     });
 });
 

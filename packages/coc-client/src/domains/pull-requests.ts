@@ -64,6 +64,15 @@ function withOriginPrStateBody<T extends Record<string, unknown>>(body: T, optio
   };
 }
 
+function serializeClassificationBatchStatusQuery(query: ClassificationBatchStatusQuery): CocRequestOptions['query'] {
+  return {
+    type: query.type,
+    identifiers: query.identifiers.join(','),
+    workspaceId: query.workspaceId,
+    repoId: query.repoId,
+  };
+}
+
 export class PullRequestsClient {
   constructor(
     private readonly transport: RequestAdapter,
@@ -391,11 +400,22 @@ export class PullRequestsClient {
     return this.transport.request<ClassificationBatchStatusResponse>(
       `/repos/${encodePathSegment(repoId)}/classify-diff/batch-status`,
       {
-        query: {
-          type: query.type,
-          identifiers: query.identifiers.join(','),
-          workspaceId: query.workspaceId,
-        },
+        query: serializeClassificationBatchStatusQuery(query),
+        signal: options?.signal,
+      },
+    );
+  }
+
+  /** Get cached/running PR classification status for a batch of identifiers under a canonical origin. */
+  getClassificationBatchStatusForOrigin(
+    originId: string,
+    query: ClassificationBatchStatusQuery,
+    options?: Pick<CocRequestOptions, 'signal'>,
+  ): Promise<ClassificationBatchStatusResponse> {
+    return this.transport.request<ClassificationBatchStatusResponse>(
+      `/origins/${encodePathSegment(originId)}/classify-diff/batch-status`,
+      {
+        query: serializeClassificationBatchStatusQuery(query),
         signal: options?.signal,
       },
     );
@@ -408,6 +428,22 @@ export class PullRequestsClient {
       {
         method: 'POST',
         body: { ...body },
+        signal: options?.signal,
+      },
+    );
+  }
+
+  /** Trigger bounded Team PR auto-classification under a canonical origin. */
+  autoClassifyTeamForOrigin(
+    originId: string,
+    body: TeamPrAutoClassificationRequest,
+    options?: OriginPrStateOptions,
+  ): Promise<TeamPrAutoClassificationResponse> {
+    return this.transport.request<TeamPrAutoClassificationResponse>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/team-auto-classification`,
+      {
+        method: 'POST',
+        body: withOriginPrStateBody({ ...body }, options),
         signal: options?.signal,
       },
     );
@@ -459,6 +495,17 @@ export class PullRequestsClient {
     );
   }
 
+  /** Get cached PR suggestions under a canonical origin. */
+  getSuggestionsForOrigin(originId: string, options?: OriginPrStateOptions): Promise<PrSuggestionsResponse> {
+    return this.transport.request<PrSuggestionsResponse>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/suggestions`,
+      {
+        query: serializeOriginPrStateQuery(options),
+        signal: options?.signal,
+      },
+    );
+  }
+
   /** Refresh the cached review history used to seed PR suggestions. */
   refreshReviewHistory(repoId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PrReviewHistoryResponse> {
     return this.transport.request<PrReviewHistoryResponse>(
@@ -467,11 +514,35 @@ export class PullRequestsClient {
     );
   }
 
+  /** Refresh the cached review history under a canonical origin using a selected workspace. */
+  refreshReviewHistoryForOrigin(originId: string, options?: OriginPrStateOptions): Promise<PrReviewHistoryResponse> {
+    return this.transport.request<PrReviewHistoryResponse>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/review-history/refresh`,
+      {
+        method: 'POST',
+        query: serializeOriginPrStateQuery(options),
+        signal: options?.signal,
+      },
+    );
+  }
+
   /** Refresh PR suggestions by re-ranking cached review history via LLM. */
   refreshSuggestions(repoId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PrSuggestionsResponse> {
     return this.transport.request<PrSuggestionsResponse>(
       `/repos/${encodePathSegment(repoId)}/pull-requests/suggestions/refresh`,
       { method: 'POST', signal: options?.signal },
+    );
+  }
+
+  /** Refresh PR suggestions by re-ranking origin-scoped review history via LLM. */
+  refreshSuggestionsForOrigin(originId: string, options?: OriginPrStateOptions): Promise<PrSuggestionsResponse> {
+    return this.transport.request<PrSuggestionsResponse>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/suggestions/refresh`,
+      {
+        method: 'POST',
+        query: serializeOriginPrStateQuery(options),
+        signal: options?.signal,
+      },
     );
   }
 }

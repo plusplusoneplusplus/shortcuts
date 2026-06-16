@@ -722,7 +722,9 @@ describe('queue filter pills', () => {
                 queued = true;
                 const body = JSON.parse(init?.body as string);
                 expect(init?.method).toBe('POST');
+                expect(url).toContain('/origins/local_ws-1/pull-requests/team-auto-classification');
                 expect(body.workspaceId).toBe('ws-1');
+                expect(body.repoId).toBe('repo-1');
                 expect(body.pullRequests).toHaveLength(1);
                 expect(body.pullRequests[0]).toMatchObject({ number: 2, headSha: 'head-2' });
                 return Promise.resolve(jsonResponse({
@@ -762,7 +764,7 @@ describe('queue filter pills', () => {
         await act(async () => { fireEvent.click(screen.getByTestId('team-auto-classification-button')); });
 
         await waitFor(() => expect(screen.getByTestId('team-auto-classification-running-count')).toHaveTextContent('1 running'));
-        expect(fetchMock.mock.calls.some(call => String(call[0]).includes('/team-auto-classification'))).toBe(true);
+        expect(fetchMock.mock.calls.some(call => String(call[0]).includes('/origins/local_ws-1/pull-requests/team-auto-classification'))).toBe(true);
     });
 
     it('"Mine" stays on scope=mine and does not refetch when re-clicked', async () => {
@@ -859,9 +861,13 @@ describe('PR review suggestions', () => {
         });
 
         await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(7));
-        expect(String(fetchMock.mock.calls[5][0])).toContain('/repos/repo-1/pull-requests/review-history/refresh');
+        expect(String(fetchMock.mock.calls[5][0])).toContain('/origins/local_ws-1/pull-requests/review-history/refresh');
+        expect(String(fetchMock.mock.calls[5][0])).toContain('workspaceId=ws-1');
+        expect(String(fetchMock.mock.calls[5][0])).toContain('repoId=repo-1');
         expect(fetchMock.mock.calls[5][1]?.method).toBe('POST');
-        expect(String(fetchMock.mock.calls[6][0])).toContain('/repos/repo-1/pull-requests/suggestions/refresh');
+        expect(String(fetchMock.mock.calls[6][0])).toContain('/origins/local_ws-1/pull-requests/suggestions/refresh');
+        expect(String(fetchMock.mock.calls[6][0])).toContain('workspaceId=ws-1');
+        expect(String(fetchMock.mock.calls[6][0])).toContain('repoId=repo-1');
         expect(fetchMock.mock.calls[6][1]?.method).toBe('POST');
         await waitFor(() => expect(screen.getByText('Suggested PR')).toBeInTheDocument());
     });
