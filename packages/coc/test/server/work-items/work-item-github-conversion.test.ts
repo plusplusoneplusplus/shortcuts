@@ -19,6 +19,7 @@ import type {
 } from '../../../src/server/work-items/work-item-sync-github-provider';
 
 const REPO_ID = 'github-conversion-test-repo';
+const ORIGIN_ID = 'gh_plusplusoneplusplus_shortcuts';
 const OWNER = 'plusplusoneplusplus';
 const REPO = 'shortcuts';
 const NOW = '2026-01-01T00:00:00.000Z';
@@ -215,7 +216,7 @@ async function post(urlPath: string): Promise<{ status: number; body: any }> {
         const req = http.request({
             hostname: urlObj.hostname,
             port: urlObj.port,
-            path: urlObj.pathname,
+            path: urlObj.pathname + urlObj.search,
             method: 'POST',
             headers: { 'Content-Length': 0 },
         }, res => {
@@ -237,13 +238,23 @@ function convertToGitHubUrl(workItemId: string): string {
     return `/api/workspaces/${encodeURIComponent(REPO_ID)}/work-items/${encodeURIComponent(workItemId)}/convert-to-github`;
 }
 
+function originConvertToGitHubUrl(workItemId: string): string {
+    return `/api/origins/${encodeURIComponent(ORIGIN_ID)}/work-items/${encodeURIComponent(workItemId)}/convert-to-github?workspaceId=${encodeURIComponent(REPO_ID)}`;
+}
+
 function convertToLocalUrl(workItemId: string): string {
     return `/api/workspaces/${encodeURIComponent(REPO_ID)}/work-items/${encodeURIComponent(workItemId)}/convert-to-local`;
 }
 
 beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'github-conversion-'));
-    store = new FileWorkItemStore({ dataDir: tmpDir });
+    store = new FileWorkItemStore({
+        dataDir: tmpDir,
+        scopeResolver: repoId => {
+            if (repoId !== REPO_ID && repoId !== ORIGIN_ID) return undefined;
+            return { storageRepoId: ORIGIN_ID, legacyRepoIds: [REPO_ID] };
+        },
+    });
 });
 
 afterEach(async () => {
@@ -356,6 +367,41 @@ describe('GitHub-backed Epic tracker conversion routes', () => {
             issueNumber: 101,
             owner: OWNER,
             repo: REPO,
+        });
+    });
+
+    it('converts through the origin route while selecting a concrete workspace for GitHub access', async () => {
+        await store.addWorkItem(makeWorkItem({
+            id: 'origin-epic',
+            repoId: ORIGIN_ID,
+            title: 'Origin Route Epic',
+            description: 'Origin route body',
+            status: 'created',
+            type: 'epic',
+            tracker: { kind: 'local-only' },
+        }));
+        const mock = makeMockTransport();
+        await startServer(mock);
+
+        const missingWorkspace = await post(`/api/origins/${encodeURIComponent(ORIGIN_ID)}/work-items/origin-epic/convert-to-github`);
+        expect(missingWorkspace.status).toBe(400);
+        expect(missingWorkspace.body.error).toMatch(/workspaceId is required/i);
+
+        const res = await post(originConvertToGitHubUrl('origin-epic'));
+
+        expect(res.status).toBe(200);
+        expect(res.body.root).toMatchObject({
+            id: 'origin-epic',
+            repoId: ORIGIN_ID,
+            tracker: {
+                kind: 'github-backed',
+                provider: 'github',
+                github: { issueNumber: 100 },
+            },
+        });
+        await expect(store.getWorkItem('origin-epic', ORIGIN_ID)).resolves.toMatchObject({
+            title: 'Origin Route Epic',
+            githubMirror: { issueNumber: 100 },
         });
     });
 

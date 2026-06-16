@@ -5,12 +5,16 @@ import { ImportFromGitHubDialog } from '../../../src/server/spa/client/react/fea
 
 const importFromGitHub = vi.fn();
 const importFromAzureBoards = vi.fn();
+const importFromGitHubForOrigin = vi.fn();
+const importFromAzureBoardsForOrigin = vi.fn();
 
 vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         workItems: {
             importFromGitHub,
             importFromAzureBoards,
+            importFromGitHubForOrigin,
+            importFromAzureBoardsForOrigin,
         },
     }),
 }));
@@ -23,6 +27,7 @@ function renderDialog(props: Partial<ComponentProps<typeof ImportFromGitHubDialo
             open
             onClose={onClose}
             workspaceId="workspace-1"
+            originId="gh_org_repo"
             onImported={onImported}
             {...props}
         />,
@@ -34,8 +39,12 @@ describe('ImportFromGitHubDialog', () => {
     beforeEach(() => {
         importFromGitHub.mockReset();
         importFromAzureBoards.mockReset();
+        importFromGitHubForOrigin.mockReset();
+        importFromAzureBoardsForOrigin.mockReset();
         importFromGitHub.mockResolvedValue({ id: 'epic-1', title: 'Imported Epic' });
         importFromAzureBoards.mockResolvedValue({ id: 'epic-azure', title: 'Imported Azure Epic' });
+        importFromGitHubForOrigin.mockResolvedValue({ id: 'epic-1', title: 'Imported Epic' });
+        importFromAzureBoardsForOrigin.mockResolvedValue({ id: 'epic-azure', title: 'Imported Azure Epic' });
     });
 
     it('submits a full GitHub issue URL unchanged', async () => {
@@ -49,9 +58,9 @@ describe('ImportFromGitHubDialog', () => {
         });
 
         await waitFor(() => {
-            expect(importFromGitHub).toHaveBeenCalledWith('workspace-1', {
+            expect(importFromGitHubForOrigin).toHaveBeenCalledWith('gh_org_repo', {
                 issueUrl: 'https://github.com/org/repo/issues/42',
-            });
+            }, { workspaceId: 'workspace-1' });
         });
         expect(onImported).toHaveBeenCalledWith({ id: 'epic-1', title: 'Imported Epic' }, 'github');
         expect(onClose).toHaveBeenCalled();
@@ -68,7 +77,7 @@ describe('ImportFromGitHubDialog', () => {
         });
 
         await waitFor(() => {
-            expect(importFromGitHub).toHaveBeenCalledWith('workspace-1', { issueNumber: 42 });
+            expect(importFromGitHubForOrigin).toHaveBeenCalledWith('gh_org_repo', { issueNumber: 42 }, { workspaceId: 'workspace-1' });
         });
     });
 
@@ -84,9 +93,9 @@ describe('ImportFromGitHubDialog', () => {
         });
 
         await waitFor(() => {
-            expect(importFromAzureBoards).toHaveBeenCalledWith('workspace-1', { workItemId: 12345 });
+            expect(importFromAzureBoardsForOrigin).toHaveBeenCalledWith('gh_org_repo', { workItemId: 12345 }, { workspaceId: 'workspace-1' });
         });
-        expect(importFromGitHub).not.toHaveBeenCalled();
+        expect(importFromGitHubForOrigin).not.toHaveBeenCalled();
         expect(onImported).toHaveBeenCalledWith({ id: 'epic-azure', title: 'Imported Azure Epic' }, 'azure-boards');
         expect(onClose).toHaveBeenCalled();
     });
@@ -103,9 +112,9 @@ describe('ImportFromGitHubDialog', () => {
         });
 
         await waitFor(() => {
-            expect(importFromAzureBoards).toHaveBeenCalledWith('workspace-1', {
+            expect(importFromAzureBoardsForOrigin).toHaveBeenCalledWith('gh_org_repo', {
                 workItemUrl: 'https://dev.azure.com/org/project/_workitems/edit/12345',
-            });
+            }, { workspaceId: 'workspace-1' });
         });
     });
 
@@ -122,9 +131,9 @@ describe('ImportFromGitHubDialog', () => {
         });
 
         await waitFor(() => {
-            expect(importFromGitHub).toHaveBeenCalledWith('workspace-1', { issueNumber: 42 });
+            expect(importFromGitHubForOrigin).toHaveBeenCalledWith('gh_org_repo', { issueNumber: 42 }, { workspaceId: 'workspace-1' });
         });
-        expect(importFromAzureBoards).not.toHaveBeenCalled();
+        expect(importFromAzureBoardsForOrigin).not.toHaveBeenCalled();
     });
 
     it('hides provider selection and imports with the only allowed Azure Boards provider', async () => {
@@ -140,9 +149,9 @@ describe('ImportFromGitHubDialog', () => {
         });
 
         await waitFor(() => {
-            expect(importFromAzureBoards).toHaveBeenCalledWith('workspace-1', { workItemId: 12345 });
+            expect(importFromAzureBoardsForOrigin).toHaveBeenCalledWith('gh_org_repo', { workItemId: 12345 }, { workspaceId: 'workspace-1' });
         });
-        expect(importFromGitHub).not.toHaveBeenCalled();
+        expect(importFromGitHubForOrigin).not.toHaveBeenCalled();
     });
 
     it('prompts for either URL or number before importing', async () => {
@@ -153,7 +162,7 @@ describe('ImportFromGitHubDialog', () => {
         });
 
         expect(screen.getByTestId('import-github-error')).toHaveTextContent('Please enter a GitHub issue URL or issue number');
-        expect(importFromGitHub).not.toHaveBeenCalled();
+        expect(importFromGitHubForOrigin).not.toHaveBeenCalled();
     });
 
     it('prompts for either Azure URL or ID before importing', async () => {
@@ -165,6 +174,6 @@ describe('ImportFromGitHubDialog', () => {
         });
 
         expect(screen.getByTestId('import-azure-boards-error')).toHaveTextContent('Please enter an Azure Boards work item URL or ID');
-        expect(importFromAzureBoards).not.toHaveBeenCalled();
+        expect(importFromAzureBoardsForOrigin).not.toHaveBeenCalled();
     });
 });

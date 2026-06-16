@@ -480,6 +480,7 @@ export function WorkItemsTab({ workspaceId, originId, onNavigateToTasksTab }: Wo
                     open={showImportDialog}
                     onClose={() => setShowImportDialog(false)}
                     workspaceId={workspaceId}
+                    originId={workItemOriginId}
                     initialProvider={importDialogProvider}
                     providerOptions={activeTracker === 'remote' ? remoteImportProviderOptions : undefined}
                     onImported={handleImported}
@@ -532,6 +533,7 @@ export function WorkItemsTab({ workspaceId, originId, onNavigateToTasksTab }: Wo
                 open={showImportDialog}
                 onClose={() => setShowImportDialog(false)}
                 workspaceId={workspaceId}
+                originId={workItemOriginId}
                 initialProvider={importDialogProvider}
                 providerOptions={activeTracker === 'remote' ? remoteImportProviderOptions : undefined}
                 onImported={handleImported}

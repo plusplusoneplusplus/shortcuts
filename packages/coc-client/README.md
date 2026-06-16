@@ -24,7 +24,7 @@ const { items } = await coc.workItems.listForOrigin(originId);
 - Node.js 24+ has a global `fetch`, which the client uses by default.
 - Browser usage can omit `baseUrl` for same-origin requests.
 - Node tools that use realtime APIs should inject `WebSocket` or `EventSource` constructors when the runtime does not provide them globally.
-- Persistent Work Item APIs, including hierarchy tree reads, plan/version history, and chat bindings, use an explicit origin ID. Workspace-root-dependent actions still require a workspace ID. IDs are encoded as path segments, so IDs containing `/` are safe.
+- Persistent Work Item APIs, including hierarchy tree reads, plan/version history, sync/import/convert state, execution history, and chat bindings, use an explicit origin ID. Provider, queue, and filesystem-dependent actions still require a workspace ID. IDs are encoded as path segments, so IDs containing `/` are safe.
 - Pull Request provider APIs (list, detail, threads, reviewers, commits, checks, diffs) and persistent sidecar APIs such as recent-opened entries, Team roster, chat bindings, and review progress use explicit origin IDs. Provider and filesystem operations still require concrete workspace/repo metadata.
 - Follow-up routing, queue transitions, and storage paths remain server-authoritative.
 
@@ -37,7 +37,7 @@ const { items } = await coc.workItems.listForOrigin(originId);
 | Processes | `coc.processes` | list, summaries, detail, create, update, delete, cancel, follow-up message, output, stream helper |
 | Queue | `coc.queue` | list, stats, history, enqueue, pause/resume, cancel |
 | Schedules | `coc.schedules` | repo-scoped list, create, update, enable/disable, move, delete, run, history |
-| Work items | `coc.workItems` | origin-scoped list/grouped/tree, plan/version history, create, get, update, delete, plus workspace-root-dependent execute actions |
+| Work items | `coc.workItems` | origin-scoped list/grouped/tree, plan/version history, sync/import/convert, create, get, update, delete, and workspace-root-dependent execution actions |
 | Pull requests | `coc.pullRequests` | origin-scoped provider PR list/detail/subresources, recent-opened, Team roster, chat bindings, classifications, review progress, suggestions |
 | Workspaces/repos | `coc.workspaces`, `coc.repos` | list, register, discover, update, delete, git info, history deletion |
 | Servers | `coc.servers` | remote server CRUD, health, reconnect, patch-transfer cherry-pick orchestration |
@@ -58,6 +58,8 @@ const item = await coc.workItems.createForOrigin(originId, {
 });
 
 const tree = await coc.workItems.treeForOrigin(originId, { tracker: 'local-only' }, { workspaceId });
+
+await coc.workItems.syncStatusForOrigin(originId, { workspaceId });
 
 await coc.workItems.updatePlanForOrigin(originId, item.id, 'Implementation plan...', undefined, { workspaceId });
 ```

@@ -736,20 +736,29 @@ describe('WorkItemsClient mock coverage', () => {
     ]);
   });
 
-  it('sends sync status, import, and conversion requests to workspace-scoped endpoints', async () => {
+  it('sends sync status, import, and conversion requests to workspace and origin endpoints', async () => {
     const adapter = createMockAdapter({ provider: 'github' });
     const client = new WorkItemsClient(adapter);
 
     await client.syncStatus('repo/a', 'azure-boards');
+    await client.syncStatusForOrigin('gh_owner_repo', { workspaceId: 'repo/a' }, 'github');
     await client.importFromGitHub('repo/a', { issueUrl: 'https://github.com/org/repo/issues/42' });
     await client.importFromGitHub('repo/a', { issueNumber: 42 });
+    await client.importFromGitHubForOrigin('gh_owner_repo', { issueNumber: 42 }, { workspaceId: 'repo/a' });
+    await client.importFromAzureBoardsForOrigin('gh_owner_repo', { workItemId: 123 }, { workspaceId: 'repo/a' });
     await client.convertLocalEpicToGitHub('repo/a', 'epic/1');
     await client.convertGitHubEpicToLocal('repo/a', 'epic/1');
+    await client.convertLocalEpicToGitHubForOrigin('gh_owner_repo', 'epic/1', { workspaceId: 'repo/a' });
+    await client.convertGitHubEpicToLocalForOrigin('gh_owner_repo', 'epic/1', { workspaceId: 'repo/a' });
 
     expect(adapter.calls).toEqual([
       {
         path: '/workspaces/repo%2Fa/work-items/sync/status',
         options: { query: { provider: 'azure-boards' } },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/sync/status',
+        options: { query: { provider: 'github', workspaceId: 'repo/a' } },
       },
       {
         path: '/workspaces/repo%2Fa/work-items/import-from-github',
@@ -766,12 +775,34 @@ describe('WorkItemsClient mock coverage', () => {
         },
       },
       {
+        path: '/origins/gh_owner_repo/work-items/import-from-github',
+        options: {
+          method: 'POST',
+          body: { issueNumber: 42, workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/import-from-azure-boards',
+        options: {
+          method: 'POST',
+          body: { workItemId: 123, workspaceId: 'repo/a' },
+        },
+      },
+      {
         path: '/workspaces/repo%2Fa/work-items/epic%2F1/convert-to-github',
         options: { method: 'POST' },
       },
       {
         path: '/workspaces/repo%2Fa/work-items/epic%2F1/convert-to-local',
         options: { method: 'POST' },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/epic%2F1/convert-to-github',
+        options: { method: 'POST', query: { workspaceId: 'repo/a' } },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/epic%2F1/convert-to-local',
+        options: { method: 'POST', query: { workspaceId: 'repo/a' } },
       },
     ]);
   });

@@ -58,6 +58,10 @@ export interface WorkItemOriginScopeOptions {
   workspaceId?: string;
 }
 
+export interface WorkItemConcreteWorkspaceOptions extends WorkItemOriginScopeOptions {
+  workspaceId: string;
+}
+
 function serializeFilter(filter?: WorkItemFilter): Record<string, string | number | undefined> | undefined {
   if (!filter) return undefined;
   return {
@@ -387,10 +391,31 @@ export class WorkItemsClient {
     });
   }
 
+  syncStatusForOrigin(
+    originId: string,
+    options: WorkItemConcreteWorkspaceOptions,
+    provider?: WorkItemSyncProvider,
+  ): Promise<WorkItemSyncStatusResponse> {
+    return this.transport.request<WorkItemSyncStatusResponse>(originPath(originId, '/sync/status'), {
+      query: withWorkspaceQuery(provider ? { provider } : undefined, options),
+    });
+  }
+
   importFromGitHub(workspaceId: string, request: ImportFromGitHubRequest): Promise<WorkItem> {
     return this.transport.request<WorkItem>(path(workspaceId, '/import-from-github'), {
       method: 'POST',
       body: { ...request },
+    });
+  }
+
+  importFromGitHubForOrigin(
+    originId: string,
+    request: ImportFromGitHubRequest,
+    options: WorkItemConcreteWorkspaceOptions,
+  ): Promise<WorkItem> {
+    return this.transport.request<WorkItem>(originPath(originId, '/import-from-github'), {
+      method: 'POST',
+      body: withWorkspaceBody({ ...request }, options),
     });
   }
 
@@ -401,15 +426,48 @@ export class WorkItemsClient {
     });
   }
 
+  importFromAzureBoardsForOrigin(
+    originId: string,
+    request: ImportFromAzureBoardsRequest,
+    options: WorkItemConcreteWorkspaceOptions,
+  ): Promise<WorkItem> {
+    return this.transport.request<WorkItem>(originPath(originId, '/import-from-azure-boards'), {
+      method: 'POST',
+      body: withWorkspaceBody({ ...request }, options),
+    });
+  }
+
   convertLocalEpicToGitHub(workspaceId: string, workItemId: string): Promise<ConvertWorkItemTrackerResponse> {
     return this.transport.request<ConvertWorkItemTrackerResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/convert-to-github`), {
       method: 'POST',
     });
   }
 
+  convertLocalEpicToGitHubForOrigin(
+    originId: string,
+    workItemId: string,
+    options: WorkItemConcreteWorkspaceOptions,
+  ): Promise<ConvertWorkItemTrackerResponse> {
+    return this.transport.request<ConvertWorkItemTrackerResponse>(originPath(originId, `/${encodePathSegment(workItemId)}/convert-to-github`), {
+      method: 'POST',
+      query: withWorkspaceQuery(undefined, options),
+    });
+  }
+
   convertGitHubEpicToLocal(workspaceId: string, workItemId: string): Promise<ConvertWorkItemTrackerResponse> {
     return this.transport.request<ConvertWorkItemTrackerResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/convert-to-local`), {
       method: 'POST',
+    });
+  }
+
+  convertGitHubEpicToLocalForOrigin(
+    originId: string,
+    workItemId: string,
+    options: WorkItemConcreteWorkspaceOptions,
+  ): Promise<ConvertWorkItemTrackerResponse> {
+    return this.transport.request<ConvertWorkItemTrackerResponse>(originPath(originId, `/${encodePathSegment(workItemId)}/convert-to-local`), {
+      method: 'POST',
+      query: withWorkspaceQuery(undefined, options),
     });
   }
 

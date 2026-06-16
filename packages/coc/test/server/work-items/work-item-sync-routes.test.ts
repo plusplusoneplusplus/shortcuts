@@ -23,6 +23,7 @@ import { writeProvidersConfig } from '../../../src/server/providers/providers-co
 
 const REPO_ID = 'sync-test-repo';
 const SECOND_REPO_ID = 'sync-test-repo-2';
+const ORIGIN_ID = 'gh_plusplusoneplusplus_shortcuts';
 
 let tmpDir: string;
 let store: FileWorkItemStore;
@@ -290,6 +291,26 @@ describe('Work Item Sync Routes', () => {
             expect.objectContaining({ provider: 'github', available: true }),
         ]);
         expect(JSON.stringify(status.body)).not.toMatch(/token|secret|password|credential/i);
+    });
+
+    it('serves origin sync status only when a matching concrete workspace is selected', async () => {
+        await startServer([makeFakeProvider()]);
+
+        const missingWorkspace = await request('GET', `/api/origins/${ORIGIN_ID}/work-items/sync/status`);
+        expect(missingWorkspace.status).toBe(400);
+        expect(missingWorkspace.body.error).toMatch(/workspaceId is required/i);
+
+        const mismatchedWorkspace = await request('GET', `/api/origins/${ORIGIN_ID}/work-items/sync/status?workspaceId=${SECOND_REPO_ID}`);
+        expect(mismatchedWorkspace.status).toBe(400);
+        expect(mismatchedWorkspace.body.error).toMatch(/resolves to origin/i);
+
+        const status = await request('GET', `/api/origins/${ORIGIN_ID}/work-items/sync/status?workspaceId=${REPO_ID}`);
+        expect(status.status).toBe(200);
+        expect(status.body.remoteProvider).toBe('github');
+        expect(status.body.provider).toMatchObject({
+            provider: 'github',
+            available: true,
+        });
     });
 
     it('serves cached sync status until force=true requests live provider status', async () => {
@@ -636,7 +657,7 @@ describe('Work Item Sync Routes', () => {
             },
         });
 
-        const importedItems = (await store.listWorkItems({ repoId: REPO_ID })).items;
+        const importedItems = (await store.listWorkItems({ repoId: ORIGIN_ID })).items;
         const root = importedItems.find(item => item.azureBoardsMirror?.workItemId === 100)!;
         const feature = importedItems.find(item => item.azureBoardsMirror?.workItemId === 101)!;
         const pbi = importedItems.find(item => item.azureBoardsMirror?.workItemId === 102)!;
@@ -707,7 +728,7 @@ describe('Work Item Sync Routes', () => {
         ]);
 
         const synced = await importAzureBoardsEpicTreeAsWorkItems(
-            { workspaceId: REPO_ID, workItemStore: store },
+            { workspaceId: ORIGIN_ID, workItemStore: store },
             azureTransport.items.get(100)!,
             [...azureTransport.items.values()],
             undefined,
@@ -741,7 +762,7 @@ describe('Work Item Sync Routes', () => {
                 revision: 2,
             },
         });
-        const syncedItems = (await store.listWorkItems({ repoId: REPO_ID })).items;
+        const syncedItems = (await store.listWorkItems({ repoId: ORIGIN_ID })).items;
         expect(syncedItems.find(item => item.id === pbi.id)).toBeUndefined();
         expect(syncedItems.find(item => item.azureBoardsMirror?.workItemId === 103)).toMatchObject({
             parentId: root.id,

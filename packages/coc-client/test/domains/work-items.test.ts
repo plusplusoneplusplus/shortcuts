@@ -147,6 +147,9 @@ describe('WorkItemsClient', () => {
     await client.getPlanVersionForOrigin('gh_owner/repo', 'wi/1', 3, { workspaceId: 'repo/a' });
     await client.comparePlanVersionsForOrigin('gh_owner/repo', 'wi/1', 1, 2, { workspaceId: 'repo/a' });
     await client.restorePlanVersionForOrigin('gh_owner/repo', 'wi/1', 1, { summary: 'Restore v1' }, { workspaceId: 'repo/a' });
+    await client.syncStatusForOrigin('gh_owner/repo', { workspaceId: 'repo/a' }, 'github');
+    await client.importFromGitHubForOrigin('gh_owner/repo', { issueNumber: 42 }, { workspaceId: 'repo/a' });
+    await client.convertLocalEpicToGitHubForOrigin('gh_owner/repo', 'wi/1', { workspaceId: 'repo/a' });
 
     expect(adapter.calls[0]).toMatchObject({
       path: '/origins/gh_owner%2Frepo/work-items',
@@ -193,6 +196,18 @@ describe('WorkItemsClient', () => {
     expect(adapter.calls[9]).toEqual({
       path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/plan/versions/1/restore',
       options: { method: 'POST', body: { summary: 'Restore v1', workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[10]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/sync/status',
+      options: { query: { provider: 'github', workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[11]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/import-from-github',
+      options: { method: 'POST', body: { issueNumber: 42, workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[12]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/convert-to-github',
+      options: { method: 'POST', query: { workspaceId: 'repo/a' } },
     });
   });
 });

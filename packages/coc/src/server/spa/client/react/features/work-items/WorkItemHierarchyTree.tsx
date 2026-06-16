@@ -334,7 +334,7 @@ export function WorkItemHierarchyTree({
         }
         let cancelled = false;
         setRemoteStatus({ loading: true });
-        client.workItems.syncStatus(workspaceId)
+        client.workItems.syncStatusForOrigin(workItemOriginId, { workspaceId })
             .then(response => {
                 if (!cancelled) setRemoteStatus({ loading: false, response });
             })
@@ -347,7 +347,7 @@ export function WorkItemHierarchyTree({
                 }
             });
         return () => { cancelled = true; };
-    }, [isRemoteView, onDetectedRemoteProviderChange, workItemsSyncEnabled, workspaceId, client]);
+    }, [isRemoteView, onDetectedRemoteProviderChange, workItemsSyncEnabled, workspaceId, workItemOriginId, client]);
 
     useEffect(() => {
         if (!isRemoteView) return;

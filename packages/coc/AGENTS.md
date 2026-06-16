@@ -181,8 +181,7 @@ all have their own `references/*.md`.
 - **Work-item hierarchy tree reads** are persistent origin state. New callers must
   use `/api/origins/:originId/work-items/tree` or
   `client.workItems.treeForOrigin(...)`; pass `workspaceId` only as clone
-  metadata/validation, while sync/import/convert/plan/execution
-  flows remain workspace-root dependent until their origin contracts exist.
+  metadata/validation.
 - **Work-item chat bindings** are persistent origin state. New callers must use
   `/api/origins/:originId/work-item-chat-bindings...` or
   `client.workItems.*ChatBindingForOrigin(...)`; pass `workspaceId` only for
@@ -190,8 +189,14 @@ all have their own `references/*.md`.
 - **Work-item plan and plan-version reads/writes** are persistent origin state.
   New callers must use `/api/origins/:originId/work-items/:itemId/plan...` or
   `client.workItems.*Plan*ForOrigin(...)`; pass `workspaceId` only as clone
-  metadata for origin validation while execution/sync flows remain
-  workspace-root dependent.
+  metadata for origin validation.
+- **Work-item sync/import/convert actions** are origin-scoped persistent state
+  but require a concrete clone for provider configuration and transport. New
+  callers must use `/api/origins/:originId/work-items/sync/status`,
+  `/api/origins/:originId/work-items/import-from-*`, or
+  `/api/origins/:originId/work-items/:itemId/convert-to-*` and always pass
+  `workspaceId` so GitHub/Azure Boards access uses the selected workspace while
+  imported/converted items write to the origin.
 - **Work-item execution actions** are origin-scoped persistent state but require
   a concrete clone. New callers must use
   `/api/origins/:originId/work-items/:itemId/{execute,submit-pr,ai-review,resolve-comments}`
