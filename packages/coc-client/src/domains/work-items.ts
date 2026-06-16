@@ -46,6 +46,18 @@ function path(workspaceId: string, suffix = ''): string {
   return `/workspaces/${encodePathSegment(workspaceId)}/work-items${suffix}`;
 }
 
+function originPath(originId: string, suffix = ''): string {
+  return `/origins/${encodePathSegment(originId)}/work-items${suffix}`;
+}
+
+export interface WorkItemOriginScopeOptions {
+  /**
+   * Concrete workspace root to use when an origin-scoped mutation needs
+   * provider/filesystem semantics. Read-only calls can omit this.
+   */
+  workspaceId?: string;
+}
+
 function serializeFilter(filter?: WorkItemFilter): Record<string, string | number | undefined> | undefined {
   if (!filter) return undefined;
   return {
@@ -55,6 +67,22 @@ function serializeFilter(filter?: WorkItemFilter): Record<string, string | numbe
   };
 }
 
+function withWorkspaceQuery(
+  query: Record<string, string | number | boolean | undefined> | undefined,
+  options?: WorkItemOriginScopeOptions,
+): Record<string, string | number | boolean | undefined> | undefined {
+  if (!options?.workspaceId) return query;
+  return { ...query, workspaceId: options.workspaceId };
+}
+
+function withWorkspaceBody<T extends Record<string, unknown>>(
+  body: T,
+  options?: WorkItemOriginScopeOptions,
+): T & { workspaceId?: string } {
+  if (!options?.workspaceId) return body;
+  return { ...body, workspaceId: options.workspaceId };
+}
+
 export class WorkItemsClient {
   constructor(private readonly transport: RequestAdapter) {}
 
@@ -62,12 +90,31 @@ export class WorkItemsClient {
     return this.transport.request<WorkItemListResponse>(path(workspaceId), { query: serializeFilter(filter) });
   }
 
+  listForOrigin(originId: string, filter?: WorkItemFilter, options?: WorkItemOriginScopeOptions): Promise<WorkItemListResponse> {
+    return this.transport.request<WorkItemListResponse>(originPath(originId), {
+      query: withWorkspaceQuery(serializeFilter(filter), options),
+    });
+  }
+
   grouped(workspaceId: string, filter?: Omit<WorkItemFilter, 'status' | 'offset'>): Promise<WorkItemGroupedResponse> {
     return this.transport.request<WorkItemGroupedResponse>(path(workspaceId, '/grouped'), { query: serializeFilter(filter) });
   }
 
+  groupedForOrigin(originId: string, filter?: Omit<WorkItemFilter, 'status' | 'offset'>, options?: WorkItemOriginScopeOptions): Promise<WorkItemGroupedResponse> {
+    return this.transport.request<WorkItemGroupedResponse>(originPath(originId, '/grouped'), {
+      query: withWorkspaceQuery(serializeFilter(filter), options),
+    });
+  }
+
   create(workspaceId: string, request: CreateWorkItemRequest): Promise<WorkItem> {
     return this.transport.request<WorkItem>(path(workspaceId), { method: 'POST', body: { ...request } });
+  }
+
+  createForOrigin(originId: string, request: CreateWorkItemRequest, options?: WorkItemOriginScopeOptions): Promise<WorkItem> {
+    return this.transport.request<WorkItem>(originPath(originId), {
+      method: 'POST',
+      body: withWorkspaceBody({ ...request }, options),
+    });
   }
 
   createFromChat(workspaceId: string, request: CreateWorkItemFromChatRequest): Promise<WorkItem> {
@@ -78,6 +125,12 @@ export class WorkItemsClient {
     return this.transport.request<WorkItem>(path(workspaceId, `/${encodePathSegment(workItemId)}`));
   }
 
+  getForOrigin(originId: string, workItemId: string, options?: WorkItemOriginScopeOptions): Promise<WorkItem> {
+    return this.transport.request<WorkItem>(originPath(originId, `/${encodePathSegment(workItemId)}`), {
+      query: withWorkspaceQuery(undefined, options),
+    });
+  }
+
   update(workspaceId: string, workItemId: string, request: UpdateWorkItemRequest): Promise<WorkItem> {
     return this.transport.request<WorkItem>(path(workspaceId, `/${encodePathSegment(workItemId)}`), {
       method: 'PATCH',
@@ -85,18 +138,49 @@ export class WorkItemsClient {
     });
   }
 
+  updateForOrigin(originId: string, workItemId: string, request: UpdateWorkItemRequest, options?: WorkItemOriginScopeOptions): Promise<WorkItem> {
+    return this.transport.request<WorkItem>(originPath(originId, `/${encodePathSegment(workItemId)}`), {
+      method: 'PATCH',
+      body: withWorkspaceBody({ ...request }, options),
+    });
+  }
+
   updateStatus(workspaceId: string, workItemId: string, status: string, options?: Pick<UpdateWorkItemRequest, 'completedAt'>): Promise<WorkItem> {
     return this.update(workspaceId, workItemId, { status, ...options });
+  }
+
+  updateStatusForOrigin(
+    originId: string,
+    workItemId: string,
+    status: string,
+    request?: Pick<UpdateWorkItemRequest, 'completedAt'>,
+    options?: WorkItemOriginScopeOptions,
+  ): Promise<WorkItem> {
+    return this.updateForOrigin(originId, workItemId, { status, ...request }, options);
   }
 
   delete(workspaceId: string, workItemId: string): Promise<void> {
     return this.transport.request<void>(path(workspaceId, `/${encodePathSegment(workItemId)}`), { method: 'DELETE' });
   }
 
+  deleteForOrigin(originId: string, workItemId: string, options?: WorkItemOriginScopeOptions): Promise<void> {
+    return this.transport.request<void>(originPath(originId, `/${encodePathSegment(workItemId)}`), {
+      method: 'DELETE',
+      query: withWorkspaceQuery(undefined, options),
+    });
+  }
+
   pin(workspaceId: string, workItemId: string, pinned: boolean): Promise<WorkItem> {
     return this.transport.request<WorkItem>(path(workspaceId, `/${encodePathSegment(workItemId)}/pin`), {
       method: 'PATCH',
       body: { pinned },
+    });
+  }
+
+  pinForOrigin(originId: string, workItemId: string, pinned: boolean, options?: WorkItemOriginScopeOptions): Promise<WorkItem> {
+    return this.transport.request<WorkItem>(originPath(originId, `/${encodePathSegment(workItemId)}/pin`), {
+      method: 'PATCH',
+      body: withWorkspaceBody({ pinned }, options),
     });
   }
 
@@ -107,10 +191,29 @@ export class WorkItemsClient {
     });
   }
 
+  archiveForOrigin(originId: string, workItemId: string, archived: boolean, options?: WorkItemOriginScopeOptions): Promise<WorkItem> {
+    return this.transport.request<WorkItem>(originPath(originId, `/${encodePathSegment(workItemId)}/archive`), {
+      method: 'PATCH',
+      body: withWorkspaceBody({ archived }, options),
+    });
+  }
+
   requestChanges(workspaceId: string, workItemId: string, request: RequestWorkItemChangesRequest): Promise<RequestWorkItemChangesResponse> {
     return this.transport.request<RequestWorkItemChangesResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/request-changes`), {
       method: 'POST',
       body: { ...request },
+    });
+  }
+
+  requestChangesForOrigin(
+    originId: string,
+    workItemId: string,
+    request: RequestWorkItemChangesRequest,
+    options?: WorkItemOriginScopeOptions,
+  ): Promise<RequestWorkItemChangesResponse> {
+    return this.transport.request<RequestWorkItemChangesResponse>(originPath(originId, `/${encodePathSegment(workItemId)}/request-changes`), {
+      method: 'POST',
+      body: withWorkspaceBody({ ...request }, options),
     });
   }
 

@@ -372,7 +372,7 @@ See [mcp-settings.md](mcp-settings.md).
 
 ## Work Items
 
-Core Work Item CRUD/listing routes are origin-scoped under `/api/origins/:originId/...`. Workspace-scoped URLs are accepted during the migration and resolve to the workspace's canonical origin for storage/cache reads; origin-scoped writes that need provider or filesystem semantics may pass `workspaceId` (query or body) and the server rejects it when that workspace resolves to a different origin.
+Core Work Item CRUD/listing routes are origin-scoped under `/api/origins/:originId/...`; `@plusplusoneplusplus/coc-client` exposes these as `workItems.*ForOrigin(...)` methods. Workspace-scoped URLs are accepted during the migration and resolve to the workspace's canonical origin for storage/cache reads; origin-scoped writes that need provider or filesystem semantics may pass `workspaceId` (query or body) and the server rejects it when that workspace resolves to a different origin.
 
 | Method | Path | Description |
 |--------|------|-------------|

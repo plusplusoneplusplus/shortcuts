@@ -157,6 +157,102 @@ describe('WorkItemsClient mock coverage', () => {
     ]);
   });
 
+  it('sends core origin-scoped persistent Work Item requests', async () => {
+    const adapter = createMockAdapter(workItem);
+    const client = new WorkItemsClient(adapter);
+
+    await client.listForOrigin('gh_owner_repo', {
+      status: ['created', 'planning'],
+      tags: ['frontend', 'triage'],
+    }, { workspaceId: 'repo/a' });
+    await client.groupedForOrigin('gh_owner_repo', { priority: 'high' }, { workspaceId: 'repo/a' });
+    await client.createForOrigin('gh_owner_repo', { title: 'Task', priority: 'normal' }, { workspaceId: 'repo/a' });
+    await client.getForOrigin('gh_owner_repo', 'wi/1', { workspaceId: 'repo/a' });
+    await client.updateForOrigin('gh_owner_repo', 'wi/1', { status: 'planning' }, { workspaceId: 'repo/a' });
+    await client.updateStatusForOrigin('gh_owner_repo', 'wi/1', 'done', { completedAt: '2026-01-02T00:00:00.000Z' }, { workspaceId: 'repo/a' });
+    await client.pinForOrigin('gh_owner_repo', 'wi/1', true, { workspaceId: 'repo/a' });
+    await client.archiveForOrigin('gh_owner_repo', 'wi/1', false, { workspaceId: 'repo/a' });
+    await client.requestChangesForOrigin('gh_owner_repo', 'wi/1', { comments: ['Fix this'] }, { workspaceId: 'repo/a' });
+    await client.deleteForOrigin('gh_owner_repo', 'wi/1', { workspaceId: 'repo/a' });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/origins/gh_owner_repo/work-items',
+        options: {
+          query: {
+            status: 'created,planning',
+            tags: 'frontend,triage',
+            workspaceId: 'repo/a',
+          },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/grouped',
+        options: {
+          query: {
+            priority: 'high',
+            workspaceId: 'repo/a',
+          },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items',
+        options: {
+          method: 'POST',
+          body: { title: 'Task', priority: 'normal', workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1',
+        options: {
+          query: { workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1',
+        options: {
+          method: 'PATCH',
+          body: { status: 'planning', workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1',
+        options: {
+          method: 'PATCH',
+          body: { status: 'done', completedAt: '2026-01-02T00:00:00.000Z', workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/pin',
+        options: {
+          method: 'PATCH',
+          body: { pinned: true, workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/archive',
+        options: {
+          method: 'PATCH',
+          body: { archived: false, workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/request-changes',
+        options: {
+          method: 'POST',
+          body: { comments: ['Fix this'], workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1',
+        options: {
+          method: 'DELETE',
+          query: { workspaceId: 'repo/a' },
+        },
+      },
+    ]);
+  });
+
   it('passes epic-rooted tracker metadata through create and update requests', async () => {
     const adapter = createMockAdapter(workItem);
     const client = new WorkItemsClient(adapter);

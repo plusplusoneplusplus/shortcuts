@@ -16,7 +16,7 @@ import { CocClient } from '@plusplusoneplusplus/coc-client';
 const coc = new CocClient({ baseUrl: 'http://localhost:4000' });
 
 const health = await coc.health.get();
-const { items } = await coc.workItems.list(workspaceId);
+const { items } = await coc.workItems.listForOrigin(originId);
 ```
 
 ## Runtime notes
@@ -24,7 +24,7 @@ const { items } = await coc.workItems.list(workspaceId);
 - Node.js 24+ has a global `fetch`, which the client uses by default.
 - Browser usage can omit `baseUrl` for same-origin requests.
 - Node tools that use realtime APIs should inject `WebSocket` or `EventSource` constructors when the runtime does not provide them globally.
-- Repo-scoped APIs require an explicit workspace or repo ID. IDs are encoded as path segments, so IDs containing `/` are safe.
+- Persistent Work Item APIs use an explicit origin ID. Workspace-root-dependent actions still require a workspace ID. IDs are encoded as path segments, so IDs containing `/` are safe.
 - Follow-up routing, queue transitions, and storage paths remain server-authoritative.
 
 ## Supported domains
@@ -49,7 +49,7 @@ const { items } = await coc.workItems.list(workspaceId);
 ### Work items
 
 ```ts
-const item = await coc.workItems.create(workspaceId, {
+const item = await coc.workItems.createForOrigin(originId, {
   title: 'Add retry telemetry',
   description: 'Track retry counts in queue task metadata.',
   priority: 'normal',

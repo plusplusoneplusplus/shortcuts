@@ -31,6 +31,44 @@ describe('work items contract', () => {
     await expect(harness.client.workItems.delete(workspaceId, created.id)).resolves.toBeUndefined();
   });
 
+  it('uses origin-scoped core work item routes through the typed client', async () => {
+    harness = await startContractHarness();
+    const originId = 'gh_contract_repo';
+
+    const created = await harness.client.workItems.createForOrigin(originId, {
+      title: 'Origin contract task',
+      description: 'Created by origin contract test',
+      priority: 'normal',
+      plan: { content: '# Initial plan', resolvedBy: 'user' },
+    });
+    expect(created).toMatchObject({ title: 'Origin contract task', repoId: originId });
+
+    await expect(harness.client.workItems.listForOrigin(originId)).resolves.toMatchObject({
+      total: 1,
+      items: [expect.objectContaining({ id: created.id, repoId: originId })],
+    });
+    await expect(harness.client.workItems.getForOrigin(originId, created.id))
+      .resolves.toMatchObject({ id: created.id, repoId: originId });
+
+    await expect(harness.client.workItems.updateForOrigin(originId, created.id, { title: 'Updated origin task' }))
+      .resolves.toMatchObject({ title: 'Updated origin task' });
+
+    await expect(harness.client.workItems.pinForOrigin(originId, created.id, true))
+      .resolves.toMatchObject({ id: created.id, pinnedAt: expect.any(String) });
+    await expect(harness.client.workItems.archiveForOrigin(originId, created.id, true))
+      .resolves.toMatchObject({ id: created.id, archivedAt: expect.any(String) });
+
+    await harness.client.workItems.updateStatusForOrigin(originId, created.id, 'readyToExecute');
+    await harness.client.workItems.updateStatusForOrigin(originId, created.id, 'executing');
+    await harness.client.workItems.updateStatusForOrigin(originId, created.id, 'aiDone');
+    await expect(harness.client.workItems.requestChangesForOrigin(originId, created.id, {
+      comments: ['Address the origin route review note'],
+    })).resolves.toMatchObject({ newVersion: 2 });
+
+    await expect(harness.client.workItems.deleteForOrigin(originId, created.id)).resolves.toBeUndefined();
+    await expect(harness.client.workItems.listForOrigin(originId)).resolves.toMatchObject({ total: 0 });
+  });
+
   it('reads disabled work item sync status through the typed client', async () => {
     harness = await startContractHarness();
 

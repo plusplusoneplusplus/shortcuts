@@ -87,4 +87,31 @@ describe('WorkItemsClient', () => {
       options: { method: 'POST', body: {} },
     });
   });
+
+  it('encodes origin IDs in origin-scoped Work Item paths', async () => {
+    const adapter = createMockAdapter({});
+    const client = new WorkItemsClient(adapter);
+
+    await client.listForOrigin('gh_owner/repo', { status: ['created', 'planning'], tags: ['x', 'y'] });
+    await client.createForOrigin('gh_owner/repo', { title: 'Task' }, { workspaceId: 'repo/a' });
+    await client.updateForOrigin('gh_owner/repo', 'wi/1', { status: 'planning' }, { workspaceId: 'repo/a' });
+    await client.deleteForOrigin('gh_owner/repo', 'wi/1');
+
+    expect(adapter.calls[0]).toMatchObject({
+      path: '/origins/gh_owner%2Frepo/work-items',
+      options: { query: { status: 'created,planning', tags: 'x,y' } },
+    });
+    expect(adapter.calls[1]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items',
+      options: { method: 'POST', body: { title: 'Task', workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[2]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1',
+      options: { method: 'PATCH', body: { status: 'planning', workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[3]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1',
+      options: { method: 'DELETE', query: undefined },
+    });
+  });
 });
