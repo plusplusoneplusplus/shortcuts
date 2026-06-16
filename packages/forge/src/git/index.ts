@@ -48,7 +48,16 @@ export { GitRangeService } from './git-range-service';
 export { BranchService } from './branch-service';
 export { WorkingTreeService, parsePorcelain } from './working-tree-service';
 export { normalizeRemoteUrl } from './normalize-url';
-export { getRemoteUrl, computeRemoteHash, detectRemoteUrl } from './remote';
+export {
+    getRemoteUrl,
+    computeRemoteHash,
+    detectRemoteUrl,
+    resolveCanonicalOrigin,
+    resolveCanonicalOriginId,
+    type CanonicalOriginInput,
+    type CanonicalOriginIdentity,
+    type CanonicalOriginProvider,
+} from './remote';
 export {
     GitOpsStore,
     GitOpJob,
